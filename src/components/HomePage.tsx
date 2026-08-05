@@ -653,14 +653,21 @@ export default function HomePage({
       );
       const userQuestion = options?.customQuestion?.trim() ?? "";
       const question = userQuestion || copy.questionTemplate;
-      // Free-form wording keeps the user's question but must not lock spread depth.
-      setDeepLinkSpreadId(userQuestion ? null : resolvedSpreadId);
+      // Joint invites already carry the partner name — never block on birth-date gate.
+      const jointActive = Boolean(
+        typeof window !== "undefined" &&
+          (new URLSearchParams(window.location.search).get("joint")?.trim() ||
+            sessionStorage.getItem("aura_joint_token"))
+      );
+      // Free-form wording keeps the user's question but must not lock spread depth —
+      // except joint invites, where invite depth must stay locked.
+      setDeepLinkSpreadId(userQuestion && !jointActive ? null : resolvedSpreadId);
       // User's own wording must stay the session question — intent slug is only for catalog CTAs.
-      setSeoFlowIntentSlug(userQuestion ? null : intent.slug);
+      setSeoFlowIntentSlug(userQuestion && !jointActive ? null : intent.slug);
       setSessionFlowPreselectedMaster(resolveIntentMasterId(intent));
       setSessionFlowInitialTopic("custom");
       setSessionFlowInitialQuestion(question);
-      setSessionFlowRequiresPartnerInfo(Boolean(intent.requiresPartnerInfo));
+      setSessionFlowRequiresPartnerInfo(jointActive ? false : Boolean(intent.requiresPartnerInfo));
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },
@@ -892,13 +899,16 @@ export default function HomePage({
         const url = new URL(window.location.href);
         url.searchParams.delete("intent");
         url.searchParams.delete("ask");
-        url.searchParams.delete("joint");
-        url.searchParams.delete("jointRole");
-        url.searchParams.delete("jointInvite");
-        url.searchParams.delete("jointPartnerName");
         url.searchParams.delete("spread");
         if (jointParam && jointRole) {
           url.searchParams.delete("step");
+          // Keep joint* params until attach succeeds — sessionStorage alone can fail
+          // (private mode) and stripping the URL used to drop the invite mid-flow.
+        } else {
+          url.searchParams.delete("joint");
+          url.searchParams.delete("jointRole");
+          url.searchParams.delete("jointInvite");
+          url.searchParams.delete("jointPartnerName");
         }
         window.history.replaceState(null, "", url.pathname + url.search + url.hash);
         return;
@@ -3292,7 +3302,7 @@ export default function HomePage({
 
         {bootstrapping ? (
           <div
-            className="bootstrap-overlay pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-black/75 pt-[var(--app-header-h,3.25rem)] backdrop-blur-md max-md:bg-[#050309] max-md:backdrop-blur-none"
+            className="bootstrap-overlay pointer-events-none fixed inset-0 z-40 flex items-center justify-center bg-black/75 pt-[var(--app-header-h,3.25rem)] backdrop-blur-md max-md:bg-[#0a0908] max-md:backdrop-blur-none"
             aria-busy="true"
             aria-live="polite"
           >
@@ -3597,7 +3607,7 @@ export default function HomePage({
                       <button
                         type="button"
                         onClick={retryGuestTripletResume}
-                        className="btn-neon mt-3 px-5 py-2 text-sm"
+                        className="btn-primary mt-3 px-5 py-2 text-sm"
                       >
                         Повторить
                       </button>
@@ -3615,7 +3625,7 @@ export default function HomePage({
                     <button
                       type="button"
                       onClick={handleTripletBack}
-                      className="btn-neon px-6 py-2.5 text-sm"
+                      className="btn-primary px-6 py-2.5 text-sm"
                     >
                       К мастерам и текущему раскладу
                     </button>
@@ -3784,7 +3794,7 @@ export default function HomePage({
                       <button
                         type="button"
                         onClick={retryGuestTripletResume}
-                        className="btn-neon mt-3 px-5 py-2 text-sm"
+                        className="btn-primary mt-3 px-5 py-2 text-sm"
                       >
                         Повторить
                       </button>
@@ -3969,9 +3979,15 @@ export default function HomePage({
                 if (seoFlowIntentSlug) {
                   persistPendingIntent(seoFlowIntentSlug);
                 }
-                const returnTo = seoFlowIntentSlug
-                  ? resolveRegistrationReturnTo({ intentSlug: seoFlowIntentSlug })
-                  : resolveRegistrationReturnTo();
+                const jointToken =
+                  typeof window !== "undefined"
+                    ? (sessionStorage.getItem("aura_joint_token")?.trim() || undefined)
+                    : undefined;
+                const returnTo = jointToken
+                  ? resolveRegistrationReturnTo({ jointToken })
+                  : seoFlowIntentSlug
+                    ? resolveRegistrationReturnTo({ intentSlug: seoFlowIntentSlug })
+                    : resolveRegistrationReturnTo();
                 window.location.href = buildRegisterHref(returnTo);
               }
               return;

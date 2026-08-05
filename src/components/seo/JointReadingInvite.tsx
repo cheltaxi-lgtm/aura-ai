@@ -9,6 +9,11 @@ import {
   JOINT_INVITE_RUNE_COST,
 } from "@/lib/joint-reading-pricing";
 import { buildJointSpreadStartPath } from "@/lib/joint-reading-nav";
+import {
+  setJointReadingIntentSlug,
+  setJointReadingRole,
+  setJointReadingToken,
+} from "@/lib/joint-reading-storage";
 import { withAppShellIfNeeded } from "@/lib/post-auth-return";
 import { getSpread, normalizeSpreadId, type SpreadId } from "@/lib/spreads";
 
@@ -153,6 +158,63 @@ export default function JointReadingInvite() {
     }
   }, [copyLink, inviteUrl]);
 
+  const startMySpreadHref = useMemo(() => {
+    if (createdInvite) {
+      return withAppShellIfNeeded(
+        buildJointSpreadStartPath({
+          token: createdInvite.token,
+          role: "initiator",
+          intentSlug: createdInvite.intentSlug,
+          spreadId: createdInvite.spreadId,
+          partnerName: partnerName.trim() || undefined,
+        })
+      );
+    }
+    // Fallback: parse token from invite URL so CTA never lands on status-only page.
+    if (!inviteUrl) return null;
+    try {
+      const parsed = new URL(inviteUrl, typeof window !== "undefined" ? window.location.origin : "https://zovus.ru");
+      const parts = parsed.pathname.split("/").filter(Boolean);
+      const token = parts[parts.length - 1]?.trim();
+      if (!token) return inviteUrl;
+      return withAppShellIfNeeded(
+        buildJointSpreadStartPath({
+          token,
+          role: "initiator",
+          intentSlug,
+          spreadId,
+          partnerName: partnerName.trim() || undefined,
+        })
+      );
+    } catch {
+      return inviteUrl;
+    }
+  }, [createdInvite, inviteUrl, intentSlug, spreadId, partnerName]);
+
+  const startMySpread = useCallback(() => {
+    if (!startMySpreadHref) return;
+    const token =
+      createdInvite?.token ||
+      (() => {
+        try {
+          const parsed = new URL(
+            inviteUrl || startMySpreadHref,
+            typeof window !== "undefined" ? window.location.origin : "https://zovus.ru"
+          );
+          const parts = parsed.pathname.split("/").filter(Boolean);
+          return parts[parts.length - 1]?.trim() || "";
+        } catch {
+          return "";
+        }
+      })();
+    if (token) {
+      setJointReadingToken(token);
+      setJointReadingRole("initiator");
+      setJointReadingIntentSlug(createdInvite?.intentSlug || intentSlug);
+    }
+    window.location.assign(startMySpreadHref);
+  }, [startMySpreadHref, createdInvite, inviteUrl, intentSlug]);
+
   return (
     <div id="joint-invite" className="mt-10 rounded-2xl border border-white/10 bg-white/5 p-5">
       <div className="flex items-center gap-2 text-aura-gold">
@@ -255,24 +317,14 @@ export default function JointReadingInvite() {
             Сначала пройдите свой расклад, затем отправьте ссылку партнёру.
           </p>
           <div className="mt-4 flex flex-wrap gap-2">
-            <a
-              href={
-                createdInvite
-                  ? withAppShellIfNeeded(
-                      buildJointSpreadStartPath({
-                        token: createdInvite.token,
-                        role: "initiator",
-                        intentSlug: createdInvite.intentSlug,
-                        spreadId: createdInvite.spreadId,
-                        partnerName: partnerName.trim() || undefined,
-                      })
-                    )
-                  : inviteUrl
-              }
-              className="btn-luxe btn-luxe--md btn-luxe--gold"
+            <button
+              type="button"
+              onClick={startMySpread}
+              disabled={!startMySpreadHref}
+              className="btn-luxe btn-luxe--md btn-luxe--gold disabled:opacity-50"
             >
               Пройти мой расклад
-            </a>
+            </button>
             <button
               type="button"
               onClick={() => void copyLink()}

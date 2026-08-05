@@ -7,10 +7,11 @@ import {
   compatibilityReportJsonInstructions,
   extractCompatibilityJson,
   formatCompatibilityEvidence,
+  salvageCompatibilityReport,
   validateCompatibilityReport,
 } from "@/lib/natal/compatibility-report";
 import { getNatalModel } from "@/lib/ai-model";
-import { completeChat, type ChatMessage } from "@/lib/llm";
+import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
 import { requireProfileUserId } from "@/lib/require-auth";
@@ -154,17 +155,18 @@ ${formatCompatibilityEvidence(evidence)}`),
       action: "SYNASTRY_REPORT",
     });
     const natalModel = await getNatalModel();
-    let raw = await completeChat({
+    const first = await completeChatDetailed({
       messages: baseMessages,
-      maxTokens: 5200,
+      maxTokens: 7000,
       temperature: 0.3,
       timeoutMs: 170_000,
-      maxAttempts: 2,
+      maxAttempts: 3,
       jsonObject: true,
-      allowReasoningFallback: false,
+      allowReasoningFallback: true,
       skipTemperatureRetry: true,
       modelOverride: natalModel,
     });
+    let raw = first.text;
     let validation = (() => {
       try {
         return validateCompatibilityReport(extractCompatibilityJson(raw ?? ""), evidence);
@@ -176,24 +178,25 @@ ${formatCompatibilityEvidence(evidence)}`),
       }
     })();
     if (!validation.ok) {
-      raw = await completeChat({
+      const repaired = await completeChatDetailed({
         messages: [
           ...baseMessages,
           { role: "assistant", content: raw ?? "{}" },
           {
             role: "user",
-            content: `Исправь JSON и верни весь объект. Ошибки:\n- ${validation.errors.join("\n- ")}`,
+            content: `Исправь JSON и верни весь объект целиком. Ошибки:\n- ${validation.errors.slice(0, 12).join("\n- ")}\nИспользуй только evidence ID из списка аспектов и dimension:<key>.`,
           },
         ],
-        maxTokens: 5200,
+        maxTokens: 7000,
         temperature: 0.1,
         timeoutMs: 90_000,
-        maxAttempts: 2,
+        maxAttempts: 3,
         jsonObject: true,
-        allowReasoningFallback: false,
+        allowReasoningFallback: true,
         skipTemperatureRetry: true,
         modelOverride: natalModel,
       });
+      raw = repaired.text;
       try {
         validation = validateCompatibilityReport(
           extractCompatibilityJson(raw ?? ""),
@@ -206,14 +209,49 @@ ${formatCompatibilityEvidence(evidence)}`),
         };
       }
     }
+    // Keep model prose where possible; coerce evidence IDs / fill thin sections from synastry.
     if (!validation.ok) {
+      try {
+        const salvaged = salvageCompatibilityReport(
+          extractCompatibilityJson(raw ?? "{}"),
+          evidence
+        );
+        if (salvaged.ok) {
+          console.warn("[natal-compatibility] accepted via evidence salvage");
+          validation = salvaged;
+        }
+      } catch {
+        /* keep prior validation errors */
+      }
+    }
+    if (!validation.ok) {
+      // Absolute fallback: pure evidence-grounded report (no LLM prose).
+      const grounded = salvageCompatibilityReport({}, evidence);
+      if (grounded.ok) {
+        console.warn("[natal-compatibility] accepted via grounded synastry salvage");
+        validation = grounded;
+      }
+    }
+    if (!validation.ok) {
+      console.warn(
+        "[natal-compatibility] validation failed:",
+        validation.errors.slice(0, 12).join("; ")
+      );
       await rollback();
-      await trackWorkerJobFailed(request, "invalid_model_report", {
-        refunded: true,
-        errorCode: "invalid_model_report",
-      });
+      await trackWorkerJobFailed(
+        request,
+        "Модель не смогла создать проверяемый отчёт. Оплата возвращена.",
+        {
+          refunded: true,
+          errorCode: "invalid_model_report",
+        }
+      );
       return NextResponse.json(
-        { error: "invalid_model_report", refunded: true },
+        {
+          error: "invalid_model_report",
+          refunded: true,
+          message: "Модель не смогла создать проверяемый отчёт. Оплата возвращена.",
+        },
         { status: 502 }
       );
     }

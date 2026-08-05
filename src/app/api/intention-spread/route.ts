@@ -231,7 +231,16 @@ export async function GET(request: NextRequest) {
   } catch {
     return NextResponse.json({ error: "Unknown master" }, { status: 400 });
   }
-  const spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
+  // Prefer invite depth when a joint token is present so draw/init matches POST attach.
+  let spreadId = normalizeSpreadId(request.nextUrl.searchParams.get("spreadId"));
+  const jointTokenGet =
+    request.nextUrl.searchParams.get("jointToken")?.trim().slice(0, 64) || undefined;
+  if (jointTokenGet && (await ensureDb())) {
+    const joint = await getJointReadingByToken(jointTokenGet);
+    if (joint && joint.status !== "expired") {
+      spreadId = normalizeSpreadId(joint.spread_id);
+    }
+  }
   const system = isNumerologMaster(characterId)
     ? resolveMasterDeckSystem(characterId)
     : resolveSpreadDeckSystem(spreadId, characterId);
@@ -519,6 +528,7 @@ export async function POST(request: NextRequest) {
   let asyncRequested = false;
   let rawBody: Record<string, unknown> = {};
 
+  let rawCardNames: string[] | undefined;
   try {
     const body = await request.json();
     rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
@@ -527,18 +537,16 @@ export async function POST(request: NextRequest) {
     intention = sanitizeTextField(body.intention, 40) ?? "";
     customQuestion = sanitizeTextField(body.customQuestion, 400) ?? undefined;
     sessionId = body.sessionId;
+    // Tokens are base64url(16 bytes) = 22 chars; keep headroom for future lengths.
     jointToken =
-      typeof body.jointToken === "string" ? body.jointToken.trim().slice(0, 20) || undefined : undefined;
+      typeof body.jointToken === "string" ? body.jointToken.trim().slice(0, 64) || undefined : undefined;
     spreadId = normalizeSpreadId(
       typeof body.spreadId === "string" ? body.spreadId : undefined
     );
-    const spread = getSpread(spreadId);
-    const cardCount = spread.cardCount;
     if (Array.isArray(body.cardNames)) {
-      cardNames = body.cardNames
+      rawCardNames = body.cardNames
         .filter((n: unknown) => typeof n === "string" && n.trim())
-        .map((n: string) => n.trim())
-        .slice(0, cardCount);
+        .map((n: string) => n.trim());
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : "Invalid JSON";
@@ -548,28 +556,40 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  // Resolve invite *before* slicing cards so invite depth wins over a wrong client spreadId.
   if (jointToken && (await ensureDb())) {
     const joint = await getJointReadingByToken(jointToken);
     if (!joint || joint.status === "expired") {
-      return NextResponse.json(
-        { error: "Совместное приглашение не найдено или истекло." },
-        { status: 404 }
+      // Do not fail the personal spread: the client still has the full token and
+      // can attach via /complete after generation. A hard 404 here used to abort
+      // every joint reading when the token was truncated or briefly unavailable.
+      console.warn(
+        "[intention-spread] joint invite missing/expired — continuing without attach",
+        jointToken.slice(0, 8)
       );
-    }
-    spreadId = normalizeSpreadId(joint.spread_id);
-    // `intent_slug` is a spread-intents *registry* slug (e.g. "sovmestimost-pary"),
-    // not a `SessionTopicId` — assigning it to `intention` directly used to fail
-    // `isValidSessionIntention` below on every single joint-reading submission.
-    // Resolve it through the registry instead, same as the client-side deep link
-    // flow (which always sends `intention: "custom"` for intent-slug spreads).
-    if (joint.intent_slug) {
-      const jointIntent = getSpreadIntentBySlug(joint.intent_slug);
-      if (jointIntent) {
+      jointToken = undefined;
+    } else {
+      spreadId = normalizeSpreadId(joint.spread_id);
+      // `intent_slug` is a spread-intents *registry* slug (e.g. "sovmestimost-pary"),
+      // not a `SessionTopicId` — assigning it to `intention` directly used to fail
+      // `isValidSessionIntention` below on every single joint-reading submission.
+      // Resolve it through the registry instead, same as the client-side deep link
+      // flow (which always sends `intention: "custom"` for intent-slug spreads).
+      if (joint.intent_slug) {
+        const jointIntent = getSpreadIntentBySlug(joint.intent_slug);
         intention = "custom";
-        customQuestion = customQuestion || jointIntent.questionTemplate;
-      } else {
-        intention = sanitizeTextField(joint.intent_slug, 40) ?? intention;
+        customQuestion =
+          customQuestion ||
+          jointIntent?.questionTemplate ||
+          `Совместный расклад (${joint.intent_slug})`;
       }
+    }
+  }
+
+  {
+    const spread = getSpread(spreadId);
+    if (rawCardNames) {
+      cardNames = rawCardNames.slice(0, spread.cardCount);
     }
   }
 
@@ -593,7 +613,16 @@ export async function POST(request: NextRequest) {
   const cardCount = spread.cardCount;
 
   if (intention === "custom") {
-    const q = customQuestion?.trim();
+    let q = customQuestion?.trim() ?? "";
+    // Soft-fail may have cleared jointToken above — still accept a joint fallback
+    // question so personal generation is not blocked by a missing invite lookup.
+    if (
+      q.length < 8 &&
+      typeof rawBody.jointToken === "string" &&
+      rawBody.jointToken.trim()
+    ) {
+      q = "Совместный расклад для двоих";
+    }
     if (!q || q.length < 8) {
       return NextResponse.json({ error: "Question too short" }, { status: 400 });
     }

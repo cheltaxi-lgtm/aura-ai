@@ -22,9 +22,36 @@ export const INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS = 24;
 
 export function isTerminalIntentionSpreadError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? "");
-  return /не удалось завершить трактовку|generation_failed|intention_spread_ai_failed|трактовк/i.test(
+  return /не удалось завершить трактовку|generation_failed|intention_spread_ai_failed|intention_spread_failed|трактовк|приглашение не найдено|истекло/i.test(
     msg
   );
+}
+
+/** Prefer server `error` text; never surface opaque internal keys to the user. */
+export function resolveIntentionSpreadFailureMessage(err: unknown): string {
+  const raw = err instanceof Error ? err.message.trim() : String(err ?? "").trim();
+  if (!raw || raw === "intention_spread_failed") {
+    return "Не удалось завершить трактовку. Попробуйте ещё раз.";
+  }
+  if (/insufficient(_runes)?/i.test(raw)) {
+    return "Недостаточно рун для этого расклада. Пополните баланс и попробуйте снова.";
+  }
+  if (/^[a-z][a-z0-9_]+$/i.test(raw)) {
+    return "Не удалось завершить трактовку. Попробуйте ещё раз.";
+  }
+  return raw;
+}
+
+export function isInsufficientRunesIntentionError(err: unknown): boolean {
+  const raw = err instanceof Error ? err.message.trim() : String(err ?? "").trim();
+  return /insufficient(_runes)?/i.test(raw);
+}
+
+export async function intentionSpreadResponseError(response: Response): Promise<Error> {
+  const data = (await response.json().catch(() => ({}))) as { error?: unknown };
+  const apiError = typeof data.error === "string" ? data.error.trim() : "";
+  if (apiError) return new Error(apiError);
+  return new Error("intention_spread_failed");
 }
 
 export function isIntentionSpreadWaitAborted(err: unknown): boolean {
@@ -151,6 +178,16 @@ export async function postIntentionSpreadRequest(
       clearTimeout(waitTimer);
       options?.signal?.removeEventListener("abort", onOuterAbort);
       lastError = err;
+      // Async poller surfaces billing failures as thrown codes — map back to 402.
+      if (isInsufficientRunesIntentionError(err)) {
+        return new Response(
+          JSON.stringify({
+            error: "insufficient_runes",
+            code: "insufficient_runes",
+          }),
+          { status: 402, headers: { "Content-Type": "application/json" } }
+        );
+      }
       // Job already failed or cancelled — do NOT enqueue a second paid job.
       if (isTerminalIntentionSpreadError(err) || options?.signal?.aborted) {
         break;

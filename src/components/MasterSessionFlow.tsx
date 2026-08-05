@@ -3,7 +3,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { Loader2, Mic, MicOff } from "lucide-react";
+import {
+  Check,
+  Flame,
+  Loader2,
+  MessageCircle,
+  Mic,
+  MicOff,
+  Sunrise,
+  X,
+} from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import {
   buildLoginHref,
@@ -11,7 +20,10 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
-import { resolveJointReadingToken } from "@/lib/joint-reading-storage";
+import {
+  resolveJointReadingToken,
+  resolveJointIntentionSpreadFields,
+} from "@/lib/joint-reading-storage";
 import {
   SESSION_TOPICS,
   topicLabel,
@@ -295,13 +307,23 @@ export default function MasterSessionFlow({
   const [matrixReplaceBusy, setMatrixReplaceBusy] = useState(false);
   const numerologPreselected = isNumerologMaster(preselectedMaster);
   const presetSpreadLocked = hasPresetSpread(initialSpreadId);
-  const customQuestionReady = customQuestion.trim().length >= 8;
-  const partnerReady = !requiresPartnerInfo || partnerInfoReady(numerologToolParams);
+  // Joint invites already know the partner — never gate on partner birth date.
+  const jointFlowActive = Boolean(resolveJointReadingToken());
+  const effectiveRequiresPartnerInfo = requiresPartnerInfo && !jointFlowActive;
+  const jointQuestionFallback = jointFlowActive
+    ? resolveJointIntentionSpreadFields({ customQuestion }).customQuestion
+    : undefined;
+  const effectiveCustomQuestion =
+    customQuestion.trim().length >= 8
+      ? customQuestion.trim()
+      : (jointQuestionFallback?.trim() ?? "");
+  const customQuestionReady = effectiveCustomQuestion.length >= 8;
+  const partnerReady = !effectiveRequiresPartnerInfo || partnerInfoReady(numerologToolParams);
   const resolvedCustomQuestion =
     topic === "custom"
-      ? requiresPartnerInfo
-        ? appendPartnerContextToQuestion(customQuestion, numerologToolParams)
-        : customQuestion.trim()
+      ? effectiveRequiresPartnerInfo
+        ? appendPartnerContextToQuestion(effectiveCustomQuestion, numerologToolParams)
+        : effectiveCustomQuestion
       : null;
   const numerologPositions =
     numerologFlow && selectedNumerologTool
@@ -369,7 +391,7 @@ export default function MasterSessionFlow({
   const masterLocked = Boolean(preselectedMaster);
   const activeSteps = buildActiveSteps({
     numerologFlow,
-    requiresPartnerInfo,
+    requiresPartnerInfo: effectiveRequiresPartnerInfo,
     topicLocked,
     masterLocked,
     showCardsChoice,
@@ -380,7 +402,11 @@ export default function MasterSessionFlow({
   const initializeFlow = useCallback(() => {
     setTopic(initialTopic ?? null);
     setTopicPickMode("grid");
-    setCustomQuestion(initialCustomQuestion ?? "");
+    const seededQuestion = (initialCustomQuestion ?? "").trim();
+    const jointFallback = resolveJointReadingToken()
+      ? resolveJointIntentionSpreadFields({ customQuestion: seededQuestion }).customQuestion
+      : undefined;
+    setCustomQuestion(seededQuestion || jointFallback || "");
     setVoiceNotice(null);
     setMaster(preselectedMaster ?? "");
     setNewCards([]);
@@ -423,7 +449,7 @@ export default function MasterSessionFlow({
 
     if (newSpreadOnly) {
       setCardType("new");
-      if (requiresPartnerInfo) {
+      if (effectiveRequiresPartnerInfo) {
         if (initialTopic) setTopic(initialTopic);
         setStep("partner");
         return;
@@ -469,7 +495,7 @@ export default function MasterSessionFlow({
     initialTopic,
     initialCustomQuestion,
     autoDrawOnOpen,
-    requiresPartnerInfo,
+    effectiveRequiresPartnerInfo,
     initialNumerologTool,
     initialMatrixSubjectId,
   ]);
@@ -540,7 +566,7 @@ export default function MasterSessionFlow({
       else setStep("scheme");
     }
     else if (step === "scheme") {
-      if (requiresPartnerInfo) setStep("partner");
+      if (effectiveRequiresPartnerInfo) setStep("partner");
       else if (topic) setStep("topic");
       else if (showCardsChoice && cardType === "new") setStep("cards");
       else if (master) setStep("master");
@@ -554,7 +580,7 @@ export default function MasterSessionFlow({
     }
     else if (step === "ritual") {
       if (numerologFlow) setStep("calculation");
-      else if (requiresPartnerInfo) setStep("partner");
+      else if (effectiveRequiresPartnerInfo) setStep("partner");
       else if (presetSpreadLocked) onClose();
       else if (showCardsChoice && cardType === "new") setStep("scheme");
       else if (showCardsChoice) setStep("cards");
@@ -631,7 +657,7 @@ export default function MasterSessionFlow({
       if (!master) return;
       if (!numerologFlow && !topic) return;
       if (topic === "custom" && !customQuestionReady) return;
-      if (requiresPartnerInfo && !partnerReady) return;
+      if (effectiveRequiresPartnerInfo && !partnerReady) return;
       if (
         numerologFlow &&
         !numerologCalculationReady(
@@ -747,7 +773,7 @@ export default function MasterSessionFlow({
       numerologFlow,
       topic,
       customQuestionReady,
-      requiresPartnerInfo,
+      effectiveRequiresPartnerInfo,
       partnerReady,
       selectedNumerologTool,
       numerologToolParams,
@@ -809,8 +835,22 @@ export default function MasterSessionFlow({
 
   useEffect(() => {
     if (step !== "ritual" || !master || sessionSeed || drawLoading || drawError) return;
-    if (!numerologFlow && !topic) return;
-    if (topic === "custom" && !customQuestionReady) return;
+    if (!numerologFlow && !topic) {
+      setDrawError("Выберите тему расклада, чтобы продолжить.");
+      return;
+    }
+    if (topic === "custom" && !customQuestionReady) {
+      setDrawError(
+        jointFlowActive
+          ? "Не удалось подготовить вопрос совместного расклада. Обновите страницу по ссылке-приглашению."
+          : "Сформулируйте вопрос (не короче 8 символов), чтобы продолжить."
+      );
+      return;
+    }
+    if (effectiveRequiresPartnerInfo && !partnerReady) {
+      setDrawError("Укажите имя и дату рождения партнёра, чтобы продолжить.");
+      return;
+    }
     void initSpreadSession();
   }, [
     step,
@@ -823,6 +863,9 @@ export default function MasterSessionFlow({
     numerologFlow,
     selectedSpreadId,
     initSpreadSession,
+    jointFlowActive,
+    effectiveRequiresPartnerInfo,
+    partnerReady,
   ]);
 
   useEffect(() => {
@@ -976,7 +1019,7 @@ export default function MasterSessionFlow({
     if (!allFlipped || !spreadReady) return;
     if (!topic) return;
     if (topic === "custom" && !customQuestionReady) return;
-    if (requiresPartnerInfo && !partnerReady) return;
+    if (effectiveRequiresPartnerInfo && !partnerReady) return;
     onStart({
       characterKey: master,
       intention: topic,
@@ -1057,7 +1100,7 @@ export default function MasterSessionFlow({
             onClick={onStartRitual}
             className="btn-luxe btn-luxe--md btn-luxe--block w-full border border-amber-500/30 bg-amber-950/20 text-amber-200"
           >
-            🕯 Заказать обряд
+            <Flame size={16} strokeWidth={1.75} aria-hidden /> Заказать обряд
           </button>
         ) : null}
       </div>
@@ -1098,9 +1141,9 @@ export default function MasterSessionFlow({
     ) : step === "scheme" ? (
       <button
         type="button"
-        disabled={requiresPartnerInfo && !partnerReady || !topic || !master}
+        disabled={effectiveRequiresPartnerInfo && !partnerReady || !topic || !master}
         onClick={() => {
-          if (requiresPartnerInfo && !partnerReady) {
+          if (effectiveRequiresPartnerInfo && !partnerReady) {
             setStep("partner");
             return;
           }
@@ -1310,7 +1353,7 @@ export default function MasterSessionFlow({
               className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Закрыть"
             >
-              ✕
+              <X size={16} aria-hidden />
             </button>
           </div>
 
@@ -1360,7 +1403,7 @@ export default function MasterSessionFlow({
                           className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border transition-colors ${
                             isRecording
                               ? "border-red-500/50 bg-red-500/10 text-red-400"
-                              : "border-white/10 text-gray-400 hover:border-aura-purple/50 hover:text-aura-purple"
+                              : "border-white/10 text-gray-400 hover:border-aura-gold/50 hover:text-aura-gold"
                           }`}
                           aria-label={isRecording ? "Остановить запись" : "Диктовка голосом"}
                         >
@@ -1407,10 +1450,10 @@ export default function MasterSessionFlow({
 
                     if (isLifeDeath) {
                       cardClass += isSelected
-                        ? "col-span-2 scale-[1.03] border-violet-400/50 bg-violet-950/20 shadow-lg shadow-violet-900/20"
+                        ? "col-span-2 scale-[1.03] border-aura-gold/50 bg-aura-gold/10 shadow-lg shadow-black/30"
                         : dimOthers
                           ? "col-span-2 border-white/10 bg-white/5 opacity-50"
-                          : "col-span-2 border-white/10 bg-white/5 hover:border-violet-400/40 hover:bg-white/10";
+                          : "col-span-2 border-white/10 bg-white/5 hover:border-aura-gold/40 hover:bg-white/10";
                     } else {
                       cardClass += isSelected
                         ? "scale-[1.03] border-amber-400 bg-amber-950/20 shadow-lg shadow-amber-500/20"
@@ -1432,7 +1475,7 @@ export default function MasterSessionFlow({
                           className={`mt-2 text-xs font-medium leading-snug ${
                             isSelected
                               ? isLifeDeath
-                                ? "text-violet-200"
+                                ? "text-aura-champagne"
                                 : "text-amber-300"
                               : "text-white/80"
                           }`}
@@ -1454,7 +1497,9 @@ export default function MasterSessionFlow({
                       }}
                       className="mt-3 w-full rounded-2xl border border-white/10 bg-white/5 p-4 text-center transition-all duration-200 hover:border-amber-400/50 hover:bg-white/10"
                     >
-                      <span className="text-2xl">💬</span>
+                      <span className="text-aura-champagne" aria-hidden>
+                        <MessageCircle size={24} strokeWidth={1.5} />
+                      </span>
                       <p className="mt-2 text-xs font-medium text-white/80">Свой вопрос</p>
                       <p className="mt-1 text-xs text-white/40">Напишите или продиктуйте запрос</p>
                     </button>
@@ -1518,8 +1563,8 @@ export default function MasterSessionFlow({
                           <p className="truncate text-xs text-white/50">{m.title}</p>
                         </div>
                         {isSelected && (
-                          <span className="text-xs text-amber-400" aria-hidden>
-                            ✓
+                          <span className="text-amber-400" aria-hidden>
+                            <Check size={14} strokeWidth={2.5} />
                           </span>
                         )}
                       </button>
@@ -1552,7 +1597,9 @@ export default function MasterSessionFlow({
                         : "border-white/10 bg-white/5 hover:border-amber-400/50"
                     }`}
                   >
-                    <span className="text-2xl">🌅</span>
+                    <span className="text-amber-300" aria-hidden>
+                      <Sunrise size={24} strokeWidth={1.5} />
+                    </span>
                     <p className="mt-2 font-display text-base font-bold text-white">
                       Карты дня
                     </p>

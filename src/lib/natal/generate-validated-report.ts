@@ -497,14 +497,20 @@ async function generateReportBySections(
       params.reportType,
       params.horizonDays
     );
-    if (salvaged.ok) validation = salvaged;
+    // Only accept salvage when the coerced prose also clears substantive gates —
+    // otherwise the caller would skip single-shot/repair and still fail.
+    if (salvaged.ok && isSubstantiveReport(salvaged.report, params)) {
+      validation = salvaged;
+    }
   }
 
   const raw = JSON.stringify(candidate);
-  if (!validation.ok) {
+  if (!validation.ok || !isSubstantiveReport(validation.report, params)) {
     console.warn(
       `[natal-chart] ${params.reportType} section-wise validation failed:`,
-      validation.errors.slice(0, 6).join("; ")
+      (!validation.ok
+        ? validation.errors.slice(0, 6).join("; ")
+        : "sections too thin after salvage")
     );
     return null;
   }
@@ -667,64 +673,89 @@ export async function generateValidatedNatalReport(
   let raw: string | null = null;
   let validation: NatalReportValidation = { ok: false, errors: ["LLM не вернула JSON."] };
   let usedSectionWise = false;
+  /** True when the current validation result came from evidence-grounded salvage. */
+  let acceptedViaSalvage = false;
 
   if (preferSectionWise) {
     const sectioned = await generateReportBySections(params, model);
-    if (sectioned) {
+    if (
+      sectioned &&
+      sectioned.validation.ok &&
+      isSubstantiveReport(sectioned.validation.report, params)
+    ) {
       raw = sectioned.raw;
       validation = sectioned.validation;
       usedSectionWise = true;
+    } else if (sectioned?.raw) {
+      // Keep raw for later salvage, but do not treat thin section-wise output as final.
+      raw = sectioned.raw;
     }
   }
 
-  if (!validation.ok) {
-    raw = await requestNatalReportJson(
+  const needsMoreWork = (): boolean => {
+    if (!validation.ok) return true;
+    return !isSubstantiveReport(validation.report, params);
+  };
+
+  if (needsMoreWork()) {
+    const singleShotRaw = await requestNatalReportJson(
       params.baseMessages,
       initialTimeout,
       0.3,
       model,
       params
     );
+    if (singleShotRaw) raw = singleShotRaw;
 
     if (!raw) {
       console.warn(`[natal-chart] ${params.reportType} LLM empty (model=${model})`);
     } else {
       try {
         validation = validateCandidate(parseCandidate(raw, params), params);
+        acceptedViaSalvage = false;
       } catch (error) {
         validation = {
           ok: false,
           errors: [error instanceof Error ? error.message : "Некорректный JSON."],
         };
+        acceptedViaSalvage = false;
       }
 
-      for (let repairPass = 0; !validation.ok && repairPass < maxRepairPasses; repairPass += 1) {
-        raw = await requestNatalReportJson(
+      for (let repairPass = 0; needsMoreWork() && repairPass < maxRepairPasses; repairPass += 1) {
+        const repairedRaw = await requestNatalReportJson(
           [
             ...params.baseMessages,
             { role: "assistant", content: raw },
-            { role: "user", content: buildRepairMessage(validation.errors, params) },
+            {
+              role: "user",
+              content: buildRepairMessage(
+                validation.ok
+                  ? ["Один или несколько разделов отчёта не содержат полноценного текста."]
+                  : validation.errors,
+                params
+              ),
+            },
           ],
           REPAIR_TIMEOUT_MS,
           repairPass === 0 ? 0.12 : 0.08,
           model,
           params
         );
-        if (!raw) break;
+        if (!repairedRaw) break;
+        raw = repairedRaw;
         try {
           validation = validateCandidate(parseCandidate(raw, params), params);
+          acceptedViaSalvage = false;
         } catch (error) {
           validation = {
             ok: false,
             errors: [error instanceof Error ? error.message : "Некорректный JSON."],
           };
+          acceptedViaSalvage = false;
         }
       }
 
-      if (
-        (!validation.ok || (validation.ok && !isSubstantiveReport(validation.report, params))) &&
-        raw
-      ) {
+      if (needsMoreWork() && raw) {
         try {
           const repairedCandidate = await repairMissingSections(
             raw,
@@ -738,6 +769,7 @@ export async function generateValidatedNatalReport(
           );
           if (strict.ok && isSubstantiveReport(strict.report, params)) {
             validation = strict;
+            acceptedViaSalvage = false;
           }
         } catch {
           /* keep prior validation errors */
@@ -745,10 +777,7 @@ export async function generateValidatedNatalReport(
       }
 
       // Last salvage: keep model prose, coerce broken/missing evidence IDs.
-      if (
-        (!validation.ok || (validation.ok && !isSubstantiveReport(validation.report, params))) &&
-        raw
-      ) {
+      if (needsMoreWork() && raw) {
         try {
           const salvaged = salvageNatalReport(
             parseCandidate(raw, params),
@@ -762,6 +791,7 @@ export async function generateValidatedNatalReport(
               `[natal-chart] ${params.reportType} accepted via evidence salvage (model=${model})`
             );
             validation = salvaged;
+            acceptedViaSalvage = true;
           }
         } catch {
           /* keep prior validation errors */
@@ -770,22 +800,70 @@ export async function generateValidatedNatalReport(
     }
   }
 
-  // Rescue path: short forecasts that failed single-shot, or long forecasts that
-  // somehow still lack a valid report after the preferred section-wise attempt.
-  if (
-    params.reportType === "forecast" &&
-    !usedSectionWise &&
-    (!validation.ok || !isSubstantiveReport(validation.report, params))
-  ) {
+  // Rescue path: forecasts that still lack a substantive report after single-shot.
+  if (params.reportType === "forecast" && needsMoreWork()) {
     const sectioned = await generateReportBySections(params, model);
-    if (sectioned) {
+    if (
+      sectioned &&
+      sectioned.validation.ok &&
+      isSubstantiveReport(sectioned.validation.report, params)
+    ) {
       raw = sectioned.raw;
       validation = sectioned.validation;
       usedSectionWise = true;
+      acceptedViaSalvage = false;
+    } else if (sectioned?.raw && needsMoreWork()) {
+      raw = sectioned.raw;
+      try {
+        const salvaged = salvageNatalReport(
+          parseCandidate(raw, params),
+          params.evidence,
+          params.tradition,
+          params.reportType,
+          params.horizonDays
+        );
+        if (salvaged.ok && isSubstantiveReport(salvaged.report, params)) {
+          console.warn(
+            `[natal-chart] ${params.reportType} accepted via section-wise salvage (model=${model})`
+          );
+          validation = salvaged;
+          usedSectionWise = true;
+          acceptedViaSalvage = true;
+        }
+      } catch {
+        /* keep prior validation errors */
+      }
     }
   }
 
-  if (validation.ok && isSubstantiveReport(validation.report, params)) {
+  // Absolute fallback for forecasts: evidence-grounded salvage from any available JSON,
+  // even if some claims are slightly under the prose threshold (still real timing evidence).
+  if (params.reportType === "forecast" && needsMoreWork() && raw) {
+    try {
+      const salvaged = salvageNatalReport(
+        parseCandidate(raw, params),
+        params.evidence,
+        params.tradition,
+        params.reportType,
+        params.horizonDays
+      );
+      if (salvaged.ok) {
+        console.warn(
+          `[natal-chart] ${params.reportType} accepted via final evidence salvage (model=${model})`
+        );
+        validation = salvaged;
+        acceptedViaSalvage = true;
+      }
+    } catch {
+      /* keep prior validation errors */
+    }
+  }
+
+  if (
+    validation.ok &&
+    (isSubstantiveReport(validation.report, params) ||
+      (params.reportType === "forecast" && acceptedViaSalvage))
+  ) {
     const sanitized = sanitizeNatalReport(validation.report, params);
     // Skip editorial for section-wise forecasts: rewriting the full JSON often truncates again.
     const edited =

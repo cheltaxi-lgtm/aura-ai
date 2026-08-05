@@ -44,12 +44,20 @@ import { navigateToSessionIntention } from "@/lib/session-intention-nav";
 import {
   INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS,
   INTENTION_SPREAD_RECOVERY_POLL_MAX_ATTEMPTS,
+  intentionSpreadResponseError,
   isIntentionSpreadWaitAborted,
   isTerminalIntentionSpreadError,
   pollIntentionSpreadReading,
   postIntentionSpreadRequest,
+  resolveIntentionSpreadFailureMessage,
+  isInsufficientRunesIntentionError,
 } from "@/lib/intention-spread-client";
-import { getJointReadingRole, clearJointReadingToken, resolveJointReadingToken } from "@/lib/joint-reading-storage";
+import {
+  getJointReadingRole,
+  clearJointReadingToken,
+  resolveJointReadingToken,
+  resolveJointIntentionSpreadFields,
+} from "@/lib/joint-reading-storage";
 import { postJointReadingComplete } from "@/lib/joint-reading-client";
 import { ensureMinSpreadRitualDisplay } from "@/lib/spread-reading-ritual";
 import { generateId } from "@/lib/id";
@@ -2062,12 +2070,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           let readingDelivered = false;
           try {
             const spreadResult = await (async () => {
+            const jointFields = resolveJointIntentionSpreadFields();
             const response = await postIntentionSpreadRequest({
             characterId: masterId,
-            intention,
+            intention: jointFields.jointToken ? "custom" : intention,
             spreadId,
             sessionId: chatSessionId,
-            ...(resolveJointReadingToken() ? { jointToken: resolveJointReadingToken() } : {}),
+            ...(jointFields.customQuestion
+              ? { customQuestion: jointFields.customQuestion }
+              : {}),
+            ...(jointFields.jointToken ? { jointToken: jointFields.jointToken } : {}),
           });
 
           if (response.status === 402) {
@@ -2087,7 +2099,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           }
 
           if (!response.ok) {
-            throw new Error("intention_spread_failed");
+            throw await intentionSpreadResponseError(response);
           }
 
           const data = await response.json();
@@ -2135,7 +2147,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             const polled = await pollIntentionSpreadReading(
               {
                 characterId: masterId,
-                intention,
+                intention: resolveJointReadingToken() ? "custom" : intention,
                 cardNames: cards.map((c) => c.name),
                 spreadId,
                 cardCount: cards.length,
@@ -2288,10 +2300,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               chatSessionId &&
               hasCompleteSpread(cardNames, recoverySpreadId, "new")
             ) {
+              const pollIntention = resolveJointReadingToken() ? "custom" : intention;
               const polled = await pollIntentionSpreadReading(
                 {
                   characterId: masterId,
-                  intention,
+                  intention: pollIntention,
                   cardNames,
                   spreadId: recoverySpreadId,
                   cardCount: requiredCardCount(recoverySpreadId, "new"),
@@ -2308,7 +2321,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 : "";
               if (recovered) {
                 readingDelivered = true;
-                spreadReadingRecoveryKeyRef.current = `${masterId}:${intention}:${spreadKey(cardNames.map((n) => ({ name: n })))}`;
+                spreadReadingRecoveryKeyRef.current = `${masterId}:${pollIntention}:${spreadKey(cardNames.map((n) => ({ name: n })))}`;
                 setReadingRitualCountdownDone(true);
                 deps.setMessages((prev) => {
                   const next = appendSpreadReadingMessage(prev, recovered);
@@ -2326,11 +2339,36 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             /* show explicit error below */
           }
 
+          const jointTokenAfterError = resolveJointReadingToken();
+          if (jointTokenAfterError && readingDelivered) {
+            const jointRole = getJointReadingRole() ?? "initiator";
+            let jointFailureMessage: string | undefined;
+            const fallback = await postJointReadingComplete(jointTokenAfterError, {
+              sessionId: chatSessionId ?? "",
+              role: jointRole,
+            });
+            if (!fallback.ok) jointFailureMessage = fallback.error;
+            clearJointReadingToken();
+            skipRitualFinally = true;
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            readingInFlightRef.current = false;
+            deps.skipNextReadingRef.current = false;
+            const jointRedirect = jointFailureMessage
+              ? `/joint-reading/${encodeURIComponent(jointTokenAfterError)}?jointError=${encodeURIComponent(jointFailureMessage)}&jointSessionId=${encodeURIComponent(chatSessionId ?? "")}`
+              : `/joint-reading/${encodeURIComponent(jointTokenAfterError)}`;
+            window.location.assign(jointRedirect);
+            return;
+          }
+          if (jointTokenAfterError && !readingDelivered) {
+            clearJointReadingToken();
+          }
+
           if (!readingDelivered) {
-            const msg =
-              spreadErr instanceof Error && spreadErr.message.trim()
-                ? spreadErr.message.trim()
-                : "Не удалось завершить трактовку. Попробуйте ещё раз.";
+            if (isInsufficientRunesIntentionError(spreadErr)) {
+              handleOpenPaywallRef.current();
+            }
+            const msg = resolveIntentionSpreadFailureMessage(spreadErr);
             setTripletNotice(msg);
             deps.setMessages([
               {
@@ -3351,14 +3389,19 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         }
 
         const spreadResult = await (async () => {
+            const jointFields = resolveJointIntentionSpreadFields({
+              customQuestion: intention === "custom" ? customQuestion?.trim() : undefined,
+            });
             const response = await postIntentionSpreadRequest({
               characterId: characterKey,
-              intention,
+              intention: jointFields.jointToken ? "custom" : intention,
               spreadId,
-              customQuestion: intention === "custom" ? customQuestion?.trim() : undefined,
+              customQuestion:
+                jointFields.customQuestion ??
+                (intention === "custom" ? customQuestion?.trim() : undefined),
               cardNames: cards,
               sessionId: chatSessionId,
-              ...(resolveJointReadingToken() ? { jointToken: resolveJointReadingToken() } : {}),
+              ...(jointFields.jointToken ? { jointToken: jointFields.jointToken } : {}),
             });
 
             if (response.status === 402) {
@@ -3377,7 +3420,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               return { kind: "payment" as const };
             }
 
-            if (!response.ok) throw new Error("intention_spread_failed");
+            if (!response.ok) throw await intentionSpreadResponseError(response);
 
             const data = await response.json();
             if (typeof data.sessionId === "string" && data.sessionId) {
@@ -3431,7 +3474,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               const polled = await pollIntentionSpreadReading(
                 {
                   characterId: characterKey,
-                  intention,
+                  intention: resolveJointReadingToken() ? "custom" : intention,
                   cardNames: cardNamesForClean,
                   spreadId,
                   cardCount: spreadCardCount,
@@ -3596,10 +3639,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               chatSessionId &&
               hasCompleteSpread(cardNames, recoverySpreadId, "new")
             ) {
+              const pollIntention = resolveJointReadingToken() ? "custom" : intention;
               const polled = await pollIntentionSpreadReading(
                 {
                   characterId: characterKey,
-                  intention,
+                  intention: pollIntention,
                   cardNames,
                   spreadId: recoverySpreadId,
                   cardCount: requiredCardCount(recoverySpreadId, "new"),
@@ -3622,7 +3666,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                   resolveMasterDeckSystem(characterKey);
                 const intentionCardsKeyRecovered = spreadKey(spreadCardsRecovered);
                 readingDelivered = true;
-                spreadReadingRecoveryKeyRef.current = `${characterKey}:${intention}:${intentionCardsKeyRecovered}`;
+                spreadReadingRecoveryKeyRef.current = `${characterKey}:${pollIntention}:${intentionCardsKeyRecovered}`;
                 setReadingRitualCountdownDone(true);
                 deps.setMessages(() => {
                   const next = appendSpreadReadingMessage([], recovered);
@@ -3640,11 +3684,38 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           } catch {
             /* show explicit error below */
           }
+          // Joint invite: attach + redirect even when we recovered after an error.
+          const jointTokenAfterError = resolveJointReadingToken();
+          if (jointTokenAfterError && readingDelivered) {
+            const jointRole = getJointReadingRole() ?? "initiator";
+            let jointFailureMessage: string | undefined;
+            const fallback = await postJointReadingComplete(jointTokenAfterError, {
+              sessionId: chatSessionId ?? "",
+              role: jointRole,
+            });
+            if (!fallback.ok) {
+              jointFailureMessage = fallback.error;
+            }
+            clearJointReadingToken();
+            skipRitualFinally = true;
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            readingInFlightRef.current = false;
+            deps.skipNextReadingRef.current = false;
+            const jointRedirect = jointFailureMessage
+              ? `/joint-reading/${encodeURIComponent(jointTokenAfterError)}?jointError=${encodeURIComponent(jointFailureMessage)}&jointSessionId=${encodeURIComponent(chatSessionId ?? "")}`
+              : `/joint-reading/${encodeURIComponent(jointTokenAfterError)}`;
+            window.location.assign(jointRedirect);
+            return;
+          }
+          if (jointTokenAfterError && !readingDelivered) {
+            clearJointReadingToken();
+          }
           if (!readingDelivered) {
-            const msg =
-              err instanceof Error && err.message.trim()
-                ? err.message.trim()
-                : "Не удалось завершить трактовку. Попробуйте ещё раз.";
+            if (isInsufficientRunesIntentionError(err)) {
+              handleOpenPaywallRef.current();
+            }
+            const msg = resolveIntentionSpreadFailureMessage(err);
             setTripletNotice(msg);
             deps.setMessages([
               {

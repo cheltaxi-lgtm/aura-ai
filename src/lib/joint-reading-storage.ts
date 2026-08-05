@@ -1,3 +1,5 @@
+import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
+
 const STORAGE_KEY = "aura_joint_token";
 const ROLE_KEY = "aura_joint_role";
 const INTENT_KEY = "aura_joint_intent";
@@ -76,6 +78,35 @@ export function clearJointReadingToken(): void {
   } catch {
     /* ignore */
   }
+}
+
+/**
+ * Fields to merge into POST /api/intention-spread for an active joint invite.
+ * Always includes the full token (never truncated) and a fallback custom question
+ * from the invite's intent slug when the caller did not pass one.
+ */
+export function resolveJointIntentionSpreadFields(options?: {
+  customQuestion?: string | null;
+}): { jointToken?: string; customQuestion?: string } {
+  const jointToken = resolveJointReadingToken() || undefined;
+  if (!jointToken) return {};
+
+  const fromCaller = options?.customQuestion?.trim();
+  if (fromCaller && fromCaller.length >= 8) {
+    return { jointToken, customQuestion: fromCaller };
+  }
+
+  const intentSlug = getJointReadingIntentSlug()?.trim();
+  if (intentSlug) {
+    const template = getSpreadIntentBySlug(intentSlug)?.questionTemplate?.trim();
+    if (template && template.length >= 8) {
+      return { jointToken, customQuestion: template };
+    }
+    return { jointToken, customQuestion: `Совместный расклад (${intentSlug})` };
+  }
+
+  // Token without stored intent still needs a ≥8-char question for intention=custom.
+  return { jointToken, customQuestion: "Совместный расклад для двоих" };
 }
 
 export function readJointDeepLinkParams(): {

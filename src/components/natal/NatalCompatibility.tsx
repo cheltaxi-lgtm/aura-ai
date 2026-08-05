@@ -403,31 +403,50 @@ export default function NatalCompatibility() {
       let data = await responseJson<{
         record?: CompatibilityRecord;
         error?: string;
+        message?: string;
         balance?: number;
         cost?: number;
         jobId?: string;
       }>(response);
+      let settledOk = response.ok;
+      let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
         setNotice("Отчёт поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForCompatibilityJob(data.jobId) as typeof data;
+        settledOk = true;
+        settledStatus = 200;
+        setNotice("");
       }
-      if (response.status === 402) {
+      if (settledStatus === 402 || data.error === "insufficient") {
+        setNotice("");
         openPaywall({
           currentBalance: data.balance ?? 0,
           requiredRunes: data.cost ?? cost("SYNASTRY_REPORT"),
         });
         return;
       }
-      if (response.status === 429) {
+      if (settledStatus === 429) {
+        setNotice("");
         showRateLimit("natal_compatibility_generate", Number(response.headers.get("retry-after")) || undefined);
         return;
       }
-      if (!response.ok || !data.record) throw new Error(data.error);
+      if (!settledOk || !data.record) {
+        throw new Error(data.message || data.error || "generation_failed");
+      }
       setSelectedId(data.record.id);
+      setError("");
       setNotice("Полный отчёт совместимости готов.");
       await loadRecords();
     } catch (reason) {
-      setError(errorMessage(reason instanceof Error ? reason.message : undefined));
+      setNotice("");
+      const raw = reason instanceof Error ? reason.message.trim() : "";
+      // Prefer mapped codes; keep human Russian messages from the job poller as-is.
+      const mapped = errorMessage(raw);
+      setError(
+        mapped !== "Не удалось выполнить действие. Попробуйте ещё раз."
+          ? mapped
+          : raw || mapped
+      );
     } finally {
       setBusy(null);
     }

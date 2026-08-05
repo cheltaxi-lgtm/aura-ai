@@ -326,10 +326,14 @@ export default function AstrologyWorkspace() {
         interpretation?: string; report?: NatalReport | null; evidence?: NatalEvidence[];
         jobId?: string;
       }>(response);
+      let settledOk = response.ok;
+      let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
         enqueuedJob = true;
         setNotice("Отчёт поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForNatalJob(data.jobId) as typeof data;
+        settledOk = true;
+        settledStatus = 200;
       } else if (response.status === 401 && data.code === "NEEDS_PROFILE") {
         // Stay in astrology: hard-nav to home/onboarding looks like a login wall in app shell.
         setError(data.error || "Завершите профиль: укажите дату и город рождения.");
@@ -339,7 +343,7 @@ export default function AstrologyWorkspace() {
         redirectNatalLogin();
         return;
       }
-      if (response.status === 402) {
+      if (settledStatus === 402 || data.error === "insufficient") {
         openPaywall({
           currentBalance: data.balance ?? 0,
           requiredRunes: data.requiredRunes ?? data.cost ?? cost("NATAL_READING"),
@@ -347,11 +351,11 @@ export default function AstrologyWorkspace() {
         });
         return;
       }
-      if (response.status === 429) {
+      if (settledStatus === 429) {
         showRateLimit(data.action ?? "natal_chart_interpretation", data.retryAfter ?? data.retryAfterSec);
         return;
       }
-      if (response.status === 409) {
+      if (settledStatus === 409) {
         const stale = /измени|обновите|пересчитайте|неполн/i.test(data.error ?? "");
         if (stale) {
           setError(data.error || "Карта изменилась. Загружаем актуальный расчёт.");
@@ -363,7 +367,10 @@ export default function AstrologyWorkspace() {
         }
         return;
       }
-      if (!response.ok) {
+      if (!settledOk) {
+        throw new Error(toUserFacingError(data.error, "Не удалось получить трактовку"));
+      }
+      if (typeof data.error === "string" && data.error.trim() && !data.interpretation?.trim()) {
         throw new Error(toUserFacingError(data.error, "Не удалось получить трактовку"));
       }
       if (!data.interpretation?.trim()) {
@@ -465,10 +472,15 @@ export default function AstrologyWorkspace() {
         forecast?: string; reportId?: string;
         jobId?: string;
       }>(response);
+      let settledOk = response.ok;
+      let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
         enqueuedJob = true;
         setNotice("Прогноз поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForNatalJob(data.jobId) as typeof data;
+        // Job poll replaces the enqueue Response — treat completion as HTTP 200.
+        settledOk = true;
+        settledStatus = 200;
       } else if (response.status === 401 && data.code === "NEEDS_PROFILE") {
         setError(data.error || "Завершите профиль: укажите дату и город рождения.");
         selectTab("settings");
@@ -477,18 +489,18 @@ export default function AstrologyWorkspace() {
         redirectNatalLogin();
         return;
       }
-      if (response.status === 402) {
+      if (settledStatus === 402 || data.error === "insufficient") {
         openPaywall({
           currentBalance: data.balance ?? 0,
           requiredRunes: data.requiredRunes ?? data.cost ?? cost("FORECAST_REPORT"),
         });
         return;
       }
-      if (response.status === 429) {
+      if (settledStatus === 429) {
         showRateLimit(data.action ?? "natal_forecast", data.retryAfter ?? data.retryAfterSec);
         return;
       }
-      if (response.status === 409) {
+      if (settledStatus === 409) {
         const stale = /измени|обновите|пересчитайте|неполн/i.test(data.error ?? "");
         if (stale) {
           setError(data.error || "Карта изменилась. Загружаем актуальный расчёт.");
@@ -500,7 +512,10 @@ export default function AstrologyWorkspace() {
         }
         return;
       }
-      if (!response.ok) {
+      if (!settledOk) {
+        throw new Error(toUserFacingError(data.error, "Не удалось получить прогноз"));
+      }
+      if (typeof data.error === "string" && data.error.trim() && !data.forecast?.trim() && !data.reportId) {
         throw new Error(toUserFacingError(data.error, "Не удалось получить прогноз"));
       }
       if (!data.forecast?.trim() && !data.reportId) {
@@ -603,7 +618,7 @@ export default function AstrologyWorkspace() {
 
   if (loading) return <StateCard icon={Loader2} spin title="Строим астрологическое пространство" text="Загружаем карту, методологию и сохранённые отчёты…" />;
   if (enabled === false) return <StateCard icon={Star} title="Астрология временно недоступна" text="Раздел выключен в настройках платформы. Ваши профильные данные не изменены." />;
-  if (!chart) return <StateCard icon={Compass} title="Данных для расчёта пока нет" text="Добавьте дату, город и, по возможности, точное время рождения в профиле." action={<button type="button" onClick={navigateToBirthProfileOnboarding} className="btn-neon inline-flex px-4 py-2 text-sm">Заполнить профиль</button>} />;
+  if (!chart) return <StateCard icon={Compass} title="Данных для расчёта пока нет" text="Добавьте дату, город и, по возможности, точное время рождения в профиле." action={<button type="button" onClick={navigateToBirthProfileOnboarding} className="btn-primary inline-flex px-4 py-2 text-sm">Заполнить профиль</button>} />;
 
   const western = chart.western;
   const westernReport = chart.interpretations?.western ?? chart.interpretation;
@@ -991,7 +1006,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
           Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Дата, время, город и координаты рождения не передаются.
         </p>
         <button type="button" disabled={!timing || busy !== null} onClick={() => onRequestForecast(horizon)}
-          className="btn-neon flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50">
+          className="btn-primary flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50">
           {busy === "forecast" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
           {!timing
             ? "Готовим расчёт периода…"
@@ -1253,7 +1268,7 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
 }) {
   return <Panel title={title} eyebrow={text ? "Готов · сохранён в архиве" : "Отдельная покупка"}>
     {savedReport ? <p className="text-xs text-emerald-100/60">Создан {new Date(savedReport.createdAt).toLocaleString("ru-RU")} · {savedReport.runeCost ?? "—"} ᚢ</p> : null}
-    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-neon mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
     {text ? <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-4">
       {savedReport ? <Link href={`/cabinet/astrology/reports/${savedReport.id}/print`} className="text-xs text-amber-200">Печать</Link> : null}
       <button type="button" onClick={onOpenArchive} className="text-xs text-white/50 transition hover:text-white/75">Открыть архив версий →</button>

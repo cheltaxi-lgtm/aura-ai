@@ -150,10 +150,15 @@ export async function waitForAsyncJob(
       }
       if (job.status === "failed") {
         terminal = true;
+        const errText = typeof job.error === "string" ? job.error.trim() : "";
+        // Preserve billing failure codes so callers can open paywall (402 path).
+        if (/insufficient(_runes)?/i.test(errText) || job.error === "insufficient_runes") {
+          throw new Error("insufficient_runes");
+        }
         const fallback = job.refunded
           ? "Не удалось завершить трактовку. Руны возвращены."
           : "Не удалось завершить трактовку. Если руны списались — проверьте баланс.";
-        throw new Error(job.error || fallback);
+        throw new Error(errText || fallback);
       }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
