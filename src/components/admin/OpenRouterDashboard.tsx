@@ -302,7 +302,7 @@ export default function OpenRouterDashboard() {
                   type="button"
                   disabled={mgmtSaving || !mgmtInput.trim()}
                   onClick={() => void saveManagementKey(false)}
-                  className="btn-neon px-4 py-2.5 text-sm disabled:opacity-50"
+                  className="btn-primary px-4 py-2.5 text-sm disabled:opacity-50"
                 >
                   {mgmtSaving ? "Проверка…" : mgmtSaved ? "Сохранено ✓" : "Сохранить"}
                 </button>

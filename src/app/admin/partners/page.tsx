@@ -133,7 +133,7 @@ function AdminPartnersPageInner() {
             onClick={() => setStatusFilter(f.id)}
             className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
               statusFilter === f.id
-                ? "bg-aura-purple/25 text-aura-neon"
+                ? "bg-aura-gold/25 text-aura-champagne"
                 : "bg-white/5 text-gray-400 hover:text-white"
             }`}
           >
@@ -161,7 +161,7 @@ function AdminPartnersPageInner() {
                       type="button"
                       onClick={() => setSelectedId(lead.id)}
                       className={`w-full px-4 py-3 text-left transition-colors ${
-                        activeRow ? "bg-aura-purple/15" : "hover:bg-white/5"
+                        activeRow ? "bg-aura-gold/15" : "hover:bg-white/5"
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
@@ -201,7 +201,7 @@ function AdminPartnersPageInner() {
                 <div>
                   <dt className="text-xs text-gray-500">Телефон</dt>
                   <dd>
-                    <a href={`tel:${active.phone}`} className="text-aura-neon hover:underline">
+                    <a href={`tel:${active.phone}`} className="text-aura-champagne hover:underline">
                       {active.phone}
                     </a>
                   </dd>
@@ -209,7 +209,7 @@ function AdminPartnersPageInner() {
                 <div>
                   <dt className="text-xs text-gray-500">Email</dt>
                   <dd>
-                    <a href={`mailto:${active.email}`} className="text-aura-neon hover:underline">
+                    <a href={`mailto:${active.email}`} className="text-aura-champagne hover:underline">
                       {active.email}
                     </a>
                   </dd>

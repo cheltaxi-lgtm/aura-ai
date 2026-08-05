@@ -405,13 +405,13 @@ function LegacyPaywallView({
           type="button"
           onClick={() => void handlePay("single")}
           disabled={loading !== null}
-          className="flex w-full items-center gap-4 rounded-xl border border-aura-purple/40 bg-aura-purple/10 p-4 text-left hover:border-aura-purple disabled:opacity-50"
+          className="flex w-full items-center gap-4 rounded-xl border border-aura-gold/40 bg-aura-gold/10 p-4 text-left hover:border-aura-gold disabled:opacity-50"
         >
-          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-aura-purple/20">
+          <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-aura-gold/20">
             {loading === "single" ? (
-              <Loader2 className="h-6 w-6 animate-spin text-aura-neon" />
+              <Loader2 className="h-6 w-6 animate-spin text-aura-champagne" />
             ) : (
-              <Smartphone className="h-6 w-6 text-aura-neon" />
+              <Smartphone className="h-6 w-6 text-aura-champagne" />
             )}
           </div>
           <div className="flex-1">

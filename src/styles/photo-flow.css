@@ -1,0 +1,689 @@
+/* ── Photo reading flow (modal + confirm) ── */
+.photo-flow-dialog {
+  background: linear-gradient(165deg, #100c1c 0%, #0c0916 45%, #080610 100%);
+  box-shadow:
+    0 0 0 1px rgba(232, 199, 126, 0.1),
+    0 28px 80px rgba(0, 0, 0, 0.75),
+    0 0 80px rgba(139, 90, 200, 0.06);
+}
+
+.photo-flow-dialog__header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, transparent 100%);
+}
+
+.photo-flow-dialog__footer {
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+  background: linear-gradient(0deg, rgba(8, 6, 16, 0.98) 0%, rgba(12, 9, 22, 0.92) 100%);
+  backdrop-filter: blur(12px);
+}
+
+.photo-flow-panel {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.04) 0%, rgba(255, 255, 255, 0.015) 100%);
+  padding: 0.875rem 1rem;
+}
+
+.photo-flow-panel--status {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+
+.photo-flow-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  padding: 0.25rem 0.65rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: rgba(255, 255, 255, 0.72);
+}
+
+.photo-flow-badge--high {
+  border-color: rgba(52, 211, 153, 0.25);
+  background: rgba(16, 185, 129, 0.08);
+  color: rgba(167, 243, 208, 0.95);
+}
+
+.photo-flow-badge--low,
+.photo-flow-badge--warn {
+  border-color: rgba(251, 191, 36, 0.28);
+  background: rgba(245, 158, 11, 0.08);
+  color: rgba(253, 230, 138, 0.95);
+}
+
+.photo-flow-badge--medium {
+  border-color: rgba(232, 199, 126, 0.28);
+  background: rgba(212, 175, 55, 0.08);
+  color: rgba(232, 199, 126, 0.95);
+}
+
+.photo-flow-link {
+  font-size: 0.75rem;
+  font-weight: 500;
+  color: rgba(232, 199, 126, 0.85);
+  transition: color 0.2s ease;
+}
+
+.photo-flow-link:hover {
+  color: rgba(232, 199, 126, 1);
+}
+
+.photo-flow-source-thumb {
+  width: 100%;
+  max-height: 9rem;
+  margin-top: 0.65rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  object-fit: contain;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.photo-flow-upload-tile {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05) 0%, rgba(255, 255, 255, 0.02) 100%);
+  padding: 1.5rem 1rem;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.photo-flow-upload-tile:hover {
+  border-color: rgba(232, 199, 126, 0.28);
+  background: linear-gradient(160deg, rgba(232, 199, 126, 0.08) 0%, rgba(255, 255, 255, 0.03) 100%);
+}
+
+.photo-flow-upload-tile__icon {
+  display: flex;
+  height: 3rem;
+  width: 3rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(232, 199, 126, 0.75);
+}
+
+.photo-flow-alert {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(248, 113, 113, 0.22);
+  background: rgba(239, 68, 68, 0.06);
+  padding: 0.75rem 0.875rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(254, 202, 202, 0.92);
+}
+
+.photo-flow-loading {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+  background: rgba(212, 175, 55, 0.06);
+  padding: 0.75rem 0.875rem;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.78);
+}
+
+.photo-flow-confirm-faces {
+  position: relative;
+  min-height: 16rem;
+}
+
+.photo-flow-confirm-faces__ritual {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  justify-content: center;
+  min-height: 16rem;
+  padding: 1.25rem 0.5rem 0.75rem;
+}
+
+/* Keep full layout under the ritual so eager faces still decode. */
+.photo-flow-confirm-faces__preview--loading {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  opacity: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.photo-flow-confirm-faces__preview:not(.photo-flow-confirm-faces__preview--loading) {
+  animation: photo-flow-faces-reveal 0.45s ease-out;
+}
+
+@keyframes photo-flow-faces-reveal {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.photo-flow-field label {
+  display: block;
+  margin-bottom: 0.375rem;
+  font-size: 0.625rem;
+  font-weight: 600;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+.photo-flow-field textarea,
+.photo-flow-field select {
+  width: 100%;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.75rem 1rem;
+  font-size: 0.875rem;
+  color: #fff;
+  transition: border-color 0.2s ease;
+  touch-action: auto;
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+.photo-flow-field textarea:focus,
+.photo-flow-field select:focus {
+  border-color: rgba(232, 199, 126, 0.28);
+  outline: none;
+}
+
+.photo-flow-hint {
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(255, 255, 255, 0.02);
+  padding: 0.875rem 1rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.52);
+}
+
+.photo-flow-hint button {
+  margin-top: 0.35rem;
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: rgba(232, 199, 126, 0.9);
+}
+
+.photo-flow-preview-shell {
+  border-radius: 1.125rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(139, 90, 200, 0.08) 0%, transparent 70%),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.03) 0%, rgba(0, 0, 0, 0.15) 100%);
+  padding: 1rem 0.875rem 1.125rem;
+}
+
+@media (min-width: 640px) {
+  .photo-flow-preview-shell {
+    padding: 1.25rem 1.125rem 1.375rem;
+  }
+}
+
+/* ── Photo spread redraw preview ── */
+.photo-spread-preview__grid {
+  display: grid;
+  gap: 1rem;
+  align-items: start;
+  justify-items: center;
+}
+
+.photo-spread-preview__grid--1 {
+  grid-template-columns: 1fr;
+  max-width: 180px;
+  margin-inline: auto;
+}
+
+.photo-spread-preview__grid--2,
+.photo-spread-preview__grid--3 {
+  grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+}
+
+.photo-spread-preview__grid--4,
+.photo-spread-preview__grid--5 {
+  grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+}
+
+.photo-spread-preview__header-title {
+  font-family: var(--font-display, serif);
+  font-size: 1.0625rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.95);
+  text-align: center;
+}
+
+.photo-spread-preview__header-sub {
+  margin-top: 0.35rem;
+  font-size: 0.75rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.48);
+  text-align: center;
+}
+
+.photo-spread-preview__item {
+  width: 100%;
+  max-width: 148px;
+  padding: 0.4rem 0.35rem 0.55rem;
+  border-radius: 1rem;
+  border: 1px solid transparent;
+  background: transparent;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.photo-spread-preview__item--active {
+  border-color: rgba(232, 199, 126, 0.35);
+  background: rgba(232, 199, 126, 0.06);
+  box-shadow: 0 0 0 1px rgba(232, 199, 126, 0.08);
+}
+
+.photo-spread-preview__card-hit {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  border-radius: 0.75rem;
+}
+
+.photo-spread-preview__card-hit:focus-visible {
+  outline: 1px solid rgba(232, 199, 126, 0.55);
+  outline-offset: 3px;
+}
+
+.photo-spread-preview__toolbar {
+  display: flex;
+  flex-wrap: nowrap;
+  justify-content: center;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.55rem;
+  padding: 0.3rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+  background: rgba(12, 10, 18, 0.72);
+  backdrop-filter: blur(8px);
+}
+
+.photo-spread-preview__add {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  border-radius: 9999px;
+  border: 1px solid rgba(232, 199, 126, 0.22);
+  background: rgba(232, 199, 126, 0.06);
+  padding: 0.5rem 1rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(232, 199, 126, 0.9);
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease;
+}
+
+.photo-spread-preview__add:hover {
+  border-color: rgba(232, 199, 126, 0.38);
+  background: rgba(232, 199, 126, 0.1);
+}
+
+.photo-spread-preview__picker {
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.65rem;
+}
+
+.photo-spread-preview__picker-list {
+  max-height: 9rem;
+  overflow-y: auto;
+  border-radius: 0.625rem;
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.25rem;
+}
+
+.photo-spread-preview__picker-option {
+  display: block;
+  width: 100%;
+  border-radius: 0.5rem;
+  padding: 0.45rem 0.55rem;
+  text-align: left;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.72);
+  transition: background 0.15s ease;
+}
+
+.photo-spread-preview__picker-option:hover {
+  background: rgba(232, 199, 126, 0.1);
+  color: rgba(232, 199, 126, 0.95);
+}
+
+.photo-spread-preview__card .lux-deck-card {
+  width: 100%;
+  max-width: 148px;
+}
+
+.photo-spread-preview__card {
+  position: relative;
+}
+
+/* flex-1 + aspect-ratio was collapsing the face box to ~0px height in Firefox
+   while img onLoad still fired (images “loaded” but invisible). */
+.photo-spread-preview__card .lux-tarot-card__image-wrap {
+  flex: 0 0 auto;
+  width: 100%;
+  min-height: 9.5rem;
+  aspect-ratio: 533 / 800;
+  background: #120c1c;
+}
+
+.photo-spread-preview__card .lux-tarot-card__image-wrap > img.lux-tarot-card__image {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  object-fit: cover !important;
+  opacity: 1 !important;
+  z-index: 1;
+}
+
+.photo-spread-preview__card .lux-tarot-card__image-vignette {
+  z-index: 2;
+}
+
+.photo-spread-preview__face {
+  position: relative;
+  width: 100%;
+  max-width: 148px;
+  margin-inline: auto;
+  aspect-ratio: 533 / 800;
+  overflow: hidden;
+  border-radius: var(--radius-lux);
+  background: #080612;
+  box-shadow:
+    0 0 0 1px rgba(232, 199, 126, 0.35),
+    inset 0 0 30px rgba(201, 162, 74, 0.06);
+}
+
+.photo-spread-preview__face img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  background: #080612;
+}
+
+.photo-spread-preview__face--reversed img {
+  transform: rotate(180deg);
+}
+
+.lux-tarot-card__image-wrap--reversed .lux-tarot-card__image {
+  transform: rotate(180deg);
+}
+
+.lux-tarot-card__image-wrap--reversed .lux-tarot-card__image-vignette {
+  transform: rotate(180deg);
+}
+
+.lux-detected-card-face {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  padding: 0.65rem;
+  background: linear-gradient(165deg, rgba(28, 22, 38, 0.95) 0%, rgba(12, 10, 18, 0.98) 100%);
+  border: 1px solid rgba(232, 199, 126, 0.22);
+  border-radius: 0.35rem;
+  text-align: center;
+}
+
+.lux-detected-card-face__glyph {
+  font-size: 1.1rem;
+  color: rgba(232, 199, 126, 0.55);
+  line-height: 1;
+}
+
+.lux-detected-card-face__name {
+  font-family: var(--font-display, serif);
+  font-size: 0.62rem;
+  font-weight: 600;
+  line-height: 1.25;
+  letter-spacing: 0.04em;
+  color: #ede6da;
+  word-break: break-word;
+  hyphens: auto;
+}
+
+.lux-tarot-card__image-wrap--reversed .lux-detected-card-face {
+  transform: rotate(180deg);
+}
+
+.photo-spread-preview__placeholder {
+  position: absolute;
+  bottom: 0.35rem;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.5rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.55);
+  pointer-events: none;
+}
+
+.photo-spread-preview__tool {
+  @apply inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-transparent bg-transparent text-aura-champagne/70 transition-colors hover:bg-aura-gold/15 hover:text-aura-champagne disabled:opacity-25;
+}
+
+.photo-spread-preview__tool--danger {
+  @apply hover:bg-red-500/15 hover:text-red-200;
+}
+
+.photo-spread-preview__tool--active {
+  @apply bg-aura-gold/20 text-aura-champagne;
+}
+
+.photo-reading-steps {
+  position: relative;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.35rem;
+  padding: 0 0.25rem;
+}
+
+.photo-reading-steps::before {
+  content: "";
+  position: absolute;
+  top: 0.875rem;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent 0%,
+    rgba(255, 255, 255, 0.08) 20%,
+    rgba(255, 255, 255, 0.08) 80%,
+    transparent 100%
+  );
+  z-index: 0;
+}
+
+.photo-reading-steps__item {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-width: 0;
+  flex: 1;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.35rem;
+  text-align: center;
+}
+
+.photo-reading-steps__dot {
+  display: flex;
+  height: 1.75rem;
+  width: 1.75rem;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  font-size: 0.6875rem;
+  font-weight: 600;
+  color: rgb(107 114 128);
+}
+
+.photo-reading-steps__label {
+  font-size: 0.625rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: rgb(75 85 99);
+}
+
+.photo-reading-steps__item--active .photo-reading-steps__dot {
+  border-color: rgba(212, 175, 55, 0.4);
+  background: rgba(212, 175, 55, 0.15);
+  color: rgb(232 199 126);
+}
+
+.photo-reading-steps__item--active .photo-reading-steps__label {
+  color: rgba(232, 199, 126, 0.8);
+}
+
+.photo-reading-steps__item--done .photo-reading-steps__dot {
+  border-color: rgba(16, 185, 129, 0.3);
+  background: rgba(16, 185, 129, 0.1);
+  color: rgb(110 231 183);
+}
+
+.photo-reading-steps__item--done .photo-reading-steps__label {
+  color: rgba(52, 211, 153, 0.7);
+}
+
+@media (max-width: 640px) {
+  .photo-spread-preview__grid--4,
+  .photo-spread-preview__grid--5 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .photo-spread-preview__item {
+    max-width: none;
+  }
+}
+
+.my-spreads-gallery {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .my-spreads-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 1.25rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .my-spreads-gallery {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+.my-spreads-card {
+  @apply flex h-full flex-col rounded-2xl border border-aura-gold/15 bg-black/25 p-4 transition-colors hover:border-aura-gold/30 hover:bg-black/35;
+}
+
+.my-spreads-card__preview {
+  @apply mb-4 rounded-xl border border-aura-gold/10 bg-black/35 px-2 py-3 sm:px-3;
+}
+
+.my-spreads-card__preview .lux-spread-grid {
+  gap: 0.5rem;
+}
+
+@media (min-width: 480px) {
+  .my-spreads-card__preview .lux-spread-grid {
+    gap: 0.75rem;
+  }
+}
+
+.my-spreads-card__preview .lux-spread-col__position {
+  margin-bottom: 0.375rem;
+  padding-inline: 0.125rem;
+  font-size: 0.625rem;
+  line-height: 1.25;
+  letter-spacing: 0.06em;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.my-spreads-card__preview .lux-spread-col__title {
+  margin-top: 0.5rem;
+  font-size: 0.6875rem;
+  line-height: 1.3;
+  overflow-wrap: anywhere;
+  word-break: break-word;
+}
+
+.my-spreads-card__preview .lux-spread-col__card .lux-deck-card--sm {
+  width: 100%;
+  max-width: none;
+}
+
+.my-spreads-card__preview .lux-deck-card--sm .lux-tarot-card__inner--photo > p {
+  font-size: 0.625rem;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+}
+
+.my-spreads-card__preview .lux-detected-card-face__name {
+  font-size: 0.6875rem;
+  line-height: 1.3;
+}
+
+.my-spreads-card__excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow: hidden;
+  font-size: 0.8125rem;
+  line-height: 1.55;
+  color: rgba(209, 213, 219, 0.82);
+}

@@ -113,13 +113,13 @@ export default function MemoryMoments({
   const item = items[0];
 
   return (
-    <div className="mb-2 rounded-2xl border border-violet-400/20 bg-violet-500/8 p-3 shadow-lg shadow-black/15">
+    <div className="mb-2 rounded-2xl border border-aura-gold/20 bg-aura-gold/8 p-3 shadow-lg shadow-black/15">
       <div className="flex items-start gap-2.5">
-        <span className="mt-0.5 rounded-lg bg-violet-400/12 p-1.5 text-violet-200">
+        <span className="mt-0.5 rounded-lg bg-aura-gold/12 p-1.5 text-aura-champagne">
           <Sparkles className="h-4 w-4" aria-hidden />
         </span>
         <div className="min-w-0 flex-1">
-          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-violet-200/65">
+          <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-aura-champagne/65">
             {item.proposal ? "Предлагаю запомнить" : "Запомнила"}
           </p>
           {editing?.id === item.id ? (
@@ -129,14 +129,14 @@ export default function MemoryMoments({
                 onChange={(event) => setDraft(event.target.value)}
                 maxLength={400}
                 rows={2}
-                className="w-full resize-none rounded-lg border border-white/12 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-violet-300/40"
+                className="w-full resize-none rounded-lg border border-white/12 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-aura-gold/40"
               />
               <div className="flex gap-2">
                 <button
                   type="button"
                   disabled={busyId === item.id || draft.trim().length < 6}
                   onClick={() => void act(item, "change", draft.trim())}
-                  className="rounded-lg bg-violet-400/15 px-3 py-1.5 text-xs text-violet-100 disabled:opacity-40"
+                  className="rounded-lg bg-aura-gold/15 px-3 py-1.5 text-xs text-aura-champagne disabled:opacity-40"
                 >
                   Сохранить изменение
                 </button>

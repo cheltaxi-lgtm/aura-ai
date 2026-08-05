@@ -92,11 +92,11 @@ function renderInlineEmphasis(
   variant: ReadingRenderVariant
 ): ReactNode[] {
   const boldClass =
-    variant === "print" ? "font-semibold text-black" : "font-semibold text-mystic-gold";
+    variant === "print" ? "font-semibold text-black" : "font-semibold text-aura-gold";
   const italicClass =
     variant === "print"
       ? "font-mystic-display italic text-black/70"
-      : "font-mystic-display italic text-mystic-lavender";
+      : "font-mystic-display italic text-aura-champagne";
   const nodes: ReactNode[] = [];
   const pattern = /(\*\*[^*]+\*\*|\*[^*\n]+\*)/g;
   let lastIndex = 0;
@@ -166,9 +166,9 @@ function renderPlainBody(
   const paraClass =
     variant === "print"
       ? "text-[15px] leading-[1.85] tracking-[0.01em] text-black sm:text-base sm:leading-[1.9]"
-      : "text-[15px] leading-[1.85] tracking-[0.01em] text-mystic-text sm:text-base sm:leading-[1.9]";
+      : "text-[15px] leading-[1.85] tracking-[0.01em] text-aura-ivory sm:text-base sm:leading-[1.9]";
   return (
-    <div className={`mystic-text space-y-4 font-body ${className}`}>
+    <div className={`space-y-4 font-body ${className}`}>
       {paragraphs.map((para, index) => {
         const lines = para.split("\n");
         return (
@@ -190,7 +190,7 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
   const isPrint = variant === "print";
   const bodyClass = isPrint
     ? "text-[15px] leading-[1.85] tracking-[0.01em] text-black sm:text-base sm:leading-[1.9]"
-    : "text-[15px] leading-[1.85] tracking-[0.01em] text-mystic-text sm:text-base sm:leading-[1.9]";
+    : "text-[15px] leading-[1.85] tracking-[0.01em] text-aura-ivory sm:text-base sm:leading-[1.9]";
 
   return {
     h2: ({ children }) => {
@@ -208,14 +208,14 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
       return (
         <header className="my-5">
           <div
-            className="mb-3 h-px w-full bg-gradient-to-r from-transparent via-mystic-gold/45 to-transparent"
+            className="mb-3 h-px w-full bg-gradient-to-r from-transparent via-aura-gold/45 to-transparent"
             aria-hidden
           />
-          <h3 className="font-mystic-display text-xl font-semibold uppercase tracking-[0.12em] text-mystic-gold">
+          <h3 className="font-mystic-display text-xl font-semibold uppercase tracking-[0.12em] text-aura-gold">
             {label}
           </h3>
           <div
-            className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-mystic-gold/45 to-transparent"
+            className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-aura-gold/45 to-transparent"
             aria-hidden
           />
         </header>
@@ -232,11 +232,11 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
       }
       return (
         <header className="mb-2 mt-6 first:mt-0">
-          <h3 className="font-mystic-display text-[1.05rem] font-semibold leading-snug tracking-[0.04em] text-mystic-gold sm:text-lg">
+          <h3 className="font-mystic-display text-[1.05rem] font-semibold leading-snug tracking-[0.04em] text-aura-gold sm:text-lg">
             {raw}
           </h3>
           <div
-            className="mt-2 h-px w-16 bg-gradient-to-r from-mystic-gold/55 to-transparent"
+            className="mt-2 h-px w-16 bg-gradient-to-r from-aura-gold/55 to-transparent"
             aria-hidden
           />
         </header>
@@ -270,7 +270,7 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
         />
       ) : null,
     strong: ({ children }) => (
-      <strong className={isPrint ? "font-semibold text-black" : "font-semibold text-mystic-gold"}>
+      <strong className={isPrint ? "font-semibold text-black" : "font-semibold text-aura-gold"}>
         {children}
       </strong>
     ),
@@ -279,7 +279,7 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
         className={
           isPrint
             ? "font-mystic-display italic text-black/70"
-            : "font-mystic-display italic text-mystic-lavender"
+            : "font-mystic-display italic text-aura-champagne"
         }
       >
         {children}
@@ -289,7 +289,7 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
       isPrint ? (
         <ul className="my-3 list-disc space-y-2.5 pl-5 marker:text-black/55">{children}</ul>
       ) : (
-        <ul className="my-3 list-none space-y-2.5 [&_li]:relative [&_li]:pl-6 [&_li]:before:absolute [&_li]:before:left-0 [&_li]:before:top-0.5 [&_li]:before:text-sm [&_li]:before:text-mystic-gold [&_li]:before:content-['✦']">
+        <ul className="my-3 list-none space-y-2.5 [&_li]:relative [&_li]:pl-6 [&_li]:before:absolute [&_li]:before:left-0 [&_li]:before:top-0.5 [&_li]:before:text-sm [&_li]:before:text-aura-gold [&_li]:before:content-['✦']">
           {children}
         </ul>
       ),
@@ -298,7 +298,7 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
         className={
           isPrint
             ? "my-3 list-decimal space-y-3 pl-6 marker:font-semibold marker:text-black"
-            : "my-3 list-decimal space-y-3 pl-6 marker:font-mystic-display marker:font-semibold marker:text-mystic-gold"
+            : "my-3 list-decimal space-y-3 pl-6 marker:font-mystic-display marker:font-semibold marker:text-aura-gold"
         }
       >
         {children}
@@ -314,9 +314,9 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
           role="separator"
           aria-hidden
         >
-          <span className="select-none text-xs tracking-[0.35em] text-mystic-gold/35">· · ·</span>
-          <div className="h-px w-[80%] max-w-md bg-gradient-to-r from-transparent via-mystic-accent to-transparent" />
-          <span className="select-none text-xs tracking-[0.35em] text-mystic-gold/35">· · ·</span>
+          <span className="select-none text-xs tracking-[0.35em] text-aura-gold/35">· · ·</span>
+          <div className="h-px w-[80%] max-w-md bg-gradient-to-r from-transparent via-aura-gold to-transparent" />
+          <span className="select-none text-xs tracking-[0.35em] text-aura-gold/35">· · ·</span>
         </div>
       ),
   };
@@ -365,7 +365,7 @@ function ChatMessageRenderer({
   }
 
   return (
-    <div className={`mystic-text space-y-4 font-body ${className}`}>
+    <div className={`space-y-4 font-body ${className}`}>
       {!hideSpreadCardImages && imageBlock ? renderCardImageRow(imageBlock) : null}
       {markdownSource ? (
         <ReactMarkdown components={buildMarkdownComponents(variant)}>

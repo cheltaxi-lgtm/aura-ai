@@ -135,7 +135,7 @@ export default function AdminMemoryPage() {
           <h2 className="mb-3 text-sm font-semibold text-gray-400">Долгосрочные факты</h2>
           <div className="grid grid-cols-2 gap-4 md:grid-cols-5">
             <StatCard label="Всего фактов" value={stats.facts.total} />
-            <StatCard label="Добавлено вручную" value={stats.facts.manual} accent="text-aura-neon" />
+            <StatCard label="Добавлено вручную" value={stats.facts.manual} accent="text-aura-champagne" />
             <StatCard label="Извлечено автоматически" value={stats.facts.auto} />
             <StatCard label="Критические" value={stats.facts.critical} accent="text-amber-400" />
             <StatCard
@@ -194,7 +194,7 @@ export default function AdminMemoryPage() {
               value={stats.productAnalytics.activation.ratePercent === null
                 ? "—"
                 : `${stats.productAnalytics.activation.ratePercent}%`}
-              accent="text-aura-neon"
+              accent="text-aura-champagne"
             />
             <StatCard
               label={`Положительный feedback (n=${stats.productAnalytics.feedback.sampleSize})`}

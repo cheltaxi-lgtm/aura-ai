@@ -4,7 +4,7 @@ import AuthForm from "@/components/AuthForm";
 export default function ExpertLoginPage() {
   return (
     <div className="min-h-screen px-6 py-16">
-      <Link href="/auth" className="mb-8 inline-block text-sm text-gray-500 hover:text-aura-neon">
+      <Link href="/auth" className="mb-8 inline-block text-sm text-gray-500 hover:text-aura-champagne">
         ← Выбор аккаунта
       </Link>
       <h1 className="font-display mb-2 text-center text-3xl text-white">Вход мастера</h1>

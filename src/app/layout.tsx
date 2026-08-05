@@ -1,4 +1,5 @@
 import { Cormorant_Garamond, Inter } from "next/font/google";
+import type { Viewport } from "next";
 import Script from "next/script";
 import SalonBackground from "@/components/SalonBackground";
 import Providers from "@/components/Providers";
@@ -13,6 +14,23 @@ import AdsBeaconServer from "@/modules/ads/beacon/AdsBeaconServer";
 import { getRootMetadata } from "@/lib/seo";
 import "../styles/tokens.css";
 import "./globals.css";
+/* Domain styles — split from the former globals.css monolith. Import order
+   matches the original cascade. Keep product UI (spreads/cards/landing)
+   global: MagicalSpreadTable, DeckCard, recap and rituals mount outside a
+   single route chunk and break if their CSS is home-scoped. */
+import "../styles/photo-flow.css";
+import "../styles/home-spreads.css";
+import "../styles/landing.css";
+import "../styles/app-chrome.css";
+import "../styles/ritual-loader.css";
+import "../styles/cabinet.css";
+import "../styles/legal.css";
+import "../styles/auth-salon.css";
+import "../styles/share.css";
+import "../styles/deck-pick.css";
+import "../styles/numerolog.css";
+import "../styles/human-design.css";
+import "../styles/print.css";
 import "./app-shell.css";
 import "../styles/editorial-landing.css";
 
@@ -30,6 +48,10 @@ const cormorant = Cormorant_Garamond({
 });
 
 export const metadata = getRootMetadata();
+
+export const viewport: Viewport = {
+  themeColor: "#0a0908",
+};
 export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {

@@ -28,7 +28,7 @@ function RoleCard({
   icon: typeof Compass;
   title: string;
   description: string;
-  accent: "violet" | "gold";
+  accent: "champagne" | "gold";
   loginHref: string;
   registerHref: string;
   showRegister?: boolean;
@@ -44,13 +44,13 @@ function RoleCard({
       className={`group relative flex flex-col overflow-hidden rounded-3xl border p-7 sm:p-8 ${
         isGold
           ? "border-aura-gold/25 bg-gradient-to-b from-aura-gold/[0.08] to-black/40"
-          : "border-aura-purple/25 bg-gradient-to-b from-aura-purple/15 to-black/40"
+          : "border-aura-gold/25 bg-gradient-to-b from-aura-gold/15 to-black/40"
       }`}
       style={{ boxShadow: "var(--shadow-lux)" }}
     >
       <div
         className={`pointer-events-none absolute -right-10 -top-10 h-36 w-36 rounded-full blur-3xl ${
-          isGold ? "bg-aura-gold/15" : "bg-aura-purple/20"
+          isGold ? "bg-aura-gold/15" : "bg-aura-gold/20"
         }`}
       />
 
@@ -58,11 +58,11 @@ function RoleCard({
         className={`relative mx-auto mb-5 flex h-16 w-16 items-center justify-center rounded-2xl border ${
           isGold
             ? "border-aura-gold/35 bg-aura-gold/10"
-            : "border-aura-purple/35 bg-aura-purple/15"
+            : "border-aura-gold/35 bg-aura-gold/15"
         }`}
       >
         <Icon
-          className={`h-8 w-8 ${isGold ? "text-aura-gold" : "text-aura-neon"}`}
+          className={`h-8 w-8 ${isGold ? "text-aura-gold" : "text-aura-champagne"}`}
           strokeWidth={1.5}
         />
       </div>
@@ -110,7 +110,7 @@ export default function AuthPortalPage() {
 
   return (
     <div className="relative flex min-h-screen flex-col items-center justify-center overflow-hidden px-5 py-12">
-      <div className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[640px] -translate-x-1/2 rounded-full bg-aura-purple/10 blur-[100px]" />
+      <div className="pointer-events-none absolute left-1/2 top-0 h-[420px] w-[640px] -translate-x-1/2 rounded-full bg-aura-gold/10 blur-[100px]" />
       <div className="pointer-events-none absolute bottom-0 right-0 h-72 w-72 rounded-full bg-aura-gold/8 blur-[80px]" />
 
       <motion.div
@@ -140,7 +140,7 @@ export default function AuthPortalPage() {
           icon={Compass}
           title="Гость салона"
           description="Расклады, наставники и личный кабинет — ваше пространство для практики"
-          accent="violet"
+          accent="champagne"
           loginHref={userLoginHref}
           registerHref={userRegisterHref}
           delay={CARD_STAGGER}

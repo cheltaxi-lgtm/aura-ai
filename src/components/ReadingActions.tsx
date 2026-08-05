@@ -54,7 +54,7 @@ export default function ReadingActions({
       {continueChatHref && (
         <Link
           href={continueChatHref}
-          className="inline-flex items-center gap-1.5 rounded-xl border border-aura-purple/50 bg-aura-purple/20 px-4 py-2 text-xs font-semibold text-aura-neon transition-colors hover:border-aura-purple hover:bg-aura-purple/30"
+          className="inline-flex items-center gap-1.5 rounded-xl border border-aura-gold/50 bg-aura-gold/20 px-4 py-2 text-xs font-semibold text-aura-champagne transition-colors hover:border-aura-gold hover:bg-aura-gold/30"
         >
           <MessageCircle className="h-3.5 w-3.5" />
           Продолжить в чате

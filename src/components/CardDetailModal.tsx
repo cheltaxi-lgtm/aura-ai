@@ -98,7 +98,7 @@ export default function CardDetailModal({
                 {positionLabel && (
                   <p className="lux-label text-[10px]">{positionLabel}</p>
                 )}
-                <h2 className="font-display text-lg font-semibold text-[#EDE6DA]">
+                <h2 className="font-display text-lg font-semibold text-aura-ivory">
                   {card.name}
                 </h2>
               </div>

@@ -96,7 +96,7 @@ export default function DeckGallery({
 
             </p>
 
-            <h2 className="font-display text-xl font-semibold text-[#EDE6DA] sm:text-2xl">
+            <h2 className="font-display text-xl font-semibold text-aura-ivory sm:text-2xl">
 
               Вся колода {masterName}
 

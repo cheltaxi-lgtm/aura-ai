@@ -1,0 +1,390 @@
+/* ── Human Design bodygraph ── */
+.hd-bodygraph {
+  @apply mx-auto w-full max-w-2xl;
+}
+
+.hd-bodygraph__layout {
+  @apply flex items-start justify-center gap-2;
+  transition: transform 0.2s ease-out;
+}
+
+.hd-bodygraph__activations {
+  @apply mt-8 hidden w-20 shrink-0 sm:block;
+}
+
+.hd-bodygraph__activations-title {
+  @apply mb-1 text-center text-[0.6875rem] font-semibold uppercase tracking-widest;
+}
+
+.hd-bodygraph__activations--d .hd-bodygraph__activations-title {
+  color: rgba(224, 85, 85, 0.8);
+}
+
+.hd-bodygraph__activations--p .hd-bodygraph__activations-title {
+  color: rgba(242, 231, 201, 0.8);
+}
+
+.hd-bodygraph__activations-date {
+  @apply mb-1 text-center text-[0.5625rem] leading-tight text-white/40;
+}
+
+.hd-bodygraph__activations ul {
+  @apply space-y-0.5;
+}
+
+.hd-bodygraph__activations li {
+  @apply flex items-center justify-center gap-1 text-[0.75rem] text-white/25;
+}
+
+.hd-bodygraph__activations li.is-active {
+  @apply text-white/90;
+}
+
+.hd-bodygraph__activations--d li.is-active {
+  color: rgba(224, 85, 85, 0.95);
+}
+
+.hd-bodygraph__activations--p li.is-active {
+  color: rgba(242, 231, 201, 0.95);
+}
+
+.hd-bodygraph__glyph {
+  @apply inline-block w-5 text-center text-[0.8125rem];
+}
+
+.hd-bodygraph__act-gate {
+  @apply inline-block w-6 text-center font-semibold;
+}
+
+.hd-bodygraph__act-line {
+  @apply inline-block w-5 text-center text-white/50;
+}
+
+.hd-bodygraph__particles {
+  @apply pointer-events-none absolute inset-0 overflow-hidden;
+}
+
+.hd-bodygraph__particles i {
+  @apply absolute block h-0.5 w-0.5 rounded-full;
+  background: rgba(232, 199, 126, 0.5);
+  animation: hd-float-particle linear infinite;
+}
+
+@keyframes hd-float-particle {
+  0% {
+    transform: translateY(0) translateX(0);
+    opacity: 0;
+  }
+  15% {
+    opacity: 0.8;
+  }
+  85% {
+    opacity: 0.5;
+  }
+  100% {
+    transform: translateY(-90px) translateX(14px);
+    opacity: 0;
+  }
+}
+
+.hd-bodygraph__stage {
+  @apply relative overflow-hidden rounded-3xl border border-amber-500/15 p-3;
+  transition: transform 0.18s ease-out;
+  will-change: transform;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 30%, rgba(155, 127, 212, 0.08), transparent 70%),
+    linear-gradient(165deg, rgba(28, 22, 48, 0.85), rgba(10, 8, 18, 0.92));
+  box-shadow:
+    0 18px 48px -22px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.hd-bodygraph__svg {
+  @apply block h-auto w-full select-none;
+}
+
+.hd-bodygraph__gate {
+  cursor: pointer;
+}
+
+.hd-bodygraph__gate:focus-visible {
+  outline: none;
+}
+
+.hd-bodygraph__gate:focus-visible > circle {
+  stroke: rgba(255, 232, 168, 0.95);
+  stroke-width: 2;
+}
+
+.hd-bodygraph__center {
+  cursor: pointer;
+}
+
+.hd-bodygraph__center:focus-visible {
+  outline: none;
+  stroke: rgba(255, 232, 168, 1);
+  stroke-width: 3;
+}
+
+.hd-bodygraph__tooltip {
+  @apply pointer-events-none absolute z-10 w-52 -translate-x-1/2 rounded-xl border border-amber-500/25 px-3 py-2;
+  background: linear-gradient(180deg, rgba(24, 17, 40, 0.97), rgba(10, 8, 16, 0.98));
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55);
+  transform: translate(-50%, calc(-100% - 10px));
+}
+
+.hd-bodygraph__tooltip-title {
+  @apply text-xs font-semibold text-amber-100;
+}
+
+.hd-bodygraph__tooltip-line {
+  @apply mt-0.5 text-[0.6875rem] leading-snug text-white/70;
+}
+
+.hd-bodygraph__layers {
+  @apply mt-3 flex items-center justify-center gap-2;
+}
+
+.hd-bodygraph__layer-btn {
+  @apply inline-flex items-center gap-1.5 rounded-full border border-white/10 px-3 py-1 text-[0.6875rem] text-white/60 transition hover:border-amber-400/40 hover:text-amber-100;
+}
+
+.hd-bodygraph__layer-btn.is-active {
+  @apply border-amber-400/60 text-amber-50;
+  background: rgba(201, 162, 74, 0.14);
+}
+
+.hd-bodygraph__layer-btn i {
+  @apply inline-block h-2 w-3 rounded-full;
+}
+
+.hd-bodygraph__centers-legend {
+  @apply mt-2 flex flex-wrap items-center justify-center gap-1.5;
+}
+
+.hd-bodygraph__center-chip {
+  @apply rounded-full border border-white/10 px-2.5 py-0.5 text-[0.625rem] text-white/45 transition hover:border-amber-400/40 hover:text-amber-100;
+}
+
+.hd-bodygraph__center-chip.is-defined {
+  @apply border-amber-500/40 text-amber-100/90;
+  background: rgba(201, 162, 74, 0.1);
+}
+
+.hd-bodygraph__center-chip.is-active {
+  @apply border-amber-300 text-amber-50;
+  box-shadow: 0 0 12px rgba(232, 199, 126, 0.35);
+}
+
+.hd-bodygraph__legend-swatch {
+  background: linear-gradient(135deg, #e8c77e, #a8843a);
+  box-shadow: 0 0 8px rgba(232, 199, 126, 0.6);
+}
+
+.hd-cosmos {
+  @apply pointer-events-none absolute inset-0 h-full w-full;
+}
+
+.hd-bodygraph__toolbar {
+  @apply absolute right-3 top-3 z-20 flex gap-1;
+}
+
+.hd-bodygraph__toolbar button {
+  @apply flex h-8 w-8 items-center justify-center rounded-full border border-white/15 text-sm text-white/70 transition hover:border-amber-400/50 hover:text-amber-100;
+  background: rgba(12, 10, 20, 0.7);
+  backdrop-filter: blur(6px);
+}
+
+.hd-bodygraph__stage.is-pannable {
+  cursor: grab;
+}
+
+.hd-bodygraph__stage.is-pannable:active {
+  cursor: grabbing;
+}
+
+.hd-bodygraph.is-fullscreen {
+  @apply fixed inset-0 z-50 m-0 max-w-none overflow-y-auto p-4 sm:p-8;
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 20%, rgba(155, 127, 212, 0.12), transparent 70%),
+    linear-gradient(165deg, #14101f, #07060d);
+}
+
+.hd-bodygraph.is-fullscreen .hd-bodygraph__stage {
+  @apply mx-auto max-w-3xl;
+}
+
+.hd-bodygraph__tooltip.has-action {
+  pointer-events: auto;
+}
+
+.hd-bodygraph__tooltip-action {
+  @apply mt-1.5 inline-block rounded-full border border-amber-400/40 px-2.5 py-0.5 text-[0.625rem] font-medium text-amber-100 transition hover:bg-amber-500/15;
+}
+
+.hd-bodygraph__legend-transit {
+  background: transparent !important;
+  border: 1.5px solid rgba(155, 127, 212, 0.9);
+  border-radius: 9999px;
+}
+
+.hd-bodygraph__legend-electro {
+  background: linear-gradient(90deg, rgba(155, 127, 212, 0.9), rgba(155, 127, 212, 0.4)) !important;
+  box-shadow: 0 0 8px rgba(155, 127, 212, 0.6);
+}
+
+.hd-bodygraph__legend {
+  @apply mt-3 flex flex-wrap items-center justify-center gap-x-4 gap-y-2 text-[0.6875rem] text-white/60;
+}
+
+.hd-bodygraph__legend-item {
+  @apply inline-flex items-center gap-1.5;
+}
+
+.hd-bodygraph__legend-item i {
+  @apply inline-block h-2 w-4 rounded-full;
+}
+
+.hd-bodygraph__export {
+  @apply rounded-full border border-amber-500/30 px-3 py-1 text-[0.6875rem] text-amber-100/90 transition hover:border-amber-400/50 hover:text-amber-50;
+  background: rgba(201, 162, 74, 0.1);
+}
+
+/* ── HD 3D ── */
+.hd-3d {
+  @apply relative overflow-hidden rounded-3xl border border-violet-400/20;
+  background: linear-gradient(170deg, #16121f 0%, #07060d 100%);
+}
+
+.hd-3d__canvas {
+  @apply h-[480px] w-full sm:h-[640px];
+  /* Vertical swipes scroll the page; horizontal drags rotate the chart.
+     "none" here trapped scroll on mobile — the canvas is a full-width block. */
+  touch-action: pan-y;
+}
+
+.hd-3d__hint {
+  @apply pb-3 text-center text-[0.6875rem] text-white/40;
+}
+
+/* ── HD share card ── */
+.hd-share-card-wrap {
+  @apply flex flex-col items-center gap-3;
+}
+
+.hd-share-card {
+  @apply w-full max-w-sm overflow-hidden rounded-3xl border border-amber-500/25 p-5;
+  background:
+    radial-gradient(ellipse 80% 50% at 50% 0%, rgba(155, 127, 212, 0.14), transparent 70%),
+    linear-gradient(170deg, #1c1630 0%, #0c0a14 100%);
+  box-shadow: 0 24px 64px -24px rgba(0, 0, 0, 0.8);
+}
+
+.hd-share-card__head {
+  @apply mb-3 text-center;
+}
+
+.hd-share-card__brand {
+  @apply text-[0.625rem] uppercase tracking-[0.3em] text-amber-200/60;
+}
+
+.hd-share-card__name {
+  @apply mt-1 text-lg font-semibold text-amber-50;
+}
+
+.hd-share-card__graph {
+  @apply mx-auto block h-auto w-3/4;
+}
+
+.hd-share-card__facts {
+  @apply mt-4 grid grid-cols-3 gap-2 text-center;
+}
+
+.hd-share-card__facts span {
+  @apply block text-[0.5625rem] uppercase tracking-widest text-white/40;
+}
+
+.hd-share-card__facts strong {
+  @apply mt-0.5 block text-[0.6875rem] font-semibold leading-tight text-amber-100;
+}
+
+/* ── Human Design calculator + result panels ── */
+.hd-panel {
+  @apply rounded-3xl border border-amber-500/15 p-5 sm:p-7;
+  background: linear-gradient(165deg, rgba(28, 22, 48, 0.88), rgba(12, 10, 22, 0.9));
+  box-shadow:
+    0 18px 48px -22px rgba(0, 0, 0, 0.7),
+    inset 0 1px 0 rgba(255, 255, 255, 0.04);
+}
+
+.hd-panel__title {
+  @apply text-lg font-bold text-amber-50 sm:text-xl;
+}
+
+.hd-field {
+  @apply flex flex-col gap-1.5;
+}
+
+.hd-field__label {
+  @apply text-xs font-medium uppercase tracking-wide text-amber-100/60;
+}
+
+.hd-field__input {
+  @apply w-full rounded-xl border border-white/10 bg-white/5 px-3.5 py-2.5 text-sm text-white placeholder-white/30 outline-none transition focus:border-amber-400/40 focus:bg-white/[0.07];
+}
+
+.hd-field__input:focus {
+  box-shadow: 0 0 0 3px rgba(201, 162, 74, 0.12);
+}
+
+.hd-places {
+  @apply absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-xl border border-white/10 py-1;
+  background: linear-gradient(180deg, rgba(24, 18, 40, 0.99), rgba(12, 9, 20, 0.99));
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.6);
+}
+
+.hd-places__item {
+  @apply flex w-full flex-col px-3.5 py-2 text-left text-sm text-white/85 transition hover:bg-amber-500/10;
+}
+
+.hd-places__item small {
+  @apply text-[0.6875rem] text-white/40;
+}
+
+.hd-facts {
+  @apply grid grid-cols-2 gap-2.5 sm:grid-cols-3;
+}
+
+.hd-fact {
+  @apply rounded-2xl border border-white/10 px-3.5 py-3;
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.hd-fact__label {
+  @apply text-[0.625rem] font-medium uppercase tracking-wider text-amber-100/50;
+}
+
+.hd-fact__value {
+  @apply mt-1 text-sm font-semibold text-amber-50;
+}
+
+.hd-fact__sub {
+  @apply mt-0.5 text-[0.6875rem] leading-snug text-white/55;
+}
+
+.hd-report {
+  @apply space-y-4 text-[0.9375rem] leading-relaxed text-white/85;
+}
+
+.hd-report h2 {
+  @apply mt-7 text-lg font-bold text-amber-100;
+}
+
+.hd-report h2:first-child {
+  @apply mt-0;
+}
+
+.hd-report p {
+  @apply text-white/85;
+}
+

@@ -101,11 +101,11 @@ export default function ExpertCabinetPage() {
             {data.profile.name}
           </h1>
           <p className="mb-1 text-sm text-gray-500">{data.profile.email}</p>
-          <p className="mb-10 text-sm text-aura-purple">{data.profile.title ?? "Эзотерик"}</p>
+          <p className="mb-10 text-sm text-aura-gold">{data.profile.title ?? "Эзотерик"}</p>
 
           <div className="space-y-6">
             <div className="glass-panel p-6">
-              <div className="mb-3 flex items-center gap-2 text-aura-neon">
+              <div className="mb-3 flex items-center gap-2 text-aura-champagne">
                 <Link2 className="h-5 w-5" />
                 <h2 className="font-medium">Ваша страница мастера</h2>
               </div>
@@ -118,7 +118,7 @@ export default function ExpertCabinetPage() {
             </div>
 
             <div className="glass-panel p-6">
-              <div className="mb-3 flex items-center gap-2 text-aura-neon">
+              <div className="mb-3 flex items-center gap-2 text-aura-champagne">
                 <Upload className="h-5 w-5" />
                 <h2 className="font-medium">База знаний мастера</h2>
               </div>
@@ -129,7 +129,7 @@ export default function ExpertCabinetPage() {
                 placeholder="Трактовки, стиль речи, примеры раскладов..."
                 className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder-gray-600"
               />
-              <button onClick={handleSave} className="btn-neon mt-4 text-sm">
+              <button onClick={handleSave} className="btn-primary mt-4 text-sm">
                 {saved ? "Сохранено ✓" : "Загрузить материалы"}
               </button>
               {data.knowledge.length > 0 && (

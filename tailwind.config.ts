@@ -9,24 +9,16 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        /* Warm charcoal + brass (mirrors src/styles/tokens.css). Purple neon tokens removed. */
         aura: {
-          bg: "#07050f",
-          midnight: "#0c0a1a",
-          plum: "#1a0f2e",
-          indigo: "#12102a",
+          bg: "#0a0908",
+          surface: "#141210",
+          raised: "#1a1816",
           ivory: "#EDE6DA",
           champagne: "#E8C77E",
           gold: "#C9A24A",
           "gold-light": "#E8C77E",
-          purple: "#9B7FD4",
           emerald: "#5BA88A",
-          neon: "#B794F6",
-        },
-        mystic: {
-          gold: "#C9A96E",
-          text: "#E8E0D5",
-          accent: "#7B5EA7",
-          lavender: "#B8A9C9",
         },
       },
       fontFamily: {

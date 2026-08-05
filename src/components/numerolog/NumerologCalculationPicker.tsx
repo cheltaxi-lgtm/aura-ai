@@ -117,7 +117,7 @@ export default function NumerologCalculationPicker({
               onClick={() => onSelect(tool.id)}
               className={`numerolog-calc-picker__card group relative min-w-0 rounded-2xl border p-3 text-left transition-all duration-300 ${
                 active
-                  ? "border-aura-gold/55 bg-gradient-to-br from-amber-950/45 via-[#1a1228]/90 to-purple-950/35 shadow-[0_0_28px_rgba(201,153,58,0.14)]"
+                  ? "border-aura-gold/55 bg-gradient-to-br from-amber-950/45 via-aura-surface/90 to-aura-raised/35 shadow-[0_0_28px_rgba(201,153,58,0.14)]"
                   : "border-white/10 bg-white/[0.04] hover:border-white/20 hover:bg-white/[0.07]"
               }`}
             >

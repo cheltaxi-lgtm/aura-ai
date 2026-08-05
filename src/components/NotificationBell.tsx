@@ -174,7 +174,7 @@ export default function NotificationBell({
       ? createPortal(
           <div
             ref={popoverRef}
-            className="notification-bell-popover fixed z-[6000] overflow-hidden rounded-2xl border border-aura-gold/20 bg-[rgba(15,10,30,0.97)] shadow-[0_12px_48px_rgba(0,0,0,0.55)] backdrop-blur-xl"
+            className="notification-bell-popover fixed z-[6000] overflow-hidden rounded-2xl border border-aura-gold/20 bg-[rgba(20,18,16,0.97)] shadow-[0_12px_48px_rgba(0,0,0,0.55)] backdrop-blur-xl"
             style={{
               top: anchor.top,
               right: anchor.right,
@@ -218,7 +218,7 @@ export default function NotificationBell({
                     typeof n.data?.ctaLabel === "string" ? n.data.ctaLabel : "Открыть";
                   return (
                     <li key={n.id} className="px-4 py-3.5">
-                      <p className="font-display text-[14px] font-semibold leading-snug text-mystic-gold">
+                      <p className="font-display text-[14px] font-semibold leading-snug text-aura-gold">
                         {n.title}
                       </p>
                       <p className="mt-1.5 text-[13px] leading-[1.6] text-gray-300/90">{n.body}</p>

@@ -36,7 +36,7 @@ export default function AdminSessionsPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-lg px-4 py-2 text-sm ${tab === t ? "bg-aura-purple/20 text-aura-neon" : "text-gray-500"}`}
+            className={`rounded-lg px-4 py-2 text-sm ${tab === t ? "bg-aura-gold/20 text-aura-champagne" : "text-gray-500"}`}
           >
             {t === "sessions" ? "Сессии" : "Сообщения"}
           </button>
@@ -49,7 +49,7 @@ export default function AdminSessionsPage() {
               placeholder="Поиск..."
               className="rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
             />
-            <button onClick={load} className="btn-neon px-4 py-2 text-xs">Найти</button>
+            <button onClick={load} className="btn-primary px-4 py-2 text-xs">Найти</button>
           </>
         )}
       </div>

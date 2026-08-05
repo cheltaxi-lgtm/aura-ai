@@ -701,7 +701,7 @@ export default function ChatWindow({
               aria-pressed={memoryFresh}
               className={`flex h-11 items-center gap-1.5 rounded-xl border px-2.5 text-[11px] transition-colors disabled:opacity-40 ${
                 memoryFresh
-                  ? "border-violet-300/35 bg-violet-400/10 text-violet-200"
+                  ? "border-aura-gold/35 bg-aura-gold/10 text-aura-champagne"
                   : "border-white/10 text-gray-400"
               }`}
             >
@@ -779,7 +779,7 @@ export default function ChatWindow({
             <button
               type="button"
               onClick={onReconnectSession}
-              className="btn-neon shrink-0 px-4 py-2 text-sm"
+              className="btn-primary shrink-0 px-4 py-2 text-sm"
             >
               Переподключить
             </button>
@@ -1014,12 +1014,12 @@ export default function ChatWindow({
                 <div
                   className={
                     msg.role === "user"
-                      ? "max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-aura-purple/35 to-aura-purple/15 px-4 py-3 text-white shadow-sm ring-1 ring-aura-purple/30"
-                      : "master-message-bubble max-w-[90%] rounded-2xl rounded-bl-md border border-[rgba(201,169,110,0.2)] bg-[rgba(15,10,30,0.92)] p-4 shadow-[0_4px_32px_rgba(123,94,167,0.15)] sm:max-w-[85%] sm:animate-mystic-in sm:bg-[rgba(15,10,30,0.85)] sm:p-5 sm:backdrop-blur-[12px]"
+                      ? "max-w-[85%] rounded-2xl rounded-br-md bg-gradient-to-br from-aura-gold/35 to-aura-gold/15 px-4 py-3 text-white shadow-sm ring-1 ring-aura-gold/30"
+                      : "master-message-bubble max-w-[90%] rounded-2xl rounded-bl-md border border-[rgba(201,162,74,0.2)] bg-[rgba(20,18,16,0.92)] p-4 shadow-[0_4px_32px_rgba(201,162,74,0.12)] sm:max-w-[85%] sm:animate-mystic-in sm:bg-[rgba(20,18,16,0.85)] sm:p-5 sm:backdrop-blur-[12px]"
                   }
                 >
                   {msg.role === "user" && (
-                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-aura-neon/70">
+                    <p className="mb-1 text-[10px] font-medium uppercase tracking-wide text-aura-champagne/70">
                       Вы
                     </p>
                   )}
@@ -1095,7 +1095,7 @@ export default function ChatWindow({
             >
               <div className="flex items-center gap-3 rounded-2xl rounded-bl-md border border-white/10 bg-black/40 px-4 py-3">
                 <MasterAvatar masterId={characterId} masterName={character.name} size="sm" thumb />
-                <span className="flex gap-1 text-aura-purple">
+                <span className="flex gap-1 text-aura-gold">
                   <span className="animate-bounce [animation-delay:0ms]">·</span>
                   <span className="animate-bounce [animation-delay:150ms]">·</span>
                   <span className="animate-bounce [animation-delay:300ms]">·</span>
@@ -1112,7 +1112,7 @@ export default function ChatWindow({
             >
               <div className="flex items-center gap-3 rounded-2xl rounded-bl-md border border-white/10 bg-black/40 px-4 py-3">
                 <MasterAvatar masterId={characterId} masterName={character.name} size="sm" thumb />
-                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-aura-purple" />
+                <Loader2 className="h-4 w-4 shrink-0 animate-spin text-aura-gold" />
                 <span className="text-sm text-gray-400">{statusText}</span>
               </div>
             </motion.div>
@@ -1128,7 +1128,7 @@ export default function ChatWindow({
           animate={{ opacity: 1, y: 0 }}
           className="mb-2 rounded-xl border border-aura-gold/25 bg-aura-gold/8 p-3 text-center"
         >
-          <p className="text-sm text-[#ede6da]/90">Бесплатные вопросы закончились.</p>
+          <p className="text-sm text-aura-ivory/90">Бесплатные вопросы закончились.</p>
           {onOpenPaywall && (
             <button
               type="button"

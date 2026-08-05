@@ -366,7 +366,7 @@ export default function DeckCard({
           </div>
 
           {!faceDown && !hideCaption && (
-            <p className="font-display text-center text-xs font-semibold leading-tight text-[#EDE6DA]">
+            <p className="font-display text-center text-xs font-semibold leading-tight text-aura-ivory">
               {resolved.name}
             </p>
           )}

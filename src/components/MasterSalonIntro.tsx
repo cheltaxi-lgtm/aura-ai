@@ -26,7 +26,7 @@ export default function MasterSalonIntro({ slug }: { slug: string }) {
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-aura-gold/70">
             Наставник · {MASTER_PUBLIC_BADGE}
           </p>
-          <h1 id="master-salon-title" className="mt-2 font-display text-3xl font-medium text-[#ede6da] sm:text-4xl">
+          <h1 id="master-salon-title" className="mt-2 font-display text-3xl font-medium text-aura-ivory sm:text-4xl">
             {character.name}
           </h1>
           <p className="mt-1 text-sm text-[rgba(237,230,218,0.55)]">{character.title}</p>

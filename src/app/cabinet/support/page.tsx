@@ -184,7 +184,7 @@ export default function SupportPage() {
 
         {loading ? (
           <div className="flex justify-center py-20">
-            <Loader2 className="h-8 w-8 animate-spin text-aura-neon" />
+            <Loader2 className="h-8 w-8 animate-spin text-aura-champagne" />
           </div>
         ) : selectedId && activeTicket ? (
           <div className="space-y-4">
@@ -297,7 +297,7 @@ export default function SupportPage() {
             <button
               type="button"
               onClick={() => setShowNewForm(true)}
-              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-aura-purple/40 bg-aura-purple/5 py-4 text-sm text-aura-neon hover:bg-aura-purple/10"
+              className="flex w-full items-center justify-center gap-2 rounded-2xl border border-dashed border-aura-gold/40 bg-aura-gold/5 py-4 text-sm text-aura-champagne hover:bg-aura-gold/10"
             >
               <Plus className="h-4 w-4" />
               Новое обращение

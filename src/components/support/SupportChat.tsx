@@ -101,12 +101,12 @@ export default function SupportChat({
                 <div
                   className={`max-w-[85%] rounded-2xl px-4 py-2.5 text-sm ${
                     isMine
-                      ? "bg-aura-purple/25 text-white"
+                      ? "bg-aura-gold/25 text-white"
                       : "border border-white/10 bg-white/5 text-gray-200"
                   }`}
                 >
                   {!isMine && viewerRole === "admin" ? (
-                    <p className="mb-1 text-[10px] font-medium uppercase text-aura-neon/70">
+                    <p className="mb-1 text-[10px] font-medium uppercase text-aura-champagne/70">
                       Клиент
                     </p>
                   ) : null}
@@ -151,13 +151,13 @@ export default function SupportChat({
             disabled={disabled || sending}
             placeholder={disabled ? "Чат закрыт" : "Напишите сообщение…"}
             rows={2}
-            className="flex-1 touch-auto select-text resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-aura-purple/50 focus:outline-none disabled:opacity-50"
+            className="flex-1 touch-auto select-text resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-aura-gold/50 focus:outline-none disabled:opacity-50"
           />
           <button
             type="button"
             onClick={() => void handleSend()}
             disabled={disabled || sending || !text.trim()}
-            className="flex h-auto items-center justify-center rounded-xl bg-aura-purple/30 px-4 text-aura-neon transition-colors hover:bg-aura-purple/40 disabled:opacity-40"
+            className="flex h-auto items-center justify-center rounded-xl bg-aura-gold/30 px-4 text-aura-champagne transition-colors hover:bg-aura-gold/40 disabled:opacity-40"
             aria-label="Отправить"
           >
             {sending ? <Loader2 className="h-5 w-5 animate-spin" /> : <Send className="h-5 w-5" />}
@@ -181,7 +181,7 @@ export function SupportStatusBadge({
       : status === "in_progress"
         ? "bg-amber-500/20 text-amber-300"
         : status === "waiting_user"
-          ? "bg-purple-500/20 text-purple-300"
+          ? "bg-aura-gold/15 text-aura-champagne"
           : status === "resolved"
             ? "bg-emerald-500/20 text-emerald-300"
             : "bg-gray-500/20 text-gray-400";

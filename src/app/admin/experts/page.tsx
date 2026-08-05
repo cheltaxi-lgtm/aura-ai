@@ -26,7 +26,7 @@ export default function AdminExpertsPage() {
         rows={items.map((e) => [
           String(e.email),
           String(e.name),
-          <code key="s" className="text-aura-neon">{String(e.slug)}</code>,
+          <code key="s" className="text-aura-champagne">{String(e.slug)}</code>,
           String(e.split_percent),
           String(e.knowledge_count ?? "0"),
           e.is_active ? <span className="text-aura-emerald">Активен</span> : <span className="text-red-400">Выкл</span>,

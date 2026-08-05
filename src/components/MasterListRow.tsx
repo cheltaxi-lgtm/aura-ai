@@ -88,7 +88,7 @@ export default function MasterListRow({
                 <span className="ml-2 text-[10px] uppercase tracking-wide text-emerald-300/90">· Разбор</span>
               ) : null}
               {isRitualMaster(master.id) ? (
-                <span className="ml-2 text-[10px] text-violet-200/90">{RITUAL_MASTER_SHOWCASE_BADGE}</span>
+                <span className="ml-2 text-[10px] text-aura-champagne/90">{RITUAL_MASTER_SHOWCASE_BADGE}</span>
               ) : null}
             </p>
             <p className="editorial-master-row__title">{master.title}</p>

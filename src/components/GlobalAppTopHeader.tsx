@@ -4,6 +4,8 @@ import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import AppTopHeader from "@/components/AppTopHeader";
+import BrandLogo from "@/components/BrandLogo";
+import { BRAND_LOGO_HEADER } from "@/lib/brand";
 import {
   APP_SHELL_SECTIONS,
   navigateToAppSection,
@@ -42,8 +44,24 @@ export default function GlobalAppTopHeader() {
     return () => document.body.classList.remove("has-site-header");
   }, [pathname]);
 
-  if (!mounted || typeof document === "undefined") return null;
   if (isAdminPath(pathname)) return null;
+
+  /* Pre-mount: paint the chrome shell immediately (SSR) so the header doesn't
+     flash in after hydration; the portal swap reuses the same layout. */
+  if (!mounted || typeof document === "undefined") {
+    return (
+      <header
+        aria-hidden
+        className="app-top-header fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md max-md:bg-[#0a0908] max-md:backdrop-blur-none"
+      >
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+          <div className="app-top-header__brand flex shrink-0 items-center">
+            <BrandLogo {...BRAND_LOGO_HEADER} />
+          </div>
+        </div>
+      </header>
+    );
+  }
 
   const photoNavLabel = runeConfig.enabled
     ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`

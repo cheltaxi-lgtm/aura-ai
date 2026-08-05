@@ -37,7 +37,7 @@ function cardBorderStyle(ritual: RitualClientData): string {
   if (needsReview(ritual)) return "border-amber-400/50 bg-amber-950/10";
   if (ritual.status === "reviewed") return "border-blue-400/40 bg-blue-950/10";
   if (ritual.status === "completed") return "border-emerald-400/40 bg-emerald-950/10";
-  if (isRitualInProgress(ritual.status)) return "border-violet-400/40 bg-violet-950/10";
+  if (isRitualInProgress(ritual.status)) return "border-aura-gold/40 bg-aura-gold/10";
   return "border-white/10 bg-black/20";
 }
 

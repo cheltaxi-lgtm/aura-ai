@@ -42,7 +42,7 @@ export default function AppBootstrapScreen({
       >
         <div className="mb-3 inline-flex items-center gap-2">
           <BrandMark size={28} />
-          <span className="font-display text-3xl font-semibold tracking-[0.16em] text-[#ede6da]">
+          <span className="font-display text-3xl font-semibold tracking-[0.16em] text-aura-ivory">
             {BRAND_NAME.toUpperCase()}
           </span>
         </div>

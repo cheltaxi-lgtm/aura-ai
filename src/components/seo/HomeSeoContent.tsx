@@ -24,7 +24,7 @@ export default function HomeSeoContent() {
 
   return (
     <section className="home-seo-panel" aria-label="Расклад Таро онлайн на Zovus">
-      <h2 className="font-display text-2xl font-medium text-[#ede6da]">
+      <h2 className="font-display text-2xl font-medium text-aura-ivory">
         Расклад Таро онлайн бесплатно — с разбором под ваш вопрос
       </h2>
       <p className="mt-4 leading-relaxed">

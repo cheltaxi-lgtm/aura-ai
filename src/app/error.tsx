@@ -57,7 +57,7 @@ export default function Error({
         Временная ошибка на стороне сервиса. Попробуйте обновить страницу или вернитесь на главную.
       </p>
       <div className="flex flex-wrap items-center justify-center gap-3">
-        <button type="button" onClick={handleRetry} className="btn-neon px-8 py-3 text-sm">
+        <button type="button" onClick={handleRetry} className="btn-primary px-8 py-3 text-sm">
           Повторить
         </button>
         <Link href="/" className="btn-luxe btn-luxe--sm btn-luxe--gold px-8 py-3 text-sm">

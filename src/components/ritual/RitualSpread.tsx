@@ -204,7 +204,7 @@ export default function RitualSpread({
                 </motion.div>
               </div>
               {flipped[idx] ? (
-                <p className="max-w-[96px] text-center text-[10px] font-medium leading-tight text-[#EDE6DA]">
+                <p className="max-w-[96px] text-center text-[10px] font-medium leading-tight text-aura-ivory">
                   {card.name}
                 </p>
               ) : null}

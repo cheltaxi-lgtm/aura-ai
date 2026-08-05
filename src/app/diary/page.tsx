@@ -62,7 +62,7 @@ export default function DiaryPage() {
   };
 
   return (
-    <div className="relative min-h-screen bg-[#0a0a0f]">
+    <div className="relative min-h-screen bg-aura-bg">
       <div
         className="pointer-events-none fixed inset-0 opacity-[0.04]"
         style={{

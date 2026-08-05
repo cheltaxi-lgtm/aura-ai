@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { motion } from "framer-motion";
+import { Sparkles } from "lucide-react";
 import { DAILY_CARDS, getCharacterById } from "@/lib/characters";
 import MasterAvatar from "@/components/MasterAvatar";
 
@@ -58,7 +59,7 @@ export default function DailyCard({
 
   return (
     <div className="flex flex-col items-center gap-6">
-      <p className="text-sm uppercase tracking-[0.3em] text-aura-purple/80">
+      <p className="text-sm uppercase tracking-[0.3em] text-aura-gold/80">
         Карта дня · {master?.name ?? "мастер"} · бесплатно
       </p>
 
@@ -71,7 +72,7 @@ export default function DailyCard({
           animate={{ rotateY: isFlipped ? 180 : 0 }}
           transition={{ duration: 0.35, type: "spring", stiffness: 120 }}
         >
-          <div className="absolute inset-0 backface-hidden rounded-2xl border border-aura-purple/30 bg-gradient-to-br from-purple-950/80 via-aura-bg to-emerald-950/60 shadow-neon">
+          <div className="absolute inset-0 backface-hidden rounded-2xl border border-aura-gold/30 bg-gradient-to-br from-aura-raised/80 via-aura-bg to-emerald-950/60 shadow-neon">
             <div className="flex h-full flex-col items-center justify-center gap-4 p-6">
               <MasterAvatar masterId={characterId} masterName={master?.name} size="lg" />
               <p className="text-center text-sm text-gray-400">
@@ -84,7 +85,9 @@ export default function DailyCard({
 
           <div className="absolute inset-0 rotate-y-180 backface-hidden rounded-2xl border border-aura-emerald/40 bg-gradient-to-br from-emerald-950/80 via-aura-bg to-amber-950/40 shadow-neon-emerald">
             <div className="flex h-full flex-col items-center justify-center gap-3 p-5">
-              <span className="text-3xl">✨</span>
+              <span className="text-aura-champagne" aria-hidden>
+                <Sparkles size={30} strokeWidth={1.5} />
+              </span>
               <h3 className="font-display text-lg font-bold text-aura-gold">
                 {prediction?.name ?? "..."}
               </h3>

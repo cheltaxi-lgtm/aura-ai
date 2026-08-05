@@ -114,7 +114,7 @@ export default function AdminAiPage() {
             if (!m) return;
             setAi({ ...ai, model: m, freeModel: m, paidModel: m, provider: "openrouter" });
           }}
-          className="w-full rounded-xl border border-aura-purple/40 bg-aura-purple/10 px-4 py-2.5 text-sm text-aura-neon transition-colors hover:bg-aura-purple/20"
+          className="w-full rounded-xl border border-aura-gold/40 bg-aura-gold/10 px-4 py-2.5 text-sm text-aura-champagne transition-colors hover:bg-aura-gold/20"
         >
           Одна модель для всего чата (скопировать платную во все поля)
         </button>
@@ -164,9 +164,9 @@ export default function AdminAiPage() {
           />
         </div>
 
-        <div className="rounded-xl border border-violet-300/20 bg-violet-300/5 p-4 space-y-3">
+        <div className="rounded-xl border border-aura-gold/20 bg-aura-gold/5 p-4 space-y-3">
           <div>
-            <p className="text-sm font-medium text-violet-100">Матрица судьбы</p>
+            <p className="text-sm font-medium text-aura-champagne">Матрица судьбы</p>
             <p className="mt-1 text-xs leading-relaxed text-gray-500">
               Отдельная модель для позонного разбора матрицы (~19 коротких вызовов).
               Gemini 3.x жжёт токены на reasoning — лучше flash без thinking или deepseek-chat.
@@ -331,9 +331,9 @@ export default function AdminAiPage() {
           </div>
         </div>
 
-        <div className="rounded-xl border border-aura-purple/20 bg-aura-purple/5 p-4 space-y-4">
+        <div className="rounded-xl border border-aura-gold/20 bg-aura-gold/5 p-4 space-y-4">
           <div>
-            <p className="text-sm font-medium text-aura-neon">Визуализация (Image Generation)</p>
+            <p className="text-sm font-medium text-aura-champagne">Визуализация (Image Generation)</p>
             <p className="mt-1 text-xs leading-relaxed text-gray-500">
               Генерация арта через OpenRouter Chat Completions с modalities: image.
               Роут: POST /api/image/generate
@@ -414,7 +414,7 @@ export default function AdminAiPage() {
           </div>
         </div>
 
-        <button onClick={save} className="btn-neon px-6 py-2.5 text-sm">
+        <button onClick={save} className="btn-primary px-6 py-2.5 text-sm">
           {saved ? "Сохранено ✓" : "Сохранить"}
         </button>
       </div>

@@ -137,7 +137,7 @@ export default function AdminSupportPage() {
 
       <div className="mb-6 grid gap-4 sm:grid-cols-3">
         <StatCard label="Открытых" value={stats.open} accent="text-amber-300" />
-        <StatCard label="Непрочитанных" value={stats.unread} accent="text-aura-neon" />
+        <StatCard label="Непрочитанных" value={stats.unread} accent="text-aura-champagne" />
         <StatCard label="Всего обращений" value={stats.total} />
       </div>
 
@@ -164,7 +164,7 @@ export default function AdminSupportPage() {
                   onClick={() => setStatusFilter(f.id)}
                   className={`rounded-lg px-2 py-1 text-[10px] ${
                     statusFilter === f.id
-                      ? "bg-aura-purple/20 text-aura-neon"
+                      ? "bg-aura-gold/20 text-aura-champagne"
                       : "text-gray-500 hover:text-gray-300"
                   }`}
                 >
@@ -197,13 +197,13 @@ export default function AdminSupportPage() {
                   type="button"
                   onClick={() => setSelectedId(t.id)}
                   className={`w-full border-b border-white/5 px-3 py-3 text-left transition-colors hover:bg-white/[0.03] ${
-                    selectedId === t.id ? "bg-aura-purple/10" : ""
+                    selectedId === t.id ? "bg-aura-gold/10" : ""
                   }`}
                 >
                   <div className="flex items-start justify-between gap-2">
                     <p className="line-clamp-1 text-sm font-medium text-white">{t.subject}</p>
                     {t.unread_by_admin ? (
-                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-aura-neon" />
+                      <span className="mt-1 h-2 w-2 shrink-0 rounded-full bg-aura-champagne" />
                     ) : null}
                   </div>
                   <p className="mt-0.5 text-[10px] text-gray-500">

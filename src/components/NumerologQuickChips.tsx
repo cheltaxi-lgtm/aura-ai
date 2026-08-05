@@ -65,7 +65,7 @@ export default function NumerologQuickChips({
 
   return (
     <div
-      className="mb-2 rounded-2xl border border-aura-gold/15 bg-[#141210]/95 p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(212,175,55,0.06)] sm:p-3"
+      className="mb-2 rounded-2xl border border-aura-gold/15 bg-aura-surface/95 p-2 shadow-[0_4px_24px_rgba(0,0,0,0.35),inset_0_1px_0_rgba(212,175,55,0.06)] sm:p-3"
       role="region"
       aria-label="Расклад по периоду"
     >

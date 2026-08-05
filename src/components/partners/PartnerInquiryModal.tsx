@@ -115,7 +115,7 @@ export default function PartnerInquiryModal({
         >
           <div className="flex shrink-0 items-start justify-between gap-3 border-b border-white/10 px-5 py-4 pb-[max(1rem,env(safe-area-inset-top,0px))] sm:pb-4">
             <div className="min-w-0 pr-2">
-              <h2 id={titleId} className="font-mystic-display text-xl font-medium text-[#ede6da] sm:text-2xl">
+              <h2 id={titleId} className="font-mystic-display text-xl font-medium text-aura-ivory sm:text-2xl">
                 {success ? "Заявка отправлена" : "Обсудим вашу колоду"}
               </h2>
               {!success ? (
@@ -148,7 +148,7 @@ export default function PartnerInquiryModal({
                   strokeWidth={1.5}
                   aria-hidden
                 />
-                <h2 className="font-mystic-display text-xl text-[#ede6da]">Заявка отправлена</h2>
+                <h2 className="font-mystic-display text-xl text-aura-ivory">Заявка отправлена</h2>
                 <p className="mt-3 max-w-md text-sm leading-relaxed text-[rgba(237,230,218,0.7)]">
                   Спасибо. Геннадий изучит информацию о колоде и свяжется с вами по указанным
                   контактам.

@@ -21,7 +21,7 @@ export default function CabinetLegacyAccessPanel({ access, onOpenPaywall }: Prop
   return (
     <section id="cabinet-access" className="space-y-4">
       <h2 className="text-lg font-semibold text-white">Статус доступа</h2>
-      <div className="rounded-2xl border border-purple-500/30 bg-purple-950/20 p-5 space-y-4">
+      <div className="rounded-2xl border border-aura-gold/30 bg-aura-gold/5 p-5 space-y-4">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
             <p className="text-sm text-white/50">Подписка Zovus+</p>

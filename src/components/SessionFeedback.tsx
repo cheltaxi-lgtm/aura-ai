@@ -39,7 +39,7 @@ export default function SessionFeedback({ characterId, visible }: SessionFeedbac
             type="button"
             disabled={submitting}
             onClick={() => void submit(n)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-sm text-aura-gold transition-colors hover:border-aura-purple/50 hover:bg-aura-purple/20 disabled:opacity-40"
+            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-sm text-aura-gold transition-colors hover:border-aura-gold/50 hover:bg-aura-gold/20 disabled:opacity-40"
             aria-label={`Оценка ${n} из 5`}
           >
             {n}

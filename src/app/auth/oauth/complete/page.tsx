@@ -322,7 +322,7 @@ export default function OAuthCompletePage() {
             type="button"
             onClick={() => void completeRegistration()}
             disabled={!accepted || !preview || submitting}
-            className="btn-neon w-full py-3 text-sm disabled:opacity-50"
+            className="btn-primary w-full py-3 text-sm disabled:opacity-50"
           >
             {submitting ? "Входим…" : "Продолжить"}
           </button>

@@ -22,7 +22,7 @@ export default function WelcomeBackBanner({
 
   return (
     <motion.div
-      className="glass-panel mb-8 flex flex-col items-start gap-4 border-aura-purple/30 p-5 sm:flex-row sm:items-center sm:justify-between"
+      className="glass-panel mb-8 flex flex-col items-start gap-4 border-aura-gold/30 p-5 sm:flex-row sm:items-center sm:justify-between"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35 }}
@@ -41,7 +41,7 @@ export default function WelcomeBackBanner({
       <button
         type="button"
         onClick={() => onContinue(masterId)}
-        className="btn-neon w-full shrink-0 px-6 py-2.5 sm:w-auto"
+        className="btn-primary w-full shrink-0 px-6 py-2.5 sm:w-auto"
       >
         Продолжить с {label}
       </button>

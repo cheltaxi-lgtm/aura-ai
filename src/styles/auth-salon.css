@@ -1,0 +1,382 @@
+/* ── User auth salon (login / register card) ── */
+.auth-salon-page {
+  position: relative;
+  display: flex;
+  min-height: 100dvh;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  overflow-x: hidden;
+  padding:
+    calc(1.25rem + env(safe-area-inset-top, 0px))
+    1.25rem
+    calc(1.5rem + env(safe-area-inset-bottom, 0px));
+}
+
+.auth-salon-vignette {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(ellipse 55% 50% at 50% 42%, rgba(20, 16, 12, 0.15) 0%, transparent 62%),
+    radial-gradient(ellipse 90% 80% at 50% 50%, transparent 28%, rgba(6, 5, 4, 0.72) 100%);
+}
+
+.auth-salon-inner {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: min(100%, 28rem);
+}
+
+.auth-salon-back {
+  margin-bottom: 0.85rem;
+}
+
+.auth-salon-back a {
+  font-size: 0.8125rem;
+  color: rgba(237, 230, 218, 0.5);
+  transition: color 0.2s ease;
+}
+
+.auth-salon-back a:hover {
+  color: rgba(232, 199, 126, 0.9);
+}
+
+.auth-salon-card {
+  width: 100%;
+  border-radius: 1.25rem;
+  border: 1px solid rgba(201, 162, 74, 0.18);
+  background:
+    linear-gradient(165deg, rgba(26, 22, 18, 0.94) 0%, rgba(10, 9, 8, 0.92) 100%);
+  box-shadow:
+    0 24px 64px -28px rgba(0, 0, 0, 0.85),
+    inset 0 1px 0 rgba(232, 199, 126, 0.06);
+  padding: 1.75rem 1.35rem 1.5rem;
+}
+
+@media (min-width: 480px) {
+  .auth-salon-card {
+    padding: 2rem 1.75rem 1.75rem;
+  }
+}
+
+.auth-salon-header {
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.auth-salon-overline {
+  margin-bottom: 0.5rem;
+  font-size: 0.6875rem;
+  font-weight: 500;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.72);
+}
+
+.auth-salon-title {
+  font-family: var(--font-display), Georgia, serif;
+  font-size: clamp(1.65rem, 4vw, 1.9rem);
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: #ede6da;
+  line-height: 1.2;
+}
+
+.auth-salon-subtitle {
+  margin-top: 0.55rem;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(237, 230, 218, 0.62);
+}
+
+.auth-salon-card .auth-form {
+  /* Nested form inside shell card — no second frame */
+  margin: 0;
+  max-width: none;
+  border: none;
+  background: transparent;
+  box-shadow: none;
+  padding: 0;
+  backdrop-filter: none;
+}
+
+.auth-salon-field {
+  display: block;
+  width: 100%;
+  min-height: 3.125rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.35);
+  padding: 0.75rem 1rem;
+  font-size: 0.9375rem;
+  color: #ede6da;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.auth-salon-field:focus {
+  outline: none;
+  border-color: rgba(201, 162, 74, 0.55);
+  box-shadow: 0 0 0 3px rgba(201, 162, 74, 0.18);
+}
+
+.auth-salon-field::placeholder {
+  color: rgba(237, 230, 218, 0.35);
+}
+
+.auth-salon-label {
+  margin-bottom: 0.4rem;
+  display: block;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(237, 230, 218, 0.72);
+}
+
+.auth-salon-oauth {
+  display: flex;
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.auth-salon-oauth-btn {
+  display: flex;
+  min-height: 3.125rem;
+  width: 100%;
+  align-items: center;
+  gap: 0.75rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.65rem 1rem;
+  font-size: 0.9375rem;
+  font-weight: 500;
+  color: #ede6da;
+  text-decoration: none;
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.15s ease;
+}
+
+.auth-salon-oauth-btn:hover:not([aria-disabled="true"]) {
+  border-color: rgba(232, 199, 126, 0.35);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.auth-salon-oauth-btn:focus-visible {
+  outline: 2px solid rgba(201, 162, 74, 0.55);
+  outline-offset: 2px;
+}
+
+.auth-salon-oauth-btn[aria-disabled="true"] {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
+.auth-salon-oauth-icon {
+  display: flex;
+  height: 2rem;
+  width: 2rem;
+  flex-shrink: 0;
+  align-items: center;
+  justify-content: center;
+  border-radius: 9999px;
+  color: #fff;
+}
+
+.auth-salon-oauth-label {
+  flex: 1;
+  text-align: left;
+}
+
+.auth-salon-divider {
+  position: relative;
+  margin: 0.35rem 0 0.15rem;
+  padding: 0.35rem 0;
+}
+
+.auth-salon-divider::before {
+  content: "";
+  position: absolute;
+  inset: 50% 0 auto;
+  border-top: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.auth-salon-divider span {
+  position: relative;
+  display: block;
+  width: fit-content;
+  margin-inline: auto;
+  padding: 0 0.75rem;
+  background-color: #0a0908;
+  font-size: 0.75rem;
+  color: rgba(237, 230, 218, 0.55);
+}
+
+.auth-salon-card .auth-salon-divider span {
+  background: linear-gradient(165deg, rgba(26, 22, 18, 0.98) 0%, rgba(10, 9, 8, 0.98) 100%);
+}
+
+.auth-salon-consent {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  text-align: left;
+}
+
+.auth-salon-consent label {
+  display: flex;
+  cursor: pointer;
+  align-items: flex-start;
+  gap: 0.7rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(237, 230, 218, 0.68);
+}
+
+.auth-salon-consent input[type="checkbox"] {
+  margin-top: 0.15rem;
+  height: 1.125rem;
+  width: 1.125rem;
+  flex-shrink: 0;
+  border-radius: 0.3rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  background: rgba(0, 0, 0, 0.35);
+  accent-color: #c9a24a;
+}
+
+.auth-salon-consent a {
+  color: rgba(232, 199, 126, 0.92);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.auth-salon-consent a:hover {
+  color: #e8c77e;
+}
+
+.auth-salon-hint {
+  margin-top: 0.55rem;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(232, 199, 126, 0.78);
+}
+
+.auth-salon-error-slot {
+  min-height: 1.25rem;
+}
+
+.auth-salon-password-wrap {
+  position: relative;
+}
+
+.auth-salon-password-wrap .auth-salon-field {
+  padding-right: 3rem;
+}
+
+.auth-salon-password-toggle {
+  position: absolute;
+  right: 0.35rem;
+  top: 50%;
+  display: flex;
+  height: 2.25rem;
+  width: 2.25rem;
+  transform: translateY(-50%);
+  align-items: center;
+  justify-content: center;
+  border-radius: 0.5rem;
+  color: rgba(237, 230, 218, 0.55);
+  transition: color 0.15s ease, background 0.15s ease;
+}
+
+.auth-salon-password-toggle:hover {
+  color: rgba(232, 199, 126, 0.95);
+  background: rgba(255, 255, 255, 0.04);
+}
+
+.auth-salon-password-toggle:focus-visible {
+  outline: 2px solid rgba(201, 162, 74, 0.55);
+  outline-offset: 1px;
+}
+
+.cookie-banner__docs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  font-size: 0.6875rem;
+  color: rgba(237, 230, 218, 0.45);
+}
+
+.cookie-banner__docs a {
+  touch-action: manipulation;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+  color: rgba(232, 199, 126, 0.75);
+}
+
+.cookie-banner__docs a:hover {
+  color: var(--aura-gold);
+}
+
+@media (min-width: 640px) {
+  .cookie-banner__docs {
+    display: none;
+  }
+}
+
+.cookie-banner__link {
+  color: var(--aura-champagne);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cookie-banner__link:hover {
+  color: var(--aura-gold);
+}
+
+.cookie-banner__inner {
+  display: flex;
+  max-width: 56rem;
+  margin: 0 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .cookie-banner__inner {
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+  }
+}
+
+.cookie-banner__text {
+  font-size: 0.75rem;
+  line-height: 1.6;
+  color: rgba(237, 230, 218, 0.6);
+}
+
+.cookie-banner__text a,
+.cookie-banner__link {
+  color: var(--aura-champagne);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.cookie-banner__text a:hover,
+.cookie-banner__link:hover {
+  color: var(--aura-gold);
+}
+
+.cookie-banner__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+

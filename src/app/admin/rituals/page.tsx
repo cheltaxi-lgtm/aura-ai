@@ -90,7 +90,7 @@ export default function AdminRitualsPage() {
               type="checkbox"
               checked={settings.enabled !== false}
               onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
-              className="h-4 w-4 accent-aura-purple"
+              className="h-4 w-4 accent-aura-gold"
             />
             <span className="text-gray-200">Обряды включены глобально</span>
           </label>
@@ -140,7 +140,7 @@ export default function AdminRitualsPage() {
                         type="checkbox"
                         checked={cfg.enabled}
                         onChange={(e) => updateType(entry.key, { enabled: e.target.checked })}
-                        className="h-4 w-4 accent-aura-purple"
+                        className="h-4 w-4 accent-aura-gold"
                       />
                     </td>
                     <td className="py-3">

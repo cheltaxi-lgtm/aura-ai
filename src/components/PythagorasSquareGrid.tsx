@@ -26,7 +26,7 @@ export default function PythagorasSquareGrid({ square, className = "" }: Pythago
           return (
             <div
               key={n}
-              className="flex min-h-[2.5rem] items-center justify-center rounded-lg border border-white/10 bg-indigo-950/40 px-1 text-center font-display text-sm text-aura-champagne"
+              className="flex min-h-[2.5rem] items-center justify-center rounded-lg border border-white/10 bg-aura-raised/40 px-1 text-center font-display text-sm text-aura-champagne"
               title={`${n}: ${count} цифр`}
             >
               {display}

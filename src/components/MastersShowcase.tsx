@@ -225,7 +225,7 @@ export default function MastersShowcase({
                 Регистрируйтесь как эксперт, подключайте свои материалы к образу наставника и получайте свою витрину
               </p>
             </div>
-            <Link href="/auth/expert/register" className="btn-neon shrink-0 px-6 py-3 text-sm">
+            <Link href="/auth/expert/register" className="btn-primary shrink-0 px-6 py-3 text-sm">
               Стать мастером
             </Link>
           </div>

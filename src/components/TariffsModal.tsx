@@ -132,7 +132,7 @@ export default function TariffsModal({
                       </div>
                     </li>
                   ))}
-                  <li className="flex items-start justify-between gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 px-3.5 py-3">
+                  <li className="flex items-start justify-between gap-3 rounded-xl border border-aura-gold/20 bg-aura-gold/5 px-3.5 py-3">
                     <div>
                       <p className="text-sm font-medium text-white">Матрица судьбы — полный разбор Эвелины</p>
                       <p className="mt-0.5 text-xs text-white/45">
@@ -147,7 +147,7 @@ export default function TariffsModal({
                       </p>
                     </div>
                   </li>
-                  <li className="flex items-start justify-between gap-3 rounded-xl border border-violet-500/20 bg-violet-500/5 px-3.5 py-3">
+                  <li className="flex items-start justify-between gap-3 rounded-xl border border-aura-gold/20 bg-aura-gold/5 px-3.5 py-3">
                     <div>
                       <p className="text-sm font-medium text-white">Другие сеансы нумеролога</p>
                       <p className="mt-0.5 text-xs text-white/45">Расчёт и расшифровка у Эвелины</p>

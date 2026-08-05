@@ -104,7 +104,7 @@ function MiniBars({
       {slice.map((i) => (
         <div
           key={i.label}
-          className="group relative flex-1 rounded-t bg-aura-purple/50 hover:bg-aura-neon/70"
+          className="group relative flex-1 rounded-t bg-aura-gold/50 hover:bg-aura-champagne/70"
           style={{ height: `${Math.max(4, (i.count / max) * 100)}%` }}
           title={`${i.label}: ${i.count}`}
         />
@@ -308,7 +308,7 @@ export default function AdminBotPage() {
             onClick={() => setTab(t.id)}
             className={`rounded-xl px-4 py-2 text-sm transition-colors ${
               tab === t.id
-                ? "bg-aura-purple/25 text-aura-neon"
+                ? "bg-aura-gold/25 text-aura-champagne"
                 : "bg-white/5 text-gray-400 hover:text-white"
             }`}
           >
@@ -326,7 +326,7 @@ export default function AdminBotPage() {
           {tab === "overview" && (
             <div className="space-y-8">
               <div className="flex flex-wrap items-center gap-3 text-sm text-gray-400">
-                <Bot className="h-4 w-4 text-aura-neon" />
+                <Bot className="h-4 w-4 text-aura-champagne" />
                 <span>
                   День бота: <span className="text-white">{dash?.day ?? "—"}</span>
                 </span>
@@ -359,7 +359,7 @@ export default function AdminBotPage() {
                   <StatCard label="Новые пользователи" value={fmt(today.users_new)} />
                   <StatCard label="Расклады / сессии" value={fmt(today.spreads)} />
                   <StatCard label="Тизеры" value={fmt(today.teaser_shown)} />
-                  <StatCard label="CTA клики" value={fmt(today.cta_click)} accent="text-aura-neon" />
+                  <StatCard label="CTA клики" value={fmt(today.cta_click)} accent="text-aura-champagne" />
                   <StatCard label="Клеймы" value={fmt(today.receipt_claimed)} />
                   <StatCard label="Старт бота" value={fmt(today.bot_start)} />
                   <StatCard label="Age gate" value={fmt(today.age_gate_pass)} />
@@ -378,7 +378,7 @@ export default function AdminBotPage() {
                 <h2 className="mb-3 text-sm font-medium text-gray-400">База</h2>
                 <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4 xl:grid-cols-5">
                   <StatCard label="Всего юзеров" value={fmt(totals.users)} />
-                  <StatCard label="Active 7д" value={fmt(totals.active7d)} accent="text-aura-neon" />
+                  <StatCard label="Active 7д" value={fmt(totals.active7d)} accent="text-aura-champagne" />
                   <StatCard label="Active 30д" value={fmt(totals.active30d)} />
                   <StatCard label="Связаны с ЛК (бот)" value={fmt(totals.linked)} />
                   <StatCard
@@ -473,7 +473,7 @@ export default function AdminBotPage() {
                   value={userQ}
                   onChange={(e) => setUserQ(e.target.value)}
                   placeholder="Поиск: id / @username / имя"
-                  className="min-w-[220px] flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-aura-purple/50"
+                  className="min-w-[220px] flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-aura-gold/50"
                 />
                 <select
                   value={userFilter}
@@ -566,7 +566,7 @@ export default function AdminBotPage() {
                   value={eventName}
                   onChange={(e) => setEventName(e.target.value)}
                   placeholder="Фильтр по имени события (например teaser_shown)"
-                  className="min-w-[260px] flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-aura-purple/50"
+                  className="min-w-[260px] flex-1 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white outline-none focus:border-aura-gold/50"
                 />
                 <AdminBtn onClick={() => void loadEvents()} disabled={eventsLoading}>
                   {eventsLoading ? "…" : "Загрузить"}

@@ -109,7 +109,7 @@ export default function AdminRunesPage() {
               type="checkbox"
               checked={settings.enabled}
               onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
-              className="h-4 w-4 accent-aura-purple"
+              className="h-4 w-4 accent-aura-gold"
             />
           </label>
 
@@ -201,7 +201,7 @@ export default function AdminRunesPage() {
             <button
               type="button"
               onClick={recalculatePackagesByRate}
-              className="rounded-lg border border-aura-purple/40 px-3 py-1.5 text-xs font-medium text-aura-neon transition-colors hover:bg-aura-purple/10"
+              className="rounded-lg border border-aura-gold/40 px-3 py-1.5 text-xs font-medium text-aura-champagne transition-colors hover:bg-aura-gold/10"
             >
               Пересчитать ₽ по курсу
             </button>
@@ -272,7 +272,7 @@ export default function AdminRunesPage() {
                         type="checkbox"
                         checked={pkg.is_popular}
                         onChange={(e) => updatePackage(i, { is_popular: e.target.checked })}
-                        className="h-4 w-4 accent-aura-purple"
+                        className="h-4 w-4 accent-aura-gold"
                       />
                     </td>
                     <td className="py-2">

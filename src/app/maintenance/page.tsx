@@ -17,7 +17,7 @@ export default function MaintenancePage() {
         <p className="text-sm leading-relaxed text-gray-400">
           Мы обновляем {BRAND_NAME}. Обычно это занимает несколько минут — загляните чуть позже.
         </p>
-        <Link href="/maintenance" className="btn-neon inline-block px-6 py-2.5 text-sm">
+        <Link href="/maintenance" className="btn-primary inline-block px-6 py-2.5 text-sm">
           Обновить
         </Link>
       </div>

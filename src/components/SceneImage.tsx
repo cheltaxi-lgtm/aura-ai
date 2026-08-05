@@ -99,7 +99,7 @@ export default function SceneImage({
             height={780}
             unoptimized
             onError={() => setLoadFailed(true)}
-            className="max-h-[92vh] w-full object-contain drop-shadow-[0_0_40px_rgba(168,85,247,0.25)]"
+            className="max-h-[92vh] w-full object-contain drop-shadow-[0_0_40px_rgba(201,162,74,0.25)]"
           />
         </motion.div>
       </motion.div>
@@ -136,16 +136,16 @@ export default function SceneImage({
       <div className={`overflow-hidden rounded-xl border border-white/10 bg-black/30 ${className}`}>
         {label && (
           <p className="flex items-center gap-1.5 border-b border-white/5 px-3 py-2 text-[10px] uppercase tracking-widest text-gray-500">
-            <Sparkles className="h-3 w-3 text-aura-neon" />
+            <Sparkles className="h-3 w-3 text-aura-champagne" />
             {label}
           </p>
         )}
 
         {loading && (
           <div
-            className={`flex ${aspectClass} w-full items-center justify-center bg-gradient-to-br from-aura-purple/10 to-aura-emerald/5`}
+            className={`flex ${aspectClass} w-full items-center justify-center bg-gradient-to-br from-aura-gold/10 to-aura-emerald/5`}
           >
-            <Loader2 className="h-6 w-6 animate-spin text-aura-neon/70" />
+            <Loader2 className="h-6 w-6 animate-spin text-aura-champagne/70" />
           </div>
         )}
 
@@ -155,7 +155,7 @@ export default function SceneImage({
               <button
                 type="button"
                 onClick={() => setLightboxOpen(true)}
-                className="group relative max-w-[240px] w-full cursor-zoom-in rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-aura-purple/60"
+                className="group relative max-w-[240px] w-full cursor-zoom-in rounded-lg focus:outline-none focus-visible:ring-2 focus-visible:ring-aura-gold/60"
                 aria-label={label ? `${label} — открыть на весь экран` : "Открыть изображение"}
               >
                 {imageBody}

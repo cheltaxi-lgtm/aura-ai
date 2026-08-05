@@ -1,0 +1,87 @@
+@media print {
+  .hd-bodygraph__export,
+  .hd-bodygraph__layers,
+  .hd-bodygraph__centers-legend,
+  .hd-bodygraph__particles,
+  .hd-bodygraph__tooltip,
+  .hd-print-hidden {
+    display: none !important;
+  }
+
+  .hd-panel,
+  .hd-bodygraph__stage {
+    border-color: rgba(0, 0, 0, 0.2) !important;
+    background: #ffffff !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  /* Tilt/zoom live on the layout now — flatten it for print too. */
+  .hd-bodygraph__layout {
+    transform: none !important;
+  }
+
+  /* A4-friendly chart: dark strokes on white */
+  .hd-bodygraph__svg .hd-ch-p {
+    stroke: #1a1a1a !important;
+    opacity: 1 !important;
+  }
+
+  .hd-bodygraph__svg .hd-ch-d {
+    stroke: #b03030 !important;
+    opacity: 1 !important;
+  }
+
+  .hd-bodygraph__svg .hd-ch-base {
+    stroke: rgba(0, 0, 0, 0.12) !important;
+    opacity: 1 !important;
+  }
+
+  .hd-bodygraph__svg text {
+    fill: #1a1a1a !important;
+  }
+
+  .hd-bodygraph__svg circle[fill="#17131f"] {
+    fill: #ffffff !important;
+    stroke: rgba(0, 0, 0, 0.35) !important;
+  }
+
+  .hd-bodygraph__activations li,
+  .hd-bodygraph__activations li.is-active,
+  .hd-bodygraph__activations--d li.is-active,
+  .hd-bodygraph__activations--p li.is-active {
+    color: #1a1a1a !important;
+  }
+
+  .hd-bodygraph__activations--d .hd-bodygraph__activations-title {
+    color: #b03030 !important;
+  }
+
+  .hd-bodygraph__activations--p .hd-bodygraph__activations-title {
+    color: #1a1a1a !important;
+  }
+
+  .hd-bodygraph__legend,
+  .hd-bodygraph__legend-item {
+    color: #333333 !important;
+  }
+
+  .hd-fact {
+    border-color: rgba(0, 0, 0, 0.15) !important;
+    background: #ffffff !important;
+  }
+
+  .hd-fact__value {
+    color: #1a1a1a !important;
+  }
+
+  .hd-fact__label,
+  .hd-fact__sub {
+    color: #555555 !important;
+  }
+
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+}

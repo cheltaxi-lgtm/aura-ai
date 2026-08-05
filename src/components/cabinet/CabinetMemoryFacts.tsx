@@ -421,7 +421,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
       <section className={hideTitle ? "space-y-5" : "rounded-2xl border border-white/10 bg-white/[0.03] p-5"}>
         {!hideTitle ? (
           <div className="flex items-start gap-3">
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-purple-500/15 text-purple-300">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-aura-gold/15 text-aura-champagne">
               <Brain className="h-5 w-5" aria-hidden />
             </div>
             <div className="min-w-0 flex-1">
@@ -447,7 +447,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                 onClick={() => void patchPrefs({ cabinetMode: mode })}
                 className={`rounded-lg px-3 py-2 text-xs ${
                   prefs.cabinetMode === mode
-                    ? "bg-purple-500/20 text-purple-100"
+                    ? "bg-aura-gold/20 text-aura-champagne"
                     : "text-white/40"
                 }`}
               >
@@ -520,7 +520,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               type="button"
               onClick={() => setView(id)}
               className={`rounded-lg px-2 py-2 text-xs transition ${
-                view === id ? "bg-purple-500/20 text-purple-100" : "text-white/40 hover:text-white/65"
+                view === id ? "bg-aura-gold/20 text-aura-champagne" : "text-white/40 hover:text-white/65"
               }`}
             >
               {label}
@@ -542,7 +542,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               resetAddForm();
               setAddModalOpen(true);
             }}
-            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/25 bg-gradient-to-r from-purple-700/35 via-purple-900/40 to-amber-950/30 px-5 py-3.5 text-sm font-semibold text-amber-100 shadow-[0_8px_32px_rgba(88,28,135,0.25),inset_0_1px_0_rgba(255,255,255,0.08)] transition-all hover:border-amber-400/40 hover:shadow-[0_12px_40px_rgba(88,28,135,0.35)] sm:w-auto"
+            className="inline-flex w-full items-center justify-center gap-2 rounded-2xl border border-amber-400/25 bg-gradient-to-r from-amber-800/35 via-aura-raised/60 to-amber-950/30 px-5 py-3.5 text-sm font-semibold text-amber-100 shadow-[0_8px_32px_rgba(201,162,74,0.2),inset_0_1px_0_rgba(255,255,255,0.08)] transition-all hover:border-amber-400/40 hover:shadow-[0_12px_40px_rgba(201,162,74,0.3)] sm:w-auto"
           >
             <Plus className="h-4 w-4" aria-hidden />
             Добавить факт
@@ -574,9 +574,9 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               {error}
             </p>
           ) : displayedFacts.length === 0 ? (
-            <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/12 bg-gradient-to-br from-purple-950/30 via-black/20 to-amber-950/15 px-6 py-10 text-center">
-              <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-purple-600/10 blur-2xl" />
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-purple-500/10 text-purple-300">
+            <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/12 bg-gradient-to-br from-aura-raised/30 via-black/20 to-amber-950/15 px-6 py-10 text-center">
+              <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-aura-gold/10 blur-2xl" />
+              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-aura-gold/10 text-aura-champagne">
                 <Sparkles className="h-6 w-6" aria-hidden />
               </div>
               <p className="mt-4 text-base font-medium text-white/85">Пока пусто</p>
@@ -599,7 +599,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                 return (
                   <li
                     key={f.id}
-                    className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] via-purple-950/25 to-black/50 p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-all ${accent.ring}`}
+                    className={`group relative overflow-hidden rounded-2xl border border-white/10 bg-gradient-to-br from-white/[0.07] via-aura-raised/25 to-black/50 p-4 shadow-[0_10px_40px_rgba(0,0,0,0.35)] backdrop-blur-sm transition-all ${accent.ring}`}
                   >
                     <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-amber-400/25 to-transparent" />
                     <div className="flex gap-3.5">
@@ -632,7 +632,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                             <span className="text-[10px] text-white/30">изменилось</span>
                           ) : null}
                           {f.status === "draft" ? (
-                            <span className="text-[10px] text-violet-300/80">предложение</span>
+                            <span className="text-[10px] text-aura-champagne/80">предложение</span>
                           ) : null}
                         </div>
                         <p className="text-[15px] leading-relaxed text-white/92">
@@ -708,7 +708,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                 aria-modal="true"
                 aria-labelledby="cabinet-memory-add-title"
                 onClick={(e) => e.stopPropagation()}
-                className="max-h-[min(92dvh,calc(100dvh-1rem))] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-purple-500/20 bg-[#1a1028] shadow-[0_24px_80px_rgba(0,0,0,0.65)] sm:rounded-2xl"
+                className="max-h-[min(92dvh,calc(100dvh-1rem))] w-full max-w-lg overflow-y-auto rounded-t-2xl border border-aura-gold/20 bg-aura-surface shadow-[0_24px_80px_rgba(0,0,0,0.65)] sm:rounded-2xl"
               >
                 <div className="sticky top-0 z-10 flex items-start justify-between gap-3 border-b border-white/10 bg-[#1a1028]/95 px-5 py-4 backdrop-blur-sm">
                   <div>
@@ -739,7 +739,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                       placeholder="Например: ищу работу в IT, сыну 12 лет, развод в процессе"
                       rows={4}
                       autoFocus
-                      className="mt-1.5 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-purple-400/40 focus:outline-none"
+                      className="mt-1.5 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none"
                     />
                   </label>
 
@@ -829,7 +829,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                         saving || draft.trim().length < 6 || (!editingFact && !pdConsent)
                       }
                       onClick={() => void handleAdd()}
-                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-purple-600/80 px-4 py-2.5 text-sm font-medium text-white transition-colors hover:bg-purple-500 disabled:opacity-40"
+                      className="inline-flex items-center justify-center gap-1.5 rounded-lg bg-aura-gold/90 px-4 py-2.5 text-sm font-medium text-[#1a1208] transition-colors hover:bg-aura-gold disabled:opacity-40"
                     >
                       {saving ? (
                         <Loader2 className="h-4 w-4 animate-spin" />

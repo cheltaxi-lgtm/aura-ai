@@ -32,7 +32,7 @@ export default function AdminInfluencersPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-lg px-4 py-2 text-sm ${tab === t ? "bg-aura-purple/20 text-aura-neon" : "text-gray-500"}`}
+            className={`rounded-lg px-4 py-2 text-sm ${tab === t ? "bg-aura-gold/20 text-aura-champagne" : "text-gray-500"}`}
           >
             {t === "influencers" ? "Инфлюенсеры" : "White-label"}
           </button>

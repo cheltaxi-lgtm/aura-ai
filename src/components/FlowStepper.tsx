@@ -48,7 +48,7 @@ export default function FlowStepper({ current, completed }: FlowStepperProps) {
               {i > 0 && (
                 <div
                   className={`absolute right-1/2 top-3.5 -z-10 h-px w-full translate-x-[-50%] ${
-                    isDone ? "bg-gradient-to-r from-aura-purple/60 to-aura-gold/40" : "bg-white/10"
+                    isDone ? "bg-gradient-to-r from-aura-gold/60 to-aura-gold/40" : "bg-white/10"
                   }`}
                   style={{ width: "calc(100% + 0.5rem)", left: "calc(-50% + 0.25rem)" }}
                 />
@@ -57,7 +57,7 @@ export default function FlowStepper({ current, completed }: FlowStepperProps) {
               <span
                 className={`relative z-10 flex h-7 w-7 items-center justify-center rounded-full text-[11px] font-semibold transition-all duration-300 ${
                   isActive
-                    ? "bg-gradient-to-br from-aura-purple to-aura-purple/70 text-white shadow-[0_0_20px_rgba(168,85,247,0.5)]"
+                    ? "bg-gradient-to-br from-aura-gold to-aura-gold/70 text-white shadow-[0_0_20px_rgba(201,162,74,0.5)]"
                     : isDone
                       ? "border border-aura-gold/40 bg-aura-gold/10 text-aura-gold"
                       : "border border-white/10 bg-black/50 text-gray-600"

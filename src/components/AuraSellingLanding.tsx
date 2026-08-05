@@ -594,7 +594,7 @@ export default function AuraSellingLanding({
         <section className="ritual-cta-banner" aria-labelledby="ritual-cta-banner-title">
           <div className="ritual-cta-banner__inner">
             <span className="ritual-cta-banner__icon" aria-hidden>
-              🕯
+              <Flame size={26} strokeWidth={1.5} />
             </span>
             <div className="ritual-cta-banner__copy">
               <h2 id="ritual-cta-banner-title" className="ritual-cta-banner__title">

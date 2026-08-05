@@ -197,7 +197,7 @@ html[data-app-shell="android"] .app-shell-pull-hint__rune {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  background: #050309;
+  background: #0a0908;
 }
 
 .app-shell-splash__backdrop {
@@ -210,10 +210,10 @@ html[data-app-shell="android"] .app-shell-pull-hint__rune {
   position: absolute;
   inset: -20%;
   background:
-    radial-gradient(circle at 50% 38%, rgba(88, 28, 135, 0.42) 0%, transparent 52%),
+    radial-gradient(circle at 50% 38%, rgba(201, 162, 74, 0.22) 0%, transparent 52%),
     radial-gradient(circle at 20% 80%, rgba(201, 162, 74, 0.08) 0%, transparent 40%),
-    radial-gradient(circle at 80% 20%, rgba(155, 127, 212, 0.12) 0%, transparent 38%),
-    linear-gradient(180deg, #0b0714 0%, #050309 100%);
+    radial-gradient(circle at 80% 20%, rgba(232, 199, 126, 0.1) 0%, transparent 38%),
+    linear-gradient(180deg, #141008 0%, #0a0908 100%);
   animation: app-shell-splash-nebula 3.2s ease-in-out infinite alternate;
 }
 
@@ -276,9 +276,9 @@ html[data-app-shell="android"] .app-shell-pull-hint__rune {
 .app-shell-splash__ring--inner {
   inset: 0.85rem;
   animation: app-shell-splash-orbit 1.85s linear infinite reverse;
-  border-bottom-color: rgba(155, 127, 212, 0.65);
+  border-bottom-color: rgba(232, 199, 126, 0.65);
   border-left-color: transparent;
-  border-top-color: rgba(155, 127, 212, 0.12);
+  border-top-color: rgba(232, 199, 126, 0.12);
   border-right-color: transparent;
   opacity: 0.9;
 }
@@ -293,7 +293,7 @@ html[data-app-shell="android"] .app-shell-pull-hint__rune {
   background: radial-gradient(circle at 35% 28%, rgba(255, 242, 192, 0.18), rgba(14, 9, 24, 0.95));
   box-shadow:
     0 0 32px rgba(201, 162, 74, 0.28),
-    inset 0 0 24px rgba(155, 127, 212, 0.14);
+    inset 0 0 24px rgba(201, 162, 74, 0.14);
   animation: app-shell-splash-core-pulse 2.2s ease-in-out infinite;
 }
 

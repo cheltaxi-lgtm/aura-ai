@@ -106,7 +106,7 @@ export default function PersonalMemoryChoice({
         aria-labelledby="personal-memory-title"
       >
         <div className="w-full max-w-lg overflow-hidden rounded-[28px] border border-aura-gold/25 bg-[#12101a] shadow-2xl shadow-black/70">
-          <div className="border-b border-white/8 bg-gradient-to-br from-aura-gold/12 via-transparent to-fuchsia-500/8 px-6 py-7 sm:px-8">
+          <div className="border-b border-white/8 bg-gradient-to-br from-aura-gold/12 via-transparent to-aura-gold/8 px-6 py-7 sm:px-8">
             <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-aura-gold/25 bg-aura-gold/10">
               <Brain className="h-7 w-7 text-aura-gold" aria-hidden />
             </div>
@@ -145,7 +145,7 @@ export default function PersonalMemoryChoice({
               type="button"
               disabled={loading}
               onClick={() => void choose("enabled")}
-              className="btn-neon flex w-full items-center justify-center gap-2 px-5 py-3.5 font-semibold disabled:opacity-60"
+              className="btn-primary flex w-full items-center justify-center gap-2 px-5 py-3.5 font-semibold disabled:opacity-60"
             >
               {loading ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden /> : null}
               Включить память

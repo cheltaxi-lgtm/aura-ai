@@ -130,7 +130,7 @@ export default function ProfileAstroFields({
               onClick={() => onChange({ gender: g })}
               className={`flex-1 rounded-xl border px-4 py-2.5 text-sm transition-all ${
                 values.gender === g
-                  ? "border-aura-purple bg-aura-purple/20 text-aura-neon shadow-neon"
+                  ? "border-aura-gold bg-aura-gold/20 text-aura-champagne shadow-neon"
                   : "border-white/10 bg-black/20 text-gray-400 hover:border-white/20"
               }`}
             >

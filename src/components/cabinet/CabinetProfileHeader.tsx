@@ -25,7 +25,7 @@ export default function CabinetProfileHeader({ profile, onTopUp, balancePulse, s
 
   return (
     <section id="cabinet-profile" className="cabinet-profile-header">
-      <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-purple-600/20 blur-3xl" />
+      <div className="pointer-events-none absolute -right-8 -top-8 h-40 w-40 rounded-full bg-aura-gold/20 blur-3xl" />
       <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-5">
           <div className="cabinet-profile-header__avatar" aria-hidden>

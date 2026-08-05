@@ -181,7 +181,7 @@ export default function CabinetProfilePanel({
           <button
             type="button"
             onClick={startEdit}
-            className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-xs text-gray-400 transition-colors hover:border-aura-purple/40 hover:text-aura-neon"
+            className="flex items-center gap-1.5 rounded-xl border border-white/10 px-3 py-2 text-xs text-gray-400 transition-colors hover:border-aura-gold/40 hover:text-aura-champagne"
           >
             <Pencil className="h-3.5 w-3.5" />
             {profile?.birthDate ? "Изменить данные" : "Заполнить профиль"}
@@ -225,7 +225,7 @@ export default function CabinetProfilePanel({
               type="button"
               onClick={handleSave}
               disabled={saving}
-              className="btn-neon flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-60"
+              className="btn-primary flex items-center gap-2 px-5 py-2.5 text-sm disabled:opacity-60"
             >
               <Save className="h-4 w-4" />
               {saving ? "Сохранение..." : "Сохранить"}

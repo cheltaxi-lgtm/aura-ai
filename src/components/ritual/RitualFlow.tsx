@@ -378,7 +378,7 @@ export default function RitualFlow({
           initial={{ opacity: 0, y: 40 }}
           animate={{ opacity: 1, y: 0 }}
           exit={{ opacity: 0, y: 40 }}
-          className="relative z-10 flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0a0a0f] sm:mx-4 sm:rounded-2xl"
+          className="relative z-10 flex max-h-[90vh] w-full max-w-md flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-aura-bg sm:mx-4 sm:rounded-2xl"
         >
           <div className="lux-scroll flex-1 overflow-y-auto overscroll-contain">
             {flowError &&

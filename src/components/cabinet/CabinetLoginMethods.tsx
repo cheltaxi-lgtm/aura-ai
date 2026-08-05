@@ -244,7 +244,7 @@ function CabinetLoginMethodsInner() {
             onChange={(e) => setPassword(e.target.value)}
             className="ui-input w-full"
           />
-          <button type="submit" disabled={busy} className="btn-neon w-full disabled:opacity-60">
+          <button type="submit" disabled={busy} className="btn-primary w-full disabled:opacity-60">
             {busy ? "Сохраняем…" : "Сохранить email и пароль"}
           </button>
         </form>

@@ -111,10 +111,6 @@ html[data-motion-lite="1"] .salon-bg__lines {
   opacity: 0.35;
 }
 
-html:has(.editorial-landing) .aura-mystic-bg {
-  display: none !important;
-}
-
 /* ── Editorial shell ── */
 .editorial-landing {
   color: var(--color-text);

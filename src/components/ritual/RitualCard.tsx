@@ -54,7 +54,7 @@ export default function RitualCard({ ritual, onDone }: Props) {
     try {
       const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(cardRef.current, {
-        backgroundColor: "#0a0a0f",
+        backgroundColor: "#0a0908",
         scale: 2,
       });
       const link = document.createElement("a");
@@ -75,7 +75,7 @@ export default function RitualCard({ ritual, onDone }: Props) {
       <div
         ref={cardRef}
         className="mx-auto max-w-md rounded-2xl border border-amber-500/30 p-6"
-        style={{ background: "#0a0a0f" }}
+        style={{ background: "#0a0908" }}
       >
         <div className="border-b border-amber-500/20 pb-4 text-center">
           <p className="font-display text-xs uppercase tracking-[0.2em] text-amber-500/70">

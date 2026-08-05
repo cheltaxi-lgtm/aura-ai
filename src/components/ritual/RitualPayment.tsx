@@ -53,8 +53,8 @@ export default function RitualPayment({
       <div className="mt-6 rounded-2xl border border-amber-500/20 bg-amber-950/20 p-4 text-center">
         {isUnlimited ? (
           <>
-            <p className="text-sm text-purple-200/80">∞ Безлимит активен</p>
-            <p className="mt-1 text-lg font-bold text-purple-300">Обряд бесплатно</p>
+            <p className="text-sm text-aura-champagne/80">∞ Безлимит активен</p>
+            <p className="mt-1 text-lg font-bold text-aura-champagne">Обряд бесплатно</p>
           </>
         ) : (
           <>

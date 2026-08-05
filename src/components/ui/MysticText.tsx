@@ -84,7 +84,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       nodes.push(
         <strong
           key={`${keyPrefix}-bold-${partIndex++}`}
-          className="font-semibold text-mystic-gold"
+          className="font-semibold text-aura-gold"
         >
           {token.slice(2, -2)}
         </strong>
@@ -93,7 +93,7 @@ function renderInline(text: string, keyPrefix: string): ReactNode[] {
       nodes.push(
         <em
           key={`${keyPrefix}-italic-${partIndex++}`}
-          className="font-mystic-display italic text-mystic-lavender"
+          className="font-mystic-display italic text-aura-champagne"
         >
           {token.slice(1, -1)}
         </em>
@@ -119,14 +119,14 @@ function MysticHeading({ text }: { text: string }) {
   return (
     <header className="my-5">
       <div
-        className="mb-3 h-px w-full bg-gradient-to-r from-transparent via-mystic-gold/45 to-transparent"
+        className="mb-3 h-px w-full bg-gradient-to-r from-transparent via-aura-gold/45 to-transparent"
         aria-hidden
       />
-      <h3 className="font-mystic-display text-xl font-semibold uppercase tracking-[0.12em] text-mystic-gold">
+      <h3 className="font-mystic-display text-xl font-semibold uppercase tracking-[0.12em] text-aura-gold">
         {label}
       </h3>
       <div
-        className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-mystic-gold/45 to-transparent"
+        className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-aura-gold/45 to-transparent"
         aria-hidden
       />
     </header>
@@ -140,9 +140,9 @@ function MysticDivider() {
       role="separator"
       aria-hidden
     >
-      <span className="select-none text-xs tracking-[0.35em] text-mystic-gold/35">· · ·</span>
-      <div className="h-px w-[80%] max-w-md bg-gradient-to-r from-transparent via-mystic-accent to-transparent" />
-      <span className="select-none text-xs tracking-[0.35em] text-mystic-gold/35">· · ·</span>
+      <span className="select-none text-xs tracking-[0.35em] text-aura-gold/35">· · ·</span>
+      <div className="h-px w-[80%] max-w-md bg-gradient-to-r from-transparent via-aura-gold to-transparent" />
+      <span className="select-none text-xs tracking-[0.35em] text-aura-gold/35">· · ·</span>
     </div>
   );
 }
@@ -150,10 +150,10 @@ function MysticDivider() {
 function MysticListItem({ text, index }: { text: string; index: number }) {
   return (
     <div className="flex items-start gap-2.5 pl-1">
-      <span className="mt-0.5 shrink-0 text-sm text-mystic-gold" aria-hidden>
+      <span className="mt-0.5 shrink-0 text-sm text-aura-gold" aria-hidden>
         ✦
       </span>
-      <p className="text-base leading-[1.8] text-mystic-text">
+      <p className="text-base leading-[1.8] text-aura-ivory">
         {renderInline(text, `list-${index}`)}
       </p>
     </div>
@@ -162,7 +162,7 @@ function MysticListItem({ text, index }: { text: string; index: number }) {
 
 function MysticParagraph({ lines, index }: { lines: string[]; index: number }) {
   return (
-    <p className="text-base leading-[1.8] text-mystic-text">
+    <p className="text-base leading-[1.8] text-aura-ivory">
       {lines.map((line, lineIndex) => (
         <Fragment key={lineIndex}>
           {lineIndex > 0 && <br />}
@@ -183,14 +183,14 @@ export default function MysticText({ content, className = "" }: MysticTextProps)
 
   if (blocks.length === 0) {
     return (
-      <div className={`font-body text-base leading-[1.8] text-mystic-text ${className}`}>
+      <div className={`font-body text-base leading-[1.8] text-aura-ivory ${className}`}>
         {content}
       </div>
     );
   }
 
   return (
-    <div className={`mystic-text space-y-3 font-body ${className}`}>
+      <div className={`space-y-3 font-body ${className}`}>
       {blocks.map((block, index) => {
         switch (block.type) {
           case "heading":

@@ -32,7 +32,7 @@ export default function AuthHeader({
   };
 
   const btnClass = compact
-    ? "btn-neon relative z-10 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
+    ? "btn-primary relative z-10 inline-flex items-center gap-1.5 px-2.5 py-1.5 text-xs sm:gap-2 sm:px-4 sm:py-2 sm:text-sm"
     : "app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold";
 
   if (loading) {

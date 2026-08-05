@@ -87,7 +87,7 @@ export default function SpreadFlipRow({
               </motion.div>
             </button>
             {flipped[i] && (
-              <p className="font-display text-center text-xs font-semibold text-[#EDE6DA]">
+              <p className="font-display text-center text-xs font-semibold text-aura-ivory">
                 {card.name}
               </p>
             )}

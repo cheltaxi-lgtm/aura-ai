@@ -1,0 +1,192 @@
+/* ── Spread ritual loader ── */
+.spread-ritual-loader {
+  @apply fixed inset-0 z-[120] flex items-center justify-center px-4;
+  pointer-events: none;
+}
+
+.spread-ritual-loader__veil {
+  @apply absolute inset-0;
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 45%, rgba(201, 162, 74, 0.14), transparent 65%),
+    radial-gradient(ellipse 90% 80% at 50% 50%, rgba(16, 14, 12, 0.92), rgba(8, 6, 4, 0.97));
+  backdrop-filter: blur(10px);
+}
+
+.spread-ritual-loader__content {
+  @apply relative z-10 flex w-full max-w-md flex-col items-center gap-8;
+  pointer-events: none;
+}
+
+.spread-ritual-loader__circle-wrap {
+  @apply relative mx-auto;
+  width: min(72vw, 220px);
+  height: min(72vw, 220px);
+}
+
+.spread-ritual-loader__ring {
+  @apply absolute inset-0 rounded-full;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+}
+
+.spread-ritual-loader__ring--outer {
+  box-shadow:
+    0 0 0 1px rgba(232, 199, 126, 0.06) inset,
+    0 0 40px rgba(201, 162, 74, 0.12);
+}
+
+.spread-ritual-loader__ring--inner {
+  inset: 14%;
+  border-color: rgba(201, 162, 74, 0.28);
+  box-shadow: 0 0 24px rgba(201, 162, 74, 0.1);
+}
+
+.spread-ritual-loader__core {
+  @apply absolute flex items-center justify-center rounded-full;
+  inset: 32%;
+  border: 1px solid rgba(232, 199, 126, 0.22);
+  background: radial-gradient(circle at 40% 35%, rgba(232, 199, 126, 0.14), rgba(7, 5, 15, 0.85));
+  box-shadow: var(--shadow-gold-glow);
+}
+
+.spread-ritual-loader__core-glyph {
+  @apply text-2xl text-aura-champagne;
+  text-shadow: 0 0 18px rgba(232, 199, 126, 0.55);
+  animation: spread-ritual-pulse 2.2s ease-in-out infinite;
+}
+
+.spread-ritual-loader__runes {
+  @apply absolute inset-0 m-0 list-none p-0;
+}
+
+.spread-ritual-loader__rune {
+  @apply absolute text-lg font-medium text-aura-ivory/25;
+  transform: translate(-50%, -50%);
+  transition:
+    color 0.35s ease,
+    text-shadow 0.35s ease,
+    opacity 0.35s ease;
+}
+
+.spread-ritual-loader__rune--lit {
+  @apply text-aura-champagne;
+  text-shadow:
+    0 0 12px rgba(232, 199, 126, 0.75),
+    0 0 28px rgba(201, 162, 74, 0.35);
+  opacity: 1;
+}
+
+.spread-ritual-loader__cards {
+  @apply flex items-end justify-center gap-3 sm:gap-4;
+  perspective: 900px;
+}
+
+.spread-ritual-loader__card-slot {
+  width: 88px;
+  height: 132px;
+}
+
+.spread-ritual-loader__deck-card {
+  @apply h-full w-full;
+}
+
+.spread-ritual-loader__deck-card .lux-tarot-card {
+  @apply h-full max-w-none;
+}
+
+.spread-ritual-loader__phrase {
+  @apply text-center font-display text-lg font-medium tracking-wide text-aura-champagne sm:text-xl;
+  text-shadow: 0 0 24px rgba(232, 199, 126, 0.25);
+}
+
+.spread-ritual-loader__timer {
+  @apply mt-3 text-center font-mono text-sm tabular-nums text-white/70;
+}
+
+.spread-ritual-loader__timer-hint {
+  @apply font-sans text-xs text-white/40;
+}
+
+/* Inline deck shuffle (ritual step — «Перемешать ещё раз») */
+.deck-shuffle {
+  @apply mx-auto mt-6 flex w-full max-w-sm flex-col items-center gap-3;
+}
+
+.deck-shuffle--idle {
+  @apply mt-5;
+}
+
+.deck-shuffle--idle .deck-shuffle__stage {
+  height: 120px;
+}
+
+.deck-shuffle--idle .deck-shuffle__card {
+  width: 56px;
+  height: 84px;
+}
+
+.deck-shuffle__stage {
+  @apply relative flex h-[180px] w-full items-center justify-center;
+  perspective: 1000px;
+}
+
+.deck-shuffle__card {
+  @apply absolute;
+  width: 74px;
+  height: 112px;
+  transform-style: preserve-3d;
+  filter: drop-shadow(0 10px 18px rgba(0, 0, 0, 0.5));
+  will-change: transform;
+}
+
+.deck-shuffle__deck-card {
+  @apply h-full w-full;
+}
+
+.deck-shuffle__deck-card .lux-tarot-card {
+  @apply h-full max-w-none;
+}
+
+.deck-shuffle__phrase {
+  @apply text-center font-display text-base font-medium tracking-wide text-aura-champagne sm:text-lg;
+  text-shadow: 0 0 20px rgba(232, 199, 126, 0.28);
+  min-height: 1.5em;
+}
+
+.deck-shuffle__topic {
+  @apply text-center text-[11px] uppercase tracking-[0.18em] text-amber-400/70;
+}
+
+.deck-shuffle-btn {
+  @apply mx-auto mt-5 flex w-full max-w-xs flex-col items-center;
+}
+
+.spread-reading-ritual {
+  @apply mt-4 flex flex-col items-center gap-3 border-t border-white/5 pt-5;
+}
+
+.spread-reading-ritual__ring {
+  width: 148px;
+  height: 148px;
+}
+
+.spread-reading-ritual__countdown {
+  @apply font-mono text-lg tabular-nums;
+}
+
+.spread-reading-ritual__phrase {
+  @apply text-center text-sm font-medium tracking-wide text-aura-champagne/90;
+  text-shadow: 0 0 16px rgba(232, 199, 126, 0.2);
+}
+
+@keyframes spread-ritual-pulse {
+  0%,
+  100% {
+    opacity: 0.75;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+

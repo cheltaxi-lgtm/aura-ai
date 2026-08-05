@@ -117,7 +117,7 @@ export default function AdminLoginForm() {
         className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
       />
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
-      <button type="submit" disabled={loading} className="btn-neon w-full py-3 text-sm disabled:opacity-50">
+      <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-sm disabled:opacity-50">
         {loading ? "Вход…" : "Войти"}
       </button>
     </form>

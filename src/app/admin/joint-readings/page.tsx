@@ -85,7 +85,7 @@ export default function AdminJointReadingsPage() {
               type="checkbox"
               checked={settings.enabled}
               onChange={(e) => setSettings({ ...settings, enabled: e.target.checked })}
-              className="h-4 w-4 accent-aura-purple"
+              className="h-4 w-4 accent-aura-gold"
             />
             <span className="text-gray-200">Совместные расклады включены</span>
           </label>

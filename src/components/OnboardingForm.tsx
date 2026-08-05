@@ -140,7 +140,7 @@ export default function OnboardingForm({
         </p>
       )}
 
-      <button type="submit" disabled={submitting} className="btn-neon w-full py-3 text-sm">
+      <button type="submit" disabled={submitting} className="btn-primary w-full py-3 text-sm">
         {submitting ? "Сохраняем…" : "Продолжить"}
       </button>
     </motion.form>

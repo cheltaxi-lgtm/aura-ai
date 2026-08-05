@@ -218,7 +218,7 @@ export default function AdminUsersPage() {
     const currentBalance = Number(balance) || 0;
     return (
       <div key="runes" className="flex flex-col gap-1">
-        <span className="text-sm font-medium text-aura-neon">{formatRunes(currentBalance)}</span>
+        <span className="text-sm font-medium text-aura-champagne">{formatRunes(currentBalance)}</span>
         <AdminBtn onClick={() => openGrantModal(profileUserId, label, currentBalance)}>
           Начислить
         </AdminBtn>
@@ -242,7 +242,7 @@ export default function AdminUsersPage() {
           <button
             key={t}
             onClick={() => setTab(t)}
-            className={`rounded-lg px-4 py-2 text-sm ${tab === t ? "bg-aura-purple/20 text-aura-neon" : "text-gray-500 hover:text-white"}`}
+            className={`rounded-lg px-4 py-2 text-sm ${tab === t ? "bg-aura-gold/20 text-aura-champagne" : "text-gray-500 hover:text-white"}`}
           >
             {t === "accounts" ? "Аккаунты" : "Профили"}
           </button>
@@ -284,7 +284,7 @@ export default function AdminUsersPage() {
                     type="button"
                     disabled={tripletBusyId === profileUserId}
                     onClick={() => void resetTripletCooldown(profileUserId, email)}
-                    className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-aura-purple/40 hover:text-white disabled:opacity-50"
+                    className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-aura-gold/40 hover:text-white disabled:opacity-50"
                   >
                     {tripletBusyId === profileUserId ? "…" : "Сбросить"}
                   </button>
@@ -300,7 +300,7 @@ export default function AdminUsersPage() {
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   unlimited
                     ? "bg-aura-emerald/20 text-aura-emerald hover:bg-aura-emerald/30"
-                    : "border border-white/10 text-gray-400 hover:border-aura-purple/40 hover:text-white"
+                    : "border border-white/10 text-gray-400 hover:border-aura-gold/40 hover:text-white"
                 } disabled:opacity-50`}
               >
                 {busyId === id ? "…" : unlimited ? "∞ Вкл" : "Выкл"}
@@ -350,7 +350,7 @@ export default function AdminUsersPage() {
             <p className="mt-1 text-sm text-white/50">{grantModal.label}</p>
             <p className="mt-2 text-sm text-white/70">
               Текущий баланс:{" "}
-              <span className="font-medium text-aura-neon">
+              <span className="font-medium text-aura-champagne">
                 {formatRunes(grantModal.currentBalance)}
               </span>
             </p>
@@ -370,7 +370,7 @@ export default function AdminUsersPage() {
                   key={preset}
                   type="button"
                   onClick={() => setGrantAmount(String(preset))}
-                  className="rounded-lg border border-white/10 px-2.5 py-1 text-xs text-gray-400 transition-colors hover:border-aura-purple/40 hover:text-white"
+                  className="rounded-lg border border-white/10 px-2.5 py-1 text-xs text-gray-400 transition-colors hover:border-aura-gold/40 hover:text-white"
                 >
                   +{preset}
                 </button>

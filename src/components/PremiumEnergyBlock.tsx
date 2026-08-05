@@ -667,7 +667,7 @@ export default function PremiumEnergyBlock({
                           setOpen(false);
                           onStartRitual(ritualUpsellType);
                         }}
-                        className="block w-full rounded-xl border border-purple-500/25 bg-purple-500/8 px-4 py-3 text-left text-sm text-white/75 transition-colors hover:border-purple-500/40"
+                        className="block w-full rounded-xl border border-aura-gold/25 bg-aura-gold/8 px-4 py-3 text-left text-sm text-white/75 transition-colors hover:border-aura-gold/40"
                       >
                         Усилите энергию дня{" "}
                         <span className="text-amber-300">обрядом →</span>

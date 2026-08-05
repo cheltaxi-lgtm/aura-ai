@@ -153,7 +153,7 @@ export default function ModelPicker({
       </div>
 
       {value && (
-        <p className="mt-1 truncate text-[11px] text-aura-neon" title={value}>
+        <p className="mt-1 truncate text-[11px] text-aura-champagne" title={value}>
           ID: {value}
         </p>
       )}
@@ -176,8 +176,8 @@ export default function ModelPicker({
                 key={model.id}
                 type="button"
                 onClick={() => selectModel(model)}
-                className={`block w-full border-b border-white/5 px-4 py-3 text-left transition-colors hover:bg-aura-purple/10 ${
-                  model.id === value ? "bg-aura-purple/15" : ""
+                className={`block w-full border-b border-white/5 px-4 py-3 text-left transition-colors hover:bg-aura-gold/10 ${
+                  model.id === value ? "bg-aura-gold/15" : ""
                 }`}
               >
                 <p className="text-sm font-medium text-white">{model.name}</p>

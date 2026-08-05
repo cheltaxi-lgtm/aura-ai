@@ -61,7 +61,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
       aria-labelledby="paywall-title"
     >
       <motion.div
-        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[rgba(201,162,74,0.28)] bg-[#141210] shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
+        className="relative w-full max-w-md overflow-hidden rounded-2xl border border-[rgba(201,162,74,0.28)] bg-aura-surface shadow-[0_24px_64px_rgba(0,0,0,0.55)]"
         initial={{ scale: 0.96, y: 12 }}
         animate={{ scale: 1, y: 0 }}
         onClick={(e) => e.stopPropagation()}
@@ -79,7 +79,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
             Продолжение сеанса
           </p>
 
-          <h2 id="paywall-title" className="font-display mb-2 text-center text-2xl font-medium text-[#ede6da]">
+          <h2 id="paywall-title" className="font-display mb-2 text-center text-2xl font-medium text-aura-ivory">
             {userName ? `${userName}, открыть полный разбор` : "Открыть полный разбор"}
           </h2>
           <p className="mb-6 text-center text-sm leading-relaxed text-[rgba(237,230,218,0.55)]">
@@ -109,7 +109,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-medium text-[#ede6da]">Детальный разбор</p>
+                <p className="font-medium text-aura-ivory">Детальный разбор</p>
                 <p className="text-xs text-white/40">СБП · карты · ЮMoney</p>
               </div>
               <span className="font-display text-xl font-semibold text-aura-gold">за руны ᚢ</span>
@@ -128,7 +128,7 @@ export default function Paywall({ sessionId, userName, onClose }: PaywallProps) 
                 )}
               </div>
               <div className="flex-1">
-                <p className="font-medium text-[#ede6da]">Подписка Zovus+</p>
+                <p className="font-medium text-aura-ivory">Подписка Zovus+</p>
                 <p className="text-xs text-white/40">Безлимит на месяц · все наставники</p>
               </div>
               <span className="font-display text-xl font-semibold text-aura-gold">Zovus+</span>

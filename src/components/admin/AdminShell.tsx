@@ -75,7 +75,7 @@ function AdminNavLinks({
             onClick={onNavigate}
             className={`flex items-center gap-3 rounded-xl px-3 py-2.5 text-sm transition-colors ${
               active
-                ? "bg-aura-purple/20 text-aura-neon"
+                ? "bg-aura-gold/20 text-aura-champagne"
                 : "text-gray-400 hover:bg-white/5 hover:text-white"
             }`}
           >
@@ -137,7 +137,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
     <div className="min-h-screen">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-black/40 px-4 py-3 backdrop-blur md:hidden">
         <div className="min-w-0">
-          <p className="font-display text-base font-bold text-aura-neon">Zovus Admin</p>
+          <p className="font-display text-base font-bold text-aura-champagne">Zovus Admin</p>
           <p className="truncate text-[10px] text-gray-600">{admin.email}</p>
         </div>
         <button
@@ -165,7 +165,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
         }`}
       >
         <div className="mb-6 px-2">
-          <p className="font-display text-lg font-bold text-aura-neon">Zovus Admin</p>
+          <p className="font-display text-lg font-bold text-aura-champagne">Zovus Admin</p>
           <p className="truncate text-xs text-gray-600">{admin.email}</p>
         </div>
         <div className="flex-1 overflow-y-auto">
@@ -190,7 +190,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
       <div className="flex min-h-screen">
         <aside className="hidden w-64 shrink-0 border-r border-white/5 bg-black/30 p-4 md:block">
           <div className="mb-8 px-2">
-            <p className="font-display text-lg font-bold text-aura-neon">Zovus Admin</p>
+            <p className="font-display text-lg font-bold text-aura-champagne">Zovus Admin</p>
             <p className="truncate text-xs text-gray-600">{admin.email}</p>
           </div>
           <AdminNavLinks pathname={pathname} showAds={showAdsNav} />
@@ -289,7 +289,7 @@ export function AdminBtn({
       className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors disabled:opacity-50 ${
         variant === "danger"
           ? "border border-red-500/40 text-red-400 hover:bg-red-500/10"
-          : "border border-aura-purple/40 text-aura-neon hover:bg-aura-purple/10"
+          : "border border-aura-gold/40 text-aura-champagne hover:bg-aura-gold/10"
       }`}
     >
       {children}
