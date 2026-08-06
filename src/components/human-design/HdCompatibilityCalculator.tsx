@@ -69,8 +69,15 @@ function PersonForm({
         onChange({ placesOpen: false });
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onChange({ placesOpen: false });
+    };
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -187,7 +194,11 @@ function PersonForm({
 
       <button
         type="button"
-        onClick={onCompute}
+        onMouseDown={() => onChange({ placesOpen: false })}
+        onClick={() => {
+          onChange({ placesOpen: false });
+          onCompute();
+        }}
         disabled={state.loading}
         className="btn-luxe btn-luxe--gold mt-4 w-full disabled:opacity-60"
       >

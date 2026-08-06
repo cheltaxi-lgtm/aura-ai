@@ -253,10 +253,40 @@ async function refreshChartIfEngineStale(row: HdChartDbRow): Promise<HdChartDbRo
 }
 
 /**
+ * Invariant: at most one `self` chart per user.
+ * Demotes every other personal chart to `other` (named by birth date) and
+ * drops their memory facts so the cabinet / bot never hide the real self.
+ */
+async function demoteOtherSelfCharts(
+  userId: string,
+  keepChartId: string
+): Promise<void> {
+  const { rows } = await query<{ id: string }>(
+    `UPDATE hd_charts
+     SET subject_kind = 'other',
+         subject_name = COALESCE(
+           NULLIF(BTRIM(COALESCE(subject_name, '')), ''),
+           to_char(birth_date, 'DD.MM.YYYY')
+         ),
+         updated_at = now()
+     WHERE user_id = $1
+       AND id <> $2
+       AND COALESCE(subject_kind, 'self') <> 'other'
+     RETURNING id`,
+    [userId, keepChartId]
+  );
+  if (rows.length === 0) return;
+  const { forgetHdChartFact } = await import("@/lib/human-design/memory");
+  for (const row of rows) {
+    forgetHdChartFact(userId, row.id);
+  }
+}
+/**
  * Update subject label on an owned chart.
- * Never demote `self` → `other`: the same birth fingerprint is one row per
- * owner, and recalculating “for someone else” with identical birth data must
- * not hide the user’s personal chart in the cabinet / bot.
+ * Never demote `self` → `other` on the *same* fingerprint: recalculating
+ * “for someone else” with identical birth data must not hide the user’s
+ * personal chart. A *different* fingerprint becoming `self` demotes siblings
+ * via {@link demoteOtherSelfCharts}.
  */
 async function relabelOwnedChart(
   row: HdChartDbRow,
@@ -284,6 +314,15 @@ async function relabelOwnedChart(
   return { ...row, subject_kind: nextKind, subject_name: nextName };
 }
 
+/** After any path that yields an owned `self` row, enforce the single-self invariant. */
+async function finalizeOwnedSelfChart(
+  userId: string,
+  row: HdChartDbRow
+): Promise<HdChartDbRow> {
+  if (row.subject_kind === "other") return row;
+  await demoteOtherSelfCharts(userId, row.id);
+  return row;
+}
 /**
  * Get-or-compute scoped to the owner: every user gets their own row for a
  * given fingerprint; guests share the anonymous pool row. A logged-in caller
@@ -315,6 +354,7 @@ export async function getOrComputeHdChart(
     if (userId && subject) {
       row = await relabelOwnedChart(row, subjectKind, subjectName);
     }
+    if (userId) row = await finalizeOwnedSelfChart(userId, row);
     return { row: mapChartRow(row), claimToken: null };
   }
 
@@ -340,6 +380,7 @@ export async function getOrComputeHdChart(
       if (own2.rows[0]) {
         let row = await refreshChartIfEngineStale(own2.rows[0]);
         if (subject) row = await relabelOwnedChart(row, subjectKind, subjectName);
+        row = await finalizeOwnedSelfChart(userId, row);
         return { row: mapChartRow(row), claimToken: null };
       }
       throw error;
@@ -349,6 +390,7 @@ export async function getOrComputeHdChart(
       if (subject) {
         row = await relabelOwnedChart(row, subjectKind, subjectName);
       }
+      row = await finalizeOwnedSelfChart(userId, row);
       return { row: mapChartRow(row), claimToken: null };
     }
   }
@@ -409,10 +451,11 @@ export async function getOrComputeHdChart(
       newClaimToken,
     ]
   );
-  const row = inserted.rows[0]!;
+  let row = inserted.rows[0]!;
   // A concurrent insert won the race → the returned row carries THEIR token,
   // which must never leak to us.
   const granted = newClaimToken !== null && row.claim_token === newClaimToken;
+  if (userId) row = await finalizeOwnedSelfChart(userId, row);
   return { row: mapChartRow(row), claimToken: granted ? newClaimToken : null };
 }
 
@@ -486,15 +529,41 @@ async function healDemotedSelfHdChart(userId: string): Promise<void> {
   );
 }
 
+/**
+ * Collapse multiple `self` rows: keep the chart matching profile birth date
+ * (else the oldest personal chart), demote the rest to `other`.
+ */
+async function healMultiSelfHdChart(userId: string): Promise<void> {
+  const selfs = await query<{ id: string; birth_date: string }>(
+    `SELECT id, birth_date::text AS birth_date
+     FROM hd_charts
+     WHERE user_id = $1 AND COALESCE(subject_kind, 'self') <> 'other'
+     ORDER BY created_at ASC`,
+    [userId]
+  );
+  if (selfs.rows.length <= 1) return;
+
+  const profile = await query<{ birth_date: string }>(
+    `SELECT birth_date::text AS birth_date FROM users WHERE id = $1 LIMIT 1`,
+    [userId]
+  );
+  const birthDate = profile.rows[0]?.birth_date?.slice(0, 10) ?? null;
+  const keep =
+    (birthDate
+      ? selfs.rows.find((r) => r.birth_date.slice(0, 10) === birthDate)
+      : null) ?? selfs.rows[0]!;
+  await demoteOtherSelfCharts(userId, keep.id);
+}
+
 export async function listHdChartsForUser(userId: string): Promise<HdChartRow[]> {
   await healDemotedSelfHdChart(userId);
+  await healMultiSelfHdChart(userId);
   const { rows } = await query<HdChartDbRow>(
     "SELECT * FROM hd_charts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
     [userId]
   );
   return rows.map(mapChartRow);
 }
-
 /** Attach a guest chart to a freshly registered/logged-in account. */
 /**
  * Delete a chart owned by the user. Accepts a chart id or a report id
@@ -541,7 +610,12 @@ export async function claimHdChart(
      WHERE fingerprint = $1 AND user_id IS NULL AND claim_token = $3`,
     [fingerprint, userId, claimToken]
   );
-  return (result.rowCount ?? 0) > 0;
+  if ((result.rowCount ?? 0) > 0) {
+    // Guest rows are usually `self`; claiming must not leave two personal charts.
+    await healMultiSelfHdChart(userId);
+    return true;
+  }
+  return false;
 }
 
 export async function getHdReportForChart(

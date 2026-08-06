@@ -229,8 +229,15 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
         setPlacesOpen(false);
       }
     };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setPlacesOpen(false);
+    };
     document.addEventListener("mousedown", onClick);
-    return () => document.removeEventListener("mousedown", onClick);
+    document.addEventListener("keydown", onKey);
+    return () => {
+      document.removeEventListener("mousedown", onClick);
+      document.removeEventListener("keydown", onKey);
+    };
   }, []);
 
   const searchPlaces = useCallback((q: string) => {
@@ -251,6 +258,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   }, []);
 
   const submit = useCallback(async () => {
+    setPlacesOpen(false);
     setError(null);
     if (subjectKind === "other" && !subjectName.trim()) {
       setError("Укажите имя человека, для которого делается расчёт.");
@@ -539,6 +547,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 
       <button
         type="button"
+        onMouseDown={() => setPlacesOpen(false)}
         onClick={() => void submit()}
         disabled={loading}
         className="btn-luxe btn-luxe--gold mt-5 w-full disabled:opacity-60"

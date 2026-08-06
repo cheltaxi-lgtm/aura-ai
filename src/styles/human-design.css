@@ -354,6 +354,11 @@
   box-shadow: 0 0 0 3px rgba(201, 162, 74, 0.12);
 }
 
+/* Reserve space under the field so the absolute list never covers CTA buttons. */
+.hd-field:has(.hd-places) {
+  margin-bottom: min(15rem, 45vh);
+}
+
 .hd-places {
   @apply absolute inset-x-0 top-full z-20 mt-1 max-h-60 overflow-y-auto rounded-xl border border-white/10 py-1;
   background: linear-gradient(180deg, rgba(24, 18, 40, 0.99), rgba(12, 9, 20, 0.99));

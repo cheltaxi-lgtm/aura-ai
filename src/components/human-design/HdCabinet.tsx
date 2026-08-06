@@ -80,10 +80,14 @@ export default function HdCabinet() {
     };
   }, [load]);
 
-  const selfChart = useMemo(
-    () => charts?.find((c) => c.subjectKind !== "other") ?? null,
-    [charts]
-  );
+  const selfChart = useMemo(() => {
+    const selfs = (charts ?? []).filter((c) => c.subjectKind !== "other");
+    if (selfs.length <= 1) return selfs[0] ?? null;
+    // Server heals to one self; if a race left extras, prefer the oldest.
+    return [...selfs].sort((a, b) =>
+      String(a.createdAt).localeCompare(String(b.createdAt))
+    )[0]!;
+  }, [charts]);
   const otherCharts = useMemo(
     () => (charts ?? []).filter((c) => c.subjectKind === "other"),
     [charts]
