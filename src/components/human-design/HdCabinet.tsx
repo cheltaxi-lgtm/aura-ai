@@ -226,11 +226,20 @@ export default function HdCabinet() {
         className="flex gap-1 rounded-2xl border border-white/10 p-1"
         role="tablist"
         aria-label="Папки карт"
+        onKeyDown={(e) => {
+          if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
+            e.preventDefault();
+            openFolder(folder === "self" ? "others" : "self");
+          }
+        }}
       >
         <button
           type="button"
+          id="hd-tab-self"
           role="tab"
           aria-selected={folder === "self"}
+          aria-controls="hd-tab-panel"
+          tabIndex={folder === "self" ? 0 : -1}
           onClick={() => openFolder("self")}
           className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
             folder === "self"
@@ -242,8 +251,11 @@ export default function HdCabinet() {
         </button>
         <button
           type="button"
+          id="hd-tab-others"
           role="tab"
           aria-selected={folder === "others"}
+          aria-controls="hd-tab-panel"
+          tabIndex={folder === "others" ? 0 : -1}
           onClick={() => openFolder("others")}
           className={`flex-1 rounded-xl px-3 py-2.5 text-sm font-medium transition ${
             folder === "others"
@@ -276,8 +288,8 @@ export default function HdCabinet() {
               onClick={() => setPartnerId(c.id)}
               className={`rounded-full border px-3 py-1 text-xs transition ${
                 partnerId === c.id
-                  ? "border-violet-400/60 bg-violet-500/15 text-violet-100"
-                  : "border-white/10 bg-white/[0.03] text-white/60 hover:border-violet-400/40"
+                  ? "border-amber-400/60 bg-amber-500/15 text-amber-100"
+                  : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
               }`}
             >
               Композит с {hdChartChipLabel(c)}
@@ -312,6 +324,11 @@ export default function HdCabinet() {
       )}
 
       {/* Exactly one chart surface — never two bodygraphs at once. */}
+      <div
+        id="hd-tab-panel"
+        role="tabpanel"
+        aria-labelledby={folder === "self" ? "hd-tab-self" : "hd-tab-others"}
+      >
       <HdChartSlot slotKey={slotKey}>
         {folder === "self" && selfChart && !partner && (
           <div className="space-y-5">
@@ -338,7 +355,7 @@ export default function HdCabinet() {
         {folder === "self" && selfChart && partner && (
           <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <p className="text-sm text-violet-100/80">
+              <p className="text-sm text-amber-100/80">
                 Композит: {hdChartChipLabel(selfChart)} + {hdChartChipLabel(partner)}
               </p>
               <button
@@ -403,6 +420,7 @@ export default function HdCabinet() {
           </div>
         )}
       </HdChartSlot>
+      </div>
     </div>
   );
 }

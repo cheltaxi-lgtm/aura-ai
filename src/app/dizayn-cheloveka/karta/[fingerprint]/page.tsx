@@ -49,8 +49,7 @@ export default async function HdSharedChartPage({
         {TYPE_META[chart.chart.type].nameRu} · профиль {chart.chart.profile}
       </h1>
       <p className="mt-3 text-sm text-white/55">
-        {chart.birthDate.split("-").reverse().join(".")} ·{" "}
-        {chart.timeUnknown ? "время неизвестно" : chart.birthTime} · {chart.placeName}
+        Публичная ссылка показывает бодиграф без даты и места рождения.
       </p>
 
       <div className="mt-8">
@@ -58,9 +57,6 @@ export default async function HdSharedChartPage({
           payload={{
             id: chart.id,
             fingerprint: chart.fingerprint,
-            placeName: chart.placeName,
-            birthDate: chart.birthDate,
-            birthTime: chart.birthTime,
             timeUnknown: chart.timeUnknown,
             chart: chart.chart,
           }}

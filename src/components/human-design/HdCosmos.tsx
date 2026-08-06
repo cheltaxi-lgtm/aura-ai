@@ -42,7 +42,7 @@ export default function HdCosmos() {
         twinkleSpeed: Math.random() * 1.6 + 0.4,
         driftX: (Math.random() - 0.5) * 0.06 * dpr,
         driftY: (Math.random() - 0.5) * 0.04 * dpr,
-        hue: Math.random() < 0.75 ? 45 : 275, // gold or violet
+        hue: Math.random() < 0.85 ? 45 : 38, // gold / warm amber
       }));
     };
 

@@ -29,30 +29,47 @@ interface TransitActivation {
 /** "Погода дня": текущие транзиты на хабе Дизайна Человека. */
 export default function HdTransitToday() {
   const [items, setItems] = useState<TransitActivation[] | null>(null);
+  const [error, setError] = useState(false);
 
   useEffect(() => {
     fetch("/api/human-design/transits")
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { activations?: TransitActivation[] } | null) => {
-        if (!d?.activations) return;
+        if (!d?.activations) {
+          setError(true);
+          return;
+        }
         setItems(
           HIGHLIGHT_BODIES.map((b) => d.activations!.find((a) => a.body === b)!).filter(Boolean)
         );
       })
-      .catch(() => setItems(null));
+      .catch(() => setError(true));
   }, []);
+
+  if (error) {
+    return (
+      <div className="rounded-3xl border border-amber-500/20 bg-amber-500/[0.05] p-5">
+        <p className="text-[0.625rem] font-medium uppercase tracking-[0.25em] text-amber-200/60">
+          Погода дня · транзиты сейчас
+        </p>
+        <p className="mt-3 text-sm text-white/55">
+          Не удалось загрузить текущие транзиты. Обновите страницу чуть позже.
+        </p>
+      </div>
+    );
+  }
 
   if (!items) return null;
 
   return (
-    <div className="rounded-3xl border border-violet-400/20 bg-violet-500/[0.06] p-5">
-      <p className="text-[0.625rem] font-medium uppercase tracking-[0.25em] text-violet-200/60">
+    <div className="rounded-3xl border border-amber-500/20 bg-amber-500/[0.05] p-5">
+      <p className="text-[0.625rem] font-medium uppercase tracking-[0.25em] text-amber-200/60">
         Погода дня · транзиты сейчас
       </p>
       <ul className="mt-3 grid grid-cols-2 gap-2 text-sm sm:grid-cols-3">
         {items.map((a) => (
           <li key={a.body} className="flex items-center gap-2 text-white/80">
-            <span className="w-5 text-center text-violet-200">{BODY_GLYPH[a.body]}</span>
+            <span className="w-5 text-center text-amber-100/80">{BODY_GLYPH[a.body]}</span>
             <span>
               <span className="font-semibold text-amber-100/90">
                 {a.gate}.{a.line}
@@ -65,7 +82,7 @@ export default function HdTransitToday() {
       </ul>
       <p className="mt-3 text-[0.6875rem] leading-relaxed text-white/45">
         Транзиты — текущие позиции планет. Они временно активируют ворота вашей карты:
-        рассчитайте карту и нажмите «Транзиты сейчас», чтобы увидеть наложение.
+        рассчитайте карту и нажмите «Транзиты», чтобы увидеть наложение.
       </p>
     </div>
   );

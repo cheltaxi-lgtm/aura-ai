@@ -459,8 +459,8 @@ export async function getOrComputeHdChart(
   return { row: mapChartRow(row), claimToken: granted ? newClaimToken : null };
 }
 
-/** Public wire shape: never exposes owner, coordinates, timezone or tokens. */
-export function toPublicHdChartPayload(row: HdChartRow) {
+/** Owner / creator wire shape: birth inputs needed to restore form + chips. */
+export function toOwnerHdChartPayload(row: HdChartRow) {
   return {
     id: row.id,
     fingerprint: row.fingerprint,
@@ -470,6 +470,19 @@ export function toPublicHdChartPayload(row: HdChartRow) {
     timeUnknown: row.timeUnknown,
     subjectKind: row.subjectKind,
     subjectName: row.subjectName,
+    chart: row.chart,
+  };
+}
+
+/**
+ * Public share / fingerprint capability: chart mechanics only.
+ * Never exposes owner, birth date/time, place, coordinates, timezone or tokens.
+ */
+export function toPublicHdChartPayload(row: HdChartRow) {
+  return {
+    id: row.id,
+    fingerprint: row.fingerprint,
+    timeUnknown: row.timeUnknown,
     chart: row.chart,
   };
 }
@@ -605,17 +618,32 @@ export async function claimHdChart(
   );
   if (own.rows[0]) return true;
   if (!claimToken || !/^[0-9a-f]{48}$/.test(claimToken)) return false;
-  const result = await query(
-    `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
-     WHERE fingerprint = $1 AND user_id IS NULL AND claim_token = $3`,
-    [fingerprint, userId, claimToken]
-  );
-  if ((result.rowCount ?? 0) > 0) {
-    // Guest rows are usually `self`; claiming must not leave two personal charts.
-    await healMultiSelfHdChart(userId);
-    return true;
+  try {
+    const result = await query(
+      `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
+       WHERE fingerprint = $1 AND user_id IS NULL AND claim_token = $3`,
+      [fingerprint, userId, claimToken]
+    );
+    if ((result.rowCount ?? 0) > 0) {
+      // Guest rows are usually `self`; claiming must not leave two personal charts.
+      await healMultiSelfHdChart(userId);
+      return true;
+    }
+    return false;
+  } catch (error) {
+    // Concurrent own-row insert for the same fingerprint can trip unique
+    // (fingerprint, owner_key) when this UPDATE flips the generated owner_key.
+    if ((error as { code?: string })?.code !== "23505") throw error;
+    const again = await query(
+      "SELECT 1 FROM hd_charts WHERE fingerprint = $1 AND user_id = $2 LIMIT 1",
+      [fingerprint, userId]
+    );
+    if (again.rows[0]) {
+      await healMultiSelfHdChart(userId);
+      return true;
+    }
+    throw error;
   }
-  return false;
 }
 
 export async function getHdReportForChart(
@@ -770,15 +798,32 @@ function mapCompositeRow(r: HdCompositeReportDbRow): HdCompositeReportRow {
   };
 }
 
+/** Canonical storage order so A↔B and B↔A share one paid composite row. */
+export function normalizeCompositePair(
+  baseChartId: string,
+  partnerChartId: string
+): [string, string] {
+  return baseChartId < partnerChartId
+    ? [baseChartId, partnerChartId]
+    : [partnerChartId, baseChartId];
+}
+
 export async function getHdCompositeReport(
   baseChartId: string,
   partnerChartId: string,
   userId: string
 ): Promise<HdCompositeReportRow | null> {
+  // Match either orientation — legacy rows may predate canonical ordering.
   const { rows } = await query<HdCompositeReportDbRow>(
     `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at
      FROM hd_composite_reports
-     WHERE base_chart_id = $1 AND partner_chart_id = $2 AND user_id = $3`,
+     WHERE user_id = $3
+       AND (
+         (base_chart_id = $1 AND partner_chart_id = $2)
+         OR (base_chart_id = $2 AND partner_chart_id = $1)
+       )
+     ORDER BY created_at ASC
+     LIMIT 1`,
     [baseChartId, partnerChartId, userId]
   );
   return rows[0] ? mapCompositeRow(rows[0]) : null;
@@ -794,11 +839,15 @@ export async function createPendingCompositeReport(
   },
   client?: PoolClient
 ): Promise<HdCompositeReportRow | null> {
+  const [baseChartId, partnerChartId] = normalizeCompositePair(
+    params.baseChartId,
+    params.partnerChartId
+  );
   const sql = `INSERT INTO hd_composite_reports (base_chart_id, partner_chart_id, user_id, status, transaction_id)
      VALUES ($1, $2, $3, 'pending', $4)
      ON CONFLICT (base_chart_id, partner_chart_id, user_id) DO NOTHING
      RETURNING id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at`;
-  const params_ = [params.baseChartId, params.partnerChartId, params.userId, params.transactionId];
+  const params_ = [baseChartId, partnerChartId, params.userId, params.transactionId];
   const { rows } = client
     ? await queryClient<HdCompositeReportDbRow>(client, sql, params_)
     : await query<HdCompositeReportDbRow>(sql, params_);

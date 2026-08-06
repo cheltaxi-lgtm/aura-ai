@@ -255,6 +255,10 @@ export async function POST(request: NextRequest) {
       await rollback().catch(() => {
         console.warn("[human-design] billing rollback failed");
       });
+      if (resumePaidPending && pending) {
+        // Release CAS age reset so the next retry isn't blocked for 10 min.
+        await releaseStalePendingReportLock(pending.id).catch(() => undefined);
+      }
     }
     // A failed create+charge transaction rolled back atomically — no unpaid
     // placeholder to clean up, the next attempt starts clean.

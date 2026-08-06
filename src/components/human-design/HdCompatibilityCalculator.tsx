@@ -22,6 +22,8 @@ interface PersonState {
   place: PlaceSuggestion | null;
   suggestions: PlaceSuggestion[];
   placesOpen: boolean;
+  placesLoading: boolean;
+  placesSearched: boolean;
   chart: HdChartPayload | null;
   loading: boolean;
   error: string | null;
@@ -42,6 +44,8 @@ const EMPTY: PersonState = {
   place: null,
   suggestions: [],
   placesOpen: false,
+  placesLoading: false,
+  placesSearched: false,
   chart: null,
   loading: false,
   error: null,
@@ -85,9 +89,10 @@ function PersonForm({
     (q: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (q.trim().length < 2) {
-        onChange({ suggestions: [] });
+        onChange({ suggestions: [], placesSearched: false, placesLoading: false });
         return;
       }
+      onChange({ placesLoading: true, placesSearched: false });
       debounceRef.current = setTimeout(() => {
         fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`)
           .then((r) => (r.ok ? r.json() : null))
@@ -95,9 +100,18 @@ function PersonForm({
             onChange({
               suggestions: Array.isArray(d?.places) ? d.places : [],
               placesOpen: true,
+              placesSearched: true,
+              placesLoading: false,
             });
           })
-          .catch(() => onChange({ suggestions: [] }));
+          .catch(() =>
+            onChange({
+              suggestions: [],
+              placesOpen: true,
+              placesSearched: true,
+              placesLoading: false,
+            })
+          );
       }, 250);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -170,21 +184,30 @@ function PersonForm({
             className="hd-field__input"
             autoComplete="off"
           />
-          {state.placesOpen && state.suggestions.length > 0 && (
+          {state.placesOpen && (state.placesLoading || state.placesSearched) && (
             <div className="hd-places" role="listbox" aria-label="Варианты мест">
-              {state.suggestions.map((s) => (
-                <button
-                  key={`${s.label}-${s.latitude}`}
-                  type="button"
-                  className="hd-places__item"
-                  onClick={() =>
-                    onChange({ place: s, placeQuery: s.label, placesOpen: false })
-                  }
-                >
-                  {s.label}
-                  <small>{s.timezone}</small>
-                </button>
-              ))}
+              {state.placesLoading && (
+                <p className="hd-places__empty">Ищем города…</p>
+              )}
+              {!state.placesLoading && state.suggestions.length === 0 && (
+                <p className="hd-places__empty">
+                  Город не найден. Попробуйте другое написание или более крупный населённый пункт.
+                </p>
+              )}
+              {!state.placesLoading &&
+                state.suggestions.map((s) => (
+                  <button
+                    key={`${s.label}-${s.latitude}`}
+                    type="button"
+                    className="hd-places__item"
+                    onClick={() =>
+                      onChange({ place: s, placeQuery: s.label, placesOpen: false })
+                    }
+                  >
+                    {s.label}
+                    <small>{s.timezone}</small>
+                  </button>
+                ))}
             </div>
           )}
         </div>

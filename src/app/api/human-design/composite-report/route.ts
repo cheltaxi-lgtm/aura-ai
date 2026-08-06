@@ -298,6 +298,9 @@ export async function POST(request: NextRequest) {
       await rollback().catch(() => {
         console.warn("[human-design] composite rollback failed");
       });
+      if (resumePaidPending && pending) {
+        await releaseStalePendingCompositeLock(pending.id).catch(() => undefined);
+      }
     }
     // A failed create+charge transaction rolled back atomically — no unpaid
     // placeholder to clean up, the next attempt starts clean.

@@ -14,6 +14,7 @@ import {
   getOrComputeHdChart,
   HdInputError,
   HdRateLimitError,
+  toOwnerHdChartPayload,
   toPublicHdChartPayload,
 } from "@/lib/services/human-design-service";
 import type { HdChartIdentity } from "@/lib/human-design";
@@ -97,7 +98,9 @@ export async function POST(request: NextRequest) {
       rememberHdChartFact(userId, row.chart, row.id);
     }
     return NextResponse.json({
-      chart: toPublicHdChartPayload(row),
+      // Creator just submitted birth inputs — return the owner shape so the
+      // form/chips can restore. Unauthenticated share GET strips birth PII.
+      chart: toOwnerHdChartPayload(row),
       owned: Boolean(userId && row.userId === userId),
       ...(grantedToken ? { claimToken: grantedToken } : {}),
     });
@@ -126,16 +129,8 @@ export async function GET(request: NextRequest) {
   if (!chart) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
-  // Public capability URL: strip owner id, coordinates and timezone (PII).
-  const payload = toPublicHdChartPayload(chart);
-  if (chart.userId) {
-    // An owned row's subject label is private (e.g. a partner's name) — never
-    // expose it on the unauthenticated capability URL. Guest-pool rows keep
-    // the label so the creating browser can restore its own view.
-    payload.subjectKind = "self";
-    payload.subjectName = null;
-  }
-  return NextResponse.json({ chart: payload });
+  // Public capability URL: chart mechanics only (no birth/place/subject PII).
+  return NextResponse.json({ chart: toPublicHdChartPayload(chart) });
 }
 
 /**

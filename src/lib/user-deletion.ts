@@ -52,6 +52,10 @@ export async function deleteUserAccountCompletely(
 
     await run(`UPDATE rituals SET transaction_id = NULL WHERE user_id = $1`, [profileUserId]);
 
+    // Owned HD charts must not become guest-pool orphans (FK is historically
+    // ON DELETE SET NULL). Explicit delete cascades reports/insights/composites.
+    await run(`DELETE FROM hd_charts WHERE user_id = $1`, [profileUserId]);
+
     const sessionsRemoved = await run(`DELETE FROM sessions WHERE user_id = $1`, [profileUserId]);
 
     const accountRemoved = await run(

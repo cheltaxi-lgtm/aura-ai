@@ -73,6 +73,8 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   const [place, setPlace] = useState<PlaceSuggestion | null>(null);
   const [suggestions, setSuggestions] = useState<PlaceSuggestion[]>([]);
   const [placesOpen, setPlacesOpen] = useState(false);
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [placesSearched, setPlacesSearched] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<HdChartPayload | null>(initialChart);
@@ -244,16 +246,26 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     if (debounceRef.current) clearTimeout(debounceRef.current);
     if (q.trim().length < 2) {
       setSuggestions([]);
+      setPlacesSearched(false);
+      setPlacesLoading(false);
       return;
     }
+    setPlacesLoading(true);
+    setPlacesSearched(false);
     debounceRef.current = setTimeout(() => {
       fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`)
         .then((r) => (r.ok ? r.json() : null))
         .then((d) => {
           setSuggestions(Array.isArray(d?.places) ? d.places : []);
           setPlacesOpen(true);
+          setPlacesSearched(true);
         })
-        .catch(() => setSuggestions([]));
+        .catch(() => {
+          setSuggestions([]);
+          setPlacesOpen(true);
+          setPlacesSearched(true);
+        })
+        .finally(() => setPlacesLoading(false));
     }, 250);
   }, []);
 
@@ -515,25 +527,34 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
             className="hd-field__input"
             autoComplete="off"
           />
-          {placesOpen && suggestions.length > 0 && (
+          {placesOpen && (placesLoading || placesSearched) && (
             <div className="hd-places" role="listbox" aria-label="Варианты места рождения">
-              {suggestions.map((s) => (
-                <button
-                  key={`${s.label}-${s.latitude}`}
-                  type="button"
-                  role="option"
-                  aria-selected={place?.label === s.label}
-                  className="hd-places__item"
-                  onClick={() => {
-                    setPlace(s);
-                    setPlaceQuery(s.label);
-                    setPlacesOpen(false);
-                  }}
-                >
-                  {s.label}
-                  <small>{s.timezone}</small>
-                </button>
-              ))}
+              {placesLoading && (
+                <p className="hd-places__empty">Ищем города…</p>
+              )}
+              {!placesLoading && suggestions.length === 0 && (
+                <p className="hd-places__empty">
+                  Город не найден. Попробуйте другое написание или более крупный населённый пункт.
+                </p>
+              )}
+              {!placesLoading &&
+                suggestions.map((s) => (
+                  <button
+                    key={`${s.label}-${s.latitude}`}
+                    type="button"
+                    role="option"
+                    aria-selected={place?.label === s.label}
+                    className="hd-places__item"
+                    onClick={() => {
+                      setPlace(s);
+                      setPlaceQuery(s.label);
+                      setPlacesOpen(false);
+                    }}
+                  >
+                    {s.label}
+                    <small>{s.timezone}</small>
+                  </button>
+                ))}
             </div>
           )}
         </div>
@@ -563,6 +584,9 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 }
 
 function payload_line(payload: HdChartPayload): string {
-  const time = payload.timeUnknown ? "время неизвестно" : payload.birthTime;
-  return `${hdChartChipLabel(payload)} · ${time} · ${payload.placeName}`;
+  const time = payload.timeUnknown
+    ? "время неизвестно"
+    : payload.birthTime || "время неизвестно";
+  const place = payload.placeName?.trim() || "место не указано";
+  return `${hdChartChipLabel(payload)} · ${time} · ${place}`;
 }

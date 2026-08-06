@@ -62,7 +62,14 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     chartId?: unknown;
     center?: unknown;
+    aiDataUseAcknowledged?: unknown;
   };
+  if (body.aiDataUseAcknowledged !== true) {
+    return NextResponse.json(
+      { error: "Подтвердите передачу рассчитанных данных карты внешней языковой модели." },
+      { status: 400 }
+    );
+  }
   if (
     typeof body.chartId !== "string" ||
     !HD_UUID_RE.test(body.chartId) ||

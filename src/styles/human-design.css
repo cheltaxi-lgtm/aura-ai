@@ -4,12 +4,12 @@
 }
 
 .hd-bodygraph__layout {
-  @apply flex items-start justify-center gap-2;
+  @apply flex flex-wrap items-start justify-center gap-2 sm:flex-nowrap;
   transition: transform 0.2s ease-out;
 }
 
 .hd-bodygraph__activations {
-  @apply mt-8 hidden w-20 shrink-0 sm:block;
+  @apply mt-2 w-[calc(50%-0.25rem)] shrink-0 sm:mt-8 sm:w-20;
 }
 
 .hd-bodygraph__activations-title {
@@ -100,7 +100,7 @@
 }
 
 .hd-bodygraph__svg {
-  @apply block h-auto w-full select-none;
+  @apply order-first block h-auto w-full basis-full select-none sm:order-none sm:w-auto sm:flex-1 sm:basis-auto;
 }
 
 .hd-bodygraph__gate {
@@ -354,6 +354,10 @@
 
 .hd-places__item small {
   @apply text-[0.6875rem] text-white/40;
+}
+
+.hd-places__empty {
+  @apply px-3.5 py-3 text-left text-xs leading-relaxed text-white/50;
 }
 
 .hd-summary {

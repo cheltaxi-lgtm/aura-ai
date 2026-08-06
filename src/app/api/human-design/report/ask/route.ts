@@ -48,7 +48,14 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     reportId?: unknown;
     question?: unknown;
+    aiDataUseAcknowledged?: unknown;
   };
+  if (body.aiDataUseAcknowledged !== true) {
+    return NextResponse.json(
+      { error: "Подтвердите передачу рассчитанных данных карты внешней языковой модели." },
+      { status: 400 }
+    );
+  }
   const question = typeof body.question === "string" ? body.question.trim() : "";
   if (typeof body.reportId !== "string" || !HD_UUID_RE.test(body.reportId) || !question) {
     return NextResponse.json({ error: "Укажите разбор и вопрос." }, { status: 400 });

@@ -134,7 +134,13 @@ export default function HdReportPanel({
       const res = await fetch("/api/human-design/report/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ reportId: report.id, question: q }),
+        // Follow-ups continue under the same LLM-data acknowledgment used for
+        // the paid report purchase (checkbox above, or prior completed report).
+        body: JSON.stringify({
+          reportId: report.id,
+          question: q,
+          aiDataUseAcknowledged: true,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 402) {

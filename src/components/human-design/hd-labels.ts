@@ -9,12 +9,14 @@ export function formatHdBirthDate(iso: string): string {
 export function hdChartChipLabel(chart: {
   subjectKind?: string | null;
   subjectName?: string | null;
-  birthDate: string;
+  birthDate?: string | null;
 }): string {
-  const date = formatHdBirthDate(chart.birthDate);
+  const date = chart.birthDate ? formatHdBirthDate(chart.birthDate) : null;
   if (chart.subjectKind === "other") {
     const name = chart.subjectName?.trim();
-    return name ? `${name} · ${date}` : `Другой · ${date}`;
+    if (name && date) return `${name} · ${date}`;
+    if (name) return name;
+    return date ? `Другой · ${date}` : "Другой";
   }
-  return `Я · ${date}`;
+  return date ? `Я · ${date}` : "Я";
 }

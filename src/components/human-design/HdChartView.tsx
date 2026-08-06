@@ -18,10 +18,11 @@ import { hdApiErrorMessage } from "./hd-errors";
 export interface HdChartPayload {
   id: string;
   fingerprint: string;
-  placeName: string;
-  birthDate: string;
-  birthTime: string | null;
-  timeUnknown: boolean;
+  /** Present for owner/cabinet; omitted on public share links. */
+  placeName?: string | null;
+  birthDate?: string | null;
+  birthTime?: string | null;
+  timeUnknown?: boolean;
   subjectKind?: "self" | "other";
   subjectName?: string | null;
   chart: HdChart;
@@ -43,9 +44,11 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const [transits, setTransits] = useState<Map<number, HdBodyKey> | null>(null);
   const [transitsAt, setTransitsAt] = useState<string | null>(null);
   const [transitsLoading, setTransitsLoading] = useState(false);
+  const [transitsError, setTransitsError] = useState<string | null>(null);
   const [insight, setInsight] = useState<{ center: HdCenterKey; text: string } | null>(null);
   const [insightLoading, setInsightLoading] = useState<HdCenterKey | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
+  const [llmAck, setLlmAck] = useState(false);
 
   // Defense in depth: callers key this component by chart id, but overlays
   // must never survive a chart switch even if a parent forgets the key.
@@ -55,6 +58,8 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
     setInsightLoading(null);
     setTransits(null);
     setTransitsAt(null);
+    setTransitsError(null);
+    setLlmAck(false);
     setShowShareCard(false);
     setCopied(false);
   }, [payload.id]);
@@ -63,9 +68,11 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
     if (transits) {
       setTransits(null);
       setTransitsAt(null);
+      setTransitsError(null);
       return;
     }
     setTransitsLoading(true);
+    setTransitsError(null);
     try {
       const res = await fetch("/api/human-design/transits");
       if (!res.ok) throw new Error();
@@ -79,6 +86,8 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
       setTransitsAt(data.at);
     } catch {
       setTransits(null);
+      setTransitsAt(null);
+      setTransitsError("Не удалось загрузить транзиты. Попробуйте позже.");
     } finally {
       setTransitsLoading(false);
     }
@@ -87,13 +96,25 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const askCenterInsight = useCallback(
     async (center: HdCenterKey) => {
       if (insightLoading) return;
+      let acknowledged = llmAck;
+      if (!acknowledged) {
+        acknowledged = window.confirm(
+          "Разбор центра передаёт рассчитанные данные карты внешней языковой модели (списываются руны). Продолжить?"
+        );
+        if (!acknowledged) return;
+        setLlmAck(true);
+      }
       setInsightLoading(center);
       setInsightError(null);
       try {
         const res = await fetch("/api/human-design/center-insight", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ chartId: payload.id, center }),
+          body: JSON.stringify({
+            chartId: payload.id,
+            center,
+            aiDataUseAcknowledged: true,
+          }),
         });
         const data = (await res.json().catch(() => ({}))) as {
           answer?: string;
@@ -119,7 +140,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         setInsightLoading(null);
       }
     },
-    [insightLoading, payload.id]
+    [insightLoading, llmAck, payload.id]
   );
 
   const share = async () => {
@@ -244,14 +265,21 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
           type="button"
           onClick={() => window.print()}
           className="hd-bodygraph__export"
+          title="Открыть диалог печати браузера (можно сохранить как PDF)"
         >
-          PDF
+          Печать / PDF
         </button>
       </div>
 
+      {transitsError && (
+        <p className="hd-print-hidden text-center text-[0.6875rem] text-red-200/90" role="alert">
+          {transitsError}
+        </p>
+      )}
+
       {transits && transitsAt && (
-        <p className="hd-print-hidden text-center text-[0.6875rem] text-violet-200/70">
-          Фиолетовые кольца — ворота, активированные текущим небом (
+        <p className="hd-print-hidden text-center text-[0.6875rem] text-amber-100/70">
+          Кольца на воротах — активации текущего неба (
           {new Date(transitsAt).toLocaleString("ru-RU", {
             day: "numeric",
             month: "long",
