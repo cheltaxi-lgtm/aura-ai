@@ -67,6 +67,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
   const [focus, setFocus] = useState<FocusFilter>("all");
   const [ack, setAck] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>("harmony");
+  const [uiGenerating, setUiGenerating] = useState(false);
   const postInFlightRef = useRef(false);
 
   const { waiting, startedAt, startWait, stopWait } = useHdReportWait({
@@ -80,10 +81,12 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         setReportId(r.id);
       }
       setBusy(false);
+      setUiGenerating(false);
     },
     onError: (msg) => {
       setError(msg);
       setBusy(false);
+      setUiGenerating(false);
     },
   });
 
@@ -92,6 +95,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
     setReportId(null);
     setError(null);
     setBusy(false);
+    setUiGenerating(false);
     setNeedsLogin(false);
     setPaywall(null);
     setAck(false);
@@ -125,7 +129,8 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         }
         if (data.report?.status === "pending") {
           if (typeof data.report.id === "string") setReportId(data.report.id);
-          startWait();
+          setUiGenerating(true);
+          startWait({ baselineText: null });
           setBusy(true);
         }
       } catch {
@@ -161,13 +166,15 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
 
   const buyReport = async (opts?: { regenerate?: boolean }) => {
     if (busy || postInFlightRef.current) return;
-    if (!ack && !opts?.regenerate && !waiting) {
+    if (!ack && !opts?.regenerate && !waiting && !uiGenerating) {
       setError("Подтвердите передачу данных карт языковой модели.");
       return;
     }
+    const baselineText = opts?.regenerate ? report : null;
     setBusy(true);
+    setUiGenerating(true);
     setError(null);
-    startWait();
+    startWait({ baselineText });
     postInFlightRef.current = true;
     try {
       const res = await fetch("/api/human-design/composite-report", {
@@ -193,6 +200,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
       if (res.status === 401) {
         stopWait();
         setBusy(false);
+        setUiGenerating(false);
         setNeedsLogin(true);
         setError("Разбор совместимости доступен после входа в аккаунт — карты сохранятся в кабинете.");
         return;
@@ -200,6 +208,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
       if (res.status === 402) {
         stopWait();
         setBusy(false);
+        setUiGenerating(false);
         setPaywall({
           balance: Number(data.balance) || 0,
           required: Number(data.required) || reportCost,
@@ -207,7 +216,8 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         return;
       }
       if (res.status === 409 && data?.code === "CLAIM_BUSY") {
-        startWait();
+        setUiGenerating(true);
+        startWait({ baselineText });
         return;
       }
       if (data.report?.status === "done" && data.report.reportText) {
@@ -215,19 +225,23 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         if (typeof data.report.id === "string") setReportId(data.report.id);
         stopWait();
         setBusy(false);
+        setUiGenerating(false);
         return;
       }
       if (!res.ok) {
         stopWait();
         setBusy(false);
+        setUiGenerating(false);
         setError(hdApiErrorMessage(data, "Не удалось получить разбор. Попробуйте позже."));
         return;
       }
       // Pending / long generate — keep polling.
       if (typeof data.report?.id === "string") setReportId(data.report.id);
-      startWait();
+      setUiGenerating(true);
+      startWait({ baselineText: null });
     } catch {
-      startWait();
+      setUiGenerating(true);
+      startWait({ baselineText });
       setError("Связь прервалась — ждём результат на сервере…");
     } finally {
       postInFlightRef.current = false;
@@ -465,7 +479,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
       <div className="hd-panel hd-print-hidden">
         <p className="hd-panel__title">Разбор связи от Эвелины</p>
 
-        {(waiting || busy) && !report ? (
+        {uiGenerating || waiting || busy ? (
           <div className="mt-4">
             <HdGenerating kind="composite" startedAt={startedAt ?? Date.now()} />
             {error && (
@@ -473,10 +487,6 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
                 {error}
               </p>
             )}
-          </div>
-        ) : (waiting || busy) && report ? (
-          <div className="mt-4">
-            <HdGenerating kind="composite" startedAt={startedAt ?? Date.now()} />
           </div>
         ) : (
           <>

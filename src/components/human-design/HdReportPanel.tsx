@@ -56,6 +56,8 @@ export default function HdReportPanel({
   const [loadNonce, setLoadNonce] = useState(0);
   const [includedAsks, setIncludedAsks] = useState(0);
   const [tone, setTone] = useState<HdReportTone>("personal");
+  /** Immediate UI flag — not cleared by stale poll races. */
+  const [uiGenerating, setUiGenerating] = useState(false);
   const dialogEndRef = useRef<HTMLDivElement>(null);
   const postInFlightRef = useRef(false);
 
@@ -71,6 +73,7 @@ export default function HdReportPanel({
       setTone(r.reportTone);
     }
     setLoading(false);
+    setUiGenerating(false);
   }, []);
 
   const { waiting, startedAt, startWait, stopWait } = useHdReportWait({
@@ -81,6 +84,7 @@ export default function HdReportPanel({
     onError: (msg) => {
       setError(msg);
       setLoading(false);
+      setUiGenerating(false);
     },
   });
 
@@ -94,6 +98,7 @@ export default function HdReportPanel({
     setLoadError(null);
     setIncludedAsks(0);
     setTone("personal");
+    setUiGenerating(false);
     stopWait();
   }, [chartId, stopWait]);
 
@@ -114,7 +119,8 @@ export default function HdReportPanel({
         }
         if (d?.report?.status === "pending") {
           setReport({ ...(d.report as HdReport), reportText: null });
-          startWait();
+          setUiGenerating(true);
+          startWait({ baselineText: null });
           setLoading(true);
         }
       })
@@ -170,10 +176,12 @@ export default function HdReportPanel({
         return;
       }
       const effectiveTone = opts?.toneOverride ?? tone;
+      const baselineText = opts?.regenerate ? report?.reportText ?? null : null;
       setTone(effectiveTone);
       setLoading(true);
+      setUiGenerating(true);
       setError(null);
-      startWait();
+      startWait({ baselineText });
       postInFlightRef.current = true;
       try {
         const res = await fetch("/api/human-design/report", {
@@ -190,6 +198,7 @@ export default function HdReportPanel({
         if (res.status === 402) {
           stopWait();
           setLoading(false);
+          setUiGenerating(false);
           setPaywall({
             balance: Number(data.balance) || 0,
             required: Number(data.required) || reportCost,
@@ -198,12 +207,14 @@ export default function HdReportPanel({
         }
         // Another tab / resume already generating — keep polling.
         if (res.status === 409 && data?.code === "CLAIM_BUSY") {
-          startWait();
+          setUiGenerating(true);
+          startWait({ baselineText });
           return;
         }
         if (!res.ok) {
           stopWait();
           setLoading(false);
+          setUiGenerating(false);
           setError(hdApiErrorMessage(data, "Не удалось создать разбор."));
           return;
         }
@@ -212,11 +223,13 @@ export default function HdReportPanel({
           stopWait();
         } else if (data.report?.status === "pending") {
           setReport({ ...(data.report as HdReport), reportText: null });
-          startWait();
+          setUiGenerating(true);
+          startWait({ baselineText: null });
         }
       } catch {
         // Network drop during long generate: polling may still finish.
-        startWait();
+        setUiGenerating(true);
+        startWait({ baselineText });
         setError(
           "Связь прервалась, но генерация могла продолжаться на сервере. Ждём результат…"
         );
@@ -234,6 +247,7 @@ export default function HdReportPanel({
       stopWait,
       tone,
       waiting,
+      report?.reportText,
     ]
   );
 
@@ -249,7 +263,7 @@ export default function HdReportPanel({
 
   const selectTone = useCallback(
     (next: HdReportTone) => {
-      if (loading) return;
+      if (loading || uiGenerating || waiting) return;
       const current = report?.reportTone ?? tone;
       setTone(next);
       // Already have a paid report → free rewrite in the chosen tone.
@@ -257,7 +271,7 @@ export default function HdReportPanel({
         void buyReport({ regenerate: true, toneOverride: next });
       }
     },
-    [buyReport, loading, report, tone]
+    [buyReport, loading, report, tone, uiGenerating, waiting]
   );
 
   const tonePicker = (
@@ -394,17 +408,17 @@ export default function HdReportPanel({
     </div>
   );
 
-  const generatingBlock =
-    waiting || loading ? (
-      <div className="hd-panel">
-        <HdGenerating kind="personal" startedAt={startedAt ?? Date.now()} />
-        {error && (
-          <p className="mt-3 text-sm text-amber-100/70" role="status">
-            {error}
-          </p>
-        )}
-      </div>
-    ) : null;
+  const isGenerating = uiGenerating || waiting || loading;
+  const generatingBlock = isGenerating ? (
+    <div className="hd-panel">
+      <HdGenerating kind="personal" startedAt={startedAt ?? Date.now()} />
+      {error && (
+        <p className="mt-3 text-sm text-amber-100/70" role="status">
+          {error}
+        </p>
+      )}
+    </div>
+  ) : null;
 
   if (!authenticated) {
     return (

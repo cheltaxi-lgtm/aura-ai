@@ -13,6 +13,8 @@ export type HdWaitReport = {
 };
 
 const POLL_MS = 3500;
+/** Let POST flip the row to pending before the first poll. */
+const FIRST_POLL_DELAY_MS = 1200;
 
 type PollMode = "personal" | "composite";
 
@@ -33,15 +35,25 @@ export function useHdReportWait(opts: {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const onDoneRef = useRef(opts.onDone);
   const onErrorRef = useRef(opts.onError);
+  const seenPendingRef = useRef(false);
+  /** Text at start of regenerate so poll ignores the previous done payload. */
+  const baselineTextRef = useRef<string | null>(null);
+  const genIdRef = useRef(0);
   onDoneRef.current = opts.onDone;
   onErrorRef.current = opts.onError;
 
-  const startWait = useCallback(() => {
+  const startWait = useCallback((opts?: { baselineText?: string | null }) => {
+    genIdRef.current += 1;
+    seenPendingRef.current = false;
+    baselineTextRef.current =
+      typeof opts?.baselineText === "string" ? opts.baselineText.trim() : null;
     setWaiting(true);
-    setStartedAt((prev) => prev ?? Date.now());
+    setStartedAt(Date.now());
   }, []);
 
   const stopWait = useCallback(() => {
+    seenPendingRef.current = false;
+    baselineTextRef.current = null;
     setWaiting(false);
     setStartedAt(null);
   }, []);
@@ -65,31 +77,51 @@ export function useHdReportWait(opts: {
     const url = pollUrl();
     if (!url) return;
     let cancelled = false;
+    const genAtStart = genIdRef.current;
 
     const tick = async () => {
+      if (cancelled || genIdRef.current !== genAtStart) return;
       try {
         const res = await fetch(url, { credentials: "include" });
-        if (!res.ok || cancelled) return;
+        if (!res.ok || cancelled || genIdRef.current !== genAtStart) return;
         const data = (await res.json().catch(() => ({}))) as {
           report?: HdWaitReport | null;
         };
         const r = data.report;
         if (!r) return;
+
+        if (r.status === "pending") {
+          seenPendingRef.current = true;
+          return;
+        }
+
         if (r.status === "done" && r.reportText) {
           const text =
             typeof r.reportText === "string" ? sanitizeHdReportText(r.reportText) : r.reportText;
+          const trimmed = (text || "").trim();
+          const baseline = baselineTextRef.current;
+          // Ignore pre-generation done until we saw pending (or text actually changed).
+          const isStaleBaseline =
+            baseline !== null && trimmed === baseline && !seenPendingRef.current;
+          if (isStaleBaseline) return;
+
           onDoneRef.current({ ...r, reportText: text });
-          if (!cancelled) {
+          if (!cancelled && genIdRef.current === genAtStart) {
+            seenPendingRef.current = false;
+            baselineTextRef.current = null;
             setWaiting(false);
             setStartedAt(null);
           }
           return;
         }
+
         if (r.status === "error") {
           onErrorRef.current?.(
             "Генерация не завершилась. Если руны списались — они вернутся; нажмите ещё раз."
           );
-          if (!cancelled) {
+          if (!cancelled && genIdRef.current === genAtStart) {
+            seenPendingRef.current = false;
+            baselineTextRef.current = null;
             setWaiting(false);
             setStartedAt(null);
           }
@@ -99,10 +131,11 @@ export function useHdReportWait(opts: {
       }
     };
 
-    void tick();
+    const first = window.setTimeout(() => void tick(), FIRST_POLL_DELAY_MS);
     const id = window.setInterval(() => void tick(), POLL_MS);
     return () => {
       cancelled = true;
+      window.clearTimeout(first);
       window.clearInterval(id);
     };
   }, [opts.enabled, pollUrl, waiting]);
