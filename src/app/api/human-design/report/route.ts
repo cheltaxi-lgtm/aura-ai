@@ -40,12 +40,12 @@ import {
 } from "@/lib/services/human-design-service";
 import {
   buildHdReportSystemPrompt,
-  completeHdFullReport,
   formatHdEvidence,
   HD_ENGINE_VERSION,
   sanitizeHdReportText,
   type HdReportTone,
 } from "@/lib/human-design";
+import { completeHdFullReport } from "@/lib/human-design/report-generate";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { rememberHdChartFact } from "@/lib/human-design/memory";

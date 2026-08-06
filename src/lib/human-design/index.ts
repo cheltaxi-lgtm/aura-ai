@@ -54,10 +54,6 @@ export {
   type HdReportPackageId,
 } from "./packages";
 export {
-  completeHdFullReport,
-  missingHdReportSections,
-} from "./report-generate";
-export {
   formatExtrasForEvidence,
   hangingGates,
   reportTonePromptHint,
