@@ -135,6 +135,40 @@ export default function HdReportPanel({
     }
   }, [acknowledged, chartId, reportCost]);
 
+  const recoverAskFromHistory = useCallback(
+    async (reportId: string, q: string): Promise<boolean> => {
+      try {
+        const res = await fetch(
+          `/api/human-design/report/ask?reportId=${encodeURIComponent(reportId)}`
+        );
+        if (!res.ok) return false;
+        const d = await res.json().catch(() => null);
+        if (!Array.isArray(d?.messages)) return false;
+        const msgs = d.messages as Array<{ role: string; content: string }>;
+        // Charge commits atomically with messages — if the last user turn is
+        // our question and an assistant reply follows, the spend already landed.
+        for (let i = msgs.length - 2; i >= 0; i--) {
+          if (msgs[i]?.role === "user" && msgs[i].content === q && msgs[i + 1]?.role === "assistant") {
+            const restored = msgs
+              .filter(
+                (m): m is { role: "user" | "assistant"; content: string } =>
+                  (m.role === "user" || m.role === "assistant") && typeof m.content === "string"
+              )
+              .map((m) => ({ role: m.role, content: m.content }));
+            setDialog(restored);
+            setQuestion("");
+            setError(null);
+            return true;
+          }
+        }
+      } catch {
+        /* fall through to retry UX */
+      }
+      return false;
+    },
+    []
+  );
+
   const ask = useCallback(async () => {
     const q = question.trim();
     if (!q || !report) return;
@@ -162,6 +196,7 @@ export default function HdReportPanel({
         return;
       }
       if (!res.ok || typeof data.answer !== "string") {
+        if (await recoverAskFromHistory(report.id, q)) return;
         setDialog((prev) => prev.slice(0, -1));
         setQuestion(q);
         setError(hdApiErrorMessage(data, "Не удалось получить ответ."));
@@ -169,13 +204,14 @@ export default function HdReportPanel({
       }
       setDialog((prev) => [...prev, { role: "assistant", content: data.answer }]);
     } catch {
+      if (await recoverAskFromHistory(report.id, q)) return;
       setDialog((prev) => prev.slice(0, -1));
       setQuestion(q);
       setError("Сеть недоступна. Попробуйте ещё раз.");
     } finally {
       setAsking(false);
     }
-  }, [askCost, question, report]);
+  }, [askCost, question, recoverAskFromHistory, report]);
 
   if (!authenticated) {
     return (
