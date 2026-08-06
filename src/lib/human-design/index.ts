@@ -47,11 +47,8 @@ export {
 } from "./connection";
 export {
   HD_CONNECTION_REPORT_MODULES,
-  HD_REPORT_PACKAGES,
-  hdReportPackageById,
+  HD_FULL_REPORT_MODULES,
   hdReportTextToPrintSections,
-  isPaidHdReportPackage,
   type HdReportModule,
-  type HdReportPackage,
   type HdReportPackageId,
 } from "./packages";

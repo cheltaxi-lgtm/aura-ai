@@ -318,7 +318,7 @@ export async function POST(request: NextRequest) {
         },
         { role: "user", content: evidence },
       ],
-      maxTokens: 2800,
+      maxTokens: 5000,
       temperature: 0.65,
       isPaid: true,
       timeoutMs: 240_000,

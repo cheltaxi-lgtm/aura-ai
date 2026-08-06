@@ -45,7 +45,6 @@ export default async function HdReportPrintPage({
   if (!chart) notFound();
 
   const typeMeta = TYPE_META[chart.chart.type];
-  const pkgLabel = report.packageId === "max" ? "Макс" : "Глубина";
   const cleaned = sanitizeHdReportText(report.reportText);
   const sections = hdReportTextToPrintSections(cleaned);
   const openCenters = (Object.keys(CENTER_NAMES_RU) as HdCenterKey[]).filter(
@@ -55,7 +54,7 @@ export default async function HdReportPrintPage({
 
   return (
     <PrintableReport
-      title={`Zovus · Дизайн Человека — «${pkgLabel}»`}
+      title="Zovus · Дизайн Человека — полный разбор"
       meta={[
         {
           label: "Данные рождения",
@@ -73,7 +72,6 @@ export default async function HdReportPrintPage({
           label: "Определённость",
           value: DEFINITION_NAMES_RU[chart.chart.definition] ?? chart.chart.definition,
         },
-        { label: "Пакет", value: pkgLabel },
         { label: "Дата отчёта", value: new Date(report.createdAt).toLocaleString("ru-RU") },
       ]}
       sections={sections}

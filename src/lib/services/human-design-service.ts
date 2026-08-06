@@ -692,8 +692,12 @@ export async function createPendingHdReport(
   },
   client?: PoolClient
 ): Promise<HdReportRow | null> {
-  const packageId = params.packageId === "max" ? "max" : "depth";
-  const includedAsks = Math.max(0, Math.floor(params.includedAsksRemaining ?? 0));
+  // Personal report is always the full SKU.
+  const packageId = "max";
+  const includedAsks = Math.max(
+    5,
+    Math.floor(params.includedAsksRemaining ?? 5)
+  );
   const sql = `INSERT INTO hd_reports (
        chart_id, user_id, status, transaction_id, package_id, included_asks_remaining
      ) VALUES ($1, $2, 'pending', $3, $4, $5)
@@ -782,33 +786,26 @@ export async function completeHdReport(
   );
 }
 
-/**
- * Depth → Max upgrade: mark pending rewrite, promote package, grant included asks.
- * Keeps previous report_text until the new generation completes.
- */
-export async function beginHdReportUpgrade(reportId: string): Promise<boolean> {
+/** Free rewrite of an already-paid done report (keeps text until success). */
+export async function beginHdReportRewrite(reportId: string): Promise<boolean> {
   const result = await query(
     `UPDATE hd_reports
      SET status = 'pending',
          package_id = 'max',
-         included_asks_remaining = 3,
+         included_asks_remaining = GREATEST(included_asks_remaining, 5),
          updated_at = now(),
          created_at = now()
-     WHERE id = $1 AND status = 'done' AND package_id = 'depth'`,
+     WHERE id = $1 AND status = 'done'`,
     [reportId]
   );
   return (result.rowCount ?? 0) > 0;
 }
 
-/** Restore a failed Depth→Max upgrade back to the previous Depth report. */
-export async function restoreHdReportDepthAfterFailedUpgrade(
-  reportId: string
-): Promise<void> {
+/** Restore a failed rewrite back to done (keeps previous report_text). */
+export async function restoreHdReportDone(reportId: string): Promise<void> {
   await query(
     `UPDATE hd_reports
      SET status = 'done',
-         package_id = 'depth',
-         included_asks_remaining = 0,
          error = NULL,
          updated_at = now()
      WHERE id = $1
@@ -817,6 +814,11 @@ export async function restoreHdReportDepthAfterFailedUpgrade(
     [reportId]
   );
 }
+
+/** @deprecated use beginHdReportRewrite */
+export const beginHdReportUpgrade = beginHdReportRewrite;
+/** @deprecated use restoreHdReportDone */
+export const restoreHdReportDepthAfterFailedUpgrade = restoreHdReportDone;
 
 export async function failHdReport(reportId: string, error: string): Promise<void> {
   await query(

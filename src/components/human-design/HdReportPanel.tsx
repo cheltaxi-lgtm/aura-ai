@@ -3,13 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import PaywallModal from "@/components/PaywallModal";
-import {
-  HD_REPORT_PACKAGES,
-  isPaidHdReportPackage,
-  sanitizeHdReportText,
-  type HdChart,
-  type HdReportPackageId,
-} from "@/lib/human-design";
+import { HD_FULL_REPORT_MODULES, sanitizeHdReportText, type HdChart } from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import HdFoundationBrief from "./HdFoundationBrief";
 import { hdApiErrorMessage } from "./hd-errors";
@@ -24,7 +18,6 @@ interface HdReport {
 
 interface HdReportPanelProps {
   chartId: string;
-  /** Chart payload for free foundation brief. */
   chart?: HdChart | null;
   authenticated: boolean;
   loginReturnTo: string;
@@ -41,7 +34,6 @@ export default function HdReportPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
-  const [packageId, setPackageId] = useState<Exclude<HdReportPackageId, "foundation">>("depth");
   const [paywall, setPaywall] = useState<{ balance: number; required: number } | null>(null);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
@@ -51,12 +43,8 @@ export default function HdReportPanel({
   const [includedAsks, setIncludedAsks] = useState(0);
   const dialogEndRef = useRef<HTMLDivElement>(null);
 
-  const depthCost = cost("HD_REPORT");
-  const maxCost = cost("HD_REPORT_MAX");
-  const upgradeCost = cost("HD_REPORT_UPGRADE");
+  const reportCost = cost("HD_REPORT");
   const askCost = cost("HD_ASK");
-  const selectedCost = packageId === "max" ? maxCost : depthCost;
-  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
     setReport(null);
@@ -67,7 +55,6 @@ export default function HdReportPanel({
     setAcknowledged(false);
     setLoadError(null);
     setIncludedAsks(0);
-    setPackageId("depth");
   }, [chartId]);
 
   useEffect(() => {
@@ -134,87 +121,53 @@ export default function HdReportPanel({
     dialogEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [dialog.length]);
 
-  const buyReport = useCallback(async () => {
-    if (!isPaidHdReportPackage(packageId)) return;
-    setLoading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/human-design/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chartId,
-          aiDataUseAcknowledged: acknowledged,
-          packageId,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 402) {
-        setPaywall({
-          balance: Number(data.balance) || 0,
-          required: Number(data.required) || selectedCost,
+  const buyReport = useCallback(
+    async (opts?: { regenerate?: boolean }) => {
+      if (loading) return;
+      if (!opts?.regenerate && !acknowledged) {
+        setError("Подтвердите передачу данных карты языковой модели.");
+        return;
+      }
+      setLoading(true);
+      setError(null);
+      try {
+        const res = await fetch("/api/human-design/report", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            chartId,
+            aiDataUseAcknowledged: true,
+            regenerate: opts?.regenerate === true,
+          }),
         });
-        return;
+        const data = await res.json().catch(() => ({}));
+        if (res.status === 402) {
+          setPaywall({
+            balance: Number(data.balance) || 0,
+            required: Number(data.required) || reportCost,
+          });
+          return;
+        }
+        if (!res.ok) {
+          setError(hdApiErrorMessage(data, "Не удалось создать разбор."));
+          return;
+        }
+        if (data.report?.status === "done") {
+          const text =
+            typeof data.report.reportText === "string"
+              ? sanitizeHdReportText(data.report.reportText)
+              : data.report.reportText;
+          setReport({ ...data.report, reportText: text });
+          setIncludedAsks(Number(data.report.includedAsksRemaining) || 0);
+        }
+      } catch {
+        setError("Сеть недоступна. Попробуйте ещё раз.");
+      } finally {
+        setLoading(false);
       }
-      if (!res.ok) {
-        setError(hdApiErrorMessage(data, "Не удалось создать разбор."));
-        return;
-      }
-      if (data.report?.status === "done") {
-        const text =
-          typeof data.report.reportText === "string"
-            ? sanitizeHdReportText(data.report.reportText)
-            : data.report.reportText;
-        setReport({ ...data.report, reportText: text });
-        setIncludedAsks(Number(data.report.includedAsksRemaining) || 0);
-      }
-    } catch {
-      setError("Сеть недоступна. Попробуйте ещё раз.");
-    } finally {
-      setLoading(false);
-    }
-  }, [acknowledged, chartId, packageId, selectedCost]);
-
-  const upgradeToMax = useCallback(async () => {
-    if (upgrading || !report || report.packageId !== "depth") return;
-    setUpgrading(true);
-    setError(null);
-    try {
-      const res = await fetch("/api/human-design/report", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          chartId,
-          aiDataUseAcknowledged: true,
-          upgrade: true,
-        }),
-      });
-      const data = await res.json().catch(() => ({}));
-      if (res.status === 402) {
-        setPaywall({
-          balance: Number(data.balance) || 0,
-          required: Number(data.required) || upgradeCost,
-        });
-        return;
-      }
-      if (!res.ok) {
-        setError(hdApiErrorMessage(data, "Не удалось обновить до «Макс»."));
-        return;
-      }
-      if (data.report?.status === "done") {
-        const text =
-          typeof data.report.reportText === "string"
-            ? sanitizeHdReportText(data.report.reportText)
-            : data.report.reportText;
-        setReport({ ...data.report, reportText: text });
-        setIncludedAsks(Number(data.report.includedAsksRemaining) || 0);
-      }
-    } catch {
-      setError("Сеть недоступна. Попробуйте ещё раз.");
-    } finally {
-      setUpgrading(false);
-    }
-  }, [chartId, report, upgradeCost, upgrading]);
+    },
+    [acknowledged, chartId, loading, reportCost]
+  );
 
   const recoverAskFromHistory = useCallback(
     async (id: string, q: string): Promise<boolean> => {
@@ -298,41 +251,29 @@ export default function HdReportPanel({
     }
   }, [askCost, question, recoverAskFromHistory, report]);
 
-  const packageCards = (
-    <div className="hd-packages" role="radiogroup" aria-label="Пакет разбора">
-      {HD_REPORT_PACKAGES.filter((p) => p.id !== "foundation").map((p) => {
-        const price = p.id === "max" ? maxCost : depthCost;
-        const active = packageId === p.id;
-        return (
-          <button
-            key={p.id}
-            type="button"
-            role="radio"
-            aria-checked={active}
-            className={`hd-package${active ? " is-active" : ""}${p.featured ? " is-featured" : ""}`}
-            onClick={() => setPackageId(p.id as "depth" | "max")}
-            disabled={loading}
-          >
-            {p.featured && <span className="hd-package__badge">Рекомендуем</span>}
-            <strong className="hd-package__label">{p.label}</strong>
-            <span className="hd-package__tagline">{p.tagline}</span>
-            <span className="hd-package__price">
-              {ready ? formatRunesWithRub(price) : `${price} ᚢ`}
-            </span>
-            <ul className="hd-package__modules">
-              {p.modules.map((m) => (
-                <li key={m.id}>
-                  <span aria-hidden="true">✓</span>
-                  <span>
-                    <em>{m.title}</em>
-                    {m.blurb}
-                  </span>
-                </li>
-              ))}
-            </ul>
-          </button>
-        );
-      })}
+  const modulesCard = (
+    <div className="hd-packages hd-packages--single mt-4">
+      <div className="hd-package is-active is-featured">
+        <span className="hd-package__badge">Всё включено</span>
+        <strong className="hd-package__label">Полный разбор</strong>
+        <span className="hd-package__tagline">
+          Одна оплата — максимальная глубина, примеры, PDF и вопросы Эвелине
+        </span>
+        <span className="hd-package__price">
+          {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
+        </span>
+        <ul className="hd-package__modules">
+          {HD_FULL_REPORT_MODULES.map((m) => (
+            <li key={m.id}>
+              <span aria-hidden="true">✓</span>
+              <span>
+                <em>{m.title}</em>
+                {m.blurb}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 
@@ -345,18 +286,18 @@ export default function HdReportPanel({
           </div>
         )}
         <div className="hd-panel">
-          <p className="hd-panel__title">Разбор от Эвелины</p>
+          <p className="hd-panel__title">Полный разбор от Эвелины</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
-            Модульный разбор карты: выберите глубину. Войдите, чтобы сохранить карту и получить
-            текст Эвелины.
+            Премиальная интерпретация всей карты: с объяснениями, примерами из жизни и практиками.
+            Войдите, чтобы сохранить карту и получить текст.
           </p>
-          {packageCards}
+          {modulesCard}
           <a
             href={`/auth/user/login?returnTo=${encodeURIComponent(loginReturnTo)}`}
             className="btn-luxe btn-luxe--gold mt-5 inline-flex"
           >
-            Войти и получить «{packageId === "max" ? "Макс" : "Глубину"}» ·{" "}
-            {ready ? formatRunesWithRub(selectedCost) : `${selectedCost} ᚢ`}
+            Войти и получить полный разбор ·{" "}
+            {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
           </a>
         </div>
       </div>
@@ -372,12 +313,11 @@ export default function HdReportPanel({
           </div>
         )}
         <div className="hd-panel">
-          <p className="hd-panel__title">Разбор от Эвелины</p>
+          <p className="hd-panel__title">Полный разбор от Эвелины</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
-            Выберите пакет. «Опора» уже выше — бесплатно. Платные пакеты — модульный текст без
-            простыней, с практиками.
+            «Опора» выше — бесплатно. Ниже один полный премиальный разбор: без доплат и апгрейдов.
           </p>
-          {packageCards}
+          {modulesCard}
           {loadError && (
             <div
               className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-sm text-red-200/90"
@@ -417,14 +357,14 @@ export default function HdReportPanel({
             className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             {loading
-              ? "Эвелина пишет разбор…"
-              : `Получить «${packageId === "max" ? "Макс" : "Глубину"}» · ${
-                  ready ? formatRunesWithRub(selectedCost) : `${selectedCost} ᚢ`
+              ? "Эвелина пишет полный разбор…"
+              : `Получить полный разбор · ${
+                  ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
                 }`}
           </button>
           {loading && (
             <p className="mt-2 text-xs text-white/45">
-              Обычно занимает 30–60 секунд. Не закрывайте страницу.
+              Полный текст обычно 1–2 минуты. Не закрывайте страницу.
             </p>
           )}
           <PaywallModal
@@ -432,7 +372,7 @@ export default function HdReportPanel({
             onClose={() => setPaywall(null)}
             options={{
               currentBalance: paywall?.balance ?? 0,
-              requiredRunes: paywall?.required ?? selectedCost,
+              requiredRunes: paywall?.required ?? reportCost,
               onUnlocked: () => setPaywall(null),
             }}
           />
@@ -441,33 +381,28 @@ export default function HdReportPanel({
     );
   }
 
-  const pkgLabel = report.packageId === "max" ? "Макс" : "Глубина";
-
   return (
     <div className="space-y-5">
       <div className="hd-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
-            <p className="hd-panel__title">Разбор «{pkgLabel}» от Эвелины</p>
+            <p className="hd-panel__title">Полный разбор от Эвелины</p>
             {includedAsks > 0 && (
               <p className="mt-1 text-xs text-amber-100/55">
-                Осталось включённых вопросов: {includedAsks}
+                Включено вопросов без доплаты: {includedAsks}
               </p>
             )}
           </div>
           <div className="hd-print-hidden flex flex-wrap gap-2">
-            {report.packageId === "depth" && (
-              <button
-                type="button"
-                className="btn-luxe btn-luxe--gold btn-luxe--sm"
-                disabled={upgrading}
-                onClick={() => void upgradeToMax()}
-              >
-                {upgrading
-                  ? "Обновляю до «Макс»…"
-                  : `До «Макс» · ${ready ? formatRunesWithRub(upgradeCost) : `${upgradeCost} ᚢ`}`}
-              </button>
-            )}
+            <button
+              type="button"
+              className="hd-bodygraph__export"
+              disabled={loading}
+              onClick={() => void buyReport({ regenerate: true })}
+              title="Бесплатно пересобрать в полном формате"
+            >
+              {loading ? "Пересобираю…" : "Пересобрать полностью"}
+            </button>
             <a
               href={`/cabinet/human-design/reports/${report.id}/print`}
               target="_blank"
@@ -478,10 +413,9 @@ export default function HdReportPanel({
             </a>
           </div>
         </div>
-        {report.packageId === "depth" && (
-          <p className="hd-print-hidden mt-2 text-xs text-white/45">
-            Апгрейд добавит сон, «как вас считывают» и 3 вопроса Эвелине — без повторной оплаты
-            «Глубины».
+        {error && (
+          <p className="hd-print-hidden mt-3 text-sm text-red-300" role="alert">
+            {error}
           </p>
         )}
         <div className="hd-report mt-4">
@@ -493,7 +427,7 @@ export default function HdReportPanel({
         <p className="hd-panel__title">Вопросы по разбору</p>
         <p className="mt-1.5 text-xs text-white/50">
           {includedAsks > 0
-            ? `Сначала списываются включённые вопросы пакета (${includedAsks}), затем ${
+            ? `Сначала списываются включённые вопросы (${includedAsks}), затем ${
                 ready ? formatRunesWithRub(askCost) : `${askCost} ᚢ`
               } за вопрос`
             : `Эвелина отвечает в контексте карты · ${
@@ -517,12 +451,6 @@ export default function HdReportPanel({
             ))}
             <div ref={dialogEndRef} />
           </div>
-        )}
-
-        {error && (
-          <p className="mt-3 text-sm text-red-300" role="alert">
-            {error}
-          </p>
         )}
 
         <div className="mt-4 flex gap-2">
