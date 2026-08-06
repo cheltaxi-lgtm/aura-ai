@@ -139,12 +139,14 @@ export default function HdReportPanel({
   }, [dialog.length]);
 
   const buyReport = useCallback(
-    async (opts?: { regenerate?: boolean }) => {
+    async (opts?: { regenerate?: boolean; toneOverride?: HdReportTone }) => {
       if (loading) return;
       if (!opts?.regenerate && !acknowledged) {
         setError("Подтвердите передачу данных карты языковой модели.");
         return;
       }
+      const effectiveTone = opts?.toneOverride ?? tone;
+      setTone(effectiveTone);
       setLoading(true);
       setError(null);
       try {
@@ -155,7 +157,7 @@ export default function HdReportPanel({
             chartId,
             aiDataUseAcknowledged: true,
             regenerate: opts?.regenerate === true,
-            tone,
+            tone: effectiveTone,
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -175,7 +177,11 @@ export default function HdReportPanel({
             typeof data.report.reportText === "string"
               ? sanitizeHdReportText(data.report.reportText)
               : data.report.reportText;
-          setReport({ ...data.report, reportText: text });
+          setReport({
+            ...data.report,
+            reportText: text,
+            reportTone: effectiveTone,
+          });
           setIncludedAsks(Number(data.report.includedAsksRemaining) || 0);
         }
       } catch {
@@ -187,6 +193,19 @@ export default function HdReportPanel({
     [acknowledged, chartId, loading, reportCost, tone]
   );
 
+  const selectTone = useCallback(
+    (next: HdReportTone) => {
+      if (loading) return;
+      setTone(next);
+      // Already have a paid report → free rewrite in the chosen tone.
+      if (report?.status === "done") {
+        if (report.reportTone === next) return;
+        void buyReport({ regenerate: true, toneOverride: next });
+      }
+    },
+    [buyReport, loading, report]
+  );
+
   const tonePicker = (
     <div className="hd-tone-picker mt-4" role="radiogroup" aria-label="Тон разбора">
       {TONE_OPTIONS.map((opt) => (
@@ -196,10 +215,17 @@ export default function HdReportPanel({
           role="radio"
           aria-checked={tone === opt.id}
           className={tone === opt.id ? "is-active" : undefined}
-          onClick={() => setTone(opt.id)}
+          disabled={loading}
+          onClick={() => selectTone(opt.id)}
         >
           <strong>{opt.label}</strong>
-          <span>{opt.hint}</span>
+          <span>
+            {report?.status === "done"
+              ? opt.id === tone
+                ? "Текущий тон"
+                : "Пересобрать бесплатно"
+              : opt.hint}
+          </span>
         </button>
       ))}
     </div>
@@ -454,7 +480,7 @@ export default function HdReportPanel({
           </div>
         </div>
         <p className="hd-print-hidden mt-3 text-xs text-white/50">
-          Тон для пересборки (бесплатно, тот же полный разбор):
+          Сменить тон — бесплатная полная пересборка текста (личный / ребёнок / работа):
         </p>
         {tonePicker}
         {error && (

@@ -1,42 +1,31 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import { hdReportTextToPrintSections } from "@/lib/human-design";
 
-/** Accordion by ## sections for long premium HD reports. */
+/** Full HD report with optional accordion navigation (full text by default). */
 export default function HdReportSections({ text }: { text: string }) {
-  const sections = hdReportTextToPrintSections(text);
-  const [open, setOpen] = useState<Set<string>>(() =>
-    new Set(sections[0] ? [sections[0].key] : [])
-  );
-  const [showAll, setShowAll] = useState(false);
+  const sections = useMemo(() => hdReportTextToPrintSections(text), [text]);
+  const [mode, setMode] = useState<"full" | "toc">("full");
+  const [open, setOpen] = useState<Set<string>>(() => new Set(sections.map((s) => s.key)));
 
-  if (!sections.length) {
-    return (
-      <div className="hd-report">
-        <ReactMarkdown>{text}</ReactMarkdown>
-      </div>
-    );
-  }
+  if (!text.trim()) return null;
 
-  if (showAll) {
+  if (!sections.length || mode === "full") {
     return (
       <div className="hd-report-sections">
-        <button
-          type="button"
-          className="hd-report-sections__expand-all hd-print-hidden mb-3"
-          onClick={() => setShowAll(false)}
-        >
-          Показать разделами
-        </button>
-        <div className="hd-report space-y-6">
-          {sections.map((section) => (
-            <div key={section.key} id={section.key}>
-              <h2>{section.title}</h2>
-              <ReactMarkdown>{section.claims.map((c) => c.text).join("\n\n")}</ReactMarkdown>
-            </div>
-          ))}
+        {sections.length > 1 && (
+          <button
+            type="button"
+            className="hd-report-sections__expand-all hd-print-hidden mb-3"
+            onClick={() => setMode("toc")}
+          >
+            Свернуть по разделам ({sections.length})
+          </button>
+        )}
+        <div className="hd-report">
+          <ReactMarkdown>{text}</ReactMarkdown>
         </div>
       </div>
     );
@@ -47,9 +36,9 @@ export default function HdReportSections({ text }: { text: string }) {
       <button
         type="button"
         className="hd-report-sections__expand-all hd-print-hidden mb-3"
-        onClick={() => setShowAll(true)}
+        onClick={() => setMode("full")}
       >
-        Открыть все разделы
+        Показать полный текст
       </button>
       {sections.map((section) => {
         const isOpen = open.has(section.key);

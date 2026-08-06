@@ -144,19 +144,19 @@ export function hdReportTextToPrintSections(
   const withoutDisclaimer = cleaned
     .replace(/\n*---\n+\*?Разбор является[\s\S]*$/i, "")
     .trim();
-  const chunks = withoutDisclaimer.split(/^## /m);
+  // Accept "## Title" and "##Title"; keep body newlines intact (do not explode lists).
+  const chunks = withoutDisclaimer.split(/^##\s*/m);
   const sections: Array<{ key: string; title: string; claims: Array<{ text: string }> }> = [];
+  const startsWithHeading = /^##\s*\S/.test(withoutDisclaimer);
 
   chunks.forEach((chunk, index) => {
     const trimmed = chunk.trim();
     if (!trimmed) return;
-    if (index === 0 && !withoutDisclaimer.startsWith("## ")) {
-      const paras = trimmed.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
-      if (!paras.length) return;
+    if (index === 0 && !startsWithHeading) {
       sections.push({
         key: "intro",
         title: "Вступление",
-        claims: paras.map((t) => ({ text: t })),
+        claims: [{ text: trimmed }],
       });
       return;
     }
@@ -164,13 +164,10 @@ export function hdReportTextToPrintSections(
     const title = (nl === -1 ? trimmed : trimmed.slice(0, nl)).trim();
     const body = (nl === -1 ? "" : trimmed.slice(nl + 1)).trim();
     if (!title) return;
-    const paras = body
-      ? body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
-      : [];
     sections.push({
       key: `s-${sections.length}-${title.slice(0, 24).replace(/\s+/g, "-").toLowerCase()}`,
       title,
-      claims: (paras.length ? paras : [title]).map((t) => ({ text: t })),
+      claims: [{ text: body || title }],
     });
   });
 

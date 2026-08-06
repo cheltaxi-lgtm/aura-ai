@@ -727,8 +727,13 @@
 }
 
 .hd-tone-picker > button {
-  @apply rounded-xl border border-white/10 px-3 py-2.5 text-left transition;
+  @apply relative z-10 cursor-pointer rounded-xl border border-white/10 px-3 py-2.5 text-left transition;
   background: rgba(255, 255, 255, 0.02);
+  pointer-events: auto;
+}
+
+.hd-tone-picker > button:disabled {
+  @apply cursor-wait opacity-60;
 }
 
 .hd-tone-picker > button.is-active {
