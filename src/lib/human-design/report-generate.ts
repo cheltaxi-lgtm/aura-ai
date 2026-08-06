@@ -119,7 +119,9 @@ async function completeSectionedReport(opts: {
   const seedUser: ChatMessage = { role: "user", content: opts.seedUserText };
 
   let combined = "";
-  const maxPasses = 4;
+  // 6 passes: stochastic near-threshold rejects (thin 3/16 after 4 passes)
+  // refund a paying user; two extra expand passes usually fix the last stubs.
+  const maxPasses = 6;
 
   for (let pass = 0; pass < maxPasses; pass++) {
     const messages: ChatMessage[] =
@@ -134,7 +136,10 @@ async function completeSectionedReport(opts: {
               content: (() => {
                 const missing = missingHdReportSections(combined, opts.required);
                 if (missing.length) return buildContinuePrompt(missing);
-                const thin = thinHdReportSections(combined, opts.required);
+                // Measure thin on the deduped view: the first regex hit in the
+                // raw text is always the original stub, even after a good
+                // rewrite exists later — expanding the same stub forever.
+                const thin = thinHdReportSections(dedupeHdSections(combined), opts.required);
                 if (thin.length) return buildExpandPrompt(thin);
                 return "Текст оборвался на лимите. Продолжи ровно с места остановки без повтора. Допиши оставшиеся разделы до полного премиального объёма.";
               })(),
@@ -174,7 +179,7 @@ async function completeSectionedReport(opts: {
     combined = stripHdMetaLeak(combined ? `${combined.trim()}\n\n${chunk}` : chunk);
 
     const missing = missingHdReportSections(combined, opts.required);
-    const thin = missing.length === 0 ? thinHdReportSections(combined, opts.required) : [];
+    const thin = missing.length === 0 ? thinHdReportSections(dedupeHdSections(combined), opts.required) : [];
     const hitLength = result.finishReason === "length";
     console.warn("[hd-generate] pass done", {
       pass,

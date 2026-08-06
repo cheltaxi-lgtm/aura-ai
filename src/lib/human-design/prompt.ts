@@ -301,8 +301,25 @@ export function hasHdMetaLeak(text: string): boolean {
 
 export function stripHdMetaLeak(text: string): string {
   const paras = text.replace(/\r\n/g, "\n").split(/\n{2,}/);
-  const kept = paras.filter((p) => !HD_META_LEAK_PATTERNS.some((re) => re.test(p)));
-  return kept.join("\n\n").trim();
+  const out: string[] = [];
+  for (const p of paras) {
+    const trimmed = p.trim();
+    if (!trimmed) continue;
+    if (!HD_META_LEAK_PATTERNS.some((re) => re.test(trimmed))) {
+      out.push(trimmed);
+      continue;
+    }
+    // Short leak-driven paragraph = pure service comment — drop it entirely
+    // (a stub section then reads as thin and gets rewritten by expand passes).
+    if (trimmed.length < 400) continue;
+    // Long paragraph is real content that merely mentions the principle —
+    // remove only the leaking sentences, keep the rest.
+    const sentences = trimmed.split(/(?<=[.!?…])\s+/);
+    const kept = sentences.filter((s) => !HD_META_LEAK_PATTERNS.some((re) => re.test(s)));
+    const joined = kept.join(" ").trim();
+    if (joined) out.push(joined);
+  }
+  return out.join("\n\n").trim();
 }
 
 /**
