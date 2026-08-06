@@ -19,6 +19,7 @@ import {
 import { withTransaction } from "@/lib/db";
 import {
   attachHdReportTransaction,
+  beginHdReportUpgrade,
   completeHdReport,
   createPendingHdReport,
   deleteHdReportRow,
@@ -31,7 +32,9 @@ import {
   lockStalePendingReportForResume,
   markHdReportChargeRefunded,
   releaseStalePendingReportLock,
+  restoreHdReportDepthAfterFailedUpgrade,
   toPublicHdReport,
+  type HdReportRow,
 } from "@/lib/services/human-design-service";
 import {
   buildHdReportSystemPrompt,
@@ -76,6 +79,7 @@ export async function POST(request: NextRequest) {
     chartId?: unknown;
     aiDataUseAcknowledged?: unknown;
     packageId?: unknown;
+    upgrade?: unknown;
   };
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
@@ -86,15 +90,17 @@ export async function POST(request: NextRequest) {
   if (typeof body.chartId !== "string" || !HD_UUID_RE.test(body.chartId)) {
     return NextResponse.json({ error: "Укажите карту." }, { status: 400 });
   }
-  const requestedPackage: HdReportPackageId =
-    typeof body.packageId === "string" && isPaidHdReportPackage(body.packageId)
+  const upgrade = body.upgrade === true;
+  const requestedPackage: HdReportPackageId = upgrade
+    ? "max"
+    : typeof body.packageId === "string" && isPaidHdReportPackage(body.packageId)
       ? body.packageId
       : "depth";
   const pkg = hdReportPackageById(requestedPackage);
   if (!pkg?.action) {
     return NextResponse.json({ error: "Выберите платный пакет разбора." }, { status: 400 });
   }
-  const chargeAction = pkg.action as RuneActionType;
+  const chargeAction = (upgrade ? "HD_REPORT_UPGRADE" : pkg.action) as RuneActionType;
 
   const chart = await getHdChartById(body.chartId);
   // Strict ownership: guest-pool charts are claimable only via the claim token
@@ -110,7 +116,14 @@ export async function POST(request: NextRequest) {
   }
 
   let existing = await getHdReportForChart(chart.id, userId);
-  if (existing?.status === "done" && existing.reportText) {
+  if (upgrade) {
+    if (!existing || existing.status !== "done" || !existing.reportText || existing.packageId !== "depth") {
+      return NextResponse.json(
+        { error: "Апгрейд доступен только для готового разбора «Глубина»." },
+        { status: 400 }
+      );
+    }
+  } else if (existing?.status === "done" && existing.reportText) {
     return NextResponse.json({
       report: {
         ...toPublicHdReport(existing),
@@ -119,7 +132,7 @@ export async function POST(request: NextRequest) {
       cached: true,
     });
   }
-  if (existing?.status === "pending" && !isStalePendingReport(existing)) {
+  if (!upgrade && existing?.status === "pending" && !isStalePendingReport(existing)) {
     return NextResponse.json(
       { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
       { status: 409 }
@@ -128,6 +141,7 @@ export async function POST(request: NextRequest) {
   // Stale pending with a recorded charge → the process crashed AFTER payment:
   // resume generation on the same row without charging twice.
   let resumePaidPending =
+    !upgrade &&
     existing?.status === "pending" &&
     isStalePendingReport(existing) &&
     Boolean(existing.transactionId);
@@ -163,9 +177,11 @@ export async function POST(request: NextRequest) {
       ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(profileRow.name) || null;
   const evidence = formatHdEvidence(chart.chart);
-  // Resume uses the package already stored on the paid pending row.
+  // Resume / upgrade use the package already stored (or about to be promoted).
   const packageId: "depth" | "max" =
-    resumePaidPending && existing?.packageId === "max" ? "max" : requestedPackage;
+    upgrade || (resumePaidPending && existing?.packageId === "max")
+      ? "max"
+      : requestedPackage;
   const systemPrompt = await wrapSystemPrompt(buildHdReportSystemPrompt(clientName, packageId));
 
   const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
@@ -176,7 +192,7 @@ export async function POST(request: NextRequest) {
   let rollbackAttempted = false;
   let refundLanded = false;
   let completed = false;
-  let pending: { id: string } | null = null;
+  let pending: HdReportRow | { id: string } | null = null;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
     rollbackAttempted = true;
@@ -197,7 +213,28 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    if (resumePaidPending && existing) {
+    if (upgrade && existing) {
+      const locked = await beginHdReportUpgrade(existing.id);
+      if (!locked) {
+        return NextResponse.json(
+          { error: "Разбор уже обновляется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+          { status: 409 }
+        );
+      }
+      pending = {
+        ...existing,
+        status: "pending",
+        packageId: "max",
+        includedAsksRemaining: 3,
+      };
+      try {
+        charge = await chargeRuneAction({ userId, action: chargeAction, exempt });
+        await attachHdReportTransaction(pending.id, charge.transactionId ?? null);
+      } catch (chargeErr) {
+        await restoreHdReportDepthAfterFailedUpgrade(pending.id).catch(() => undefined);
+        throw chargeErr;
+      }
+    } else if (resumePaidPending && existing) {
       // CAS-lock the stale row: concurrent resumes see a fresh pending → 409.
       const locked = await lockStalePendingReportForResume(existing.id);
       if (!locked) {
@@ -265,6 +302,18 @@ export async function POST(request: NextRequest) {
 
     if (!text || isRejectedLlmOutput(text)) {
       await rollback();
+      if (upgrade && pending) {
+        await restoreHdReportDepthAfterFailedUpgrade(pending.id).catch(() => undefined);
+        return NextResponse.json(
+          {
+            error: refundLanded
+              ? "Не удалось обновить до «Макс». Предыдущий разбор сохранён, доплата возвращена."
+              : "Не удалось обновить до «Макс». Предыдущий разбор сохранён.",
+            refunded: refundLanded,
+          },
+          { status: 502 }
+        );
+      }
       if (resumePaidPending) {
         // Keep the paid pending row: the next attempt resumes it for free.
         // Release the CAS-lock age reset so the retry isn't blocked for 10 min.
@@ -312,7 +361,9 @@ export async function POST(request: NextRequest) {
       await rollback().catch(() => {
         console.warn("[human-design] billing rollback failed");
       });
-      if (resumePaidPending && pending) {
+      if (upgrade && pending) {
+        await restoreHdReportDepthAfterFailedUpgrade(pending.id).catch(() => undefined);
+      } else if (resumePaidPending && pending) {
         // Release CAS age reset so the next retry isn't blocked for 10 min.
         await releaseStalePendingReportLock(pending.id).catch(() => undefined);
       }

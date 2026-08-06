@@ -6,6 +6,7 @@ import {
   AUTHORITY_NAMES_RU,
   CENTER_NAMES_RU,
   HD_CONNECTION_RELATIONS,
+  HD_CONNECTION_REPORT_MODULES,
   PROFILE_NAMES_RU,
   TYPE_META,
   analyzeHdConnection,
@@ -408,10 +409,10 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
 
       {/* Paid report */}
       <div className="hd-panel hd-print-hidden">
-        <p className="hd-panel__title">Глубокий разбор связи от Эвелины</p>
+        <p className="hd-panel__title">Разбор связи от Эвелины</p>
         <p className="mt-2 text-sm text-white/60">
-          Короткий премиальный разбор по механике связи: химия, опоры, трение и практики. Выберите
-          контекст.
+          Механика выше — бесплатно. Ниже модульный текст Эвелины по вашей карте связи. Сначала
+          выберите контекст.
         </p>
 
         <div className="hd-connection__relations" role="radiogroup" aria-label="Контекст связи">
@@ -432,6 +433,27 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
 
         {!report && (
           <>
+            <div className="hd-packages hd-packages--single mt-4">
+              <div className="hd-package is-active is-featured">
+                <span className="hd-package__badge">Премиум</span>
+                <strong className="hd-package__label">Карта связи</strong>
+                <span className="hd-package__tagline">
+                  Модульный разбор под выбранный сценарий
+                </span>
+                <span className="hd-package__price">{priceLabel}</span>
+                <ul className="hd-package__modules">
+                  {HD_CONNECTION_REPORT_MODULES.map((m) => (
+                    <li key={m.id}>
+                      <span aria-hidden="true">✓</span>
+                      <span>
+                        <em>{m.title}</em>
+                        {m.blurb}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
             <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
               <input
                 type="checkbox"
@@ -452,7 +474,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
             >
               {busy
                 ? "Эвелина готовит разбор…"
-                : `Разбор связи от Эвелины · ${priceLabel}`}
+                : `Получить разбор связи · ${priceLabel}`}
             </button>
             {busy && (
               <p className="mt-2 text-xs text-white/45">

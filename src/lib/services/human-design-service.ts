@@ -782,6 +782,42 @@ export async function completeHdReport(
   );
 }
 
+/**
+ * Depth → Max upgrade: mark pending rewrite, promote package, grant included asks.
+ * Keeps previous report_text until the new generation completes.
+ */
+export async function beginHdReportUpgrade(reportId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE hd_reports
+     SET status = 'pending',
+         package_id = 'max',
+         included_asks_remaining = 3,
+         updated_at = now(),
+         created_at = now()
+     WHERE id = $1 AND status = 'done' AND package_id = 'depth'`,
+    [reportId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Restore a failed Depth→Max upgrade back to the previous Depth report. */
+export async function restoreHdReportDepthAfterFailedUpgrade(
+  reportId: string
+): Promise<void> {
+  await query(
+    `UPDATE hd_reports
+     SET status = 'done',
+         package_id = 'depth',
+         included_asks_remaining = 0,
+         error = NULL,
+         updated_at = now()
+     WHERE id = $1
+       AND status IN ('pending', 'error')
+       AND report_text IS NOT NULL`,
+    [reportId]
+  );
+}
+
 export async function failHdReport(reportId: string, error: string): Promise<void> {
   await query(
     `UPDATE hd_reports SET status = 'error', error = $2, updated_at = now() WHERE id = $1`,

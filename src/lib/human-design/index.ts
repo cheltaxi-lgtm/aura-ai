@@ -46,8 +46,10 @@ export {
   type HdConnectionRelation,
 } from "./connection";
 export {
+  HD_CONNECTION_REPORT_MODULES,
   HD_REPORT_PACKAGES,
   hdReportPackageById,
+  hdReportTextToPrintSections,
   isPaidHdReportPackage,
   type HdReportModule,
   type HdReportPackage,

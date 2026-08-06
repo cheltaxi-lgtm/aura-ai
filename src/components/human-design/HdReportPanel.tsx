@@ -53,8 +53,10 @@ export default function HdReportPanel({
 
   const depthCost = cost("HD_REPORT");
   const maxCost = cost("HD_REPORT_MAX");
+  const upgradeCost = cost("HD_REPORT_UPGRADE");
   const askCost = cost("HD_ASK");
   const selectedCost = packageId === "max" ? maxCost : depthCost;
+  const [upgrading, setUpgrading] = useState(false);
 
   useEffect(() => {
     setReport(null);
@@ -172,6 +174,47 @@ export default function HdReportPanel({
       setLoading(false);
     }
   }, [acknowledged, chartId, packageId, selectedCost]);
+
+  const upgradeToMax = useCallback(async () => {
+    if (upgrading || !report || report.packageId !== "depth") return;
+    setUpgrading(true);
+    setError(null);
+    try {
+      const res = await fetch("/api/human-design/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chartId,
+          aiDataUseAcknowledged: true,
+          upgrade: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 402) {
+        setPaywall({
+          balance: Number(data.balance) || 0,
+          required: Number(data.required) || upgradeCost,
+        });
+        return;
+      }
+      if (!res.ok) {
+        setError(hdApiErrorMessage(data, "Не удалось обновить до «Макс»."));
+        return;
+      }
+      if (data.report?.status === "done") {
+        const text =
+          typeof data.report.reportText === "string"
+            ? sanitizeHdReportText(data.report.reportText)
+            : data.report.reportText;
+        setReport({ ...data.report, reportText: text });
+        setIncludedAsks(Number(data.report.includedAsksRemaining) || 0);
+      }
+    } catch {
+      setError("Сеть недоступна. Попробуйте ещё раз.");
+    } finally {
+      setUpgrading(false);
+    }
+  }, [chartId, report, upgradeCost, upgrading]);
 
   const recoverAskFromHistory = useCallback(
     async (id: string, q: string): Promise<boolean> => {
@@ -412,15 +455,35 @@ export default function HdReportPanel({
               </p>
             )}
           </div>
-          <a
-            href={`/cabinet/human-design/reports/${report.id}/print`}
-            target="_blank"
-            rel="noopener noreferrer"
-            className="hd-bodygraph__export hd-print-hidden"
-          >
-            Печать / PDF
-          </a>
+          <div className="hd-print-hidden flex flex-wrap gap-2">
+            {report.packageId === "depth" && (
+              <button
+                type="button"
+                className="btn-luxe btn-luxe--gold btn-luxe--sm"
+                disabled={upgrading}
+                onClick={() => void upgradeToMax()}
+              >
+                {upgrading
+                  ? "Обновляю до «Макс»…"
+                  : `До «Макс» · ${ready ? formatRunesWithRub(upgradeCost) : `${upgradeCost} ᚢ`}`}
+              </button>
+            )}
+            <a
+              href={`/cabinet/human-design/reports/${report.id}/print`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="hd-bodygraph__export"
+            >
+              Печать / PDF
+            </a>
+          </div>
         </div>
+        {report.packageId === "depth" && (
+          <p className="hd-print-hidden mt-2 text-xs text-white/45">
+            Апгрейд добавит сон, «как вас считывают» и 3 вопроса Эвелине — без повторной оплаты
+            «Глубины».
+          </p>
+        )}
         <div className="hd-report mt-4">
           <ReactMarkdown>{report.reportText ?? ""}</ReactMarkdown>
         </div>

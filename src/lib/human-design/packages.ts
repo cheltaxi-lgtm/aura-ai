@@ -166,3 +166,86 @@ export function isPaidHdReportPackage(
 ): id is Exclude<HdReportPackageId, "foundation"> {
   return id === "depth" || id === "max";
 }
+
+/** Connection Chart paid report — single premium SKU with a module checklist. */
+export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
+  {
+    id: "chemistry",
+    title: "Химия связи",
+    blurb: "Электромагнетика и притяжение в вашей паре",
+  },
+  {
+    id: "boost",
+    title: "Как усиливаете друг друга",
+    blurb: "Где один стабилизирует и раскрывает другого",
+  },
+  {
+    id: "electro",
+    title: "Электромагнетика",
+    blurb: "Каналы «половинка + половинка» по отдельности",
+  },
+  {
+    id: "harmony",
+    title: "Опоры",
+    blurb: "Общие центры и устойчивые совпадения",
+  },
+  {
+    id: "friction",
+    title: "Трение",
+    blurb: "Зоны притирки без драматизации",
+  },
+  {
+    id: "decisions",
+    title: "Решения вместе",
+    blurb: "Стратегии и авторитеты в паре",
+  },
+  {
+    id: "practices",
+    title: "Практики",
+    blurb: "Шаги на 7 и 30 дней под сценарий связи",
+  },
+] as const;
+
+/**
+ * Split sanitized markdown report into print sections (## headings).
+ * Intro before the first ## becomes «Вступление».
+ */
+export function hdReportTextToPrintSections(
+  text: string
+): Array<{ key: string; title: string; claims: Array<{ text: string }> }> {
+  const cleaned = text.replace(/\r\n/g, "\n").trim();
+  const withoutDisclaimer = cleaned
+    .replace(/\n*---\n+\*?Разбор является[\s\S]*$/i, "")
+    .trim();
+  const chunks = withoutDisclaimer.split(/^## /m);
+  const sections: Array<{ key: string; title: string; claims: Array<{ text: string }> }> = [];
+
+  chunks.forEach((chunk, index) => {
+    const trimmed = chunk.trim();
+    if (!trimmed) return;
+    if (index === 0 && !withoutDisclaimer.startsWith("## ")) {
+      const paras = trimmed.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean);
+      if (!paras.length) return;
+      sections.push({
+        key: "intro",
+        title: "Вступление",
+        claims: paras.map((text) => ({ text })),
+      });
+      return;
+    }
+    const nl = trimmed.indexOf("\n");
+    const title = (nl === -1 ? trimmed : trimmed.slice(0, nl)).trim();
+    const body = (nl === -1 ? "" : trimmed.slice(nl + 1)).trim();
+    if (!title) return;
+    const paras = body
+      ? body.split(/\n{2,}/).map((p) => p.trim()).filter(Boolean)
+      : [];
+    sections.push({
+      key: `s-${sections.length}-${title.slice(0, 24).replace(/\s+/g, "-").toLowerCase()}`,
+      title,
+      claims: (paras.length ? paras : [title]).map((text) => ({ text })),
+    });
+  });
+
+  return sections;
+}
