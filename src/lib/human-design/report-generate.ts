@@ -148,6 +148,8 @@ async function completeSectionedReport(opts: {
 
     // 12k tokens of Russian prose takes minutes — the default 120s aborts
     // mid-draft and the whole report is lost. Retry the pass once on empty.
+    // skipDegenerateCheck: HD practices / parallel day blocks trip chat spam
+    // heuristics (repeated lines, numbered density). Product gate below owns quality.
     let result = await completeChatDetailed({
       messages,
       maxTokens: pass === 0 ? opts.pass0MaxTokens : opts.continueMaxTokens,
@@ -155,6 +157,7 @@ async function completeSectionedReport(opts: {
       isPaid: true,
       timeoutMs: 300_000,
       skipTemperatureRetry: true,
+      skipDegenerateCheck: true,
     });
     let chunk = (result.text || "").trim();
     if (!chunk) {
@@ -166,6 +169,7 @@ async function completeSectionedReport(opts: {
         isPaid: true,
         timeoutMs: 300_000,
         skipTemperatureRetry: true,
+        skipDegenerateCheck: true,
       });
       chunk = (result.text || "").trim();
     }

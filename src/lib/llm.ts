@@ -136,6 +136,12 @@ function extractReasoningText(message: Record<string, unknown> | undefined): str
 type CompletionExtractOptions = {
   allowReasoningFallback?: boolean;
   structuredJson?: boolean;
+  /**
+   * Skip chat spam heuristics (numbered-list density, repeated lines/phrases).
+   * Long-form paid reports (HD) have their own section quality gate and legitimately
+   * contain 5–7 practice items / parallel day structures that trip those checks.
+   */
+  skipDegenerateCheck?: boolean;
 };
 
 function extractAssistantTextFromMessage(
@@ -214,11 +220,13 @@ export function isRejectedLlmOutput(text: string): boolean {
 
 function acceptLlmText(
   text: string | null,
-  opts?: { structuredJson?: boolean }
+  opts?: { structuredJson?: boolean; skipDegenerateCheck?: boolean }
 ): string | null {
   if (!text?.trim()) return null;
   const trimmed = text.trim();
-  if (opts?.structuredJson) {
+  // Structured JSON and long-form paid prose: only hard rejects (CJK / refusal).
+  // Chat spam heuristics stay for default chat/reading paths.
+  if (opts?.structuredJson || opts?.skipDegenerateCheck) {
     if (CJK_RE.test(trimmed)) return null;
     if (LLM_REFUSAL_PATTERNS.some((pattern) => pattern.test(trimmed))) return null;
     return trimmed;
@@ -333,6 +341,7 @@ async function callChatCompletionsDetailed(
           return {
             text: acceptLlmText(rawText, {
               structuredJson: extractOpts?.structuredJson,
+              skipDegenerateCheck: extractOpts?.skipDegenerateCheck,
             }),
             finishReason,
             usage,
@@ -417,6 +426,11 @@ export type CompleteChatOptions = {
    * user-facing completions of slots in the shared queue.
    */
   priority?: "background";
+  /**
+   * Skip chat-oriented degenerate/spam heuristics. Use for long-form paid
+   * reports that already enforce product-specific structure (HD sections).
+   */
+  skipDegenerateCheck?: boolean;
 };
 
 async function completeChatInternal(
@@ -435,12 +449,14 @@ async function completeChatInternal(
     jsonObject = false,
     modelOverride,
     priority,
+    skipDegenerateCheck = false,
   } = params;
   const aiSettings = await resolveAiSettings();
   const model = modelOverride ?? (await resolveModel(vision, isPaid));
   const extractOpts: CompletionExtractOptions = {
     allowReasoningFallback,
     structuredJson: jsonObject,
+    skipDegenerateCheck,
   };
   const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
 
@@ -459,7 +475,7 @@ async function completeChatInternal(
         extractOpts,
         pool
       ),
-      { structuredJson: jsonObject }
+      { structuredJson: jsonObject, skipDegenerateCheck }
     );
 
   if (!isOpenRouterConfigured()) return null;
@@ -491,12 +507,14 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
     jsonObject = false,
     modelOverride,
     priority,
+    skipDegenerateCheck = false,
   } = params;
   const aiSettings = await resolveAiSettings();
   const model = modelOverride ?? (await resolveModel(vision, isPaid));
   const extractOpts: CompletionExtractOptions = {
     allowReasoningFallback,
     structuredJson: jsonObject,
+    skipDegenerateCheck,
   };
   const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
 
