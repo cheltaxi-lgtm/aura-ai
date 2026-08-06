@@ -5,7 +5,7 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { completeChat, isOpenRouterConfigured, isRejectedLlmOutput } from "@/lib/llm";
+import { isOpenRouterConfigured, isRejectedLlmOutput } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
@@ -40,6 +40,7 @@ import {
 } from "@/lib/services/human-design-service";
 import {
   buildHdReportSystemPrompt,
+  completeHdFullReport,
   formatHdEvidence,
   HD_ENGINE_VERSION,
   sanitizeHdReportText,
@@ -50,7 +51,8 @@ import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { rememberHdChartFact } from "@/lib/human-design/memory";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
-export const maxDuration = 300;
+/** Multi-pass full decrypt can take several LLM calls. */
+export const maxDuration = 600;
 
 const REPORT_DISCLAIMER =
   "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
@@ -260,21 +262,10 @@ export async function POST(request: NextRequest) {
       charge = created.charge;
     }
 
-    const text = await completeChat({
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content:
-            `РАСЧЁТНЫЕ ДАННЫЕ:\n${evidence}\n\n` +
-            `Напиши ПОЛНЫЙ премиальный разбор для ${clientName ?? "клиента"}: ` +
-            `максимальная глубина, примеры из жизни и понятные объяснения по каждому разделу.`,
-        },
-      ],
-      maxTokens: 8000,
-      temperature: 0.65,
-      isPaid: true,
-      timeoutMs: 240_000,
+    const text = await completeHdFullReport({
+      systemPrompt,
+      evidence,
+      clientName,
     });
 
     if (!text || isRejectedLlmOutput(text)) {

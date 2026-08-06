@@ -319,7 +319,8 @@ export default function HdReportPanel({
         <span className="hd-package__badge">Всё включено</span>
         <strong className="hd-package__label">Полный разбор</strong>
         <span className="hd-package__tagline">
-          Одна оплата — максимальная глубина, примеры, PDF и вопросы Эвелине
+          Одна оплата — полная расшифровка: тип, 9 центров, каналы, крест, сон, бизнес,
+          скрытые разделы, PDF и вопросы Эвелине
         </span>
         <span className="hd-package__price">
           {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
@@ -423,14 +424,15 @@ export default function HdReportPanel({
             className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
             {loading
-              ? "Эвелина пишет полный разбор…"
-              : `Получить полный разбор · ${
+              ? "Эвелина пишет полную расшифровку…"
+              : `Получить полную расшифровку · ${
                   ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
                 }`}
           </button>
           {loading && (
             <p className="mt-2 text-xs text-white/45">
-              Полный текст обычно 1–2 минуты. Не закрывайте страницу.
+              Полная расшифровка обычно 2–5 минут (несколько проходов, все разделы). Не
+              закрывайте страницу.
             </p>
           )}
           <PaywallModal

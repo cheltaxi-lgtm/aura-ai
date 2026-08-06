@@ -48,10 +48,15 @@ export {
 export {
   HD_CONNECTION_REPORT_MODULES,
   HD_FULL_REPORT_MODULES,
+  HD_REPORT_REQUIRED_SECTIONS,
   hdReportTextToPrintSections,
   type HdReportModule,
   type HdReportPackageId,
 } from "./packages";
+export {
+  completeHdFullReport,
+  missingHdReportSections,
+} from "./report-generate";
 export {
   formatExtrasForEvidence,
   hangingGates,
