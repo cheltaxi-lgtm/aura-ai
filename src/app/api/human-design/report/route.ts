@@ -41,6 +41,7 @@ import {
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { rememberHdChartFact } from "@/lib/human-design/memory";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
 export const maxDuration = 300;
 
@@ -60,6 +61,11 @@ export async function POST(request: NextRequest) {
 
   const rateLimited = await enforcePaidRouteRateLimit(userId, "hd_report");
   if (rateLimited) return rateLimited;
+
+  const profileRow = await getUserById(userId).catch(() => null);
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     chartId?: unknown;
@@ -109,7 +115,16 @@ export async function POST(request: NextRequest) {
     // Barrier against refunded orphans: if the charge behind this row was
     // already returned (rollback raced a crash), resuming would be a FREE
     // generation. Drop the row and fall into the normal paid flow.
-    const alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId).catch(() => false);
+    let alreadyRefunded: boolean;
+    try {
+      alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId);
+    } catch {
+      // Fail-closed: a DB blip must not resume a possibly-refunded charge for free.
+      return NextResponse.json(
+        { error: "Не удалось проверить статус оплаты. Попробуйте через минуту." },
+        { status: 503 }
+      );
+    }
     if (alreadyRefunded) {
       await deleteHdReportRow(existing.id).catch(() => undefined);
       existing = null;
@@ -121,12 +136,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
-  const user = await getUserById(userId).catch(() => null);
   // Normalize legacy rows too — subjectName is interpolated into the prompt.
   const clientName =
     chart.subjectKind === "other" && chart.subjectName
       ? normalizePersonDisplayName(chart.subjectName) || null
-      : normalizePersonDisplayName(user?.name) || null;
+      : normalizePersonDisplayName(profileRow.name) || null;
   const evidence = formatHdEvidence(chart.chart);
   const systemPrompt = await wrapSystemPrompt(buildHdReportSystemPrompt(clientName));
 

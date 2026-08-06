@@ -32,6 +32,8 @@ export default function HdReportPanel({
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [dialog, setDialog] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [loadNonce, setLoadNonce] = useState(0);
   const dialogEndRef = useRef<HTMLDivElement>(null);
 
   const reportCost = cost("HD_REPORT");
@@ -45,21 +47,31 @@ export default function HdReportPanel({
     setQuestion("");
     setPaywall(null);
     setAcknowledged(false);
+    setLoadError(null);
   }, [chartId]);
 
   useEffect(() => {
     if (!authenticated) return;
     let cancelled = false;
+    setLoadError(null);
     fetch(`/api/human-design/report?chartId=${encodeURIComponent(chartId)}`)
-      .then((r) => (r.ok ? r.json() : null))
-      .then((d) => {
-        if (!cancelled && d?.report?.status === "done") setReport(d.report);
+      .then((r) => {
+        if (!r.ok) throw new Error("report_load_failed");
+        return r.json();
       })
-      .catch(() => undefined);
+      .then((d) => {
+        if (cancelled) return;
+        if (d?.report?.status === "done") setReport(d.report);
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setLoadError("Не удалось загрузить разбор. Проверьте сеть.");
+        }
+      });
     return () => {
       cancelled = true;
     };
-  }, [authenticated, chartId]);
+  }, [authenticated, chartId, loadNonce]);
 
   // Restore the paid Q&A history: answers commit atomically with the charge
   // server-side, so a lost response (network drop, tab closed) reappears here.
@@ -196,6 +208,18 @@ export default function HdReportPanel({
           определённые и открытые центры, каналы, инкарнационный крест и практические
           рекомендации. После разбора можно задавать уточняющие вопросы.
         </p>
+        {loadError && (
+          <div className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-sm text-red-200/90" role="alert">
+            <p>{loadError}</p>
+            <button
+              type="button"
+              className="mt-2 underline underline-offset-2 hover:text-red-100"
+              onClick={() => setLoadNonce((n) => n + 1)}
+            >
+              Повторить
+            </button>
+          </div>
+        )}
         <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
           <input
             type="checkbox"

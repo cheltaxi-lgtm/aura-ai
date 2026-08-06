@@ -26,6 +26,7 @@ import {
 import { buildHdAskSystemPrompt, formatHdEvidence } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
 export const maxDuration = 120;
 
@@ -44,6 +45,11 @@ export async function POST(request: NextRequest) {
 
   const rateLimited = await enforcePaidRouteRateLimit(userId, "hd_ask");
   if (rateLimited) return rateLimited;
+
+  const profileRow = await getUserById(userId).catch(() => null);
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     reportId?: unknown;
@@ -77,8 +83,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
-  const user = await getUserById(userId).catch(() => null);
-  const clientName = normalizePersonDisplayName(user?.name) || null;
+  const clientName = normalizePersonDisplayName(profileRow.name) || null;
   const evidence = formatHdEvidence(chart.chart);
   const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));
 

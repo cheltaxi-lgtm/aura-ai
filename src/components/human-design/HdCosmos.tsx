@@ -49,8 +49,8 @@ export default function HdCosmos() {
     const paintNebula = () => {
       const { width: w, height: h } = canvas;
       const g1 = ctx.createRadialGradient(w * 0.2, h * 0.15, 0, w * 0.2, h * 0.15, w * 0.55);
-      g1.addColorStop(0, "rgba(155, 127, 212, 0.10)");
-      g1.addColorStop(1, "rgba(155, 127, 212, 0)");
+      g1.addColorStop(0, "rgba(232, 199, 126, 0.10)");
+      g1.addColorStop(1, "rgba(232, 199, 126, 0)");
       ctx.fillStyle = g1;
       ctx.fillRect(0, 0, w, h);
       const g2 = ctx.createRadialGradient(w * 0.85, h * 0.8, 0, w * 0.85, h * 0.8, w * 0.5);

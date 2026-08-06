@@ -1,7 +1,10 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 import { isHumanDesignEnabled } from "@/lib/settings";
-import { getHdChartByFingerprint } from "@/lib/services/human-design-service";
+import {
+  getHdChartByFingerprint,
+  toPublicHdChartPayload,
+} from "@/lib/services/human-design-service";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
@@ -53,14 +56,7 @@ export default async function HdSharedChartPage({
       </p>
 
       <div className="mt-8">
-        <HdChartView
-          payload={{
-            id: chart.id,
-            fingerprint: chart.fingerprint,
-            timeUnknown: chart.timeUnknown,
-            chart: chart.chart,
-          }}
-        />
+        <HdChartView payload={toPublicHdChartPayload(chart)} />
       </div>
 
       <div className="mt-10 text-center">

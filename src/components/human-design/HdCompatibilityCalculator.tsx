@@ -24,6 +24,7 @@ interface PersonState {
   placesOpen: boolean;
   placesLoading: boolean;
   placesSearched: boolean;
+  placesError: boolean;
   chart: HdChartPayload | null;
   loading: boolean;
   error: string | null;
@@ -46,6 +47,7 @@ const EMPTY: PersonState = {
   placesOpen: false,
   placesLoading: false,
   placesSearched: false,
+  placesError: false,
   chart: null,
   loading: false,
   error: null,
@@ -89,19 +91,28 @@ function PersonForm({
     (q: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
       if (q.trim().length < 2) {
-        onChange({ suggestions: [], placesSearched: false, placesLoading: false });
+        onChange({
+          suggestions: [],
+          placesSearched: false,
+          placesLoading: false,
+          placesError: false,
+        });
         return;
       }
-      onChange({ placesLoading: true, placesSearched: false });
+      onChange({ placesLoading: true, placesSearched: false, placesError: false });
       debounceRef.current = setTimeout(() => {
         fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`)
-          .then((r) => (r.ok ? r.json() : null))
+          .then((r) => {
+            if (!r.ok) throw new Error("places_failed");
+            return r.json();
+          })
           .then((d) => {
             onChange({
               suggestions: Array.isArray(d?.places) ? d.places : [],
               placesOpen: true,
               placesSearched: true,
               placesLoading: false,
+              placesError: false,
             });
           })
           .catch(() =>
@@ -110,6 +121,7 @@ function PersonForm({
               placesOpen: true,
               placesSearched: true,
               placesLoading: false,
+              placesError: true,
             })
           );
       }, 250);
@@ -191,7 +203,9 @@ function PersonForm({
               )}
               {!state.placesLoading && state.suggestions.length === 0 && (
                 <p className="hd-places__empty">
-                  Город не найден. Попробуйте другое написание или более крупный населённый пункт.
+                  {state.placesError
+                    ? "Не удалось загрузить подсказки. Проверьте сеть и попробуйте ещё раз."
+                    : "Город не найден. Попробуйте другое написание или более крупный населённый пункт."}
                 </p>
               )}
               {!state.placesLoading &&

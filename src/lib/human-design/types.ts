@@ -95,8 +95,10 @@ export interface HdTimeStability {
 export interface HdChart {
   engineVersion: string;
   timeKnown: boolean;
-  timezone: string;
-  birth: {
+  /** Omitted on public share payloads (birth PII). */
+  timezone?: string;
+  /** Omitted on public share payloads (birth PII). */
+  birth?: {
     date: string;
     /** Local time actually used (12:00 when unknown). */
     time: string;

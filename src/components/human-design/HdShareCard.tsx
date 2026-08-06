@@ -94,12 +94,14 @@ function MiniBodygraph({ chart }: { chart: HdChart }) {
 export default function HdShareCard({ chart, subjectName }: Props) {
   const cardRef = useRef<HTMLDivElement>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
   const typeMeta = TYPE_META[chart.type];
 
   const download = useCallback(async () => {
     const node = cardRef.current;
     if (!node || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const { toPng } = await import("html-to-image");
       const dataUrl = await toPng(node, { pixelRatio: 2, cacheBust: true });
@@ -108,7 +110,7 @@ export default function HdShareCard({ chart, subjectName }: Props) {
       link.download = "dizayn-cheloveka-karta.png";
       link.click();
     } catch {
-      /* html-to-image unavailable or render failed */
+      setError("Не удалось сохранить карточку. Попробуйте ещё раз.");
     } finally {
       setBusy(false);
     }
@@ -118,7 +120,7 @@ export default function HdShareCard({ chart, subjectName }: Props) {
     <div className="hd-share-card-wrap">
       <div ref={cardRef} className="hd-share-card" aria-hidden="true">
         <div className="hd-share-card__head">
-          <p className="hd-share-card__brand">AURA · Дизайн Человека</p>
+          <p className="hd-share-card__brand">ZOVUS · Дизайн Человека</p>
           <p className="hd-share-card__name">{subjectName || "Моя карта"}</p>
         </div>
         <MiniBodygraph chart={chart} />
@@ -137,6 +139,11 @@ export default function HdShareCard({ chart, subjectName }: Props) {
           </div>
         </div>
       </div>
+      {error && (
+        <p className="text-center text-xs text-red-200/90" role="alert">
+          {error}
+        </p>
+      )}
       <button type="button" onClick={() => void download()} disabled={busy} className="hd-bodygraph__export">
         {busy ? "Генерация…" : "Скачать карточку"}
       </button>

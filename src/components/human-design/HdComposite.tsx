@@ -8,6 +8,7 @@ import { useRuneConfig } from "@/lib/useRuneConfig";
 import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
 import { hdApiErrorMessage } from "./hd-errors";
+import { hdChartChipLabel } from "./hd-labels";
 
 interface Props {
   base: HdChartPayload;
@@ -60,11 +61,18 @@ export default function HdComposite({ base, partner }: Props) {
     return { mergedChart, electromagnetic, partnerOnlyGates, sharedCount };
   }, [base, partner]);
 
+  const baseLabel =
+    base.subjectKind === "other"
+      ? hdChartChipLabel(base)
+      : base.subjectName?.trim() || "вы";
   const partnerName =
-    partner.subjectKind === "other" && partner.subjectName ? partner.subjectName : "Партнёр";
+    partner.subjectKind === "other" && partner.subjectName?.trim()
+      ? partner.subjectName.trim()
+      : hdChartChipLabel(partner);
 
-  const { cost } = useRuneConfig();
+  const { cost, formatRunesWithRub, ready } = useRuneConfig();
   const reportCost = cost("HD_REPORT");
+  const priceLabel = ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`;
   const [report, setReport] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -84,7 +92,7 @@ export default function HdComposite({ base, partner }: Props) {
     if (busy) return;
     if (
       !window.confirm(
-        "Эвелина подготовит разбор совместимости двух карт (списываются руны). Расчётные данные обеих карт будут переданы языковой модели. Продолжить?"
+        `Эвелина подготовит разбор совместимости двух карт · ${priceLabel}. Расчётные данные обеих карт будут переданы языковой модели. Продолжить?`
       )
     ) {
       return;
@@ -136,9 +144,11 @@ export default function HdComposite({ base, partner }: Props) {
   return (
     <div className="hd-panel space-y-4">
       <div>
-        <p className="hd-panel__title">Композит: вы + {partnerName}</p>
+        <p className="hd-panel__title">
+          Композит: {baseLabel} + {partnerName}
+        </p>
         <p className="mt-1 text-xs leading-relaxed text-white/60">
-          Фиолетовым подсвечены ворота партнёра и электромагнетические каналы — они
+          Бирюзовым подсвечены ворота партнёра и электромагнетические каналы — они
           возникают только вместе. Общих ворот: {sharedCount}. Электромагнетика:{" "}
           {electromagnetic.size > 0
             ? `${electromagnetic.size} канал(ов) — искра притяжения и притирки`
@@ -146,7 +156,7 @@ export default function HdComposite({ base, partner }: Props) {
           .
         </p>
         <p className="mt-1 text-[0.6875rem] text-white/40">
-          Типы: вы — {TYPE_META[base.chart.type].nameRu}, {partnerName} —{" "}
+          Типы: {baseLabel} — {TYPE_META[base.chart.type].nameRu}, {partnerName} —{" "}
           {TYPE_META[partner.chart.type].nameRu}
         </p>
       </div>
@@ -164,7 +174,9 @@ export default function HdComposite({ base, partner }: Props) {
             disabled={busy}
             className="hd-bodygraph__export"
           >
-            {busy ? "Эвелина готовит разбор…" : "Разбор совместимости от Эвелины"}
+            {busy
+              ? "Эвелина готовит разбор…"
+              : `Разбор совместимости от Эвелины · ${priceLabel}`}
           </button>
         )}
         {error && (

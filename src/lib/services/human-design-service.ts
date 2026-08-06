@@ -477,13 +477,15 @@ export function toOwnerHdChartPayload(row: HdChartRow) {
 /**
  * Public share / fingerprint capability: chart mechanics only.
  * Never exposes owner, birth date/time, place, coordinates, timezone or tokens.
+ * Nested `chart.birth` / `chart.timezone` are stripped too (JSONB leak).
  */
 export function toPublicHdChartPayload(row: HdChartRow) {
+  const { birth: _birth, timezone: _timezone, ...mechanics } = row.chart;
   return {
     id: row.id,
     fingerprint: row.fingerprint,
     timeUnknown: row.timeUnknown,
-    chart: row.chart,
+    chart: mechanics,
   };
 }
 

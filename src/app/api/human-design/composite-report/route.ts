@@ -41,6 +41,7 @@ import {
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
 export const maxDuration = 300;
 
@@ -73,6 +74,11 @@ export async function POST(request: NextRequest) {
 
   const rateLimited = await enforcePaidRouteRateLimit(userId, "hd_report");
   if (rateLimited) return rateLimited;
+
+  const profileRow = await getUserById(userId).catch(() => null);
+  if (!profileRow || !isUserAgeEligible(profileRow)) {
+    return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
+  }
 
   const body = (await request.json().catch(() => ({}))) as {
     baseChartId?: unknown;
@@ -124,7 +130,15 @@ export async function POST(request: NextRequest) {
     // Barrier against refunded orphans: if the charge behind this row was
     // already returned (rollback raced a crash), resuming would be a FREE
     // generation. Drop the row and fall into the normal paid flow.
-    const alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId).catch(() => false);
+    let alreadyRefunded: boolean;
+    try {
+      alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId);
+    } catch {
+      return NextResponse.json(
+        { error: "Не удалось проверить статус оплаты. Попробуйте через минуту." },
+        { status: 503 }
+      );
+    }
     if (alreadyRefunded) {
       await deleteCompositeReportRow(existing.id).catch(() => undefined);
       existing = null;
@@ -142,11 +156,10 @@ export async function POST(request: NextRequest) {
     partner.subjectKind === "other" && partner.subjectName
       ? normalizePersonDisplayName(partner.subjectName) || "Партнёр"
       : "Партнёр";
-  const user = await getUserById(userId).catch(() => null);
   const clientName =
     base.subjectKind === "other" && base.subjectName
       ? normalizePersonDisplayName(base.subjectName) || null
-      : normalizePersonDisplayName(user?.name) || null;
+      : normalizePersonDisplayName(profileRow.name) || null;
 
   // Electromagnetic channels: defined only by the union of both charts.
   const gatesA = new Set(base.chart.activeGates);

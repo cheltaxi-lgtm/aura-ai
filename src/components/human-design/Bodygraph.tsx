@@ -515,7 +515,7 @@ export default function Bodygraph({
             </defs>
 
             <g aria-hidden="true" opacity={0.5}>
-              <circle cx={200} cy={348} r={172} fill="none" stroke="rgba(155,127,212,0.10)" strokeWidth={1} strokeDasharray="2 7" />
+              <circle cx={200} cy={348} r={172} fill="none" stroke="rgba(232,199,126,0.10)" strokeWidth={1} strokeDasharray="2 7" />
               <circle cx={200} cy={348} r={232} fill="none" stroke="rgba(232,199,126,0.07)" strokeWidth={1} strokeDasharray="1 9" />
             </g>
 
@@ -538,7 +538,7 @@ export default function Bodygraph({
                     {electro && (
                       <line
                         x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
-                        stroke="rgba(155,127,212,0.55)"
+                        stroke="rgba(106,168,160,0.7)"
                         strokeWidth={11}
                         filter={`url(#${filterGlow})`}
                       />
@@ -717,7 +717,7 @@ export default function Bodygraph({
                         cy={anchor.ly}
                         r={11}
                         fill="none"
-                        stroke="rgba(155,127,212,0.9)"
+                        stroke="rgba(106,168,160,0.95)"
                         strokeWidth={1.5}
                         animate={reduceMotion ? undefined : { r: [10, 13, 10], opacity: [0.9, 0.4, 0.9] }}
                         transition={reduceMotion ? undefined : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
@@ -731,7 +731,7 @@ export default function Bodygraph({
                         active
                           ? (a?.dLine && !a?.pLine ? COLOR_D : COLOR_P)
                           : partnerOnly
-                            ? "#9b7fd4"
+                            ? "#6aa8a0"
                             : "#17131f"
                       }
                       stroke={active || partnerOnly ? "rgba(255,255,255,0.5)" : "rgba(232,199,126,0.3)"}
@@ -872,7 +872,7 @@ export default function Bodygraph({
             )}
             {partnerGates && (
               <span className="hd-bodygraph__legend-item">
-                <i style={{ background: "#9b7fd4" }} /> Партнёр
+                <i style={{ background: "#6aa8a0" }} /> Партнёр
               </span>
             )}
             {electromagneticChannels && electromagneticChannels.size > 0 && (

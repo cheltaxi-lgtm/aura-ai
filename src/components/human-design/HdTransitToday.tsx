@@ -30,11 +30,14 @@ interface TransitActivation {
 export default function HdTransitToday() {
   const [items, setItems] = useState<TransitActivation[] | null>(null);
   const [error, setError] = useState(false);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
+    let cancelled = false;
     fetch("/api/human-design/transits")
       .then((r) => (r.ok ? r.json() : null))
       .then((d: { activations?: TransitActivation[] } | null) => {
+        if (cancelled) return;
         if (!d?.activations) {
           setError(true);
           return;
@@ -43,8 +46,27 @@ export default function HdTransitToday() {
           HIGHLIGHT_BODIES.map((b) => d.activations!.find((a) => a.body === b)!).filter(Boolean)
         );
       })
-      .catch(() => setError(true));
+      .catch(() => {
+        if (!cancelled) setError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
   }, []);
+
+  if (loading) {
+    return (
+      <div className="rounded-3xl border border-amber-500/20 bg-amber-500/[0.05] p-5">
+        <p className="text-[0.625rem] font-medium uppercase tracking-[0.25em] text-amber-200/60">
+          Погода дня · транзиты сейчас
+        </p>
+        <p className="mt-3 text-sm text-white/55">Загружаем текущее небо…</p>
+      </div>
+    );
+  }
 
   if (error) {
     return (

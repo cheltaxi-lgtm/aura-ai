@@ -50,7 +50,7 @@ export async function GET(request: NextRequest) {
           flexDirection: "column",
           justifyContent: "center",
           background:
-            "radial-gradient(ellipse 70% 50% at 30% 20%, rgba(155,127,212,0.25), transparent 70%), linear-gradient(150deg, #14101f 0%, #07060d 100%)",
+            "radial-gradient(ellipse 70% 50% at 30% 20%, rgba(232,199,126,0.22), transparent 70%), linear-gradient(150deg, #14101f 0%, #07060d 100%)",
           color: "#F5E6B8",
           padding: 64,
         }}

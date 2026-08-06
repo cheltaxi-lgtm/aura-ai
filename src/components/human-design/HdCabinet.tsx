@@ -229,7 +229,11 @@ export default function HdCabinet() {
         onKeyDown={(e) => {
           if (e.key === "ArrowRight" || e.key === "ArrowLeft") {
             e.preventDefault();
-            openFolder(folder === "self" ? "others" : "self");
+            const next = folder === "self" ? "others" : "self";
+            openFolder(next);
+            requestAnimationFrame(() => {
+              document.getElementById(next === "self" ? "hd-tab-self" : "hd-tab-others")?.focus();
+            });
           }
         }}
       >

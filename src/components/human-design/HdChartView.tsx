@@ -14,6 +14,7 @@ import {
 import Bodygraph from "./Bodygraph";
 import HdShareCard from "./HdShareCard";
 import { hdApiErrorMessage } from "./hd-errors";
+import { useRuneConfig } from "@/lib/useRuneConfig";
 
 export interface HdChartPayload {
   id: string;
@@ -49,6 +50,9 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const [insightLoading, setInsightLoading] = useState<HdCenterKey | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
   const [llmAck, setLlmAck] = useState(false);
+  const { cost, formatRunesWithRub, ready } = useRuneConfig();
+  const askCost = cost("HD_ASK");
+  const askPrice = ready ? formatRunesWithRub(askCost) : `${askCost} ᚢ`;
 
   // Defense in depth: callers key this component by chart id, but overlays
   // must never survive a chart switch even if a parent forgets the key.
@@ -99,7 +103,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
       let acknowledged = llmAck;
       if (!acknowledged) {
         acknowledged = window.confirm(
-          "Разбор центра передаёт рассчитанные данные карты внешней языковой модели (списываются руны). Продолжить?"
+          `Разбор центра от Эвелины · ${askPrice}. Расчётные данные карты будут переданы языковой модели. Продолжить?`
         );
         if (!acknowledged) return;
         setLlmAck(true);
@@ -140,7 +144,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         setInsightLoading(null);
       }
     },
-    [insightLoading, llmAck, payload.id]
+    [askPrice, insightLoading, llmAck, payload.id]
   );
 
   const share = async () => {
@@ -286,7 +290,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
             hour: "2-digit",
             minute: "2-digit",
           })}
-          ). Наведите на ворота, чтобы увидеть планету-транзит.
+          ). Нажмите или коснитесь ворот, чтобы увидеть планету-транзит.
         </p>
       )}
 

@@ -75,6 +75,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   const [placesOpen, setPlacesOpen] = useState(false);
   const [placesLoading, setPlacesLoading] = useState(false);
   const [placesSearched, setPlacesSearched] = useState(false);
+  const [placesError, setPlacesError] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<HdChartPayload | null>(initialChart);
@@ -100,6 +101,12 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       .then((d) => {
         if (!Array.isArray(d?.charts)) return;
         const list = d.charts as HdChartPayload[];
+        // Prefer owner payload over a public fingerprint restore (no birth PII).
+        setResult((prev) => {
+          if (!prev) return prev;
+          const owned = list.find((c) => c.id === prev.id || c.fingerprint === prev.fingerprint);
+          return owned ?? prev;
+        });
         // Personal chart first so «Я» isn’t buried under partner chips.
         list.sort((a, b) => {
           const aSelf = a.subjectKind === "other" ? 1 : 0;
@@ -248,22 +255,29 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
       setSuggestions([]);
       setPlacesSearched(false);
       setPlacesLoading(false);
+      setPlacesError(false);
       return;
     }
     setPlacesLoading(true);
     setPlacesSearched(false);
+    setPlacesError(false);
     debounceRef.current = setTimeout(() => {
       fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`)
-        .then((r) => (r.ok ? r.json() : null))
+        .then((r) => {
+          if (!r.ok) throw new Error("places_failed");
+          return r.json();
+        })
         .then((d) => {
           setSuggestions(Array.isArray(d?.places) ? d.places : []);
           setPlacesOpen(true);
           setPlacesSearched(true);
+          setPlacesError(false);
         })
         .catch(() => {
           setSuggestions([]);
           setPlacesOpen(true);
           setPlacesSearched(true);
+          setPlacesError(true);
         })
         .finally(() => setPlacesLoading(false));
     }, 250);
@@ -534,7 +548,9 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
               )}
               {!placesLoading && suggestions.length === 0 && (
                 <p className="hd-places__empty">
-                  Город не найден. Попробуйте другое написание или более крупный населённый пункт.
+                  {placesError
+                    ? "Не удалось загрузить подсказки. Проверьте сеть и попробуйте ещё раз."
+                    : "Город не найден. Попробуйте другое написание или более крупный населённый пункт."}
                 </p>
               )}
               {!placesLoading &&
@@ -584,9 +600,9 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
 }
 
 function payload_line(payload: HdChartPayload): string {
-  const time = payload.timeUnknown
-    ? "время неизвестно"
-    : payload.birthTime || "время неизвестно";
-  const place = payload.placeName?.trim() || "место не указано";
-  return `${hdChartChipLabel(payload)} · ${time} · ${place}`;
+  const parts = [hdChartChipLabel(payload)];
+  if (payload.timeUnknown) parts.push("время неизвестно");
+  else if (payload.birthTime) parts.push(payload.birthTime);
+  if (payload.placeName?.trim()) parts.push(payload.placeName.trim());
+  return parts.join(" · ");
 }
