@@ -10,8 +10,10 @@ import {
 } from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import HdFoundationBrief from "./HdFoundationBrief";
+import HdGenerating from "./HdGenerating";
 import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
+import { useHdReportWait } from "./useHdReportWait";
 
 interface HdReport {
   id: string;
@@ -55,9 +57,32 @@ export default function HdReportPanel({
   const [includedAsks, setIncludedAsks] = useState(0);
   const [tone, setTone] = useState<HdReportTone>("personal");
   const dialogEndRef = useRef<HTMLDivElement>(null);
+  const postInFlightRef = useRef(false);
 
   const reportCost = cost("HD_REPORT");
   const askCost = cost("HD_ASK");
+
+  const applyDoneReport = useCallback((r: HdReport) => {
+    const text =
+      typeof r.reportText === "string" ? sanitizeHdReportText(r.reportText) : r.reportText;
+    setReport({ ...r, reportText: text, status: "done" });
+    setIncludedAsks(Number(r.includedAsksRemaining) || 0);
+    if (r.reportTone === "child" || r.reportTone === "work" || r.reportTone === "personal") {
+      setTone(r.reportTone);
+    }
+    setLoading(false);
+  }, []);
+
+  const { waiting, startedAt, startWait, stopWait } = useHdReportWait({
+    mode: "personal",
+    enabled: authenticated,
+    chartId,
+    onDone: (r) => applyDoneReport(r as HdReport),
+    onError: (msg) => {
+      setError(msg);
+      setLoading(false);
+    },
+  });
 
   useEffect(() => {
     setReport(null);
@@ -69,7 +94,8 @@ export default function HdReportPanel({
     setLoadError(null);
     setIncludedAsks(0);
     setTone("personal");
-  }, [chartId]);
+    stopWait();
+  }, [chartId, stopWait]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -83,15 +109,13 @@ export default function HdReportPanel({
       .then((d) => {
         if (cancelled) return;
         if (d?.report?.status === "done") {
-          const text =
-            typeof d.report.reportText === "string"
-              ? sanitizeHdReportText(d.report.reportText)
-              : d.report.reportText;
-          setReport({ ...d.report, reportText: text });
-          setIncludedAsks(Number(d.report.includedAsksRemaining) || 0);
-          if (d.report.reportTone === "child" || d.report.reportTone === "work") {
-            setTone(d.report.reportTone);
-          }
+          applyDoneReport(d.report as HdReport);
+          return;
+        }
+        if (d?.report?.status === "pending") {
+          setReport({ ...(d.report as HdReport), reportText: null });
+          startWait();
+          setLoading(true);
         }
       })
       .catch(() => {
@@ -102,7 +126,7 @@ export default function HdReportPanel({
     return () => {
       cancelled = true;
     };
-  }, [authenticated, chartId, loadNonce]);
+  }, [authenticated, chartId, loadNonce, applyDoneReport, startWait]);
 
   const reportId = report?.id ?? null;
   useEffect(() => {
@@ -140,8 +164,8 @@ export default function HdReportPanel({
 
   const buyReport = useCallback(
     async (opts?: { regenerate?: boolean; toneOverride?: HdReportTone }) => {
-      if (loading) return;
-      if (!opts?.regenerate && !acknowledged) {
+      if (loading || postInFlightRef.current) return;
+      if (!opts?.regenerate && !acknowledged && !waiting) {
         setError("Подтвердите передачу данных карты языковой модели.");
         return;
       }
@@ -149,6 +173,8 @@ export default function HdReportPanel({
       setTone(effectiveTone);
       setLoading(true);
       setError(null);
+      startWait();
+      postInFlightRef.current = true;
       try {
         const res = await fetch("/api/human-design/report", {
           method: "POST",
@@ -162,36 +188,64 @@ export default function HdReportPanel({
         });
         const data = await res.json().catch(() => ({}));
         if (res.status === 402) {
+          stopWait();
+          setLoading(false);
           setPaywall({
             balance: Number(data.balance) || 0,
             required: Number(data.required) || reportCost,
           });
           return;
         }
+        // Another tab / resume already generating — keep polling.
+        if (res.status === 409 && data?.code === "CLAIM_BUSY") {
+          startWait();
+          return;
+        }
         if (!res.ok) {
+          stopWait();
+          setLoading(false);
           setError(hdApiErrorMessage(data, "Не удалось создать разбор."));
           return;
         }
         if (data.report?.status === "done") {
-          const text =
-            typeof data.report.reportText === "string"
-              ? sanitizeHdReportText(data.report.reportText)
-              : data.report.reportText;
-          setReport({
-            ...data.report,
-            reportText: text,
-            reportTone: effectiveTone,
-          });
-          setIncludedAsks(Number(data.report.includedAsksRemaining) || 0);
+          applyDoneReport({ ...data.report, reportTone: effectiveTone });
+          stopWait();
+        } else if (data.report?.status === "pending") {
+          setReport({ ...(data.report as HdReport), reportText: null });
+          startWait();
         }
       } catch {
-        setError("Сеть недоступна. Попробуйте ещё раз.");
+        // Network drop during long generate: polling may still finish.
+        startWait();
+        setError(
+          "Связь прервалась, но генерация могла продолжаться на сервере. Ждём результат…"
+        );
       } finally {
-        setLoading(false);
+        postInFlightRef.current = false;
       }
     },
-    [acknowledged, chartId, loading, reportCost, tone]
+    [
+      acknowledged,
+      applyDoneReport,
+      chartId,
+      loading,
+      reportCost,
+      startWait,
+      stopWait,
+      tone,
+      waiting,
+    ]
   );
+
+  // Stuck pending after refresh: one silent resume nudge (no double-charge on CLAIM_BUSY).
+  useEffect(() => {
+    if (!waiting || !authenticated) return;
+    const t = window.setTimeout(() => {
+      if (postInFlightRef.current || report?.status === "done") return;
+      void buyReport({ regenerate: false });
+    }, 45_000);
+    return () => window.clearTimeout(t);
+  }, [authenticated, buyReport, report?.status, waiting]);
 
   const selectTone = useCallback(
     (next: HdReportTone) => {
@@ -340,6 +394,18 @@ export default function HdReportPanel({
     </div>
   );
 
+  const generatingBlock =
+    waiting || loading ? (
+      <div className="hd-panel">
+        <HdGenerating kind="personal" startedAt={startedAt ?? Date.now()} />
+        {error && (
+          <p className="mt-3 text-sm text-amber-100/70" role="status">
+            {error}
+          </p>
+        )}
+      </div>
+    ) : null;
+
   if (!authenticated) {
     return (
       <div className="space-y-5">
@@ -367,7 +433,29 @@ export default function HdReportPanel({
     );
   }
 
-  if (!report) {
+  if (generatingBlock && (!report || report.status !== "done" || !report.reportText)) {
+    return (
+      <div className="space-y-5">
+        {chart && (
+          <div className="hd-panel">
+            <HdFoundationBrief chart={chart} />
+          </div>
+        )}
+        {generatingBlock}
+        <PaywallModal
+          isOpen={paywall !== null}
+          onClose={() => setPaywall(null)}
+          options={{
+            currentBalance: paywall?.balance ?? 0,
+            requiredRunes: paywall?.required ?? reportCost,
+            onUnlocked: () => setPaywall(null),
+          }}
+        />
+      </div>
+    );
+  }
+
+  if (!report || report.status !== "done" || !report.reportText) {
     return (
       <div className="space-y-5">
         {chart && (
@@ -378,7 +466,7 @@ export default function HdReportPanel({
         <div className="hd-panel">
           <p className="hd-panel__title">Полный разбор от Эвелины</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
-            «Опора» выше — бесплатно. Ниже один полный премиальный разбор: без доплат и апгрейдов.
+            «Опора» выше — бесплатно. Ниже одна полная расшифровка: без доплат и апгрейдов.
           </p>
           {modulesCard}
           <p className="mt-3 text-xs text-white/50">
@@ -420,21 +508,13 @@ export default function HdReportPanel({
           <button
             type="button"
             onClick={() => void buyReport()}
-            disabled={!acknowledged || loading}
+            disabled={!acknowledged || loading || waiting}
             className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
           >
-            {loading
-              ? "Эвелина пишет полную расшифровку…"
-              : `Получить полную расшифровку · ${
-                  ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
-                }`}
+            {`Получить полную расшифровку · ${
+              ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
+            }`}
           </button>
-          {loading && (
-            <p className="mt-2 text-xs text-white/45">
-              Полная расшифровка обычно 2–5 минут (несколько проходов, все разделы). Не
-              закрывайте страницу.
-            </p>
-          )}
           <PaywallModal
             isOpen={paywall !== null}
             onClose={() => setPaywall(null)}
@@ -445,6 +525,23 @@ export default function HdReportPanel({
             }}
           />
         </div>
+      </div>
+    );
+  }
+
+  if (generatingBlock) {
+    return (
+      <div className="space-y-5">
+        {generatingBlock}
+        <PaywallModal
+          isOpen={paywall !== null}
+          onClose={() => setPaywall(null)}
+          options={{
+            currentBalance: paywall?.balance ?? 0,
+            requiredRunes: paywall?.required ?? reportCost,
+            onUnlocked: () => setPaywall(null),
+          }}
+        />
       </div>
     );
   }
@@ -465,11 +562,11 @@ export default function HdReportPanel({
             <button
               type="button"
               className="hd-bodygraph__export"
-              disabled={loading}
+              disabled={loading || waiting}
               onClick={() => void buyReport({ regenerate: true })}
               title="Бесплатно пересобрать в полном формате"
             >
-              {loading ? "Пересобираю…" : "Пересобрать полностью"}
+              Пересобрать полностью
             </button>
             <a
               href={`/cabinet/human-design/reports/${report.id}/print`}

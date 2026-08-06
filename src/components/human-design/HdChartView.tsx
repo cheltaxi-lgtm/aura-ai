@@ -12,6 +12,7 @@ import {
   TYPE_META,
 } from "@/lib/human-design";
 import Bodygraph from "./Bodygraph";
+import HdGenerating from "./HdGenerating";
 import HdShareCard from "./HdShareCard";
 import { hdApiErrorMessage } from "./hd-errors";
 import { useRuneConfig } from "@/lib/useRuneConfig";
@@ -48,6 +49,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const [transitsError, setTransitsError] = useState<string | null>(null);
   const [insight, setInsight] = useState<{ center: HdCenterKey; text: string } | null>(null);
   const [insightLoading, setInsightLoading] = useState<HdCenterKey | null>(null);
+  const [insightStartedAt, setInsightStartedAt] = useState<number | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
   const [llmAck, setLlmAck] = useState(false);
   const { cost, formatRunesWithRub, ready } = useRuneConfig();
@@ -60,6 +62,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
     setInsight(null);
     setInsightError(null);
     setInsightLoading(null);
+    setInsightStartedAt(null);
     setTransits(null);
     setTransitsAt(null);
     setTransitsError(null);
@@ -109,6 +112,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         setLlmAck(true);
       }
       setInsightLoading(center);
+      setInsightStartedAt(Date.now());
       setInsightError(null);
       try {
         const res = await fetch("/api/human-design/center-insight", {
@@ -142,6 +146,7 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
         setInsightError("Сеть недоступна. Попробуйте позже.");
       } finally {
         setInsightLoading(null);
+        setInsightStartedAt(null);
       }
     },
     [askPrice, insightLoading, llmAck, payload.id]
@@ -295,9 +300,14 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
       )}
 
       {insightLoading && (
-        <p className="hd-print-hidden text-center text-xs text-amber-100/70">
-          Эвелина разбирает центр «{CENTER_NAMES_RU[insightLoading]}»…
-        </p>
+        <div className="hd-print-hidden hd-panel">
+          <HdGenerating
+            kind="center"
+            compact
+            title={`Эвелина разбирает центр «${CENTER_NAMES_RU[insightLoading]}»`}
+            startedAt={insightStartedAt ?? undefined}
+          />
+        </div>
       )}
 
       {insightError && (

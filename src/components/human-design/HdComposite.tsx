@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import ReactMarkdown from "react-markdown";
 import {
   AUTHORITY_NAMES_RU,
@@ -17,8 +17,10 @@ import PaywallModal from "@/components/PaywallModal";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
+import HdGenerating from "./HdGenerating";
 import { hdApiErrorMessage } from "./hd-errors";
 import { hdChartChipLabel } from "./hd-labels";
+import { useHdReportWait } from "./useHdReportWait";
 
 interface Props {
   base: HdChartPayload;
@@ -65,6 +67,25 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
   const [focus, setFocus] = useState<FocusFilter>("all");
   const [ack, setAck] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>("harmony");
+  const postInFlightRef = useRef(false);
+
+  const { waiting, startedAt, startWait, stopWait } = useHdReportWait({
+    mode: "composite",
+    enabled: true,
+    baseChartId: base.id,
+    partnerChartId: partner.id,
+    onDone: (r) => {
+      if (r.reportText) {
+        setReport(sanitizeHdCompositeReportText(r.reportText));
+        setReportId(r.id);
+      }
+      setBusy(false);
+    },
+    onError: (msg) => {
+      setError(msg);
+      setBusy(false);
+    },
+  });
 
   useEffect(() => {
     setReport(null);
@@ -76,6 +97,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
     setAck(false);
     setView("connection");
     setFocus("all");
+    stopWait();
 
     let cancelled = false;
     const load = async () => {
@@ -91,14 +113,20 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         const data = (await res.json().catch(() => ({}))) as {
           report?: { id?: string; status?: string; reportText?: string | null };
         };
+        if (cancelled) return;
         if (
-          !cancelled &&
           data.report?.status === "done" &&
           typeof data.report.reportText === "string" &&
           data.report.reportText.trim()
         ) {
           setReport(sanitizeHdCompositeReportText(data.report.reportText));
           if (typeof data.report.id === "string") setReportId(data.report.id);
+          return;
+        }
+        if (data.report?.status === "pending") {
+          if (typeof data.report.id === "string") setReportId(data.report.id);
+          startWait();
+          setBusy(true);
         }
       } catch {
         /* ignore — paid CTA still available */
@@ -108,7 +136,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
     return () => {
       cancelled = true;
     };
-  }, [base.id, partner.id]);
+  }, [base.id, partner.id, startWait, stopWait]);
 
   const highlightChannels = useMemo(() => {
     if (focus === "electro") return conn.electromagneticKeys;
@@ -132,13 +160,15 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
     view === "base" ? base.chart : view === "partner" ? partner.chart : conn.mergedChart;
 
   const buyReport = async (opts?: { regenerate?: boolean }) => {
-    if (busy) return;
-    if (!ack && !opts?.regenerate) {
+    if (busy || postInFlightRef.current) return;
+    if (!ack && !opts?.regenerate && !waiting) {
       setError("Подтвердите передачу данных карт языковой модели.");
       return;
     }
     setBusy(true);
     setError(null);
+    startWait();
+    postInFlightRef.current = true;
     try {
       const res = await fetch("/api/human-design/composite-report", {
         method: "POST",
@@ -153,34 +183,54 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
-        report?: { id?: string; reportText?: string | null };
+        report?: { id?: string; status?: string; reportText?: string | null };
         error?: string;
         message?: string;
         balance?: number;
         required?: number;
+        code?: string;
       };
       if (res.status === 401) {
+        stopWait();
+        setBusy(false);
         setNeedsLogin(true);
         setError("Разбор совместимости доступен после входа в аккаунт — карты сохранятся в кабинете.");
         return;
       }
       if (res.status === 402) {
+        stopWait();
+        setBusy(false);
         setPaywall({
           balance: Number(data.balance) || 0,
           required: Number(data.required) || reportCost,
         });
         return;
       }
-      if (!res.ok || !data.report?.reportText) {
+      if (res.status === 409 && data?.code === "CLAIM_BUSY") {
+        startWait();
+        return;
+      }
+      if (data.report?.status === "done" && data.report.reportText) {
+        setReport(sanitizeHdCompositeReportText(data.report.reportText));
+        if (typeof data.report.id === "string") setReportId(data.report.id);
+        stopWait();
+        setBusy(false);
+        return;
+      }
+      if (!res.ok) {
+        stopWait();
+        setBusy(false);
         setError(hdApiErrorMessage(data, "Не удалось получить разбор. Попробуйте позже."));
         return;
       }
-      setReport(sanitizeHdCompositeReportText(data.report.reportText));
-      if (typeof data.report.id === "string") setReportId(data.report.id);
+      // Pending / long generate — keep polling.
+      if (typeof data.report?.id === "string") setReportId(data.report.id);
+      startWait();
     } catch {
-      setError("Сеть недоступна. Попробуйте позже.");
+      startWait();
+      setError("Связь прервалась — ждём результат на сервере…");
     } finally {
-      setBusy(false);
+      postInFlightRef.current = false;
     }
   };
 
@@ -414,134 +464,145 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
       {/* Paid report */}
       <div className="hd-panel hd-print-hidden">
         <p className="hd-panel__title">Разбор связи от Эвелины</p>
-        <p className="mt-2 text-sm text-white/60">
-          Механика выше — бесплатно. Ниже модульный текст Эвелины по вашей карте связи. Сначала
-          выберите контекст.
-        </p>
 
-        <div className="hd-connection__relations" role="radiogroup" aria-label="Контекст связи">
-          {HD_CONNECTION_RELATIONS.map((r) => (
-            <button
-              key={r.id}
-              type="button"
-              role="radio"
-              aria-checked={relation === r.id}
-              className={relation === r.id ? "is-active" : undefined}
-              onClick={() => setRelation(r.id)}
-            >
-              <strong>{r.label}</strong>
-              <span>{r.hint}</span>
-            </button>
-          ))}
-        </div>
-
-        {!report && (
-          <>
-            <div className="hd-packages hd-packages--single mt-4">
-              <div className="hd-package is-active is-featured">
-                <span className="hd-package__badge">Премиум</span>
-                <strong className="hd-package__label">Карта связи</strong>
-                <span className="hd-package__tagline">
-                  Модульный разбор под выбранный сценарий
-                </span>
-                <span className="hd-package__price">{priceLabel}</span>
-                <ul className="hd-package__modules">
-                  {HD_CONNECTION_REPORT_MODULES.map((m) => (
-                    <li key={m.id}>
-                      <span aria-hidden="true">✓</span>
-                      <span>
-                        <em>{m.title}</em>
-                        {m.blurb}
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            </div>
-            <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
-              <input
-                type="checkbox"
-                checked={ack}
-                onChange={(e) => setAck(e.target.checked)}
-                className="mt-0.5 accent-amber-500"
-              />
-              <span>
-                Подтверждаю передачу рассчитанных данных обеих карт внешней языковой модели для
-                генерации разбора.
-              </span>
-            </label>
-            <button
-              type="button"
-              onClick={() => void buyReport()}
-              disabled={busy || !ack}
-              className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-            >
-              {busy
-                ? "Эвелина готовит разбор…"
-                : `Получить разбор связи · ${priceLabel}`}
-            </button>
-            {busy && (
-              <p className="mt-2 text-xs text-white/45">
-                Обычно 30–60 секунд. Не закрывайте страницу.
+        {(waiting || busy) && !report ? (
+          <div className="mt-4">
+            <HdGenerating kind="composite" startedAt={startedAt ?? Date.now()} />
+            {error && (
+              <p className="mt-3 text-sm text-amber-100/70" role="status">
+                {error}
               </p>
             )}
-          </>
-        )}
+          </div>
+        ) : (waiting || busy) && report ? (
+          <div className="mt-4">
+            <HdGenerating kind="composite" startedAt={startedAt ?? Date.now()} />
+          </div>
+        ) : (
+          <>
+            <p className="mt-2 text-sm text-white/60">
+              Механика выше — бесплатно. Ниже модульный текст Эвелины по вашей карте связи. Сначала
+              выберите контекст.
+            </p>
 
-        {error && (
-          <p
-            className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-200/90"
-            role="alert"
-          >
-            {error}
-            {needsLogin && (
+            <div className="hd-connection__relations" role="radiogroup" aria-label="Контекст связи">
+              {HD_CONNECTION_RELATIONS.map((r) => (
+                <button
+                  key={r.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={relation === r.id}
+                  className={relation === r.id ? "is-active" : undefined}
+                  onClick={() => setRelation(r.id)}
+                >
+                  <strong>{r.label}</strong>
+                  <span>{r.hint}</span>
+                </button>
+              ))}
+            </div>
+
+            {!report && (
               <>
-                {" "}
-                <a
-                  href="/auth/user/login?returnTo=/cabinet/human-design"
-                  className="underline underline-offset-2 hover:text-red-100"
-                >
-                  Войти
-                </a>
-              </>
-            )}
-          </p>
-        )}
-
-        {report && (
-          <div className="hd-report mt-5">
-            <ReactMarkdown>{report}</ReactMarkdown>
-            <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
-              {reportId ? (
-                <a
-                  href={`/cabinet/human-design/composite-reports/${reportId}/print`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hd-bodygraph__export"
-                >
-                  Печать / PDF
-                </a>
-              ) : (
+                <div className="hd-packages hd-packages--single mt-4">
+                  <div className="hd-package is-active is-featured">
+                    <span className="hd-package__badge">Премиум</span>
+                    <strong className="hd-package__label">Карта связи</strong>
+                    <span className="hd-package__tagline">
+                      Модульный разбор под выбранный сценарий
+                    </span>
+                    <span className="hd-package__price">{priceLabel}</span>
+                    <ul className="hd-package__modules">
+                      {HD_CONNECTION_REPORT_MODULES.map((m) => (
+                        <li key={m.id}>
+                          <span aria-hidden="true">✓</span>
+                          <span>
+                            <em>{m.title}</em>
+                            {m.blurb}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                </div>
+                <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
+                  <input
+                    type="checkbox"
+                    checked={ack}
+                    onChange={(e) => setAck(e.target.checked)}
+                    className="mt-0.5 accent-amber-500"
+                  />
+                  <span>
+                    Подтверждаю передачу рассчитанных данных обеих карт внешней языковой модели для
+                    генерации разбора.
+                  </span>
+                </label>
                 <button
                   type="button"
-                  className="hd-bodygraph__export"
-                  onClick={() => window.print()}
-                  title="Печать или сохранение как PDF"
+                  onClick={() => void buyReport()}
+                  disabled={busy || waiting || !ack}
+                  className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
                 >
-                  Печать / PDF
+                  {`Получить разбор связи · ${priceLabel}`}
                 </button>
-              )}
-              <button
-                type="button"
-                className="hd-bodygraph__export"
-                disabled={busy}
-                onClick={() => void buyReport({ regenerate: true })}
-                title="Бесплатно пересобрать текст в новом формате"
+              </>
+            )}
+
+            {error && (
+              <p
+                className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-200/90"
+                role="alert"
               >
-                {busy ? "Пересобираю…" : "Пересобрать разбор"}
-              </button>
-            </div>
-          </div>
+                {error}
+                {needsLogin && (
+                  <>
+                    {" "}
+                    <a
+                      href="/auth/user/login?returnTo=/cabinet/human-design"
+                      className="underline underline-offset-2 hover:text-red-100"
+                    >
+                      Войти
+                    </a>
+                  </>
+                )}
+              </p>
+            )}
+
+            {report && (
+              <div className="hd-report mt-5">
+                <ReactMarkdown>{report}</ReactMarkdown>
+                <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
+                  {reportId ? (
+                    <a
+                      href={`/cabinet/human-design/composite-reports/${reportId}/print`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="hd-bodygraph__export"
+                    >
+                      Печать / PDF
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="hd-bodygraph__export"
+                      onClick={() => window.print()}
+                      title="Печать или сохранение как PDF"
+                    >
+                      Печать / PDF
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    className="hd-bodygraph__export"
+                    disabled={busy || waiting}
+                    onClick={() => void buyReport({ regenerate: true })}
+                    title="Бесплатно пересобрать текст в новом формате"
+                  >
+                    Пересобрать разбор
+                  </button>
+                </div>
+              </div>
+            )}
+          </>
         )}
       </div>
 
