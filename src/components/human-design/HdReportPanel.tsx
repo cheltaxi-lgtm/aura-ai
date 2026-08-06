@@ -196,14 +196,14 @@ export default function HdReportPanel({
   const selectTone = useCallback(
     (next: HdReportTone) => {
       if (loading) return;
+      const current = report?.reportTone ?? tone;
       setTone(next);
       // Already have a paid report → free rewrite in the chosen tone.
-      if (report?.status === "done") {
-        if (report.reportTone === next) return;
+      if (report?.status === "done" && current !== next) {
         void buyReport({ regenerate: true, toneOverride: next });
       }
     },
-    [buyReport, loading, report]
+    [buyReport, loading, report, tone]
   );
 
   const tonePicker = (

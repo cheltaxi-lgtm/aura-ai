@@ -419,6 +419,10 @@
   @apply mt-0;
 }
 
+.hd-report h3 {
+  @apply mt-5 text-base font-semibold tracking-tight text-amber-100/85;
+}
+
 .hd-report p {
   @apply text-white/85;
 }
