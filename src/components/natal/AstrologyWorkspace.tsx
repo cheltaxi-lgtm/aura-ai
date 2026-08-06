@@ -654,11 +654,22 @@ export default function AstrologyWorkspace() {
                 Западная карта, джйотиш, периоды и ваши платные отчёты — с прозрачной методологией и ограничениями расчёта.
               </p>
             </div>
-            <button type="button" onClick={() => void loadChart(true)} disabled={busy !== null}
-              title="Обновляет положения планет и транзиты. Платные отчёты не перегенерируются."
-              className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] px-4 text-sm text-amber-100 transition hover:bg-amber-300/[0.13] disabled:opacity-50">
-              <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "animate-spin" : ""}`} aria-hidden /> Обновить расчёт
-            </button>
+            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+              <button type="button" onClick={() => void loadChart(true)} disabled={busy !== null}
+                title="Обновляет положения планет и транзиты по данным профиля. Платные отчёты не перегенерируются."
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] px-4 text-sm text-amber-100 transition hover:bg-amber-300/[0.13] disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "animate-spin" : ""}`} aria-hidden /> Обновить расчёт
+              </button>
+              <Link
+                href="/cabinet"
+                className="text-center text-xs text-amber-100/70 underline-offset-2 transition hover:text-amber-100 hover:underline sm:text-right"
+              >
+                Изменить дату, время или город в профиле
+              </Link>
+              <p className="max-w-xs text-center text-[11px] leading-4 text-white/35 sm:text-right">
+                Карта строится по данным рождения из профиля. Без города асцендент и дома недоступны.
+              </p>
+            </div>
           </div>
           <div className="mt-5 flex flex-wrap gap-2 text-xs text-white/50">
             {western ? bigThree(western, chart.timeKnown).map((item) => <span key={item} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{item}</span>) : null}

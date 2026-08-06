@@ -130,7 +130,18 @@ export async function getAccountConsentSnapshot(
 
 export async function hasAccountAgeConfirmed(accountId: string): Promise<boolean> {
   const snap = await getAccountConsentSnapshot(accountId);
-  return Boolean(snap?.ageConfirmedAt);
+  if (snap?.ageConfirmedAt) return true;
+
+  // Heal pre-migration accounts: profile may already carry explicit 18+ consent
+  // while user_accounts.age_confirmed_at is still NULL.
+  const profileUserId = await getProfileUserIdForAccount(accountId);
+  if (!profileUserId) return false;
+  const profile = await getUserById(profileUserId);
+  const meta = profile?.astro_meta as { ageConfirmed?: boolean } | null | undefined;
+  if (meta?.ageConfirmed !== true) return false;
+
+  void recordAccountLegalConsent(accountId, { ageConfirmed: true }).catch(() => undefined);
+  return true;
 }
 
 /** Persist explicit 18+ / terms consent on the account (and linked profile meta). */

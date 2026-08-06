@@ -95,10 +95,12 @@ function formatSession(
 
 export async function POST(request: NextRequest) {
   try {
-    const rateLimited = await enforceSessionCreateRateLimit(clientIp(request));
+    const auth = await getAuth();
+    const rateLimited = await enforceSessionCreateRateLimit(clientIp(request), {
+      accountId: auth?.role === "user" ? auth.sub : null,
+    });
     if (rateLimited) return rateLimited;
 
-    const auth = await getAuth();
     const body = await request.json().catch(() => ({}));
     const referrerSlug = body.referrerSlug as string | undefined;
     const influencerToken = body.influencerToken as string | undefined;

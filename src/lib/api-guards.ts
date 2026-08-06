@@ -163,7 +163,13 @@ const ALLOWED_IMAGE_MIMES = new Set(["image/jpeg", "image/png", "image/webp"]);
 export function validateImageMime(mimeType: string | undefined): NextResponse | null {
   const mime = (mimeType ?? "image/jpeg").toLowerCase().split(";")[0]?.trim();
   if (!ALLOWED_IMAGE_MIMES.has(mime)) {
-    return NextResponse.json({ error: "invalid_image_type" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: "invalid_image_type",
+        message: "Поддерживаются только JPG, PNG и WebP.",
+      },
+      { status: 400 }
+    );
   }
   return null;
 }
@@ -180,7 +186,13 @@ export function validateImageBase64Payload(base64: string): NextResponse | null 
     head.startsWith("iVBORw0KG") ||
     head.startsWith("UklGR");
   if (!ok) {
-    return NextResponse.json({ error: "invalid_image_format" }, { status: 400 });
+    return NextResponse.json(
+      {
+        error: "invalid_image_format",
+        message: "Не удалось прочитать изображение. Загрузите JPG или PNG фото расклада.",
+      },
+      { status: 400 }
+    );
   }
   return null;
 }
@@ -324,12 +336,22 @@ export async function enforceLoginRateLimit(ip: string): Promise<NextResponse | 
 }
 
 const SESSION_CREATE_LIMIT = 20;
+/** Authenticated users get a separate, higher bucket so NAT/shared IPs don't block them. */
+const SESSION_CREATE_USER_LIMIT = 80;
 const SESSION_CREATE_WINDOW_MS = 60 * 60 * 1000;
 
-export async function enforceSessionCreateRateLimit(ip: string): Promise<NextResponse | null> {
+export async function enforceSessionCreateRateLimit(
+  ip: string,
+  opts?: { accountId?: string | null }
+): Promise<NextResponse | null> {
+  const accountId = opts?.accountId?.trim();
+  const key = accountId
+    ? rateLimitKey("session_create_user", accountId)
+    : rateLimitKey("session_create", ip || "unknown");
+  const limit = accountId ? SESSION_CREATE_USER_LIMIT : SESSION_CREATE_LIMIT;
   const { allowed, retryAfterSec } = await checkRateLimit(
-    rateLimitKey("session_create", ip),
-    SESSION_CREATE_LIMIT,
+    key,
+    limit,
     SESSION_CREATE_WINDOW_MS
   );
   if (!allowed) {

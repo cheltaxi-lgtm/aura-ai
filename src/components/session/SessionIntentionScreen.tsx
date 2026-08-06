@@ -50,9 +50,18 @@ export default function SessionIntentionScreen() {
   useEffect(() => {
     if (authLoading) return;
     if (!isLoggedIn) {
-      router.replace(`/auth/user/login?returnTo=${encodeURIComponent("/session/intention")}`);
+      const qs = searchParams.toString();
+      const returnTo = qs ? `/session/intention?${qs}` : "/session/intention";
+      router.replace(`/auth/user/login?returnTo=${encodeURIComponent(returnTo)}`);
     }
-  }, [authLoading, isLoggedIn, router]);
+  }, [authLoading, isLoggedIn, router, searchParams]);
+
+  useEffect(() => {
+    if (authLoading || !isLoggedIn) return;
+    if (!masterId) {
+      navigateToAppHome();
+    }
+  }, [authLoading, isLoggedIn, masterId]);
 
   useEffect(() => {
     void (async () => {
@@ -93,10 +102,7 @@ export default function SessionIntentionScreen() {
     return (
       <div className="min-h-screen bg-black pb-24 pt-6 text-white">
         <SessionFlowLayout step="intention" title="Намерение сеанса" completed={completedSteps}>
-          <p className="text-center text-sm text-gray-400">Мастер не выбран.</p>
-          <button type="button" className="btn-primary mx-auto mt-6 block px-8 py-2.5" onClick={navigateToAppHome}>
-            На главную
-          </button>
+          <p className="text-center text-sm text-gray-400">Выберите мастера, чтобы продолжить…</p>
         </SessionFlowLayout>
       </div>
     );
