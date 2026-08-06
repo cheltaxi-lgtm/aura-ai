@@ -19,6 +19,7 @@ import {
 import { withTransaction } from "@/lib/db";
 import {
   attachCompositeReportTransaction,
+  beginCompositeReportRewrite,
   completeCompositeReport,
   createPendingCompositeReport,
   deleteCompositeReportRow,
@@ -31,13 +32,16 @@ import {
   lockStalePendingCompositeForResume,
   markCompositeReportChargeRefunded,
   releaseStalePendingCompositeLock,
+  restoreCompositeReportDone,
   toPublicHdCompositeReport,
   type HdCompositeReportRow,
 } from "@/lib/services/human-design-service";
 import {
+  buildHdCompositeReportSystemPrompt,
   connectionRelationPromptHint,
   formatHdConnectionEvidence,
   HD_CONNECTION_RELATIONS,
+  sanitizeHdCompositeReportText,
   type HdConnectionRelation,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
@@ -51,32 +55,32 @@ const DISCLAIMER =
 
 const RELATION_IDS = new Set(HD_CONNECTION_RELATIONS.map((r) => r.id));
 
-function compositePrompt(
-  clientName: string | null,
-  partnerName: string,
-  relation?: HdConnectionRelation | null
-): string {
-  const scenario = connectionRelationPromptHint(relation);
-  return `Ты — Эвелина, ИИ-наставник Zovus. Пишешь премиальный разбор карты связи (Connection Chart) двух людей в системе Дизайна Человека на русском языке.
+export async function GET(request: NextRequest) {
+  if (!(await isHumanDesignEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
 
-Тебе даны РАСЧЁТНЫЕ ДАННЫЕ двух карт и ДЕТЕРМИНИРОВАННАЯ МЕХАНИКА СВЯЗИ. Правила:
-1) Опирайся СТРОГО на эти данные. Нельзя выдумывать ворота, каналы, центры, типы или электромагнетику.
-2) Структура заголовками Markdown (##):
-   - Химия связи
-   - Как вы усиливаете друг друга
-   - Электромагнетические каналы
-   - Соответствия и опоры
-   - Зоны притирки и несоответствия
-   - Решения и стратегии вместе
-   - Быт / взаимодействие в контексте сценария
-   - Практики на 7 дней
-   - Практики на 30 дней
-3) Тепло, конкретно, без воды. Переводи механику на язык живой связи.
-4) Не предсказывай будущее и не давай медицинских/юридических советов.
-5) Объём — 1100–1600 слов.
-6) Контекст сценария: ${scenario}
-${clientName ? `Первый человек: «${clientName}».` : ""}
-Второй человек: «${partnerName}». Обращайся уважительно; к паре/связи — на «вы», где уместно.`;
+  const resolved = await resolveProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(resolved.profileUserId, "hd_chart_read");
+  if (rateLimited) return rateLimited;
+
+  const baseChartId = request.nextUrl.searchParams.get("baseChartId") ?? "";
+  const partnerChartId = request.nextUrl.searchParams.get("partnerChartId") ?? "";
+  if (!HD_UUID_RE.test(baseChartId) || !HD_UUID_RE.test(partnerChartId)) {
+    return NextResponse.json({ report: null });
+  }
+
+  const report = await getHdCompositeReport(baseChartId, partnerChartId, resolved.profileUserId);
+  if (!report) return NextResponse.json({ report: null });
+  const pub = toPublicHdCompositeReport(report);
+  if (pub.reportText) {
+    pub.reportText = sanitizeHdCompositeReportText(pub.reportText);
+  }
+  return NextResponse.json({ report: pub });
 }
 
 export async function POST(request: NextRequest) {
@@ -103,11 +107,13 @@ export async function POST(request: NextRequest) {
     partnerChartId?: unknown;
     aiDataUseAcknowledged?: unknown;
     relation?: unknown;
+    regenerate?: unknown;
   };
   const relation: HdConnectionRelation | null =
     typeof body.relation === "string" && RELATION_IDS.has(body.relation as HdConnectionRelation)
       ? (body.relation as HdConnectionRelation)
       : "partner";
+  const regenerate = body.regenerate === true;
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных данных карт внешней языковой модели." },
@@ -133,10 +139,37 @@ export async function POST(request: NextRequest) {
   }
 
   let existing = await getHdCompositeReport(base.id, partner.id, userId);
-  if (existing?.status === "done" && existing.reportText) {
-    return NextResponse.json({ report: toPublicHdCompositeReport(existing), cached: true });
+
+  // Free in-place rewrite of an already-paid done report (keeps old text on failure).
+  let rewritePaid = false;
+  if (regenerate) {
+    if (!existing || existing.status !== "done" || !existing.reportText) {
+      return NextResponse.json(
+        { error: "Сначала получите разбор — пересобрать пока нечего." },
+        { status: 400 }
+      );
+    }
+    const locked = await beginCompositeReportRewrite(existing.id);
+    if (!locked) {
+      return NextResponse.json(
+        { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+        { status: 409 }
+      );
+    }
+    existing = { ...existing, status: "pending" };
+    rewritePaid = true;
   }
-  if (existing?.status === "pending" && !isStalePendingComposite(existing)) {
+
+  if (!rewritePaid && existing?.status === "done" && existing.reportText) {
+    return NextResponse.json({
+      report: {
+        ...toPublicHdCompositeReport(existing),
+        reportText: sanitizeHdCompositeReportText(existing.reportText),
+      },
+      cached: true,
+    });
+  }
+  if (!rewritePaid && existing?.status === "pending" && !isStalePendingComposite(existing)) {
     return NextResponse.json(
       { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
       { status: 409 }
@@ -145,6 +178,7 @@ export async function POST(request: NextRequest) {
   // Stale pending with a recorded charge → crashed after payment: resume
   // generation on the same row without charging twice.
   let resumePaidPending =
+    !rewritePaid &&
     existing?.status === "pending" &&
     isStalePendingComposite(existing) &&
     Boolean(existing.transactionId);
@@ -220,7 +254,9 @@ export async function POST(request: NextRequest) {
   };
 
   try {
-    if (resumePaidPending && existing) {
+    if (rewritePaid && existing) {
+      pending = existing;
+    } else if (resumePaidPending && existing) {
       // CAS-lock the stale row: concurrent resumes see a fresh pending → 409.
       const locked = await lockStalePendingCompositeForResume(existing.id);
       if (!locked) {
@@ -254,7 +290,13 @@ export async function POST(request: NextRequest) {
       if (!created) {
         const again = await getHdCompositeReport(base.id, partner.id, userId);
         if (again?.status === "done" && again.reportText) {
-          return NextResponse.json({ report: toPublicHdCompositeReport(again), cached: true });
+          return NextResponse.json({
+            report: {
+              ...toPublicHdCompositeReport(again),
+              reportText: sanitizeHdCompositeReportText(again.reportText),
+            },
+            cached: true,
+          });
         }
         return NextResponse.json(
           { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
@@ -265,22 +307,32 @@ export async function POST(request: NextRequest) {
       charge = created.charge;
     }
 
+    const scenario = connectionRelationPromptHint(relation);
     const answer = await completeChat({
       messages: [
         {
           role: "system",
-          content: await wrapSystemPrompt(compositePrompt(clientName, partnerName, relation)),
+          content: await wrapSystemPrompt(
+            buildHdCompositeReportSystemPrompt(clientName, partnerName, scenario)
+          ),
         },
         { role: "user", content: evidence },
       ],
-      maxTokens: 4000,
-      temperature: 0.75,
+      maxTokens: 2800,
+      temperature: 0.65,
       isPaid: true,
       timeoutMs: 240_000,
     });
 
     if (!answer || isRejectedLlmOutput(answer)) {
       await rollback();
+      if (rewritePaid) {
+        await restoreCompositeReportDone(pending.id).catch(() => undefined);
+        return NextResponse.json(
+          { error: "Не удалось пересобрать разбор. Предыдущий текст сохранён — попробуйте ещё раз." },
+          { status: 502 }
+        );
+      }
       if (resumePaidPending) {
         // Keep the paid pending row: the next attempt resumes it for free.
         // Release the CAS-lock age reset so the retry isn't blocked for 10 min.
@@ -302,14 +354,22 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const text = answer.trim() + DISCLAIMER;
+    const text = sanitizeHdCompositeReportText(answer) + DISCLAIMER;
     await completeCompositeReport(pending.id, text, "openrouter");
     completed = true; // past this point a catch must NOT refund a done report
     const done = await getHdCompositeReport(base.id, partner.id, userId);
     return NextResponse.json({
-      report: done ? toPublicHdCompositeReport(done) : null,
+      report: done
+        ? {
+            ...toPublicHdCompositeReport(done),
+            reportText: done.reportText
+              ? sanitizeHdCompositeReportText(done.reportText)
+              : done.reportText,
+          }
+        : null,
       cached: false,
       runeBalance: charge?.newBalance,
+      regenerated: rewritePaid,
     });
   } catch (error) {
     // Never refund a report that actually completed — a post-completion
@@ -318,7 +378,9 @@ export async function POST(request: NextRequest) {
       await rollback().catch(() => {
         console.warn("[human-design] composite rollback failed");
       });
-      if (resumePaidPending && pending) {
+      if (rewritePaid && pending) {
+        await restoreCompositeReportDone(pending.id).catch(() => undefined);
+      } else if (resumePaidPending && pending) {
         await releaseStalePendingCompositeLock(pending.id).catch(() => undefined);
       }
     }

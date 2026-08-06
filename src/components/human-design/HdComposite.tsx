@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState, type ReactNode } from "react";
+import ReactMarkdown from "react-markdown";
 import {
   AUTHORITY_NAMES_RU,
   CENTER_NAMES_RU,
@@ -8,6 +9,7 @@ import {
   PROFILE_NAMES_RU,
   TYPE_META,
   analyzeHdConnection,
+  sanitizeHdCompositeReportText,
   type HdConnectionRelation,
 } from "@/lib/human-design";
 import PaywallModal from "@/components/PaywallModal";
@@ -71,6 +73,37 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
     setAck(false);
     setView("connection");
     setFocus("all");
+
+    let cancelled = false;
+    const load = async () => {
+      try {
+        const qs = new URLSearchParams({
+          baseChartId: base.id,
+          partnerChartId: partner.id,
+        });
+        const res = await fetch(`/api/human-design/composite-report?${qs}`, {
+          credentials: "include",
+        });
+        if (!res.ok || cancelled) return;
+        const data = (await res.json().catch(() => ({}))) as {
+          report?: { status?: string; reportText?: string | null };
+        };
+        if (
+          !cancelled &&
+          data.report?.status === "done" &&
+          typeof data.report.reportText === "string" &&
+          data.report.reportText.trim()
+        ) {
+          setReport(sanitizeHdCompositeReportText(data.report.reportText));
+        }
+      } catch {
+        /* ignore — paid CTA still available */
+      }
+    };
+    void load();
+    return () => {
+      cancelled = true;
+    };
   }, [base.id, partner.id]);
 
   const highlightChannels = useMemo(() => {
@@ -94,9 +127,9 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
   const bodyChart =
     view === "base" ? base.chart : view === "partner" ? partner.chart : conn.mergedChart;
 
-  const buyReport = async () => {
+  const buyReport = async (opts?: { regenerate?: boolean }) => {
     if (busy) return;
-    if (!ack) {
+    if (!ack && !opts?.regenerate) {
       setError("Подтвердите передачу данных карт языковой модели.");
       return;
     }
@@ -112,6 +145,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
           partnerChartId: partner.id,
           aiDataUseAcknowledged: true,
           relation,
+          regenerate: opts?.regenerate === true,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -137,7 +171,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         setError(hdApiErrorMessage(data, "Не удалось получить разбор. Попробуйте позже."));
         return;
       }
-      setReport(data.report.reportText);
+      setReport(sanitizeHdCompositeReportText(data.report.reportText));
     } catch {
       setError("Сеть недоступна. Попробуйте позже.");
     } finally {
@@ -376,8 +410,8 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
       <div className="hd-panel hd-print-hidden">
         <p className="hd-panel__title">Глубокий разбор связи от Эвелины</p>
         <p className="mt-2 text-sm text-white/60">
-          Премиальный текст по вашей механике: химия, усиление, трение, быт и практики. Сначала
-          выберите контекст связи.
+          Короткий премиальный разбор по механике связи: химия, опоры, трение и практики. Выберите
+          контекст.
         </p>
 
         <div className="hd-connection__relations" role="radiogroup" aria-label="Контекст связи">
@@ -450,32 +484,26 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
 
         {report && (
           <div className="hd-report mt-5">
-            {report.split(/^## /m).map((section, i) => {
-              if (i === 0 && !section.startsWith("##")) {
-                return section.trim() ? <p key={i}>{section.trim()}</p> : null;
-              }
-              const [title, ...rest] = section.replace(/^## /, "").split("\n");
-              return (
-                <div key={i}>
-                  <h2>{title}</h2>
-                  {rest
-                    .join("\n")
-                    .trim()
-                    .split(/\n{2,}/)
-                    .map((p, j) => (
-                      <p key={j}>{p}</p>
-                    ))}
-                </div>
-              );
-            })}
-            <button
-              type="button"
-              className="hd-bodygraph__export mt-4"
-              onClick={() => window.print()}
-              title="Печать или сохранение как PDF"
-            >
-              Печать / PDF
-            </button>
+            <ReactMarkdown>{report}</ReactMarkdown>
+            <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="hd-bodygraph__export"
+                onClick={() => window.print()}
+                title="Печать или сохранение как PDF"
+              >
+                Печать / PDF
+              </button>
+              <button
+                type="button"
+                className="hd-bodygraph__export"
+                disabled={busy}
+                onClick={() => void buyReport({ regenerate: true })}
+                title="Бесплатно пересобрать текст в новом формате"
+              >
+                {busy ? "Пересобираю…" : "Пересобрать разбор"}
+              </button>
+            </div>
           </div>
         )}
       </div>

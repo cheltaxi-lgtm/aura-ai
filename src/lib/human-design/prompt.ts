@@ -175,3 +175,61 @@ export function buildHdAskSystemPrompt(clientName: string | null): string {
 3) Не давай медицинских, юридических и финансовых советов. Не предсказывай события и сроки.
 ${clientName ? `Имя клиента: «${clientName}» — обращайся по имени, только кириллица.` : ""}`;
 }
+
+/** Premium Connection Chart report — short, clean markdown, no decorative junk. */
+export function buildHdCompositeReportSystemPrompt(
+  clientName: string | null,
+  partnerName: string,
+  scenario: string
+): string {
+  return `Ты — Эвелина, ИИ-наставник Zovus. Пишешь премиальный разбор карты связи (Connection Chart) двух людей на русском.
+
+Тебе даны РАСЧЁТНЫЕ ДАННЫЕ и ДЕТЕРМИНИРОВАННАЯ МЕХАНИКА СВЯЗИ. Правила:
+1) Опирайся СТРОГО на эти данные. Нельзя выдумывать ворота, каналы, центры, типы или электромагнетику.
+2) Формат — чистый Markdown. Перед первым разделом одно короткое вступление (1–2 предложения), без заголовка #.
+3) Дальше ТОЛЬКО эти разделы с заголовками ## (ровно так, без эмодзи в заголовках):
+   ## Химия связи
+   ## Как вы усиливаете друг друга
+   ## Электромагнетика
+   ## Опоры
+   ## Трение
+   ## Решения вместе
+   ## Практики
+4) В каждом разделе: 1–3 коротких абзаца. Списки — только если нужны, максимум 4 пункта, обычные «- » или «1. ». Не повторяй одни и те же каналы дословно в разных разделах.
+5) Запрещено: эмодзи; декоративные символы (✅⚠🔧💡🏠🔹📌📝 и т.п.); таблицы; расписания по часам; вымышленные режимы дня/ночи; блоки «Утро | День | Вечер»; HTML; ссылки; горизонтальные линии --- внутри текста; заголовки # и ###.
+6) Жирный (**…**) — редко, не чаще одного выделения на абзац. Курсив — только для коротких акцентов. Не оборачивай целые предложения в **.
+7) Тепло, конкретно, без воды. Переводи механику на язык живой связи.
+8) Не предсказывай будущее. Не давай медицинских и юридических советов.
+9) Объём — 650–900 слов. Не пиши простыню.
+10) Контекст сценария: ${scenario}
+${clientName ? `Первый человек: «${clientName}».` : ""}
+Второй человек: «${partnerName}». К связи обращайся на «вы», где уместно.`;
+}
+
+/**
+ * Strip decorative LLM noise so Connection reports stay readable even when
+ * the model ignores format rules (emoji, fake schedules, H1 spam).
+ */
+export function sanitizeHdCompositeReportText(text: string): string {
+  let t = text.replace(/\r\n/g, "\n").trim();
+  t = t.replace(/\p{Extended_Pictographic}/gu, "");
+  t = t.replace(/\p{Emoji_Presentation}/gu, "");
+  t = t.replace(/[0-9]\uFE0F?\u20E3/g, "");
+  t = t.replace(/[\u2705\u26A0\u2714\u274C\u2B50\u25AA\u25CF\u25CB\u25B6\uFE0F]/g, "");
+  t = t
+    .split("\n")
+    .filter((line) => {
+      const pipes = (line.match(/\|/g) ?? []).length;
+      if (pipes >= 2) return false;
+      if (/^\s*\|?\s*:?-{3,}/.test(line)) return false;
+      return true;
+    })
+    .join("\n");
+  t = t.replace(/^#{3,}\s+/gm, "## ");
+  t = t.replace(/^#\s+(.+)$/gm, "$1");
+  t = t.replace(/^\s*---\s*$/gm, "");
+  t = t.replace(/^\s*\(Таблица[^\n]*\)\s*$/gim, "");
+  t = t.replace(/^\s*\(Конец таблицы\)\s*$/gim, "");
+  t = t.replace(/\n{3,}/g, "\n\n");
+  return t.trim();
+}

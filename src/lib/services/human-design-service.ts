@@ -931,6 +931,25 @@ export async function completeCompositeReport(
   );
 }
 
+/** Mark a done composite as pending rewrite without wiping the previous text. */
+export async function beginCompositeReportRewrite(reportId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE hd_composite_reports SET status = 'pending', updated_at = now(), created_at = now()
+     WHERE id = $1 AND status = 'done'`,
+    [reportId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Restore a failed rewrite back to done (keeps the previous report_text). */
+export async function restoreCompositeReportDone(reportId: string): Promise<void> {
+  await query(
+    `UPDATE hd_composite_reports SET status = 'done', error = NULL, updated_at = now()
+     WHERE id = $1 AND status = 'pending' AND report_text IS NOT NULL`,
+    [reportId]
+  );
+}
+
 export async function failCompositeReport(reportId: string, error: string): Promise<void> {
   await query(
     `UPDATE hd_composite_reports SET status = 'error', error = $2, updated_at = now() WHERE id = $1`,

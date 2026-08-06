@@ -443,6 +443,6 @@ export function connectionRelationPromptHint(relation?: HdConnectionRelation | n
       return "Акцент: партнёрство в деле, ответственность, деньги, стратегия, риски власти.";
     case "partner":
     default:
-      return "Акцент: близость, быт, поддержка, конфликты и решения в паре.";
+      return "Акцент: близость, поддержка, конфликты и совместные решения. Без вымышленных расписаний дня.";
   }
 }

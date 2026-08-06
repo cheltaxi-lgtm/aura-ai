@@ -29,8 +29,10 @@ export {
 export { hdFingerprint, type HdChartIdentity } from "./fingerprint";
 export {
   buildHdAskSystemPrompt,
+  buildHdCompositeReportSystemPrompt,
   buildHdReportSystemPrompt,
   formatHdEvidence,
+  sanitizeHdCompositeReportText,
 } from "./prompt";
 export {
   analyzeHdConnection,

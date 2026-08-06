@@ -412,7 +412,7 @@
 }
 
 .hd-report h2 {
-  @apply mt-7 text-lg font-bold text-amber-100;
+  @apply mt-7 text-lg font-semibold tracking-tight text-amber-100;
 }
 
 .hd-report h2:first-child {
@@ -421,6 +421,43 @@
 
 .hd-report p {
   @apply text-white/85;
+}
+
+.hd-report p + p {
+  @apply mt-3;
+}
+
+.hd-report strong {
+  @apply font-semibold text-amber-50/95;
+}
+
+.hd-report em {
+  @apply text-white/75;
+}
+
+.hd-report ul,
+.hd-report ol {
+  @apply my-2 space-y-1.5 pl-5 text-white/80;
+}
+
+.hd-report ul {
+  @apply list-disc;
+}
+
+.hd-report ol {
+  @apply list-decimal;
+}
+
+.hd-report li {
+  @apply leading-relaxed;
+}
+
+.hd-report hr {
+  @apply my-6 border-amber-500/15;
+}
+
+.hd-report table {
+  @apply hidden;
 }
 
 /* ── Premium Connection Chart ── */
