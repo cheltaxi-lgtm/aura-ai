@@ -109,6 +109,8 @@ export interface BodygraphProps {
   electromagneticChannels?: Set<string> | null;
   /** Gates activated only by the partner in composite mode. */
   partnerGates?: Set<number> | null;
+  /** When set, dim channels outside this set (connection focus filters). */
+  focusChannels?: Set<string> | null;
   /** Ask Evelina about a center (paid). */
   onCenterInsight?: (center: HdCenterKey) => void;
 }
@@ -127,6 +129,7 @@ export default function Bodygraph({
   transits,
   electromagneticChannels,
   partnerGates,
+  focusChannels = null,
   onCenterInsight,
 }: BodygraphProps) {
   const reduceMotion = useReducedMotion();
@@ -254,10 +257,11 @@ export default function Bodygraph({
     () => new Set(chart.channels.filter((c) => c.defined).map((c) => c.key)),
     [chart]
   );
-  const highlightChannels = useMemo(
-    () => (highlightCenter ? channelsForCenter(highlightCenter) : null),
-    [highlightCenter]
-  );
+  const highlightChannels = useMemo(() => {
+    if (focusChannels) return focusChannels;
+    if (highlightCenter) return channelsForCenter(highlightCenter);
+    return null;
+  }, [focusChannels, highlightCenter]);
 
   const personalityByBody = useMemo(() => {
     const m = new Map<HdBodyKey, { gate: number; line: number }>();

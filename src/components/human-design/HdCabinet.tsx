@@ -64,9 +64,11 @@ export default function HdCabinet() {
     load();
   }, [load]);
 
+  // Clear connection only when leaving the self folder (not when entering it
+  // via «Сравнить со мной», which sets partnerId then switches folder).
   useEffect(() => {
-    setPartnerId(null);
-  }, [folder, otherId]);
+    if (folder !== "self") setPartnerId(null);
+  }, [folder]);
 
   useEffect(() => {
     const onVisible = () => {
@@ -296,7 +298,7 @@ export default function HdCabinet() {
                   : "border-white/10 bg-white/[0.03] text-white/60 hover:border-amber-500/30"
               }`}
             >
-              Композит с {hdChartChipLabel(c)}
+              Связь с {hdChartChipLabel(c)}
             </button>
           ))}
         </div>
@@ -360,14 +362,14 @@ export default function HdCabinet() {
           <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-amber-100/80">
-                Композит: {hdChartChipLabel(selfChart)} + {hdChartChipLabel(partner)}
+                Связь: {hdChartChipLabel(selfChart)} × {hdChartChipLabel(partner)}
               </p>
               <button
                 type="button"
                 onClick={() => setPartnerId(null)}
                 className="hd-bodygraph__export"
               >
-                Закрыть композит
+                Закрыть связь
               </button>
             </div>
             <HdComposite base={selfChart} partner={partner} />
@@ -391,15 +393,45 @@ export default function HdCabinet() {
           <div className="space-y-5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <p className="text-sm text-white/55">{hdChartChipLabel(activeOther)}</p>
-              <button
-                type="button"
-                onClick={() => void deleteChart(activeOther)}
-                disabled={deleting}
-                className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
-              >
-                {deleting ? "Удаление…" : "Удалить"}
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {selfChart && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setPartnerId(activeOther.id);
+                      openFolder("self");
+                    }}
+                    className="btn-luxe btn-luxe--gold btn-luxe--sm"
+                  >
+                    Сравнить со мной
+                  </button>
+                )}
+                <button
+                  type="button"
+                  onClick={() => void deleteChart(activeOther)}
+                  disabled={deleting}
+                  className="hd-bodygraph__export !border-red-400/30 !text-red-300/80 hover:!border-red-400/60 hover:!text-red-200 disabled:opacity-50"
+                >
+                  {deleting ? "Удаление…" : "Удалить"}
+                </button>
+              </div>
             </div>
+            {!selfChart && (
+              <p className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-50/80">
+                Чтобы открыть карту связи, сначала рассчитайте{" "}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-amber-50"
+                  onClick={() => {
+                    setCreating(true);
+                    openFolder("self");
+                  }}
+                >
+                  свою карту
+                </button>
+                .
+              </p>
+            )}
             <HdChartView payload={activeOther} />
             <HdReportPanel
               chartId={activeOther.id}

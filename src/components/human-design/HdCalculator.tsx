@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import HdChartSlot from "./HdChartSlot";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
+import HdComposite from "./HdComposite";
 import HdReportPanel from "./HdReportPanel";
 import { hdApiErrorMessage } from "./hd-errors";
 import { hdChartChipLabel } from "./hd-labels";
@@ -81,6 +82,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
   const [result, setResult] = useState<HdChartPayload | null>(initialChart);
   const [authenticated, setAuthenticated] = useState(false);
   const [mine, setMine] = useState<HdChartPayload[]>([]);
+  const [showConnection, setShowConnection] = useState(false);
   const placeBoxRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefillDoneRef = useRef(false);
@@ -365,6 +367,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
           <button
             type="button"
             onClick={() => {
+              setShowConnection(false);
               setResult(c);
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
@@ -410,18 +413,75 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     ) : null;
 
   if (result) {
+    const isOther = result.subjectKind === "other";
+    const selfChart = isOther ? selfMine[0] ?? null : result;
+    const otherForConnection = isOther ? result : null;
+    const canCompare = Boolean(
+      selfChart && otherForConnection && selfChart.id !== otherForConnection.id
+    );
+
+    if (showConnection && canCompare && selfChart && otherForConnection) {
+      return (
+        <div className="space-y-5">
+          {mineChips}
+          <div className="flex flex-wrap items-center justify-between gap-3">
+            <p className="text-sm text-amber-100/80">
+              Связь: {hdChartChipLabel(selfChart)} × {hdChartChipLabel(otherForConnection)}
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowConnection(false)}
+              className="hd-bodygraph__export hd-print-hidden"
+            >
+              К карте
+            </button>
+          </div>
+          <HdChartSlot slotKey={`conn:${selfChart.id}:${otherForConnection.id}`}>
+            <HdComposite base={selfChart} partner={otherForConnection} />
+          </HdChartSlot>
+        </div>
+      );
+    }
+
     return (
       <div className="space-y-5">
         {mineChips}
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-white/55">{payload_line(result)}</p>
-          <button
-            type="button"
-            onClick={() => setResult(null)}
-            className="hd-bodygraph__export hd-print-hidden"
-          >
-            Новый расчёт
-          </button>
+          <div className="flex flex-wrap gap-2 hd-print-hidden">
+            {canCompare && (
+              <button
+                type="button"
+                onClick={() => setShowConnection(true)}
+                className="btn-luxe btn-luxe--gold btn-luxe--sm"
+              >
+                Сравнить со мной
+              </button>
+            )}
+            {result.subjectKind === "other" && !selfMine.length && (
+              <button
+                type="button"
+                onClick={() => {
+                  setShowConnection(false);
+                  setResult(null);
+                  setSubjectKind("self");
+                }}
+                className="hd-bodygraph__export"
+              >
+                Сначала моя карта
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                setShowConnection(false);
+                setResult(null);
+              }}
+              className="hd-bodygraph__export"
+            >
+              Новый расчёт
+            </button>
+          </div>
         </div>
         <HdChartSlot slotKey={result.id}>
           <HdChartView payload={result} />

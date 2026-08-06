@@ -423,3 +423,175 @@
   @apply text-white/85;
 }
 
+/* ── Premium Connection Chart ── */
+.hd-connection__hero {
+  @apply space-y-3 text-center;
+}
+
+.hd-connection__eyebrow {
+  @apply text-[0.625rem] font-medium uppercase tracking-[0.28em] text-amber-200/55;
+}
+
+.hd-connection__title {
+  @apply font-display text-2xl font-semibold tracking-tight text-amber-50 sm:text-3xl;
+}
+
+.hd-connection__amp {
+  @apply text-amber-200/40;
+}
+
+.hd-connection__headline {
+  @apply mx-auto max-w-xl text-sm leading-relaxed text-white/65;
+}
+
+.hd-connection__pair {
+  @apply mx-auto grid max-w-xl gap-3 sm:grid-cols-2;
+}
+
+.hd-connection__person {
+  @apply rounded-2xl border border-amber-500/15 px-3.5 py-3 text-left;
+  background: rgba(232, 199, 126, 0.04);
+}
+
+.hd-connection__person-label {
+  @apply block text-[0.625rem] uppercase tracking-wider text-amber-100/45;
+}
+
+.hd-connection__person strong {
+  @apply mt-1 block text-sm font-semibold text-amber-50;
+}
+
+.hd-connection__person span {
+  @apply mt-0.5 block text-[0.6875rem] leading-snug text-white/50;
+}
+
+.hd-connection__stats {
+  @apply mx-auto flex max-w-lg flex-wrap justify-center gap-4 pt-1;
+}
+
+.hd-connection__stats li {
+  @apply flex flex-col items-center;
+}
+
+.hd-connection__stats strong {
+  @apply font-display text-xl text-amber-100;
+}
+
+.hd-connection__stats span {
+  @apply text-[0.625rem] uppercase tracking-wider text-white/40;
+}
+
+.hd-connection__toolbar {
+  @apply flex flex-col items-center gap-2;
+}
+
+.hd-connection__seg {
+  @apply inline-flex max-w-full flex-wrap justify-center gap-1 rounded-2xl border border-white/10 p-1;
+}
+
+.hd-connection__seg button {
+  @apply rounded-xl px-3 py-1.5 text-xs text-white/55 transition hover:text-white/85;
+}
+
+.hd-connection__seg button.is-active {
+  @apply bg-amber-500/20 text-amber-50;
+}
+
+.hd-connection__decision {
+  @apply mx-auto max-w-2xl text-center text-sm leading-relaxed text-white/70;
+}
+
+.hd-connection__sections {
+  @apply space-y-2;
+}
+
+.hd-connection__section {
+  @apply overflow-hidden rounded-2xl border border-white/10;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hd-connection__section-head {
+  @apply flex w-full items-center justify-between gap-3 px-4 py-3 text-left text-sm font-medium text-amber-50/90 transition hover:bg-white/[0.03];
+}
+
+.hd-connection__section-body {
+  @apply border-t border-white/5 px-4 py-3 text-sm leading-relaxed text-white/75;
+}
+
+.hd-connection__list {
+  @apply space-y-2;
+}
+
+.hd-connection__list li {
+  @apply flex flex-col gap-0.5;
+}
+
+.hd-connection__list strong {
+  @apply text-amber-100/90;
+}
+
+.hd-connection__list span {
+  @apply text-xs text-white/55;
+}
+
+.hd-connection__muted {
+  @apply text-sm text-white/45;
+}
+
+.hd-connection__chips {
+  @apply mt-3 flex flex-wrap gap-1.5;
+}
+
+.hd-connection__chip {
+  @apply rounded-full border border-teal-400/25 bg-teal-500/10 px-2.5 py-1 text-[0.6875rem] text-teal-100/90;
+}
+
+.hd-connection__centers {
+  @apply grid grid-cols-1 gap-1.5 sm:grid-cols-2;
+}
+
+.hd-connection__centers li {
+  @apply flex items-center justify-between gap-2 rounded-xl border border-white/5 px-3 py-2 text-xs;
+}
+
+.hd-connection__centers li[data-kind="both"] {
+  @apply border-amber-400/25 bg-amber-500/10;
+}
+
+.hd-connection__centers li[data-kind="aOnly"],
+.hd-connection__centers li[data-kind="bOnly"] {
+  @apply border-teal-400/20 bg-teal-500/[0.07];
+}
+
+.hd-connection__centers em {
+  @apply not-italic text-white/45;
+}
+
+.hd-connection__relations {
+  @apply mt-4 grid gap-2 sm:grid-cols-2;
+}
+
+.hd-connection__relations button {
+  @apply rounded-2xl border border-white/10 px-3.5 py-3 text-left transition hover:border-amber-400/30;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hd-connection__relations button.is-active {
+  @apply border-amber-400/50 bg-amber-500/10;
+}
+
+.hd-connection__relations strong {
+  @apply block text-sm text-amber-50;
+}
+
+.hd-connection__relations span {
+  @apply mt-0.5 block text-[0.6875rem] text-white/45;
+}
+
+@media print {
+  .hd-connection__toolbar,
+  .hd-connection__relations {
+    display: none !important;
+  }
+}
+

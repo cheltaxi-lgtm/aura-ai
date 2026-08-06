@@ -35,9 +35,10 @@ import {
   type HdCompositeReportRow,
 } from "@/lib/services/human-design-service";
 import {
-  CHANNELS,
-  formatHdEvidence,
-  TYPE_META,
+  connectionRelationPromptHint,
+  formatHdConnectionEvidence,
+  HD_CONNECTION_RELATIONS,
+  type HdConnectionRelation,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
@@ -48,17 +49,34 @@ export const maxDuration = 300;
 const DISCLAIMER =
   "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
 
-function compositePrompt(clientName: string | null, partnerName: string): string {
-  return `Ты — Эвелина, ИИ-наставник Zovus. Пишешь премиальный разбор совместимости двух карт Дизайна Человека (композит) на русском языке.
+const RELATION_IDS = new Set(HD_CONNECTION_RELATIONS.map((r) => r.id));
 
-Тебе даны РАСЧЁТНЫЕ ДАННЫЕ двух карт и список электромагнетических каналов. Правила:
-1) Опирайся СТРОГО на эти данные. Нельзя выдумывать ворота, каналы, центры или типы.
-2) Структура заголовками Markdown (##): Химия пары, Как вы усиливаете друг друга, Электромагнетические каналы, Зоны притирки, Быт и решения вместе, Практические рекомендации.
-3) Тепло, конкретно, без воды. Переводи механику на язык отношений: быт, конфликты, поддержка, близость.
-4) Не предсказывай будущее пары и не давай медицинских/юридических советов.
-5) Объём — 900–1400 слов.
-${clientName ? `Первый человек: «${clientName}» (обращайся «вы» к паре).` : ""}
-Второй человек: «${partnerName}».`;
+function compositePrompt(
+  clientName: string | null,
+  partnerName: string,
+  relation?: HdConnectionRelation | null
+): string {
+  const scenario = connectionRelationPromptHint(relation);
+  return `Ты — Эвелина, ИИ-наставник Zovus. Пишешь премиальный разбор карты связи (Connection Chart) двух людей в системе Дизайна Человека на русском языке.
+
+Тебе даны РАСЧЁТНЫЕ ДАННЫЕ двух карт и ДЕТЕРМИНИРОВАННАЯ МЕХАНИКА СВЯЗИ. Правила:
+1) Опирайся СТРОГО на эти данные. Нельзя выдумывать ворота, каналы, центры, типы или электромагнетику.
+2) Структура заголовками Markdown (##):
+   - Химия связи
+   - Как вы усиливаете друг друга
+   - Электромагнетические каналы
+   - Соответствия и опоры
+   - Зоны притирки и несоответствия
+   - Решения и стратегии вместе
+   - Быт / взаимодействие в контексте сценария
+   - Практики на 7 дней
+   - Практики на 30 дней
+3) Тепло, конкретно, без воды. Переводи механику на язык живой связи.
+4) Не предсказывай будущее и не давай медицинских/юридических советов.
+5) Объём — 1100–1600 слов.
+6) Контекст сценария: ${scenario}
+${clientName ? `Первый человек: «${clientName}».` : ""}
+Второй человек: «${partnerName}». Обращайся уважительно; к паре/связи — на «вы», где уместно.`;
 }
 
 export async function POST(request: NextRequest) {
@@ -84,7 +102,12 @@ export async function POST(request: NextRequest) {
     baseChartId?: unknown;
     partnerChartId?: unknown;
     aiDataUseAcknowledged?: unknown;
+    relation?: unknown;
   };
+  const relation: HdConnectionRelation | null =
+    typeof body.relation === "string" && RELATION_IDS.has(body.relation as HdConnectionRelation)
+      ? (body.relation as HdConnectionRelation)
+      : "partner";
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных данных карт внешней языковой модели." },
@@ -161,31 +184,12 @@ export async function POST(request: NextRequest) {
       ? normalizePersonDisplayName(base.subjectName) || null
       : normalizePersonDisplayName(profileRow.name) || null;
 
-  // Electromagnetic channels: defined only by the union of both charts.
-  const gatesA = new Set(base.chart.activeGates);
-  const gatesB = new Set(partner.chart.activeGates);
-  const definedA = new Set(base.chart.channels.filter((c) => c.defined).map((c) => c.key));
-  const definedB = new Set(partner.chart.channels.filter((c) => c.defined).map((c) => c.key));
-  const electro: string[] = [];
-  for (const ch of CHANNELS) {
-    const key = `${ch.gates[0]}-${ch.gates[1]}`;
-    if (
-      gatesA.has(ch.gates[0]) !== gatesA.has(ch.gates[1]) &&
-      (gatesB.has(ch.gates[0]) || gatesB.has(ch.gates[1])) &&
-      (gatesA.has(ch.gates[0]) || gatesA.has(ch.gates[1])) &&
-      !definedA.has(key) &&
-      !definedB.has(key) &&
-      (gatesA.has(ch.gates[0]) || gatesB.has(ch.gates[0])) &&
-      (gatesA.has(ch.gates[1]) || gatesB.has(ch.gates[1]))
-    ) {
-      electro.push(`${key} «${ch.nameRu}»`);
-    }
-  }
-
-  const evidence =
-    `КАРТА 1 (${clientName ?? "первый человек"}), тип: ${TYPE_META[base.chart.type].nameRu}:\n${formatHdEvidence(base.chart)}\n\n` +
-    `КАРТА 2 (${partnerName}), тип: ${TYPE_META[partner.chart.type].nameRu}:\n${formatHdEvidence(partner.chart)}\n\n` +
-    `ЭЛЕКТРОМАГНЕТИЧЕСКИЕ КАНАЛЫ (возникают только вместе): ${electro.length ? electro.join("; ") : "нет"}`;
+  const evidence = formatHdConnectionEvidence(
+    base.chart,
+    partner.chart,
+    { a: clientName ?? "первый человек", b: partnerName },
+    relation
+  );
 
   const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
   const runeSettings = await getRuneSettings();
@@ -263,7 +267,10 @@ export async function POST(request: NextRequest) {
 
     const answer = await completeChat({
       messages: [
-        { role: "system", content: await wrapSystemPrompt(compositePrompt(clientName, partnerName)) },
+        {
+          role: "system",
+          content: await wrapSystemPrompt(compositePrompt(clientName, partnerName, relation)),
+        },
         { role: "user", content: evidence },
       ],
       maxTokens: 4000,

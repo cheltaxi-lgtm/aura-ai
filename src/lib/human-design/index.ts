@@ -32,3 +32,13 @@ export {
   buildHdReportSystemPrompt,
   formatHdEvidence,
 } from "./prompt";
+export {
+  analyzeHdConnection,
+  connectionRelationPromptHint,
+  formatHdConnectionEvidence,
+  HD_CONNECTION_RELATIONS,
+  type HdChannelBond,
+  type HdCenterBond,
+  type HdConnectionAnalysis,
+  type HdConnectionRelation,
+} from "./connection";

@@ -1,8 +1,15 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
-import type { HdChart } from "@/lib/human-design";
-import { CHANNELS, TYPE_META } from "@/lib/human-design";
+import { useEffect, useMemo, useState, type ReactNode } from "react";
+import {
+  AUTHORITY_NAMES_RU,
+  CENTER_NAMES_RU,
+  HD_CONNECTION_RELATIONS,
+  PROFILE_NAMES_RU,
+  TYPE_META,
+  analyzeHdConnection,
+  type HdConnectionRelation,
+} from "@/lib/human-design";
 import PaywallModal from "@/components/PaywallModal";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import Bodygraph from "./Bodygraph";
@@ -13,54 +20,15 @@ import { hdChartChipLabel } from "./hd-labels";
 interface Props {
   base: HdChartPayload;
   partner: HdChartPayload;
+  /** Optional default relation scenario for the paid report tone. */
+  initialRelation?: HdConnectionRelation;
 }
 
-/** Composite overlay: base chart + partner's activations, electromagnetic channels. */
-export default function HdComposite({ base, partner }: Props) {
-  const { mergedChart, electromagnetic, partnerOnlyGates, sharedCount } = useMemo(() => {
-    const a = base.chart;
-    const b = partner.chart;
-    const gatesA = new Set(a.activeGates);
-    const gatesB = new Set(b.activeGates);
-    const union = new Set([...gatesA, ...gatesB]);
+type ViewMode = "connection" | "base" | "partner";
+type FocusFilter = "all" | "electro" | "harmony" | "friction";
 
-    const definedA = new Set(a.channels.filter((c) => c.defined).map((c) => c.key));
-    const definedB = new Set(b.channels.filter((c) => c.defined).map((c) => c.key));
-
-    const mergedChannels = CHANNELS.map((ch) => {
-      const key = `${ch.gates[0]}-${ch.gates[1]}`;
-      return {
-        key,
-        gates: [ch.gates[0], ch.gates[1]] as [number, number],
-        centers: [ch.centers[0], ch.centers[1]] as HdChart["channels"][number]["centers"],
-        defined: union.has(ch.gates[0]) && union.has(ch.gates[1]),
-      };
-    });
-
-    const electromagnetic = new Set<string>();
-    for (const ch of mergedChannels) {
-      if (ch.defined && !definedA.has(ch.key) && !definedB.has(ch.key)) {
-        electromagnetic.add(ch.key);
-      }
-    }
-
-    const definedCenters = [
-      ...new Set(mergedChannels.filter((c) => c.defined).flatMap((c) => c.centers)),
-    ];
-
-    const partnerOnlyGates = new Set([...gatesB].filter((g) => !gatesA.has(g)));
-    const sharedCount = [...gatesA].filter((g) => gatesB.has(g)).length;
-
-    const mergedChart: HdChart = {
-      ...a,
-      activeGates: [...union].sort((x, y) => x - y),
-      channels: mergedChannels,
-      definedCenters,
-    };
-
-    return { mergedChart, electromagnetic, partnerOnlyGates, sharedCount };
-  }, [base, partner]);
-
+/** Premium Connection Chart: mechanics + bodygraph + paid Evelina report. */
+export default function HdComposite({ base, partner, initialRelation = "partner" }: Props) {
   const baseLabel =
     base.subjectKind === "other"
       ? hdChartChipLabel(base)
@@ -70,31 +38,66 @@ export default function HdComposite({ base, partner }: Props) {
       ? partner.subjectName.trim()
       : hdChartChipLabel(partner);
 
+  const conn = useMemo(
+    () =>
+      analyzeHdConnection(base.chart, partner.chart, {
+        a: baseLabel,
+        b: partnerName,
+      }),
+    [base.chart, partner.chart, baseLabel, partnerName]
+  );
+
   const { cost, formatRunesWithRub, ready } = useRuneConfig();
   const reportCost = cost("HD_REPORT");
   const priceLabel = ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`;
+
   const [report, setReport] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [paywall, setPaywall] = useState<{ balance: number; required: number } | null>(null);
+  const [relation, setRelation] = useState<HdConnectionRelation>(initialRelation);
+  const [view, setView] = useState<ViewMode>("connection");
+  const [focus, setFocus] = useState<FocusFilter>("all");
+  const [ack, setAck] = useState(false);
+  const [openSection, setOpenSection] = useState<string | null>("harmony");
 
-  // Switching either chart must not show the previous pair's report.
   useEffect(() => {
     setReport(null);
     setError(null);
     setBusy(false);
     setNeedsLogin(false);
     setPaywall(null);
+    setAck(false);
+    setView("connection");
+    setFocus("all");
   }, [base.id, partner.id]);
+
+  const highlightChannels = useMemo(() => {
+    if (focus === "electro") return conn.electromagneticKeys;
+    if (focus === "harmony") {
+      return new Set([
+        ...conn.electromagnetic.map((c) => c.key),
+        ...conn.companionship.map((c) => c.key),
+      ]);
+    }
+    if (focus === "friction") {
+      return new Set([
+        ...conn.compromise.map((c) => c.key),
+        ...conn.dominanceA.map((c) => c.key),
+        ...conn.dominanceB.map((c) => c.key),
+      ]);
+    }
+    return null;
+  }, [conn, focus]);
+
+  const bodyChart =
+    view === "base" ? base.chart : view === "partner" ? partner.chart : conn.mergedChart;
 
   const buyReport = async () => {
     if (busy) return;
-    if (
-      !window.confirm(
-        `Эвелина подготовит разбор совместимости двух карт · ${priceLabel}. Расчётные данные обеих карт будут переданы языковой модели. Продолжить?`
-      )
-    ) {
+    if (!ack) {
+      setError("Подтвердите передачу данных карт языковой модели.");
       return;
     }
     setBusy(true);
@@ -108,6 +111,7 @@ export default function HdComposite({ base, partner }: Props) {
           baseChartId: base.id,
           partnerChartId: partner.id,
           aiDataUseAcknowledged: true,
+          relation,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -141,59 +145,311 @@ export default function HdComposite({ base, partner }: Props) {
     }
   };
 
+  const toggleSection = (id: string) => {
+    setOpenSection((prev) => (prev === id ? null : id));
+  };
+
   return (
-    <div className="hd-panel space-y-4">
-      <div>
-        <p className="hd-panel__title">
-          Композит: {baseLabel} + {partnerName}
-        </p>
-        <p className="mt-1 text-xs leading-relaxed text-white/60">
-          Бирюзовым подсвечены ворота партнёра и электромагнетические каналы — они
-          возникают только вместе. Общих ворот: {sharedCount}. Электромагнетика:{" "}
-          {electromagnetic.size > 0
-            ? `${electromagnetic.size} канал(ов) — искра притяжения и притирки`
-            : "нет — союз мягкий, без резких искр"}
-          .
-        </p>
-        <p className="mt-1 text-[0.6875rem] text-white/40">
-          Типы: {baseLabel} — {TYPE_META[base.chart.type].nameRu}, {partnerName} —{" "}
-          {TYPE_META[partner.chart.type].nameRu}
-        </p>
+    <div className="hd-connection space-y-5">
+      {/* Hero */}
+      <header className="hd-connection__hero">
+        <p className="hd-connection__eyebrow">Дизайн Человека · карта связи</p>
+        <h2 className="hd-connection__title">
+          {baseLabel}
+          <span className="hd-connection__amp"> × </span>
+          {partnerName}
+        </h2>
+        <p className="hd-connection__headline">{conn.headline}</p>
+        <div className="hd-connection__pair">
+          <div className="hd-connection__person">
+            <span className="hd-connection__person-label">{baseLabel}</span>
+            <strong>{TYPE_META[conn.typeA].nameRu}</strong>
+            <span>
+              {conn.profileA} · {PROFILE_NAMES_RU[conn.profileA] ?? ""} ·{" "}
+              {AUTHORITY_NAMES_RU[conn.authorityA]}
+            </span>
+          </div>
+          <div className="hd-connection__person">
+            <span className="hd-connection__person-label">{partnerName}</span>
+            <strong>{TYPE_META[conn.typeB].nameRu}</strong>
+            <span>
+              {conn.profileB} · {PROFILE_NAMES_RU[conn.profileB] ?? ""} ·{" "}
+              {AUTHORITY_NAMES_RU[conn.authorityB]}
+            </span>
+          </div>
+        </div>
+        <ul className="hd-connection__stats" aria-label="Сводка связи">
+          <li>
+            <strong>{conn.stats.electroCount}</strong>
+            <span>электро</span>
+          </li>
+          <li>
+            <strong>{conn.stats.companionshipCount}</strong>
+            <span>общих каналов</span>
+          </li>
+          <li>
+            <strong>{conn.stats.sharedCenterCount}</strong>
+            <span>общих центров</span>
+          </li>
+          <li>
+            <strong>{conn.stats.sharedGateCount}</strong>
+            <span>общих ворот</span>
+          </li>
+        </ul>
+      </header>
+
+      {/* View controls */}
+      <div className="hd-connection__toolbar hd-print-hidden">
+        <div className="hd-connection__seg" role="group" aria-label="Режим бодиграфа">
+          {(
+            [
+              ["connection", "Связь"],
+              ["base", baseLabel],
+              ["partner", partnerName],
+            ] as const
+          ).map(([id, label]) => (
+            <button
+              key={id}
+              type="button"
+              className={view === id ? "is-active" : undefined}
+              onClick={() => setView(id)}
+            >
+              {label}
+            </button>
+          ))}
+        </div>
+        {view === "connection" && (
+          <div className="hd-connection__seg" role="group" aria-label="Фокус каналов">
+            {(
+              [
+                ["all", "Всё"],
+                ["electro", "Химия"],
+                ["harmony", "Соответствия"],
+                ["friction", "Трение"],
+              ] as const
+            ).map(([id, label]) => (
+              <button
+                key={id}
+                type="button"
+                className={focus === id ? "is-active" : undefined}
+                onClick={() => setFocus(id)}
+              >
+                {label}
+              </button>
+            ))}
+          </div>
+        )}
       </div>
+
       <Bodygraph
-        chart={mergedChart}
-        electromagneticChannels={electromagnetic}
-        partnerGates={partnerOnlyGates}
+        chart={bodyChart}
+        electromagneticChannels={view === "connection" ? conn.electromagneticKeys : null}
+        partnerGates={view === "connection" ? conn.partnerOnlyGates : null}
+        focusChannels={view === "connection" ? highlightChannels : null}
       />
 
-      <div className="hd-print-hidden">
+      <p className="hd-connection__decision">{conn.decisionNote}</p>
+
+      {/* Deterministic sections */}
+      <div className="hd-connection__sections">
+        <ConnectionSection
+          id="harmony"
+          title="Соответствия"
+          open={openSection === "harmony"}
+          onToggle={() => toggleSection("harmony")}
+        >
+          {conn.harmonyNotes.length ? (
+            <ul className="hd-connection__list">
+              {conn.harmonyNotes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hd-connection__muted">Явных опор мало — смотрите типы и центры ниже.</p>
+          )}
+          {conn.companionship.length > 0 && (
+            <div className="hd-connection__chips">
+              {conn.companionship.map((c) => (
+                <span key={c.key} className="hd-connection__chip">
+                  {c.key} · {c.nameRu}
+                </span>
+              ))}
+            </div>
+          )}
+        </ConnectionSection>
+
+        <ConnectionSection
+          id="electro"
+          title="Химия · электромагнетика"
+          open={openSection === "electro"}
+          onToggle={() => toggleSection("electro")}
+        >
+          {conn.electromagnetic.length ? (
+            <ul className="hd-connection__list">
+              {conn.electromagnetic.map((c) => (
+                <li key={c.key}>
+                  <strong>
+                    {c.key} «{c.nameRu}»
+                  </strong>
+                  <span>{c.summary}</span>
+                </li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hd-connection__muted">
+              Электромагнитных каналов нет — связь мягче, без классической «искры» ворот.
+            </p>
+          )}
+        </ConnectionSection>
+
+        <ConnectionSection
+          id="friction"
+          title="Несоответствия · трение"
+          open={openSection === "friction"}
+          onToggle={() => toggleSection("friction")}
+        >
+          {conn.frictionNotes.length ? (
+            <ul className="hd-connection__list">
+              {conn.frictionNotes.map((n) => (
+                <li key={n}>{n}</li>
+              ))}
+            </ul>
+          ) : (
+            <p className="hd-connection__muted">По механике явного трения мало.</p>
+          )}
+          {(conn.compromise.length > 0 ||
+            conn.dominanceA.length > 0 ||
+            conn.dominanceB.length > 0) && (
+            <ul className="hd-connection__list mt-3">
+              {[...conn.compromise, ...conn.dominanceA, ...conn.dominanceB].map((c) => (
+                <li key={`${c.kind}-${c.key}`}>
+                  <strong>
+                    {c.key} «{c.nameRu}»
+                  </strong>
+                  <span>{c.summary}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+        </ConnectionSection>
+
+        <ConnectionSection
+          id="centers"
+          title="Центры · кто задаёт тон"
+          open={openSection === "centers"}
+          onToggle={() => toggleSection("centers")}
+        >
+          <ul className="hd-connection__centers">
+            {conn.centers.map((c) => (
+              <li key={c.center} data-kind={c.kind}>
+                <span>{CENTER_NAMES_RU[c.center]}</span>
+                <em>
+                  {c.kind === "both"
+                    ? "оба"
+                    : c.kind === "aOnly"
+                      ? baseLabel
+                      : c.kind === "bOnly"
+                        ? partnerName
+                        : "открыт"}
+                </em>
+              </li>
+            ))}
+          </ul>
+        </ConnectionSection>
+
+        <ConnectionSection
+          id="decisions"
+          title="Решения и стратегии"
+          open={openSection === "decisions"}
+          onToggle={() => toggleSection("decisions")}
+        >
+          <p>{conn.decisionNote}</p>
+          <p className="mt-2 text-sm text-white/55">
+            {baseLabel}: подпись «{TYPE_META[conn.typeA].signatureRu}», ложное «я» —{" "}
+            {TYPE_META[conn.typeA].notSelfRu}. {partnerName}: подпись «
+            {TYPE_META[conn.typeB].signatureRu}», ложное «я» — {TYPE_META[conn.typeB].notSelfRu}.
+          </p>
+        </ConnectionSection>
+      </div>
+
+      {/* Paid report */}
+      <div className="hd-panel hd-print-hidden">
+        <p className="hd-panel__title">Глубокий разбор связи от Эвелины</p>
+        <p className="mt-2 text-sm text-white/60">
+          Премиальный текст по вашей механике: химия, усиление, трение, быт и практики. Сначала
+          выберите контекст связи.
+        </p>
+
+        <div className="hd-connection__relations" role="radiogroup" aria-label="Контекст связи">
+          {HD_CONNECTION_RELATIONS.map((r) => (
+            <button
+              key={r.id}
+              type="button"
+              role="radio"
+              aria-checked={relation === r.id}
+              className={relation === r.id ? "is-active" : undefined}
+              onClick={() => setRelation(r.id)}
+            >
+              <strong>{r.label}</strong>
+              <span>{r.hint}</span>
+            </button>
+          ))}
+        </div>
+
         {!report && (
-          <button
-            type="button"
-            onClick={() => void buyReport()}
-            disabled={busy}
-            className="hd-bodygraph__export"
-          >
-            {busy
-              ? "Эвелина готовит разбор…"
-              : `Разбор совместимости от Эвелины · ${priceLabel}`}
-          </button>
+          <>
+            <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
+              <input
+                type="checkbox"
+                checked={ack}
+                onChange={(e) => setAck(e.target.checked)}
+                className="mt-0.5 accent-amber-500"
+              />
+              <span>
+                Подтверждаю передачу рассчитанных данных обеих карт внешней языковой модели для
+                генерации разбора.
+              </span>
+            </label>
+            <button
+              type="button"
+              onClick={() => void buyReport()}
+              disabled={busy || !ack}
+              className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+            >
+              {busy
+                ? "Эвелина готовит разбор…"
+                : `Разбор связи от Эвелины · ${priceLabel}`}
+            </button>
+            {busy && (
+              <p className="mt-2 text-xs text-white/45">
+                Обычно 30–60 секунд. Не закрывайте страницу.
+              </p>
+            )}
+          </>
         )}
+
         {error && (
-          <p className="mt-2 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-200/90" role="alert">
+          <p
+            className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-xs text-red-200/90"
+            role="alert"
+          >
             {error}
             {needsLogin && (
               <>
                 {" "}
-                <a href="/auth/user/login" className="underline underline-offset-2 hover:text-red-100">
+                <a
+                  href="/auth/user/login?returnTo=/cabinet/human-design"
+                  className="underline underline-offset-2 hover:text-red-100"
+                >
                   Войти
                 </a>
               </>
             )}
           </p>
         )}
+
         {report && (
-          <div className="hd-report mt-4">
+          <div className="hd-report mt-5">
             {report.split(/^## /m).map((section, i) => {
               if (i === 0 && !section.startsWith("##")) {
                 return section.trim() ? <p key={i}>{section.trim()}</p> : null;
@@ -202,15 +458,28 @@ export default function HdComposite({ base, partner }: Props) {
               return (
                 <div key={i}>
                   <h2>{title}</h2>
-                  {rest.join("\n").trim().split(/\n{2,}/).map((p, j) => (
-                    <p key={j}>{p}</p>
-                  ))}
+                  {rest
+                    .join("\n")
+                    .trim()
+                    .split(/\n{2,}/)
+                    .map((p, j) => (
+                      <p key={j}>{p}</p>
+                    ))}
                 </div>
               );
             })}
+            <button
+              type="button"
+              className="hd-bodygraph__export mt-4"
+              onClick={() => window.print()}
+              title="Печать или сохранение как PDF"
+            >
+              Печать / PDF
+            </button>
           </div>
         )}
       </div>
+
       <PaywallModal
         isOpen={paywall !== null}
         onClose={() => setPaywall(null)}
@@ -221,5 +490,39 @@ export default function HdComposite({ base, partner }: Props) {
         }}
       />
     </div>
+  );
+}
+
+function ConnectionSection({
+  id,
+  title,
+  open,
+  onToggle,
+  children,
+}: {
+  id: string;
+  title: string;
+  open: boolean;
+  onToggle: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <section className="hd-connection__section" data-open={open || undefined}>
+      <button
+        type="button"
+        className="hd-connection__section-head"
+        aria-expanded={open}
+        aria-controls={`hd-conn-${id}`}
+        onClick={onToggle}
+      >
+        <span>{title}</span>
+        <span aria-hidden="true">{open ? "−" : "+"}</span>
+      </button>
+      {open && (
+        <div id={`hd-conn-${id}`} className="hd-connection__section-body">
+          {children}
+        </div>
+      )}
+    </section>
   );
 }
