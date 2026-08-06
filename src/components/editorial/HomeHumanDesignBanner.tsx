@@ -31,7 +31,8 @@ export default function HomeHumanDesignBanner() {
             и ворота. Расчёт бесплатный и точный до угловой секунды.
           </p>
           <p className="mt-1 text-xs text-white/40">
-            Бодиграф бесплатно · полный разбор с Эвелиной — {formatRunes(cost("HD_REPORT"))}
+            Бодиграф и «Опора» бесплатно · разбор Эвелины от{" "}
+            {formatRunes(cost("HD_REPORT"))}
           </p>
         </div>
         <div className="flex w-full flex-col gap-2 sm:w-auto sm:items-end">

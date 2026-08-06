@@ -352,6 +352,7 @@ export default function HdCabinet() {
             <HdChartView payload={selfChart} />
             <HdReportPanel
               chartId={selfChart.id}
+              chart={selfChart.chart}
               authenticated
               loginReturnTo="/cabinet/human-design"
             />
@@ -435,6 +436,7 @@ export default function HdCabinet() {
             <HdChartView payload={activeOther} />
             <HdReportPanel
               chartId={activeOther.id}
+              chart={activeOther.chart}
               authenticated
               loginReturnTo="/cabinet/human-design"
             />

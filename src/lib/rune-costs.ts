@@ -21,8 +21,10 @@ export const DEFAULT_RUNE_COSTS = {
   CHILD_MATRIX_REPORT: 25,
   MATRIX_PAIR_REPORT: 30,
   MATRIX_YEAR_FORECAST: 20,
-  /** Human Design: full Evelina report. */
+  /** Human Design: modular «Глубина» report. */
   HD_REPORT: 25,
+  /** Human Design: «Макс» report + included follow-up asks. */
+  HD_REPORT_MAX: 40,
   /** Human Design: follow-up question in report context. */
   HD_ASK: 10,
   /** Per TTS request; long texts scale by VOICE_TTS_CHARS_PER_UNIT below. */
@@ -60,7 +62,8 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
   CHILD_MATRIX_REPORT: "Детская матрица судьбы",
   MATRIX_PAIR_REPORT: "Парная матрица совместимости",
   MATRIX_YEAR_FORECAST: "Прогноз матрицы на 12 месяцев",
-  HD_REPORT: "Дизайн Человека — полный разбор",
+  HD_REPORT: "Дизайн Человека — разбор «Глубина»",
+  HD_REPORT_MAX: "Дизайн Человека — разбор «Макс»",
   HD_ASK: "Дизайн Человека — вопрос",
   VOICE_TTS: "Озвучка ответа",
 };
@@ -85,7 +88,8 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   CHILD_MATRIX_REPORT: "Полный разбор детской матрицы судьбы",
   MATRIX_PAIR_REPORT: "Разбор совместимости пары по матрицам",
   MATRIX_YEAR_FORECAST: "Прогноз по матрице судьбы на 12 месяцев",
-  HD_REPORT: "Полный разбор Дизайна Человека от Эвелины",
+  HD_REPORT: "Модульный разбор карты Дизайна Человека от Эвелины (пакет «Глубина»)",
+  HD_REPORT_MAX: "Расширенный разбор карты + 3 вопроса Эвелине (пакет «Макс»)",
   HD_ASK: "Вопрос по Дизайну Человека в контексте купленного разбора",
   VOICE_TTS: "Озвучка одного ответа наставника (длинный текст — несколько единиц)",
 };

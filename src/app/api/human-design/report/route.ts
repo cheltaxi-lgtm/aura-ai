@@ -37,11 +37,16 @@ import {
   buildHdReportSystemPrompt,
   formatHdEvidence,
   HD_ENGINE_VERSION,
+  hdReportPackageById,
+  isPaidHdReportPackage,
+  sanitizeHdReportText,
+  type HdReportPackageId,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { rememberHdChartFact } from "@/lib/human-design/memory";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
+import type { RuneActionType } from "@/lib/rune-costs";
 
 export const maxDuration = 300;
 
@@ -70,6 +75,7 @@ export async function POST(request: NextRequest) {
   const body = (await request.json().catch(() => ({}))) as {
     chartId?: unknown;
     aiDataUseAcknowledged?: unknown;
+    packageId?: unknown;
   };
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
@@ -80,6 +86,15 @@ export async function POST(request: NextRequest) {
   if (typeof body.chartId !== "string" || !HD_UUID_RE.test(body.chartId)) {
     return NextResponse.json({ error: "Укажите карту." }, { status: 400 });
   }
+  const requestedPackage: HdReportPackageId =
+    typeof body.packageId === "string" && isPaidHdReportPackage(body.packageId)
+      ? body.packageId
+      : "depth";
+  const pkg = hdReportPackageById(requestedPackage);
+  if (!pkg?.action) {
+    return NextResponse.json({ error: "Выберите платный пакет разбора." }, { status: 400 });
+  }
+  const chargeAction = pkg.action as RuneActionType;
 
   const chart = await getHdChartById(body.chartId);
   // Strict ownership: guest-pool charts are claimable only via the claim token
@@ -96,7 +111,13 @@ export async function POST(request: NextRequest) {
 
   let existing = await getHdReportForChart(chart.id, userId);
   if (existing?.status === "done" && existing.reportText) {
-    return NextResponse.json({ report: toPublicHdReport(existing), cached: true });
+    return NextResponse.json({
+      report: {
+        ...toPublicHdReport(existing),
+        reportText: sanitizeHdReportText(existing.reportText),
+      },
+      cached: true,
+    });
   }
   if (existing?.status === "pending" && !isStalePendingReport(existing)) {
     return NextResponse.json(
@@ -142,7 +163,10 @@ export async function POST(request: NextRequest) {
       ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(profileRow.name) || null;
   const evidence = formatHdEvidence(chart.chart);
-  const systemPrompt = await wrapSystemPrompt(buildHdReportSystemPrompt(clientName));
+  // Resume uses the package already stored on the paid pending row.
+  const packageId: "depth" | "max" =
+    resumePaidPending && existing?.packageId === "max" ? "max" : requestedPackage;
+  const systemPrompt = await wrapSystemPrompt(buildHdReportSystemPrompt(clientName, packageId));
 
   const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
   const runeSettings = await getRuneSettings();
@@ -191,18 +215,30 @@ export async function POST(request: NextRequest) {
       // together — a crash can leave neither a paid orphan nor an unpaid charge.
       const created = await withTransaction(async (client) => {
         const row = await createPendingHdReport(
-          { chartId: chart.id, userId, transactionId: null },
+          {
+            chartId: chart.id,
+            userId,
+            transactionId: null,
+            packageId,
+            includedAsksRemaining: pkg.includedAsks,
+          },
           client
         );
         if (!row) return null;
-        const c = await chargeRuneAction({ userId, action: "HD_REPORT", exempt, client });
+        const c = await chargeRuneAction({ userId, action: chargeAction, exempt, client });
         await attachHdReportTransaction(row.id, c.transactionId ?? null, client);
         return { row, charge: c };
       });
       if (!created) {
         const raced = await getHdReportForChart(chart.id, userId);
-        if (raced?.status === "done") {
-          return NextResponse.json({ report: toPublicHdReport(raced), cached: true });
+        if (raced?.status === "done" && raced.reportText) {
+          return NextResponse.json({
+            report: {
+              ...toPublicHdReport(raced),
+              reportText: sanitizeHdReportText(raced.reportText),
+            },
+            cached: true,
+          });
         }
         return NextResponse.json(
           { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
@@ -250,7 +286,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const reportText = text.trim() + REPORT_DISCLAIMER;
+    const reportText = sanitizeHdReportText(text) + REPORT_DISCLAIMER;
     await completeHdReport(pending.id, reportText, "openrouter");
     completed = true; // past this point a catch must NOT refund a done report
     if (chart.subjectKind === "self") {
@@ -259,7 +295,14 @@ export async function POST(request: NextRequest) {
 
     const report = await getHdReportForChart(chart.id, userId);
     return NextResponse.json({
-      report: report ? toPublicHdReport(report) : null,
+      report: report
+        ? {
+            ...toPublicHdReport(report),
+            reportText: report.reportText
+              ? sanitizeHdReportText(report.reportText)
+              : report.reportText,
+          }
+        : null,
       runeBalance: charge?.newBalance,
     });
   } catch (error) {
@@ -314,5 +357,10 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ report: null });
   }
   const report = await getHdReportForChart(chartId, resolved.profileUserId);
-  return NextResponse.json({ report: report ? toPublicHdReport(report) : null });
+  if (!report) return NextResponse.json({ report: null });
+  const pub = toPublicHdReport(report);
+  if (pub.reportText) {
+    pub.reportText = sanitizeHdReportText(pub.reportText);
+  }
+  return NextResponse.json({ report: pub });
 }

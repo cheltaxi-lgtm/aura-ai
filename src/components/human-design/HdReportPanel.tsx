@@ -3,23 +3,36 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import PaywallModal from "@/components/PaywallModal";
+import {
+  HD_REPORT_PACKAGES,
+  isPaidHdReportPackage,
+  sanitizeHdReportText,
+  type HdChart,
+  type HdReportPackageId,
+} from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import HdFoundationBrief from "./HdFoundationBrief";
 import { hdApiErrorMessage } from "./hd-errors";
 
 interface HdReport {
   id: string;
   status: "pending" | "done" | "error";
   reportText: string | null;
+  packageId?: "depth" | "max";
+  includedAsksRemaining?: number;
 }
 
 interface HdReportPanelProps {
   chartId: string;
+  /** Chart payload for free foundation brief. */
+  chart?: HdChart | null;
   authenticated: boolean;
   loginReturnTo: string;
 }
 
 export default function HdReportPanel({
   chartId,
+  chart = null,
   authenticated,
   loginReturnTo,
 }: HdReportPanelProps) {
@@ -28,18 +41,21 @@ export default function HdReportPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [packageId, setPackageId] = useState<Exclude<HdReportPackageId, "foundation">>("depth");
   const [paywall, setPaywall] = useState<{ balance: number; required: number } | null>(null);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
   const [dialog, setDialog] = useState<Array<{ role: "user" | "assistant"; content: string }>>([]);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadNonce, setLoadNonce] = useState(0);
+  const [includedAsks, setIncludedAsks] = useState(0);
   const dialogEndRef = useRef<HTMLDivElement>(null);
 
-  const reportCost = cost("HD_REPORT");
+  const depthCost = cost("HD_REPORT");
+  const maxCost = cost("HD_REPORT_MAX");
   const askCost = cost("HD_ASK");
+  const selectedCost = packageId === "max" ? maxCost : depthCost;
 
-  // Switching charts must not leak the previous chart's report/dialog state.
   useEffect(() => {
     setReport(null);
     setDialog([]);
@@ -48,6 +64,8 @@ export default function HdReportPanel({
     setPaywall(null);
     setAcknowledged(false);
     setLoadError(null);
+    setIncludedAsks(0);
+    setPackageId("depth");
   }, [chartId]);
 
   useEffect(() => {
@@ -61,7 +79,14 @@ export default function HdReportPanel({
       })
       .then((d) => {
         if (cancelled) return;
-        if (d?.report?.status === "done") setReport(d.report);
+        if (d?.report?.status === "done") {
+          const text =
+            typeof d.report.reportText === "string"
+              ? sanitizeHdReportText(d.report.reportText)
+              : d.report.reportText;
+          setReport({ ...d.report, reportText: text });
+          setIncludedAsks(Number(d.report.includedAsksRemaining) || 0);
+        }
       })
       .catch(() => {
         if (!cancelled) {
@@ -73,8 +98,6 @@ export default function HdReportPanel({
     };
   }, [authenticated, chartId, loadNonce]);
 
-  // Restore the paid Q&A history: answers commit atomically with the charge
-  // server-side, so a lost response (network drop, tab closed) reappears here.
   const reportId = report?.id ?? null;
   useEffect(() => {
     if (!authenticated || !reportId) return;
@@ -93,7 +116,10 @@ export default function HdReportPanel({
                 typeof (m as { content?: unknown }).content === "string"
             )
           )
-          .map((m: { role: "user" | "assistant"; content: string }) => ({ role: m.role, content: m.content }));
+          .map((m: { role: "user" | "assistant"; content: string }) => ({
+            role: m.role,
+            content: m.content,
+          }));
         if (restored.length) setDialog(restored);
       })
       .catch(() => undefined);
@@ -103,22 +129,29 @@ export default function HdReportPanel({
   }, [authenticated, reportId]);
 
   useEffect(() => {
-    // block:"nearest" — "end" would yank the whole page down on mobile.
     dialogEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [dialog.length]);
 
   const buyReport = useCallback(async () => {
+    if (!isPaidHdReportPackage(packageId)) return;
     setLoading(true);
     setError(null);
     try {
       const res = await fetch("/api/human-design/report", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ chartId, aiDataUseAcknowledged: acknowledged }),
+        body: JSON.stringify({
+          chartId,
+          aiDataUseAcknowledged: acknowledged,
+          packageId,
+        }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 402) {
-        setPaywall({ balance: Number(data.balance) || 0, required: Number(data.required) || reportCost });
+        setPaywall({
+          balance: Number(data.balance) || 0,
+          required: Number(data.required) || selectedCost,
+        });
         return;
       }
       if (!res.ok) {
@@ -126,27 +159,30 @@ export default function HdReportPanel({
         return;
       }
       if (data.report?.status === "done") {
-        setReport(data.report);
+        const text =
+          typeof data.report.reportText === "string"
+            ? sanitizeHdReportText(data.report.reportText)
+            : data.report.reportText;
+        setReport({ ...data.report, reportText: text });
+        setIncludedAsks(Number(data.report.includedAsksRemaining) || 0);
       }
     } catch {
       setError("Сеть недоступна. Попробуйте ещё раз.");
     } finally {
       setLoading(false);
     }
-  }, [acknowledged, chartId, reportCost]);
+  }, [acknowledged, chartId, packageId, selectedCost]);
 
   const recoverAskFromHistory = useCallback(
-    async (reportId: string, q: string): Promise<boolean> => {
+    async (id: string, q: string): Promise<boolean> => {
       try {
         const res = await fetch(
-          `/api/human-design/report/ask?reportId=${encodeURIComponent(reportId)}`
+          `/api/human-design/report/ask?reportId=${encodeURIComponent(id)}`
         );
         if (!res.ok) return false;
         const d = await res.json().catch(() => null);
         if (!Array.isArray(d?.messages)) return false;
         const msgs = d.messages as Array<{ role: string; content: string }>;
-        // Charge commits atomically with messages — if the last user turn is
-        // our question and an assistant reply follows, the spend already landed.
         for (let i = msgs.length - 2; i >= 0; i--) {
           if (msgs[i]?.role === "user" && msgs[i].content === q && msgs[i + 1]?.role === "assistant") {
             const restored = msgs
@@ -162,7 +198,7 @@ export default function HdReportPanel({
           }
         }
       } catch {
-        /* fall through to retry UX */
+        /* fall through */
       }
       return false;
     },
@@ -180,8 +216,6 @@ export default function HdReportPanel({
       const res = await fetch("/api/human-design/report/ask", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        // Follow-ups continue under the same LLM-data acknowledgment used for
-        // the paid report purchase (checkbox above, or prior completed report).
         body: JSON.stringify({
           reportId: report.id,
           question: q,
@@ -191,8 +225,11 @@ export default function HdReportPanel({
       const data = await res.json().catch(() => ({}));
       if (res.status === 402) {
         setDialog((prev) => prev.slice(0, -1));
-        setQuestion(q); // don't make the user retype
-        setPaywall({ balance: Number(data.balance) || 0, required: Number(data.required) || askCost });
+        setQuestion(q);
+        setPaywall({
+          balance: Number(data.balance) || 0,
+          required: Number(data.required) || askCost,
+        });
         return;
       }
       if (!res.ok || typeof data.answer !== "string") {
@@ -203,6 +240,11 @@ export default function HdReportPanel({
         return;
       }
       setDialog((prev) => [...prev, { role: "assistant", content: data.answer }]);
+      if (typeof data.includedAsksRemaining === "number") {
+        setIncludedAsks(data.includedAsksRemaining);
+      } else if (data.usedIncludedAsk) {
+        setIncludedAsks((n) => Math.max(0, n - 1));
+      }
     } catch {
       if (await recoverAskFromHistory(report.id, q)) return;
       setDialog((prev) => prev.slice(0, -1));
@@ -213,99 +255,163 @@ export default function HdReportPanel({
     }
   }, [askCost, question, recoverAskFromHistory, report]);
 
+  const packageCards = (
+    <div className="hd-packages" role="radiogroup" aria-label="Пакет разбора">
+      {HD_REPORT_PACKAGES.filter((p) => p.id !== "foundation").map((p) => {
+        const price = p.id === "max" ? maxCost : depthCost;
+        const active = packageId === p.id;
+        return (
+          <button
+            key={p.id}
+            type="button"
+            role="radio"
+            aria-checked={active}
+            className={`hd-package${active ? " is-active" : ""}${p.featured ? " is-featured" : ""}`}
+            onClick={() => setPackageId(p.id as "depth" | "max")}
+            disabled={loading}
+          >
+            {p.featured && <span className="hd-package__badge">Рекомендуем</span>}
+            <strong className="hd-package__label">{p.label}</strong>
+            <span className="hd-package__tagline">{p.tagline}</span>
+            <span className="hd-package__price">
+              {ready ? formatRunesWithRub(price) : `${price} ᚢ`}
+            </span>
+            <ul className="hd-package__modules">
+              {p.modules.map((m) => (
+                <li key={m.id}>
+                  <span aria-hidden="true">✓</span>
+                  <span>
+                    <em>{m.title}</em>
+                    {m.blurb}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </button>
+        );
+      })}
+    </div>
+  );
+
   if (!authenticated) {
     return (
-      <div className="hd-panel text-center">
-        <p className="hd-panel__title">Полный разбор от Эвелины</p>
-        <p className="mx-auto mt-3 max-w-md text-sm leading-relaxed text-white/65">
-          Глубокий персональный разбор вашей карты: тип и стратегия в жизни, авторитет
-          принятия решений, профиль, каналы и инкарнационный крест — тёплым языком,
-          с практическими рекомендациями.
-        </p>
-        <a
-          href={`/auth/user/login?returnTo=${encodeURIComponent(loginReturnTo)}`}
-          className="btn-luxe btn-luxe--gold mt-5 inline-flex"
-        >
-          Войти и получить разбор · {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
-        </a>
-        <p className="mt-3 text-[0.6875rem] text-white/40">
-          Ваша карта сохранится автоматически после входа.
-        </p>
+      <div className="space-y-5">
+        {chart && (
+          <div className="hd-panel">
+            <HdFoundationBrief chart={chart} />
+          </div>
+        )}
+        <div className="hd-panel">
+          <p className="hd-panel__title">Разбор от Эвелины</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/60">
+            Модульный разбор карты: выберите глубину. Войдите, чтобы сохранить карту и получить
+            текст Эвелины.
+          </p>
+          {packageCards}
+          <a
+            href={`/auth/user/login?returnTo=${encodeURIComponent(loginReturnTo)}`}
+            className="btn-luxe btn-luxe--gold mt-5 inline-flex"
+          >
+            Войти и получить «{packageId === "max" ? "Макс" : "Глубину"}» ·{" "}
+            {ready ? formatRunesWithRub(selectedCost) : `${selectedCost} ᚢ`}
+          </a>
+        </div>
       </div>
     );
   }
 
   if (!report) {
     return (
-      <div className="hd-panel">
-        <p className="hd-panel__title">Полный разбор от Эвелины</p>
-        <p className="mt-3 text-sm leading-relaxed text-white/65">
-          Эвелина разберёт вашу карту по разделам: тип и стратегия, авторитет, профиль,
-          определённые и открытые центры, каналы, инкарнационный крест и практические
-          рекомендации. После разбора можно задавать уточняющие вопросы.
-        </p>
-        {loadError && (
-          <div className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-sm text-red-200/90" role="alert">
-            <p>{loadError}</p>
-            <button
-              type="button"
-              className="mt-2 underline underline-offset-2 hover:text-red-100"
-              onClick={() => setLoadNonce((n) => n + 1)}
-            >
-              Повторить
-            </button>
+      <div className="space-y-5">
+        {chart && (
+          <div className="hd-panel">
+            <HdFoundationBrief chart={chart} />
           </div>
         )}
-        <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
-          <input
-            type="checkbox"
-            checked={acknowledged}
-            onChange={(e) => setAcknowledged(e.target.checked)}
-            className="mt-0.5 accent-amber-500"
+        <div className="hd-panel">
+          <p className="hd-panel__title">Разбор от Эвелины</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/60">
+            Выберите пакет. «Опора» уже выше — бесплатно. Платные пакеты — модульный текст без
+            простыней, с практиками.
+          </p>
+          {packageCards}
+          {loadError && (
+            <div
+              className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-sm text-red-200/90"
+              role="alert"
+            >
+              <p>{loadError}</p>
+              <button
+                type="button"
+                className="mt-2 underline underline-offset-2 hover:text-red-100"
+                onClick={() => setLoadNonce((n) => n + 1)}
+              >
+                Повторить
+              </button>
+            </div>
+          )}
+          <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
+            <input
+              type="checkbox"
+              checked={acknowledged}
+              onChange={(e) => setAcknowledged(e.target.checked)}
+              className="mt-0.5 accent-amber-500"
+            />
+            <span>
+              Подтверждаю передачу рассчитанных данных карты внешней языковой модели для генерации
+              разбора.
+            </span>
+          </label>
+          {error && (
+            <p className="mt-3 text-sm text-red-300" role="alert">
+              {error}
+            </p>
+          )}
+          <button
+            type="button"
+            onClick={() => void buyReport()}
+            disabled={!acknowledged || loading}
+            className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+          >
+            {loading
+              ? "Эвелина пишет разбор…"
+              : `Получить «${packageId === "max" ? "Макс" : "Глубину"}» · ${
+                  ready ? formatRunesWithRub(selectedCost) : `${selectedCost} ᚢ`
+                }`}
+          </button>
+          {loading && (
+            <p className="mt-2 text-xs text-white/45">
+              Обычно занимает 30–60 секунд. Не закрывайте страницу.
+            </p>
+          )}
+          <PaywallModal
+            isOpen={paywall !== null}
+            onClose={() => setPaywall(null)}
+            options={{
+              currentBalance: paywall?.balance ?? 0,
+              requiredRunes: paywall?.required ?? selectedCost,
+              onUnlocked: () => setPaywall(null),
+            }}
           />
-          <span>
-            Подтверждаю передачу рассчитанных данных карты внешней языковой модели
-            для генерации разбора.
-          </span>
-        </label>
-        {error && (
-          <p className="mt-3 text-sm text-red-300" role="alert">
-            {error}
-          </p>
-        )}
-        <button
-          type="button"
-          onClick={buyReport}
-          disabled={!acknowledged || loading}
-          className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-        >
-          {loading
-            ? "Эвелина пишет разбор…"
-            : `Получить полный разбор · ${ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}`}
-        </button>
-        {loading && (
-          <p className="mt-2 text-xs text-white/45">
-            Обычно занимает 30–60 секунд. Не закрывайте страницу.
-          </p>
-        )}
-        <PaywallModal
-          isOpen={paywall !== null}
-          onClose={() => setPaywall(null)}
-          options={{
-            currentBalance: paywall?.balance ?? 0,
-            requiredRunes: paywall?.required ?? reportCost,
-            onUnlocked: () => setPaywall(null),
-          }}
-        />
+        </div>
       </div>
     );
   }
 
+  const pkgLabel = report.packageId === "max" ? "Макс" : "Глубина";
+
   return (
     <div className="space-y-5">
       <div className="hd-panel">
-        <div className="flex items-center justify-between gap-3">
-          <p className="hd-panel__title">Разбор от Эвелины</p>
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div>
+            <p className="hd-panel__title">Разбор «{pkgLabel}» от Эвелины</p>
+            {includedAsks > 0 && (
+              <p className="mt-1 text-xs text-amber-100/55">
+                Осталось включённых вопросов: {includedAsks}
+              </p>
+            )}
+          </div>
           <a
             href={`/cabinet/human-design/reports/${report.id}/print`}
             target="_blank"
@@ -323,7 +429,13 @@ export default function HdReportPanel({
       <div className="hd-panel hd-print-hidden">
         <p className="hd-panel__title">Вопросы по разбору</p>
         <p className="mt-1.5 text-xs text-white/50">
-          Эвелина отвечает в контексте вашей карты · {ready ? formatRunesWithRub(askCost) : `${askCost} ᚢ`} за вопрос
+          {includedAsks > 0
+            ? `Сначала списываются включённые вопросы пакета (${includedAsks}), затем ${
+                ready ? formatRunesWithRub(askCost) : `${askCost} ᚢ`
+              } за вопрос`
+            : `Эвелина отвечает в контексте карты · ${
+                ready ? formatRunesWithRub(askCost) : `${askCost} ᚢ`
+              } за вопрос`}
         </p>
 
         {dialog.length > 0 && (

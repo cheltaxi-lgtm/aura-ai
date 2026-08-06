@@ -33,6 +33,7 @@ export {
   buildHdReportSystemPrompt,
   formatHdEvidence,
   sanitizeHdCompositeReportText,
+  sanitizeHdReportText,
 } from "./prompt";
 export {
   analyzeHdConnection,
@@ -44,3 +45,11 @@ export {
   type HdConnectionAnalysis,
   type HdConnectionRelation,
 } from "./connection";
+export {
+  HD_REPORT_PACKAGES,
+  hdReportPackageById,
+  isPaidHdReportPackage,
+  type HdReportModule,
+  type HdReportPackage,
+  type HdReportPackageId,
+} from "./packages";

@@ -18,6 +18,7 @@ import {
 } from "@/lib/services/billing-service";
 import {
   appendHdReportMessage,
+  consumeHdReportIncludedAsk,
   getHdChartById,
   getHdReportById,
   HD_UUID_RE,
@@ -106,7 +107,11 @@ export async function POST(request: NextRequest) {
     // Generate-first: a crash during the LLM call can never lose the user's
     // runes. Balance is pre-checked so broke users don't burn model tokens;
     // the authoritative charge commits atomically with the stored messages.
-    await ensureSufficientRunes({ userId, action: "HD_ASK", exempt });
+    // Max-package included asks skip the balance gate (consumed after generation).
+    const hasIncludedAsk = !exempt && report.includedAsksRemaining > 0;
+    if (!hasIncludedAsk) {
+      await ensureSufficientRunes({ userId, action: "HD_ASK", exempt });
+    }
 
     const answer = await completeChat({
       messages,
@@ -124,14 +129,27 @@ export async function POST(request: NextRequest) {
     }
 
     const text = answer.trim();
-    const charge = await withTransaction(async (client) => {
-      const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client });
+    const result = await withTransaction(async (client) => {
+      let includedAsksRemaining: number | null = null;
+      let runeBalance: number | undefined;
+      if (!exempt) {
+        includedAsksRemaining = await consumeHdReportIncludedAsk(report.id, client);
+      }
+      if (includedAsksRemaining === null) {
+        const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client });
+        runeBalance = c.newBalance;
+      }
       await appendHdReportMessage(report.id, "user", question, client);
       await appendHdReportMessage(report.id, "assistant", text, client);
-      return c;
+      return { runeBalance, includedAsksRemaining };
     });
 
-    return NextResponse.json({ answer: text, runeBalance: charge.newBalance });
+    return NextResponse.json({
+      answer: text,
+      runeBalance: result.runeBalance,
+      includedAsksRemaining: result.includedAsksRemaining,
+      usedIncludedAsk: result.includedAsksRemaining !== null,
+    });
   } catch (error) {
     if (error instanceof InsufficientFundsError) {
       return NextResponse.json(

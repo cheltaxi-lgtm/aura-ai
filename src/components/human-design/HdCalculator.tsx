@@ -487,6 +487,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
           <HdChartView payload={result} />
           <HdReportPanel
             chartId={result.id}
+            chart={result.chart}
             authenticated={authenticated}
             loginReturnTo={returnTo}
           />

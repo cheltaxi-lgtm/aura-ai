@@ -50,6 +50,8 @@ export interface HdReportRow {
   model: string | null;
   transactionId: string | null;
   error: string | null;
+  packageId: "depth" | "max";
+  includedAsksRemaining: number;
   createdAt: string;
 }
 
@@ -60,6 +62,8 @@ export function toPublicHdReport(row: HdReportRow) {
     chartId: row.chartId,
     status: row.status,
     reportText: row.reportText,
+    packageId: row.packageId,
+    includedAsksRemaining: row.includedAsksRemaining,
     createdAt: row.createdAt,
   };
 }
@@ -92,6 +96,8 @@ interface HdReportDbRow {
   model: string | null;
   transaction_id: string | null;
   error: string | null;
+  package_id?: string | null;
+  included_asks_remaining?: number | null;
   created_at: string | Date;
 }
 
@@ -133,6 +139,8 @@ function mapReportRow(row: HdReportDbRow): HdReportRow {
     model: row.model,
     transactionId: row.transaction_id,
     error: row.error,
+    packageId: row.package_id === "max" ? "max" : "depth",
+    includedAsksRemaining: Math.max(0, Number(row.included_asks_remaining) || 0),
     createdAt: toIso(row.created_at),
   };
 }
@@ -679,18 +687,41 @@ export async function createPendingHdReport(
     chartId: string;
     userId: string;
     transactionId: string | null;
+    packageId?: "depth" | "max";
+    includedAsksRemaining?: number;
   },
   client?: PoolClient
 ): Promise<HdReportRow | null> {
-  const sql = `INSERT INTO hd_reports (chart_id, user_id, status, transaction_id)
-     VALUES ($1, $2, 'pending', $3)
+  const packageId = params.packageId === "max" ? "max" : "depth";
+  const includedAsks = Math.max(0, Math.floor(params.includedAsksRemaining ?? 0));
+  const sql = `INSERT INTO hd_reports (
+       chart_id, user_id, status, transaction_id, package_id, included_asks_remaining
+     ) VALUES ($1, $2, 'pending', $3, $4, $5)
      ON CONFLICT (chart_id) DO NOTHING
      RETURNING *`;
-  const params_ = [params.chartId, params.userId, params.transactionId];
+  const params_ = [params.chartId, params.userId, params.transactionId, packageId, includedAsks];
   const { rows } = client
     ? await queryClient<HdReportDbRow>(client, sql, params_)
     : await query<HdReportDbRow>(sql, params_);
   return rows[0] ? mapReportRow(rows[0]) : null;
+}
+
+/**
+ * Atomically consume one included ask. Returns remaining count, or null if none left.
+ */
+export async function consumeHdReportIncludedAsk(
+  reportId: string,
+  client?: PoolClient
+): Promise<number | null> {
+  const sql = `UPDATE hd_reports
+     SET included_asks_remaining = included_asks_remaining - 1, updated_at = now()
+     WHERE id = $1 AND included_asks_remaining > 0
+     RETURNING included_asks_remaining`;
+  const { rows } = client
+    ? await queryClient<{ included_asks_remaining: number }>(client, sql, [reportId])
+    : await query<{ included_asks_remaining: number }>(sql, [reportId]);
+  if (!rows[0]) return null;
+  return Math.max(0, Number(rows[0].included_asks_remaining) || 0);
 }
 
 /**

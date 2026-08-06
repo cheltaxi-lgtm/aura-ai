@@ -632,3 +632,88 @@
   }
 }
 
+/* ── Report packages showcase ── */
+.hd-packages {
+  @apply mt-4 grid gap-3 lg:grid-cols-2;
+}
+
+.hd-package {
+  @apply relative flex flex-col rounded-2xl border border-white/10 px-4 py-4 text-left transition;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hd-package:hover {
+  @apply border-amber-400/30;
+}
+
+.hd-package.is-active {
+  @apply border-amber-400/55;
+  background: rgba(232, 199, 126, 0.08);
+  box-shadow: 0 0 0 1px rgba(232, 199, 126, 0.12);
+}
+
+.hd-package.is-featured.is-active {
+  @apply border-amber-300/70;
+}
+
+.hd-package__badge {
+  @apply mb-2 inline-block self-start rounded-md border border-amber-400/35 px-2 py-0.5 text-[0.625rem] font-medium uppercase tracking-wider text-amber-100/80;
+}
+
+.hd-package__label {
+  @apply font-display text-xl text-amber-50;
+}
+
+.hd-package__tagline {
+  @apply mt-1 block text-xs leading-snug text-white/50;
+}
+
+.hd-package__price {
+  @apply mt-3 block text-sm font-semibold text-amber-100/90;
+}
+
+.hd-package__modules {
+  @apply mt-3 space-y-1.5 border-t border-white/10 pt-3;
+}
+
+.hd-package__modules li {
+  @apply flex gap-2 text-[0.75rem] leading-snug text-white/55;
+}
+
+.hd-package__modules li > span:first-child {
+  @apply shrink-0 text-amber-200/70;
+}
+
+.hd-package__modules em {
+  @apply mr-1 not-italic font-medium text-amber-50/85;
+}
+
+.hd-foundation__grid {
+  @apply mt-4 grid gap-3 sm:grid-cols-2;
+}
+
+.hd-foundation__grid > div {
+  @apply rounded-xl border border-white/10 px-3 py-2.5;
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.hd-foundation__grid dt {
+  @apply text-[0.625rem] uppercase tracking-wider text-amber-100/40;
+}
+
+.hd-foundation__grid dd strong {
+  @apply mt-1 block text-sm font-semibold text-amber-50;
+}
+
+.hd-foundation__grid dd span {
+  @apply mt-0.5 block text-[0.6875rem] text-white/45;
+}
+
+.hd-foundation__centers {
+  @apply mt-3 space-y-2 text-[0.75rem] leading-relaxed text-white/60;
+}
+
+.hd-foundation__centers span {
+  @apply mb-0.5 block text-[0.625rem] uppercase tracking-wider text-amber-100/40;
+}
+
