@@ -12,7 +12,6 @@ import {
   TYPE_META,
 } from "@/lib/human-design";
 import Bodygraph from "./Bodygraph";
-import HdBodygraph3D from "./HdBodygraph3D";
 import HdShareCard from "./HdShareCard";
 import { hdApiErrorMessage } from "./hd-errors";
 
@@ -47,7 +46,6 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
   const [insight, setInsight] = useState<{ center: HdCenterKey; text: string } | null>(null);
   const [insightLoading, setInsightLoading] = useState<HdCenterKey | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
-  const [show3d, setShow3d] = useState(false);
 
   // Defense in depth: callers key this component by chart id, but overlays
   // must never survive a chart switch even if a parent forgets the key.
@@ -57,7 +55,6 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
     setInsightLoading(null);
     setTransits(null);
     setTransitsAt(null);
-    setShow3d(false);
     setShowShareCard(false);
     setCopied(false);
   }, [payload.id]);
@@ -233,13 +230,6 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
               ? "Скрыть транзиты"
               : "Транзиты"}
         </button>
-        <button
-          type="button"
-          onClick={() => setShow3d((v) => !v)}
-          className="hd-bodygraph__export"
-        >
-          {show3d ? "Скрыть 3D" : "3D"}
-        </button>
         <button type="button" onClick={() => void share()} className="hd-bodygraph__export">
           {copied ? "Ссылка скопирована" : "Поделиться"}
         </button>
@@ -258,12 +248,6 @@ export default function HdChartView({ payload }: { payload: HdChartPayload }) {
           PDF
         </button>
       </div>
-
-      {show3d && (
-        <div className="hd-print-hidden">
-          <HdBodygraph3D chart={chart} />
-        </div>
-      )}
 
       {transits && transitsAt && (
         <p className="hd-print-hidden text-center text-[0.6875rem] text-violet-200/70">

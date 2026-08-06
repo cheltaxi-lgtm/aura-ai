@@ -267,23 +267,6 @@
   background: rgba(201, 162, 74, 0.1);
 }
 
-/* ── HD 3D ── */
-.hd-3d {
-  @apply relative overflow-hidden rounded-3xl border border-violet-400/20;
-  background: linear-gradient(170deg, #16121f 0%, #07060d 100%);
-}
-
-.hd-3d__canvas {
-  @apply h-[480px] w-full sm:h-[640px];
-  /* Vertical swipes scroll the page; horizontal drags rotate the chart.
-     "none" here trapped scroll on mobile — the canvas is a full-width block. */
-  touch-action: pan-y;
-}
-
-.hd-3d__hint {
-  @apply pb-3 text-center text-[0.6875rem] text-white/40;
-}
-
 /* ── HD share card ── */
 .hd-share-card-wrap {
   @apply flex flex-col items-center gap-3;

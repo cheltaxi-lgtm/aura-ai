@@ -98,7 +98,6 @@
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
     "react-markdown": "^10.1.0",
-    "three": "^0.185.1",
     "undici": "^6.27.0",
     "uuid": "^11.0.3",
     "yaml": "^2.9.0"
@@ -112,7 +111,6 @@
     "@types/pg": "^8.11.10",
     "@types/react": "^19.0.0",
     "@types/react-dom": "^19.0.0",
-    "@types/three": "^0.185.3",
     "autoprefixer": "^10.4.20",
     "eslint": "^9.39.4",
     "eslint-config-next": "^16.2.9",
