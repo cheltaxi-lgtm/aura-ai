@@ -478,6 +478,7 @@ export async function siteHumanDesign(telegramUserId: number) {
     };
     url?: string;
     cabinetUrl?: string;
+    reportUrl?: string;
     error?: string;
     message?: string;
     linkUrl?: string;

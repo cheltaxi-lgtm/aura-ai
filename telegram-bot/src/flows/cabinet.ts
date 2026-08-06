@@ -231,10 +231,16 @@ export async function showHd(ctx: Context): Promise<void> {
         ? []
         : ["", "Время рождения не указано — добавь его на сайте для точной карты."]),
       "",
-      "Бодиграф, транзиты и разбор Эвелины — на сайте.",
+      "Полный разбор Эвелины (40ᚢ), PDF, вопросы и транзиты недели — на сайте.",
     ];
+    const reportUrl =
+      typeof data.reportUrl === "string" && data.reportUrl
+        ? data.reportUrl
+        : data.cabinetUrl || data.url;
     await ctx.reply(lines.join("\n"), {
-      reply_markup: linkKb(data.cabinetUrl || data.url),
+      reply_markup: reportUrl
+        ? continueOnSiteKeyboard(reportUrl, "Полный разбор · 40ᚢ")
+        : linkKb(data.cabinetUrl || data.url),
     });
   } catch (err) {
     console.error("[cabinet] human-design", err);

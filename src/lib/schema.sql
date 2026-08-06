@@ -1,10 +1,10 @@
--- Zovus — полная схема PostgreSQL (2026)
--- Монтируется в Docker через docker-compose.yml (fresh DB).
--- Существующие базы: npm run migrate (scripts/migrate.mjs + scripts/migrations/*.sql).
+﻿-- Zovus вЂ” РїРѕР»РЅР°СЏ СЃС…РµРјР° PostgreSQL (2026)
+-- РњРѕРЅС‚РёСЂСѓРµС‚СЃСЏ РІ Docker С‡РµСЂРµР· docker-compose.yml (fresh DB).
+-- РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ Р±Р°Р·С‹: npm run migrate (scripts/migrate.mjs + scripts/migrations/*.sql).
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- === SPEC: Users (профиль онбординга) ===
+-- === SPEC: Users (РїСЂРѕС„РёР»СЊ РѕРЅР±РѕСЂРґРёРЅРіР°) ===
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -78,7 +78,7 @@ CREATE INDEX IF NOT EXISTS idx_async_jobs_next_attempt
   ON async_jobs (next_attempt_at)
   WHERE status = 'pending' AND next_attempt_at IS NOT NULL;
 
--- === SPEC: History (сеансы и контекст) ===
+-- === SPEC: History (СЃРµР°РЅСЃС‹ Рё РєРѕРЅС‚РµРєСЃС‚) ===
 CREATE TABLE IF NOT EXISTS history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
@@ -91,7 +91,7 @@ CREATE TABLE IF NOT EXISTS history (
 
 CREATE INDEX IF NOT EXISTS idx_history_user ON history(user_id);
 
--- === SPEC: Influencers (B2B блогеры) ===
+-- === SPEC: Influencers (B2B Р±Р»РѕРіРµСЂС‹) ===
 CREATE TABLE IF NOT EXISTS influencers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
@@ -111,7 +111,7 @@ CREATE TABLE IF NOT EXISTS influencer_clicks (
 
 CREATE INDEX IF NOT EXISTS idx_influencer_clicks ON influencer_clicks(influencer_id);
 
--- === Сессии (анонимные и привязанные) ===
+-- === РЎРµСЃСЃРёРё (Р°РЅРѕРЅРёРјРЅС‹Рµ Рё РїСЂРёРІСЏР·Р°РЅРЅС‹Рµ) ===
 CREATE TABLE IF NOT EXISTS sessions (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID REFERENCES users(id) ON DELETE SET NULL,
@@ -162,7 +162,7 @@ CREATE INDEX IF NOT EXISTS idx_sessions_guest_resume_expiry
   ON sessions (guest_resume_expires_at)
   WHERE guest_resume_status = 'issued';
 
--- === Чат ===
+-- === Р§Р°С‚ ===
 CREATE TABLE IF NOT EXISTS chat_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   session_id UUID NOT NULL REFERENCES sessions(id) ON DELETE CASCADE,
@@ -233,7 +233,7 @@ CREATE INDEX IF NOT EXISTS idx_payments_referrer ON payments(referrer_slug);
 CREATE INDEX IF NOT EXISTS idx_payments_user_id ON payments(user_id);
 CREATE INDEX IF NOT EXISTS idx_payments_session_id ON payments(session_id);
 
--- === Аккаунты (регистрация / ЛК) ===
+-- === РђРєРєР°СѓРЅС‚С‹ (СЂРµРіРёСЃС‚СЂР°С†РёСЏ / Р›Рљ) ===
 CREATE TABLE IF NOT EXISTS user_accounts (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   email TEXT UNIQUE NOT NULL,
@@ -351,13 +351,13 @@ CREATE TABLE IF NOT EXISTS expert_accounts (
   slug TEXT UNIQUE NOT NULL,
   title TEXT,
   style_notes TEXT,
-  emoji TEXT DEFAULT '🔮',
+  emoji TEXT DEFAULT 'рџ”®',
   split_percent INT NOT NULL DEFAULT 80,
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );
 
--- === White-label блогеры (расширение influencers) ===
+-- === White-label Р±Р»РѕРіРµСЂС‹ (СЂР°СЃС€РёСЂРµРЅРёРµ influencers) ===
 CREATE TABLE IF NOT EXISTS bloggers (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   slug TEXT UNIQUE NOT NULL,
@@ -365,7 +365,7 @@ CREATE TABLE IF NOT EXISTS bloggers (
   title TEXT,
   split_percent INT NOT NULL DEFAULT 80,
   style_notes TEXT,
-  emoji TEXT DEFAULT '🔮',
+  emoji TEXT DEFAULT 'рџ”®',
   is_active BOOLEAN NOT NULL DEFAULT TRUE,
   influencer_id UUID REFERENCES influencers(id),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -381,15 +381,15 @@ CREATE TABLE IF NOT EXISTS blogger_knowledge (
 
 CREATE INDEX IF NOT EXISTS idx_blogger_knowledge_blogger ON blogger_knowledge(blogger_id);
 
--- Демо white-label
+-- Р”РµРјРѕ white-label
 INSERT INTO bloggers (slug, display_name, title, split_percent, style_notes, emoji)
 VALUES (
   'gadalka_marina',
   'Marina',
-  'Таро · Расклады · Ритуалы',
+  'РўР°СЂРѕ В· Р Р°СЃРєР»Р°РґС‹ В· Р РёС‚СѓР°Р»С‹',
   80,
-  'Говоришь тепло, образно, с отсылками к лунным циклам.',
-  '🌹'
+  'Р“РѕРІРѕСЂРёС€СЊ С‚РµРїР»Рѕ, РѕР±СЂР°Р·РЅРѕ, СЃ РѕС‚СЃС‹Р»РєР°РјРё Рє Р»СѓРЅРЅС‹Рј С†РёРєР»Р°Рј.',
+  'рџЊ№'
 ) ON CONFLICT (slug) DO UPDATE SET
   display_name = EXCLUDED.display_name,
   title = EXCLUDED.title,
@@ -428,7 +428,7 @@ INSERT INTO platform_settings (key, value) VALUES
   ('ai', '{"provider":"openrouter","model":"openai/gpt-4o-mini","visionModel":"openai/gpt-4o","temperature":0.85,"maxTokens":800,"maxReadingTokens":900}'),
   ('pricing', '{"singlePrice":199,"subscriptionPrice":590,"currency":"RUB"}'),
   ('features', '{"maintenanceMode":false,"registrationEnabled":true,"recaptchaEnabled":false,"recaptchaScopes":{"register":true,"login":true,"expertRegister":true,"expertLogin":true,"adminLogin":true,"support":true,"chat":true,"payments":true},"freeQuestionLimit":2,"demoPayments":true}'),
-  ('prompts', '{"globalPrefix":"Ты — мастер эзотерической платформы Zovus. Отвечай на русском."}'),
+  ('prompts', '{"globalPrefix":"РўС‹ вЂ” РјР°СЃС‚РµСЂ СЌР·РѕС‚РµСЂРёС‡РµСЃРєРѕР№ РїР»Р°С‚С„РѕСЂРјС‹ Zovus. РћС‚РІРµС‡Р°Р№ РЅР° СЂСѓСЃСЃРєРѕРј."}'),
   ('tts', '{"enabled":false,"model":"google/gemini-3.1-flash-tts-preview","fallbackModel":"hexgrad/kokoro-82m","fallbackEnabled":true,"chunkChars":4000}'),
   ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Zovus mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":true,"destiny_card":true,"scene_illustration":true,"final_report":true}}'),
   ('runes', '{"enabled":true,"rubPerRune":2,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"INTENTION_SPREAD":20,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":20,"FORECAST_REPORT":20,"SYNASTRY_REPORT":30}}')
@@ -506,10 +506,10 @@ CREATE TABLE IF NOT EXISTS rune_packages (
 
 INSERT INTO rune_packages (id, name, runes, price_rub, bonus_runes, is_popular, sort_order)
 VALUES
-  ('starter',  'Искатель',    50,   99,    0,   false, 1),
-  ('adept',    'Посвящённый', 150,  249,   15,  true,  2),
-  ('keeper',   'Хранитель',   500,  699,   75,  false, 3),
-  ('chosen',   'Избранный',   1500, 1690,  300, false, 4)
+  ('starter',  'РСЃРєР°С‚РµР»СЊ',    50,   99,    0,   false, 1),
+  ('adept',    'РџРѕСЃРІСЏС‰С‘РЅРЅС‹Р№', 150,  249,   15,  true,  2),
+  ('keeper',   'РҐСЂР°РЅРёС‚РµР»СЊ',   500,  699,   75,  false, 3),
+  ('chosen',   'РР·Р±СЂР°РЅРЅС‹Р№',   1500, 1690,  300, false, 4)
 ON CONFLICT (id) DO NOTHING;
 
 -- Rate limiting (shared across app instances)
@@ -830,7 +830,7 @@ CREATE TABLE IF NOT EXISTS notifications (
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_id, created_at DESC) WHERE read = FALSE;
 
--- === Техподдержка (обращения пользователей) ===
+-- === РўРµС…РїРѕРґРґРµСЂР¶РєР° (РѕР±СЂР°С‰РµРЅРёСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№) ===
 CREATE TABLE IF NOT EXISTS support_tickets (
   id                  UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_account_id     UUID NOT NULL REFERENCES user_accounts(id) ON DELETE CASCADE,
@@ -1238,7 +1238,7 @@ CREATE TABLE IF NOT EXISTS natal_event_delivery_log (
 CREATE INDEX IF NOT EXISTS idx_natal_event_delivery_log_delivered
   ON natal_event_delivery_log(delivered_at);
 
--- === Synced from migrations 083�090 (fresh install parity) ===
+-- === Synced from migrations 083пїЅ090 (fresh install parity) ===
 
 
 -- from scripts/migrations/083_migrate_partner_leads.sql
@@ -1562,7 +1562,7 @@ ON CONFLICT (key) DO NOTHING;
 
 -- from scripts/migrations/086_migrate_ads_budget_guards.sql
 
--- Ads Autopilot budget protection layer (B1–B7).
+-- Ads Autopilot budget protection layer (B1вЂ“B7).
 -- Rollback: DROP TABLE ads.budget_ledger; DROP TABLE ads.health_check;
 --           DELETE FROM ads.config WHERE key LIKE 'hard_%' OR key LIKE 'budget_warn%'
 --             OR key LIKE 'stats_stale%' OR key LIKE 'discovery_max_days%'
@@ -1704,3 +1704,86 @@ CREATE INDEX IF NOT EXISTS idx_oauth_transactions_link_account
   ON oauth_transactions(link_account_id)
   WHERE link_account_id IS NOT NULL;
 
+-- ── Human Design (migrations 094–106; bootstrap snapshot) ──
+CREATE TABLE IF NOT EXISTS hd_charts (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID REFERENCES users(id) ON DELETE CASCADE,
+  guest_id TEXT,
+  birth_date DATE NOT NULL,
+  birth_time TEXT,
+  time_unknown BOOLEAN NOT NULL DEFAULT FALSE,
+  timezone TEXT NOT NULL,
+  place_name TEXT NOT NULL,
+  lat DOUBLE PRECISION NOT NULL,
+  lon DOUBLE PRECISION NOT NULL,
+  fingerprint TEXT NOT NULL,
+  chart JSONB NOT NULL,
+  engine_version TEXT NOT NULL,
+  subject_kind TEXT NOT NULL DEFAULT 'self',
+  subject_name TEXT,
+  claim_token TEXT,
+  owner_key UUID GENERATED ALWAYS AS (COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS hd_charts_fingerprint_owner_key ON hd_charts (fingerprint, owner_key);
+CREATE INDEX IF NOT EXISTS idx_hd_charts_user ON hd_charts(user_id) WHERE user_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_hd_charts_guest ON hd_charts(guest_id) WHERE guest_id IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_hd_charts_claim_token ON hd_charts (claim_token) WHERE claim_token IS NOT NULL;
+
+CREATE TABLE IF NOT EXISTS hd_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chart_id UUID NOT NULL REFERENCES hd_charts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','error')),
+  report_text TEXT,
+  model TEXT,
+  transaction_id UUID,
+  error TEXT,
+  package_id TEXT NOT NULL DEFAULT 'max' CHECK (package_id IN ('depth', 'max')),
+  included_asks_remaining INTEGER NOT NULL DEFAULT 5,
+  report_tone TEXT NOT NULL DEFAULT 'personal' CHECK (report_tone IN ('personal', 'child', 'work')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_hd_reports_chart ON hd_reports(chart_id);
+CREATE INDEX IF NOT EXISTS idx_hd_reports_user ON hd_reports(user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS hd_report_messages (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  report_id UUID NOT NULL REFERENCES hd_reports(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('user','assistant')),
+  content TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_hd_report_messages_report ON hd_report_messages(report_id, created_at);
+
+CREATE TABLE IF NOT EXISTS hd_composite_reports (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  base_chart_id UUID NOT NULL REFERENCES hd_charts(id) ON DELETE CASCADE,
+  partner_chart_id UUID NOT NULL REFERENCES hd_charts(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending', 'done', 'error')),
+  report_text TEXT,
+  model TEXT,
+  transaction_id TEXT,
+  error TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS hd_composite_reports_pair_user_key
+  ON hd_composite_reports (base_chart_id, partner_chart_id, user_id);
+CREATE INDEX IF NOT EXISTS hd_composite_reports_user_idx ON hd_composite_reports (user_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS hd_center_insights (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  chart_id UUID NOT NULL REFERENCES hd_charts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  center TEXT NOT NULL,
+  insight_text TEXT NOT NULL,
+  transaction_id UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS hd_center_insights_owner_key
+  ON hd_center_insights (chart_id, user_id, center);

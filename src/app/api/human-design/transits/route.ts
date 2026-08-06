@@ -2,9 +2,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { clientIp } from "@/lib/api-guards";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
-import { computeTransits } from "@/lib/human-design";
+import { computeTransits, computeTransitWeek } from "@/lib/human-design";
 
-/** Current HD transits (activations for "now"). Public, cached 5 minutes. */
+/** Current HD transits (+ optional week ahead). Public, cached 5 minutes. */
 export async function GET(request: NextRequest) {
   if (!(await isHumanDesignEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
@@ -23,8 +23,11 @@ export async function GET(request: NextRequest) {
   try {
     const at = Date.now();
     const activations = computeTransits(at);
+    const daysRaw = Number(request.nextUrl.searchParams.get("days") || "0");
+    const days = Number.isFinite(daysRaw) ? Math.min(14, Math.max(0, Math.floor(daysRaw))) : 0;
+    const week = days > 0 ? computeTransitWeek(at, days) : undefined;
     return NextResponse.json(
-      { at: new Date(at).toISOString(), activations },
+      { at: new Date(at).toISOString(), activations, ...(week ? { week } : {}) },
       { headers: { "Cache-Control": "public, max-age=300" } }
     );
   } catch {

@@ -51,10 +51,11 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
   );
 
   const { cost, formatRunesWithRub, ready } = useRuneConfig();
-  const reportCost = cost("HD_REPORT");
+  const reportCost = cost("HD_COMPOSITE_REPORT");
   const priceLabel = ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`;
 
   const [report, setReport] = useState<string | null>(null);
+  const [reportId, setReportId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -67,6 +68,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
 
   useEffect(() => {
     setReport(null);
+    setReportId(null);
     setError(null);
     setBusy(false);
     setNeedsLogin(false);
@@ -87,7 +89,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         });
         if (!res.ok || cancelled) return;
         const data = (await res.json().catch(() => ({}))) as {
-          report?: { status?: string; reportText?: string | null };
+          report?: { id?: string; status?: string; reportText?: string | null };
         };
         if (
           !cancelled &&
@@ -96,6 +98,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
           data.report.reportText.trim()
         ) {
           setReport(sanitizeHdCompositeReportText(data.report.reportText));
+          if (typeof data.report.id === "string") setReportId(data.report.id);
         }
       } catch {
         /* ignore — paid CTA still available */
@@ -150,7 +153,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
-        report?: { reportText?: string | null };
+        report?: { id?: string; reportText?: string | null };
         error?: string;
         message?: string;
         balance?: number;
@@ -173,6 +176,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         return;
       }
       setReport(sanitizeHdCompositeReportText(data.report.reportText));
+      if (typeof data.report.id === "string") setReportId(data.report.id);
     } catch {
       setError("Сеть недоступна. Попробуйте позже.");
     } finally {
@@ -508,14 +512,25 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
           <div className="hd-report mt-5">
             <ReactMarkdown>{report}</ReactMarkdown>
             <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
-              <button
-                type="button"
-                className="hd-bodygraph__export"
-                onClick={() => window.print()}
-                title="Печать или сохранение как PDF"
-              >
-                Печать / PDF
-              </button>
+              {reportId ? (
+                <a
+                  href={`/cabinet/human-design/composite-reports/${reportId}/print`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hd-bodygraph__export"
+                >
+                  Печать / PDF
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  className="hd-bodygraph__export"
+                  onClick={() => window.print()}
+                  title="Печать или сохранение как PDF"
+                >
+                  Печать / PDF
+                </button>
+              )}
               <button
                 type="button"
                 className="hd-bodygraph__export"

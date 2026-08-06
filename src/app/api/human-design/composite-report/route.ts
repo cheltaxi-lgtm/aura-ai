@@ -283,7 +283,12 @@ export async function POST(request: NextRequest) {
           client
         );
         if (!row) return null;
-        const c = await chargeRuneAction({ userId, action: "HD_REPORT", exempt, client });
+        const c = await chargeRuneAction({
+          userId,
+          action: "HD_COMPOSITE_REPORT",
+          exempt,
+          client,
+        });
         await attachCompositeReportTransaction(row.id, c.transactionId ?? null, client);
         return { row, charge: c };
       });

@@ -15,6 +15,7 @@ import {
 } from "@/lib/human-design/seo-entities";
 import { GATE_NAMES_RU } from "@/lib/human-design";
 import HdTransitToday from "@/components/human-design/HdTransitToday";
+import HdTransitWeek from "@/components/human-design/HdTransitWeek";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Дизайн Человека — рассчитать карту (бодиграф) бесплатно онлайн",
@@ -89,8 +90,9 @@ export default function HumanDesignHubPage() {
         </SeoTrackedCta>
       </div>
 
-      <div className="mt-8">
+      <div className="mt-8 space-y-4">
         <HdTransitToday />
+        <HdTransitWeek />
       </div>
 
       <SeoSection title="Совместимость пары">

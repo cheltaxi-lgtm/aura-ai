@@ -30,6 +30,9 @@ const PAID_ACTIONS: RuneActionType[] = [
   "NATAL_READING",
   "FORECAST_REPORT",
   "SYNASTRY_REPORT",
+  "HD_REPORT",
+  "HD_COMPOSITE_REPORT",
+  "HD_ASK",
   "VOICE_TTS",
 ];
 

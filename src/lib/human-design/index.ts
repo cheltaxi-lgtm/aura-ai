@@ -52,3 +52,12 @@ export {
   type HdReportModule,
   type HdReportPackageId,
 } from "./packages";
+export {
+  formatExtrasForEvidence,
+  hangingGates,
+  reportTonePromptHint,
+  splitCardGates,
+  variableSummary,
+  type HdReportTone,
+} from "./chart-extras";
+export { computeTransitWeek, type HdTransitDay } from "./transits-week";

@@ -34,13 +34,16 @@ import {
   releaseStalePendingReportLock,
   restoreHdReportDone,
   toPublicHdReport,
+  updateHdReportTone,
   type HdReportRow,
+  type HdReportToneId,
 } from "@/lib/services/human-design-service";
 import {
   buildHdReportSystemPrompt,
   formatHdEvidence,
   HD_ENGINE_VERSION,
   sanitizeHdReportText,
+  type HdReportTone,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
@@ -77,6 +80,7 @@ export async function POST(request: NextRequest) {
     chartId?: unknown;
     aiDataUseAcknowledged?: unknown;
     regenerate?: unknown;
+    tone?: unknown;
   };
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
@@ -88,6 +92,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Укажите карту." }, { status: 400 });
   }
   const regenerate = body.regenerate === true;
+  const toneRaw = typeof body.tone === "string" ? body.tone : "personal";
+  const tone: HdReportToneId =
+    toneRaw === "child" || toneRaw === "work" ? toneRaw : "personal";
+  const toneHint: HdReportTone = tone;
 
   const chart = await getHdChartById(body.chartId);
   // Strict ownership: guest-pool charts are claimable only via the claim token
@@ -162,7 +170,9 @@ export async function POST(request: NextRequest) {
       ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(profileRow.name) || null;
   const evidence = formatHdEvidence(chart.chart);
-  const systemPrompt = await wrapSystemPrompt(buildHdReportSystemPrompt(clientName));
+  const systemPrompt = await wrapSystemPrompt(
+    buildHdReportSystemPrompt(clientName, toneHint)
+  );
 
   const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
   const runeSettings = await getRuneSettings();
@@ -199,6 +209,7 @@ export async function POST(request: NextRequest) {
           { status: 409 }
         );
       }
+      await updateHdReportTone(existing.id, tone).catch(() => undefined);
       pending = existing;
     } else if (resumePaidPending && existing) {
       const locked = await lockStalePendingReportForResume(existing.id);
@@ -220,6 +231,7 @@ export async function POST(request: NextRequest) {
             transactionId: null,
             packageId: "max",
             includedAsksRemaining: INCLUDED_ASKS,
+            reportTone: tone,
           },
           client
         );

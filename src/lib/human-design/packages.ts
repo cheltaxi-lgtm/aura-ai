@@ -53,6 +53,11 @@ export const HD_FULL_REPORT_MODULES: readonly HdReportModule[] = [
     blurb: "Тема вклада и направления жизни",
   },
   {
+    id: "variables",
+    title: "Переменные и среда",
+    blurb: "Познание, среда и color/tone/base по Солнцу",
+  },
+  {
     id: "life",
     title: "Работа и отношения",
     blurb: "Как энергия проявляется в деле и близости",
@@ -60,7 +65,7 @@ export const HD_FULL_REPORT_MODULES: readonly HdReportModule[] = [
   {
     id: "sleep",
     title: "Сон и восстановление",
-    blurb: "Ритм отдыха под вашу механику",
+    blurb: "Ритм отдыха под центры и среду",
   },
   {
     id: "perception",

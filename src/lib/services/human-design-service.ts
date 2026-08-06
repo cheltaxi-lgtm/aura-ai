@@ -41,6 +41,8 @@ export interface HdSubject {
   name: string | null;
 }
 
+export type HdReportToneId = "personal" | "child" | "work";
+
 export interface HdReportRow {
   id: string;
   chartId: string;
@@ -52,6 +54,7 @@ export interface HdReportRow {
   error: string | null;
   packageId: "depth" | "max";
   includedAsksRemaining: number;
+  reportTone: HdReportToneId;
   createdAt: string;
 }
 
@@ -64,6 +67,7 @@ export function toPublicHdReport(row: HdReportRow) {
     reportText: row.reportText,
     packageId: row.packageId,
     includedAsksRemaining: row.includedAsksRemaining,
+    reportTone: row.reportTone,
     createdAt: row.createdAt,
   };
 }
@@ -98,7 +102,13 @@ interface HdReportDbRow {
   error: string | null;
   package_id?: string | null;
   included_asks_remaining?: number | null;
+  report_tone?: string | null;
   created_at: string | Date;
+}
+
+function mapReportTone(raw: string | null | undefined): HdReportToneId {
+  if (raw === "child" || raw === "work") return raw;
+  return "personal";
 }
 
 function toIsoDate(value: string | Date): string {
@@ -139,8 +149,9 @@ function mapReportRow(row: HdReportDbRow): HdReportRow {
     model: row.model,
     transactionId: row.transaction_id,
     error: row.error,
-    packageId: row.package_id === "max" ? "max" : "depth",
+    packageId: "max",
     includedAsksRemaining: Math.max(0, Number(row.included_asks_remaining) || 0),
+    reportTone: mapReportTone(row.report_tone),
     createdAt: toIso(row.created_at),
   };
 }
@@ -689,6 +700,7 @@ export async function createPendingHdReport(
     transactionId: string | null;
     packageId?: "depth" | "max";
     includedAsksRemaining?: number;
+    reportTone?: HdReportToneId;
   },
   client?: PoolClient
 ): Promise<HdReportRow | null> {
@@ -698,16 +710,47 @@ export async function createPendingHdReport(
     5,
     Math.floor(params.includedAsksRemaining ?? 5)
   );
+  const reportTone = mapReportTone(params.reportTone);
   const sql = `INSERT INTO hd_reports (
-       chart_id, user_id, status, transaction_id, package_id, included_asks_remaining
-     ) VALUES ($1, $2, 'pending', $3, $4, $5)
+       chart_id, user_id, status, transaction_id, package_id, included_asks_remaining, report_tone
+     ) VALUES ($1, $2, 'pending', $3, $4, $5, $6)
      ON CONFLICT (chart_id) DO NOTHING
      RETURNING *`;
-  const params_ = [params.chartId, params.userId, params.transactionId, packageId, includedAsks];
+  const params_ = [
+    params.chartId,
+    params.userId,
+    params.transactionId,
+    packageId,
+    includedAsks,
+    reportTone,
+  ];
   const { rows } = client
     ? await queryClient<HdReportDbRow>(client, sql, params_)
     : await query<HdReportDbRow>(sql, params_);
   return rows[0] ? mapReportRow(rows[0]) : null;
+}
+
+export async function updateHdReportTone(
+  reportId: string,
+  tone: HdReportToneId
+): Promise<void> {
+  await query(
+    `UPDATE hd_reports SET report_tone = $2, updated_at = now() WHERE id = $1`,
+    [reportId, mapReportTone(tone)]
+  );
+}
+
+export async function getHdCompositeReportById(
+  reportId: string,
+  userId: string
+): Promise<HdCompositeReportRow | null> {
+  const { rows } = await query<HdCompositeReportDbRow>(
+    `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at
+     FROM hd_composite_reports
+     WHERE id = $1 AND user_id = $2`,
+    [reportId, userId]
+  );
+  return rows[0] ? mapCompositeRow(rows[0]) : null;
 }
 
 /**

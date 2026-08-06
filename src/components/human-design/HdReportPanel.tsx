@@ -1,11 +1,16 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
 import PaywallModal from "@/components/PaywallModal";
-import { HD_FULL_REPORT_MODULES, sanitizeHdReportText, type HdChart } from "@/lib/human-design";
+import {
+  HD_FULL_REPORT_MODULES,
+  sanitizeHdReportText,
+  type HdChart,
+  type HdReportTone,
+} from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import HdFoundationBrief from "./HdFoundationBrief";
+import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
 
 interface HdReport {
@@ -14,7 +19,14 @@ interface HdReport {
   reportText: string | null;
   packageId?: "depth" | "max";
   includedAsksRemaining?: number;
+  reportTone?: HdReportTone;
 }
+
+const TONE_OPTIONS: Array<{ id: HdReportTone; label: string; hint: string }> = [
+  { id: "personal", label: "Личный", hint: "Для себя" },
+  { id: "child", label: "Ребёнок", hint: "Для родителя" },
+  { id: "work", label: "Работа", hint: "Карьера и роль" },
+];
 
 interface HdReportPanelProps {
   chartId: string;
@@ -41,6 +53,7 @@ export default function HdReportPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadNonce, setLoadNonce] = useState(0);
   const [includedAsks, setIncludedAsks] = useState(0);
+  const [tone, setTone] = useState<HdReportTone>("personal");
   const dialogEndRef = useRef<HTMLDivElement>(null);
 
   const reportCost = cost("HD_REPORT");
@@ -55,6 +68,7 @@ export default function HdReportPanel({
     setAcknowledged(false);
     setLoadError(null);
     setIncludedAsks(0);
+    setTone("personal");
   }, [chartId]);
 
   useEffect(() => {
@@ -75,6 +89,9 @@ export default function HdReportPanel({
               : d.report.reportText;
           setReport({ ...d.report, reportText: text });
           setIncludedAsks(Number(d.report.includedAsksRemaining) || 0);
+          if (d.report.reportTone === "child" || d.report.reportTone === "work") {
+            setTone(d.report.reportTone);
+          }
         }
       })
       .catch(() => {
@@ -138,6 +155,7 @@ export default function HdReportPanel({
             chartId,
             aiDataUseAcknowledged: true,
             regenerate: opts?.regenerate === true,
+            tone,
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -166,7 +184,25 @@ export default function HdReportPanel({
         setLoading(false);
       }
     },
-    [acknowledged, chartId, loading, reportCost]
+    [acknowledged, chartId, loading, reportCost, tone]
+  );
+
+  const tonePicker = (
+    <div className="hd-tone-picker mt-4" role="radiogroup" aria-label="Тон разбора">
+      {TONE_OPTIONS.map((opt) => (
+        <button
+          key={opt.id}
+          type="button"
+          role="radio"
+          aria-checked={tone === opt.id}
+          className={tone === opt.id ? "is-active" : undefined}
+          onClick={() => setTone(opt.id)}
+        >
+          <strong>{opt.label}</strong>
+          <span>{opt.hint}</span>
+        </button>
+      ))}
+    </div>
   );
 
   const recoverAskFromHistory = useCallback(
@@ -318,6 +354,10 @@ export default function HdReportPanel({
             «Опора» выше — бесплатно. Ниже один полный премиальный разбор: без доплат и апгрейдов.
           </p>
           {modulesCard}
+          <p className="mt-3 text-xs text-white/50">
+            Одна цена · выберите тон текста (не отдельный тариф):
+          </p>
+          {tonePicker}
           {loadError && (
             <div
               className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-sm text-red-200/90"
@@ -413,13 +453,17 @@ export default function HdReportPanel({
             </a>
           </div>
         </div>
+        <p className="hd-print-hidden mt-3 text-xs text-white/50">
+          Тон для пересборки (бесплатно, тот же полный разбор):
+        </p>
+        {tonePicker}
         {error && (
           <p className="hd-print-hidden mt-3 text-sm text-red-300" role="alert">
             {error}
           </p>
         )}
-        <div className="hd-report mt-4">
-          <ReactMarkdown>{report.reportText ?? ""}</ReactMarkdown>
+        <div className="mt-4">
+          <HdReportSections text={report.reportText ?? ""} />
         </div>
       </div>
 

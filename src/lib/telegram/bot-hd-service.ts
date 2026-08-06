@@ -101,6 +101,7 @@ export async function botHdSummary(telegramUserId: number) {
 
   const c = chartRow.chart;
   const typeMeta = TYPE_META[c.type];
+  const utm = "utm_source=telegram&utm_medium=bot&utm_campaign=hd_report";
   return {
     ok: true as const,
     hd: {
@@ -112,8 +113,10 @@ export async function botHdSummary(telegramUserId: number) {
       activeGates: c.activeGates.length,
       timeKnown: chartRow.timeUnknown === false,
     },
-    url: `${siteBase()}/dizayn-cheloveka/karta/${chartRow.fingerprint}?utm_source=telegram&utm_medium=bot`,
-    cabinetUrl: `${siteBase()}/cabinet/human-design?utm_source=telegram&utm_medium=bot`,
+    url: `${siteBase()}/dizayn-cheloveka/karta/${chartRow.fingerprint}?${utm}`,
+    cabinetUrl: `${siteBase()}/cabinet/human-design?${utm}`,
+    /** Deep link into cabinet HD salon for report purchase. */
+    reportUrl: `${siteBase()}/cabinet/human-design?${utm}`,
   };
 }
 
