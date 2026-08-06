@@ -1,13 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  HD_CONNECTION_RELATIONS,
+  TYPE_META,
+  type HdConnectionRelation,
+} from "@/lib/human-design";
 import HdCalculator from "./HdCalculator";
 import HdChartSlot from "./HdChartSlot";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdComposite from "./HdComposite";
+import HdRelationPicker from "./HdRelationPicker";
 import HdReportPanel from "./HdReportPanel";
+import { hdApiErrorMessage } from "./hd-errors";
+import { claimAllPendingHdCharts } from "./hd-claim";
 import { hdChartChipLabel } from "./hd-labels";
-import { TYPE_META } from "@/lib/human-design";
 
 interface HdChartListItem extends HdChartPayload {
   createdAt: string;
@@ -15,11 +22,21 @@ interface HdChartListItem extends HdChartPayload {
 
 type HdFolder = "self" | "others";
 
+const RELATION_IDS = new Set(HD_CONNECTION_RELATIONS.map((r) => r.id));
+
+function normalizeRelation(raw: unknown): HdConnectionRelation | null {
+  return typeof raw === "string" && RELATION_IDS.has(raw as HdConnectionRelation)
+    ? (raw as HdConnectionRelation)
+    : null;
+}
+
 function normalizeChart(raw: HdChartListItem): HdChartListItem {
+  const subjectKind = raw.subjectKind === "other" ? "other" : "self";
   return {
     ...raw,
-    subjectKind: raw.subjectKind === "other" ? "other" : "self",
-    subjectName: raw.subjectKind === "other" ? raw.subjectName ?? null : null,
+    subjectKind,
+    subjectName: subjectKind === "other" ? raw.subjectName ?? null : null,
+    relationToSelf: subjectKind === "other" ? normalizeRelation(raw.relationToSelf) ?? "partner" : null,
   };
 }
 
@@ -28,10 +45,14 @@ export default function HdCabinet() {
   const [folder, setFolder] = useState<HdFolder>("self");
   const [otherId, setOtherId] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  /** Which subject mode to open the calculator in. */
+  const [createKind, setCreateKind] = useState<"self" | "other">("self");
   const [enabled, setEnabled] = useState(true);
   const [deleting, setDeleting] = useState(false);
   /** Composite replaces the main view — never stacks a second bodygraph under it. */
   const [partnerId, setPartnerId] = useState<string | null>(null);
+  const [savingRelation, setSavingRelation] = useState(false);
+  const [relationError, setRelationError] = useState<string | null>(null);
   const loadSeq = useRef(0);
   const [loadError, setLoadError] = useState(false);
 
@@ -62,6 +83,19 @@ export default function HdCabinet() {
 
   useEffect(() => {
     load();
+  }, [load]);
+
+  // Adopt guest-pool charts created in this browser before login (compat
+  // calculator, public chart). Without this the cabinet looks empty and the
+  // guest pair is lost after the composite login CTA.
+  useEffect(() => {
+    let cancelled = false;
+    void claimAllPendingHdCharts().then((claimed) => {
+      if (!cancelled && claimed.length > 0) load();
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [load]);
 
   // Clear connection only when leaving the self folder (not when entering it
@@ -107,6 +141,7 @@ export default function HdCabinet() {
   const openOther = (id: string) => {
     setPartnerId(null);
     setOtherId(id);
+    setRelationError(null);
   };
 
   if (!enabled) {
@@ -149,10 +184,13 @@ export default function HdCabinet() {
           )}
         </div>
         <HdCalculator
+          key={`create:${createKind}`}
+          initialSubjectKind={createKind}
           returnTo="/cabinet/human-design"
           onChartCreated={(chart) => {
             const kind = chart.subjectKind === "other" ? "other" : "self";
             setCreating(false);
+            setCreateKind("self");
             setCharts(null);
             setPartnerId(null);
             setFolder(kind === "other" ? "others" : "self");
@@ -166,6 +204,44 @@ export default function HdCabinet() {
       </div>
     );
   }
+
+  const updateRelation = async (
+    target: HdChartListItem,
+    relationToSelf: HdConnectionRelation
+  ) => {
+    if (target.relationToSelf === relationToSelf) return;
+    setSavingRelation(true);
+    setRelationError(null);
+    try {
+      const res = await fetch("/api/human-design/chart", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ chartId: target.id, relationToSelf }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setRelationError(hdApiErrorMessage(data, "Не удалось сохранить тип связи."));
+        return;
+      }
+      const next = data.chart as HdChartPayload;
+      setCharts((prev) =>
+        (prev ?? []).map((c) =>
+          c.id === target.id
+            ? {
+                ...c,
+                ...next,
+                relationToSelf: normalizeRelation(next.relationToSelf) ?? relationToSelf,
+              }
+            : c
+        )
+      );
+    } catch {
+      setRelationError("Сеть недоступна. Попробуйте ещё раз.");
+    } finally {
+      setSavingRelation(false);
+    }
+  };
 
   const deleteChart = async (target: HdChartListItem) => {
     const who = hdChartChipLabel(target);
@@ -217,7 +293,10 @@ export default function HdCabinet() {
         <h1 className="font-display text-2xl font-bold">Дизайн Человека</h1>
         <button
           type="button"
-          onClick={() => setCreating(true)}
+          onClick={() => {
+            setCreateKind(folder === "others" ? "other" : "self");
+            setCreating(true);
+          }}
           className="hd-bodygraph__export"
         >
           Новая карта
@@ -382,7 +461,10 @@ export default function HdCabinet() {
             <p className="text-sm text-white/55">Личной карты ещё нет.</p>
             <button
               type="button"
-              onClick={() => setCreating(true)}
+              onClick={() => {
+                setCreateKind("self");
+                setCreating(true);
+              }}
               className="hd-bodygraph__export"
             >
               Рассчитать свою карту
@@ -399,8 +481,9 @@ export default function HdCabinet() {
                   <button
                     type="button"
                     onClick={() => {
+                      // Enter self folder WITHOUT openFolder — it clears partnerId.
                       setPartnerId(activeOther.id);
-                      openFolder("self");
+                      setFolder("self");
                     }}
                     className="btn-luxe btn-luxe--gold btn-luxe--sm"
                   >
@@ -417,6 +500,18 @@ export default function HdCabinet() {
                 </button>
               </div>
             </div>
+            <div className="hd-panel">
+              <HdRelationPicker
+                value={activeOther.relationToSelf ?? "partner"}
+                onChange={(v) => void updateRelation(activeOther, v)}
+                disabled={savingRelation}
+              />
+              {relationError && (
+                <p className="mt-2 text-xs text-red-300/90" role="alert">
+                  {relationError}
+                </p>
+              )}
+            </div>
             {!selfChart && (
               <p className="rounded-2xl border border-amber-500/20 bg-amber-500/[0.06] px-4 py-3 text-sm text-amber-50/80">
                 Чтобы открыть карту связи, сначала рассчитайте{" "}
@@ -424,6 +519,7 @@ export default function HdCabinet() {
                   type="button"
                   className="underline underline-offset-2 hover:text-amber-50"
                   onClick={() => {
+                    setCreateKind("self");
                     setCreating(true);
                     openFolder("self");
                   }}
@@ -450,7 +546,10 @@ export default function HdCabinet() {
             </p>
             <button
               type="button"
-              onClick={() => setCreating(true)}
+              onClick={() => {
+                setCreateKind("other");
+                setCreating(true);
+              }}
               className="hd-bodygraph__export"
             >
               Рассчитать другому

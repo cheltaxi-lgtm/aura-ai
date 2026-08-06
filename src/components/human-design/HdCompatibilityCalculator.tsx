@@ -1,7 +1,9 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { HdConnectionRelation } from "@/lib/human-design";
 import HdComposite from "./HdComposite";
+import HdRelationPicker from "./HdRelationPicker";
 import type { HdChartPayload } from "./HdChartView";
 import { hdApiErrorMessage } from "./hd-errors";
 import { claimAllPendingHdCharts, storeHdClaimToken } from "./hd-claim";
@@ -258,6 +260,7 @@ function PersonForm({
 export default function HdCompatibilityCalculator() {
   const [a, setA] = useState<PersonState>(EMPTY);
   const [b, setB] = useState<PersonState>(EMPTY);
+  const [relation, setRelation] = useState<HdConnectionRelation>("partner");
 
   // Logged-in visitors get every guest chart this browser created (including
   // the pair computed here) attached to their account.
@@ -273,7 +276,8 @@ export default function HdCompatibilityCalculator() {
   const compute = useCallback(
     async (
       state: PersonState,
-      patch: (p: Partial<PersonState>) => void
+      patch: (p: Partial<PersonState>) => void,
+      relationToSelf?: HdConnectionRelation | null
     ): Promise<HdChartPayload | null> => {
       patch({ error: null });
       if (!state.name.trim()) {
@@ -306,6 +310,7 @@ export default function HdCompatibilityCalculator() {
             lon: state.place.longitude,
             subjectKind: "other",
             subjectName: state.name.trim(),
+            ...(relationToSelf ? { relationToSelf } : {}),
           }),
         });
         const data = await res.json().catch(() => ({}));
@@ -319,8 +324,11 @@ export default function HdCompatibilityCalculator() {
         const payload = data.chart as HdChartPayload;
         // Guest chart: keep the claim capability so a later login attaches it.
         storeHdClaimToken(payload.fingerprint, data.claimToken);
-        patch({ chart: payload, loading: false });
-        return payload;
+        const withRelation = relationToSelf
+          ? { ...payload, relationToSelf }
+          : payload;
+        patch({ chart: withRelation, loading: false });
+        return withRelation;
       } catch {
         patch({ error: "Сеть недоступна. Попробуйте ещё раз.", loading: false });
         return null;
@@ -334,10 +342,13 @@ export default function HdCompatibilityCalculator() {
   }, [a, compute]);
 
   const computeB = useCallback(async () => {
-    await compute(b, (p) => setB((prev) => ({ ...prev, ...p })));
-  }, [b, compute]);
+    await compute(b, (p) => setB((prev) => ({ ...prev, ...p })), relation);
+  }, [b, compute, relation]);
 
   const both = a.chart && b.chart;
+  const partner = both
+    ? { ...b.chart!, relationToSelf: relation }
+    : null;
 
   return (
     <div className="space-y-6">
@@ -346,12 +357,24 @@ export default function HdCompatibilityCalculator() {
         <PersonForm title="Второй человек" idPrefix="hd-compat-b" state={b} onChange={(p) => setB((prev) => ({ ...prev, ...p }))} onCompute={() => void computeB()} />
       </div>
 
-      {both && (
+      <div className="hd-panel">
+        <HdRelationPicker
+          value={relation}
+          onChange={setRelation}
+          label="Тип связи между ними"
+          variant="select"
+        />
+        <p className="mt-2 text-xs text-white/45">
+          Нужен для платного разбора связи — на бесплатный бодиграф не влияет.
+        </p>
+      </div>
+
+      {both && partner && (
         <div>
           <h2 className="mb-4 font-display text-xl font-bold text-amber-50">
             Композит: {a.name.trim()} + {b.name.trim()}
           </h2>
-          <HdComposite key={`${a.chart!.id}:${b.chart!.id}`} base={a.chart!} partner={b.chart!} />
+          <HdComposite key={`${a.chart!.id}:${b.chart!.id}`} base={a.chart!} partner={partner} />
         </div>
       )}
 

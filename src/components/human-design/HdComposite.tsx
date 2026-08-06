@@ -18,6 +18,7 @@ import { useRuneConfig } from "@/lib/useRuneConfig";
 import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
 import HdGenerating from "./HdGenerating";
+import HdJourney, { type HdJourneyStep } from "./HdJourney";
 import { hdApiErrorMessage } from "./hd-errors";
 import { hdChartChipLabel } from "./hd-labels";
 import { useHdReportWait } from "./useHdReportWait";
@@ -25,15 +26,21 @@ import { useHdReportWait } from "./useHdReportWait";
 interface Props {
   base: HdChartPayload;
   partner: HdChartPayload;
-  /** Optional default relation scenario for the paid report tone. */
-  initialRelation?: HdConnectionRelation;
 }
 
 type ViewMode = "connection" | "base" | "partner";
 type FocusFilter = "all" | "electro" | "harmony" | "friction";
 
+const RELATION_IDS = new Set(HD_CONNECTION_RELATIONS.map((r) => r.id));
+
+function resolveRelation(partner: HdChartPayload): HdConnectionRelation {
+  const raw = partner.relationToSelf;
+  if (typeof raw === "string" && RELATION_IDS.has(raw)) return raw;
+  return "partner";
+}
+
 /** Premium Connection Chart: mechanics + bodygraph + paid Evelina report. */
-export default function HdComposite({ base, partner, initialRelation = "partner" }: Props) {
+export default function HdComposite({ base, partner }: Props) {
   const baseLabel =
     base.subjectKind === "other"
       ? hdChartChipLabel(base)
@@ -56,19 +63,25 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
   const reportCost = cost("HD_COMPOSITE_REPORT");
   const priceLabel = ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`;
 
+  const relation = resolveRelation(partner);
+  const relationLabel =
+    HD_CONNECTION_RELATIONS.find((r) => r.id === relation)?.label ?? "Партнёр";
+
   const [report, setReport] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
   const [paywall, setPaywall] = useState<{ balance: number; required: number } | null>(null);
-  const [relation, setRelation] = useState<HdConnectionRelation>(initialRelation);
   const [view, setView] = useState<ViewMode>("connection");
   const [focus, setFocus] = useState<FocusFilter>("all");
   const [ack, setAck] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>("harmony");
   const [uiGenerating, setUiGenerating] = useState(false);
+  const [loadFailed, setLoadFailed] = useState(false);
   const postInFlightRef = useRef(false);
+  const loadRef = useRef<(() => Promise<void>) | null>(null);
+  const postCompositeRef = useRef<((opts?: { resume?: boolean }) => Promise<void>) | null>(null);
 
   const { waiting, startedAt, startWait, stopWait } = useHdReportWait({
     mode: "composite",
@@ -105,6 +118,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
 
     let cancelled = false;
     const load = async () => {
+      setLoadFailed(false);
       try {
         const qs = new URLSearchParams({
           baseChartId: base.id,
@@ -113,7 +127,12 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         const res = await fetch(`/api/human-design/composite-report?${qs}`, {
           credentials: "include",
         });
-        if (!res.ok || cancelled) return;
+        if (cancelled) return;
+        if (!res.ok) {
+          // 401/404 simply mean "no report yet" — not an error surface.
+          if (res.status >= 500) setLoadFailed(true);
+          return;
+        }
         const data = (await res.json().catch(() => ({}))) as {
           report?: { id?: string; status?: string; reportText?: string | null };
         };
@@ -132,11 +151,15 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
           setUiGenerating(true);
           startWait({ baselineText: null });
           setBusy(true);
+          // Paid pending without an active worker (crash / repaired report)
+          // would hang forever — kick a free resume on the server.
+          void postCompositeRef.current?.({ resume: true });
         }
       } catch {
-        /* ignore — paid CTA still available */
+        if (!cancelled) setLoadFailed(true);
       }
     };
+    loadRef.current = load;
     void load();
     return () => {
       cancelled = true;
@@ -164,17 +187,21 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
   const bodyChart =
     view === "base" ? base.chart : view === "partner" ? partner.chart : conn.mergedChart;
 
-  const buyReport = async (opts?: { regenerate?: boolean }) => {
-    if (busy || postInFlightRef.current) return;
-    if (!ack && !opts?.regenerate && !waiting && !uiGenerating) {
-      setError("Подтвердите передачу данных карт языковой модели.");
-      return;
+  const postCompositeReport = async (opts?: { resume?: boolean }) => {
+    const resume = Boolean(opts?.resume);
+    if (postInFlightRef.current) return;
+    if (!resume) {
+      if (busy || waiting || uiGenerating) return;
+      if (report) return; // Already paid — no free rebuild.
+      if (!ack) {
+        setError("Подтвердите передачу данных карт языковой модели.");
+        return;
+      }
     }
-    const baselineText = opts?.regenerate ? report : null;
     setBusy(true);
     setUiGenerating(true);
     setError(null);
-    startWait({ baselineText });
+    startWait({ baselineText: null });
     postInFlightRef.current = true;
     try {
       const res = await fetch("/api/human-design/composite-report", {
@@ -186,7 +213,8 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
           partnerChartId: partner.id,
           aiDataUseAcknowledged: true,
           relation,
-          regenerate: opts?.regenerate === true,
+          regenerate: false,
+          async: true,
         }),
       });
       const data = (await res.json().catch(() => ({}))) as {
@@ -201,6 +229,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         stopWait();
         setBusy(false);
         setUiGenerating(false);
+        if (resume) return; // guest session — purchase CTA stays available
         setNeedsLogin(true);
         setError("Разбор совместимости доступен после входа в аккаунт — карты сохранятся в кабинете.");
         return;
@@ -209,6 +238,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         stopWait();
         setBusy(false);
         setUiGenerating(false);
+        if (resume) return; // never charged — normal purchase CTA handles it
         setPaywall({
           balance: Number(data.balance) || 0,
           required: Number(data.required) || reportCost,
@@ -217,7 +247,14 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
       }
       if (res.status === 409 && data?.code === "CLAIM_BUSY") {
         setUiGenerating(true);
-        startWait({ baselineText });
+        startWait({ baselineText: null });
+        return;
+      }
+      // Durable worker accepted the job (202): the report row appears once
+      // the worker starts — the entity poll picks it up from there.
+      if (res.status === 202) {
+        setUiGenerating(true);
+        startWait({ baselineText: null });
         return;
       }
       if (data.report?.status === "done" && data.report.reportText) {
@@ -241,19 +278,40 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
       startWait({ baselineText: null });
     } catch {
       setUiGenerating(true);
-      startWait({ baselineText });
+      startWait({ baselineText: null });
       setError("Связь прервалась — ждём результат на сервере…");
     } finally {
       postInFlightRef.current = false;
     }
   };
 
+  const buyReport = () => postCompositeReport();
+  postCompositeRef.current = postCompositeReport;
+
   const toggleSection = (id: string) => {
     setOpenSection((prev) => (prev === id ? null : id));
   };
 
+  const compositeJourney: HdJourneyStep[] = [
+    { id: "charts", label: "Карты", hint: "обе рассчитаны", state: "done" },
+    { id: "connection", label: "Связь", hint: "бесплатный обзор", state: "done" },
+    {
+      id: "report",
+      label: "Разбор связи",
+      hint: report
+        ? "готов"
+        : busy || waiting || uiGenerating
+          ? "Эвелина пишет…"
+          : "полный текст",
+      state: report ? "done" : "current",
+    },
+  ];
+
   return (
     <div className="hd-connection space-y-5">
+      <div className="hd-journey-wrap hd-print-hidden">
+        <HdJourney steps={compositeJourney} />
+      </div>
       {/* Hero */}
       <header className="hd-connection__hero">
         <p className="hd-connection__eyebrow">Дизайн Человека · карта связи</p>
@@ -491,25 +549,15 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         ) : (
           <>
             <p className="mt-2 text-sm text-white/60">
-              Механика выше — бесплатно. Ниже модульный текст Эвелины по вашей карте связи. Сначала
-              выберите контекст.
+              Механика выше — бесплатно. Ниже модульный текст Эвелины по вашей карте связи
+              {partner.subjectKind === "other" ? (
+                <>
+                  {" "}
+                  · сценарий: <span className="text-amber-100/85">{relationLabel}</span>
+                </>
+              ) : null}
+              .
             </p>
-
-            <div className="hd-connection__relations" role="radiogroup" aria-label="Контекст связи">
-              {HD_CONNECTION_RELATIONS.map((r) => (
-                <button
-                  key={r.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={relation === r.id}
-                  className={relation === r.id ? "is-active" : undefined}
-                  onClick={() => setRelation(r.id)}
-                >
-                  <strong>{r.label}</strong>
-                  <span>{r.hint}</span>
-                </button>
-              ))}
-            </div>
 
             {!report && (
               <>
@@ -518,7 +566,7 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
                     <span className="hd-package__badge">Премиум</span>
                     <strong className="hd-package__label">Карта связи</strong>
                     <span className="hd-package__tagline">
-                      Модульный разбор под выбранный сценарий
+                      Модульный разбор · {relationLabel.toLowerCase()}
                     </span>
                     <span className="hd-package__price">{priceLabel}</span>
                     <ul className="hd-package__modules">
@@ -546,15 +594,33 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
                     генерации разбора.
                   </span>
                 </label>
+                <div className="hd-sticky-cta mt-4">
+                  <button
+                    type="button"
+                    onClick={() => void buyReport()}
+                    disabled={busy || waiting || !ack}
+                    className="btn-luxe btn-luxe--gold w-full disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {`Получить разбор связи · ${priceLabel}`}
+                  </button>
+                </div>
+              </>
+            )}
+
+            {loadFailed && !error && (
+              <p
+                className="mt-3 rounded-2xl border border-amber-500/30 bg-amber-500/5 px-4 py-3 text-xs text-amber-100/90"
+                role="alert"
+              >
+                Не удалось проверить, был ли уже куплен разбор связи.{" "}
                 <button
                   type="button"
-                  onClick={() => void buyReport()}
-                  disabled={busy || waiting || !ack}
-                  className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
+                  className="underline underline-offset-2 hover:text-amber-50"
+                  onClick={() => void loadRef.current?.()}
                 >
-                  {`Получить разбор связи · ${priceLabel}`}
+                  Повторить
                 </button>
-              </>
+              </p>
             )}
 
             {error && (
@@ -600,15 +666,6 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
                       Печать / PDF
                     </button>
                   )}
-                  <button
-                    type="button"
-                    className="hd-bodygraph__export"
-                    disabled={busy || waiting}
-                    onClick={() => void buyReport({ regenerate: true })}
-                    title="Бесплатно пересобрать текст в новом формате"
-                  >
-                    Пересобрать разбор
-                  </button>
                 </div>
               </div>
             )}
@@ -622,7 +679,10 @@ export default function HdComposite({ base, partner, initialRelation = "partner"
         options={{
           currentBalance: paywall?.balance ?? 0,
           requiredRunes: paywall?.required ?? reportCost,
-          onUnlocked: () => setPaywall(null),
+          onUnlocked: () => {
+            setPaywall(null);
+            void buyReport();
+          },
         }}
       />
     </div>

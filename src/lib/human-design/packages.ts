@@ -147,12 +147,40 @@ export const HD_FULL_REPORT_MODULES: readonly HdReportModule[] = [
   },
 ] as const;
 
+/**
+ * Exact ## titles for the premium composite (Connection Chart) report.
+ * Order matches the composite system prompt.
+ */
+export const HD_COMPOSITE_REQUIRED_SECTIONS = [
+  "Химия связи",
+  "Типы и стратегии в паре",
+  "Как вы усиливаете друг друга",
+  "Электромагнетика",
+  "Общие каналы и язык близости",
+  "Доминантность и компромисс",
+  "Опоры",
+  "Трение",
+  "Решения вместе",
+  "Профили и роли",
+  "Быт и близость в сценарии",
+  "Деньги, работа и проекты",
+  "Риски связи и как их обходить",
+  "Этапы развития связи",
+  "Практики на 7 дней",
+  "Практики на 30 дней",
+] as const;
+
 /** Connection Chart paid report — single premium SKU. */
 export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   {
     id: "chemistry",
     title: "Химия связи",
-    blurb: "Электромагнетика и притяжение",
+    blurb: "Механика притяжения и первого контакта",
+  },
+  {
+    id: "types",
+    title: "Типы и стратегии в паре",
+    blurb: "Как две механики встречаются в ритме и решениях",
   },
   {
     id: "boost",
@@ -162,7 +190,17 @@ export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   {
     id: "electro",
     title: "Электромагнетика",
-    blurb: "Каналы «половинка + половинка»",
+    blurb: "Каналы «половинка + половинка» — по каждому отдельно",
+  },
+  {
+    id: "companionship",
+    title: "Общие каналы",
+    blurb: "Общий язык и узнавание друг друга",
+  },
+  {
+    id: "dominance",
+    title: "Доминантность и компромисс",
+    blurb: "Чей голос сильнее и где нужен торг",
   },
   {
     id: "harmony",
@@ -177,12 +215,32 @@ export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   {
     id: "decisions",
     title: "Решения вместе",
-    blurb: "Стратегии и авторитеты в паре",
+    blurb: "Два авторитета — как не ломать друг друга",
+  },
+  {
+    id: "profiles",
+    title: "Профили и роли",
+    blurb: "Какие роли вы занимаете в этой связи",
   },
   {
     id: "daily",
     title: "Быт и близость",
     blurb: "Живая динамика в выбранном сценарии",
+  },
+  {
+    id: "money",
+    title: "Деньги, работа и проекты",
+    blurb: "Совместные дела и энергия обмена",
+  },
+  {
+    id: "risks",
+    title: "Риски связи",
+    blurb: "Где связь истощается и как это обходить",
+  },
+  {
+    id: "stages",
+    title: "Этапы развития связи",
+    blurb: "Как связь взрослеет — без выдуманных дат",
   },
   {
     id: "practices",

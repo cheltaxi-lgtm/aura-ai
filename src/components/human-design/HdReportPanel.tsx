@@ -6,11 +6,12 @@ import {
   HD_FULL_REPORT_MODULES,
   sanitizeHdReportText,
   type HdChart,
-  type HdReportTone,
+  type HdPublicChart,
 } from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import HdFoundationBrief from "./HdFoundationBrief";
 import HdGenerating from "./HdGenerating";
+import HdJourney, { type HdJourneyStep } from "./HdJourney";
 import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
 import { useHdReportWait } from "./useHdReportWait";
@@ -21,18 +22,11 @@ interface HdReport {
   reportText: string | null;
   packageId?: "depth" | "max";
   includedAsksRemaining?: number;
-  reportTone?: HdReportTone;
 }
-
-const TONE_OPTIONS: Array<{ id: HdReportTone; label: string; hint: string }> = [
-  { id: "personal", label: "Личный", hint: "Для себя" },
-  { id: "child", label: "Ребёнок", hint: "Для родителя" },
-  { id: "work", label: "Работа", hint: "Карьера и роль" },
-];
 
 interface HdReportPanelProps {
   chartId: string;
-  chart?: HdChart | null;
+  chart?: HdChart | HdPublicChart | null;
   authenticated: boolean;
   loginReturnTo: string;
 }
@@ -48,6 +42,7 @@ export default function HdReportPanel({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [acknowledged, setAcknowledged] = useState(false);
+  const [dedupeNotice, setDedupeNotice] = useState(false);
   const [paywall, setPaywall] = useState<{ balance: number; required: number } | null>(null);
   const [question, setQuestion] = useState("");
   const [asking, setAsking] = useState(false);
@@ -55,11 +50,11 @@ export default function HdReportPanel({
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loadNonce, setLoadNonce] = useState(0);
   const [includedAsks, setIncludedAsks] = useState(0);
-  const [tone, setTone] = useState<HdReportTone>("personal");
   /** Immediate UI flag — not cleared by stale poll races. */
   const [uiGenerating, setUiGenerating] = useState(false);
   const dialogEndRef = useRef<HTMLDivElement>(null);
   const postInFlightRef = useRef(false);
+  const askInFlightRef = useRef(false);
 
   const reportCost = cost("HD_REPORT");
   const askCost = cost("HD_ASK");
@@ -69,9 +64,6 @@ export default function HdReportPanel({
       typeof r.reportText === "string" ? sanitizeHdReportText(r.reportText) : r.reportText;
     setReport({ ...r, reportText: text, status: "done" });
     setIncludedAsks(Number(r.includedAsksRemaining) || 0);
-    if (r.reportTone === "child" || r.reportTone === "work" || r.reportTone === "personal") {
-      setTone(r.reportTone);
-    }
     setLoading(false);
     setUiGenerating(false);
   }, []);
@@ -93,14 +85,50 @@ export default function HdReportPanel({
     setDialog([]);
     setError(null);
     setQuestion("");
+    setDedupeNotice(false);
     setPaywall(null);
     setAcknowledged(false);
     setLoadError(null);
     setIncludedAsks(0);
-    setTone("personal");
     setUiGenerating(false);
     stopWait();
   }, [chartId, stopWait]);
+
+  /** Silently resume a stale paid pending report on the server (no charge). */
+  const resumePendingGeneration = useCallback(async () => {
+    if (postInFlightRef.current) return;
+    postInFlightRef.current = true;
+    try {
+      const res = await fetch("/api/human-design/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chartId,
+          aiDataUseAcknowledged: true,
+          regenerate: false,
+          tone: "personal",
+          async: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 402) {
+        // Never actually charged — fall back to the normal purchase CTA.
+        stopWait();
+        setLoading(false);
+        setUiGenerating(false);
+        setReport(null);
+        return;
+      }
+      if (data.report?.status === "done") {
+        applyDoneReport(data.report as HdReport);
+        stopWait();
+      }
+    } catch {
+      /* polling continues; errors surface on poll ticks */
+    } finally {
+      postInFlightRef.current = false;
+    }
+  }, [applyDoneReport, chartId, stopWait]);
 
   useEffect(() => {
     if (!authenticated) return;
@@ -122,6 +150,9 @@ export default function HdReportPanel({
           setUiGenerating(true);
           startWait({ baselineText: null });
           setLoading(true);
+          // A paid pending row without an active worker (crash / repaired
+          // report) would hang forever — kick a free resume on the server.
+          void resumePendingGeneration();
         }
       })
       .catch(() => {
@@ -132,7 +163,7 @@ export default function HdReportPanel({
     return () => {
       cancelled = true;
     };
-  }, [authenticated, chartId, loadNonce, applyDoneReport, startWait]);
+  }, [authenticated, chartId, loadNonce, applyDoneReport, startWait, resumePendingGeneration]);
 
   const reportId = report?.id ?? null;
   useEffect(() => {
@@ -168,107 +199,91 @@ export default function HdReportPanel({
     dialogEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
   }, [dialog.length]);
 
-  const buyReport = useCallback(
-    async (opts?: { regenerate?: boolean; toneOverride?: HdReportTone }) => {
-      if (loading || postInFlightRef.current) return;
-      if (!opts?.regenerate && !acknowledged && !waiting) {
-        setError("Подтвердите передачу данных карты языковой модели.");
+  const buyReport = useCallback(async () => {
+    if (loading || postInFlightRef.current || uiGenerating || waiting) return;
+    // Already paid & done — no free rebuild from the UI.
+    if (report?.status === "done" && report.reportText) return;
+    if (!acknowledged && !waiting) {
+      setError("Подтвердите передачу данных карты языковой модели.");
+      return;
+    }
+    setLoading(true);
+    setUiGenerating(true);
+    setError(null);
+    startWait({ baselineText: null });
+    postInFlightRef.current = true;
+    try {
+      const res = await fetch("/api/human-design/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          chartId,
+          aiDataUseAcknowledged: true,
+          regenerate: false,
+          tone: "personal",
+          async: true,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (res.status === 402) {
+        stopWait();
+        setLoading(false);
+        setUiGenerating(false);
+        setPaywall({
+          balance: Number(data.balance) || 0,
+          required: Number(data.required) || reportCost,
+        });
         return;
       }
-      const effectiveTone = opts?.toneOverride ?? tone;
-      const baselineText = opts?.regenerate ? report?.reportText ?? null : null;
-      setTone(effectiveTone);
-      setLoading(true);
-      setUiGenerating(true);
-      setError(null);
-      startWait({ baselineText });
-      postInFlightRef.current = true;
-      try {
-        const res = await fetch("/api/human-design/report", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            chartId,
-            aiDataUseAcknowledged: true,
-            regenerate: opts?.regenerate === true,
-            tone: effectiveTone,
-          }),
-        });
-        const data = await res.json().catch(() => ({}));
-        if (res.status === 402) {
-          stopWait();
-          setLoading(false);
-          setUiGenerating(false);
-          setPaywall({
-            balance: Number(data.balance) || 0,
-            required: Number(data.required) || reportCost,
-          });
-          return;
-        }
-        // Another tab / resume already generating — keep polling.
-        if (res.status === 409 && data?.code === "CLAIM_BUSY") {
-          setUiGenerating(true);
-          startWait({ baselineText });
-          return;
-        }
-        if (!res.ok) {
-          stopWait();
-          setLoading(false);
-          setUiGenerating(false);
-          setError(hdApiErrorMessage(data, "Не удалось создать разбор."));
-          return;
-        }
-        if (data.report?.status === "done") {
-          applyDoneReport({ ...data.report, reportTone: effectiveTone });
-          stopWait();
-        } else if (data.report?.status === "pending") {
-          setReport({ ...(data.report as HdReport), reportText: null });
-          setUiGenerating(true);
-          startWait({ baselineText: null });
-        }
-      } catch {
-        // Network drop during long generate: polling may still finish.
-        setUiGenerating(true);
-        startWait({ baselineText });
-        setError(
-          "Связь прервалась, но генерация могла продолжаться на сервере. Ждём результат…"
-        );
-      } finally {
-        postInFlightRef.current = false;
+      // Durable worker accepted the job (202): the report row appears once
+      // the worker starts — the entity poll picks it up from there.
+      if (res.status === 202) {
+        return;
       }
-    },
-    [
-      acknowledged,
-      applyDoneReport,
-      chartId,
-      loading,
-      reportCost,
-      startWait,
-      stopWait,
-      tone,
-      waiting,
-      report?.reportText,
-    ]
-  );
-
-  const tonePicker = (
-    <div className="hd-tone-picker mt-4" role="radiogroup" aria-label="Тон разбора">
-      {TONE_OPTIONS.map((opt) => (
-        <button
-          key={opt.id}
-          type="button"
-          role="radio"
-          aria-checked={tone === opt.id}
-          className={tone === opt.id ? "is-active" : undefined}
-          disabled={loading || uiGenerating || waiting}
-          onClick={() => setTone(opt.id)}
-        >
-          <strong>{opt.label}</strong>
-          <span>{opt.hint}</span>
-        </button>
-      ))}
-    </div>
-  );
+      // Another tab / resume already generating — keep polling.
+      if (res.status === 409 && data?.code === "CLAIM_BUSY") {
+        setUiGenerating(true);
+        startWait({ baselineText: null });
+        return;
+      }
+      if (!res.ok) {
+        stopWait();
+        setLoading(false);
+        setUiGenerating(false);
+        setError(hdApiErrorMessage(data, "Не удалось создать разбор."));
+        return;
+      }
+      if (data.report?.status === "done") {
+        applyDoneReport(data.report as HdReport);
+        setDedupeNotice(data.deduped === true);
+        stopWait();
+      } else if (data.report?.status === "pending") {
+        setReport({ ...(data.report as HdReport), reportText: null });
+        setUiGenerating(true);
+        startWait({ baselineText: null });
+      }
+    } catch {
+      setUiGenerating(true);
+      startWait({ baselineText: null });
+      setError(
+        "Связь прервалась, но генерация могла продолжаться на сервере. Ждём результат…"
+      );
+    } finally {
+      postInFlightRef.current = false;
+    }
+  }, [
+    acknowledged,
+    applyDoneReport,
+    chartId,
+    loading,
+    report?.reportText,
+    report?.status,
+    reportCost,
+    startWait,
+    stopWait,
+    uiGenerating,
+    waiting,
+  ]);
 
   const recoverAskFromHistory = useCallback(
     async (id: string, q: string): Promise<boolean> => {
@@ -304,7 +319,8 @@ export default function HdReportPanel({
 
   const ask = useCallback(async () => {
     const q = question.trim();
-    if (!q || !report) return;
+    if (!q || !report || askInFlightRef.current) return;
+    askInFlightRef.current = true;
     setAsking(true);
     setError(null);
     setDialog((prev) => [...prev, { role: "user", content: q }]);
@@ -348,6 +364,7 @@ export default function HdReportPanel({
       setQuestion(q);
       setError("Сеть недоступна. Попробуйте ещё раз.");
     } finally {
+      askInFlightRef.current = false;
       setAsking(false);
     }
   }, [askCost, question, recoverAskFromHistory, report]);
@@ -380,6 +397,28 @@ export default function HdReportPanel({
   );
 
   const isGenerating = uiGenerating || waiting || loading;
+  const reportDone = report?.status === "done" && Boolean(report.reportText);
+  const journeySteps: HdJourneyStep[] = [
+    { id: "chart", label: "Карта", hint: "бодиграф готов", state: "done" },
+    { id: "foundation", label: "Опора", hint: "бесплатно", state: "done" },
+    {
+      id: "report",
+      label: "Разбор",
+      hint: reportDone ? "готов" : isGenerating ? "Эвелина пишет…" : "полный текст",
+      state: reportDone ? "done" : "current",
+    },
+    {
+      id: "dialog",
+      label: "Диалог",
+      hint: "вопросы Эвелине",
+      state: reportDone ? "current" : "locked",
+    },
+  ];
+  const journeyBlock = (
+    <div className="hd-journey-wrap hd-print-hidden">
+      <HdJourney steps={journeySteps} />
+    </div>
+  );
   const generatingBlock = isGenerating ? (
     <div className="hd-panel">
       <HdGenerating kind="personal" startedAt={startedAt ?? Date.now()} />
@@ -394,6 +433,7 @@ export default function HdReportPanel({
   if (!authenticated) {
     return (
       <div className="space-y-5">
+        {journeyBlock}
         {chart && (
           <div className="hd-panel">
             <HdFoundationBrief chart={chart} />
@@ -404,6 +444,9 @@ export default function HdReportPanel({
           <p className="mt-2 text-sm leading-relaxed text-white/60">
             Премиальная интерпретация всей карты: с объяснениями, примерами из жизни и практиками.
             Войдите, чтобы сохранить карту и получить текст.
+          </p>
+          <p className="mt-2 text-xs leading-relaxed text-white/40">
+            Гостевая карта хранится 30 дней — после входа она навсегда останется в вашем архиве.
           </p>
           {modulesCard}
           <a
@@ -421,6 +464,7 @@ export default function HdReportPanel({
   if (generatingBlock && (!report || report.status !== "done" || !report.reportText)) {
     return (
       <div className="space-y-5">
+        {journeyBlock}
         {chart && (
           <div className="hd-panel">
             <HdFoundationBrief chart={chart} />
@@ -433,7 +477,10 @@ export default function HdReportPanel({
           options={{
             currentBalance: paywall?.balance ?? 0,
             requiredRunes: paywall?.required ?? reportCost,
-            onUnlocked: () => setPaywall(null),
+            onUnlocked: () => {
+              setPaywall(null);
+              void buyReport();
+            },
           }}
         />
       </div>
@@ -443,6 +490,7 @@ export default function HdReportPanel({
   if (!report || report.status !== "done" || !report.reportText) {
     return (
       <div className="space-y-5">
+        {journeyBlock}
         {chart && (
           <div className="hd-panel">
             <HdFoundationBrief chart={chart} />
@@ -454,10 +502,6 @@ export default function HdReportPanel({
             «Опора» выше — бесплатно. Ниже одна полная расшифровка: без доплат и апгрейдов.
           </p>
           {modulesCard}
-          <p className="mt-3 text-xs text-white/50">
-            Одна цена · выберите тон текста (не отдельный тариф):
-          </p>
-          {tonePicker}
           {loadError && (
             <div
               className="mt-3 rounded-2xl border border-red-500/25 bg-red-500/5 px-4 py-3 text-sm text-red-200/90"
@@ -490,23 +534,28 @@ export default function HdReportPanel({
               {error}
             </p>
           )}
-          <button
-            type="button"
-            onClick={() => void buyReport()}
-            disabled={!acknowledged || loading || waiting}
-            className="btn-luxe btn-luxe--gold mt-4 w-full disabled:cursor-not-allowed disabled:opacity-50 sm:w-auto"
-          >
-            {`Получить полную расшифровку · ${
-              ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
-            }`}
-          </button>
+          <div className="hd-sticky-cta mt-4">
+            <button
+              type="button"
+              onClick={() => void buyReport()}
+              disabled={!acknowledged || loading || waiting}
+              className="btn-luxe btn-luxe--gold w-full disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {`Получить полную расшифровку · ${
+                ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
+              }`}
+            </button>
+          </div>
           <PaywallModal
             isOpen={paywall !== null}
             onClose={() => setPaywall(null)}
             options={{
               currentBalance: paywall?.balance ?? 0,
               requiredRunes: paywall?.required ?? reportCost,
-              onUnlocked: () => setPaywall(null),
+              onUnlocked: () => {
+                setPaywall(null);
+                void buyReport();
+              },
             }}
           />
         </div>
@@ -517,6 +566,7 @@ export default function HdReportPanel({
   if (generatingBlock) {
     return (
       <div className="space-y-5">
+        {journeyBlock}
         {generatingBlock}
         <PaywallModal
           isOpen={paywall !== null}
@@ -524,7 +574,10 @@ export default function HdReportPanel({
           options={{
             currentBalance: paywall?.balance ?? 0,
             requiredRunes: paywall?.required ?? reportCost,
-            onUnlocked: () => setPaywall(null),
+            onUnlocked: () => {
+              setPaywall(null);
+              void buyReport();
+            },
           }}
         />
       </div>
@@ -533,6 +586,7 @@ export default function HdReportPanel({
 
   return (
     <div className="space-y-5">
+      {journeyBlock}
       <div className="hd-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
           <div>
@@ -542,17 +596,14 @@ export default function HdReportPanel({
                 Включено вопросов без доплаты: {includedAsks}
               </p>
             )}
+            {dedupeNotice && (
+              <p className="mt-1 text-xs text-emerald-100/60">
+                Эта же карта уже была разобрана ранее — показан оплаченный
+                текст, повторного списания не было.
+              </p>
+            )}
           </div>
           <div className="hd-print-hidden flex flex-wrap gap-2">
-            <button
-              type="button"
-              className="hd-bodygraph__export"
-              disabled={loading || waiting}
-              onClick={() => void buyReport({ regenerate: true })}
-              title="Бесплатно пересобрать в полном формате"
-            >
-              Пересобрать полностью
-            </button>
             <a
               href={`/cabinet/human-design/reports/${report.id}/print`}
               target="_blank"
@@ -563,10 +614,6 @@ export default function HdReportPanel({
             </a>
           </div>
         </div>
-        <p className="hd-print-hidden mt-3 text-xs text-white/50">
-          Сменить тон — бесплатная полная пересборка текста (личный / ребёнок / работа):
-        </p>
-        {tonePicker}
         {error && (
           <p className="hd-print-hidden mt-3 text-sm text-red-300" role="alert">
             {error}
@@ -639,7 +686,10 @@ export default function HdReportPanel({
         options={{
           currentBalance: paywall?.balance ?? 0,
           requiredRunes: paywall?.required ?? askCost,
-          onUnlocked: () => setPaywall(null),
+          onUnlocked: () => {
+            setPaywall(null);
+            void ask();
+          },
         }}
       />
     </div>

@@ -14,8 +14,10 @@ import {
   getOrComputeHdChart,
   HdInputError,
   HdRateLimitError,
+  mapHdRelationToSelf,
   toOwnerHdChartPayload,
   toPublicHdChartPayload,
+  updateHdChartRelationForUser,
 } from "@/lib/services/human-design-service";
 import type { HdChartIdentity } from "@/lib/human-design";
 import { forgetHdChartFact, rememberHdChartFact } from "@/lib/human-design/memory";
@@ -81,8 +83,12 @@ export async function POST(request: NextRequest) {
       ? {
           kind: "other" as const,
           name: typeof body.subjectName === "string" ? body.subjectName : null,
+          relationToSelf:
+            mapHdRelationToSelf(
+              typeof body.relationToSelf === "string" ? body.relationToSelf : null
+            ) ?? ("partner" as const),
         }
-      : { kind: "self" as const, name: null };
+      : { kind: "self" as const, name: null, relationToSelf: null };
   const claimToken =
     typeof body.claimToken === "string" ? body.claimToken : null;
 
@@ -131,6 +137,46 @@ export async function GET(request: NextRequest) {
   }
   // Public capability URL: chart mechanics only (no birth/place/subject PII).
   return NextResponse.json({ chart: toPublicHdChartPayload(chart) });
+}
+
+/** Update relation context on an owned other-person chart. */
+export async function PATCH(request: NextRequest) {
+  if (!(await isHumanDesignEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
+  const resolved = await resolveProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(
+    resolved.profileUserId,
+    "hd_chart_patch"
+  );
+  if (rateLimited) return rateLimited;
+
+  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const chartId = typeof body.chartId === "string" ? body.chartId : "";
+  const relation = mapHdRelationToSelf(
+    typeof body.relationToSelf === "string" ? body.relationToSelf : null
+  );
+  if (!chartId || !relation) {
+    return NextResponse.json(
+      { error: "Укажите карту и тип связи." },
+      { status: 400 }
+    );
+  }
+
+  const row = await updateHdChartRelationForUser(
+    chartId,
+    resolved.profileUserId,
+    relation
+  );
+  if (!row) {
+    return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
+  }
+  return NextResponse.json({ chart: toOwnerHdChartPayload(row) });
 }
 
 /**

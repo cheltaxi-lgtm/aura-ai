@@ -24,7 +24,11 @@ import {
   HD_UUID_RE,
   listHdReportMessages,
 } from "@/lib/services/human-design-service";
-import { buildHdAskSystemPrompt, formatHdEvidence } from "@/lib/human-design";
+import {
+  buildHdAskSystemPrompt,
+  formatHdEvidence,
+  sanitizeHdReportText,
+} from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
@@ -88,7 +92,9 @@ export async function POST(request: NextRequest) {
   const evidence = formatHdEvidence(chart.chart);
   const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));
 
-  const history = await listHdReportMessages(report.id, 20);
+  // Cap prompt history: every ask re-sends evidence + full report text, so
+  // each extra message pair is pure token cost on a per-question price.
+  const history = await listHdReportMessages(report.id, 10);
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     {
@@ -128,7 +134,15 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const text = answer.trim();
+    // Same output hygiene as the report itself: no emojis, no meta-leaks.
+    // Runs BEFORE the charge — an unsalvageable answer must not be billed.
+    const text = sanitizeHdReportText(answer.trim());
+    if (!text) {
+      return NextResponse.json(
+        { error: "Модель не смогла ответить. Оплата не списывалась." },
+        { status: 502 }
+      );
+    }
     const result = await withTransaction(async (client) => {
       let includedAsksRemaining: number | null = null;
       let runeBalance: number | undefined;

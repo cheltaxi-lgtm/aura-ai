@@ -258,6 +258,43 @@ const IMAGE_GENERATE: PaidJobKindConfig = {
     hashDedupeParts([userId, "image_generate", payload.scene, payload.cardsKey, payload.spreadId]),
 };
 
+const HD_REPORT: PaidJobKindConfig = {
+  kind: "hd_report",
+  runeAction: "HD_REPORT",
+  maxActivePerUser: 2,
+  // Multi-pass full decrypt can run several minutes (route maxDuration 600s).
+  // Charge lives on the hd_reports row (not the job), so a worker HTTP
+  // timeout fails the job cosmetically while the route completes — the
+  // client polls the report entity, and stale-resume covers a true crash.
+  timeoutMs: 600_000,
+  workerPath: (job) => ({
+    path: "/api/human-design/report",
+    body: { ...job.input, async: false },
+  }),
+  matchesWorkerPath: (pathname) => pathname === "/api/human-design/report",
+  buildDedupeKey: (userId, payload) =>
+    hashDedupeParts([userId, "hd_report", payload.chartId]),
+};
+
+const HD_COMPOSITE_REPORT: PaidJobKindConfig = {
+  kind: "hd_composite_report",
+  runeAction: "HD_COMPOSITE_REPORT",
+  maxActivePerUser: 2,
+  timeoutMs: 300_000,
+  workerPath: (job) => ({
+    path: "/api/human-design/composite-report",
+    body: { ...job.input, async: false },
+  }),
+  matchesWorkerPath: (pathname) => pathname === "/api/human-design/composite-report",
+  // Canonical pair order (A+B ≡ B+A), mirroring normalizeCompositePair.
+  buildDedupeKey: (userId, payload) =>
+    hashDedupeParts([
+      userId,
+      "hd_composite_report",
+      ...[String(payload.baseChartId ?? ""), String(payload.partnerChartId ?? "")].sort(),
+    ]),
+};
+
 export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
   natal_interpretation: NATAL_INTERPRETATION,
   natal_forecast: NATAL_FORECAST,
@@ -272,6 +309,8 @@ export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
   joint_combined: JOINT_COMBINED,
   numerology_reading: NUMEROLOGY_READING,
   image_generate: IMAGE_GENERATE,
+  hd_report: HD_REPORT,
+  hd_composite_report: HD_COMPOSITE_REPORT,
 };
 
 /** Kinds the durable worker processes by default (others via ASYNC_JOB_KINDS). */
@@ -289,6 +328,8 @@ export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "ritual_generation",
   "joint_reading",
   "joint_combined",
+  "hd_report",
+  "hd_composite_report",
 ];
 
 export function getJobKindConfig(kind: AsyncJobKind): PaidJobKindConfig {

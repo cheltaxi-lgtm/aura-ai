@@ -22,6 +22,8 @@ const KIND_SET = new Set<AsyncJobKind>([
   "photo_reading",
   "ritual_generation",
   "numerology_reading",
+  "hd_report",
+  "hd_composite_report",
 ]);
 
 export async function GET(request: NextRequest) {

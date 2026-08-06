@@ -13,6 +13,8 @@
  *  9. Determinism, unknown-time stability probe
  * 10. Optional analyst golden set: scripts/fixtures/human-design-golden.json
  *     (Jovian Archive reference charts — strict equality when present)
+ * 11. Source guardrails: public-payload privacy strip, claim-token hashing,
+ *     double-billing dedupe, durable async-job wiring (static asserts)
  *
  * Run: npm run verify:human-design
  */
@@ -530,6 +532,94 @@ const TYPE_NAME_MAP = {
     realBelow.gate === startAct.gate && realBelow.line === 6,
     "boundary: 1e-6° below boundary stays in the lower gate, line 6"
   );
+}
+
+/* ---------- 11. source guardrails: privacy, claim hashing, async delivery ---------- */
+
+{
+  const src = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
+  const serviceSrc = src("../src/lib/services/human-design-service.ts");
+  const reportRoute = src("../src/app/api/human-design/report/route.ts");
+  const compositeRoute = src("../src/app/api/human-design/composite-report/route.ts");
+  const registry = src("../src/lib/async-job-registry.ts");
+  const workerShared = src("../src/lib/async-job-worker-auth-shared.ts");
+  const jobsActive = src("../src/app/api/jobs/active/route.ts");
+  const asyncJobs = src("../src/lib/async-jobs.ts");
+
+  // Public share payload: design moment and raw longitudes never leave the
+  // server (both make the birth instant recoverable).
+  assert(
+    serviceSrc.includes("design: _design") && serviceSrc.includes("longitude: _lon"),
+    "guardrail: public HD payload strips design moment and longitudes"
+  );
+
+  // Claim tokens are sha256-hashed at rest with a legacy dual-read transition.
+  assert(
+    serviceSrc.includes("hashHdClaimToken") && serviceSrc.includes('createHash("sha256")'),
+    "guardrail: claim tokens are sha256-hashed"
+  );
+  assert(
+    /claim_token = \$3 OR claim_token = \$4/.test(serviceSrc),
+    "guardrail: claim matches hash with legacy dual-read transition"
+  );
+
+  // Double-billing guards wired into both purchase routes.
+  assert(
+    reportRoute.includes("findDuplicateDoneHdReport"),
+    "guardrail: personal report route dedupes identical mechanics"
+  );
+  assert(
+    compositeRoute.includes("findDuplicateDoneCompositeReport"),
+    "guardrail: composite route dedupes identical mechanics"
+  );
+
+  // Durable async delivery for both report kinds.
+  assert(
+    asyncJobs.includes('"hd_report"') && asyncJobs.includes('"hd_composite_report"'),
+    "guardrail: AsyncJobKind covers hd_report and hd_composite_report"
+  );
+  assert(
+    registry.includes('kind: "hd_report"') && registry.includes('kind: "hd_composite_report"'),
+    "guardrail: registry configures both HD job kinds"
+  );
+  assert(
+    registry.includes('"hd_report",') && registry.includes('"hd_composite_report",'),
+    "guardrail: DEFAULT_WORKER_KINDS includes HD kinds"
+  );
+  assert(
+    workerShared.includes('pathname === "/api/human-design/report"') &&
+      workerShared.includes('pathname === "/api/human-design/composite-report"'),
+    "guardrail: middleware worker whitelist covers HD report paths"
+  );
+  assert(
+    jobsActive.includes('"hd_report"') && jobsActive.includes('"hd_composite_report"'),
+    "guardrail: jobs/active KIND_SET includes HD kinds"
+  );
+  for (const [name, routeSrc] of [
+    ["report", reportRoute],
+    ["composite-report", compositeRoute],
+  ]) {
+    assert(
+      routeSrc.includes("getAsyncJobWorkerUserId"),
+      `guardrail: ${name} route resolves worker user`
+    );
+    assert(
+      routeSrc.includes("enqueuePaidAsyncJob"),
+      `guardrail: ${name} route enqueues async job`
+    );
+    assert(
+      routeSrc.includes("beginWorkerJobSave"),
+      `guardrail: ${name} route claims save before persist`
+    );
+    assert(
+      routeSrc.includes("trackWorkerJobCompleted") && routeSrc.includes("trackWorkerJobFailed"),
+      `guardrail: ${name} route tracks job lifecycle`
+    );
+    assert(
+      routeSrc.includes("ensureSufficientRunes"),
+      `guardrail: ${name} route pre-checks balance before enqueue`
+    );
+  }
 }
 
 /* ---------- result ---------- */

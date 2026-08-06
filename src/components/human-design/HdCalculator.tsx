@@ -1,9 +1,11 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import type { HdConnectionRelation } from "@/lib/human-design";
 import HdChartSlot from "./HdChartSlot";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdComposite from "./HdComposite";
+import HdRelationPicker from "./HdRelationPicker";
 import HdReportPanel from "./HdReportPanel";
 import { hdApiErrorMessage } from "./hd-errors";
 import { hdChartChipLabel } from "./hd-labels";
@@ -56,6 +58,8 @@ function clearStoredFingerprint(): void {
 interface HdCalculatorProps {
   /** Initial chart (e.g. restored from fingerprint in the cabinet). */
   initialChart?: HdChartPayload | null;
+  /** Open form on «другому человеку» (cabinet «Рассчитать другому»). */
+  initialSubjectKind?: "self" | "other";
   /** returnTo path for the login CTA. */
   returnTo: string;
   /** Fired when a new chart is computed (cabinet list refresh). */
@@ -64,9 +68,16 @@ interface HdCalculatorProps {
   onChartDeleted?: (chartId: string) => void;
 }
 
-export default function HdCalculator({ initialChart = null, returnTo, onChartCreated, onChartDeleted }: HdCalculatorProps) {
-  const [subjectKind, setSubjectKind] = useState<"self" | "other">("self");
+export default function HdCalculator({
+  initialChart = null,
+  initialSubjectKind = "self",
+  returnTo,
+  onChartCreated,
+  onChartDeleted,
+}: HdCalculatorProps) {
+  const [subjectKind, setSubjectKind] = useState<"self" | "other">(initialSubjectKind);
   const [subjectName, setSubjectName] = useState("");
+  const [relationToSelf, setRelationToSelf] = useState<HdConnectionRelation>("partner");
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [timeUnknown, setTimeUnknown] = useState(false);
@@ -320,6 +331,7 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
           lon: place.longitude,
           subjectKind,
           subjectName: subjectKind === "other" ? subjectName.trim() : null,
+          relationToSelf: subjectKind === "other" ? relationToSelf : null,
           claimToken: storedFp ? readHdClaimToken(storedFp) : null,
         }),
       });
@@ -350,7 +362,16 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
     } finally {
       setLoading(false);
     }
-  }, [birthDate, birthTime, place, timeUnknown, subjectKind, subjectName, onChartCreated]);
+  }, [
+    birthDate,
+    birthTime,
+    place,
+    timeUnknown,
+    subjectKind,
+    subjectName,
+    relationToSelf,
+    onChartCreated,
+  ]);
 
   const renderChipRow = (list: HdChartPayload[]) =>
     list.map((c) => {
@@ -530,17 +551,25 @@ export default function HdCalculator({ initialChart = null, returnTo, onChartCre
         </div>
 
         {subjectKind === "other" && (
-          <div className="hd-field mb-4">
-            <label className="hd-field__label" htmlFor="hd-subject">Имя человека</label>
-            <input
-              id="hd-subject"
-              type="text"
-              value={subjectName}
-              onChange={(e) => setSubjectName(e.target.value)}
-              placeholder="Например, Мария"
-              maxLength={60}
-              className="hd-field__input"
-              autoComplete="off"
+          <div className="mb-4 grid gap-4 sm:grid-cols-2">
+            <div className="hd-field">
+              <label className="hd-field__label" htmlFor="hd-subject">Имя человека</label>
+              <input
+                id="hd-subject"
+                type="text"
+                value={subjectName}
+                onChange={(e) => setSubjectName(e.target.value)}
+                placeholder="Например, Мария"
+                maxLength={60}
+                className="hd-field__input"
+                autoComplete="off"
+              />
+            </div>
+            <HdRelationPicker
+              value={relationToSelf}
+              onChange={setRelationToSelf}
+              disabled={loading}
+              label="Кем вам приходится"
             />
           </div>
         )}

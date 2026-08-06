@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react";
 import { motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
-import type { HdBodyKey, HdCenterKey, HdChart } from "@/lib/human-design";
+import type { HdBodyKey, HdCenterKey, HdChart, HdPublicChart } from "@/lib/human-design";
 import {
   CENTER_NAMES_RU,
   CHANNELS,
@@ -56,7 +56,7 @@ interface TooltipState {
   action?: { label: string; run: () => void };
 }
 
-function buildGateActivity(chart: HdChart): Map<number, GateActivity> {
+function buildGateActivity(chart: HdChart | HdPublicChart): Map<number, GateActivity> {
   const map = new Map<number, GateActivity>();
   for (const a of chart.personality) {
     const entry = map.get(a.gate) ?? {};
@@ -102,7 +102,8 @@ function formatDesignDate(utcIso: string): string {
 }
 
 export interface BodygraphProps {
-  chart: HdChart;
+  /** Owner views pass the full chart; public share payloads omit `design`. */
+  chart: HdChart | HdPublicChart;
   /** gate → transiting body, for the live-transit overlay. */
   transits?: Map<number, HdBodyKey> | null;
   /** Channels completed only by combining two charts (composite). */
@@ -388,7 +389,7 @@ export default function Bodygraph({
       canvas.height = 700 * scale;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.fillStyle = "#0c0a14";
+      ctx.fillStyle = "#0a0908";
       ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
@@ -408,7 +409,9 @@ export default function Bodygraph({
     "head", "ajna", "throat", "g", "heart", "spleen", "solar", "sacral", "root",
   ];
 
-  const designDate = formatDesignDate(chart.design.utcIso);
+  // Public share payloads carry no design moment (birth-privacy strip).
+  const designDate =
+    "design" in chart && chart.design ? formatDesignDate(chart.design.utcIso) : "";
   const channelDrawDelay = 0.15;
   const centerIgniteDelay = channelDrawDelay + HD_CHANNEL_SEGMENTS.length * 0.03;
 

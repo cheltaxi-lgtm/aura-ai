@@ -26,6 +26,7 @@ import {
   buildHdAskSystemPrompt,
   formatHdEvidence,
   CENTER_NAMES_RU,
+  HD_ENGINE_VERSION,
   type HdCenterKey,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
@@ -89,6 +90,14 @@ export async function POST(request: NextRequest) {
   // IDOR guard: insights are paid and chart-bound — owner only.
   if (!chart || chart.userId !== userId) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
+  }
+  // Same engine gate as the full report: never sell text computed from a
+  // stale engine's data.
+  if (chart.engineVersion !== HD_ENGINE_VERSION) {
+    return NextResponse.json(
+      { error: "Карта рассчитана устаревшим движком. Пересчитайте карту." },
+      { status: 409 }
+    );
   }
 
   const centerKey = body.center as HdCenterKey;

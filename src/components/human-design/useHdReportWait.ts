@@ -15,6 +15,10 @@ export type HdWaitReport = {
 const POLL_MS = 3500;
 /** Let POST flip the row to pending before the first poll. */
 const FIRST_POLL_DELAY_MS = 1200;
+/** Hard cap on waiting: full multi-pass generation can take minutes, not hours. */
+const MAX_WAIT_MS = 15 * 60 * 1000;
+/** Consecutive network/poll failures before surfacing an error. */
+const MAX_CONSECUTIVE_FAILURES = 6;
 
 type PollMode = "personal" | "composite";
 
@@ -35,9 +39,12 @@ export function useHdReportWait(opts: {
   const [startedAt, setStartedAt] = useState<number | null>(null);
   const onDoneRef = useRef(opts.onDone);
   const onErrorRef = useRef(opts.onError);
+  const startedAtRef = useRef<number | null>(null);
+  startedAtRef.current = startedAt;
   const seenPendingRef = useRef(false);
   /** Text at start of regenerate so poll ignores the previous done payload. */
   const baselineTextRef = useRef<string | null>(null);
+  const failCountRef = useRef(0);
   const genIdRef = useRef(0);
   onDoneRef.current = opts.onDone;
   onErrorRef.current = opts.onError;
@@ -45,6 +52,7 @@ export function useHdReportWait(opts: {
   const startWait = useCallback((opts?: { baselineText?: string | null }) => {
     genIdRef.current += 1;
     seenPendingRef.current = false;
+    failCountRef.current = 0;
     baselineTextRef.current =
       typeof opts?.baselineText === "string" ? opts.baselineText.trim() : null;
     setWaiting(true);
@@ -79,11 +87,34 @@ export function useHdReportWait(opts: {
     let cancelled = false;
     const genAtStart = genIdRef.current;
 
+    const giveUp = (message: string) => {
+      if (cancelled || genIdRef.current !== genAtStart) return;
+      onErrorRef.current?.(message);
+      seenPendingRef.current = false;
+      baselineTextRef.current = null;
+      setWaiting(false);
+      setStartedAt(null);
+    };
+
     const tick = async () => {
       if (cancelled || genIdRef.current !== genAtStart) return;
+      if (Date.now() - (startedAtRef.current ?? Date.now()) > MAX_WAIT_MS) {
+        giveUp(
+          "Генерация заняла слишком много времени. Обновите страницу через пару минут — результат сохранится в кабинете."
+        );
+        return;
+      }
       try {
         const res = await fetch(url, { credentials: "include" });
-        if (!res.ok || cancelled || genIdRef.current !== genAtStart) return;
+        if (cancelled || genIdRef.current !== genAtStart) return;
+        if (!res.ok) {
+          failCountRef.current += 1;
+          if (failCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
+            giveUp("Не удаётся проверить статус генерации. Обновите страницу — разбор сохранится в кабинете.");
+          }
+          return;
+        }
+        failCountRef.current = 0;
         const data = (await res.json().catch(() => ({}))) as {
           report?: HdWaitReport | null;
         };
@@ -127,7 +158,10 @@ export function useHdReportWait(opts: {
           }
         }
       } catch {
-        /* keep polling */
+        failCountRef.current += 1;
+        if (failCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
+          giveUp("Сеть нестабильна — не можем проверить статус. Обновите страницу через минуту.");
+        }
       }
     };
 

@@ -5,10 +5,15 @@ import {
   hangingGates,
   variableSummary,
   type HdChart,
+  type HdPublicChart,
 } from "@/lib/human-design";
 
 /** Free Variables / PHS-lite summary from engine color·tone·base. */
-export default function HdVariablesBrief({ chart }: { chart: HdChart }) {
+export default function HdVariablesBrief({
+  chart,
+}: {
+  chart: HdChart | HdPublicChart;
+}) {
   const v = variableSummary(chart);
   const hang = hangingGates(chart);
 

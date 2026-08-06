@@ -139,3 +139,24 @@ export interface HdCalcInput {
   /** IANA timezone id, e.g. "Europe/Moscow". */
   timezone: string;
 }
+
+/**
+ * Public share form of an activation: the raw longitude is dropped because
+ * arcsecond-precision body positions (and especially the Sun) make the birth
+ * moment recoverable. Gate/line/color/tone/base are the rendered mechanics.
+ */
+export type HdPublicActivation = Omit<HdActivation, "longitude">;
+
+/**
+ * Public share form of a chart: no birth inputs, no timezone, no design
+ * moment (design.utcIso is a deterministic function of the birth instant —
+ * keeping it would de-anonymize the "no birth date" share promise) and no
+ * raw longitudes. Everything the bodygraph renders stays.
+ */
+export type HdPublicChart = Omit<
+  HdChart,
+  "birth" | "timezone" | "design" | "personality" | "designActivations"
+> & {
+  personality: HdPublicActivation[];
+  designActivations: HdPublicActivation[];
+};

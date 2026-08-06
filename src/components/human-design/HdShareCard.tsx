@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useRef, useState } from "react";
-import type { HdChart } from "@/lib/human-design";
+import type { HdChart, HdPublicChart } from "@/lib/human-design";
 import {
   AUTHORITY_NAMES_RU,
   PROFILE_NAMES_RU,
@@ -18,12 +18,13 @@ const COLOR_D = "#e05555";
 const COLOR_BASE = "rgba(232, 199, 126, 0.10)";
 
 interface Props {
-  chart: HdChart;
+  /** Full chart for owners; stripped public form on share links. */
+  chart: HdChart | HdPublicChart;
   subjectName?: string | null;
 }
 
 /** Compact static bodygraph for the share card (no interactivity). */
-function MiniBodygraph({ chart }: { chart: HdChart }) {
+function MiniBodygraph({ chart }: { chart: HdChart | HdPublicChart }) {
   const gateActivity = new Map<number, { p?: boolean; d?: boolean }>();
   for (const a of chart.personality) gateActivity.set(a.gate, { p: true });
   for (const a of chart.designActivations) {

@@ -13,17 +13,29 @@ import { isRuneBillingActive } from "@/lib/rune-service";
 import {
   BillingService,
   chargeRuneAction,
+  ensureSufficientRunes,
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
-import { withTransaction } from "@/lib/db";
+import {
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  beginWorkerJobSave,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/async-job-lifecycle";
+import { query, withTransaction } from "@/lib/db";
 import {
   attachHdReportTransaction,
-  beginHdReportRewrite,
   completeHdReport,
   createPendingHdReport,
   deleteHdReportRow,
   failHdReport,
+  findDuplicateDoneHdReport,
   getHdChartById,
   getHdReportForChart,
   hasRuneRefundForTransaction,
@@ -32,9 +44,7 @@ import {
   lockStalePendingReportForResume,
   markHdReportChargeRefunded,
   releaseStalePendingReportLock,
-  restoreHdReportDone,
   toPublicHdReport,
-  updateHdReportTone,
   type HdReportRow,
   type HdReportToneId,
 } from "@/lib/services/human-design-service";
@@ -64,14 +74,23 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
 
-  const resolved = await resolveProfileUserContext();
-  if (!resolved.ok) {
-    return profileAuthFailureResponse(resolved.reason);
-  }
-  const userId = resolved.profileUserId;
+  // Durable worker calls carry the user id in worker headers (loopback +
+  // secret, gated by middleware) and skip the per-user rate limit — the job
+  // queue is the limiter there.
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let userId: string;
+  if (workerUserId) {
+    userId = workerUserId;
+  } else {
+    const resolved = await resolveProfileUserContext();
+    if (!resolved.ok) {
+      return profileAuthFailureResponse(resolved.reason);
+    }
+    userId = resolved.profileUserId;
 
-  const rateLimited = await enforcePaidRouteRateLimit(userId, "hd_report");
-  if (rateLimited) return rateLimited;
+    const rateLimited = await enforcePaidRouteRateLimit(userId, "hd_report");
+    if (rateLimited) return rateLimited;
+  }
 
   const profileRow = await getUserById(userId).catch(() => null);
   if (!profileRow || !isUserAgeEligible(profileRow)) {
@@ -83,6 +102,7 @@ export async function POST(request: NextRequest) {
     aiDataUseAcknowledged?: unknown;
     regenerate?: unknown;
     tone?: unknown;
+    async?: unknown;
   };
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
@@ -93,10 +113,14 @@ export async function POST(request: NextRequest) {
   if (typeof body.chartId !== "string" || !HD_UUID_RE.test(body.chartId)) {
     return NextResponse.json({ error: "Укажите карту." }, { status: 400 });
   }
-  const regenerate = body.regenerate === true;
-  const toneRaw = typeof body.tone === "string" ? body.tone : "personal";
-  const tone: HdReportToneId =
-    toneRaw === "child" || toneRaw === "work" ? toneRaw : "personal";
+  // Free rebuild / tone variants removed from product — one personal report per purchase.
+  if (body.regenerate === true) {
+    return NextResponse.json(
+      { error: "Пересборка разбора недоступна. Уже оплаченный текст остаётся как есть." },
+      { status: 400 }
+    );
+  }
+  const tone: HdReportToneId = "personal";
   const toneHint: HdReportTone = tone;
 
   const chart = await getHdChartById(body.chartId);
@@ -114,24 +138,20 @@ export async function POST(request: NextRequest) {
 
   let existing = await getHdReportForChart(chart.id, userId);
 
-  if (regenerate) {
-    if (!existing || existing.status !== "done" || !existing.reportText) {
-      return NextResponse.json(
-        { error: "Сначала получите разбор — пересобрать пока нечего." },
-        { status: 400 }
-      );
-    }
-  } else if (existing?.status === "done" && existing.reportText) {
-    return NextResponse.json({
+  if (existing?.status === "done" && existing.reportText) {
+    const payload = {
       report: {
         ...toPublicHdReport(existing),
         reportText: sanitizeHdReportText(existing.reportText),
       },
       cached: true,
-    });
+    };
+    // No-op on plain client calls; completes the job on worker requeues.
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   }
 
-  if (!regenerate && existing?.status === "pending" && !isStalePendingReport(existing)) {
+  if (existing?.status === "pending" && !isStalePendingReport(existing)) {
     return NextResponse.json(
       { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
       { status: 409 }
@@ -141,7 +161,6 @@ export async function POST(request: NextRequest) {
   // Stale pending with a recorded charge → crashed after payment: resume
   // generation on the same row without charging twice.
   let resumePaidPending =
-    !regenerate &&
     existing?.status === "pending" &&
     isStalePendingReport(existing) &&
     Boolean(existing.transactionId);
@@ -163,22 +182,87 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Legacy/crash path: error row with an UNREFUNDED charge. Deleting it would
+  // orphan the spend and double-charge on retry — convert to a paid resume.
+  if (!resumePaidPending && existing?.status === "error" && existing.transactionId) {
+    let alreadyRefunded: boolean;
+    try {
+      alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId);
+    } catch {
+      return NextResponse.json(
+        { error: "Не удалось проверить статус оплаты. Попробуйте через минуту." },
+        { status: 503 }
+      );
+    }
+    if (!alreadyRefunded) {
+      const { rows } = await query(
+        `UPDATE hd_reports SET status = 'pending', error = NULL,
+           created_at = now() - make_interval(secs => 601), updated_at = now()
+         WHERE id = $1 AND status = 'error'
+         RETURNING id`,
+        [existing.id]
+      );
+      if (!rows[0]) {
+        return NextResponse.json(
+          { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+          { status: 409 }
+        );
+      }
+      existing = (await getHdReportForChart(chart.id, userId)) ?? existing;
+      resumePaidPending = true;
+    }
+    // alreadyRefunded → fall through: delete + fresh charge is safe.
+  }
+
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
+  const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
+  const runeSettings = await getRuneSettings();
+  const exempt = !isRuneBillingActive(userId, unlimited, runeSettings);
+
+  // Durable async delivery: hand generation to the worker queue. The same
+  // route with async:false is the worker execution path — every billing,
+  // resume and dedupe invariant above re-runs there unchanged. Balance is
+  // pre-checked so a broke user gets the 402 paywall immediately instead of
+  // a silent job failure the entity poll cannot surface.
+  if (body.async === true && isAsyncJobWorkerConfigured()) {
+    try {
+      await ensureSufficientRunes({ userId, action: "HD_REPORT", exempt });
+    } catch (error) {
+      if (error instanceof InsufficientFundsError) {
+        return NextResponse.json(
+          {
+            error: "insufficient_runes",
+            message: "Недостаточно рун для этого действия.",
+            balance: error.balance,
+            required: error.required,
+            cost: error.required,
+          },
+          { status: 402 }
+        );
+      }
+      throw error;
+    }
+    return enqueuePaidAsyncJob({
+      userId,
+      kind: "hd_report",
+      payload: { chartId: chart.id, aiDataUseAcknowledged: true },
+      // HD has its own module kill-switch (isHumanDesignEnabled above).
+      bypassDeliveryGate: true,
+    });
+  }
+
+  const aboutOther = chart.subjectKind === "other";
   const clientName =
-    chart.subjectKind === "other" && chart.subjectName
+    aboutOther && chart.subjectName
       ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(profileRow.name) || null;
   const evidence = formatHdEvidence(chart.chart);
   const systemPrompt = await wrapSystemPrompt(
-    buildHdReportSystemPrompt(clientName, toneHint)
+    buildHdReportSystemPrompt(clientName, toneHint, { aboutOther })
   );
-
-  const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
-  const runeSettings = await getRuneSettings();
-  const exempt = !isRuneBillingActive(userId, unlimited, runeSettings);
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
@@ -200,20 +284,13 @@ export async function POST(request: NextRequest) {
     if (res.refunded && pending) {
       await markHdReportChargeRefunded(pending.id);
     }
+    if (res.refunded) {
+      await trackWorkerJobRefunded(request);
+    }
   };
 
   try {
-    if (regenerate && existing) {
-      const locked = await beginHdReportRewrite(existing.id);
-      if (!locked) {
-        return NextResponse.json(
-          { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
-          { status: 409 }
-        );
-      }
-      await updateHdReportTone(existing.id, tone).catch(() => undefined);
-      pending = existing;
-    } else if (resumePaidPending && existing) {
+    if (resumePaidPending && existing) {
       const locked = await lockStalePendingReportForResume(existing.id);
       if (!locked) {
         return NextResponse.json(
@@ -224,6 +301,32 @@ export async function POST(request: NextRequest) {
       pending = existing;
     } else {
       if (existing) await deleteHdReportRow(existing.id);
+
+      // Double-billing guard: identical birth data under a new chart id is
+      // the same product — serve the already-paid text, no second charge.
+      if (chart.chart.birth) {
+        const dupe = await findDuplicateDoneHdReport({
+          userId,
+          excludeChartId: chart.id,
+          birthDate: chart.chart.birth.date,
+          birthTime: chart.chart.birth.time,
+          timezone: chart.chart.timezone ?? "",
+          subjectKind: chart.subjectKind,
+          subjectName: chart.subjectName,
+        });
+        if (dupe?.reportText) {
+          const payload = {
+            report: {
+              ...toPublicHdReport(dupe),
+              reportText: sanitizeHdReportText(dupe.reportText),
+            },
+            cached: true,
+            deduped: true,
+          };
+          await trackWorkerJobCompleted(request, payload);
+          return NextResponse.json(payload);
+        }
+      }
 
       const created = await withTransaction(async (client) => {
         const row = await createPendingHdReport(
@@ -266,30 +369,43 @@ export async function POST(request: NextRequest) {
       systemPrompt,
       evidence,
       clientName,
+      aboutOther,
     });
 
     if (!text || isRejectedLlmOutput(text)) {
       await rollback();
-      if (regenerate && pending) {
-        await restoreHdReportDone(pending.id).catch(() => undefined);
-        return NextResponse.json(
-          { error: "Не удалось пересобрать разбор. Предыдущий текст сохранён — попробуйте ещё раз." },
-          { status: 502 }
-        );
-      }
       if (resumePaidPending) {
         await releaseStalePendingReportLock(pending.id).catch(() => undefined);
+        await trackWorkerJobFailed(
+          request,
+          "Модель не смогла создать разбор. Попробуйте ещё раз — оплата сохранена.",
+          { errorCode: "invalid_model_output" }
+        );
         return NextResponse.json(
           { error: "Модель не смогла создать разбор. Попробуйте ещё раз — оплата сохранена." },
           { status: 502 }
         );
       }
-      await failHdReport(pending.id, "invalid_model_output");
+      if (refundLanded) {
+        // Refund confirmed — the row may terminalize; retry starts clean.
+        await failHdReport(pending.id, "invalid_model_output");
+      } else {
+        // Refund failed: keep pending so a retry RESUMES on the same charge
+        // instead of deleting the row and charging twice.
+        await releaseStalePendingReportLock(pending.id).catch(() => undefined);
+      }
+      await trackWorkerJobFailed(
+        request,
+        refundLanded
+          ? "Модель не смогла создать разбор. Оплата возвращена."
+          : "Модель не смогла создать разбор. Оплата сохранена — попробуйте ещё раз, повторного списания не будет.",
+        { refunded: refundLanded, errorCode: "invalid_model_output" }
+      );
       return NextResponse.json(
         {
           error: refundLanded
             ? "Модель не смогла создать разбор. Оплата возвращена."
-            : "Модель не смогла создать разбор. Если руны списались, они вернутся автоматически.",
+            : "Модель не смогла создать разбор. Оплата сохранена — попробуйте ещё раз, повторного списания не будет.",
           refunded: refundLanded,
         },
         { status: 502 }
@@ -297,6 +413,20 @@ export async function POST(request: NextRequest) {
     }
 
     const reportText = sanitizeHdReportText(text) + REPORT_DISCLAIMER;
+    // Win against the worker timeout-refund: after save_claimed the reaper
+    // can no longer fail this job out from under the completed report.
+    if (!(await beginWorkerJobSave(request))) {
+      await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Генерация была отменена по таймауту. Оплата возвращена.",
+        { refunded: refundLanded, errorCode: "job_timeout" }
+      );
+      return NextResponse.json(
+        { error: "Генерация была отменена по таймауту. Оплата возвращена.", refunded: refundLanded },
+        { status: 409 }
+      );
+    }
     await completeHdReport(pending.id, reportText, "openrouter");
     completed = true;
     if (chart.subjectKind === "self") {
@@ -304,7 +434,7 @@ export async function POST(request: NextRequest) {
     }
 
     const report = await getHdReportForChart(chart.id, userId);
-    return NextResponse.json({
+    const payload = {
       report: report
         ? {
             ...toPublicHdReport(report),
@@ -314,20 +444,22 @@ export async function POST(request: NextRequest) {
           }
         : null,
       runeBalance: charge?.newBalance,
-      regenerated: regenerate,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     if (!completed) {
       await rollback().catch(() => {
         console.warn("[human-design] billing rollback failed");
       });
-      if (regenerate && pending) {
-        await restoreHdReportDone(pending.id).catch(() => undefined);
-      } else if (resumePaidPending && pending) {
+      if (resumePaidPending && pending) {
         await releaseStalePendingReportLock(pending.id).catch(() => undefined);
       }
     }
     if (error instanceof InsufficientFundsError) {
+      await trackWorkerJobFailed(request, "Недостаточно рун для этого действия.", {
+        errorCode: "insufficient_runes",
+      });
       return NextResponse.json(
         {
           error: "insufficient_runes",
@@ -340,6 +472,10 @@ export async function POST(request: NextRequest) {
       );
     }
     console.warn("[human-design] report failed");
+    await trackWorkerJobFailed(request, "Ошибка генерации разбора.", {
+      refunded: refundLanded,
+      errorCode: "generation_failed",
+    });
     return NextResponse.json(
       { error: "Ошибка генерации разбора.", refunded: refundLanded },
       { status: 502 }

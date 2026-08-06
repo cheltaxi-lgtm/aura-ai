@@ -1,4 +1,4 @@
-﻿-- Zovus вЂ” РїРѕР»РЅР°СЏ СЃС…РµРјР° PostgreSQL (2026)
+-- Zovus вЂ” РїРѕР»РЅР°СЏ СЃС…РµРјР° PostgreSQL (2026)
 -- РњРѕРЅС‚РёСЂСѓРµС‚СЃСЏ РІ Docker С‡РµСЂРµР· docker-compose.yml (fresh DB).
 -- РЎСѓС‰РµСЃС‚РІСѓСЋС‰РёРµ Р±Р°Р·С‹: npm run migrate (scripts/migrate.mjs + scripts/migrations/*.sql).
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
@@ -1721,6 +1721,13 @@ CREATE TABLE IF NOT EXISTS hd_charts (
   engine_version TEXT NOT NULL,
   subject_kind TEXT NOT NULL DEFAULT 'self',
   subject_name TEXT,
+  relation_to_self TEXT CHECK (
+    relation_to_self IS NULL
+    OR relation_to_self IN ('partner', 'friend', 'child', 'colleague', 'business')
+  ),
+  -- SHA-256 hash of the guest claim token (hash-only, like tarot receipts).
+  -- Rows predating the hash migration may still hold the raw 48-hex token
+  -- until the 30-day guest sweep purges them; claim matches both forms.
   claim_token TEXT,
   owner_key UUID GENERATED ALWAYS AS (COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),

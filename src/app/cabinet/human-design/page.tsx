@@ -27,7 +27,7 @@ export default function CabinetHumanDesignPage() {
   }, [authLoading, authUser]);
 
   const shellClassName =
-    "min-h-screen bg-[#09070d] pb-16 pt-[var(--app-header-h,3.25rem)] text-white";
+    "min-h-screen bg-[#0a0908] pb-16 pt-[var(--app-header-h,3.25rem)] text-white";
 
   if (authLoading || !authUser) {
     return (

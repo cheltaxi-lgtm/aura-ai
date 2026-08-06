@@ -1,8 +1,8 @@
-import type { HdActivation, HdChart } from "./types";
+import type { HdActivation, HdChart, HdPublicActivation, HdPublicChart } from "./types";
 import { CHANNELS, GATE_NAMES_RU } from "./constants";
 
 /** Gates that sit in an incomplete channel (classic «висящие»). */
-export function hangingGates(chart: HdChart): number[] {
+export function hangingGates(chart: HdChart | HdPublicChart): number[] {
   const active = new Set(chart.activeGates);
   const hanging = new Set<number>();
   for (const ch of CHANNELS) {
@@ -16,7 +16,7 @@ export function hangingGates(chart: HdChart): number[] {
 }
 
 /** Gates only in Design (unconscious) or only in Personality (conscious). */
-export function splitCardGates(chart: HdChart): {
+export function splitCardGates(chart: HdChart | HdPublicChart): {
   personalityOnly: number[];
   designOnly: number[];
   both: number[];
@@ -36,7 +36,10 @@ export function splitCardGates(chart: HdChart): {
   return { personalityOnly, designOnly, both };
 }
 
-function findBody(list: HdActivation[], body: string): HdActivation | undefined {
+function findBody(
+  list: (HdActivation | HdPublicActivation)[],
+  body: string
+): (HdActivation | HdPublicActivation) | undefined {
   return list.find((a) => a.body === body);
 }
 
@@ -44,7 +47,7 @@ function findBody(list: HdActivation[], body: string): HdActivation | undefined 
  * Simplified Variable arrows from Sun color (1–3 left / 4–6 right) —
  * enough for product UI without claiming full PHS certification language.
  */
-export function variableSummary(chart: HdChart): {
+export function variableSummary(chart: HdChart | HdPublicChart): {
   personalitySun: { gate: number; line: number; color: number; tone: number; base: number };
   designSun: { gate: number; line: number; color: number; tone: number; base: number };
   cognitionHint: string;

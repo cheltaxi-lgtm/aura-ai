@@ -8,11 +8,17 @@ import {
   TYPE_META,
   type HdChart,
   type HdCenterKey,
+  type HdPublicChart,
 } from "@/lib/human-design";
 import HdVariablesBrief from "./HdVariablesBrief";
 
 /** Free deterministic «Опора» — core mechanics without LLM. */
-export default function HdFoundationBrief({ chart }: { chart: HdChart }) {
+export default function HdFoundationBrief({
+  chart,
+}: {
+  /** Full chart for owners; stripped public form on share links. */
+  chart: HdChart | HdPublicChart;
+}) {
   const type = TYPE_META[chart.type];
   const openCenters = (
     Object.keys(CENTER_NAMES_RU) as HdCenterKey[]

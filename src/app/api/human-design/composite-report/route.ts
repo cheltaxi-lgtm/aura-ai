@@ -5,7 +5,8 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { completeChat, isOpenRouterConfigured, isRejectedLlmOutput } from "@/lib/llm";
+import { isOpenRouterConfigured, isRejectedLlmOutput } from "@/lib/llm";
+import { completeHdCompositeReport } from "@/lib/human-design/report-generate";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
@@ -13,26 +14,38 @@ import { isRuneBillingActive } from "@/lib/rune-service";
 import {
   BillingService,
   chargeRuneAction,
+  ensureSufficientRunes,
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
-import { withTransaction } from "@/lib/db";
+import {
+  getAsyncJobWorkerUserId,
+  isAsyncJobWorkerConfigured,
+} from "@/lib/async-job-worker-auth";
+import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import {
+  beginWorkerJobSave,
+  trackWorkerJobCompleted,
+  trackWorkerJobFailed,
+  trackWorkerJobRefunded,
+} from "@/lib/async-job-lifecycle";
+import { query, withTransaction } from "@/lib/db";
 import {
   attachCompositeReportTransaction,
-  beginCompositeReportRewrite,
   completeCompositeReport,
   createPendingCompositeReport,
   deleteCompositeReportRow,
   failCompositeReport,
+  findDuplicateDoneCompositeReport,
   getHdChartById,
   getHdCompositeReport,
   hasRuneRefundForTransaction,
   HD_UUID_RE,
   isStalePendingComposite,
   lockStalePendingCompositeForResume,
+  mapHdRelationToSelf,
   markCompositeReportChargeRefunded,
   releaseStalePendingCompositeLock,
-  restoreCompositeReportDone,
   toPublicHdCompositeReport,
   type HdCompositeReportRow,
 } from "@/lib/services/human-design-service";
@@ -41,6 +54,7 @@ import {
   connectionRelationPromptHint,
   formatHdConnectionEvidence,
   HD_CONNECTION_RELATIONS,
+  HD_ENGINE_VERSION,
   sanitizeHdCompositeReportText,
   type HdConnectionRelation,
 } from "@/lib/human-design";
@@ -88,14 +102,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
 
-  const resolved = await resolveProfileUserContext();
-  if (!resolved.ok) {
-    return profileAuthFailureResponse(resolved.reason);
-  }
-  const userId = resolved.profileUserId;
+  // Durable worker calls carry the user id in worker headers and skip the
+  // per-user rate limit — the job queue is the limiter there.
+  const workerUserId = getAsyncJobWorkerUserId(request);
+  let userId: string;
+  if (workerUserId) {
+    userId = workerUserId;
+  } else {
+    const resolved = await resolveProfileUserContext();
+    if (!resolved.ok) {
+      return profileAuthFailureResponse(resolved.reason);
+    }
+    userId = resolved.profileUserId;
 
-  const rateLimited = await enforcePaidRouteRateLimit(userId, "hd_report");
-  if (rateLimited) return rateLimited;
+    const rateLimited = await enforcePaidRouteRateLimit(userId, "hd_report");
+    if (rateLimited) return rateLimited;
+  }
 
   const profileRow = await getUserById(userId).catch(() => null);
   if (!profileRow || !isUserAgeEligible(profileRow)) {
@@ -108,12 +130,15 @@ export async function POST(request: NextRequest) {
     aiDataUseAcknowledged?: unknown;
     relation?: unknown;
     regenerate?: unknown;
+    async?: unknown;
   };
-  const relation: HdConnectionRelation | null =
-    typeof body.relation === "string" && RELATION_IDS.has(body.relation as HdConnectionRelation)
-      ? (body.relation as HdConnectionRelation)
-      : "partner";
-  const regenerate = body.regenerate === true;
+  // Free rebuild removed from product — one report per paid pair.
+  if (body.regenerate === true) {
+    return NextResponse.json(
+      { error: "Пересборка разбора недоступна. Уже оплаченный текст остаётся как есть." },
+      { status: 400 }
+    );
+  }
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных данных карт внешней языковой модели." },
@@ -137,39 +162,36 @@ export async function POST(request: NextRequest) {
   if (!base || !partner || base.userId !== userId || partner.userId !== userId) {
     return NextResponse.json({ error: "Карты не найдены." }, { status: 404 });
   }
+  if (base.engineVersion !== HD_ENGINE_VERSION || partner.engineVersion !== HD_ENGINE_VERSION) {
+    return NextResponse.json(
+      { error: "Карта рассчитана устаревшим движком. Пересчитайте карту." },
+      { status: 409 }
+    );
+  }
+
+  // Prefer explicit body, else stored relation on the partner (other) chart.
+  const bodyRelation =
+    typeof body.relation === "string" && RELATION_IDS.has(body.relation as HdConnectionRelation)
+      ? (body.relation as HdConnectionRelation)
+      : null;
+  const relation: HdConnectionRelation =
+    bodyRelation ?? mapHdRelationToSelf(partner.relationToSelf) ?? "partner";
 
   let existing = await getHdCompositeReport(base.id, partner.id, userId);
 
-  // Free in-place rewrite of an already-paid done report (keeps old text on failure).
-  let rewritePaid = false;
-  if (regenerate) {
-    if (!existing || existing.status !== "done" || !existing.reportText) {
-      return NextResponse.json(
-        { error: "Сначала получите разбор — пересобрать пока нечего." },
-        { status: 400 }
-      );
-    }
-    const locked = await beginCompositeReportRewrite(existing.id);
-    if (!locked) {
-      return NextResponse.json(
-        { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
-        { status: 409 }
-      );
-    }
-    existing = { ...existing, status: "pending" };
-    rewritePaid = true;
-  }
-
-  if (!rewritePaid && existing?.status === "done" && existing.reportText) {
-    return NextResponse.json({
+  if (existing?.status === "done" && existing.reportText) {
+    const payload = {
       report: {
         ...toPublicHdCompositeReport(existing),
         reportText: sanitizeHdCompositeReportText(existing.reportText),
       },
       cached: true,
-    });
+    };
+    // No-op on plain client calls; completes the job on worker requeues.
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   }
-  if (!rewritePaid && existing?.status === "pending" && !isStalePendingComposite(existing)) {
+  if (existing?.status === "pending" && !isStalePendingComposite(existing)) {
     return NextResponse.json(
       { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
       { status: 409 }
@@ -178,7 +200,6 @@ export async function POST(request: NextRequest) {
   // Stale pending with a recorded charge → crashed after payment: resume
   // generation on the same row without charging twice.
   let resumePaidPending =
-    !rewritePaid &&
     existing?.status === "pending" &&
     isStalePendingComposite(existing) &&
     Boolean(existing.transactionId);
@@ -203,8 +224,81 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Legacy/crash path: error row with an UNREFUNDED charge. Deleting it would
+  // orphan the spend and double-charge on retry — convert to a paid resume.
+  if (!resumePaidPending && existing?.status === "error" && existing.transactionId) {
+    let alreadyRefunded: boolean;
+    try {
+      alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId);
+    } catch {
+      return NextResponse.json(
+        { error: "Не удалось проверить статус оплаты. Попробуйте через минуту." },
+        { status: 503 }
+      );
+    }
+    if (!alreadyRefunded) {
+      const { rows } = await query(
+        `UPDATE hd_composite_reports SET status = 'pending', error = NULL,
+           created_at = now() - make_interval(secs => 601), updated_at = now()
+         WHERE id = $1 AND status = 'error'
+         RETURNING id`,
+        [existing.id]
+      );
+      if (!rows[0]) {
+        return NextResponse.json(
+          { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
+          { status: 409 }
+        );
+      }
+      existing = (await getHdCompositeReport(base.id, partner.id, userId)) ?? existing;
+      resumePaidPending = true;
+    }
+    // alreadyRefunded → fall through: delete + fresh charge is safe.
+  }
+
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
+  }
+
+  const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
+  const runeSettings = await getRuneSettings();
+  const exempt = !isRuneBillingActive(userId, unlimited, runeSettings);
+
+  // Durable async delivery: hand generation to the worker queue. The same
+  // route with async:false is the worker execution path — every billing,
+  // resume and dedupe invariant above re-runs there unchanged. Balance is
+  // pre-checked so a broke user gets the 402 paywall immediately instead of
+  // a silent job failure the entity poll cannot surface.
+  if (body.async === true && isAsyncJobWorkerConfigured()) {
+    try {
+      await ensureSufficientRunes({ userId, action: "HD_COMPOSITE_REPORT", exempt });
+    } catch (error) {
+      if (error instanceof InsufficientFundsError) {
+        return NextResponse.json(
+          {
+            error: "insufficient_runes",
+            message: "Недостаточно рун для этого действия.",
+            balance: error.balance,
+            required: error.required,
+            cost: error.required,
+          },
+          { status: 402 }
+        );
+      }
+      throw error;
+    }
+    return enqueuePaidAsyncJob({
+      userId,
+      kind: "hd_composite_report",
+      payload: {
+        baseChartId: base.id,
+        partnerChartId: partner.id,
+        relation,
+        aiDataUseAcknowledged: true,
+      },
+      // HD has its own module kill-switch (isHumanDesignEnabled above).
+      bypassDeliveryGate: true,
+    });
   }
 
   // Normalize at the prompt boundary too — rows stored before the storage-side
@@ -224,10 +318,6 @@ export async function POST(request: NextRequest) {
     { a: clientName ?? "первый человек", b: partnerName },
     relation
   );
-
-  const unlimited = await resolveUnlimitedAccess({ profileUserId: userId });
-  const runeSettings = await getRuneSettings();
-  const exempt = !isRuneBillingActive(userId, unlimited, runeSettings);
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
@@ -251,12 +341,13 @@ export async function POST(request: NextRequest) {
       // row with a refunded charge is a free generation 10 minutes later).
       await markCompositeReportChargeRefunded(pending.id);
     }
+    if (res.refunded) {
+      await trackWorkerJobRefunded(request);
+    }
   };
 
   try {
-    if (rewritePaid && existing) {
-      pending = existing;
-    } else if (resumePaidPending && existing) {
+    if (resumePaidPending && existing) {
       // CAS-lock the stale row: concurrent resumes see a fresh pending → 409.
       const locked = await lockStalePendingCompositeForResume(existing.id);
       if (!locked) {
@@ -269,6 +360,40 @@ export async function POST(request: NextRequest) {
     } else {
       // error / unpaid stale pending → start over (its charge was rolled back).
       if (existing) await deleteCompositeReportRow(existing.id);
+
+      // Double-billing guard: the same two people under new chart ids are
+      // the same product — serve the already-paid text, no second charge.
+      if (base.chart.birth && partner.chart.birth) {
+        const dupe = await findDuplicateDoneCompositeReport({
+          userId,
+          excludeBaseChartId: base.id,
+          excludePartnerChartId: partner.id,
+          base: {
+            birthDate: base.chart.birth.date,
+            birthTime: base.chart.birth.time,
+            timezone: base.chart.timezone ?? "",
+            subjectName: base.subjectName,
+          },
+          partner: {
+            birthDate: partner.chart.birth.date,
+            birthTime: partner.chart.birth.time,
+            timezone: partner.chart.timezone ?? "",
+            subjectName: partner.subjectName,
+          },
+        });
+        if (dupe?.reportText) {
+          const payload = {
+            report: {
+              ...toPublicHdCompositeReport(dupe),
+              reportText: sanitizeHdCompositeReportText(dupe.reportText),
+            },
+            cached: true,
+            deduped: true,
+          };
+          await trackWorkerJobCompleted(request, payload);
+          return NextResponse.json(payload);
+        }
+      }
 
       // Atomic: pending row + charge + transaction link commit or roll back
       // together — a crash can leave neither a paid orphan nor an unpaid charge.
@@ -313,46 +438,51 @@ export async function POST(request: NextRequest) {
     }
 
     const scenario = connectionRelationPromptHint(relation);
-    const answer = await completeChat({
-      messages: [
-        {
-          role: "system",
-          content: await wrapSystemPrompt(
-            buildHdCompositeReportSystemPrompt(clientName, partnerName, scenario)
-          ),
-        },
-        { role: "user", content: evidence },
-      ],
-      maxTokens: 5000,
-      temperature: 0.65,
-      isPaid: true,
-      timeoutMs: 240_000,
+    const answer = await completeHdCompositeReport({
+      systemPrompt: await wrapSystemPrompt(
+        buildHdCompositeReportSystemPrompt(clientName, partnerName, scenario)
+      ),
+      evidence,
+      nameA: clientName ?? "первый человек",
+      nameB: partnerName,
     });
 
     if (!answer || isRejectedLlmOutput(answer)) {
       await rollback();
-      if (rewritePaid) {
-        await restoreCompositeReportDone(pending.id).catch(() => undefined);
-        return NextResponse.json(
-          { error: "Не удалось пересобрать разбор. Предыдущий текст сохранён — попробуйте ещё раз." },
-          { status: 502 }
-        );
-      }
       if (resumePaidPending) {
         // Keep the paid pending row: the next attempt resumes it for free.
         // Release the CAS-lock age reset so the retry isn't blocked for 10 min.
         await releaseStalePendingCompositeLock(pending.id).catch(() => undefined);
+        await trackWorkerJobFailed(
+          request,
+          "Модель не смогла подготовить разбор. Попробуйте ещё раз — оплата сохранена.",
+          { errorCode: "empty_or_rejected" }
+        );
         return NextResponse.json(
           { error: "Модель не смогла подготовить разбор. Попробуйте ещё раз — оплата сохранена." },
           { status: 502 }
         );
       }
-      await failCompositeReport(pending.id, "empty_or_rejected");
+      if (refundLanded) {
+        // Refund confirmed — the row may terminalize; retry starts clean.
+        await failCompositeReport(pending.id, "empty_or_rejected");
+      } else {
+        // Refund failed: keep pending so a retry RESUMES on the same charge
+        // instead of deleting the row and charging twice.
+        await releaseStalePendingCompositeLock(pending.id).catch(() => undefined);
+      }
+      await trackWorkerJobFailed(
+        request,
+        refundLanded
+          ? "Модель не смогла подготовить разбор. Оплата возвращена."
+          : "Модель не смогла подготовить разбор. Оплата сохранена — попробуйте ещё раз, повторного списания не будет.",
+        { refunded: refundLanded, errorCode: "empty_or_rejected" }
+      );
       return NextResponse.json(
         {
           error: refundLanded
             ? "Модель не смогла подготовить разбор. Оплата возвращена."
-            : "Модель не смогла подготовить разбор. Если руны списались, они вернутся автоматически.",
+            : "Модель не смогла подготовить разбор. Оплата сохранена — попробуйте ещё раз, повторного списания не будет.",
           refunded: refundLanded,
         },
         { status: 502 }
@@ -360,10 +490,23 @@ export async function POST(request: NextRequest) {
     }
 
     const text = sanitizeHdCompositeReportText(answer) + DISCLAIMER;
+    // Win against the worker timeout-refund before persisting the paid text.
+    if (!(await beginWorkerJobSave(request))) {
+      await rollback();
+      await trackWorkerJobFailed(
+        request,
+        "Генерация была отменена по таймауту. Оплата возвращена.",
+        { refunded: refundLanded, errorCode: "job_timeout" }
+      );
+      return NextResponse.json(
+        { error: "Генерация была отменена по таймауту. Оплата возвращена.", refunded: refundLanded },
+        { status: 409 }
+      );
+    }
     await completeCompositeReport(pending.id, text, "openrouter");
     completed = true; // past this point a catch must NOT refund a done report
     const done = await getHdCompositeReport(base.id, partner.id, userId);
-    return NextResponse.json({
+    const payload = {
       report: done
         ? {
             ...toPublicHdCompositeReport(done),
@@ -374,8 +517,9 @@ export async function POST(request: NextRequest) {
         : null,
       cached: false,
       runeBalance: charge?.newBalance,
-      regenerated: rewritePaid,
-    });
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
   } catch (error) {
     // Never refund a report that actually completed — a post-completion
     // failure (e.g. the final SELECT) must not turn into a free report.
@@ -383,15 +527,16 @@ export async function POST(request: NextRequest) {
       await rollback().catch(() => {
         console.warn("[human-design] composite rollback failed");
       });
-      if (rewritePaid && pending) {
-        await restoreCompositeReportDone(pending.id).catch(() => undefined);
-      } else if (resumePaidPending && pending) {
+      if (resumePaidPending && pending) {
         await releaseStalePendingCompositeLock(pending.id).catch(() => undefined);
       }
     }
     // A failed create+charge transaction rolled back atomically — no unpaid
     // placeholder to clean up, the next attempt starts clean.
     if (error instanceof InsufficientFundsError) {
+      await trackWorkerJobFailed(request, "Недостаточно рун для этого действия.", {
+        errorCode: "insufficient_runes",
+      });
       return NextResponse.json(
         {
           error: "insufficient_runes",
@@ -404,6 +549,10 @@ export async function POST(request: NextRequest) {
       );
     }
     console.warn("[human-design] composite report failed");
+    await trackWorkerJobFailed(request, "Ошибка генерации разбора.", {
+      refunded: refundLanded,
+      errorCode: "generation_failed",
+    });
     return NextResponse.json(
       { error: "Ошибка генерации разбора.", refunded: refundLanded },
       { status: 502 }

@@ -1,7 +1,13 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import type { HdBodyKey, HdCenterKey, HdChart } from "@/lib/human-design";
+import type {
+  HdBodyKey,
+  HdCenterKey,
+  HdChart,
+  HdConnectionRelation,
+  HdPublicChart,
+} from "@/lib/human-design";
 import {
   AUTHORITY_NAMES_RU,
   CENTER_NAMES_RU,
@@ -27,17 +33,32 @@ export interface HdChartPayload {
   timeUnknown?: boolean;
   subjectKind?: "self" | "other";
   subjectName?: string | null;
+  /** How this other-person chart relates to the owner (pair-report scenario). */
+  relationToSelf?: HdConnectionRelation | null;
   chart: HdChart;
 }
 
-function crossNameRu(chart: HdChart): string {
+/**
+ * Public share-link payload: same envelope, but the chart is stripped of
+ * birth data, timezone, design moment and raw longitudes (see
+ * toPublicHdChartPayload). Optional owner-only fields stay absent.
+ */
+export type HdPublicChartPayload = Omit<HdChartPayload, "chart"> & {
+  chart: HdPublicChart;
+};
+
+function crossNameRu(chart: HdChart | HdPublicChart): string {
   const names = CROSS_NAMES_RU[chart.cross.gates[0]];
   if (!names) return chart.cross.nameEn;
   const index = chart.cross.angle === "right" ? 0 : chart.cross.angle === "juxtaposition" ? 1 : 2;
   return names[index] ?? chart.cross.nameEn;
 }
 
-export default function HdChartView({ payload }: { payload: HdChartPayload }) {
+export default function HdChartView({
+  payload,
+}: {
+  payload: HdChartPayload | HdPublicChartPayload;
+}) {
   const { chart } = payload;
   const typeMeta = TYPE_META[chart.type];
   const stability = chart.stability;

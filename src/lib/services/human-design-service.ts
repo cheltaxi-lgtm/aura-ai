@@ -1,19 +1,47 @@
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { query, queryClient, type PoolClient } from "@/lib/db";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { refundRunes } from "@/lib/rune-service";
 import {
   calculateHdChart,
+  HD_CONNECTION_RELATIONS,
   HD_ENGINE_VERSION,
   HD_MIN_BIRTH_YEAR,
+  type HdActivation,
   type HdCalcInput,
   type HdChart,
+  type HdConnectionRelation,
+  type HdPublicActivation,
+  type HdPublicChart,
 } from "@/lib/human-design";
 import { hdFingerprint, type HdChartIdentity } from "@/lib/human-design/fingerprint";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 
+const HD_RELATION_IDS = new Set<string>(HD_CONNECTION_RELATIONS.map((r) => r.id));
+
+export function mapHdRelationToSelf(
+  raw: string | null | undefined
+): HdConnectionRelation | null {
+  if (typeof raw === "string" && HD_RELATION_IDS.has(raw)) {
+    return raw as HdConnectionRelation;
+  }
+  return null;
+}
+
 /** owner_key for rows in the shared guest pool (migration 097 generated column). */
 const GUEST_OWNER_KEY = "00000000-0000-0000-0000-000000000000";
+
+/**
+ * Claim tokens are stored as SHA-256 hashes (same standard as the tarot
+ * receipt hash-only rule): a DB/log/backup leak must not hand out claim
+ * capabilities. Transitional dual-read: rows inserted before this change
+ * still carry the raw 48-hex token and are matched by the legacy equality
+ * branch until the 30-day guest sweep purges them; every new insert is
+ * hash-only. Raw tokens are 48 hex chars, hashes 64 — they cannot collide.
+ */
+export function hashHdClaimToken(rawToken: string): string {
+  return createHash("sha256").update(`hd-claim:v1:${rawToken}`).digest("hex");
+}
 
 /** A pending report older than this is considered crashed and recoverable. */
 const STALE_PENDING_MS = 10 * 60 * 1000;
@@ -33,12 +61,16 @@ export interface HdChartRow {
   engineVersion: string;
   subjectKind: "self" | "other";
   subjectName: string | null;
+  /** How this other-person chart relates to the owner; null for self charts. */
+  relationToSelf: HdConnectionRelation | null;
   createdAt: string;
 }
 
 export interface HdSubject {
   kind: "self" | "other";
   name: string | null;
+  /** Required for other charts when creating/updating relation context. */
+  relationToSelf?: HdConnectionRelation | null;
 }
 
 export type HdReportToneId = "personal" | "child" | "work";
@@ -87,6 +119,7 @@ interface HdChartDbRow {
   engine_version: string;
   subject_kind: string | null;
   subject_name: string | null;
+  relation_to_self?: string | null;
   claim_token?: string | null;
   created_at: string | Date;
 }
@@ -109,6 +142,10 @@ interface HdReportDbRow {
 function mapReportTone(raw: string | null | undefined): HdReportToneId {
   if (raw === "child" || raw === "work") return raw;
   return "personal";
+}
+
+function mapReportPackageId(raw: string | null | undefined): "depth" | "max" {
+  return raw === "depth" ? "depth" : "max";
 }
 
 function toIsoDate(value: string | Date): string {
@@ -135,6 +172,8 @@ function mapChartRow(row: HdChartDbRow): HdChartRow {
     engineVersion: row.engine_version,
     subjectKind: row.subject_kind === "other" ? "other" : "self",
     subjectName: row.subject_name,
+    relationToSelf:
+      row.subject_kind === "other" ? mapHdRelationToSelf(row.relation_to_self) : null,
     createdAt: toIso(row.created_at),
   };
 }
@@ -149,7 +188,7 @@ function mapReportRow(row: HdReportDbRow): HdReportRow {
     model: row.model,
     transactionId: row.transaction_id,
     error: row.error,
-    packageId: "max",
+    packageId: mapReportPackageId(row.package_id),
     includedAsksRemaining: Math.max(0, Number(row.included_asks_remaining) || 0),
     reportTone: mapReportTone(row.report_tone),
     createdAt: toIso(row.created_at),
@@ -287,6 +326,7 @@ async function demoteOtherSelfCharts(
            NULLIF(BTRIM(COALESCE(subject_name, '')), ''),
            to_char(birth_date, 'DD.MM.YYYY')
          ),
+         relation_to_self = COALESCE(relation_to_self, 'partner'),
          updated_at = now()
      WHERE user_id = $1
        AND id <> $2
@@ -310,7 +350,8 @@ async function demoteOtherSelfCharts(
 async function relabelOwnedChart(
   row: HdChartDbRow,
   subjectKind: "self" | "other",
-  subjectName: string | null
+  subjectName: string | null,
+  relationToSelf?: HdConnectionRelation | null
 ): Promise<HdChartDbRow> {
   const currentKind = row.subject_kind === "other" ? "other" : "self";
   let nextKind = subjectKind;
@@ -322,15 +363,33 @@ async function relabelOwnedChart(
     nextName = null;
   }
 
-  if (currentKind === nextKind && (row.subject_name ?? null) === (nextName ?? null)) {
+  const prevRelation = mapHdRelationToSelf(row.relation_to_self);
+  let nextRelation: HdConnectionRelation | null = null;
+  if (nextKind === "other") {
+    const fromCaller = mapHdRelationToSelf(relationToSelf);
+    nextRelation = fromCaller ?? prevRelation;
+  }
+
+  if (
+    currentKind === nextKind &&
+    (row.subject_name ?? null) === (nextName ?? null) &&
+    prevRelation === nextRelation
+  ) {
     return row;
   }
 
   await query(
-    "UPDATE hd_charts SET subject_kind = $2, subject_name = $3, updated_at = now() WHERE id = $1",
-    [row.id, nextKind, nextName]
+    `UPDATE hd_charts
+     SET subject_kind = $2, subject_name = $3, relation_to_self = $4, updated_at = now()
+     WHERE id = $1`,
+    [row.id, nextKind, nextName, nextRelation]
   );
-  return { ...row, subject_kind: nextKind, subject_name: nextName };
+  return {
+    ...row,
+    subject_kind: nextKind,
+    subject_name: nextName,
+    relation_to_self: nextRelation,
+  };
 }
 
 /** After any path that yields an owned `self` row, enforce the single-self invariant. */
@@ -362,6 +421,8 @@ export async function getOrComputeHdChart(
     subjectKind === "other"
       ? normalizePersonDisplayName(subject?.name).slice(0, 60) || null
       : null;
+  const relationToSelf =
+    subjectKind === "other" ? mapHdRelationToSelf(subject?.relationToSelf) : null;
   const ownerKey = userId ?? GUEST_OWNER_KEY;
 
   const own = await query<HdChartDbRow>(
@@ -371,20 +432,36 @@ export async function getOrComputeHdChart(
   if (own.rows[0]) {
     let row = await refreshChartIfEngineStale(own.rows[0]);
     if (userId && subject) {
-      row = await relabelOwnedChart(row, subjectKind, subjectName);
+      row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
     }
     if (userId) row = await finalizeOwnedSelfChart(userId, row);
+    if (!userId && subject) {
+      // Shared guest pool: the stored subject may belong to ANOTHER visitor.
+      // Never persist or echo it — answer with the caller's own request only.
+      const mapped = mapChartRow(row);
+      return {
+        row: {
+          ...mapped,
+          subjectKind,
+          subjectName,
+          relationToSelf,
+        },
+        claimToken: null,
+      };
+    }
     return { row: mapChartRow(row), claimToken: null };
   }
 
   if (userId && claimToken && /^[0-9a-f]{48}$/.test(claimToken)) {
+    const claimTokenHash = hashHdClaimToken(claimToken);
     let adoptedRows: HdChartDbRow[] = [];
     try {
       const adopted = await query<HdChartDbRow>(
         `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
-         WHERE fingerprint = $1 AND user_id IS NULL AND claim_token = $3
+         WHERE fingerprint = $1 AND user_id IS NULL
+           AND (claim_token = $3 OR claim_token = $4)
          RETURNING *`,
-        [fingerprint, userId, claimToken]
+        [fingerprint, userId, claimTokenHash, claimToken]
       );
       adoptedRows = adopted.rows;
     } catch (error) {
@@ -398,7 +475,9 @@ export async function getOrComputeHdChart(
       );
       if (own2.rows[0]) {
         let row = await refreshChartIfEngineStale(own2.rows[0]);
-        if (subject) row = await relabelOwnedChart(row, subjectKind, subjectName);
+        if (subject) {
+          row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
+        }
         row = await finalizeOwnedSelfChart(userId, row);
         return { row: mapChartRow(row), claimToken: null };
       }
@@ -407,7 +486,7 @@ export async function getOrComputeHdChart(
     if (adoptedRows[0]) {
       let row = await refreshChartIfEngineStale(adoptedRows[0]);
       if (subject) {
-        row = await relabelOwnedChart(row, subjectKind, subjectName);
+        row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
       }
       row = await finalizeOwnedSelfChart(userId, row);
       return { row: mapChartRow(row), claimToken: null };
@@ -445,12 +524,13 @@ export async function getOrComputeHdChart(
   }
 
   const newClaimToken = userId ? null : randomBytes(24).toString("hex");
+  const newClaimTokenHash = newClaimToken ? hashHdClaimToken(newClaimToken) : null;
   const inserted = await query<HdChartDbRow>(
     `INSERT INTO hd_charts (
        user_id, birth_date, birth_time, time_unknown, timezone,
        place_name, lat, lon, fingerprint, chart, engine_version,
-       subject_kind, subject_name, claim_token
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       subject_kind, subject_name, relation_to_self, claim_token
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
      ON CONFLICT (fingerprint, owner_key) DO UPDATE SET updated_at = hd_charts.updated_at
      RETURNING *`,
     [
@@ -467,13 +547,20 @@ export async function getOrComputeHdChart(
       HD_ENGINE_VERSION,
       subjectKind,
       subjectName,
-      newClaimToken,
+      relationToSelf,
+      newClaimTokenHash,
     ]
   );
   let row = inserted.rows[0]!;
   // A concurrent insert won the race → the returned row carries THEIR token,
   // which must never leak to us.
-  const granted = newClaimToken !== null && row.claim_token === newClaimToken;
+  const granted =
+    newClaimTokenHash !== null && row.claim_token === newClaimTokenHash;
+  // Owned conflict path may return an older label — apply the caller's subject.
+  // Guest pool is shared: never overwrite another visitor's subject/relation.
+  if (userId && subject) {
+    row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
+  }
   if (userId) row = await finalizeOwnedSelfChart(userId, row);
   return { row: mapChartRow(row), claimToken: granted ? newClaimToken : null };
 }
@@ -489,22 +576,66 @@ export function toOwnerHdChartPayload(row: HdChartRow) {
     timeUnknown: row.timeUnknown,
     subjectKind: row.subjectKind,
     subjectName: row.subjectName,
+    relationToSelf: row.relationToSelf,
     chart: row.chart,
   };
 }
 
+/** Update relation context on an owned other-person chart. */
+export async function updateHdChartRelationForUser(
+  chartId: string,
+  userId: string,
+  relationToSelf: HdConnectionRelation
+): Promise<HdChartRow | null> {
+  if (!HD_UUID_RE.test(chartId)) return null;
+  const relation = mapHdRelationToSelf(relationToSelf);
+  if (!relation) return null;
+  const { rows } = await query<HdChartDbRow>(
+    `UPDATE hd_charts
+     SET relation_to_self = $3, updated_at = now()
+     WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
+     RETURNING *`,
+    [chartId, userId, relation]
+  );
+  return rows[0] ? mapChartRow(rows[0]) : null;
+}
+
 /**
  * Public share / fingerprint capability: chart mechanics only.
- * Never exposes owner, birth date/time, place, coordinates, timezone or tokens.
- * Nested `chart.birth` / `chart.timezone` are stripped too (JSONB leak).
+ * Never exposes owner, birth date/time, place, coordinates, timezone or
+ * tokens. Nested `chart.birth` / `chart.timezone` are stripped (JSONB leak),
+ * and so are `chart.design` and raw longitudes: the design moment is a
+ * deterministic function of the birth instant (birth − 88° of solar arc) and
+ * arcsecond-precision Sun longitude narrows the birth date to hours, so
+ * either would break the "no birth date" share promise.
  */
-export function toPublicHdChartPayload(row: HdChartRow) {
-  const { birth: _birth, timezone: _timezone, ...mechanics } = row.chart;
+export function toPublicHdChartPayload(row: HdChartRow): {
+  id: string;
+  fingerprint: string;
+  timeUnknown: boolean;
+  chart: HdPublicChart;
+} {
+  const {
+    birth: _birth,
+    timezone: _timezone,
+    design: _design,
+    personality,
+    designActivations,
+    ...mechanics
+  } = row.chart;
+  const strip = (a: HdActivation): HdPublicActivation => {
+    const { longitude: _lon, ...rest } = a;
+    return rest;
+  };
   return {
     id: row.id,
     fingerprint: row.fingerprint,
     timeUnknown: row.timeUnknown,
-    chart: mechanics,
+    chart: {
+      ...mechanics,
+      personality: personality.map(strip),
+      designActivations: designActivations.map(strip),
+    },
   };
 }
 
@@ -557,7 +688,7 @@ async function healDemotedSelfHdChart(userId: string): Promise<void> {
 
   await query(
     `UPDATE hd_charts
-     SET subject_kind = 'self', subject_name = NULL, updated_at = now()
+     SET subject_kind = 'self', subject_name = NULL, relation_to_self = NULL, updated_at = now()
      WHERE id = $1 AND user_id = $2`,
     [candidate.rows[0].id, userId]
   );
@@ -639,11 +770,13 @@ export async function claimHdChart(
   );
   if (own.rows[0]) return true;
   if (!claimToken || !/^[0-9a-f]{48}$/.test(claimToken)) return false;
+  const claimTokenHash = hashHdClaimToken(claimToken);
   try {
     const result = await query(
       `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
-       WHERE fingerprint = $1 AND user_id IS NULL AND claim_token = $3`,
-      [fingerprint, userId, claimToken]
+       WHERE fingerprint = $1 AND user_id IS NULL
+         AND (claim_token = $3 OR claim_token = $4)`,
+      [fingerprint, userId, claimTokenHash, claimToken]
     );
     if ((result.rowCount ?? 0) > 0) {
       // Guest rows are usually `self`; claiming must not leave two personal charts.
@@ -786,6 +919,52 @@ export function isStalePendingReport(report: HdReportRow): boolean {
   );
 }
 
+/**
+ * Double-billing guard: the SAME mechanics (birth date + time + timezone)
+ * entered as a separate chart row must not be sold twice. Reports bake the
+ * subject name into the text, so a dedupe hit also requires the same
+ * subject kind and (case-insensitive) name. Returns the newest matching
+ * done report; the caller serves it cached WITHOUT charging again.
+ */
+export async function findDuplicateDoneHdReport(params: {
+  userId: string;
+  excludeChartId: string;
+  birthDate: string;
+  birthTime: string;
+  timezone: string;
+  subjectKind: "self" | "other";
+  subjectName: string | null;
+}): Promise<HdReportRow | null> {
+  const { rows } = await query<HdReportDbRow>(
+    `SELECT r.id, r.chart_id, r.user_id, r.status, r.report_text, r.model,
+            r.transaction_id, r.error, r.package_id, r.included_asks_remaining,
+            r.report_tone, r.created_at
+     FROM hd_reports r
+     JOIN hd_charts c ON c.id = r.chart_id
+     WHERE r.user_id = $1
+       AND r.status = 'done'
+       AND r.report_text IS NOT NULL
+       AND r.chart_id <> $2
+       AND c.chart->'birth'->>'date' = $3
+       AND c.chart->'birth'->>'time' = $4
+       AND c.chart->>'timezone' = $5
+       AND c.subject_kind = $6
+       AND lower(COALESCE(c.subject_name, '')) = lower(COALESCE($7, ''))
+     ORDER BY r.created_at DESC
+     LIMIT 1`,
+    [
+      params.userId,
+      params.excludeChartId,
+      params.birthDate,
+      params.birthTime,
+      params.timezone,
+      params.subjectKind,
+      params.subjectName,
+    ]
+  );
+  return rows[0] ? mapReportRow(rows[0]) : null;
+}
+
 export async function deleteHdReportRow(reportId: string): Promise<void> {
   await query("DELETE FROM hd_reports WHERE id = $1", [reportId]);
 }
@@ -920,6 +1099,67 @@ export function normalizeCompositePair(
   return baseChartId < partnerChartId
     ? [baseChartId, partnerChartId]
     : [partnerChartId, baseChartId];
+}
+
+/**
+ * Double-billing guard for connection reports: a pair whose BOTH sides have
+ * the same mechanics (date + time + timezone) as an already-paid pair is the
+ * same product — serve the existing text cached instead of charging again.
+ * Pair storage is canonically sorted, so matching is direction-independent.
+ * Subject names are baked into the text → compared per side like for
+ * personal reports.
+ */
+export async function findDuplicateDoneCompositeReport(params: {
+  userId: string;
+  excludeBaseChartId: string;
+  excludePartnerChartId: string;
+  base: { birthDate: string; birthTime: string; timezone: string; subjectName: string | null };
+  partner: { birthDate: string; birthTime: string; timezone: string; subjectName: string | null };
+}): Promise<HdCompositeReportRow | null> {
+  const { rows } = await query<HdCompositeReportDbRow>(
+    `SELECT r.id, r.base_chart_id, r.partner_chart_id, r.status, r.report_text,
+            r.transaction_id, r.created_at
+     FROM hd_composite_reports r
+     JOIN hd_charts cb ON cb.id = r.base_chart_id
+     JOIN hd_charts cp ON cp.id = r.partner_chart_id
+     WHERE r.user_id = $1
+       AND r.status = 'done'
+       AND r.report_text IS NOT NULL
+       AND NOT (r.base_chart_id = $2 AND r.partner_chart_id = $3)
+       AND (
+         (
+           cb.chart->'birth'->>'date' = $4 AND cb.chart->'birth'->>'time' = $5
+           AND cb.chart->>'timezone' = $6
+           AND lower(COALESCE(cb.subject_name, '')) = lower(COALESCE($7, ''))
+           AND cp.chart->'birth'->>'date' = $8 AND cp.chart->'birth'->>'time' = $9
+           AND cp.chart->>'timezone' = $10
+           AND lower(COALESCE(cp.subject_name, '')) = lower(COALESCE($11, ''))
+         ) OR (
+           cb.chart->'birth'->>'date' = $8 AND cb.chart->'birth'->>'time' = $9
+           AND cb.chart->>'timezone' = $10
+           AND lower(COALESCE(cb.subject_name, '')) = lower(COALESCE($11, ''))
+           AND cp.chart->'birth'->>'date' = $4 AND cp.chart->'birth'->>'time' = $5
+           AND cp.chart->>'timezone' = $6
+           AND lower(COALESCE(cp.subject_name, '')) = lower(COALESCE($7, ''))
+         )
+       )
+     ORDER BY r.created_at DESC
+     LIMIT 1`,
+    [
+      params.userId,
+      params.excludeBaseChartId,
+      params.excludePartnerChartId,
+      params.base.birthDate,
+      params.base.birthTime,
+      params.base.timezone,
+      params.base.subjectName,
+      params.partner.birthDate,
+      params.partner.birthTime,
+      params.partner.timezone,
+      params.partner.subjectName,
+    ]
+  );
+  return rows[0] ? mapCompositeRow(rows[0]) : null;
 }
 
 export async function getHdCompositeReport(
@@ -1200,7 +1440,7 @@ export async function reconcileHdReportCharges(limit = 50): Promise<number> {
           row.user_id,
           row.amount,
           "Возврат: разбор не был создан",
-          "HD_REPORT",
+          table === "hd_reports" ? "HD_REPORT" : "HD_COMPOSITE_REPORT",
           row.transaction_id
         );
         await query(
