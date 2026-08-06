@@ -251,29 +251,6 @@ export default function HdReportPanel({
     ]
   );
 
-  // Stuck pending after refresh: one silent resume nudge (no double-charge on CLAIM_BUSY).
-  useEffect(() => {
-    if (!waiting || !authenticated) return;
-    const t = window.setTimeout(() => {
-      if (postInFlightRef.current || report?.status === "done") return;
-      void buyReport({ regenerate: false });
-    }, 45_000);
-    return () => window.clearTimeout(t);
-  }, [authenticated, buyReport, report?.status, waiting]);
-
-  const selectTone = useCallback(
-    (next: HdReportTone) => {
-      if (loading || uiGenerating || waiting) return;
-      const current = report?.reportTone ?? tone;
-      setTone(next);
-      // Already have a paid report → free rewrite in the chosen tone.
-      if (report?.status === "done" && current !== next) {
-        void buyReport({ regenerate: true, toneOverride: next });
-      }
-    },
-    [buyReport, loading, report, tone, uiGenerating, waiting]
-  );
-
   const tonePicker = (
     <div className="hd-tone-picker mt-4" role="radiogroup" aria-label="Тон разбора">
       {TONE_OPTIONS.map((opt) => (
@@ -283,17 +260,11 @@ export default function HdReportPanel({
           role="radio"
           aria-checked={tone === opt.id}
           className={tone === opt.id ? "is-active" : undefined}
-          disabled={loading}
-          onClick={() => selectTone(opt.id)}
+          disabled={loading || uiGenerating || waiting}
+          onClick={() => setTone(opt.id)}
         >
           <strong>{opt.label}</strong>
-          <span>
-            {report?.status === "done"
-              ? opt.id === tone
-                ? "Текущий тон"
-                : "Пересобрать бесплатно"
-              : opt.hint}
-          </span>
+          <span>{opt.hint}</span>
         </button>
       ))}
     </div>
