@@ -545,6 +545,7 @@ const TYPE_NAME_MAP = {
   const workerShared = src("../src/lib/async-job-worker-auth-shared.ts");
   const jobsActive = src("../src/app/api/jobs/active/route.ts");
   const asyncJobs = src("../src/lib/async-jobs.ts");
+  const schemaSql = src("../src/lib/schema.sql");
 
   // Public share payload: design moment and raw longitudes never leave the
   // server (both make the birth instant recoverable).
@@ -594,6 +595,18 @@ const TYPE_NAME_MAP = {
   assert(
     jobsActive.includes('"hd_report"') && jobsActive.includes('"hd_composite_report"'),
     "guardrail: jobs/active KIND_SET includes HD kinds"
+  );
+
+  // DB contract: async_jobs kind CHECK must accept HD kinds (schema.sql +
+  // a migration that widens the live constraint — enqueue INSERTs fail 500
+  // on production without it).
+  assert(
+    schemaSql.includes("'hd_report'") && schemaSql.includes("'hd_composite_report'"),
+    "guardrail: schema.sql async_jobs kind CHECK includes HD kinds"
+  );
+  assert(
+    existsSync(new URL("../scripts/migrations/108_migrate_hd_async_job_kinds.sql", import.meta.url)),
+    "guardrail: migration 108 widens async_jobs kind CHECK for HD kinds"
   );
   for (const [name, routeSrc] of [
     ["report", reportRoute],

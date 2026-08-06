@@ -92,6 +92,7 @@ $RequiredArtifacts = @(
   "scripts/migrations/092_migrate_auth_token_version.sql",
   "scripts/migrations/093_migrate_matrix_subjects.sql",
   "scripts/migrations/094_migrate_human_design.sql",
+  "scripts/migrations/108_migrate_hd_async_job_kinds.sql",
   "src/lib/human-design/calculate.ts",
   "src/lib/human-design/constants.ts",
   "src/lib/human-design/ephemeris.ts",
