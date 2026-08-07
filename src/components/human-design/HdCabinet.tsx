@@ -6,10 +6,12 @@ import {
   TYPE_META,
   type HdConnectionRelation,
 } from "@/lib/human-design";
+import type { BinaryGender } from "@/lib/russian-name-gender";
 import HdCalculator from "./HdCalculator";
 import HdChartSlot from "./HdChartSlot";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdComposite from "./HdComposite";
+import HdGenderPicker from "./HdGenderPicker";
 import HdRelationPicker from "./HdRelationPicker";
 import HdReportPanel from "./HdReportPanel";
 import { hdApiErrorMessage } from "./hd-errors";
@@ -30,6 +32,10 @@ function normalizeRelation(raw: unknown): HdConnectionRelation | null {
     : null;
 }
 
+function normalizeGender(raw: unknown): BinaryGender | null {
+  return raw === "male" || raw === "female" ? raw : null;
+}
+
 function normalizeChart(raw: HdChartListItem): HdChartListItem {
   const subjectKind = raw.subjectKind === "other" ? "other" : "self";
   return {
@@ -37,6 +43,7 @@ function normalizeChart(raw: HdChartListItem): HdChartListItem {
     subjectKind,
     subjectName: subjectKind === "other" ? raw.subjectName ?? null : null,
     relationToSelf: subjectKind === "other" ? normalizeRelation(raw.relationToSelf) ?? "partner" : null,
+    gender: subjectKind === "other" ? normalizeGender(raw.gender) : null,
   };
 }
 
@@ -51,8 +58,8 @@ export default function HdCabinet() {
   const [deleting, setDeleting] = useState(false);
   /** Composite replaces the main view — never stacks a second bodygraph under it. */
   const [partnerId, setPartnerId] = useState<string | null>(null);
-  const [savingRelation, setSavingRelation] = useState(false);
-  const [relationError, setRelationError] = useState<string | null>(null);
+  const [savingMeta, setSavingMeta] = useState(false);
+  const [metaError, setMetaError] = useState<string | null>(null);
   const loadSeq = useRef(0);
   const [loadError, setLoadError] = useState(false);
 
@@ -141,7 +148,7 @@ export default function HdCabinet() {
   const openOther = (id: string) => {
     setPartnerId(null);
     setOtherId(id);
-    setRelationError(null);
+    setMetaError(null);
   };
 
   if (!enabled) {
@@ -205,23 +212,36 @@ export default function HdCabinet() {
     );
   }
 
-  const updateRelation = async (
+  const updateChartMeta = async (
     target: HdChartListItem,
-    relationToSelf: HdConnectionRelation
+    patch: { relationToSelf?: HdConnectionRelation; gender?: BinaryGender | null }
   ) => {
-    if (target.relationToSelf === relationToSelf) return;
-    setSavingRelation(true);
-    setRelationError(null);
+    if (
+      patch.relationToSelf !== undefined &&
+      target.relationToSelf === patch.relationToSelf &&
+      patch.gender === undefined
+    ) {
+      return;
+    }
+    if (
+      patch.gender !== undefined &&
+      target.gender === patch.gender &&
+      patch.relationToSelf === undefined
+    ) {
+      return;
+    }
+    setSavingMeta(true);
+    setMetaError(null);
     try {
       const res = await fetch("/api/human-design/chart", {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ chartId: target.id, relationToSelf }),
+        body: JSON.stringify({ chartId: target.id, ...patch }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
-        setRelationError(hdApiErrorMessage(data, "Не удалось сохранить тип связи."));
+        setMetaError(hdApiErrorMessage(data, "Не удалось сохранить."));
         return;
       }
       const next = data.chart as HdChartPayload;
@@ -231,15 +251,19 @@ export default function HdCabinet() {
             ? {
                 ...c,
                 ...next,
-                relationToSelf: normalizeRelation(next.relationToSelf) ?? relationToSelf,
+                relationToSelf:
+                  normalizeRelation(next.relationToSelf) ??
+                  patch.relationToSelf ??
+                  c.relationToSelf,
+                gender: normalizeGender(next.gender),
               }
             : c
         )
       );
     } catch {
-      setRelationError("Сеть недоступна. Попробуйте ещё раз.");
+      setMetaError("Сеть недоступна. Попробуйте ещё раз.");
     } finally {
-      setSavingRelation(false);
+      setSavingMeta(false);
     }
   };
 
@@ -500,15 +524,20 @@ export default function HdCabinet() {
                 </button>
               </div>
             </div>
-            <div className="hd-panel">
+            <div className="hd-panel grid gap-4 sm:grid-cols-2">
               <HdRelationPicker
                 value={activeOther.relationToSelf ?? "partner"}
-                onChange={(v) => void updateRelation(activeOther, v)}
-                disabled={savingRelation}
+                onChange={(v) => void updateChartMeta(activeOther, { relationToSelf: v })}
+                disabled={savingMeta}
               />
-              {relationError && (
-                <p className="mt-2 text-xs text-red-300/90" role="alert">
-                  {relationError}
+              <HdGenderPicker
+                value={activeOther.gender ?? null}
+                onChange={(v) => void updateChartMeta(activeOther, { gender: v })}
+                disabled={savingMeta}
+              />
+              {metaError && (
+                <p className="sm:col-span-2 mt-0 text-xs text-red-300/90" role="alert">
+                  {metaError}
                 </p>
               )}
             </div>

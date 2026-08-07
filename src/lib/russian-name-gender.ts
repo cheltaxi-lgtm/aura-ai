@@ -123,3 +123,53 @@ export function buildClientGenderInstruction(input: {
 
   return lines.join("\n");
 }
+
+/**
+ * HD personal report: «вы» for self, third person for aboutOther.
+ * Never invent gender when unknown.
+ */
+export function buildHdReportGenderInstruction(input: {
+  gender: BinaryGender | null;
+  firstName: string | null;
+  aboutOther: boolean;
+}): string {
+  const name = (input.firstName ?? "").trim();
+  const nameLock = name
+    ? `Имя в именительном падеже: «${name}». Не склоняй в чужое имя и не меняй на мужскую/женскую пару (Юлия≠Юлий).`
+    : null;
+
+  if (input.aboutOther) {
+    const who = name || "этот человек";
+    const lines = ["ПОЛ И ОБРАЩЕНИЕ К ЧЕЛОВЕКУ КАРТЫ:", ...(nameLock ? [nameLock] : [])];
+    if (input.gender === "female") {
+      lines.push(
+        `Человек карты («${who}») — ЖЕНЩИНА. Третье лицо только в женском роде: она, пришла, готова, чувствительна, умела. Запрещены мужские формы и угадывание «мужчина».`
+      );
+    } else if (input.gender === "male") {
+      lines.push(
+        `Человек карты («${who}») — МУЖЧИНА. Третье лицо только в мужском роде: он, пришёл, готов, чувствителен, умел. Запрещены женские формы.`
+      );
+    } else {
+      lines.push(
+        `Пол неизвестен. Пиши нейтрально о «${who}» / «этом человеке» без «он/она» и без согласования рода; не угадывай пол по имени.`
+      );
+    }
+    return lines.join("\n");
+  }
+
+  const lines = ["ПОЛ И ОБРАЩЕНИЕ К КЛИЕНТУ:", ...(nameLock ? [nameLock] : [])];
+  if (input.gender === "female") {
+    lines.push(
+      "Клиент — ЖЕНЩИНА. Обращение на «вы» только в женском роде: пришли, готовы, чувствительны (как к женщине); избегай мужских форм «готов», «пришёл»."
+    );
+  } else if (input.gender === "male") {
+    lines.push(
+      "Клиент — МУЖЧИНА. Обращение на «вы» только в мужском роде: пришли, готовы в мужском согласовании контекста; избегай женских форм «готова», «пришла»."
+    );
+  } else {
+    lines.push(
+      "Пол не определён — на «вы» формулируйте без рода («вам важно», «вы умеете»), не угадывайте пол по имени."
+    );
+  }
+  return lines.join("\n");
+}

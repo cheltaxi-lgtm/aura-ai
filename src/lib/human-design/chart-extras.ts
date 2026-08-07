@@ -47,14 +47,15 @@ function findBody(
  * Simplified Variable arrows from Sun color (1–3 left / 4–6 right) —
  * enough for product UI without claiming full PHS certification language.
  */
-export function variableSummary(chart: HdChart | HdPublicChart): {
+/** Owner-only: needs color/tone/base (stripped from public share payloads). */
+export function variableSummary(chart: HdChart): {
   personalitySun: { gate: number; line: number; color: number; tone: number; base: number };
   designSun: { gate: number; line: number; color: number; tone: number; base: number };
   cognitionHint: string;
   environmentHint: string;
 } {
-  const pSun = findBody(chart.personality, "sun");
-  const dSun = findBody(chart.designActivations, "sun");
+  const pSun = findBody(chart.personality, "sun") as HdActivation | undefined;
+  const dSun = findBody(chart.designActivations, "sun") as HdActivation | undefined;
   const p = {
     gate: pSun?.gate ?? 0,
     line: pSun?.line ?? 0,

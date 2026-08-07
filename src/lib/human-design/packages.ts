@@ -47,7 +47,7 @@ export const HD_FULL_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "authority",
-    title: "Внутренний авторитет",
+    title: "Авторитет",
     blurb: "Как принимать верные решения",
   },
   {
@@ -67,17 +67,17 @@ export const HD_FULL_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "centers",
-    title: "9 центров",
+    title: "Девять центров",
     blurb: "Где вы влияете и где открыты",
   },
   {
     id: "definition",
-    title: "Самодостаточность",
+    title: "Определённость и самодостаточность",
     blurb: "Насколько вам нужны другие люди",
   },
   {
     id: "channels",
-    title: "Разбор каналов",
+    title: "Каналы",
     blurb: "Главные преимущества и как ими пользоваться",
   },
   {
@@ -132,7 +132,7 @@ export const HD_FULL_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "practices",
-    title: "Практики 7 и 30 дней",
+    title: "Практики на 7 дней и на 30 дней",
     blurb: "Конкретные шаги после разбора",
   },
   {
@@ -142,8 +142,8 @@ export const HD_FULL_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "pdf",
-    title: "Премиальный PDF",
-    blurb: "Печатный отчёт с оглавлением и данными карты",
+    title: "Печать / сохранить как PDF",
+    blurb: "Страница печати с оглавлением и данными карты",
   },
 ] as const;
 
@@ -184,7 +184,7 @@ export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "boost",
-    title: "Как усиливаете друг друга",
+    title: "Как вы усиливаете друг друга",
     blurb: "Где один стабилизирует и раскрывает другого",
   },
   {
@@ -194,7 +194,7 @@ export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "companionship",
-    title: "Общие каналы",
+    title: "Общие каналы и язык близости",
     blurb: "Общий язык и узнавание друг друга",
   },
   {
@@ -224,7 +224,7 @@ export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "daily",
-    title: "Быт и близость",
+    title: "Быт и близость в сценарии",
     blurb: "Живая динамика в выбранном сценарии",
   },
   {
@@ -234,7 +234,7 @@ export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "risks",
-    title: "Риски связи",
+    title: "Риски связи и как их обходить",
     blurb: "Где связь истощается и как это обходить",
   },
   {
@@ -244,8 +244,13 @@ export const HD_CONNECTION_REPORT_MODULES: readonly HdReportModule[] = [
   },
   {
     id: "practices",
-    title: "Практики 7 и 30 дней",
+    title: "Практики на 7 дней и на 30 дней",
     blurb: "Шаги под сценарий связи",
+  },
+  {
+    id: "pdf",
+    title: "Печать / сохранить как PDF",
+    blurb: "Страница печати с текстом разбора связи",
   },
 ] as const;
 
@@ -260,10 +265,10 @@ export function hdReportTextToPrintSections(
   const withoutDisclaimer = cleaned
     .replace(/\n*---\n+\*?Разбор является[\s\S]*$/i, "")
     .trim();
-  // Accept "## Title" and "##Title"; keep body newlines intact (do not explode lists).
-  const chunks = withoutDisclaimer.split(/^##\s*/m);
+  // Accept "## Title" / "##Title" but NEVER treat "###" as a section break.
+  const chunks = withoutDisclaimer.split(/^##(?!#)\s*/m);
   const sections: Array<{ key: string; title: string; claims: Array<{ text: string }> }> = [];
-  const startsWithHeading = /^##\s*\S/.test(withoutDisclaimer);
+  const startsWithHeading = /^##(?!#)\s*\S/.test(withoutDisclaimer);
 
   chunks.forEach((chunk, index) => {
     const trimmed = chunk.trim();

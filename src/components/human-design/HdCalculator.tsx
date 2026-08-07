@@ -2,9 +2,14 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HdConnectionRelation } from "@/lib/human-design";
+import {
+  inferGenderFromFirstName,
+  type BinaryGender,
+} from "@/lib/russian-name-gender";
 import HdChartSlot from "./HdChartSlot";
 import HdChartView, { type HdChartPayload } from "./HdChartView";
 import HdComposite from "./HdComposite";
+import HdGenderPicker from "./HdGenderPicker";
 import HdRelationPicker from "./HdRelationPicker";
 import HdReportPanel from "./HdReportPanel";
 import { hdApiErrorMessage } from "./hd-errors";
@@ -78,6 +83,8 @@ export default function HdCalculator({
   const [subjectKind, setSubjectKind] = useState<"self" | "other">(initialSubjectKind);
   const [subjectName, setSubjectName] = useState("");
   const [relationToSelf, setRelationToSelf] = useState<HdConnectionRelation>("partner");
+  const [gender, setGender] = useState<BinaryGender | null>(null);
+  const [genderTouched, setGenderTouched] = useState(false);
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [timeUnknown, setTimeUnknown] = useState(false);
@@ -105,6 +112,12 @@ export default function HdCalculator({
       .then((d) => setAuthenticated(Boolean(d?.authenticated && !d?.needsProfile)))
       .catch(() => setAuthenticated(false));
   }, []);
+
+  // Soft default from first name until the user picks gender manually.
+  useEffect(() => {
+    if (subjectKind !== "other" || genderTouched) return;
+    setGender(inferGenderFromFirstName(subjectName));
+  }, [subjectName, subjectKind, genderTouched]);
 
   // Logged-in visitors see their existing charts above the form.
   useEffect(() => {
@@ -142,8 +155,12 @@ export default function HdCalculator({
         if (!p) return;
         prefilledRef.current = true;
         if (typeof p.birthDate === "string" && p.birthDate) setBirthDate(p.birthDate);
-        if (typeof p.birthTime === "string" && p.birthTime) {
+        if (p.timeKnown === false) {
+          setBirthTime("");
+          setTimeUnknown(true);
+        } else if (typeof p.birthTime === "string" && p.birthTime) {
           setBirthTime(p.birthTime.slice(0, 5));
+          setTimeUnknown(false);
         } else {
           setTimeUnknown(true);
         }
@@ -332,6 +349,7 @@ export default function HdCalculator({
           subjectKind,
           subjectName: subjectKind === "other" ? subjectName.trim() : null,
           relationToSelf: subjectKind === "other" ? relationToSelf : null,
+          gender: subjectKind === "other" ? gender : null,
           claimToken: storedFp ? readHdClaimToken(storedFp) : null,
         }),
       });
@@ -370,6 +388,7 @@ export default function HdCalculator({
     subjectKind,
     subjectName,
     relationToSelf,
+    gender,
     onChartCreated,
   ]);
 
@@ -565,6 +584,15 @@ export default function HdCalculator({
                 autoComplete="off"
               />
             </div>
+            <HdGenderPicker
+              value={gender}
+              onChange={(v) => {
+                setGenderTouched(true);
+                setGender(v);
+              }}
+              disabled={loading}
+              label="Пол"
+            />
             <HdRelationPicker
               value={relationToSelf}
               onChange={setRelationToSelf}

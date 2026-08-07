@@ -17,7 +17,9 @@ const PHASES: Record<HdGeneratingKind, string[]> = {
     "Накладываю две карты…",
     "Считаю электромагнетику и опоры…",
     "Описываю химию связи…",
-    "Пишу практики под ваш сценарий…",
+    "Разбираю типы, роли и решения в паре…",
+    "Пишу быт, деньги и риски связи…",
+    "Собираю практики и проверяю полноту…",
   ],
   center: [
     "Смотрю механику центра…",
@@ -25,9 +27,11 @@ const PHASES: Record<HdGeneratingKind, string[]> = {
   ],
 };
 
+/** Soft ETA for the wait UI + progress ease. Match multi-pass LLM reality
+ * (composite often ~3 min; personal up to ~5). Worker timeouts are higher. */
 const ETA_MIN: Record<HdGeneratingKind, { min: number; max: number }> = {
   personal: { min: 3, max: 5 },
-  composite: { min: 1, max: 2 },
+  composite: { min: 3, max: 5 },
   center: { min: 0.5, max: 1 },
 };
 
@@ -52,6 +56,10 @@ export default function HdGenerating({
   const [now, setNow] = useState(() => Date.now());
 
   useEffect(() => {
+    const reduced =
+      typeof window !== "undefined" &&
+      window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (reduced) return;
     const id = window.setInterval(() => {
       setPhaseIndex((i) => (i + 1) % phases.length);
     }, kind === "center" ? 2800 : 4500);
@@ -88,7 +96,7 @@ export default function HdGenerating({
   const etaText =
     kind === "center"
       ? "Обычно меньше минуты"
-      : `Обычно ${eta.min}–${eta.max} минуты`;
+      : `Обычно ${eta.min}–${eta.max} минут`;
 
   return (
     <div

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import ReactMarkdown from "react-markdown";
 import {
   AUTHORITY_NAMES_RU,
   CENTER_NAMES_RU,
@@ -19,6 +18,7 @@ import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
 import HdGenerating from "./HdGenerating";
 import HdJourney, { type HdJourneyStep } from "./HdJourney";
+import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
 import { hdChartChipLabel } from "./hd-labels";
 import { useHdReportWait } from "./useHdReportWait";
@@ -69,6 +69,7 @@ export default function HdComposite({ base, partner }: Props) {
 
   const [report, setReport] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
+  const [resumeFree, setResumeFree] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
@@ -92,6 +93,7 @@ export default function HdComposite({ base, partner }: Props) {
       if (r.reportText) {
         setReport(sanitizeHdCompositeReportText(r.reportText));
         setReportId(r.id);
+        setResumeFree(false);
       }
       setBusy(false);
       setUiGenerating(false);
@@ -106,6 +108,7 @@ export default function HdComposite({ base, partner }: Props) {
   useEffect(() => {
     setReport(null);
     setReportId(null);
+    setResumeFree(false);
     setError(null);
     setBusy(false);
     setUiGenerating(false);
@@ -134,7 +137,12 @@ export default function HdComposite({ base, partner }: Props) {
           return;
         }
         const data = (await res.json().catch(() => ({}))) as {
-          report?: { id?: string; status?: string; reportText?: string | null };
+          report?: {
+            id?: string;
+            status?: string;
+            reportText?: string | null;
+            resumeFree?: boolean;
+          };
         };
         if (cancelled) return;
         if (
@@ -144,16 +152,29 @@ export default function HdComposite({ base, partner }: Props) {
         ) {
           setReport(sanitizeHdCompositeReportText(data.report.reportText));
           if (typeof data.report.id === "string") setReportId(data.report.id);
+          setResumeFree(false);
           return;
         }
         if (data.report?.status === "pending") {
           if (typeof data.report.id === "string") setReportId(data.report.id);
+          setResumeFree(data.report.resumeFree === true);
           setUiGenerating(true);
           startWait({ baselineText: null });
           setBusy(true);
           // Paid pending without an active worker (crash / repaired report)
           // would hang forever — kick a free resume on the server.
           void postCompositeRef.current?.({ resume: true });
+          return;
+        }
+        if (data.report?.status === "error") {
+          if (typeof data.report.id === "string") setReportId(data.report.id);
+          const free = data.report.resumeFree === true;
+          setResumeFree(free);
+          setError(
+            free
+              ? "Генерация не завершилась. Оплата сохранена — нажмите ещё раз, повторного списания не будет."
+              : "Генерация не завершилась. Если руны списались — они уже возвращены; нажмите ещё раз для новой попытки."
+          );
         }
       } catch {
         if (!cancelled) setLoadFailed(true);
@@ -219,6 +240,7 @@ export default function HdComposite({ base, partner }: Props) {
       });
       const data = (await res.json().catch(() => ({}))) as {
         report?: { id?: string; status?: string; reportText?: string | null };
+        jobId?: string;
         error?: string;
         message?: string;
         balance?: number;
@@ -246,15 +268,44 @@ export default function HdComposite({ base, partner }: Props) {
         return;
       }
       if (res.status === 409 && data?.code === "CLAIM_BUSY") {
+        setBusy(false);
         setUiGenerating(true);
         startWait({ baselineText: null });
         return;
       }
-      // Durable worker accepted the job (202): the report row appears once
-      // the worker starts — the entity poll picks it up from there.
+      // Durable worker accepted the job: poll /api/jobs/:id (natal pattern)
+      // and keep entity GET as refresh/fallback via startWait.
       if (res.status === 202) {
+        setBusy(false);
         setUiGenerating(true);
         startWait({ baselineText: null });
+        const jobId = typeof data.jobId === "string" ? data.jobId : null;
+        if (jobId) {
+          void (async () => {
+            try {
+              const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+              const result = await waitForAsyncJob({
+                jobId,
+                storageKey: `aura:hd-composite-job:${base.id}:${partner.id}`,
+                maxAgeMs: 20 * 60_000,
+                pollIntervalMs: 2500,
+              });
+              const r = result?.report as
+                | { id?: string; status?: string; reportText?: string | null }
+                | undefined;
+              if (r?.status === "done" && typeof r.reportText === "string" && r.reportText.trim()) {
+                setReport(sanitizeHdCompositeReportText(r.reportText));
+                if (typeof r.id === "string") setReportId(r.id);
+                setResumeFree(false);
+                stopWait();
+                setBusy(false);
+                setUiGenerating(false);
+              }
+            } catch {
+              // Entity poll in useHdReportWait continues.
+            }
+          })();
+        }
         return;
       }
       if (data.report?.status === "done" && data.report.reportText) {
@@ -274,9 +325,11 @@ export default function HdComposite({ base, partner }: Props) {
       }
       // Pending / long generate — keep polling.
       if (typeof data.report?.id === "string") setReportId(data.report.id);
+      setBusy(false);
       setUiGenerating(true);
       startWait({ baselineText: null });
     } catch {
+      setBusy(false);
       setUiGenerating(true);
       startWait({ baselineText: null });
       setError("Связь прервалась — ждём результат на сервере…");
@@ -537,9 +590,36 @@ export default function HdComposite({ base, partner }: Props) {
       <div className="hd-panel hd-print-hidden">
         <p className="hd-panel__title">Разбор связи от Эвелины</p>
 
-        {uiGenerating || waiting || busy ? (
+        {/* Prefer a ready report over the wait UI — never hide finished text
+            behind a stuck timer (parity with HdReportPanel). */}
+        {report ? (
+          <div className="hd-report mt-5">
+            <HdReportSections text={report} />
+            <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
+              {reportId ? (
+                <a
+                  href={`/cabinet/human-design/composite-reports/${reportId}/print`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="hd-bodygraph__export"
+                >
+                  Печать / PDF
+                </a>
+              ) : (
+                <button
+                  type="button"
+                  className="hd-bodygraph__export"
+                  onClick={() => window.print()}
+                  title="Печать или сохранение как PDF"
+                >
+                  Печать / PDF
+                </button>
+              )}
+            </div>
+          </div>
+        ) : uiGenerating || waiting || busy ? (
           <div className="mt-4">
-            <HdGenerating kind="composite" startedAt={startedAt ?? Date.now()} />
+            <HdGenerating kind="composite" startedAt={startedAt ?? undefined} />
             {error && (
               <p className="mt-3 text-sm text-amber-100/70" role="status">
                 {error}
@@ -549,7 +629,7 @@ export default function HdComposite({ base, partner }: Props) {
         ) : (
           <>
             <p className="mt-2 text-sm text-white/60">
-              Механика выше — бесплатно. Ниже модульный текст Эвелины по вашей карте связи
+              Механика выше — бесплатно. Ниже полный текст Эвелины по вашей карте связи
               {partner.subjectKind === "other" ? (
                 <>
                   {" "}
@@ -559,53 +639,53 @@ export default function HdComposite({ base, partner }: Props) {
               .
             </p>
 
-            {!report && (
-              <>
-                <div className="hd-packages hd-packages--single mt-4">
-                  <div className="hd-package is-active is-featured">
-                    <span className="hd-package__badge">Премиум</span>
-                    <strong className="hd-package__label">Карта связи</strong>
-                    <span className="hd-package__tagline">
-                      Модульный разбор · {relationLabel.toLowerCase()}
-                    </span>
-                    <span className="hd-package__price">{priceLabel}</span>
-                    <ul className="hd-package__modules">
-                      {HD_CONNECTION_REPORT_MODULES.map((m) => (
-                        <li key={m.id}>
-                          <span aria-hidden="true">✓</span>
-                          <span>
-                            <em>{m.title}</em>
-                            {m.blurb}
-                          </span>
-                        </li>
-                      ))}
-                    </ul>
-                  </div>
-                </div>
-                <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
-                  <input
-                    type="checkbox"
-                    checked={ack}
-                    onChange={(e) => setAck(e.target.checked)}
-                    className="mt-0.5 accent-amber-500"
-                  />
-                  <span>
-                    Подтверждаю передачу рассчитанных данных обеих карт внешней языковой модели для
-                    генерации разбора.
-                  </span>
-                </label>
-                <div className="hd-sticky-cta mt-4">
-                  <button
-                    type="button"
-                    onClick={() => void buyReport()}
-                    disabled={busy || waiting || !ack}
-                    className="btn-luxe btn-luxe--gold w-full disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {`Получить разбор связи · ${priceLabel}`}
-                  </button>
-                </div>
-              </>
-            )}
+            <div className="hd-packages hd-packages--single mt-4">
+              <div className="hd-package is-active is-featured">
+                <span className="hd-package__badge">Премиум</span>
+                <strong className="hd-package__label">Карта связи</strong>
+                <span className="hd-package__tagline">
+                  Полный разбор · {relationLabel.toLowerCase()}
+                </span>
+                <span className="hd-package__price">
+                  {resumeFree ? "без списания" : priceLabel}
+                </span>
+                <ul className="hd-package__modules">
+                  {HD_CONNECTION_REPORT_MODULES.map((m) => (
+                    <li key={m.id}>
+                      <span aria-hidden="true">✓</span>
+                      <span>
+                        <em>{m.title}</em>
+                        {m.blurb}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+            <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
+              <input
+                type="checkbox"
+                checked={ack}
+                onChange={(e) => setAck(e.target.checked)}
+                className="mt-0.5 accent-amber-500"
+              />
+              <span>
+                Подтверждаю передачу рассчитанных данных обеих карт внешней языковой модели для
+                генерации разбора.
+              </span>
+            </label>
+            <div className="hd-sticky-cta mt-4">
+              <button
+                type="button"
+                onClick={() => void buyReport()}
+                disabled={busy || waiting || !ack}
+                className="btn-luxe btn-luxe--gold w-full disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {resumeFree
+                  ? "Продолжить генерацию · без списания"
+                  : `Получить разбор связи · ${priceLabel}`}
+              </button>
+            </div>
 
             {loadFailed && !error && (
               <p
@@ -641,33 +721,6 @@ export default function HdComposite({ base, partner }: Props) {
                   </>
                 )}
               </p>
-            )}
-
-            {report && (
-              <div className="hd-report mt-5">
-                <ReactMarkdown>{report}</ReactMarkdown>
-                <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
-                  {reportId ? (
-                    <a
-                      href={`/cabinet/human-design/composite-reports/${reportId}/print`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="hd-bodygraph__export"
-                    >
-                      Печать / PDF
-                    </a>
-                  ) : (
-                    <button
-                      type="button"
-                      className="hd-bodygraph__export"
-                      onClick={() => window.print()}
-                      title="Печать или сохранение как PDF"
-                    >
-                      Печать / PDF
-                    </button>
-                  )}
-                </div>
-              </div>
             )}
           </>
         )}

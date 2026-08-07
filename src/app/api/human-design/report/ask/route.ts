@@ -5,7 +5,7 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { completeChat, isOpenRouterConfigured, isRejectedLlmOutput, type ChatMessage } from "@/lib/llm";
+import { completeChat, isHardRejectedLlmOutput, isOpenRouterConfigured, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
@@ -27,6 +27,7 @@ import {
 import {
   buildHdAskSystemPrompt,
   formatHdEvidence,
+  HD_ENGINE_VERSION,
   sanitizeHdReportText,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
@@ -80,8 +81,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Разбор не найден." }, { status: 404 });
   }
   const chart = await getHdChartById(report.chartId);
-  if (!chart) {
+  if (!chart || chart.userId !== userId) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
+  }
+  if (chart.engineVersion !== HD_ENGINE_VERSION) {
+    return NextResponse.json(
+      { error: "Карта рассчитана устаревшим движком. Пересчитайте карту." },
+      { status: 409 }
+    );
   }
 
   if (!isOpenRouterConfigured()) {
@@ -127,7 +134,7 @@ export async function POST(request: NextRequest) {
       timeoutMs: 90_000,
     });
 
-    if (!answer || isRejectedLlmOutput(answer)) {
+    if (!answer || isHardRejectedLlmOutput(answer)) {
       return NextResponse.json(
         { error: "Модель не смогла ответить. Оплата не списывалась." },
         { status: 502 }

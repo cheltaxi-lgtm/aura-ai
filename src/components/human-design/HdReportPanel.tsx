@@ -18,10 +18,11 @@ import { useHdReportWait } from "./useHdReportWait";
 
 interface HdReport {
   id: string;
-  status: "pending" | "done" | "error";
+  status: "pending" | "done" | "error" | "needs_regeneration";
   reportText: string | null;
   packageId?: "depth" | "max";
   includedAsksRemaining?: number;
+  resumeFree?: boolean;
 }
 
 interface HdReportPanelProps {
@@ -153,6 +154,16 @@ export default function HdReportPanel({
           // A paid pending row without an active worker (crash / repaired
           // report) would hang forever — kick a free resume on the server.
           void resumePendingGeneration();
+          return;
+        }
+        if (d?.report?.status === "error") {
+          const er = d.report as HdReport;
+          setReport({ ...er, reportText: null });
+          setError(
+            er.resumeFree
+              ? "Генерация не завершилась. Оплата сохранена — нажмите ещё раз, повторного списания не будет."
+              : "Генерация не завершилась. Если руны списались — они уже возвращены; нажмите ещё раз для новой попытки."
+          );
         }
       })
       .catch(() => {
@@ -235,9 +246,32 @@ export default function HdReportPanel({
         });
         return;
       }
-      // Durable worker accepted the job (202): the report row appears once
-      // the worker starts — the entity poll picks it up from there.
+      // Durable worker accepted the job: poll /api/jobs/:id + entity GET fallback.
       if (res.status === 202) {
+        setLoading(false);
+        setUiGenerating(true);
+        const jobId = typeof data.jobId === "string" ? data.jobId : null;
+        if (jobId) {
+          void (async () => {
+            try {
+              const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+              const result = await waitForAsyncJob({
+                jobId,
+                storageKey: `aura:hd-report-job:${chartId}`,
+                maxAgeMs: 20 * 60_000,
+                pollIntervalMs: 2500,
+              });
+              const r = result?.report as HdReport | undefined;
+              if (r?.status === "done" && r.reportText) {
+                applyDoneReport(r);
+                setDedupeNotice(result.deduped === true);
+                stopWait();
+              }
+            } catch {
+              // Entity poll in useHdReportWait continues.
+            }
+          })();
+        }
         return;
       }
       // Another tab / resume already generating — keep polling.
@@ -325,6 +359,8 @@ export default function HdReportPanel({
     setError(null);
     setDialog((prev) => [...prev, { role: "user", content: q }]);
     setQuestion("");
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 45_000);
     try {
       const res = await fetch("/api/human-design/report/ask", {
         method: "POST",
@@ -334,6 +370,7 @@ export default function HdReportPanel({
           question: q,
           aiDataUseAcknowledged: true,
         }),
+        signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
       if (res.status === 402) {
@@ -349,6 +386,7 @@ export default function HdReportPanel({
         if (await recoverAskFromHistory(report.id, q)) return;
         setDialog((prev) => prev.slice(0, -1));
         setQuestion(q);
+        // Ask errors stay in component error state — never merge into reportText.
         setError(hdApiErrorMessage(data, "Не удалось получить ответ."));
         return;
       }
@@ -358,12 +396,18 @@ export default function HdReportPanel({
       } else if (data.usedIncludedAsk) {
         setIncludedAsks((n) => Math.max(0, n - 1));
       }
-    } catch {
+    } catch (e) {
       if (await recoverAskFromHistory(report.id, q)) return;
       setDialog((prev) => prev.slice(0, -1));
       setQuestion(q);
-      setError("Сеть недоступна. Попробуйте ещё раз.");
+      const timedOut = e instanceof DOMException && e.name === "AbortError";
+      setError(
+        timedOut
+          ? "Ответ не пришёл за 45 секунд. Текст ошибки не добавлен в разбор — нажмите ещё раз."
+          : "Сеть недоступна. Попробуйте ещё раз."
+      );
     } finally {
+      clearTimeout(timer);
       askInFlightRef.current = false;
       setAsking(false);
     }
@@ -421,7 +465,7 @@ export default function HdReportPanel({
   );
   const generatingBlock = isGenerating ? (
     <div className="hd-panel">
-      <HdGenerating kind="personal" startedAt={startedAt ?? Date.now()} />
+      <HdGenerating kind="personal" startedAt={startedAt ?? undefined} />
       {error && (
         <p className="mt-3 text-sm text-amber-100/70" role="status">
           {error}
@@ -541,9 +585,11 @@ export default function HdReportPanel({
               disabled={!acknowledged || loading || waiting}
               className="btn-luxe btn-luxe--gold w-full disabled:cursor-not-allowed disabled:opacity-50"
             >
-              {`Получить полную расшифровку · ${
-                ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
-              }`}
+              {report?.resumeFree
+                ? "Продолжить генерацию · без списания"
+                : `Получить полную расшифровку · ${
+                    ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
+                  }`}
             </button>
           </div>
           <PaywallModal

@@ -5,7 +5,7 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { isOpenRouterConfigured, isRejectedLlmOutput } from "@/lib/llm";
+import { isHardRejectedLlmOutput, isOpenRouterConfigured } from "@/lib/llm";
 import { completeHdCompositeReport } from "@/lib/human-design/report-generate";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
@@ -62,7 +62,7 @@ import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
-export const maxDuration = 300;
+export const maxDuration = 600;
 
 const DISCLAIMER =
   "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
@@ -270,22 +270,25 @@ export async function POST(request: NextRequest) {
   // pre-checked so a broke user gets the 402 paywall immediately instead of
   // a silent job failure the entity poll cannot surface.
   if (body.async === true && isAsyncJobWorkerConfigured()) {
-    try {
-      await ensureSufficientRunes({ userId, action: "HD_COMPOSITE_REPORT", exempt });
-    } catch (error) {
-      if (error instanceof InsufficientFundsError) {
-        return NextResponse.json(
-          {
-            error: "insufficient_runes",
-            message: "Недостаточно рун для этого действия.",
-            balance: error.balance,
-            required: error.required,
-            cost: error.required,
-          },
-          { status: 402 }
-        );
+    // Paid resume already charged — never 402 a broke user off a held row.
+    if (!resumePaidPending) {
+      try {
+        await ensureSufficientRunes({ userId, action: "HD_COMPOSITE_REPORT", exempt });
+      } catch (error) {
+        if (error instanceof InsufficientFundsError) {
+          return NextResponse.json(
+            {
+              error: "insufficient_runes",
+              message: "Недостаточно рун для этого действия.",
+              balance: error.balance,
+              required: error.required,
+              cost: error.required,
+            },
+            { status: 402 }
+          );
+        }
+        throw error;
       }
-      throw error;
     }
     return enqueuePaidAsyncJob({
       userId,
@@ -447,7 +450,9 @@ export async function POST(request: NextRequest) {
       nameB: partnerName,
     });
 
-    if (!answer || isRejectedLlmOutput(answer)) {
+    // Section gate already ran in completeHdCompositeReport; only hard-reject
+    // CJK/refusal — chat degenerate heuristics false-positive on practices.
+    if (!answer || isHardRejectedLlmOutput(answer)) {
       await rollback();
       if (resumePaidPending) {
         // Keep the paid pending row: the next attempt resumes it for free.

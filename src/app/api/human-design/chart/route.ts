@@ -15,9 +15,10 @@ import {
   HdInputError,
   HdRateLimitError,
   mapHdRelationToSelf,
+  mapHdGender,
   toOwnerHdChartPayload,
   toPublicHdChartPayload,
-  updateHdChartRelationForUser,
+  updateHdChartMetaForUser,
 } from "@/lib/services/human-design-service";
 import type { HdChartIdentity } from "@/lib/human-design";
 import { forgetHdChartFact, rememberHdChartFact } from "@/lib/human-design/memory";
@@ -87,6 +88,14 @@ export async function POST(request: NextRequest) {
             mapHdRelationToSelf(
               typeof body.relationToSelf === "string" ? body.relationToSelf : null
             ) ?? ("partner" as const),
+          // Only when the client sends `gender` — omit keeps the stored value.
+          ...(Object.prototype.hasOwnProperty.call(body, "gender")
+            ? {
+                gender: mapHdGender(
+                  typeof body.gender === "string" ? body.gender : null
+                ),
+              }
+            : {}),
         }
       : { kind: "self" as const, name: null, relationToSelf: null };
   const claimToken =
@@ -139,7 +148,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({ chart: toPublicHdChartPayload(chart) });
 }
 
-/** Update relation context on an owned other-person chart. */
+/** Update relation / gender on an owned other-person chart. */
 export async function PATCH(request: NextRequest) {
   if (!(await isHumanDesignEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
@@ -158,21 +167,31 @@ export async function PATCH(request: NextRequest) {
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
   const chartId = typeof body.chartId === "string" ? body.chartId : "";
-  const relation = mapHdRelationToSelf(
-    typeof body.relationToSelf === "string" ? body.relationToSelf : null
-  );
-  if (!chartId || !relation) {
+  const hasRelation = typeof body.relationToSelf === "string";
+  const hasGender = Object.prototype.hasOwnProperty.call(body, "gender");
+  const relation = hasRelation
+    ? mapHdRelationToSelf(body.relationToSelf as string)
+    : undefined;
+  const gender = hasGender
+    ? mapHdGender(typeof body.gender === "string" ? body.gender : null)
+    : undefined;
+  if (!chartId || (!hasRelation && !hasGender)) {
+    return NextResponse.json(
+      { error: "Укажите карту и тип связи или пол." },
+      { status: 400 }
+    );
+  }
+  if (hasRelation && !relation) {
     return NextResponse.json(
       { error: "Укажите карту и тип связи." },
       { status: 400 }
     );
   }
 
-  const row = await updateHdChartRelationForUser(
-    chartId,
-    resolved.profileUserId,
-    relation
-  );
+  const row = await updateHdChartMetaForUser(chartId, resolved.profileUserId, {
+    ...(relation ? { relationToSelf: relation } : {}),
+    ...(hasGender ? { gender: gender ?? null } : {}),
+  });
   if (!row) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }

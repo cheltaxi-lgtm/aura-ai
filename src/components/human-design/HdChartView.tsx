@@ -8,6 +8,7 @@ import type {
   HdConnectionRelation,
   HdPublicChart,
 } from "@/lib/human-design";
+import type { BinaryGender } from "@/lib/russian-name-gender";
 import {
   AUTHORITY_NAMES_RU,
   CENTER_NAMES_RU,
@@ -35,6 +36,8 @@ export interface HdChartPayload {
   subjectName?: string | null;
   /** How this other-person chart relates to the owner (pair-report scenario). */
   relationToSelf?: HdConnectionRelation | null;
+  /** Binary gender for other-person charts (LLM address). */
+  gender?: BinaryGender | null;
   chart: HdChart;
 }
 
@@ -60,6 +63,8 @@ export default function HdChartView({
   payload: HdChartPayload | HdPublicChartPayload;
 }) {
   const { chart } = payload;
+  /** Public share payloads omit birth — no paid center insights there. */
+  const isPublicShare = !("birth" in chart);
   const typeMeta = TYPE_META[chart.type];
   const stability = chart.stability;
   const [copied, setCopied] = useState(false);
@@ -234,7 +239,9 @@ export default function HdChartView({
       <Bodygraph
         chart={chart}
         transits={transits}
-        onCenterInsight={(center) => void askCenterInsight(center)}
+        onCenterInsight={
+          isPublicShare ? undefined : (center) => void askCenterInsight(center)
+        }
       />
 
       {/* Print still gets the classic fact grid; hidden on screen */}

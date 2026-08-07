@@ -8,14 +8,35 @@ import {
   type HdPublicChart,
 } from "@/lib/human-design";
 
-/** Free Variables / PHS-lite summary from engine color·tone·base. */
+function isOwnerChart(chart: HdChart | HdPublicChart): chart is HdChart {
+  const sun = chart.personality.find((a) => a.body === "sun");
+  return Boolean(sun && "color" in sun && typeof sun.color === "number");
+}
+
+/** Free Variables / PHS-lite summary from engine color·tone·base (owner charts only). */
 export default function HdVariablesBrief({
   chart,
 }: {
   chart: HdChart | HdPublicChart;
 }) {
-  const v = variableSummary(chart);
   const hang = hangingGates(chart);
+  if (!isOwnerChart(chart)) {
+    // Public share: color/tone/base stripped — show hanging gates only.
+    if (!hang.length) return null;
+    return (
+      <div className="hd-variables">
+        <p className="hd-panel__title">Висящие ворота</p>
+        <div className="hd-foundation__centers mt-3">
+          <p>
+            <span>Без полного канала</span>
+            {hang.map((g) => `${g} «${GATE_NAMES_RU[g] ?? ""}»`).join(" · ")}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  const v = variableSummary(chart);
 
   return (
     <div className="hd-variables">

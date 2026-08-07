@@ -33,7 +33,7 @@ CREATE TABLE IF NOT EXISTS async_jobs (
     'natal_forecast', 'natal_compatibility',
     'intention_spread', 'daily_reading', 'daily_extended',
     'joint_reading', 'joint_combined', 'photo_reading', 'ritual_generation',
-    'numerology_reading', 'hd_report', 'hd_composite_report'
+    'numerology_reading', 'hd_report', 'hd_composite_report', 'pro_premium_report'
   )),
   status        TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'running', 'completed', 'failed')),
@@ -431,7 +431,7 @@ INSERT INTO platform_settings (key, value) VALUES
   ('prompts', '{"globalPrefix":"РўС‹ вЂ” РјР°СЃС‚РµСЂ СЌР·РѕС‚РµСЂРёС‡РµСЃРєРѕР№ РїР»Р°С‚С„РѕСЂРјС‹ Zovus. РћС‚РІРµС‡Р°Р№ РЅР° СЂСѓСЃСЃРєРѕРј."}'),
   ('tts', '{"enabled":false,"model":"google/gemini-3.1-flash-tts-preview","fallbackModel":"hexgrad/kokoro-82m","fallbackEnabled":true,"chunkChars":4000}'),
   ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Zovus mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":true,"destiny_card":true,"scene_illustration":true,"final_report":true}}'),
-  ('runes', '{"enabled":true,"rubPerRune":2,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"INTENTION_SPREAD":20,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":20,"FORECAST_REPORT":20,"SYNASTRY_REPORT":30}}')
+  ('runes', '{"enabled":true,"rubPerRune":5,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"INTENTION_SPREAD":20,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":300,"FORECAST_REPORT":20,"SYNASTRY_REPORT":30,"NUMEROLOGY_SESSION":100,"MATRIX_SUBJECT_REPORT":100,"HD_REPORT":300,"HD_COMPOSITE_REPORT":300}}')
 ON CONFLICT (key) DO NOTHING;
 
 -- === Runes (internal currency) ===
@@ -1725,9 +1725,9 @@ CREATE TABLE IF NOT EXISTS hd_charts (
     relation_to_self IS NULL
     OR relation_to_self IN ('partner', 'friend', 'child', 'colleague', 'business')
   ),
-  -- SHA-256 hash of the guest claim token (hash-only, like tarot receipts).
-  -- Rows predating the hash migration may still hold the raw 48-hex token
-  -- until the 30-day guest sweep purges them; claim matches both forms.
+  -- Binary gender for other-person charts (LLM Russian address). NULL for self.
+  gender TEXT CHECK (gender IS NULL OR gender IN ('male', 'female')),
+  -- SHA-256 hex of `hd-claim:v1:${raw}` (migration 109 hashed legacy plaintext).
   claim_token TEXT,
   owner_key UUID GENERATED ALWAYS AS (COALESCE(user_id, '00000000-0000-0000-0000-000000000000'::uuid)) STORED,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
@@ -1742,11 +1742,16 @@ CREATE TABLE IF NOT EXISTS hd_reports (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   chart_id UUID NOT NULL REFERENCES hd_charts(id) ON DELETE CASCADE,
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
-  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','error')),
+  status TEXT NOT NULL DEFAULT 'pending' CHECK (status IN ('pending','done','error','needs_regeneration')),
   report_text TEXT,
   model TEXT,
   transaction_id UUID,
   error TEXT,
+  quality_findings JSONB,
+  quality_updated_at TIMESTAMPTZ,
+  cost_rub NUMERIC(12, 4),
+  llm_calls INTEGER,
+  token_usage JSONB,
   package_id TEXT NOT NULL DEFAULT 'max' CHECK (package_id IN ('depth', 'max')),
   included_asks_remaining INTEGER NOT NULL DEFAULT 5,
   report_tone TEXT NOT NULL DEFAULT 'personal' CHECK (report_tone IN ('personal', 'child', 'work')),
@@ -1755,6 +1760,9 @@ CREATE TABLE IF NOT EXISTS hd_reports (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS idx_hd_reports_chart ON hd_reports(chart_id);
 CREATE INDEX IF NOT EXISTS idx_hd_reports_user ON hd_reports(user_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_hd_reports_needs_regen
+  ON hd_reports (created_at DESC)
+  WHERE status = 'needs_regeneration';
 
 CREATE TABLE IF NOT EXISTS hd_report_messages (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

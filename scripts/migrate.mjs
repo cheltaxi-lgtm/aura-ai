@@ -35,7 +35,8 @@ const BASELINE_MAX_VERSION = 63;
  */
 // Snapshot includes product schema through 100; 101+ always execute as SQL
 // (idempotent) so empty-DB migrate still exercises the newest align migration.
-const SCHEMA_SQL_THROUGH = 100;
+/** Keep in sync with what src/lib/schema.sql actually contains (HD + quality). */
+const SCHEMA_SQL_THROUGH = 116;
 
 const SCHEMA_MIGRATIONS_DDL = `
 CREATE TABLE IF NOT EXISTS schema_migrations (

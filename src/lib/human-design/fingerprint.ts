@@ -27,7 +27,8 @@ function normalizeBirthTime(value: string | null): string {
  * resolvedOptions() returns the canonical IANA casing; already-canonical
  * inputs pass through unchanged, so existing fingerprints stay valid.
  */
-function normalizeTimezone(value: string): string {
+/** Canonical IANA casing via Intl (Europe/Kiev → Europe/Kyiv when the host resolves it). */
+export function normalizeHdTimezone(value: string): string {
   const trimmed = value.trim();
   if (!trimmed) return trimmed;
   try {
@@ -49,7 +50,7 @@ export function hdFingerprint(identity: HdChartIdentity): string {
   const canonical = [
     identity.birthDate,
     normalizeBirthTime(identity.birthTime),
-    normalizeTimezone(identity.timezone),
+    normalizeHdTimezone(identity.timezone),
     identity.placeName.trim().replace(/\s+/g, " ").toLowerCase(),
     roundCoord(identity.lat).toFixed(4),
     roundCoord(identity.lon).toFixed(4),

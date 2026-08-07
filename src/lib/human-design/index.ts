@@ -26,7 +26,11 @@ export {
   longitudeToActivation,
   solveDesignJd,
 } from "./calculate";
-export { hdFingerprint, type HdChartIdentity } from "./fingerprint";
+export {
+  hdFingerprint,
+  normalizeHdTimezone,
+  type HdChartIdentity,
+} from "./fingerprint";
 export {
   buildHdAskSystemPrompt,
   buildHdCompositeReportSystemPrompt,
@@ -46,6 +50,7 @@ export {
   type HdConnectionRelation,
 } from "./connection";
 export {
+  HD_COMPOSITE_REQUIRED_SECTIONS,
   HD_CONNECTION_REPORT_MODULES,
   HD_FULL_REPORT_MODULES,
   HD_REPORT_REQUIRED_SECTIONS,

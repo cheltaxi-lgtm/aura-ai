@@ -5,8 +5,7 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { isOpenRouterConfigured, isRejectedLlmOutput } from "@/lib/llm";
-import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { isHardRejectedLlmOutput, isOpenRouterConfigured } from "@/lib/llm";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { isRuneBillingActive } from "@/lib/rune-service";
@@ -43,26 +42,24 @@ import {
   isStalePendingReport,
   lockStalePendingReportForResume,
   markHdReportChargeRefunded,
+  markHdReportNeedsRegeneration,
   releaseStalePendingReportLock,
   toPublicHdReport,
   type HdReportRow,
   type HdReportToneId,
 } from "@/lib/services/human-design-service";
-import {
-  buildHdReportSystemPrompt,
-  formatHdEvidence,
-  HD_ENGINE_VERSION,
-  sanitizeHdReportText,
-  type HdReportTone,
-} from "@/lib/human-design";
+import { HD_ENGINE_VERSION, sanitizeHdReportText } from "@/lib/human-design";
+import { generateHdReportSectional } from "@/lib/hd-report-pipeline/generate";
+import { isHdSectionalReportEnabled } from "@/lib/hd-report-pipeline/flags";
 import { completeHdFullReport } from "@/lib/human-design/report-generate";
+import { buildHdReportSystemPrompt, formatHdEvidence } from "@/lib/human-design/prompt";
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { rememberHdChartFact } from "@/lib/human-design/memory";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
-/** Multi-pass full decrypt can take several LLM calls. */
-export const maxDuration = 600;
+/** Sectional HD report: one call per section + editor. */
+export const maxDuration = 800;
 
 const REPORT_DISCLAIMER =
   "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
@@ -121,7 +118,6 @@ export async function POST(request: NextRequest) {
     );
   }
   const tone: HdReportToneId = "personal";
-  const toneHint: HdReportTone = tone;
 
   const chart = await getHdChartById(body.chartId);
   // Strict ownership: guest-pool charts are claimable only via the claim token
@@ -182,9 +178,14 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // Legacy/crash path: error row with an UNREFUNDED charge. Deleting it would
-  // orphan the spend and double-charge on retry — convert to a paid resume.
-  if (!resumePaidPending && existing?.status === "error" && existing.transactionId) {
+  // Legacy/crash / quality-gate path: error or needs_regeneration with an
+  // UNREFUNDED charge. Deleting would orphan the spend and double-charge.
+  if (
+    !resumePaidPending &&
+    existing &&
+    (existing.status === "error" || existing.status === "needs_regeneration") &&
+    existing.transactionId
+  ) {
     let alreadyRefunded: boolean;
     try {
       alreadyRefunded = await hasRuneRefundForTransaction(existing.transactionId);
@@ -198,7 +199,7 @@ export async function POST(request: NextRequest) {
       const { rows } = await query(
         `UPDATE hd_reports SET status = 'pending', error = NULL,
            created_at = now() - make_interval(secs => 601), updated_at = now()
-         WHERE id = $1 AND status = 'error'
+         WHERE id = $1 AND status IN ('error', 'needs_regeneration')
          RETURNING id`,
         [existing.id]
       );
@@ -228,22 +229,27 @@ export async function POST(request: NextRequest) {
   // pre-checked so a broke user gets the 402 paywall immediately instead of
   // a silent job failure the entity poll cannot surface.
   if (body.async === true && isAsyncJobWorkerConfigured()) {
-    try {
-      await ensureSufficientRunes({ userId, action: "HD_REPORT", exempt });
-    } catch (error) {
-      if (error instanceof InsufficientFundsError) {
-        return NextResponse.json(
-          {
-            error: "insufficient_runes",
-            message: "Недостаточно рун для этого действия.",
-            balance: error.balance,
-            required: error.required,
-            cost: error.required,
-          },
-          { status: 402 }
-        );
+    // Paid resume already charged — never 402 a broke user off a held row.
+    // needs_regeneration / error with transaction_id are converted to
+    // resumePaidPending above, so this also covers free quality retries.
+    if (!resumePaidPending) {
+      try {
+        await ensureSufficientRunes({ userId, action: "HD_REPORT", exempt });
+      } catch (error) {
+        if (error instanceof InsufficientFundsError) {
+          return NextResponse.json(
+            {
+              error: "insufficient_runes",
+              message: "Недостаточно рун для этого действия.",
+              balance: error.balance,
+              required: error.required,
+              cost: error.required,
+            },
+            { status: 402 }
+          );
+        }
+        throw error;
       }
-      throw error;
     }
     return enqueuePaidAsyncJob({
       userId,
@@ -259,10 +265,11 @@ export async function POST(request: NextRequest) {
     aboutOther && chart.subjectName
       ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(profileRow.name) || null;
-  const evidence = formatHdEvidence(chart.chart);
-  const systemPrompt = await wrapSystemPrompt(
-    buildHdReportSystemPrompt(clientName, toneHint, { aboutOther })
-  );
+  const useSectional = isHdSectionalReportEnabled();
+  const legacySystemPrompt = useSectional
+    ? null
+    : buildHdReportSystemPrompt(clientName, "personal", { aboutOther });
+  const legacyEvidence = useSectional ? null : formatHdEvidence(chart.chart);
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
@@ -365,14 +372,28 @@ export async function POST(request: NextRequest) {
       charge = created.charge;
     }
 
-    const text = await completeHdFullReport({
-      systemPrompt,
-      evidence,
-      clientName,
-      aboutOther,
-    });
+    // Rollback flag: HD_SECTIONAL_REPORT=0 → legacy multi-pass path.
+    const generated = useSectional
+      ? await generateHdReportSectional({
+          chart: chart.chart,
+          clientName,
+          aboutOther,
+          maxSectionRetries: 2,
+        })
+      : null;
+    const legacyText = useSectional
+      ? null
+      : await completeHdFullReport({
+          systemPrompt: legacySystemPrompt!,
+          evidence: legacyEvidence!,
+          clientName,
+          aboutOther,
+        });
+    const text = generated ? generated.text : legacyText;
 
-    if (!text || isRejectedLlmOutput(text)) {
+    // Hard-reject empty/CJK/refusal. Quality-gate failures keep the charge
+    // and park the draft as needs_regeneration (no client delivery).
+    if (!text || isHardRejectedLlmOutput(text)) {
       await rollback();
       if (resumePaidPending) {
         await releaseStalePendingReportLock(pending.id).catch(() => undefined);
@@ -387,11 +408,8 @@ export async function POST(request: NextRequest) {
         );
       }
       if (refundLanded) {
-        // Refund confirmed — the row may terminalize; retry starts clean.
         await failHdReport(pending.id, "invalid_model_output");
       } else {
-        // Refund failed: keep pending so a retry RESUMES on the same charge
-        // instead of deleting the row and charging twice.
         await releaseStalePendingReportLock(pending.id).catch(() => undefined);
       }
       await trackWorkerJobFailed(
@@ -412,6 +430,29 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (generated?.needsRegeneration) {
+      // Do NOT refund — runes stay spent; retry resumes free via transaction_id.
+      await markHdReportNeedsRegeneration(
+        pending.id,
+        sanitizeHdReportText(text),
+        generated.quality.findings
+      );
+      await trackWorkerJobFailed(
+        request,
+        "Разбор требует проверки качества. Оплата сохранена — повторного списания не будет.",
+        { errorCode: "needs_regeneration", refunded: false }
+      );
+      return NextResponse.json(
+        {
+          error:
+            "Разбор проходит проверку качества. Попробуйте позже — повторного списания не будет.",
+          code: "needs_regeneration",
+          refunded: false,
+        },
+        { status: 502 }
+      );
+    }
+
     const reportText = sanitizeHdReportText(text) + REPORT_DISCLAIMER;
     // Win against the worker timeout-refund: after save_claimed the reaper
     // can no longer fail this job out from under the completed report.
@@ -427,8 +468,26 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
-    await completeHdReport(pending.id, reportText, "openrouter");
+    await completeHdReport(
+      pending.id,
+      reportText,
+      generated?.modelId || "openrouter",
+      {
+        costRub: generated?.costRub ?? null,
+        llmCalls: generated?.llmCalls ?? null,
+        tokenUsage: generated?.usage ?? null,
+        qualityFindings: generated?.quality.findings ?? [],
+      }
+    );
     completed = true;
+    console.warn("[hd-report] cost", {
+      sectional: useSectional,
+      costRub: generated?.costRub,
+      llmCalls: generated?.llmCalls,
+      usage: generated?.usage,
+      modelId: generated?.modelId,
+      durationMs: generated?.durationMs,
+    });
     if (chart.subjectKind === "self") {
       rememberHdChartFact(userId, chart.chart, chart.id);
     }

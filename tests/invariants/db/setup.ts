@@ -41,6 +41,21 @@ export function assertSafeTestDatabaseUrl(url: string): void {
   }
 }
 
+async function resetTestDatabase(url: string): Promise<void> {
+  // Broken ledger (e.g. 109 before hd_charts) — wipe public schema and
+  // re-bootstrap from schema.sql. Never used against prod (assertSafe*).
+  const { Client } = await import("pg");
+  const client = new Client({ connectionString: url });
+  await client.connect();
+  try {
+    await client.query("DROP SCHEMA IF EXISTS public CASCADE");
+    await client.query("CREATE SCHEMA public");
+    await client.query("GRANT ALL ON SCHEMA public TO public");
+  } finally {
+    await client.end();
+  }
+}
+
 export async function ensureTestDbMigrated(): Promise<void> {
   if (!hasTestDb) return;
   if (!migratePromise) {
@@ -49,11 +64,29 @@ export async function ensureTestDbMigrated(): Promise<void> {
       assertSafeTestDatabaseUrl(url);
       process.env.DATABASE_URL = url;
 
-      execFileSync(process.execPath, [path.join(ROOT, "scripts/migrate.mjs")], {
-        cwd: ROOT,
-        env: { ...process.env, DATABASE_URL: url },
-        stdio: "pipe",
-      });
+      const runMigrate = () =>
+        execFileSync(process.execPath, [path.join(ROOT, "scripts/migrate.mjs")], {
+          cwd: ROOT,
+          env: { ...process.env, DATABASE_URL: url },
+          stdio: "pipe",
+        });
+
+      try {
+        runMigrate();
+      } catch (err) {
+        const msg = String(
+          (err as { stderr?: Buffer; message?: string }).stderr?.toString?.() ||
+            (err as Error).message ||
+            err
+        );
+        // Recover empty/broken test DB when HD tables are missing mid-ledger.
+        if (/hd_charts|relation .* does not exist/i.test(msg)) {
+          await resetTestDatabase(url);
+          runMigrate();
+          return;
+        }
+        throw err;
+      }
     })().catch((err) => {
       migratePromise = null;
       throw err;

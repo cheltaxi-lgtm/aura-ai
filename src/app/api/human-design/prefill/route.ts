@@ -58,12 +58,18 @@ export async function GET() {
         }
       : null;
 
+  // Natal `time_known=false` means the stored clock is a placeholder — HD
+  // must not treat it as a known birth time (overconfident type/authority).
+  const timeKnown = natal ? Boolean(natal.time_known) : Boolean(user.birth_time);
+  const birthTime = timeKnown ? user.birth_time ?? null : null;
+
   return NextResponse.json({
     enabled: true,
     prefill: {
       name: user.name,
       birthDate: user.birth_date,
-      birthTime: user.birth_time ?? null,
+      birthTime,
+      timeKnown,
       birthCity: user.birth_city ?? null,
       place,
     },

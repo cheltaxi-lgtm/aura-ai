@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HdConnectionRelation } from "@/lib/human-design";
+import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
 import HdComposite from "./HdComposite";
 import HdRelationPicker from "./HdRelationPicker";
 import type { HdChartPayload } from "./HdChartView";
@@ -310,6 +311,7 @@ export default function HdCompatibilityCalculator() {
             lon: state.place.longitude,
             subjectKind: "other",
             subjectName: state.name.trim(),
+            gender: inferGenderFromFirstName(state.name),
             ...(relationToSelf ? { relationToSelf } : {}),
           }),
         });

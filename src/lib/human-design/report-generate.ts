@@ -7,9 +7,17 @@ function escapeRe(s: string): string {
 }
 
 /** Min body length (chars) for a required ## section to count as written. */
-const MIN_SECTION_BODY_CHARS = 260;
+const MIN_SECTION_BODY_CHARS = 160;
 /** How many thin sections we tolerate after all passes before rejecting. */
-const MAX_THIN_AFTER_PASSES = 2;
+const MAX_THIN_AFTER_PASSES = 5;
+
+/** Title may be followed by whitespace, EOL, or light punctuation (incl. `:`). */
+const HD_HEADING_TAIL = "(?:\\s|$|[.!?…:])";
+
+/** Strip trailing punctuation so `## Title:` and `## Title` share one key. */
+export function normalizeHdHeadingTitle(raw: string): string {
+  return raw.trim().replace(/[.!?…:]+$/u, "").trim();
+}
 
 /** Which required ## headings are still missing from a draft. */
 export function missingHdReportSections(
@@ -19,40 +27,50 @@ export function missingHdReportSections(
   const body = text || "";
   // Avoid \\b — JS word boundaries do not treat Cyrillic as word chars.
   return required.filter(
-    (title) => !new RegExp(`^##\\s*${escapeRe(title)}(?:\\s|$|[.!?…])`, "im").test(body)
+    (title) => !new RegExp(`^##\\s*${escapeRe(title)}${HD_HEADING_TAIL}`, "im").test(body)
   );
 }
 
 /**
  * Required sections that exist only as a stub/placeholder (heading present,
  * body tiny) — the classic "plan with headings, promise to continue" leak.
+ * Uses the longest body for a title (after punctuation normalize).
  */
 function thinHdReportSections(text: string, required: readonly string[]): string[] {
   const body = text || "";
   return required.filter((title) => {
-    const re = new RegExp(`^##\\s*${escapeRe(title)}(?:\\s|$|[.!?…])`, "im");
-    const m = re.exec(body);
-    if (!m) return false;
-    const rest = body.slice(m.index + m[0].length);
-    const nextHeading = rest.search(/^##\s+/m);
-    const sectionBody = (nextHeading === -1 ? rest : rest.slice(0, nextHeading)).trim();
-    return sectionBody.length < MIN_SECTION_BODY_CHARS;
+    const re = new RegExp(`^##\\s*${escapeRe(title)}${HD_HEADING_TAIL}`, "gim");
+    let bestLen = 0;
+    let matched = false;
+    let m: RegExpExecArray | null;
+    while ((m = re.exec(body)) !== null) {
+      matched = true;
+      const rest = body.slice(m.index + m[0].length);
+      // Do not stop at ### (subsection) — only real ## headings.
+      const nextHeading = rest.search(/^##(?!#)\s+/m);
+      const sectionBody = (nextHeading === -1 ? rest : rest.slice(0, nextHeading)).trim();
+      bestLen = Math.max(bestLen, sectionBody.length);
+    }
+    return matched && bestLen < MIN_SECTION_BODY_CHARS;
   });
 }
 
 /**
  * Continuation passes append rewritten sections after the stub. Keep the
- * longest body per ## heading so the client never sees the stub.
+ * longest body per ## heading (punctuation-normalized) so a stub
+ * `## Title:` never survives beside a full `## Title`.
  */
-function dedupeHdSections(text: string): string {
+export function dedupeHdSections(text: string): string {
   const lines = text.split("\n");
   const intro: string[] = [];
-  const sections: Array<{ title: string; body: string[] }> = [];
-  let current: { title: string; body: string[] } | null = null;
+  const sections: Array<{ title: string; key: string; body: string[] }> = [];
+  let current: { title: string; key: string; body: string[] } | null = null;
   for (const line of lines) {
-    const h = /^##\s+(.+)$/.exec(line);
+    const h = /^##(?!#)\s+(.+)$/.exec(line);
     if (h) {
-      current = { title: h[1].trim(), body: [] };
+      const raw = h[1].trim();
+      const key = normalizeHdHeadingTitle(raw);
+      current = { title: key || raw, key: key || raw, body: [] };
       sections.push(current);
     } else if (current) {
       current.body.push(line);
@@ -61,16 +79,16 @@ function dedupeHdSections(text: string): string {
     }
   }
   if (!sections.length) return text.trim();
-  const bestByTitle = new Map<string, { title: string; body: string[] }>();
+  const bestByKey = new Map<string, { title: string; key: string; body: string[] }>();
   for (const s of sections) {
-    const prev = bestByTitle.get(s.title);
+    const prev = bestByKey.get(s.key);
     const len = s.body.join("\n").trim().length;
-    if (!prev || len > prev.body.join("\n").trim().length) bestByTitle.set(s.title, s);
+    if (!prev || len > prev.body.join("\n").trim().length) bestByKey.set(s.key, s);
   }
   const seen = new Set<string>();
   const ordered = sections.filter((s) => {
-    if (seen.has(s.title) || bestByTitle.get(s.title) !== s) return false;
-    seen.add(s.title);
+    if (seen.has(s.key) || bestByKey.get(s.key) !== s) return false;
+    seen.add(s.key);
     return true;
   });
   const parts: string[] = [];
@@ -225,15 +243,28 @@ export async function completeHdFullReport(opts: {
   evidence: string;
   clientName: string | null;
   aboutOther?: boolean;
+  /** Practitioner / client focus question — weave through the whole report. */
+  focusQuestion?: string | null;
 }): Promise<string | null> {
   const who = opts.clientName ?? "клиента";
+  const focus = opts.focusQuestion?.trim() || "";
+  const focusBlock = focus
+    ? `\nФОКУС ЗАПРОСА (сквозная тема всего разбора):\n«${focus}»\n` +
+      (opts.aboutOther
+        ? `Разбор о другом человеке: ответь, как его механика связана с этим фокусом для читателя.\n`
+        : `Читатель — носитель карты. Если фокус сформулирован в 3-м лице («у неё/него») — это всё равно ЕГО/ЕЁ запрос: пиши на «Вы».\n`) +
+      `Во вступлении и в разделе «Отношения» явно разверни ответ на фокус через тип/стратегию/авторитет/профиль/центры/каналы (минимум 6–10 абзацев в «Отношения»). ` +
+      `Без «да/нет», без сроков, без воды — только понятная механика и практические шаги.\n`
+    : "";
   const seedUserText =
     `РАСЧЁТНЫЕ ДАННЫЕ:\n${opts.evidence}\n\n` +
+    focusBlock +
     (opts.aboutOther
       ? `Напиши ПОЛНЫЙ премиальный разбор Дизайна Человека о человеке по имени ${who} — для читателя, который хочет глубоко понять этого человека.\n`
-      : `Напиши ПОЛНЫЙ премиальный разбор Дизайна Человека для ${who}.\n`) +
+      : `Напиши ПОЛНЫЙ премиальный разбор Дизайна Человека для ${who}. Обращайся на «Вы», по имени. Не пиши в третьем лице.\n`) +
     `Это единственная покупка клиента — глубина уровня полной расшифровки конкурентов (все обязательные ## из системного промпта).\n` +
-    `Не сокращай. Не пропускай разделы. Цель: 5500–8000 слов, с ### внутри Центров и Каналов.`;
+    `Не сокращай. Не пропускай разделы. Цель: 5500–8000 слов, с ### внутри Центров и Каналов.\n` +
+    `В прозе разделов избегай жирного markdown (**…**): подчёркивай смысл словами, не звёздочками.`;
 
   return completeSectionedReport({
     systemPrompt: opts.systemPrompt,

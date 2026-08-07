@@ -5,7 +5,7 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { completeChat, isOpenRouterConfigured, isRejectedLlmOutput, type ChatMessage } from "@/lib/llm";
+import { completeChat, isHardRejectedLlmOutput, isOpenRouterConfigured, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
@@ -27,6 +27,7 @@ import {
   formatHdEvidence,
   CENTER_NAMES_RU,
   HD_ENGINE_VERSION,
+  sanitizeHdReportText,
   type HdCenterKey,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
@@ -156,14 +157,20 @@ export async function POST(request: NextRequest) {
       timeoutMs: 90_000,
     });
 
-    if (!answer || isRejectedLlmOutput(answer)) {
+    if (!answer || isHardRejectedLlmOutput(answer)) {
       return NextResponse.json(
         { error: "Модель не смогла ответить. Оплата не списывалась." },
         { status: 502 }
       );
     }
 
-    const text = answer.trim();
+    const text = sanitizeHdReportText(answer.trim());
+    if (!text) {
+      return NextResponse.json(
+        { error: "Модель не смогла ответить. Оплата не списывалась." },
+        { status: 502 }
+      );
+    }
     // Charge + persist atomically: a paid insight is stored before the
     // response leaves, so a lost HTTP response never loses the purchase.
     const { charge, insight } = await withTransaction(async (client) => {

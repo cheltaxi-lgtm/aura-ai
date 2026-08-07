@@ -5,11 +5,12 @@ import { sanitizeHdReportText } from "@/lib/human-design";
 
 export type HdWaitReport = {
   id: string;
-  status: "pending" | "done" | "error";
+  status: "pending" | "done" | "error" | "needs_regeneration";
   reportText: string | null;
   packageId?: "depth" | "max";
   includedAsksRemaining?: number;
   reportTone?: "personal" | "child" | "work";
+  resumeFree?: boolean;
 };
 
 const POLL_MS = 3500;
@@ -126,36 +127,51 @@ export function useHdReportWait(opts: {
           return;
         }
 
-        if (r.status === "done" && r.reportText) {
-          const text =
-            typeof r.reportText === "string" ? sanitizeHdReportText(r.reportText) : r.reportText;
+        if (r.status === "done") {
+          // A newer startWait() owns the UI — drop this tick entirely.
+          if (cancelled || genIdRef.current !== genAtStart) return;
+          const raw = typeof r.reportText === "string" ? r.reportText : "";
+          if (!raw.trim()) {
+            giveUp(
+              "Разбор сохранился пустым. Нажмите ещё раз — при удержанной оплате повторного списания не будет."
+            );
+            return;
+          }
+          const text = sanitizeHdReportText(raw);
           const trimmed = (text || "").trim();
+          if (!trimmed) {
+            giveUp(
+              "Разбор не прошёл проверку текста. Нажмите ещё раз — при удержанной оплате повторного списания не будет."
+            );
+            return;
+          }
           const baseline = baselineTextRef.current;
           // Ignore pre-generation done until we saw pending (or text actually changed).
           const isStaleBaseline =
             baseline !== null && trimmed === baseline && !seenPendingRef.current;
           if (isStaleBaseline) return;
 
+          // Clear wait BEFORE onDone so a parent re-render cannot flash the
+          // spinner over an already-applied report (genId race).
+          seenPendingRef.current = false;
+          baselineTextRef.current = null;
+          setWaiting(false);
+          setStartedAt(null);
           onDoneRef.current({ ...r, reportText: text });
-          if (!cancelled && genIdRef.current === genAtStart) {
-            seenPendingRef.current = false;
-            baselineTextRef.current = null;
-            setWaiting(false);
-            setStartedAt(null);
-          }
           return;
         }
 
         if (r.status === "error") {
+          if (cancelled || genIdRef.current !== genAtStart) return;
+          seenPendingRef.current = false;
+          baselineTextRef.current = null;
+          setWaiting(false);
+          setStartedAt(null);
           onErrorRef.current?.(
-            "Генерация не завершилась. Если руны списались — они вернутся; нажмите ещё раз."
+            r.resumeFree
+              ? "Генерация не завершилась. Оплата сохранена — нажмите ещё раз, повторного списания не будет."
+              : "Генерация не завершилась. Если руны списались — они уже возвращены; нажмите ещё раз для новой попытки."
           );
-          if (!cancelled && genIdRef.current === genAtStart) {
-            seenPendingRef.current = false;
-            baselineTextRef.current = null;
-            setWaiting(false);
-            setStartedAt(null);
-          }
         }
       } catch {
         failCountRef.current += 1;

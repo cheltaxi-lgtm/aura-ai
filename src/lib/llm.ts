@@ -203,18 +203,28 @@ const LLM_REFUSAL_PATTERNS: RegExp[] = [
   /я не могу выполнить/i,
   /я не могу помочь/i,
   /не могу ответить на/i,
-  /отказываюсь/i,
+  // Bare «отказываюсь» is common in HD not-self/boundaries prose — require
+  // refusal-shaped framing (help/answer/request), not the verb alone.
+  /отказываюсь\s+(?:помочь|ответить|выполнить|продолжить|генерир)/i,
+  /я\s+отказываюсь\s+(?:от\s+)?(?:запроса|ответа|помощи)/i,
   /violat(?:e|es|ing) (?:my )?(?:policy|guidelines)/i,
   /against my (?:policy|guidelines)/i,
 ];
 
 /** True when LLM output must be rejected (empty, refusal, CJK storm, degenerate). */
-export function isRejectedLlmOutput(text: string): boolean {
+/** Hard rejects only (CJK / explicit refusal). Use for long-form paid reports
+ * that already enforce product-specific structure (HD section gates). */
+export function isHardRejectedLlmOutput(text: string): boolean {
   const trimmed = text.trim();
   if (!trimmed) return true;
   if (CJK_RE.test(trimmed)) return true;
   if (LLM_REFUSAL_PATTERNS.some((pattern) => pattern.test(trimmed))) return true;
-  if (isDegenerateLlmOutput(trimmed)) return true;
+  return false;
+}
+
+export function isRejectedLlmOutput(text: string): boolean {
+  if (isHardRejectedLlmOutput(text)) return true;
+  if (isDegenerateLlmOutput(text.trim())) return true;
   return false;
 }
 

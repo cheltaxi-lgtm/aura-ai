@@ -14,8 +14,16 @@ import {
   type HdPublicActivation,
   type HdPublicChart,
 } from "@/lib/human-design";
-import { hdFingerprint, type HdChartIdentity } from "@/lib/human-design/fingerprint";
+import {
+  hdFingerprint,
+  normalizeHdTimezone,
+  type HdChartIdentity,
+} from "@/lib/human-design/fingerprint";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
+import {
+  normalizeUserGender,
+  type BinaryGender,
+} from "@/lib/russian-name-gender";
 
 const HD_RELATION_IDS = new Set<string>(HD_CONNECTION_RELATIONS.map((r) => r.id));
 
@@ -28,16 +36,20 @@ export function mapHdRelationToSelf(
   return null;
 }
 
+/** Persist only binary gender; anything else → null. */
+export function mapHdGender(raw: string | null | undefined): BinaryGender | null {
+  return normalizeUserGender(raw);
+}
+
 /** owner_key for rows in the shared guest pool (migration 097 generated column). */
 const GUEST_OWNER_KEY = "00000000-0000-0000-0000-000000000000";
 
 /**
  * Claim tokens are stored as SHA-256 hashes (same standard as the tarot
  * receipt hash-only rule): a DB/log/backup leak must not hand out claim
- * capabilities. Transitional dual-read: rows inserted before this change
- * still carry the raw 48-hex token and are matched by the legacy equality
- * branch until the 30-day guest sweep purges them; every new insert is
- * hash-only. Raw tokens are 48 hex chars, hashes 64 — they cannot collide.
+ * capabilities. Legacy plaintext 48-hex rows were one-shot hashed by
+ * migration 109; claim matches hash-only. Raw tokens are 48 hex chars,
+ * hashes 64 — they cannot collide.
  */
 export function hashHdClaimToken(rawToken: string): string {
   return createHash("sha256").update(`hd-claim:v1:${rawToken}`).digest("hex");
@@ -63,6 +75,8 @@ export interface HdChartRow {
   subjectName: string | null;
   /** How this other-person chart relates to the owner; null for self charts. */
   relationToSelf: HdConnectionRelation | null;
+  /** Binary gender for other-person charts (LLM address); null for self / unknown. */
+  gender: BinaryGender | null;
   createdAt: string;
 }
 
@@ -71,19 +85,24 @@ export interface HdSubject {
   name: string | null;
   /** Required for other charts when creating/updating relation context. */
   relationToSelf?: HdConnectionRelation | null;
+  /** Optional binary gender for other-person charts. */
+  gender?: BinaryGender | null;
 }
 
 export type HdReportToneId = "personal" | "child" | "work";
+
+export type HdReportStatus = "pending" | "done" | "error" | "needs_regeneration";
 
 export interface HdReportRow {
   id: string;
   chartId: string;
   userId: string;
-  status: "pending" | "done" | "error";
+  status: HdReportStatus;
   reportText: string | null;
   model: string | null;
   transactionId: string | null;
   error: string | null;
+  qualityFindings: unknown | null;
   packageId: "depth" | "max";
   includedAsksRemaining: number;
   reportTone: HdReportToneId;
@@ -92,15 +111,22 @@ export interface HdReportRow {
 
 /** Public wire shape: strips owner id, billing internals and model metadata. */
 export function toPublicHdReport(row: HdReportRow) {
+  const hideText = row.status === "needs_regeneration" || row.status === "pending";
   return {
     id: row.id,
     chartId: row.chartId,
     status: row.status,
-    reportText: row.reportText,
+    reportText: hideText ? null : row.reportText,
     packageId: row.packageId,
     includedAsksRemaining: row.includedAsksRemaining,
     reportTone: row.reportTone,
     createdAt: row.createdAt,
+    /** True when a charge is still attached — retry resumes without re-billing. */
+    resumeFree:
+      Boolean(row.transactionId) &&
+      (row.status === "pending" ||
+        row.status === "error" ||
+        row.status === "needs_regeneration"),
   };
 }
 
@@ -120,6 +146,7 @@ interface HdChartDbRow {
   subject_kind: string | null;
   subject_name: string | null;
   relation_to_self?: string | null;
+  gender?: string | null;
   claim_token?: string | null;
   created_at: string | Date;
 }
@@ -128,11 +155,12 @@ interface HdReportDbRow {
   id: string;
   chart_id: string;
   user_id: string;
-  status: "pending" | "done" | "error";
+  status: HdReportStatus;
   report_text: string | null;
   model: string | null;
   transaction_id: string | null;
   error: string | null;
+  quality_findings?: unknown | null;
   package_id?: string | null;
   included_asks_remaining?: number | null;
   report_tone?: string | null;
@@ -174,20 +202,29 @@ function mapChartRow(row: HdChartDbRow): HdChartRow {
     subjectName: row.subject_name,
     relationToSelf:
       row.subject_kind === "other" ? mapHdRelationToSelf(row.relation_to_self) : null,
+    gender: row.subject_kind === "other" ? mapHdGender(row.gender) : null,
     createdAt: toIso(row.created_at),
   };
 }
 
 function mapReportRow(row: HdReportDbRow): HdReportRow {
+  const status: HdReportStatus =
+    row.status === "needs_regeneration" ||
+    row.status === "done" ||
+    row.status === "error" ||
+    row.status === "pending"
+      ? row.status
+      : "error";
   return {
     id: row.id,
     chartId: row.chart_id,
     userId: row.user_id,
-    status: row.status,
+    status,
     reportText: row.report_text,
     model: row.model,
     transactionId: row.transaction_id,
     error: row.error,
+    qualityFindings: row.quality_findings ?? null,
     packageId: mapReportPackageId(row.package_id),
     includedAsksRemaining: Math.max(0, Number(row.included_asks_remaining) || 0),
     reportTone: mapReportTone(row.report_tone),
@@ -295,14 +332,17 @@ function computeChartOrThrow(identity: HdChartIdentity): HdChart {
 async function refreshChartIfEngineStale(row: HdChartDbRow): Promise<HdChartDbRow> {
   if (row.engine_version === HD_ENGINE_VERSION) return row;
   try {
+    const timezone = normalizeHdTimezone(row.timezone);
     const chart = calculateHdChart({
       birthDate: toIsoDate(row.birth_date),
       birthTime: row.birth_time,
-      timezone: row.timezone,
+      timezone,
     });
     const updated = await query<HdChartDbRow>(
-      "UPDATE hd_charts SET chart = $2, engine_version = $3, updated_at = now() WHERE id = $1 RETURNING *",
-      [row.id, JSON.stringify(chart), HD_ENGINE_VERSION]
+      `UPDATE hd_charts
+       SET chart = $2, engine_version = $3, timezone = $4, updated_at = now()
+       WHERE id = $1 RETURNING *`,
+      [row.id, JSON.stringify(chart), HD_ENGINE_VERSION, timezone]
     );
     return updated.rows[0] ?? row;
   } catch {
@@ -351,7 +391,8 @@ async function relabelOwnedChart(
   row: HdChartDbRow,
   subjectKind: "self" | "other",
   subjectName: string | null,
-  relationToSelf?: HdConnectionRelation | null
+  relationToSelf?: HdConnectionRelation | null,
+  gender?: BinaryGender | null
 ): Promise<HdChartDbRow> {
   const currentKind = row.subject_kind === "other" ? "other" : "self";
   let nextKind = subjectKind;
@@ -364,31 +405,37 @@ async function relabelOwnedChart(
   }
 
   const prevRelation = mapHdRelationToSelf(row.relation_to_self);
+  const prevGender = mapHdGender(row.gender);
   let nextRelation: HdConnectionRelation | null = null;
+  let nextGender: BinaryGender | null = null;
   if (nextKind === "other") {
     const fromCaller = mapHdRelationToSelf(relationToSelf);
     nextRelation = fromCaller ?? prevRelation;
+    // Explicit null from caller clears; undefined keeps previous.
+    nextGender = gender !== undefined ? gender : prevGender;
   }
 
   if (
     currentKind === nextKind &&
     (row.subject_name ?? null) === (nextName ?? null) &&
-    prevRelation === nextRelation
+    prevRelation === nextRelation &&
+    prevGender === nextGender
   ) {
     return row;
   }
 
   await query(
     `UPDATE hd_charts
-     SET subject_kind = $2, subject_name = $3, relation_to_self = $4, updated_at = now()
+     SET subject_kind = $2, subject_name = $3, relation_to_self = $4, gender = $5, updated_at = now()
      WHERE id = $1`,
-    [row.id, nextKind, nextName, nextRelation]
+    [row.id, nextKind, nextName, nextRelation, nextGender]
   );
   return {
     ...row,
     subject_kind: nextKind,
     subject_name: nextName,
     relation_to_self: nextRelation,
+    gender: nextGender,
   };
 }
 
@@ -423,6 +470,11 @@ export async function getOrComputeHdChart(
       : null;
   const relationToSelf =
     subjectKind === "other" ? mapHdRelationToSelf(subject?.relationToSelf) : null;
+  // Only overwrite stored gender when the caller explicitly sent the field.
+  const gender: BinaryGender | null | undefined =
+    subjectKind === "other" && subject && Object.prototype.hasOwnProperty.call(subject, "gender")
+      ? mapHdGender(subject.gender ?? null)
+      : undefined;
   const ownerKey = userId ?? GUEST_OWNER_KEY;
 
   const own = await query<HdChartDbRow>(
@@ -432,7 +484,7 @@ export async function getOrComputeHdChart(
   if (own.rows[0]) {
     let row = await refreshChartIfEngineStale(own.rows[0]);
     if (userId && subject) {
-      row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
+      row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf, gender);
     }
     if (userId) row = await finalizeOwnedSelfChart(userId, row);
     if (!userId && subject) {
@@ -445,6 +497,7 @@ export async function getOrComputeHdChart(
           subjectKind,
           subjectName,
           relationToSelf,
+          gender: gender ?? null,
         },
         claimToken: null,
       };
@@ -459,9 +512,9 @@ export async function getOrComputeHdChart(
       const adopted = await query<HdChartDbRow>(
         `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
          WHERE fingerprint = $1 AND user_id IS NULL
-           AND (claim_token = $3 OR claim_token = $4)
+           AND claim_token = $3
          RETURNING *`,
-        [fingerprint, userId, claimTokenHash, claimToken]
+        [fingerprint, userId, claimTokenHash]
       );
       adoptedRows = adopted.rows;
     } catch (error) {
@@ -476,7 +529,13 @@ export async function getOrComputeHdChart(
       if (own2.rows[0]) {
         let row = await refreshChartIfEngineStale(own2.rows[0]);
         if (subject) {
-          row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
+          row = await relabelOwnedChart(
+            row,
+            subjectKind,
+            subjectName,
+            relationToSelf,
+            gender
+          );
         }
         row = await finalizeOwnedSelfChart(userId, row);
         return { row: mapChartRow(row), claimToken: null };
@@ -486,7 +545,13 @@ export async function getOrComputeHdChart(
     if (adoptedRows[0]) {
       let row = await refreshChartIfEngineStale(adoptedRows[0]);
       if (subject) {
-        row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
+        row = await relabelOwnedChart(
+          row,
+          subjectKind,
+          subjectName,
+          relationToSelf,
+          gender
+        );
       }
       row = await finalizeOwnedSelfChart(userId, row);
       return { row: mapChartRow(row), claimToken: null };
@@ -529,8 +594,8 @@ export async function getOrComputeHdChart(
     `INSERT INTO hd_charts (
        user_id, birth_date, birth_time, time_unknown, timezone,
        place_name, lat, lon, fingerprint, chart, engine_version,
-       subject_kind, subject_name, relation_to_self, claim_token
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15)
+       subject_kind, subject_name, relation_to_self, gender, claim_token
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)
      ON CONFLICT (fingerprint, owner_key) DO UPDATE SET updated_at = hd_charts.updated_at
      RETURNING *`,
     [
@@ -538,7 +603,7 @@ export async function getOrComputeHdChart(
       identity.birthDate,
       identity.birthTime,
       identity.birthTime === null,
-      identity.timezone,
+      normalizeHdTimezone(identity.timezone),
       identity.placeName.trim(),
       identity.lat,
       identity.lon,
@@ -548,6 +613,7 @@ export async function getOrComputeHdChart(
       subjectKind,
       subjectName,
       relationToSelf,
+      gender ?? null,
       newClaimTokenHash,
     ]
   );
@@ -559,7 +625,13 @@ export async function getOrComputeHdChart(
   // Owned conflict path may return an older label — apply the caller's subject.
   // Guest pool is shared: never overwrite another visitor's subject/relation.
   if (userId && subject) {
-    row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf);
+    row = await relabelOwnedChart(
+      row,
+      subjectKind,
+      subjectName,
+      relationToSelf,
+      gender
+    );
   }
   if (userId) row = await finalizeOwnedSelfChart(userId, row);
   return { row: mapChartRow(row), claimToken: granted ? newClaimToken : null };
@@ -577,37 +649,79 @@ export function toOwnerHdChartPayload(row: HdChartRow) {
     subjectKind: row.subjectKind,
     subjectName: row.subjectName,
     relationToSelf: row.relationToSelf,
+    gender: row.gender,
     chart: row.chart,
   };
 }
 
-/** Update relation context on an owned other-person chart. */
+/**
+ * Update relation / gender on an owned other-person chart.
+ * Callers: chart PATCH (relation and/or gender).
+ */
+export async function updateHdChartMetaForUser(
+  chartId: string,
+  userId: string,
+  patch: {
+    relationToSelf?: HdConnectionRelation | null;
+    gender?: BinaryGender | null;
+  }
+): Promise<HdChartRow | null> {
+  if (!HD_UUID_RE.test(chartId)) return null;
+  const hasRelation = patch.relationToSelf !== undefined;
+  const hasGender = patch.gender !== undefined;
+  if (!hasRelation && !hasGender) return null;
+
+  const relation = hasRelation ? mapHdRelationToSelf(patch.relationToSelf) : null;
+  if (hasRelation && !relation) return null;
+  const gender = hasGender ? mapHdGender(patch.gender) : null;
+
+  if (hasRelation && hasGender) {
+    const { rows } = await query<HdChartDbRow>(
+      `UPDATE hd_charts
+       SET relation_to_self = $3, gender = $4, updated_at = now()
+       WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
+       RETURNING *`,
+      [chartId, userId, relation, gender]
+    );
+    return rows[0] ? mapChartRow(rows[0]) : null;
+  }
+  if (hasRelation) {
+    const { rows } = await query<HdChartDbRow>(
+      `UPDATE hd_charts
+       SET relation_to_self = $3, updated_at = now()
+       WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
+       RETURNING *`,
+      [chartId, userId, relation]
+    );
+    return rows[0] ? mapChartRow(rows[0]) : null;
+  }
+  const { rows } = await query<HdChartDbRow>(
+    `UPDATE hd_charts
+     SET gender = $3, updated_at = now()
+     WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
+     RETURNING *`,
+    [chartId, userId, gender]
+  );
+  return rows[0] ? mapChartRow(rows[0]) : null;
+}
+
+/** @deprecated Prefer {@link updateHdChartMetaForUser}. */
 export async function updateHdChartRelationForUser(
   chartId: string,
   userId: string,
   relationToSelf: HdConnectionRelation
 ): Promise<HdChartRow | null> {
-  if (!HD_UUID_RE.test(chartId)) return null;
-  const relation = mapHdRelationToSelf(relationToSelf);
-  if (!relation) return null;
-  const { rows } = await query<HdChartDbRow>(
-    `UPDATE hd_charts
-     SET relation_to_self = $3, updated_at = now()
-     WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
-     RETURNING *`,
-    [chartId, userId, relation]
-  );
-  return rows[0] ? mapChartRow(rows[0]) : null;
+  return updateHdChartMetaForUser(chartId, userId, { relationToSelf });
 }
 
 /**
  * Public share / fingerprint capability: chart mechanics only.
  * Never exposes owner, birth date/time, place, coordinates, timezone or
  * tokens. Nested `chart.birth` / `chart.timezone` are stripped (JSONB leak),
- * and so are `chart.design` and raw longitudes: the design moment is a
- * deterministic function of the birth instant (birth − 88° of solar arc) and
- * arcsecond-precision Sun longitude narrows the birth date to hours, so
- * either would break the "no birth date" share promise.
+ * and so are `chart.design`, raw longitudes, and color/tone/base: the design
+ * moment is a deterministic function of the birth instant (birth − 88° of
+ * solar arc); arcsecond longitude or ~0.005° sub-structure cells recover the
+ * birth moment tightly enough to break the "no birth date" share promise.
  */
 export function toPublicHdChartPayload(row: HdChartRow): {
   id: string;
@@ -624,7 +738,13 @@ export function toPublicHdChartPayload(row: HdChartRow): {
     ...mechanics
   } = row.chart;
   const strip = (a: HdActivation): HdPublicActivation => {
-    const { longitude: _lon, ...rest } = a;
+    const {
+      longitude: _lon,
+      color: _color,
+      tone: _tone,
+      base: _base,
+      ...rest
+    } = a;
     return rest;
   };
   return {
@@ -647,12 +767,14 @@ export async function getHdChartByFingerprint(fingerprint: string): Promise<HdCh
     "SELECT * FROM hd_charts WHERE fingerprint = $1 ORDER BY (user_id IS NULL) DESC",
     [fingerprint]
   );
-  return rows[0] ? mapChartRow(rows[0]) : null;
+  if (!rows[0]) return null;
+  return mapChartRow(await refreshChartIfEngineStale(rows[0]));
 }
 
 export async function getHdChartById(id: string): Promise<HdChartRow | null> {
   const { rows } = await query<HdChartDbRow>("SELECT * FROM hd_charts WHERE id = $1", [id]);
-  return rows[0] ? mapChartRow(rows[0]) : null;
+  if (!rows[0]) return null;
+  return mapChartRow(await refreshChartIfEngineStale(rows[0]));
 }
 
 /**
@@ -688,7 +810,8 @@ async function healDemotedSelfHdChart(userId: string): Promise<void> {
 
   await query(
     `UPDATE hd_charts
-     SET subject_kind = 'self', subject_name = NULL, relation_to_self = NULL, updated_at = now()
+     SET subject_kind = 'self', subject_name = NULL, relation_to_self = NULL,
+         gender = NULL, updated_at = now()
      WHERE id = $1 AND user_id = $2`,
     [candidate.rows[0].id, userId]
   );
@@ -727,7 +850,11 @@ export async function listHdChartsForUser(userId: string): Promise<HdChartRow[]>
     "SELECT * FROM hd_charts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
     [userId]
   );
-  return rows.map(mapChartRow);
+  const refreshed: HdChartRow[] = [];
+  for (const row of rows) {
+    refreshed.push(mapChartRow(await refreshChartIfEngineStale(row)));
+  }
+  return refreshed;
 }
 /** Attach a guest chart to a freshly registered/logged-in account. */
 /**
@@ -775,8 +902,8 @@ export async function claimHdChart(
     const result = await query(
       `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
        WHERE fingerprint = $1 AND user_id IS NULL
-         AND (claim_token = $3 OR claim_token = $4)`,
-      [fingerprint, userId, claimTokenHash, claimToken]
+         AND claim_token = $3`,
+      [fingerprint, userId, claimTokenHash]
     );
     if ((result.rowCount ?? 0) > 0) {
       // Guest rows are usually `self`; claiming must not leave two personal charts.
@@ -935,6 +1062,7 @@ export async function findDuplicateDoneHdReport(params: {
   subjectKind: "self" | "other";
   subjectName: string | null;
 }): Promise<HdReportRow | null> {
+  const timezone = normalizeHdTimezone(params.timezone);
   const { rows } = await query<HdReportDbRow>(
     `SELECT r.id, r.chart_id, r.user_id, r.status, r.report_text, r.model,
             r.transaction_id, r.error, r.package_id, r.included_asks_remaining,
@@ -947,7 +1075,7 @@ export async function findDuplicateDoneHdReport(params: {
        AND r.chart_id <> $2
        AND c.chart->'birth'->>'date' = $3
        AND c.chart->'birth'->>'time' = $4
-       AND c.chart->>'timezone' = $5
+       AND lower(c.chart->>'timezone') = lower($5)
        AND c.subject_kind = $6
        AND lower(COALESCE(c.subject_name, '')) = lower(COALESCE($7, ''))
      ORDER BY r.created_at DESC
@@ -957,7 +1085,7 @@ export async function findDuplicateDoneHdReport(params: {
       params.excludeChartId,
       params.birthDate,
       params.birthTime,
-      params.timezone,
+      timezone,
       params.subjectKind,
       params.subjectName,
     ]
@@ -999,12 +1127,35 @@ export async function lockStalePendingReportForResume(reportId: string): Promise
 export async function completeHdReport(
   reportId: string,
   reportText: string,
-  model: string
+  model: string,
+  meta?: {
+    costRub?: number | null;
+    llmCalls?: number | null;
+    tokenUsage?: unknown;
+    qualityFindings?: unknown;
+  }
 ): Promise<void> {
   await query(
-    `UPDATE hd_reports SET status = 'done', report_text = $2, model = $3, updated_at = now()
+    `UPDATE hd_reports
+     SET status = 'done',
+         report_text = $2,
+         model = $3,
+         cost_rub = COALESCE($4, cost_rub),
+         llm_calls = COALESCE($5, llm_calls),
+         token_usage = COALESCE($6::jsonb, token_usage),
+         quality_findings = COALESCE($7::jsonb, quality_findings),
+         error = NULL,
+         updated_at = now()
      WHERE id = $1`,
-    [reportId, reportText, model]
+    [
+      reportId,
+      reportText,
+      model,
+      meta?.costRub ?? null,
+      meta?.llmCalls ?? null,
+      meta?.tokenUsage != null ? JSON.stringify(meta.tokenUsage) : null,
+      meta?.qualityFindings != null ? JSON.stringify(meta.qualityFindings) : null,
+    ]
   );
 }
 
@@ -1049,6 +1200,103 @@ export async function failHdReport(reportId: string, error: string): Promise<voi
   );
 }
 
+/** Quality gate failed after retries — keep charge, hide from client until approve/regen. */
+export async function markHdReportNeedsRegeneration(
+  reportId: string,
+  draftText: string,
+  findings: unknown
+): Promise<void> {
+  await query(
+    `UPDATE hd_reports
+     SET status = 'needs_regeneration',
+         report_text = $2,
+         error = 'needs_regeneration',
+         quality_findings = $3::jsonb,
+         quality_updated_at = now(),
+         updated_at = now()
+     WHERE id = $1`,
+    [reportId, draftText, JSON.stringify(findings ?? [])]
+  );
+}
+
+export async function approveHdReportManually(reportId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE hd_reports
+     SET status = 'done',
+         error = NULL,
+         quality_findings = NULL,
+         quality_updated_at = now(),
+         updated_at = now()
+     WHERE id = $1 AND status = 'needs_regeneration' AND report_text IS NOT NULL`,
+    [reportId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+/** Relock a needs_regeneration / error row for free resume (no new charge). */
+export async function beginHdReportQualityResume(reportId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE hd_reports
+     SET status = 'pending',
+         created_at = now(),
+         updated_at = now()
+     WHERE id = $1
+       AND status IN ('needs_regeneration', 'error')
+       AND transaction_id IS NOT NULL`,
+    [reportId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
+export async function listHdReportsForAdminQa(limit = 50): Promise<
+  Array<{
+    id: string;
+    chartId: string;
+    userId: string;
+    status: HdReportStatus;
+    error: string | null;
+    qualityFindings: unknown;
+    reportTextPreview: string | null;
+    createdAt: string;
+    transactionId: string | null;
+  }>
+> {
+  const { rows } = await query<HdReportDbRow & { preview?: string }>(
+    `SELECT id, chart_id, user_id, status, error, quality_findings, transaction_id, created_at,
+            LEFT(report_text, 400) AS preview
+     FROM hd_reports
+     ORDER BY
+       CASE status
+         WHEN 'needs_regeneration' THEN 0
+         WHEN 'error' THEN 1
+         WHEN 'pending' THEN 2
+         ELSE 3
+       END,
+       created_at DESC
+     LIMIT $1`,
+    [Math.min(200, Math.max(1, limit))]
+  );
+  return rows.map((r) => ({
+    id: r.id,
+    chartId: r.chart_id,
+    userId: r.user_id,
+    status: mapReportRow(r).status,
+    error: r.error,
+    qualityFindings: r.quality_findings ?? null,
+    reportTextPreview: (r as { preview?: string }).preview ?? null,
+    createdAt: toIso(r.created_at),
+    transactionId: r.transaction_id,
+  }));
+}
+
+export async function getHdReportAdminDetail(reportId: string): Promise<HdReportRow | null> {
+  const { rows } = await query<HdReportDbRow>(
+    `SELECT * FROM hd_reports WHERE id = $1 LIMIT 1`,
+    [reportId]
+  );
+  return rows[0] ? mapReportRow(rows[0]) : null;
+}
+
 export interface HdCompositeReportRow {
   id: string;
   baseChartId: string;
@@ -1066,6 +1314,8 @@ export function toPublicHdCompositeReport(row: HdCompositeReportRow) {
     status: row.status,
     reportText: row.reportText,
     createdAt: row.createdAt,
+    /** True when a charge is still attached — retry resumes without re-billing. */
+    resumeFree: Boolean(row.transactionId) && (row.status === "pending" || row.status === "error"),
   };
 }
 
@@ -1116,6 +1366,8 @@ export async function findDuplicateDoneCompositeReport(params: {
   base: { birthDate: string; birthTime: string; timezone: string; subjectName: string | null };
   partner: { birthDate: string; birthTime: string; timezone: string; subjectName: string | null };
 }): Promise<HdCompositeReportRow | null> {
+  const baseTz = normalizeHdTimezone(params.base.timezone);
+  const partnerTz = normalizeHdTimezone(params.partner.timezone);
   const { rows } = await query<HdCompositeReportDbRow>(
     `SELECT r.id, r.base_chart_id, r.partner_chart_id, r.status, r.report_text,
             r.transaction_id, r.created_at
@@ -1129,17 +1381,17 @@ export async function findDuplicateDoneCompositeReport(params: {
        AND (
          (
            cb.chart->'birth'->>'date' = $4 AND cb.chart->'birth'->>'time' = $5
-           AND cb.chart->>'timezone' = $6
+           AND lower(cb.chart->>'timezone') = lower($6)
            AND lower(COALESCE(cb.subject_name, '')) = lower(COALESCE($7, ''))
            AND cp.chart->'birth'->>'date' = $8 AND cp.chart->'birth'->>'time' = $9
-           AND cp.chart->>'timezone' = $10
+           AND lower(cp.chart->>'timezone') = lower($10)
            AND lower(COALESCE(cp.subject_name, '')) = lower(COALESCE($11, ''))
          ) OR (
            cb.chart->'birth'->>'date' = $8 AND cb.chart->'birth'->>'time' = $9
-           AND cb.chart->>'timezone' = $10
+           AND lower(cb.chart->>'timezone') = lower($10)
            AND lower(COALESCE(cb.subject_name, '')) = lower(COALESCE($11, ''))
            AND cp.chart->'birth'->>'date' = $4 AND cp.chart->'birth'->>'time' = $5
-           AND cp.chart->>'timezone' = $6
+           AND lower(cp.chart->>'timezone') = lower($6)
            AND lower(COALESCE(cp.subject_name, '')) = lower(COALESCE($7, ''))
          )
        )
@@ -1151,11 +1403,11 @@ export async function findDuplicateDoneCompositeReport(params: {
       params.excludePartnerChartId,
       params.base.birthDate,
       params.base.birthTime,
-      params.base.timezone,
+      baseTz,
       params.base.subjectName,
       params.partner.birthDate,
       params.partner.birthTime,
-      params.partner.timezone,
+      partnerTz,
       params.partner.subjectName,
     ]
   );
