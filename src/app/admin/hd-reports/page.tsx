@@ -32,7 +32,20 @@ export default function AdminHdReportsPage() {
   const [sections, setSections] = useState<string[]>([]);
   const [sectionTitle, setSectionTitle] = useState("");
   const [busy, setBusy] = useState(false);
+  const [busyElapsedSec, setBusyElapsedSec] = useState(0);
   const [msg, setMsg] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!busy) {
+      setBusyElapsedSec(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const t = window.setInterval(() => {
+      setBusyElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(t);
+  }, [busy]);
 
   const load = useCallback(async () => {
     const res = await fetch("/api/admin/hd-reports?limit=80");
@@ -195,7 +208,11 @@ export default function AdminHdReportsPage() {
                   Проверить валидатором
                 </AdminBtn>
                 <AdminBtn disabled={busy} onClick={() => void act("regenerate")}>
-                  Перегенерировать всё
+                  {busy
+                    ? `Генерация… ${Math.floor(busyElapsedSec / 60)}:${String(
+                        busyElapsedSec % 60
+                      ).padStart(2, "0")}`
+                    : "Перегенерировать всё"}
                 </AdminBtn>
                 <AdminBtn
                   disabled={busy || selected.status !== "needs_regeneration"}
@@ -232,6 +249,11 @@ export default function AdminHdReportsPage() {
               {msg ? (
                 <pre className="mt-2 max-h-40 overflow-auto rounded bg-black/30 p-2 text-xs text-gray-300">
                   {msg}
+                  {busy
+                    ? `\nпрошло ${Math.floor(busyElapsedSec / 60)}:${String(
+                        busyElapsedSec % 60
+                      ).padStart(2, "0")}`
+                    : ""}
                 </pre>
               ) : null}
               <div className="mt-4 max-h-[50vh] overflow-auto whitespace-pre-wrap text-sm text-gray-200">

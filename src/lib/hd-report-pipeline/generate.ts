@@ -79,14 +79,17 @@ function buildSystemPrompt(
 
 async function llmOnce(
   messages: ChatMessage[],
-  maxTokens: number
+  maxTokens: number,
+  modelOverride: string
 ): Promise<{ text: string; calls: number; usage: HdTokenUsage }> {
   const emptyUsage = { promptTokens: 0, completionTokens: 0 };
+  // Always pass hdModel — isPaid alone resolves paidModel (DeepSeek), which
+  // ignores the admin HD picker and fails the sectional quality gate.
   let result = await completeChatDetailed({
     messages,
     maxTokens,
     temperature: 0.55,
-    isPaid: true,
+    modelOverride,
     timeoutMs: 180_000,
     skipTemperatureRetry: true,
     skipDegenerateCheck: true,
@@ -102,7 +105,7 @@ async function llmOnce(
       messages,
       maxTokens,
       temperature: 0.4,
-      isPaid: true,
+      modelOverride,
       timeoutMs: 180_000,
       skipTemperatureRetry: true,
       skipDegenerateCheck: true,
@@ -247,7 +250,8 @@ function parsePriorText(text: string): SectionDraft[] {
 
 async function editorPass(
   fullText: string,
-  contract: HdLockedContract
+  contract: HdLockedContract,
+  modelOverride: string
 ): Promise<{ text: string; calls: number; usage: HdTokenUsage }> {
   const system = [
     "Ты редактор премиальных отчётов Дизайна Человека.",
@@ -265,7 +269,8 @@ async function editorPass(
         content: `Отредактируй отчёт. Верни полный markdown.\n\n${fullText}`,
       },
     ],
-    12_000
+    12_000,
+    modelOverride
   );
   return { text: text || fullText, calls, usage };
 }
@@ -312,6 +317,7 @@ async function generateBatch(opts: {
   focus: string;
   prior: SectionDraft[];
   maxTokens: number;
+  modelOverride: string;
 }): Promise<{ drafts: SectionDraft[]; calls: number; usage: HdTokenUsage }> {
   const priorBlock =
     opts.prior.length === 0
@@ -352,7 +358,8 @@ async function generateBatch(opts: {
       { role: "system", content: opts.system },
       { role: "user", content: user },
     ],
-    opts.maxTokens
+    opts.maxTokens,
+    opts.modelOverride
   );
   return { drafts: parseBatchOutput(opts.titles, text), calls, usage };
 }
@@ -426,6 +433,7 @@ export async function generateHdReportSectional(
       focus,
       prior,
       maxTokens: batch.maxTokens,
+      modelOverride: modelId,
     });
     llmCalls += calls;
     addUsage(usage);
@@ -441,6 +449,7 @@ export async function generateHdReportSectional(
         focus,
         prior: [...sections, ...drafts.filter((d) => d.body.length >= 40)],
         maxTokens: batch.maxTokens,
+        modelOverride: modelId,
       });
       llmCalls += again.calls;
       addUsage(again.usage);
@@ -485,6 +494,7 @@ export async function generateHdReportSectional(
       focus,
       prior,
       maxTokens: batch.maxTokens,
+      modelOverride: modelId,
     });
     llmCalls += calls;
     addUsage(usage);
@@ -510,7 +520,7 @@ export async function generateHdReportSectional(
   sections.push(...ordered);
 
   let combined = glue(sections);
-  const edited = await editorPass(combined, contract);
+  const edited = await editorPass(combined, contract, modelId);
   llmCalls += edited.calls;
   addUsage(edited.usage);
   // Prefer edited text only if it keeps all required ## titles.
@@ -549,6 +559,7 @@ export async function generateHdReportSectional(
         focus,
         prior,
         maxTokens: batch.maxTokens,
+        modelOverride: modelId,
       });
       llmCalls += calls;
       addUsage(usage);
@@ -558,7 +569,7 @@ export async function generateHdReportSectional(
       }
     }
     combined = glue(sections);
-    const reEdit = await editorPass(combined, contract);
+    const reEdit = await editorPass(combined, contract, modelId);
     llmCalls += reEdit.calls;
     addUsage(reEdit.usage);
     const reEditClean = sanitizeHdGeneratedText(reEdit.text);

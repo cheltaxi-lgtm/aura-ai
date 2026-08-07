@@ -11,6 +11,12 @@ import {
   polishProReportTitle,
 } from "@/modules/pro/ai/report-plain";
 
+function formatElapsed(sec: number): string {
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${String(s).padStart(2, "0")}`;
+}
+
 const NatalChartWheel = dynamic(
   () => import("@/components/natal/NatalChartWheel"),
   { ssr: false }
@@ -43,6 +49,7 @@ export default function ProCasePage() {
   const [deliverUrl, setDeliverUrl] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [generatingElapsedSec, setGeneratingElapsedSec] = useState(0);
 
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
@@ -53,6 +60,19 @@ export default function ProCasePage() {
   const [ttl, setTtl] = useState<"7" | "30" | "90" | "forever">("30");
 
   const deliverStorageKey = `pro-case-deliver-url-${params.id}`;
+
+  useEffect(() => {
+    if (!generating) {
+      setGeneratingElapsedSec(0);
+      return;
+    }
+    setGeneratingElapsedSec(0);
+    const startedAt = Date.now();
+    const timer = window.setInterval(() => {
+      setGeneratingElapsedSec(Math.floor((Date.now() - startedAt) / 1000));
+    }, 1000);
+    return () => window.clearInterval(timer);
+  }, [generating]);
 
   async function load() {
     const res = await fetch(`/api/pro/cases/${params.id}`, { credentials: "include" });
@@ -230,12 +250,18 @@ export default function ProCasePage() {
       return;
     }
     if (json.async && json.jobId) {
-      setMsg("Мастер готовит премиум-отчёт…");
+      const caseType = String(data?.case?.type || "");
+      const etaHint =
+        caseType === "hd"
+          ? " Обычно 6–12 минут — можно оставить вкладку открытой."
+          : " Обычно 2–5 минут.";
+      setMsg(`Мастер готовит премиум-отчёт…${etaHint}`);
       try {
+        // HD sectional ≈ 6–12 min; 400 × 2.5s ≈ 16.6 min ceiling.
         await waitForAsyncJob({
           jobId: json.jobId,
           storageKey: `pro-case-job-${params.id}`,
-          maxAttempts: 200,
+          maxAttempts: 400,
           pollIntervalMs: 2500,
         });
         setMsg("Отчёт готов");
@@ -399,7 +425,9 @@ export default function ProCasePage() {
           disabled={busy || generating}
           onClick={() => void generate()}
         >
-          {generating ? "Генерация…" : "Сгенерировать премиум-отчёт"}
+          {generating
+            ? `Генерация… ${formatElapsed(generatingElapsedSec)}`
+            : "Сгенерировать премиум-отчёт"}
         </button>
         <button
           type="button"
@@ -449,7 +477,18 @@ export default function ProCasePage() {
         </p>
       ) : null}
 
-      {msg && <p className="mt-3 text-sm text-[#e8c77e]">{msg}</p>}
+      {msg && (
+        <p className="mt-3 text-sm text-[#e8c77e]">
+          {msg}
+          {generating
+            ? ` ${formatElapsed(generatingElapsedSec)}${
+                generatingElapsedSec >= 60
+                  ? " — мастер всё ещё пишет, это нормально"
+                  : ""
+              }`
+            : ""}
+        </p>
+      )}
       {absoluteDeliverUrl && (
         <div className="mt-4 rounded-lg border border-[#c9a24a]/40 bg-black/40 p-4">
           <p className="text-sm font-medium text-[#e8c77e]">Ссылка для клиента</p>
