@@ -1,5 +1,5 @@
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
-import { getChatModel } from "@/lib/ai-model";
+import { getHdModel } from "@/lib/ai-model";
 import type { HdChart } from "@/lib/human-design/types";
 import { formatHdEvidence, sanitizeHdReportText } from "@/lib/human-design/prompt";
 import { buildHdLockedContract, type HdLockedContract } from "./contract";
@@ -335,7 +335,7 @@ export async function generateHdReportSectional(
   );
   const focus = opts.focusQuestion?.trim() || "";
   const maxRetries = Math.max(0, opts.maxSectionRetries ?? 2);
-  const modelId = await getChatModel("paid");
+  const modelId = await getHdModel();
 
   let llmCalls = 0;
   const usageTotal: HdTokenUsage = { promptTokens: 0, completionTokens: 0 };

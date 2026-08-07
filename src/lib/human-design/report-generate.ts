@@ -1,4 +1,5 @@
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
+import { getHdModel } from "@/lib/ai-model";
 import { HD_COMPOSITE_REQUIRED_SECTIONS, HD_REPORT_REQUIRED_SECTIONS } from "./packages";
 import { stripHdMetaLeak } from "./prompt";
 
@@ -135,6 +136,7 @@ async function completeSectionedReport(opts: {
 }): Promise<string | null> {
   const system: ChatMessage = { role: "system", content: opts.systemPrompt };
   const seedUser: ChatMessage = { role: "user", content: opts.seedUserText };
+  const hdModel = await getHdModel();
 
   let combined = "";
   // 6 passes: stochastic near-threshold rejects (thin 3/16 after 4 passes)
@@ -172,7 +174,7 @@ async function completeSectionedReport(opts: {
       messages,
       maxTokens: pass === 0 ? opts.pass0MaxTokens : opts.continueMaxTokens,
       temperature: 0.62,
-      isPaid: true,
+      modelOverride: hdModel,
       timeoutMs: 300_000,
       skipTemperatureRetry: true,
       skipDegenerateCheck: true,
@@ -184,7 +186,7 @@ async function completeSectionedReport(opts: {
         messages,
         maxTokens: pass === 0 ? opts.pass0MaxTokens : opts.continueMaxTokens,
         temperature: 0.62,
-        isPaid: true,
+        modelOverride: hdModel,
         timeoutMs: 300_000,
         skipTemperatureRetry: true,
         skipDegenerateCheck: true,

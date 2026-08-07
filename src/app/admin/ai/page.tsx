@@ -187,6 +187,30 @@ export default function AdminAiPage() {
           </button>
         </div>
 
+        <div className="rounded-xl border border-violet-300/20 bg-violet-300/5 p-4 space-y-3">
+          <div>
+            <p className="text-sm font-medium text-violet-100">Дизайн Человека</p>
+            <p className="mt-1 text-xs leading-relaxed text-gray-500">
+              Отдельная модель для HD-отчётов, ответов по отчёту и инсайтов центров
+              (посекционная генерация, ~13 вызовов). Гейт качества V1–V12 бракует тонкий
+              текст: deepseek-chat-v3 пишет 3–7k символов и не проходит — рекомендуется
+              moonshotai/kimi-k2.5. Пусто = платная модель чата.
+            </p>
+          </div>
+          <ModelPicker
+            label="Модель для Дизайна Человека"
+            value={String(ai.hdModel || ai.paidModel || ai.model || "")}
+            onChange={(modelId) => setAi({ ...ai, hdModel: modelId })}
+          />
+          <button
+            type="button"
+            onClick={() => setAi({ ...ai, hdModel: "" })}
+            className="text-xs text-gray-400 underline-offset-2 hover:text-white hover:underline"
+          >
+            Сбросить → платная модель чата
+          </button>
+        </div>
+
         <div className="rounded-xl border border-white/10 bg-black/20 p-4 space-y-3">
           <div>
             <p className="text-sm font-medium text-white">Цепочки fallback-моделей</p>

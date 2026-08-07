@@ -6,6 +6,7 @@ import {
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { completeChat, isHardRejectedLlmOutput, isOpenRouterConfigured, type ChatMessage } from "@/lib/llm";
+import { getHdModel } from "@/lib/ai-model";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
@@ -153,7 +154,7 @@ export async function POST(request: NextRequest) {
       messages,
       maxTokens: 700,
       temperature: 0.7,
-      isPaid: true,
+      modelOverride: await getHdModel(),
       timeoutMs: 90_000,
     });
 

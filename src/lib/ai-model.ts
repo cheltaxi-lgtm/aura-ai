@@ -59,6 +59,16 @@ export async function getMatrixModel(): Promise<string> {
   );
 }
 
+/**
+ * Human Design report/insight model.
+ * hdModel → paidModel → model. Sectional pipeline quality gate fails on thin
+ * output (DeepSeek v3 writes ~3–7k chars vs required long-form) — kimi-k2.5 passes.
+ */
+export async function getHdModel(): Promise<string> {
+  const ai = await getAdminAiSettings();
+  return ai.hdModel?.trim() || ai.paidModel?.trim() || ai.model;
+}
+
 /** Ordered chat/reading backup models from admin settings (may be empty). */
 export async function getChatFallbackModels(): Promise<string[]> {
   const ai = await getAdminAiSettings();

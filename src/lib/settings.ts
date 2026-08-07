@@ -24,6 +24,8 @@ export interface AiSettings {
   natalModel?: string;
   /** Destiny-matrix zone assembly (sectioned reading). Falls back to paidModel → model. */
   matrixModel?: string;
+  /** Human Design reports/insights. Empty → paidModel → model. */
+  hdModel?: string;
   /** Ordered AI backup models for chat/reading generation (admin-configured). */
   fallbackModels?: string[];
   /** Ordered AI backup models for natal JSON reports. */
@@ -159,6 +161,8 @@ const DEFAULTS = {
     natalModel: "openai/gpt-4o-mini",
     /** Empty at runtime → DEFAULT_MATRIX_MODEL (see ai-model.ts), not paid chat. */
     matrixModel: "deepseek/deepseek-chat-v3-0324",
+    /** Empty → paidModel (kimi) → model. Sectional HD gate fails on thin DeepSeek output. */
+    hdModel: "",
     fallbackModels: [] as string[],
     natalFallbackModels: [] as string[],
     matrixFallbackModels: ["moonshotai/kimi-k2.5", "openai/gpt-4o-mini"] as string[],
