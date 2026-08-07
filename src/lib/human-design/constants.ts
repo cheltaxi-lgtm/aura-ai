@@ -214,7 +214,7 @@ export const PROFILE_NAMES_RU: Record<string, string> = {
   "6/3": "Ролевая модель / Мученик",
 };
 
-const RIGHT_ANGLE_PROFILES = new Set(["1/3", "1/4", "2/4", "2/5", "3/5", "3/6"]);
+const RIGHT_ANGLE_PROFILES = new Set(["1/3", "1/4", "2/4", "2/5", "3/5", "3/6", "4/6"]);
 
 export function crossAngleFromProfile(profile: string): HdCrossAngle {
   if (RIGHT_ANGLE_PROFILES.has(profile)) return "right";

@@ -15,20 +15,39 @@
         "sun": "49.2",
         "earth": "4.2",
         "moon": "6.5",
+        "northNode": "58.1",
+        "southNode": "52.1",
         "mercury": "30.2",
         "venus": "58.1",
         "mars": "51.4",
-        "northNode": "58.1"
+        "jupiter": "62.2",
+        "saturn": "43.3",
+        "uranus": "62.5",
+        "neptune": "50.2",
+        "pluto": "29.2"
       },
       "design": {
         "sun": "43.4",
         "earth": "23.4",
         "moon": "56.2",
+        "northNode": "58.3",
+        "southNode": "52.3",
         "mercury": "28.2",
         "venus": "43.4",
         "mars": "13.4",
-        "northNode": "58.3"
-      }
+        "jupiter": "56.4",
+        "saturn": "1.1",
+        "uranus": "56.2",
+        "neptune": "50.1",
+        "pluto": "29.3"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        49,
+        4,
+        43,
+        23
+      ]
     }
   },
   {
@@ -47,20 +66,39 @@
         "sun": "12.2",
         "earth": "11.2",
         "moon": "63.4",
+        "northNode": "19.1",
+        "southNode": "33.1",
         "mercury": "20.6",
         "venus": "2.6",
         "mars": "21.2",
-        "northNode": "19.1"
+        "jupiter": "53.1",
+        "saturn": "61.4",
+        "uranus": "58.5",
+        "neptune": "38.5",
+        "pluto": "1.3"
       },
       "design": {
         "sun": "36.4",
         "earth": "6.4",
         "moon": "14.3",
+        "northNode": "13.3",
+        "southNode": "7.3",
         "mercury": "36.2",
         "venus": "19.3",
         "mars": "41.3",
-        "northNode": "13.3"
-      }
+        "jupiter": "15.4",
+        "saturn": "61.3",
+        "uranus": "58.6",
+        "neptune": "38.6",
+        "pluto": "1.5"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        12,
+        11,
+        36,
+        6
+      ]
     }
   },
   {
@@ -79,20 +117,39 @@
         "sun": "44.1",
         "earth": "24.1",
         "moon": "21.5",
+        "northNode": "19.3",
+        "southNode": "33.3",
         "mercury": "43.4",
         "venus": "14.1",
         "mars": "30.3",
-        "northNode": "19.3"
+        "jupiter": "9.4",
+        "saturn": "20.6",
+        "uranus": "57.1",
+        "neptune": "34.2",
+        "pluto": "46.3"
       },
       "design": {
         "sun": "33.3",
         "earth": "19.3",
         "moon": "26.6",
+        "northNode": "13.2",
+        "southNode": "7.2",
         "mercury": "40.2",
         "venus": "31.2",
         "mars": "13.6",
-        "northNode": "13.2"
-      }
+        "jupiter": "14.3",
+        "saturn": "20.5",
+        "uranus": "48.1",
+        "neptune": "34.1",
+        "pluto": "6.6"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        44,
+        24,
+        33,
+        19
+      ]
     }
   },
   {
@@ -111,20 +168,39 @@
         "sun": "58.6",
         "earth": "52.6",
         "moon": "28.1",
+        "northNode": "31.3",
+        "southNode": "41.3",
         "mercury": "10.3",
         "venus": "34.1",
         "mars": "30.3",
-        "northNode": "31.3"
+        "jupiter": "42.5",
+        "saturn": "24.3",
+        "uranus": "13.2",
+        "neptune": "41.2",
+        "pluto": "5.1"
       },
       "design": {
         "sun": "48.3",
         "earth": "21.3",
         "moon": "4.1",
+        "northNode": "33.4",
+        "southNode": "19.4",
         "mercury": "50.4",
         "venus": "29.4",
         "mars": "26.5",
-        "northNode": "33.4"
-      }
+        "jupiter": "27.1",
+        "saturn": "2.4",
+        "uranus": "19.6",
+        "neptune": "60.6",
+        "pluto": "9.3"
+      },
+      "crossAngle": "left",
+      "crossGates": [
+        58,
+        52,
+        48,
+        21
+      ]
     }
   },
   {
@@ -143,20 +219,39 @@
         "sun": "27.4",
         "earth": "28.4",
         "moon": "43.6",
+        "northNode": "3.4",
+        "southNode": "50.4",
         "mercury": "21.2",
         "venus": "8.5",
         "mars": "38.4",
-        "northNode": "3.4"
+        "jupiter": "63.4",
+        "saturn": "9.4",
+        "uranus": "26.6",
+        "neptune": "58.2",
+        "pluto": "28.5"
       },
       "design": {
         "sun": "41.6",
         "earth": "31.6",
         "moon": "29.3",
+        "northNode": "27.3",
+        "southNode": "28.3",
         "mercury": "41.3",
         "venus": "19.2",
         "mars": "14.3",
-        "northNode": "27.3"
-      }
+        "jupiter": "49.6",
+        "saturn": "9.2",
+        "uranus": "26.5",
+        "neptune": "58.1",
+        "pluto": "28.6"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        27,
+        28,
+        41,
+        31
+      ]
     }
   },
   {
@@ -175,20 +270,39 @@
         "sun": "51.5",
         "earth": "57.5",
         "moon": "51.1",
+        "northNode": "2.1",
+        "southNode": "1.1",
         "mercury": "25.3",
         "venus": "20.6",
         "mars": "7.6",
-        "northNode": "2.1"
+        "jupiter": "10.1",
+        "saturn": "7.3",
+        "uranus": "12.1",
+        "neptune": "48.3",
+        "pluto": "33.6"
       },
       "design": {
         "sun": "61.1",
         "earth": "62.1",
         "moon": "41.3",
+        "northNode": "23.3",
+        "southNode": "43.3",
         "mercury": "60.1",
         "venus": "49.5",
         "mars": "40.2",
-        "northNode": "23.3"
-      }
+        "jupiter": "26.1",
+        "saturn": "4.3",
+        "uranus": "12.1",
+        "neptune": "48.4",
+        "pluto": "7.2"
+      },
+      "crossAngle": "left",
+      "crossGates": [
+        51,
+        57,
+        61,
+        62
+      ]
     }
   },
   {
@@ -207,20 +321,39 @@
         "sun": "10.1",
         "earth": "15.1",
         "moon": "12.3",
+        "northNode": "10.5",
+        "southNode": "15.5",
         "mercury": "11.5",
         "venus": "1.1",
         "mars": "38.1",
-        "northNode": "10.5"
+        "jupiter": "36.3",
+        "saturn": "57.2",
+        "uranus": "36.5",
+        "neptune": "30.3",
+        "pluto": "58.2"
       },
       "design": {
         "sun": "46.3",
         "earth": "25.3",
         "moon": "21.1",
+        "northNode": "58.5",
+        "southNode": "52.5",
         "mercury": "64.4",
         "venus": "44.3",
         "mars": "28.5",
-        "northNode": "58.5"
-      }
+        "jupiter": "36.6",
+        "saturn": "18.4",
+        "uranus": "25.1",
+        "neptune": "30.3",
+        "pluto": "10.5"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        10,
+        15,
+        46,
+        25
+      ]
     }
   },
   {
@@ -239,20 +372,39 @@
         "sun": "58.6",
         "earth": "52.6",
         "moon": "28.1",
+        "northNode": "31.3",
+        "southNode": "41.3",
         "mercury": "10.3",
         "venus": "34.1",
         "mars": "30.3",
-        "northNode": "31.3"
+        "jupiter": "42.5",
+        "saturn": "24.3",
+        "uranus": "13.2",
+        "neptune": "41.2",
+        "pluto": "5.1"
       },
       "design": {
         "sun": "48.3",
         "earth": "21.3",
         "moon": "4.1",
+        "northNode": "33.4",
+        "southNode": "19.4",
         "mercury": "50.4",
         "venus": "29.4",
         "mars": "26.5",
-        "northNode": "33.4"
-      }
+        "jupiter": "27.1",
+        "saturn": "2.4",
+        "uranus": "19.6",
+        "neptune": "60.6",
+        "pluto": "9.3"
+      },
+      "crossAngle": "left",
+      "crossGates": [
+        58,
+        52,
+        48,
+        21
+      ]
     }
   },
   {
@@ -271,20 +423,39 @@
         "sun": "52.6",
         "earth": "58.6",
         "moon": "25.4",
+        "northNode": "34.1",
+        "southNode": "20.1",
         "mercury": "45.1",
         "venus": "4.5",
         "mars": "3.4",
-        "northNode": "34.1"
+        "jupiter": "42.1",
+        "saturn": "53.6",
+        "uranus": "50.3",
+        "neptune": "9.5",
+        "pluto": "18.3"
       },
       "design": {
         "sun": "21.2",
         "earth": "48.2",
         "moon": "9.5",
+        "northNode": "34.3",
+        "southNode": "20.3",
         "mercury": "36.2",
         "venus": "2.2",
         "mars": "49.4",
-        "northNode": "34.3"
-      }
+        "jupiter": "25.6",
+        "saturn": "39.3",
+        "uranus": "50.6",
+        "neptune": "5.1",
+        "pluto": "18.5"
+      },
+      "crossAngle": "left",
+      "crossGates": [
+        52,
+        58,
+        21,
+        48
+      ]
     }
   },
   {
@@ -303,20 +474,39 @@
         "sun": "37.5",
         "earth": "40.5",
         "moon": "28.1",
+        "northNode": "51.1",
+        "southNode": "57.1",
         "mercury": "37.6",
         "venus": "13.3",
         "mars": "19.6",
-        "northNode": "51.1"
+        "jupiter": "24.4",
+        "saturn": "37.5",
+        "uranus": "23.1",
+        "neptune": "36.5",
+        "pluto": "60.6"
       },
       "design": {
         "sun": "5.1",
         "earth": "35.1",
         "moon": "40.1",
+        "northNode": "42.4",
+        "southNode": "32.4",
         "mercury": "10.6",
         "venus": "50.4",
         "mars": "9.2",
-        "northNode": "42.4"
-      }
+        "jupiter": "27.6",
+        "saturn": "55.2",
+        "uranus": "23.2",
+        "neptune": "36.3",
+        "pluto": "60.3"
+      },
+      "crossAngle": "left",
+      "crossGates": [
+        37,
+        40,
+        5,
+        35
+      ]
     }
   },
   {
@@ -335,20 +525,39 @@
         "sun": "38.1",
         "earth": "39.1",
         "moon": "20.5",
+        "northNode": "21.4",
+        "southNode": "48.4",
         "mercury": "60.4",
         "venus": "13.5",
         "mars": "46.5",
-        "northNode": "21.4"
+        "jupiter": "41.5",
+        "saturn": "47.3",
+        "uranus": "15.5",
+        "neptune": "57.3",
+        "pluto": "7.5"
       },
       "design": {
         "sun": "48.3",
         "earth": "21.3",
         "moon": "25.1",
+        "northNode": "51.2",
+        "southNode": "57.2",
         "mercury": "18.5",
         "venus": "14.1",
         "mars": "7.5",
-        "northNode": "51.2"
-      }
+        "jupiter": "61.3",
+        "saturn": "64.3",
+        "uranus": "52.2",
+        "neptune": "48.6",
+        "pluto": "7.5"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        38,
+        39,
+        48,
+        21
+      ]
     }
   },
   {
@@ -367,20 +576,39 @@
         "sun": "38.3",
         "earth": "39.3",
         "moon": "45.6",
+        "northNode": "21.3",
+        "southNode": "48.3",
         "mercury": "60.6",
         "venus": "13.5",
         "mars": "46.5",
-        "northNode": "21.3"
+        "jupiter": "41.6",
+        "saturn": "47.3",
+        "uranus": "15.5",
+        "neptune": "57.3",
+        "pluto": "7.5"
       },
       "design": {
         "sun": "48.5",
         "earth": "21.5",
         "moon": "51.1",
+        "northNode": "51.2",
+        "southNode": "57.2",
         "mercury": "18.3",
         "venus": "14.3",
         "mars": "7.6",
-        "northNode": "51.2"
-      }
+        "jupiter": "61.3",
+        "saturn": "64.3",
+        "uranus": "52.2",
+        "neptune": "48.6",
+        "pluto": "7.5"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        38,
+        39,
+        48,
+        21
+      ]
     }
   },
   {
@@ -399,20 +627,39 @@
         "sun": "55.6",
         "earth": "59.6",
         "moon": "23.5",
+        "northNode": "17.5",
+        "southNode": "18.5",
         "mercury": "19.5",
         "venus": "41.2",
         "mars": "48.1",
-        "northNode": "17.5"
+        "jupiter": "49.1",
+        "saturn": "64.6",
+        "uranus": "15.3",
+        "neptune": "57.3",
+        "pluto": "7.4"
       },
       "design": {
         "sun": "9.2",
         "earth": "16.2",
         "moon": "25.1",
+        "northNode": "51.1",
+        "southNode": "57.1",
         "mercury": "9.6",
         "venus": "61.4",
         "mars": "47.1",
-        "northNode": "51.1"
-      }
+        "jupiter": "60.4",
+        "saturn": "47.2",
+        "uranus": "52.1",
+        "neptune": "57.2",
+        "pluto": "7.6"
+      },
+      "crossAngle": "left",
+      "crossGates": [
+        55,
+        59,
+        9,
+        16
+      ]
     }
   },
   {
@@ -431,20 +678,39 @@
         "sun": "53.3",
         "earth": "54.3",
         "moon": "2.6",
+        "northNode": "25.4",
+        "southNode": "46.4",
         "mercury": "53.1",
         "venus": "35.4",
         "mars": "48.4",
-        "northNode": "25.4"
+        "jupiter": "37.2",
+        "saturn": "64.4",
+        "uranus": "52.3",
+        "neptune": "48.6",
+        "pluto": "7.4"
       },
       "design": {
         "sun": "51.5",
         "earth": "57.5",
         "moon": "54.6",
+        "northNode": "17.4",
+        "southNode": "18.4",
         "mercury": "27.1",
         "venus": "55.3",
         "mars": "6.4",
-        "northNode": "17.4"
-      }
+        "jupiter": "30.5",
+        "saturn": "64.3",
+        "uranus": "15.4",
+        "neptune": "57.1",
+        "pluto": "7.3"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        53,
+        54,
+        51,
+        57
+      ]
     }
   },
   {
@@ -463,20 +729,39 @@
         "sun": "32.1",
         "earth": "42.1",
         "moon": "5.4",
+        "northNode": "36.6",
+        "southNode": "6.6",
         "mercury": "48.1",
         "venus": "48.5",
         "mars": "5.3",
-        "northNode": "36.6"
+        "jupiter": "30.4",
+        "saturn": "6.4",
+        "uranus": "52.6",
+        "neptune": "57.3",
+        "pluto": "4.1"
       },
       "design": {
         "sun": "62.3",
         "earth": "61.3",
         "moon": "33.3",
+        "northNode": "25.3",
+        "southNode": "46.3",
         "mercury": "56.4",
         "venus": "12.1",
         "mars": "57.1",
-        "northNode": "25.3"
-      }
+        "jupiter": "37.2",
+        "saturn": "64.5",
+        "uranus": "52.3",
+        "neptune": "48.6",
+        "pluto": "7.5"
+      },
+      "crossAngle": "right",
+      "crossGates": [
+        32,
+        42,
+        62,
+        61
+      ]
     }
   },
   {
@@ -495,25 +780,44 @@
         "sun": "61.6",
         "earth": "62.6",
         "moon": "14.3",
+        "northNode": "8.2",
+        "southNode": "14.2",
         "mercury": "58.3",
         "venus": "63.2",
         "mars": "63.6",
-        "northNode": "8.2"
+        "jupiter": "61.5",
+        "saturn": "14.2",
+        "uranus": "5.6",
+        "neptune": "10.5",
+        "pluto": "28.3"
       },
       "design": {
         "sun": "50.2",
         "earth": "3.2",
         "moon": "64.4",
+        "northNode": "8.4",
+        "southNode": "14.4",
         "mercury": "28.4",
         "venus": "34.2",
         "mars": "38.3",
-        "northNode": "8.4"
+        "jupiter": "58.4",
+        "saturn": "1.4",
+        "uranus": "9.6",
+        "neptune": "10.1",
+        "pluto": "50.6"
       },
       "stability": {
         "typeStable": true,
         "authorityStable": true,
         "profileStable": false
-      }
+      },
+      "crossAngle": "left",
+      "crossGates": [
+        61,
+        62,
+        50,
+        3
+      ]
     }
   }
 ]

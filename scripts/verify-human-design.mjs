@@ -41,6 +41,12 @@ import {
   sunLongitudeAt,
 } from "../src/lib/human-design/ephemeris.ts";
 import { hdFingerprint } from "../src/lib/human-design/fingerprint.ts";
+import {
+  dedupeHdSections,
+  missingHdReportSections,
+  normalizeHdHeadingTitle,
+} from "../src/lib/human-design/report-generate.ts";
+import { hdReportTextToPrintSections } from "../src/lib/human-design/packages.ts";
 import { spawnSync } from "node:child_process";
 
 const failures = [];
@@ -442,6 +448,18 @@ const TYPE_NAME_MAP = {
         if (f.expected.definition !== undefined) {
           assert(chart.definition === f.expected.definition, `golden ${f.label}: definition`);
         }
+        if (f.expected.crossAngle !== undefined) {
+          assert(
+            chart.cross.angle === f.expected.crossAngle,
+            `golden ${f.label}: crossAngle ${chart.cross.angle} == ${f.expected.crossAngle}`
+          );
+        }
+        if (f.expected.crossGates !== undefined) {
+          assert(
+            JSON.stringify(chart.cross.gates) === JSON.stringify(f.expected.crossGates),
+            `golden ${f.label}: crossGates ${JSON.stringify(chart.cross.gates)} == ${JSON.stringify(f.expected.crossGates)}`
+          );
+        }
         if (f.expected.activeGates !== undefined) {
           assert(
             chart.activeGates.length === f.expected.activeGates,
@@ -547,21 +565,77 @@ const TYPE_NAME_MAP = {
   const asyncJobs = src("../src/lib/async-jobs.ts");
   const schemaSql = src("../src/lib/schema.sql");
 
-  // Public share payload: design moment and raw longitudes never leave the
-  // server (both make the birth instant recoverable).
+  // Public share payload: design moment, raw longitudes, and color/tone/base
+  // never leave the server (all make the birth instant recoverable).
   assert(
-    serviceSrc.includes("design: _design") && serviceSrc.includes("longitude: _lon"),
-    "guardrail: public HD payload strips design moment and longitudes"
+    serviceSrc.includes("design: _design") &&
+      serviceSrc.includes("longitude: _lon") &&
+      serviceSrc.includes("color: _color") &&
+      serviceSrc.includes("tone: _tone") &&
+      serviceSrc.includes("base: _base"),
+    "guardrail: public HD payload strips design, longitudes, and color/tone/base"
   );
 
-  // Claim tokens are sha256-hashed at rest with a legacy dual-read transition.
+  const promptSrc = src("../src/lib/human-design/prompt.ts");
+  const packagesSrc = src("../src/lib/human-design/packages.ts");
+  const generateSrc = src("../src/lib/human-design/report-generate.ts");
+  assert(
+    promptSrc.includes("HD_REPORT_REQUIRED_SECTIONS") &&
+      promptSrc.includes("HD_COMPOSITE_REQUIRED_SECTIONS") &&
+      promptSrc.includes("formatRequiredSectionList"),
+    "guardrail: prompts single-source required ## titles from packages.ts"
+  );
+  assert(
+    packagesSrc.includes("HD_REPORT_REQUIRED_SECTIONS") &&
+      packagesSrc.includes("HD_COMPOSITE_REQUIRED_SECTIONS"),
+    "guardrail: packages.ts exports required section lists"
+  );
+  assert(
+    generateSrc.includes("[.!?…:]") || generateSrc.includes("HD_HEADING_TAIL"),
+    "guardrail: section gate accepts trailing colon on ## titles"
+  );
+  assert(
+    reportRoute.includes("isHardRejectedLlmOutput") &&
+      compositeRoute.includes("isHardRejectedLlmOutput") &&
+      !reportRoute.includes("isRejectedLlmOutput(") &&
+      !compositeRoute.includes("isRejectedLlmOutput("),
+    "guardrail: HD report routes use hard rejects only (not chat degenerate)"
+  );
+  assert(
+    reportRoute.includes("if (!resumePaidPending)") &&
+      compositeRoute.includes("if (!resumePaidPending)") &&
+      /if \(!resumePaidPending\)[\s\S]*?ensureSufficientRunes/.test(reportRoute) &&
+      /if \(!resumePaidPending\)[\s\S]*?ensureSufficientRunes/.test(compositeRoute),
+    "guardrail: async enqueue skips balance precheck on paid resume"
+  );
+  assert(
+    registry.includes("timeoutMs: 600_000") &&
+      /hd_composite_report[\s\S]*?timeoutMs:\s*600_000/.test(registry),
+    "guardrail: composite async job timeout matches personal (600s)"
+  );
+  assert(
+    compositeRoute.includes("maxDuration = 600"),
+    "guardrail: composite route maxDuration is 600"
+  );
+  const workerRunner = src("../scripts/run-async-jobs.ts");
+  assert(
+    workerRunner.includes("LONGEST_KIND_TIMEOUT_MS") &&
+      workerRunner.includes("LONGEST_KIND_TIMEOUT_MS + 60_000"),
+    "guardrail: async stale reaper exceeds longest kind timeout (HD 600s)"
+  );
+
+  // Claim tokens are sha256-hashed at rest; legacy plaintext hashed by 109.
   assert(
     serviceSrc.includes("hashHdClaimToken") && serviceSrc.includes('createHash("sha256")'),
     "guardrail: claim tokens are sha256-hashed"
   );
   assert(
-    /claim_token = \$3 OR claim_token = \$4/.test(serviceSrc),
-    "guardrail: claim matches hash with legacy dual-read transition"
+    /claim_token = \$3/.test(serviceSrc) && !/claim_token = \$3 OR claim_token = \$4/.test(serviceSrc),
+    "guardrail: claim matches hash-only (no raw dual-read)"
+  );
+  assert(
+    existsSync(new URL("../scripts/migrations/109_hash_legacy_hd_claim_tokens.sql", import.meta.url)),
+    "guardrail: migration 109 hashes legacy plaintext claim tokens"
   );
 
   // Double-billing guards wired into both purchase routes.
@@ -633,6 +707,81 @@ const TYPE_NAME_MAP = {
       `guardrail: ${name} route pre-checks balance before enqueue`
     );
   }
+}
+
+/* ---------- 12. Section dedupe / colon heading coalesce ---------- */
+{
+  assert(
+    normalizeHdHeadingTitle("Авторитет:") === "Авторитет",
+    "heading normalize strips trailing colon"
+  );
+  const stubThenFull = [
+    "## Тип и его особенности:",
+    "коротко",
+    "",
+    "## Тип и его особенности",
+    "x".repeat(220),
+    "",
+    "## Стратегия",
+    "y".repeat(220),
+  ].join("\n");
+  const coalesced = dedupeHdSections(stubThenFull);
+  assert(
+    (coalesced.match(/^##\s*Тип и его особенности\s*$/gm) || []).length === 1,
+    "dedupe coalesces Title: stub with Title rewrite"
+  );
+  assert(
+    !coalesced.includes("## Тип и его особенности:"),
+    "dedupe emits canonical title without colon"
+  );
+  assert(
+    coalesced.includes("x".repeat(220)),
+    "dedupe keeps the longest body for a title"
+  );
+  assert(
+    missingHdReportSections("## Авторитет:\n" + "z".repeat(200), ["Авторитет"]).length === 0,
+    "missing-section gate accepts trailing colon"
+  );
+
+  const withSubheads = [
+    "## Девять центров",
+    "Вводный абзац про центры.",
+    "",
+    "### Головной центр (открытый)",
+    "Текст про голову ".repeat(20),
+    "",
+    "### Аджна (открытый)",
+    "Текст про аджну ".repeat(20),
+    "",
+    "## Каналы",
+    "Вводный абзац про каналы.",
+    "",
+    "### 16-48: Воодушевление",
+    "Текст канала ".repeat(20),
+  ].join("\n");
+  const printSecs = hdReportTextToPrintSections(withSubheads);
+  assert(
+    printSecs.some((s) => s.title === "Девять центров"),
+    "print sections keep ## Девять центров"
+  );
+  assert(
+    !printSecs.some((s) => /^#\s/.test(s.title) || s.title.startsWith("###")),
+    "print sections must not promote ### into ## titles"
+  );
+  const centers = printSecs.find((s) => s.title === "Девять центров");
+  assert(
+    Boolean(centers?.claims?.[0]?.text?.includes("### Головной центр")),
+    "### subsections stay inside parent body"
+  );
+  const dedupedSubs = dedupeHdSections(withSubheads);
+  assert(
+    dedupedSubs.includes("### Головной центр (открытый)"),
+    "dedupe preserves ### subsections"
+  );
+  assert(
+    (dedupedSubs.match(/^##(?!#)\s/gm) || []).length === 2,
+    "dedupe counts only real ## headings when ### present"
+  );
 }
 
 /* ---------- result ---------- */
