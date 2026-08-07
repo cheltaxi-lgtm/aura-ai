@@ -1124,6 +1124,19 @@ export async function lockStalePendingReportForResume(reportId: string): Promise
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * Worker requeue takeover: claim a pending row even if it is still "fresh".
+ * Client path must keep using lockStalePendingReportForResume (age gate).
+ */
+export async function lockPendingReportForWorkerResume(reportId: string): Promise<boolean> {
+  const result = await query(
+    `UPDATE hd_reports SET created_at = now(), updated_at = now()
+     WHERE id = $1 AND status = 'pending'`,
+    [reportId]
+  );
+  return (result.rowCount ?? 0) > 0;
+}
+
 export async function completeHdReport(
   reportId: string,
   reportText: string,

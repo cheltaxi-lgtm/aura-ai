@@ -40,6 +40,7 @@ import {
   hasRuneRefundForTransaction,
   HD_UUID_RE,
   isStalePendingReport,
+  lockPendingReportForWorkerResume,
   lockStalePendingReportForResume,
   markHdReportChargeRefunded,
   markHdReportNeedsRegeneration,
@@ -147,7 +148,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  if (existing?.status === "pending" && !isStalePendingReport(existing)) {
+  // Fresh pending: clients must back off (poll UI). Workers must NOT 409 —
+  // after deploy/requeue the same pending is still "fresh" and CLAIM_BUSY
+  // permanently kills the job while the UI spins forever.
+  if (existing?.status === "pending" && !isStalePendingReport(existing) && !workerUserId) {
     return NextResponse.json(
       { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },
       { status: 409 }
@@ -156,10 +160,23 @@ export async function POST(request: NextRequest) {
 
   // Stale pending with a recorded charge → crashed after payment: resume
   // generation on the same row without charging twice.
+  // Worker requeue: also resume a still-fresh pending (see above).
   let resumePaidPending =
     existing?.status === "pending" &&
-    isStalePendingReport(existing) &&
+    (isStalePendingReport(existing) || Boolean(workerUserId)) &&
     Boolean(existing.transactionId);
+
+  // Worker found an empty pending without a charge (crash before attach) —
+  // drop it so generation can recreate cleanly instead of CLAIM_BUSY-looping.
+  if (
+    workerUserId &&
+    existing?.status === "pending" &&
+    !existing.transactionId &&
+    !existing.reportText
+  ) {
+    await deleteHdReportRow(existing.id).catch(() => undefined);
+    existing = null;
+  }
 
   if (resumePaidPending && existing?.transactionId) {
     let alreadyRefunded: boolean;
@@ -298,7 +315,9 @@ export async function POST(request: NextRequest) {
 
   try {
     if (resumePaidPending && existing) {
-      const locked = await lockStalePendingReportForResume(existing.id);
+      const locked = workerUserId
+        ? await lockPendingReportForWorkerResume(existing.id)
+        : await lockStalePendingReportForResume(existing.id);
       if (!locked) {
         return NextResponse.json(
           { error: "Разбор уже генерируется. Обновите страницу через минуту.", code: "CLAIM_BUSY" },

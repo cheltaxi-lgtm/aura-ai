@@ -27,11 +27,11 @@ const PHASES: Record<HdGeneratingKind, string[]> = {
   ],
 };
 
-/** Soft ETA for the wait UI + progress ease. Match multi-pass LLM reality
- * (composite often ~3 min; personal up to ~5). Worker timeouts are higher. */
+/** Soft ETA for the wait UI + progress ease. Sectional personal HD is
+ * 12 batches + editor (~6–12 min with Kimi); composite similar. */
 const ETA_MIN: Record<HdGeneratingKind, { min: number; max: number }> = {
-  personal: { min: 3, max: 5 },
-  composite: { min: 3, max: 5 },
+  personal: { min: 6, max: 12 },
+  composite: { min: 5, max: 10 },
   center: { min: 0.5, max: 1 },
 };
 
