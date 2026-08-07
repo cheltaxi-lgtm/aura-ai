@@ -1,21 +1,21 @@
 {
-  "llmCalls": 13,
+  "llmCalls": 15,
   "expectedCalls": 13,
-  "costRub": 3.95,
+  "costRub": 2.04,
   "usage": {
-    "promptTokens": 88076,
-    "completionTokens": 43787
+    "promptTokens": 76816,
+    "completionTokens": 14802
   },
   "modelId": "moonshotai/kimi-k2.5",
-  "durationMs": 479855,
+  "durationMs": 359873,
   "needsRegeneration": false,
   "qualityOk": true,
   "findings": [],
   "typeRu": "Манифестор",
   "strategyRu": "Информировать",
-  "crossAngleRu": "Левый угол",
-  "crossNameRu": "Усилия",
+  "crossAngleRu": "Прямой угол",
+  "crossNameRu": "Напряжения",
   "hangingGatesRu": "5 (Ожидание), 8 (Сближение), 11 (Мир), 14 (Большое обладание), 17 (Следование), 21 (Укус), 22 (Грация), 36 (Затмение света), 37 (Семья), 38 (Противостояние), 39 (Препятствие), 57 (Проникновение), 58 (Радость), 63 (После завершения)",
-  "outPath": "C:\\Users\\gamer\\Projects\\aura-ai\\scripts\\fixtures\\hd-live-svetlana-sectional.md",
-  "textLen": 68181
+  "outPath": "/opt/aura-ai/scripts/fixtures/hd-live-svetlana-sectional.md",
+  "textLen": 29689
 }
