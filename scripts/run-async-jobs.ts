@@ -211,16 +211,25 @@ async function main(): Promise<void> {
       console.error("[async-jobs] reaper failed:", error);
     }
 
-    const jobs = await claimAsyncJobs({
-      workerId,
-      limit: CONCURRENCY,
-      kinds: [...WORKER_KINDS],
-    });
-    if (!jobs.length) {
-      await sleep(POLL_INTERVAL_MS);
-      continue;
+    // Keep claiming while slots are free. Awaiting Promise.all(here) used to
+    // stall the whole poll loop behind one long HD/pro job (~10 min), so
+    // photo_reading / intention / daily sat in pending and the UI spun forever.
+    const slots = Math.max(0, CONCURRENCY - inFlight.size);
+    if (slots > 0) {
+      try {
+        const jobs = await claimAsyncJobs({
+          workerId,
+          limit: slots,
+          kinds: [...WORKER_KINDS],
+        });
+        for (const job of jobs) {
+          void track(runJob(job));
+        }
+      } catch (error) {
+        console.error("[async-jobs] claim failed:", error);
+      }
     }
-    await Promise.all(jobs.map((job) => track(runJob(job))));
+    await sleep(POLL_INTERVAL_MS);
   }
 
   clearInterval(memoryTimer);

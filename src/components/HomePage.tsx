@@ -2719,7 +2719,8 @@ export default function HomePage({
     }
 
     const interpretAbort = new AbortController();
-    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 3 * 60_000);
+    // Match photo_reading worker timeout (180s) + queue/poll slack; 3 min raced real jobs (~3 min).
+    const interpretWatchdog = window.setTimeout(() => interpretAbort.abort(), 6 * 60_000);
 
     try {
       const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
