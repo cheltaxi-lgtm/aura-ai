@@ -25,6 +25,7 @@ import {
   VALID_PROFILES,
   crossAngleFromProfile,
 } from "./constants";
+import { normalizeHdTimezone } from "./fingerprint";
 import {
   hdLongitudesAt,
   julianDateFromUnixMs,
@@ -463,11 +464,16 @@ export function computeTransits(atMs: number = Date.now()): HdActivation[] {
 }
 
 export function calculateHdChart(input: HdCalcInput): HdChart {
-  const parsed = parseInput(input);
-  const utcMs = birthUtcMs(input, parsed.timeLabel);
+  // Canonical IANA casing so stored chart.timezone matches fingerprint / dedupe.
+  const normalized: HdCalcInput = {
+    ...input,
+    timezone: normalizeHdTimezone(input.timezone),
+  };
+  const parsed = parseInput(normalized);
+  const utcMs = birthUtcMs(normalized, parsed.timeLabel);
   const core = computeCore(utcMs);
   // Whitespace-only time must behave as "time unknown", not as a known noon.
-  const timeKnown = Boolean(input.birthTime?.trim());
+  const timeKnown = Boolean(normalized.birthTime?.trim());
 
   let stability: HdTimeStability | undefined;
   if (!timeKnown) {
@@ -479,20 +485,20 @@ export function calculateHdChart(input: HdCalcInput): HdChart {
     let typeStable = true;
     let authorityStable = true;
     let profileStable = true;
-    let prev = computeCore(birthUtcMs(input, "00:00"));
+    let prev = computeCore(birthUtcMs(normalized, "00:00"));
     for (
       let minutes = 60;
       minutes < 24 * 60 && (typeStable || authorityStable || profileStable);
       minutes += 60
     ) {
-      const probe = computeCore(birthUtcMs(input, minutesToTimeLabel(minutes)));
+      const probe = computeCore(birthUtcMs(normalized, minutesToTimeLabel(minutes)));
       if (probe.type !== prev.type) typeStable = false;
       if (probe.authority !== prev.authority) authorityStable = false;
       if (probe.profile !== prev.profile) profileStable = false;
       prev = probe;
     }
     if (typeStable || authorityStable || profileStable) {
-      const dayEnd = computeCore(birthUtcMs(input, "23:59"));
+      const dayEnd = computeCore(birthUtcMs(normalized, "23:59"));
       if (dayEnd.type !== prev.type) typeStable = false;
       if (dayEnd.authority !== prev.authority) authorityStable = false;
       if (dayEnd.profile !== prev.profile) profileStable = false;
@@ -503,7 +509,7 @@ export function calculateHdChart(input: HdCalcInput): HdChart {
   return {
     engineVersion: HD_ENGINE_VERSION,
     timeKnown,
-    timezone: input.timezone,
+    timezone: normalized.timezone,
     birth: {
       date: input.birthDate,
       time: parsed.timeLabel,
