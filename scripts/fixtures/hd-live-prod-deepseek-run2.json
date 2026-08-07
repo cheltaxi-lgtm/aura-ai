@@ -1,0 +1,34 @@
+{
+  "llmCalls": 24,
+  "expectedCalls": 13,
+  "costRub": 1.56,
+  "usage": {
+    "promptTokens": 130262,
+    "completionTokens": 23045
+  },
+  "modelId": "deepseek/deepseek-chat-v3-0324",
+  "durationMs": 639521,
+  "needsRegeneration": true,
+  "qualityOk": false,
+  "findings": [
+    {
+      "rule": "V6",
+      "detail": "report_too_short:3199"
+    },
+    {
+      "rule": "V6",
+      "detail": "missing_focus_answer_section"
+    },
+    {
+      "rule": "V7",
+      "detail": "missing_cross_angle:Прямой угол"
+    }
+  ],
+  "typeRu": "Манифестор",
+  "strategyRu": "Информировать",
+  "crossAngleRu": "Прямой угол",
+  "crossNameRu": "Напряжения",
+  "hangingGatesRu": "5 (Ожидание), 8 (Сближение), 11 (Мир), 14 (Большое обладание), 17 (Следование), 21 (Укус), 22 (Грация), 36 (Затмение света), 37 (Семья), 38 (Противостояние), 39 (Препятствие), 57 (Проникновение), 58 (Радость), 63 (После завершения)",
+  "outPath": "/opt/aura-ai/scripts/fixtures/hd-live-svetlana-sectional.md",
+  "textLen": 3199
+}
