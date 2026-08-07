@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { after, NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { sanitizeHdReportText } from "@/lib/human-design";
 import { calculateHdChart } from "@/lib/human-design/calculate";
@@ -11,6 +11,7 @@ import {
   approveHdReportManually,
   beginHdReportQualityResume,
   completeHdReport,
+  failHdReport,
   getHdChartById,
   getHdReportAdminDetail,
   HD_UUID_RE,
@@ -91,51 +92,50 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "section_required" }, { status: 400 });
     }
 
-    const generated = await generateHdReportSectional({
-      chart,
-      clientName: chartRow.subjectName,
-      aboutOther: chartRow.subjectKind === "other",
-      maxSectionRetries: 2,
-      onlyTitles,
-      priorText: onlyTitles ? row.reportText : null,
-    });
+    // Generation takes 6–13 min — run it after the response instead of
+    // holding the admin browser fetch open. UI polls report status.
+    after(async () => {
+      try {
+        const generated = await generateHdReportSectional({
+          chart,
+          clientName: chartRow.subjectName,
+          aboutOther: chartRow.subjectKind === "other",
+          maxSectionRetries: 2,
+          onlyTitles,
+          priorText: onlyTitles ? row.reportText : null,
+        });
 
-    if (!generated.text) {
-      return NextResponse.json({ error: "generation_failed" }, { status: 502 });
-    }
+        if (!generated.text) {
+          await failHdReport(reportId, "generation_failed").catch(() => undefined);
+          return;
+        }
 
-    if (generated.needsRegeneration) {
-      await markHdReportNeedsRegeneration(
-        reportId,
-        sanitizeHdReportText(generated.text),
-        generated.quality.findings
-      );
-      return NextResponse.json({
-        ok: false,
-        needsRegeneration: true,
-        findings: generated.quality.findings,
-        costRub: generated.costRub,
-        llmCalls: generated.llmCalls,
-      });
-    }
+        if (generated.needsRegeneration) {
+          await markHdReportNeedsRegeneration(
+            reportId,
+            sanitizeHdReportText(generated.text),
+            generated.quality.findings
+          );
+          return;
+        }
 
-    await completeHdReport(
-      reportId,
-      sanitizeHdReportText(generated.text),
-      generated.modelId || "openrouter",
-      {
-        costRub: generated.costRub,
-        llmCalls: generated.llmCalls,
-        tokenUsage: generated.usage,
-        qualityFindings: [],
+        await completeHdReport(
+          reportId,
+          sanitizeHdReportText(generated.text),
+          generated.modelId || "openrouter",
+          {
+            costRub: generated.costRub,
+            llmCalls: generated.llmCalls,
+            tokenUsage: generated.usage,
+            qualityFindings: [],
+          }
+        );
+      } catch (e) {
+        console.error("[admin/hd-reports] regenerate failed", e);
+        await failHdReport(reportId, "generation_exception").catch(() => undefined);
       }
-    );
-    return NextResponse.json({
-      ok: true,
-      needsRegeneration: false,
-      costRub: generated.costRub,
-      llmCalls: generated.llmCalls,
     });
+    return NextResponse.json({ ok: true, started: true }, { status: 202 });
   }
 
   if (body.action === "validate") {

@@ -164,6 +164,7 @@ export function validateAdminSettingsPatch(
       "visionModel",
       "natalModel",
       "matrixModel",
+      "hdModel",
     ] as const;
     for (const [key, val] of Object.entries(raw)) {
       if (stringKeys.includes(key as (typeof stringKeys)[number])) {

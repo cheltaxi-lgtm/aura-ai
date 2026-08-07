@@ -63,24 +63,59 @@ export default function AdminHdReportsPage() {
     if (!selected) return;
     setBusy(true);
     setMsg(null);
+    const reportId = selected.id;
     try {
       const res = await fetch("/api/admin/hd-reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           action,
-          reportId: selected.id,
+          reportId,
           sectionTitle: action === "regenerate_section" ? sectionTitle : undefined,
         }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok) {
         setMsg(data.error || `Ошибка ${res.status}`);
+        setBusy(false);
         return;
       }
       if (action === "validate") {
         setMsg(JSON.stringify(data.quality, null, 2));
+        setBusy(false);
         return;
+      }
+      if (data.started) {
+        setMsg(
+          "Генерация запущена в фоне (обычно 6–13 минут). Статус обновляется каждые 20 секунд — страницу можно не закрывать."
+        );
+        const deadline = Date.now() + 15 * 60 * 1000;
+        const timer = setInterval(async () => {
+          if (Date.now() > deadline) {
+            clearInterval(timer);
+            setMsg("Генерация длится дольше 15 минут — проверьте отчёт позже вручную.");
+            setBusy(false);
+            return;
+          }
+          const res2 = await fetch(
+            `/api/admin/hd-reports?id=${encodeURIComponent(reportId)}`
+          ).catch(() => null);
+          if (!res2?.ok) return;
+          const d2 = await res2.json();
+          const st = d2?.report?.status;
+          if (st && st !== "pending") {
+            clearInterval(timer);
+            setMsg(
+              st === "done"
+                ? "Готово: отчёт сгенерирован и прошёл проверку качества."
+                : `Генерация завершилась со статусом: ${st} (см. findings ниже).`
+            );
+            await load();
+            await openItem(reportId);
+            setBusy(false);
+          }
+        }, 20_000);
+        return; // busy сбросится в поллере
       }
       setMsg(
         JSON.stringify(
@@ -96,8 +131,10 @@ export default function AdminHdReportsPage() {
         )
       );
       await load();
-      await openItem(selected.id);
-    } finally {
+      await openItem(reportId);
+      setBusy(false);
+    } catch {
+      setMsg("Сетевая ошибка при выполнении действия.");
       setBusy(false);
     }
   }
