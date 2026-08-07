@@ -127,11 +127,51 @@ function normalizeTitleKey(raw: string): string {
     .toLowerCase();
 }
 
+const KNOWN_TITLE_KEYS = new Set(
+  HD_PIPELINE_BATCHES.flatMap((b) => b.titles).map((t) => normalizeTitleKey(t))
+);
+
+/** Model wraps whole batches in ``` markdown fences / leaves escape artifacts. */
+function stripWrapperJunk(raw: string): string {
+  let t = raw.replace(/\r\n/g, "\n").trim();
+  t = t.replace(/^\s*```[a-z]*\s*\n/i, "").replace(/\n\s*```\s*$/i, "");
+  t = t.replace(/^```[a-z]*\s*$/gim, "");
+  t = t.replace(/^\s*\\?[*_]+\s*$/gm, ""); // dangling emphasis-only junk lines
+  return t.trim();
+}
+
+/** Editor invents headings («## Светлана, ваша карта…») — drop unknown ## lines. */
+function demoteUnknownHeadings(text: string): string {
+  const out: string[] = [];
+  for (const line of text.split("\n")) {
+    const m = /^##(?!#)\s+(.*)$/.exec(line.trim());
+    if (m && !KNOWN_TITLE_KEYS.has(normalizeTitleKey(m[1]!))) continue;
+    out.push(line);
+  }
+  return out.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+/** Short meta preamble before the first ## («Вот полный разбор… в markdown:»). */
+function dropMetaPreamble(text: string): string {
+  const idx = text.search(/^##(?!#)\s+/m);
+  if (idx <= 0) return text;
+  const pre = text.slice(0, idx).trim();
+  if (pre.length >= 200) return text; // real intro section
+  if (/вот|markdown|ниже|продолж|^#+\s/i.test(pre)) return text.slice(idx).trim();
+  return text;
+}
+
+export function sanitizeHdGeneratedText(text: string): string {
+  return demoteUnknownHeadings(
+    dropMetaPreamble(sanitizeHdReportText(stripWrapperJunk(text)))
+  );
+}
+
 function parseBatchOutput(
   titles: readonly string[],
   raw: string
 ): SectionDraft[] {
-  const cleaned = raw.replace(/\r\n/g, "\n").trim();
+  const cleaned = stripWrapperJunk(raw);
   const drafts: SectionDraft[] = [];
   const hasIntro = titles.includes("Вступление");
   const chunks = cleaned.split(/^##(?!#)\s+/m);
@@ -474,7 +514,7 @@ export async function generateHdReportSectional(
   llmCalls += edited.calls;
   addUsage(edited.usage);
   // Prefer edited text only if it keeps all required ## titles.
-  const editedClean = sanitizeHdReportText(edited.text);
+  const editedClean = sanitizeHdGeneratedText(edited.text);
   const missingAfterEdit = HD_PIPELINE_BATCHES.flatMap((b) => b.titles).filter(
     (t) =>
       t !== "Вступление" &&
@@ -483,7 +523,7 @@ export async function generateHdReportSectional(
   combined =
     missingAfterEdit.length === 0
       ? editedClean
-      : sanitizeHdReportText(combined);
+      : sanitizeHdGeneratedText(combined);
 
   let quality = validateHdReportText(combined, {
     engineTypeRu: contract.typeRu,
@@ -521,7 +561,13 @@ export async function generateHdReportSectional(
     const reEdit = await editorPass(combined, contract);
     llmCalls += reEdit.calls;
     addUsage(reEdit.usage);
-    combined = sanitizeHdReportText(reEdit.text);
+    const reEditClean = sanitizeHdGeneratedText(reEdit.text);
+    const reEditMissing = HD_PIPELINE_BATCHES.flatMap((b) => b.titles).filter(
+      (t) =>
+        t !== "Вступление" &&
+        !reEditClean.toLowerCase().includes(`## ${t}`.toLowerCase())
+    );
+    combined = reEditMissing.length === 0 ? reEditClean : sanitizeHdGeneratedText(combined);
     quality = validateHdReportText(combined, {
       engineTypeRu: contract.typeRu,
       motorCount: contract.motorCentersDefinedRu.length,

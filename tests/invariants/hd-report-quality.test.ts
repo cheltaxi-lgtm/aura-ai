@@ -11,6 +11,7 @@ import {
   HD_PIPELINE_SECTIONS,
 } from "@/lib/hd-report-pipeline/sections";
 import { hdReportRequiresNewCharge } from "@/lib/hd-report-pipeline/billing";
+import { sanitizeHdGeneratedText } from "@/lib/hd-report-pipeline/generate";
 import { validateHdReportText } from "@/lib/hd-report-quality/validator";
 
 const FIXTURE = readFileSync(
@@ -148,6 +149,33 @@ describe("HD report quality gate", () => {
     expect(rules.has("V11")).toBe(true);
     expect(rules.has("V12")).toBe(true);
     expect(rules.has("V6")).toBe(true); // missing focus answer
+  });
+
+  it("10. sanitize strips fence wrap, meta preamble, invented headings, trailing escapes", () => {
+    const dirty = [
+      "Вот полный разбор вашей карты в формате markdown:",
+      "```",
+      "## Светлана, ваша карта Дизайна Человека",
+      "## Тип и его особенности",
+      "Вы — Манифестор. " + "текст ".repeat(60),
+      "## Стратегия",
+      "Информировать перед действием. " + "текст ".repeat(60),
+      "\\*",
+      "```",
+    ].join("\n");
+    const clean = sanitizeHdGeneratedText(dirty);
+    expect(clean).not.toContain("```");
+    expect(clean).not.toContain("Вот полный разбор");
+    expect(clean).not.toContain("Светлана, ваша карта");
+    expect(clean).not.toMatch(/\\?[*_]\s*$/);
+    expect(clean).toContain("## Тип и его особенности");
+    expect(clean).toContain("## Стратегия");
+    // Clean text no longer trips V5 (fence junk) on the same body.
+    const q = validateHdReportText(clean, {
+      engineTypeRu: "Манифестор",
+      requireFocusAnswer: false,
+    });
+    expect(q.findings.some((f) => f.rule === "V5")).toBe(false);
   });
 });
 
