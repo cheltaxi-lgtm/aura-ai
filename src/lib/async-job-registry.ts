@@ -23,7 +23,7 @@ export function hashDedupeParts(parts: unknown[]): string {
 const NATAL_INTERPRETATION: PaidJobKindConfig = {
   kind: "natal_interpretation",
   runeAction: "NATAL_READING",
-  maxActivePerUser: 3,
+  maxActivePerUser: 1,
   timeoutMs: 280_000,
   workerPath: (job) => ({
     path: "/api/natal-chart/interpretation",
@@ -37,7 +37,7 @@ const NATAL_INTERPRETATION: PaidJobKindConfig = {
 const NATAL_FORECAST: PaidJobKindConfig = {
   kind: "natal_forecast",
   runeAction: "FORECAST_REPORT",
-  maxActivePerUser: 3,
+  maxActivePerUser: 1,
   timeoutMs: 280_000,
   workerPath: (job) => ({
     path: "/api/natal-chart/forecast",
@@ -57,7 +57,7 @@ const NATAL_FORECAST: PaidJobKindConfig = {
 const NATAL_COMPATIBILITY: PaidJobKindConfig = {
   kind: "natal_compatibility",
   runeAction: "SYNASTRY_REPORT",
-  maxActivePerUser: 3,
+  maxActivePerUser: 1,
   timeoutMs: 280_000,
   workerPath: (job) => {
     const id = job.input.id;
@@ -209,7 +209,7 @@ const JOINT_COMBINED: PaidJobKindConfig = {
 const NUMEROLOGY_READING: PaidJobKindConfig = {
   kind: "numerology_reading",
   runeAction: "NUMEROLOGY_SESSION",
-  maxActivePerUser: 2,
+  maxActivePerUser: 1,
   /** Full matrix ≈ 19 zone LLM calls; align with bot siteNumerology 420s. */
   timeoutMs: 420_000,
   workerPath: (job) => ({
@@ -261,7 +261,7 @@ const IMAGE_GENERATE: PaidJobKindConfig = {
 const HD_REPORT: PaidJobKindConfig = {
   kind: "hd_report",
   runeAction: "HD_REPORT",
-  maxActivePerUser: 2,
+  maxActivePerUser: 1,
   // Sectional generate: ~23 LLM calls (route maxDuration 800s).
   // Charge lives on the hd_reports row (not the job), so a worker HTTP
   // timeout fails the job cosmetically while the route completes — the
@@ -279,7 +279,7 @@ const HD_REPORT: PaidJobKindConfig = {
 const HD_COMPOSITE_REPORT: PaidJobKindConfig = {
   kind: "hd_composite_report",
   runeAction: "HD_COMPOSITE_REPORT",
-  maxActivePerUser: 2,
+  maxActivePerUser: 1,
   // Same multi-pass budget as personal (route maxDuration 600s).
   timeoutMs: 600_000,
   workerPath: (job) => ({
@@ -299,7 +299,7 @@ const HD_COMPOSITE_REPORT: PaidJobKindConfig = {
 /** Pro practice premium report — billed via Pro module, not consumer runeAction. */
 const PRO_PREMIUM_REPORT: PaidJobKindConfig = {
   kind: "pro_premium_report",
-  maxActivePerUser: 3,
+  maxActivePerUser: 1,
   /** Sectional HD: 12 batches + editor + quality retries — match hd_report. */
   timeoutMs: 800_000,
   workerPath: (job) => ({

@@ -302,7 +302,9 @@ async function callChatCompletionsDetailed(
     extractOpts = { ...extractOpts, allowReasoningFallback: true };
   }
 
-  const result = await withLlmSlot(`complete:${model}`, async () => {
+  const result = await withLlmSlot(
+    `complete:${model}`,
+    async () => {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const controller = new AbortController();
       const timer = setTimeout(() => controller.abort(), timeoutMs);
@@ -315,8 +317,18 @@ async function callChatCompletionsDetailed(
         });
         if (!response.ok) {
           const errText = await response.text().catch(() => "");
+          const retryAfterRaw = response.headers.get("retry-after");
+          const retryAfterSec = retryAfterRaw ? Number(retryAfterRaw) : NaN;
           if (RETRYABLE_STATUSES.has(response.status) && attempt < maxAttempts - 1) {
-            await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));
+            const backoff = Number.isFinite(retryAfterSec) && retryAfterSec > 0
+              ? Math.min(retryAfterSec * 1000, 60_000)
+              : retryDelayMs(attempt);
+            if (response.status === 429) {
+              console.warn(
+                `LLM 429 backoff ${backoff}ms attempt=${attempt + 1}/${maxAttempts} model=${model}`
+              );
+            }
+            await new Promise((r) => setTimeout(r, backoff));
             continue;
           }
           console.warn("LLM request failed:", url, response.status, errText);
@@ -431,11 +443,12 @@ export type CompleteChatOptions = {
   /** Override admin chat model (e.g. ritual fallback). */
   modelOverride?: string;
   /**
-   * "background" routes this call through a small dedicated concurrency pool
-   * so fire-and-forget work (e.g. memory fact extraction) can never starve
-   * user-facing completions of slots in the shared queue.
+   * Concurrency pool routing:
+   * - interactive (default): chat / ask — ≥60% of LLM_CONCURRENCY_MAX
+   * - report: long paid report generation — remainder; never shares FIFO with chat
+   * - background: fire-and-forget (memory extraction) — small dedicated pool
    */
-  priority?: "background";
+  priority?: "background" | "report" | "interactive";
   /**
    * Skip chat-oriented degenerate/spam heuristics. Use for long-form paid
    * reports that already enforce product-specific structure (HD sections).
@@ -468,7 +481,12 @@ async function completeChatInternal(
     structuredJson: jsonObject,
     skipDegenerateCheck,
   };
-  const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
+  const pool: LlmPool =
+    priority === "background"
+      ? "background"
+      : priority === "report"
+        ? "report"
+        : "interactive";
 
   const tryOnce = async (temp?: number) =>
     acceptLlmText(
@@ -526,7 +544,12 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
     structuredJson: jsonObject,
     skipDegenerateCheck,
   };
-  const pool: LlmPool | undefined = priority === "background" ? "background" : undefined;
+  const pool: LlmPool =
+    priority === "background"
+      ? "background"
+      : priority === "report"
+        ? "report"
+        : "interactive";
 
   const tryOnce = async (temp?: number) =>
     callChatCompletionsDetailed(

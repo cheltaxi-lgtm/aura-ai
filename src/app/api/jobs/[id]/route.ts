@@ -1,6 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
-import { asyncJobPollPayload, getAsyncJobForUser } from "@/lib/async-jobs";
+import {
+  asyncJobPollPayload,
+  getAsyncJobForUser,
+  getAsyncJobQueuePosition,
+} from "@/lib/async-jobs";
+import { isReportClaimPaused } from "@/lib/async-report-circuit-breaker";
 import { resolveProfileUserContext, profileAuthFailureResponse } from "@/lib/require-auth";
 
 export async function GET(
@@ -22,5 +27,21 @@ export async function GET(
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
 
-  return NextResponse.json(asyncJobPollPayload(job));
+  const payload = asyncJobPollPayload(job);
+  const queuePosition =
+    job.status === "pending" ? await getAsyncJobQueuePosition(job.id) : null;
+  const providerPaused = isReportClaimPaused();
+  return NextResponse.json({
+    ...payload,
+    queuePosition,
+    providerPaused,
+    clientMessage:
+      providerPaused && (job.status === "pending" || job.status === "running")
+        ? "Провайдер временно недоступен, задача в очереди. Повторного списания рун не будет."
+        : job.status === "pending" && queuePosition
+          ? `В очереди, позиция ${queuePosition}. Можно закрыть вкладку — ссылка постоянная.`
+          : job.status === "running"
+            ? "Генерация идёт. Можно закрыть вкладку и вернуться позже."
+            : undefined,
+  });
 }

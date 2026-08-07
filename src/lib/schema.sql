@@ -36,7 +36,7 @@ CREATE TABLE IF NOT EXISTS async_jobs (
     'numerology_reading', 'hd_report', 'hd_composite_report', 'pro_premium_report'
   )),
   status        TEXT NOT NULL DEFAULT 'pending'
-    CHECK (status IN ('pending', 'running', 'completed', 'failed')),
+    CHECK (status IN ('pending', 'running', 'completed', 'failed', 'needs_regeneration')),
   input         JSONB NOT NULL DEFAULT '{}'::jsonb,
   result        JSONB,
   error_message TEXT,
@@ -57,7 +57,14 @@ CREATE TABLE IF NOT EXISTS async_jobs (
   output_entity_id UUID,
   output_entity_table TEXT,
   provenance    JSONB NOT NULL DEFAULT '{}'::jsonb,
-  next_attempt_at TIMESTAMPTZ
+  next_attempt_at TIMESTAMPTZ,
+  started_at TIMESTAMPTZ,
+  queue_wait_ms INTEGER,
+  generation_ms INTEGER,
+  llm_calls INTEGER,
+  llm_cost_rub NUMERIC(12, 4),
+  retry_429_count INTEGER NOT NULL DEFAULT 0,
+  progress JSONB NOT NULL DEFAULT '{}'::jsonb
 );
 
 CREATE INDEX IF NOT EXISTS idx_async_jobs_user_created
@@ -77,6 +84,21 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_async_jobs_dedupe_active
 CREATE INDEX IF NOT EXISTS idx_async_jobs_next_attempt
   ON async_jobs (next_attempt_at)
   WHERE status = 'pending' AND next_attempt_at IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_async_jobs_needs_regeneration
+  ON async_jobs (updated_at DESC)
+  WHERE status = 'needs_regeneration';
+CREATE INDEX IF NOT EXISTS idx_async_jobs_report_pending
+  ON async_jobs (created_at)
+  WHERE status = 'pending'
+    AND kind IN (
+      'hd_report',
+      'hd_composite_report',
+      'pro_premium_report',
+      'numerology_reading',
+      'natal_interpretation',
+      'natal_forecast',
+      'natal_compatibility'
+    );
 
 -- === SPEC: History (СЃРµР°РЅСЃС‹ Рё РєРѕРЅС‚РµРєСЃС‚) ===
 CREATE TABLE IF NOT EXISTS history (

@@ -25,6 +25,7 @@ import {
   beginWorkerJobSave,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
+  trackWorkerJobNeedsRegeneration,
   trackWorkerJobRefunded,
 } from "@/lib/async-job-lifecycle";
 import { query, withTransaction } from "@/lib/db";
@@ -456,10 +457,9 @@ export async function POST(request: NextRequest) {
         sanitizeHdReportText(text),
         generated.quality.findings
       );
-      await trackWorkerJobFailed(
+      await trackWorkerJobNeedsRegeneration(
         request,
-        "Разбор требует проверки качества. Оплата сохранена — повторного списания не будет.",
-        { errorCode: "needs_regeneration", refunded: false }
+        "Разбор требует проверки качества. Оплата сохранена — повторного списания не будет."
       );
       return NextResponse.json(
         {

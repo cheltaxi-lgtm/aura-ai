@@ -178,6 +178,7 @@ async function completeSectionedReport(opts: {
       timeoutMs: 300_000,
       skipTemperatureRetry: true,
       skipDegenerateCheck: true,
+      priority: "report",
     });
     let chunk = (result.text || "").trim();
     if (!chunk) {
@@ -190,6 +191,7 @@ async function completeSectionedReport(opts: {
         timeoutMs: 300_000,
         skipTemperatureRetry: true,
         skipDegenerateCheck: true,
+        priority: "report",
       });
       chunk = (result.text || "").trim();
     }

@@ -35,6 +35,14 @@ export async function verifySessionClaim(token: string): Promise<string | null> 
   }
 }
 
+function isOutsideNextRequestScope(error: unknown): boolean {
+  return (
+    error instanceof Error &&
+    (/cookies[\s`']*was called outside a request scope/i.test(error.message) ||
+      /NEXT_DYNAMIC_API_WRONG_CONTEXT/i.test(error.message))
+  );
+}
+
 export async function setSessionClaimCookie(
   sessionId: string,
   request?: CookieRequestContext
@@ -66,26 +74,44 @@ export async function setSessionClaimCookie(
   }
 
   const token = await signSessionClaim(sessionId);
-  const jar = await cookies();
-  jar.set(SESSION_CLAIM_COOKIE, token, {
-    httpOnly: true,
-    secure: resolveCookieSecure(request),
-    sameSite: "lax",
-    maxAge: SESSION_CLAIM_MAX_AGE,
-    path: "/",
-  });
+  try {
+    const jar = await cookies();
+    jar.set(SESSION_CLAIM_COOKIE, token, {
+      httpOnly: true,
+      secure: resolveCookieSecure(request),
+      sameSite: "lax",
+      maxAge: SESSION_CLAIM_MAX_AGE,
+      path: "/",
+    });
+  } catch (error) {
+    // In-process async-job runners call route handlers without Next request ALS.
+    // Session rows are still created; cookie binding is a browser concern only.
+    if (isOutsideNextRequestScope(error)) return;
+    throw error;
+  }
 }
 
 export async function readSessionClaimCookie(): Promise<string | null> {
-  const jar = await cookies();
-  return jar.get(SESSION_CLAIM_COOKIE)?.value ?? null;
+  try {
+    const jar = await cookies();
+    return jar.get(SESSION_CLAIM_COOKIE)?.value ?? null;
+  } catch (error) {
+    if (isOutsideNextRequestScope(error)) return null;
+    throw error;
+  }
 }
 
 /** Clear guest session claim with matching cookie attributes (WebView-safe). */
 export async function clearSessionClaimCookie(
   request?: CookieRequestContext
 ): Promise<void> {
-  const jar = await cookies();
+  let jar: Awaited<ReturnType<typeof cookies>>;
+  try {
+    jar = await cookies();
+  } catch (error) {
+    if (isOutsideNextRequestScope(error)) return;
+    throw error;
+  }
   jar.set(SESSION_CLAIM_COOKIE, "", {
     httpOnly: true,
     secure: resolveCookieSecure(request),

@@ -7,6 +7,7 @@ type QueueEntry = {
   timer: ReturnType<typeof setTimeout>;
 };
 
+/** Total slots across interactive+report. pending Phase 0 calibration */
 function readMaxConcurrency(): number {
   const raw = Number(process.env.LLM_CONCURRENCY_MAX);
   if (Number.isFinite(raw) && raw >= 1) return Math.floor(raw);
@@ -14,9 +15,33 @@ function readMaxConcurrency(): number {
 }
 
 /**
+ * Interactive (chat / ask) gets ≥60% of LLM_CONCURRENCY_MAX so paid report
+ * generation cannot starve live dialogue. pending Phase 0 calibration
+ */
+function readInteractiveMaxConcurrency(): number {
+  const total = readMaxConcurrency();
+  const raw = Number(process.env.LLM_INTERACTIVE_CONCURRENCY_MAX);
+  if (Number.isFinite(raw) && raw >= 1) return Math.min(total, Math.floor(raw));
+  return Math.max(1, Math.ceil(total * 0.6));
+}
+
+/**
+ * Report pool = remainder (≤40%). Worker / long paid reports use only this
+ * pool. pending Phase 0 calibration
+ */
+function readReportMaxConcurrency(): number {
+  const total = readMaxConcurrency();
+  const interactive = readInteractiveMaxConcurrency();
+  const raw = Number(process.env.LLM_REPORT_CONCURRENCY_MAX);
+  if (Number.isFinite(raw) && raw >= 1) {
+    return Math.min(total, Math.floor(raw));
+  }
+  return Math.max(1, total - interactive);
+}
+
+/**
  * Background/fire-and-forget calls (e.g. memory fact extraction) get their own
- * small slice of concurrency so they never starve user-facing chat/reading
- * completions of slots in the shared queue.
+ * small slice so they never starve interactive chat.
  */
 function readBackgroundMaxConcurrency(): number {
   const raw = Number(process.env.LLM_BACKGROUND_CONCURRENCY_MAX);
@@ -90,17 +115,31 @@ class LlmConcurrencyGate {
   }
 }
 
-const gate = new LlmConcurrencyGate(readMaxConcurrency());
+const interactiveGate = new LlmConcurrencyGate(readInteractiveMaxConcurrency());
+const reportGate = new LlmConcurrencyGate(readReportMaxConcurrency());
 const backgroundGate = new LlmConcurrencyGate(readBackgroundMaxConcurrency());
 
-export type LlmPool = "default" | "background";
+/** @deprecated alias — maps to interactive for backward-compatible callers */
+const gate = interactiveGate;
+
+export type LlmPool = "default" | "interactive" | "report" | "background";
 
 function resolveGate(pool?: LlmPool): LlmConcurrencyGate {
-  return pool === "background" ? backgroundGate : gate;
+  if (pool === "background") return backgroundGate;
+  if (pool === "report") return reportGate;
+  // "default" and "interactive" share the interactive FIFO (chat must not
+  // wait behind report generation).
+  return interactiveGate;
 }
 
 export function getLlmConcurrencyStats() {
-  return { ...gate.stats(), background: backgroundGate.stats() };
+  return {
+    ...interactiveGate.stats(),
+    interactive: interactiveGate.stats(),
+    report: reportGate.stats(),
+    background: backgroundGate.stats(),
+    totalConfigured: readMaxConcurrency(),
+  };
 }
 
 export async function withLlmSlot<T>(

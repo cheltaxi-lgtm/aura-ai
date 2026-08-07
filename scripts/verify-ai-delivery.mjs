@@ -123,7 +123,12 @@ const quarantine = read("scripts/quarantine-legacy-fallback-readings.ts");
 assert.match(quarantine, /legacy_fallback/);
 
 const syncEnv = read("hosting/sync-async-jobs-env.sh");
-assert.match(syncEnv, /ASYNC_JOB_KINDS/);
+assert.match(syncEnv, /async-jobs-shared\.env\.keys/);
+const sharedEnvKeys = read("hosting/async-jobs-shared.env.keys");
+assert.match(sharedEnvKeys, /ASYNC_JOB_KINDS/);
+assert.match(sharedEnvKeys, /OPENROUTER_HTTPS_PROXY/);
+assert.match(sharedEnvKeys, /ASYNC_REPORT_INPROCESS/);
+assert.match(sharedEnvKeys, /AUTH_SECRET/);
 
 const photo = read("src/app/api/photo-reading/stream/route.ts");
 assert.match(photo, /enqueuePaidAsyncJob/);

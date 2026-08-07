@@ -267,6 +267,7 @@ async function requestNatalReportJson(
       modelOverride: model,
       temperature,
       timeoutMs,
+      priority: "report",
     });
 
     const chunk = result.text?.trim() ?? "";

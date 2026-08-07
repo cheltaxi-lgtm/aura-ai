@@ -165,6 +165,7 @@ ${formatCompatibilityEvidence(evidence)}`),
       allowReasoningFallback: true,
       skipTemperatureRetry: true,
       modelOverride: natalModel,
+      priority: "report",
     });
     let raw = first.text;
     let validation = (() => {
@@ -195,6 +196,7 @@ ${formatCompatibilityEvidence(evidence)}`),
         allowReasoningFallback: true,
         skipTemperatureRetry: true,
         modelOverride: natalModel,
+        priority: "report",
       });
       raw = repaired.text;
       try {

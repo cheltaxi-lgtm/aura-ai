@@ -10,9 +10,22 @@ export function getPool(): Pool {
     if (!connectionString) {
       throw new Error("DATABASE_URL is not set");
     }
+    // Worker process: prefer DB_POOL_MAX_WORKER (default 5 on run-async-jobs)
+    // so long report jobs cannot exhaust the Next.js pool.
+    // pending Phase 0 calibration
+    const workerMax = Number(process.env.DB_POOL_MAX_WORKER);
+    const appMax = Number(process.env.DB_POOL_MAX);
+    const isAsyncWorker =
+      typeof process.argv[1] === "string" && process.argv[1].includes("run-async-jobs");
+    const max =
+      Number.isFinite(workerMax) && workerMax >= 1
+        ? Math.floor(workerMax)
+        : isAsyncWorker
+          ? 5
+          : Math.max(1, Number.isFinite(appMax) && appMax >= 1 ? Math.floor(appMax) : 20);
     pool = new Pool({
       connectionString,
-      max: Math.max(1, Number(process.env.DB_POOL_MAX) || 20),
+      max,
       connectionTimeoutMillis: 5_000,
       idleTimeoutMillis: 30_000,
       ssl:

@@ -7,6 +7,7 @@ import {
   failAsyncJob,
   getAsyncJobById,
   markAsyncJobCharged,
+  markAsyncJobNeedsRegeneration,
   markAsyncJobRefunded,
 } from "@/lib/async-jobs";
 import { getAsyncJobIdFromRequest } from "@/lib/async-job-worker-auth";
@@ -60,6 +61,15 @@ export async function trackWorkerJobFailed(
   await failAsyncJob(jobId, message, options?.errorCode ?? "generation_failed");
 }
 
+export async function trackWorkerJobNeedsRegeneration(
+  request: NextRequest,
+  message: string
+): Promise<void> {
+  const jobId = getAsyncJobIdFromRequest(request);
+  if (!jobId) return;
+  await markAsyncJobNeedsRegeneration(jobId, message);
+}
+
 async function billingChargeFromExistingTransaction(
   userId: string,
   transactionId: string,
@@ -94,6 +104,39 @@ export async function beginWorkerJobSave(request: NextRequest): Promise<boolean>
   if (!jobId) return true;
   if (request.signal.aborted) return false;
   return claimAsyncJobForSave(jobId);
+}
+
+/** Request-free save barrier for an in-process worker runner. */
+export async function beginWorkerJobSaveById(jobId: string): Promise<boolean> {
+  if (!jobId.trim()) return false;
+  return claimAsyncJobForSave(jobId);
+}
+
+export async function completeWorkerJobById(
+  jobId: string,
+  result: Record<string, unknown>
+): Promise<boolean> {
+  return completeAsyncJob(jobId, result);
+}
+
+export async function failWorkerJobById(
+  jobId: string,
+  message: string,
+  options?: { refunded?: boolean; errorCode?: string }
+): Promise<boolean> {
+  if (options?.refunded) await markAsyncJobRefunded(jobId);
+  return failAsyncJob(jobId, message, options?.errorCode ?? "generation_failed");
+}
+
+export async function markWorkerJobNeedsRegenerationById(
+  jobId: string,
+  message: string
+): Promise<boolean> {
+  return markAsyncJobNeedsRegeneration(jobId, message);
+}
+
+export async function markWorkerJobRefundedById(jobId: string): Promise<void> {
+  await markAsyncJobRefunded(jobId);
 }
 
 /**
@@ -142,5 +185,53 @@ export async function chargeRuneActionForWorkerJob(input: {
     action: input.action,
   });
   await trackWorkerJobCharged(input.request, charge.transactionId);
+  return charge;
+}
+
+/**
+ * Request-free equivalent used by in-process runners. Reuses a previous charge
+ * after requeue and records a new transaction before generation continues.
+ */
+export async function chargeRuneActionForWorkerJobById(input: {
+  jobId: string;
+  userId: string;
+  action: RuneActionType;
+}): Promise<BillingChargeResult> {
+  const job = await getAsyncJobById(input.jobId);
+  if (
+    job &&
+    job.user_id === input.userId &&
+    job.status === "running" &&
+    job.billing_state === "charged" &&
+    job.charge_transaction_id
+  ) {
+    const reused = await billingChargeFromExistingTransaction(
+      input.userId,
+      job.charge_transaction_id,
+      input.action
+    );
+    if (reused) return reused;
+  }
+
+  const unlimited = await resolveUnlimitedAccess({ profileUserId: input.userId });
+  const runeSettings = await getRuneSettings();
+  if (!isRuneBillingActive(input.userId, unlimited, runeSettings)) {
+    const balance = await getRuneBalance(input.userId);
+    return {
+      spentRunes: 0,
+      wasFreeQuestion: false,
+      newBalance: balance,
+      actionType: input.action,
+      slotReserved: false,
+    };
+  }
+
+  const charge = await BillingService.chargeRuneAction({
+    userId: input.userId,
+    action: input.action,
+  });
+  if (charge.transactionId) {
+    await markAsyncJobCharged(input.jobId, charge.transactionId);
+  }
   return charge;
 }

@@ -18,7 +18,12 @@ export type AsyncJobKind =
   | "hd_report"
   | "hd_composite_report"
   | "pro_premium_report";
-export type AsyncJobStatus = "pending" | "running" | "completed" | "failed";
+export type AsyncJobStatus =
+  | "pending"
+  | "running"
+  | "completed"
+  | "failed"
+  | "needs_regeneration";
 export type AsyncJobBillingState = "unbilled" | "charged" | "refunded" | "completed";
 
 export type AsyncJobRow = {
@@ -46,6 +51,13 @@ export type AsyncJobRow = {
   output_entity_table: string | null;
   provenance: Record<string, unknown>;
   next_attempt_at: Date | null;
+  started_at: Date | null;
+  queue_wait_ms: number | null;
+  generation_ms: number | null;
+  llm_calls: number | null;
+  llm_cost_rub: number | null;
+  retry_429_count: number;
+  progress: Record<string, unknown>;
 };
 
 const JOB_SELECT = `id, user_id, kind, status, input, result, error_message,
@@ -53,7 +65,9 @@ const JOB_SELECT = `id, user_id, kind, status, input, result, error_message,
             locked_at, worker_id, attempt_count, period_metadata, error_code,
             billing_state, charge_transaction_id,
             dedupe_key, action_type, output_entity_id, output_entity_table,
-            provenance, next_attempt_at`;
+            provenance, next_attempt_at,
+            started_at, queue_wait_ms, generation_ms, llm_calls, llm_cost_rub,
+            retry_429_count, progress`;
 
 export async function createAsyncJob(input: {
   userId: string;
@@ -212,22 +226,116 @@ export async function claimAsyncJobs(input: {
        SET status = 'running',
            worker_id = $3,
            locked_at = NOW(),
+           started_at = COALESCE(jobs.started_at, NOW()),
+           queue_wait_ms = COALESCE(
+             jobs.queue_wait_ms,
+             GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - jobs.created_at)) * 1000))::int
+           ),
            attempt_count = jobs.attempt_count + 1,
            next_attempt_at = NULL,
            updated_at = NOW()
        FROM candidates
        WHERE jobs.id = candidates.id
-       RETURNING jobs.id, jobs.user_id, jobs.kind, jobs.status, jobs.input,
-                 jobs.result, jobs.error_message, jobs.created_at, jobs.updated_at,
-                 jobs.completed_at, jobs.expires_at, jobs.locked_at, jobs.worker_id,
-                 jobs.attempt_count, jobs.period_metadata, jobs.error_code,
-                 jobs.billing_state, jobs.charge_transaction_id,
-                 jobs.dedupe_key, jobs.action_type, jobs.output_entity_id,
-                 jobs.output_entity_table, jobs.provenance, jobs.next_attempt_at`,
+       RETURNING jobs.*`,
       [limit, kinds, input.workerId]
     );
     return rows;
   });
+}
+
+/** Soft-reschedule a running job after provider 429 / transient outage (no fail, no refund). */
+export async function rescheduleAsyncJob(
+  jobId: string,
+  delayMs: number,
+  message?: string
+): Promise<boolean> {
+  const wait = Math.max(1_000, Math.min(delayMs, 15 * 60_000));
+  const { rowCount } = await query(
+    `UPDATE async_jobs
+     SET status = 'pending',
+         worker_id = NULL,
+         locked_at = NULL,
+         next_attempt_at = NOW() + make_interval(secs => $2),
+         retry_429_count = COALESCE(retry_429_count, 0) + 1,
+         error_message = COALESCE($3, error_message),
+         updated_at = NOW()
+     WHERE id = $1 AND status = 'running'`,
+    [jobId, Math.floor(wait / 1000), message?.slice(0, 2000) ?? null]
+  );
+  return rowCount === 1;
+}
+
+export async function updateAsyncJobProgress(
+  jobId: string,
+  progress: Record<string, unknown>
+): Promise<void> {
+  await query(
+    `UPDATE async_jobs
+     SET progress = COALESCE(progress, '{}'::jsonb) || $2::jsonb,
+         updated_at = NOW()
+     WHERE id = $1 AND status IN ('pending', 'running')`,
+    [jobId, JSON.stringify(progress)]
+  );
+}
+
+export async function finalizeAsyncJobMetrics(
+  jobId: string,
+  metrics: {
+    generationMs?: number;
+    llmCalls?: number;
+    llmCostRub?: number;
+  }
+): Promise<void> {
+  await query(
+    `UPDATE async_jobs
+     SET generation_ms = COALESCE($2, generation_ms),
+         llm_calls = COALESCE($3, llm_calls),
+         llm_cost_rub = COALESCE($4, llm_cost_rub),
+         updated_at = NOW()
+     WHERE id = $1`,
+    [
+      jobId,
+      metrics.generationMs ?? null,
+      metrics.llmCalls ?? null,
+      metrics.llmCostRub ?? null,
+    ]
+  );
+}
+
+/** Queue position (1-based) among pending report-lane jobs, or null if not pending. */
+export async function getAsyncJobQueuePosition(jobId: string): Promise<number | null> {
+  const { rows } = await query<{ pos: number | null }>(
+    `WITH target AS (
+       SELECT id, created_at, kind, status
+       FROM async_jobs
+       WHERE id = $1
+     )
+     SELECT CASE
+       WHEN target.status = 'pending' THEN (
+         SELECT COUNT(*)::int + 1
+         FROM async_jobs j
+         WHERE j.status = 'pending'
+           AND j.kind = ANY($2::text[])
+           AND (j.created_at < target.created_at
+                OR (j.created_at = target.created_at AND j.id <= target.id))
+       )
+       ELSE NULL
+     END AS pos
+     FROM target`,
+    [
+      jobId,
+      [
+        "hd_report",
+        "hd_composite_report",
+        "pro_premium_report",
+        "numerology_reading",
+        "natal_interpretation",
+        "natal_forecast",
+        "natal_compatibility",
+      ],
+    ]
+  );
+  return rows[0]?.pos ?? null;
 }
 
 /**
@@ -439,6 +547,26 @@ export async function failAsyncJob(
   return rowCount === 1;
 }
 
+/** Park a generated report for manual/quality regeneration without refunding it. */
+export async function markAsyncJobNeedsRegeneration(
+  jobId: string,
+  message: string
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE async_jobs
+     SET status = 'needs_regeneration',
+         error_message = $2,
+         error_code = 'needs_regeneration',
+         completed_at = NOW(),
+         updated_at = NOW()
+     WHERE id = $1
+       AND status = 'running'
+       AND billing_state IN ('unbilled', 'charged')`,
+    [jobId, message.slice(0, 2000)]
+  );
+  return rowCount === 1;
+}
+
 /**
  * Fail a still-running job and refund if charged — but never after save_claimed.
  * Used by the worker after timeout reconciliation.
@@ -545,17 +673,27 @@ export async function listActiveAsyncJobsForUser(
 export function asyncJobPollPayload(job: AsyncJobRow) {
   const refunded = job.billing_state === "refunded";
   const meta = job.period_metadata ?? {};
-  const progressRaw = meta.progress;
+  const metaProgress = meta.progress;
+  const columnProgress = job.progress;
+  const progressRaw =
+    columnProgress && typeof columnProgress === "object" && Object.keys(columnProgress).length
+      ? columnProgress
+      : metaProgress;
   const progress =
     progressRaw && typeof progressRaw === "object" && !Array.isArray(progressRaw)
       ? (progressRaw as Record<string, unknown>)
       : undefined;
+  const providerPaused =
+    typeof progress?.providerPaused === "boolean" ? progress.providerPaused : undefined;
   return {
     jobId: job.id,
     kind: job.kind,
     status: job.status,
     result: job.status === "completed" ? job.result : undefined,
-    error: job.status === "failed" ? job.error_message : undefined,
+    error:
+      job.status === "failed" || job.status === "needs_regeneration"
+        ? job.error_message
+        : undefined,
     billingState: job.billing_state,
     refunded,
     createdAt: job.created_at.toISOString(),
@@ -565,6 +703,11 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
     outputEntityTable: job.output_entity_table,
     provenance: job.provenance,
     dedupeKey: job.dedupe_key || undefined,
+    queueWaitMs: job.queue_wait_ms,
+    generationMs: job.generation_ms,
+    retry429Count: job.retry_429_count,
+    nextAttemptAt: job.next_attempt_at?.toISOString() ?? null,
+    providerPaused,
     progress: progress
       ? {
           done: typeof progress.done === "number" ? progress.done : undefined,
@@ -572,6 +715,11 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
           label: typeof progress.label === "string" ? progress.label : undefined,
           message:
             typeof progress.message === "string" ? progress.message : undefined,
+          stage: typeof progress.stage === "string" ? progress.stage : undefined,
+          queuePosition:
+            typeof progress.queuePosition === "number"
+              ? progress.queuePosition
+              : undefined,
         }
       : undefined,
   };

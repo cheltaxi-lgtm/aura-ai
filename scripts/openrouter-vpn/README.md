@@ -52,10 +52,20 @@ sudo bash install-se-proxy.sh
 OPENROUTER_HTTPS_PROXY=http://91.184.240.82:3128
 ```
 
-Или одной командой на Zovus: `sudo bash deploy-openrouter-se.sh`.
+Затем **обязательно** синхронизировать env воркера (иначе async-jobs ходит напрямую и получает ETIMEDOUT):
 
-Приложение ходит в OpenRouter через Sweden proxy (`src/lib/openrouter-fetch.ts`).  
-При ошибке proxy — fallback на direct IPv4 (и/или wg-foxdpi, если настроен).
+```bash
+bash /opt/aura-ai/hosting/sync-async-jobs-env.sh /opt/aura-ai
+systemctl restart aura-ai-async-jobs
+```
+
+Список общих ключей: `hosting/async-jobs-shared.env.keys`.  
+Полная инструкция: `hosting/ASYNC_JOBS_ENV.md`.
+
+Или одной командой на Zovus: `sudo bash deploy-openrouter-se.sh` + sync выше.
+
+Приложение и воркер ходят в OpenRouter через Sweden proxy (`src/lib/openrouter-fetch.ts`).  
+При ошибке proxy — fallback на direct IPv4 (на Beget обычно тоже падает).
 
 Скрипты Latvia (`deploy-openrouter-lv.sh` / `install-lv-proxy.sh`) удалены — ДЦ Рига выводится из эксплуатации.
 

@@ -148,6 +148,14 @@ export async function waitForAsyncJob(
         terminal = true;
         return job.result ?? {};
       }
+      if (job.status === "needs_regeneration") {
+        terminal = true;
+        throw new Error(
+          typeof job.error === "string" && job.error.trim()
+            ? job.error
+            : "Разбор проходит проверку качества. Повторного списания рун не будет — откройте страницу позже."
+        );
+      }
       if (job.status === "failed") {
         terminal = true;
         const errText = typeof job.error === "string" ? job.error.trim() : "";
@@ -157,7 +165,7 @@ export async function waitForAsyncJob(
         }
         const fallback = job.refunded
           ? "Не удалось завершить трактовку. Руны возвращены."
-          : "Не удалось завершить трактовку. Если руны списались — проверьте баланс.";
+          : "Не удалось завершить трактовку. Задача может быть перезапущена автоматически — повторного списания не будет. Обновите страницу через пару минут.";
         throw new Error(errText || fallback);
       }
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));

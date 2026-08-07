@@ -93,6 +93,7 @@ async function llmOnce(
     timeoutMs: 180_000,
     skipTemperatureRetry: true,
     skipDegenerateCheck: true,
+    priority: "report",
   });
   let text = (result.text || "").trim();
   let calls = 1;
@@ -109,6 +110,7 @@ async function llmOnce(
       timeoutMs: 180_000,
       skipTemperatureRetry: true,
       skipDegenerateCheck: true,
+      priority: "report",
     });
     text = (result.text || "").trim();
     calls = 2;
