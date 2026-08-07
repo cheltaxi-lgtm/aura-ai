@@ -36,6 +36,21 @@ export function isProDeliveryEnabled(): boolean {
   return isProModuleEnabled() && boolEnv("PRO_DELIVERY_ENABLED", false);
 }
 
+/** Server PDF download for /r/{token} (needs Chromium + puppeteer-core). */
+export function isProPdfEnabled(): boolean {
+  return isProModuleEnabled() && boolEnv("PRO_PDF_ENABLED", false);
+}
+
+export function getProPdfChromiumPath(): string | null {
+  const raw = process.env.PRO_PDF_CHROMIUM_PATH?.trim();
+  return raw || null;
+}
+
+export function getProPdfRenderSecret(): string | null {
+  const raw = process.env.PRO_PDF_RENDER_SECRET?.trim();
+  return raw || process.env.ASYNC_JOB_WORKER_SECRET?.trim() || null;
+}
+
 export function getProDialogModeMax(): ProDialogModeMax {
   const raw = (process.env.PRO_DIALOG_MODE_MAX?.trim() || "b").toLowerCase();
   if (raw === "a" || raw === "c") return raw;

@@ -7,6 +7,7 @@ import {
   updateClient,
 } from "@/modules/pro/db/clients";
 import { listCases } from "@/modules/pro/db/cases";
+import { geocodeAdapter } from "@/modules/pro/adapters";
 
 type Ctx = { params: Promise<{ id: string }> };
 
@@ -34,12 +35,33 @@ export async function PATCH(req: Request, ctx: Ctx) {
     if (!client) return NextResponse.json({ error: "not_found" }, { status: 404 });
     return NextResponse.json({ ok: true, client });
   }
+  let birthPlace =
+    typeof body.birthPlace === "string" ? body.birthPlace : undefined;
+  let birthLat =
+    typeof body.birthLat === "number" ? body.birthLat : undefined;
+  let birthLon =
+    typeof body.birthLon === "number" ? body.birthLon : undefined;
+  let birthTz =
+    typeof body.birthTz === "string" ? body.birthTz : undefined;
+  if (birthPlace && (birthLat == null || birthLon == null || !birthTz)) {
+    const place = await geocodeAdapter.resolve(birthPlace);
+    if (place) {
+      birthPlace = place.label || birthPlace;
+      birthLat = place.latitude;
+      birthLon = place.longitude;
+      birthTz = place.timezone || birthTz;
+    }
+  }
   const client = await updateClient(prac.ctx.account.id, id, {
     alias: typeof body.alias === "string" ? body.alias : undefined,
     fullName: typeof body.fullName === "string" ? body.fullName : undefined,
     notes: typeof body.notes === "string" ? body.notes : undefined,
     birthDate: typeof body.birthDate === "string" ? body.birthDate : undefined,
-    birthPlace: typeof body.birthPlace === "string" ? body.birthPlace : undefined,
+    birthTime: typeof body.birthTime === "string" ? body.birthTime : undefined,
+    birthPlace,
+    birthLat,
+    birthLon,
+    birthTz,
     tags: Array.isArray(body.tags) ? (body.tags as string[]) : undefined,
   });
   if (!client) return NextResponse.json({ error: "not_found" }, { status: 404 });

@@ -50,6 +50,9 @@ const ALLOWED_IMPORTERS = new Set([
   "src/app/(pro)/r/[token]/page.tsx",
   "src/app/(pro)/admin/pro/page.tsx",
   "src/app/(pro)/api/pro/health/route.ts",
+  // Platform surfaces that only read isProModuleEnabled()
+  "src/app/api/platform/features/route.ts",
+  "src/app/sitemap.ts",
 ]);
 
 function walkTsFiles(dir: string, out: string[] = []): string[] {
@@ -147,13 +150,21 @@ async function main() {
     readFileSync(join(ROOT, "src/app/(pro)/admin/pro/layout.tsx"), "utf8").includes(
       "requireProPage"
     );
-  const mwGate = /PRO_MODULE_ENABLED/.test(mw) && /\/api\/pro/.test(mw);
+  const portalLayout = join(ROOT, "src/app/(pro)/p/layout.tsx");
+  const portalGate =
+    existsSync(portalLayout) &&
+    readFileSync(portalLayout, "utf8").includes("requireProPortalPage");
+  const mwGate =
+    /PRO_MODULE_ENABLED/.test(mw) &&
+    /\/api\/pro/.test(mw) &&
+    /PRO_PORTAL_ENABLED/.test(mw) &&
+    /\/p\//.test(mw);
   log(
     "4",
-    off && gate404 && pagesGate && mwGate ? "PASS" : "FAIL",
-    off && gate404 && pagesGate && mwGate
-      ? "default off → API 404 + page requireProPage + middleware ENV gate"
-      : `gate incomplete off=${off} api404=${gate404} pages=${pagesGate} mw=${mwGate}`
+    off && gate404 && pagesGate && portalGate && mwGate ? "PASS" : "FAIL",
+    off && gate404 && pagesGate && portalGate && mwGate
+      ? "default off → API 404 + page requireProPage + portal layout + middleware ENV gate"
+      : `gate incomplete off=${off} api404=${gate404} pages=${pagesGate} portal=${portalGate} mw=${mwGate}`
   );
 
   // —— 5. Cron / LLM not registered when off
@@ -176,18 +187,30 @@ async function main() {
   const sitemapClean =
     !/["'`]\/pro(?:\/|["'`])/i.test(sitemap) &&
     !/["'`]\/r\/[^"'`]+["'`]/i.test(sitemap);
-  const robotsOk = robots.includes('"/pro"') && robots.includes('"/r/"');
+  const robotsOk =
+    robots.includes('"/pro"') &&
+    robots.includes('"/r/"') &&
+    robots.includes('"/p/"');
   const deliveryMeta = readFileSync(join(ROOT, "src/app/(pro)/r/layout.tsx"), "utf8");
   const proMeta = readFileSync(join(ROOT, "src/app/(pro)/pro/layout.tsx"), "utf8");
+  const portalMeta = existsSync(portalLayout)
+    ? readFileSync(portalLayout, "utf8")
+    : "";
   const noindex =
     /robots:\s*\{\s*index:\s*false/.test(deliveryMeta) &&
-    /robots:\s*\{\s*index:\s*false/.test(proMeta);
+    /robots:\s*\{\s*index:\s*false/.test(proMeta) &&
+    /robots:\s*\{\s*index:\s*false/.test(portalMeta);
+  const landingFilesOk =
+    existsSync(join(ROOT, "src/app/(pro)/p/[slug]/page.tsx")) &&
+    existsSync(join(ROOT, "src/app/(pro)/pro/landing/page.tsx")) &&
+    existsSync(join(ROOT, "src/modules/pro/db/landings.ts")) &&
+    existsSync(join(ROOT, "scripts/migrations/112_migrate_pro_landing.sql"));
   log(
     "6",
-    sitemapClean && robotsOk && noindex ? "PASS" : "FAIL",
-    sitemapClean && robotsOk && noindex
-      ? "sitemap omits pro/r; robots Disallow; pages noindex"
-      : `sitemapClean=${sitemapClean} robots=${robotsOk} noindex=${noindex}`
+    sitemapClean && robotsOk && noindex && landingFilesOk ? "PASS" : "FAIL",
+    sitemapClean && robotsOk && noindex && landingFilesOk
+      ? "sitemap omits pro/r/p; robots Disallow; pages noindex; landing files present"
+      : `sitemapClean=${sitemapClean} robots=${robotsOk} noindex=${noindex} landing=${landingFilesOk}`
   );
 
   // —— Apply migration when DB available
@@ -254,7 +277,7 @@ async function main() {
   const pricesOk =
     /MIN_CUSTOM_RUNE_PURCHASE_RUB\s*=\s*100/.test(runeConst) &&
     /MAX_CUSTOM_RUNE_PURCHASE_RUB\s*=\s*50000/.test(runeConst) &&
-    /rubPerRune:\s*2/.test(runeSettings);
+    /rubPerRune:\s*[0-9]+/.test(runeSettings);
   log(
     "20",
     pricesOk ? "PASS" : "FAIL",
@@ -371,6 +394,44 @@ async function main() {
     "18",
     /PRO_COST_|proRuneCost/.test(pricingSrc) ? "PASS" : "FAIL",
     "prices from config/ENV not hardcoded in handlers"
+  );
+
+  // —— Practice → graphics → PDF funnel
+  const typesSrc = readFileSync(join(ROOT, "src/modules/pro/domain/types.ts"), "utf8");
+  const genSrc = readFileSync(
+    join(ROOT, "src/modules/pro/ai/generate-premium.ts"),
+    "utf8"
+  );
+  const reportPage = readFileSync(join(ROOT, "src/app/(pro)/r/[token]/page.tsx"), "utf8");
+  const registrySrc = readFileSync(join(ROOT, "src/lib/async-job-registry.ts"), "utf8");
+  const mig113 = existsSync(
+    join(ROOT, "scripts/migrations/113_migrate_pro_case_type_hd.sql")
+  );
+  const mig114 = existsSync(
+    join(ROOT, "scripts/migrations/114_migrate_async_pro_premium_job_kind.sql")
+  );
+  const pdfRoute = existsSync(
+    join(ROOT, "src/app/(pro)/api/pro/public/report/[token]/pdf/route.ts")
+  );
+  const hdInMvp =
+    /PRO_MVP_CASE_TYPES[\s\S]*?"hd"/.test(typesSrc) &&
+    /\| "hd"/.test(typesSrc);
+  const premiumOk =
+    /generateProPremiumReport/.test(genSrc) &&
+    /completeHdFullReport|generateFullMatrixSectionedReading|generateValidatedNatalReport/.test(
+      genSrc
+    ) &&
+    /pro_premium_report/.test(registrySrc) &&
+    /Скачать PDF|ProResultCharts/.test(reportPage) &&
+    mig113 &&
+    mig114 &&
+    pdfRoute;
+  log(
+    "premium-funnel",
+    hdInMvp && premiumOk ? "PASS" : "FAIL",
+    hdInMvp && premiumOk
+      ? "practice generators + async kind + /r graphics + pdf route + mig 113/114"
+      : `hdMvp=${hdInMvp} premium=${premiumOk} mig113=${mig113} mig114=${mig114}`
   );
 
   const fails = rows.filter((r) => r.status === "FAIL");

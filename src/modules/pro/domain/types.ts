@@ -13,13 +13,22 @@ export type ProCaseType =
   | "matrix"
   | "numerology"
   | "runes"
-  | "lenormand";
+  | "lenormand"
+  | "hd";
 
-/** MVP case types (phase 1). */
+/** MVP case types (phase 1 + HD premium funnel). */
 export const PRO_MVP_CASE_TYPES: readonly ProCaseType[] = [
   "manual_spread",
   "natal",
   "matrix",
+  "hd",
+] as const;
+
+/** Birth-data products (intake + case form). */
+export const PRO_BIRTH_CASE_TYPES: readonly ProCaseType[] = [
+  "natal",
+  "matrix",
+  "hd",
 ] as const;
 
 export type ProCaseStatus =

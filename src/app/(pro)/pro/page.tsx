@@ -30,6 +30,39 @@ const SPEC_OPTIONS = [
   "Ленорман",
 ] as const;
 
+type CaseRow = {
+  id: string;
+  type: string;
+  status: string;
+  question: string | null;
+  client_alias?: string | null;
+  updated_at?: string;
+};
+type ClientRow = {
+  id: string;
+  alias: string;
+  birth_date?: string | null;
+  last_case_at?: string | null;
+};
+
+const STATUS_RU: Record<string, string> = {
+  new: "Новый",
+  input_ready: "Данные",
+  generating: "Генерация",
+  draft: "Черновик",
+  edited: "Принят",
+  delivered: "Выдан",
+  archived: "Архив",
+  failed: "Ошибка",
+};
+
+const TYPE_RU: Record<string, string> = {
+  natal: "Натал",
+  matrix: "Матрица",
+  hd: "HD",
+  manual_spread: "Расклад",
+};
+
 export default function ProHomePage() {
   const [data, setData] = useState<AccountResp | null>(null);
   const [busy, setBusy] = useState(false);
@@ -39,6 +72,9 @@ export default function ProHomePage() {
   const [specs, setSpecs] = useState<string[]>([]);
   const [customSpec, setCustomSpec] = useState("");
   const [bio, setBio] = useState("");
+  const [cases, setCases] = useState<CaseRow[]>([]);
+  const [clients, setClients] = useState<ClientRow[]>([]);
+  const [dashBusy, setDashBusy] = useState(false);
 
   async function load() {
     const res = await fetch("/api/pro/account", { credentials: "include" });
@@ -54,11 +90,52 @@ export default function ProHomePage() {
     const json = (await res.json()) as AccountResp;
     setData(json);
     setUnauth(false);
+    if (json.account?.status === "active") {
+      void loadDesk();
+    }
+  }
+
+  async function loadDesk() {
+    const [cRes, clRes] = await Promise.all([
+      fetch("/api/pro/cases", { credentials: "include" }),
+      fetch("/api/pro/clients", { credentials: "include" }),
+    ]);
+    if (cRes.ok) {
+      const j = await cRes.json();
+      setCases(j.cases || []);
+    }
+    if (clRes.ok) {
+      const j = await clRes.json();
+      setClients(j.clients || []);
+    }
   }
 
   useEffect(() => {
     void load();
   }, []);
+
+  async function archiveCase(id: string) {
+    if (!confirm("Архивировать кейс?")) return;
+    setDashBusy(true);
+    await fetch(`/api/pro/cases/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    await loadDesk();
+    setDashBusy(false);
+  }
+
+  async function deleteClient(id: string, alias: string) {
+    if (!confirm(`Удалить клиента «${alias}»? Кейсы останутся в архиве списка.`))
+      return;
+    setDashBusy(true);
+    await fetch(`/api/pro/clients/${id}`, {
+      method: "DELETE",
+      credentials: "include",
+    });
+    await loadDesk();
+    setDashBusy(false);
+  }
 
   function toggleSpec(name: string) {
     setSpecs((prev) =>
@@ -279,48 +356,198 @@ export default function ProHomePage() {
     );
   }
 
+  const landingHref = data.account.brand_slug
+    ? `/p/${data.account.brand_slug}`
+    : "/pro/landing";
+
   return (
     <ProShell title={data.account.display_name || "Кабинет"}>
-      <div className="grid gap-4 sm:grid-cols-3">
+      <p className="mb-6 max-w-2xl text-sm text-[var(--pro-muted)]">
+        Рабочий стол практика: клиенты, практики сайта с графикой, ссылка и PDF.
+      </p>
+
+      <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
         <div className="pro-panel">
-          <p className="text-xs text-[var(--pro-faint)]">Баланс ᚢ</p>
-          <p className="font-display text-2xl text-aura-champagne">
-            {data.runeBalance ?? "—"}
+          <p className="text-xs uppercase tracking-wider text-[var(--pro-faint)]">
+            Баланс
           </p>
-          <p className="mt-1 text-xs text-[var(--pro-faint)]">
-            режим {data.billingMode}
+          <p className="font-display mt-1 text-2xl text-aura-champagne">
+            {data.runeBalance ?? "—"} ᚢ
           </p>
         </div>
         <div className="pro-panel">
-          <p className="text-xs text-[var(--pro-faint)]">Списания (shadow / live)</p>
-          <p className="font-display text-2xl text-aura-ivory">
-            {data.usage?.shadowRunes ?? 0} / {data.usage?.liveRunes ?? 0}
+          <p className="text-xs uppercase tracking-wider text-[var(--pro-faint)]">
+            Клиенты
           </p>
-          <p className="mt-1 text-xs text-[var(--pro-faint)]">
-            {data.usage?.events ?? 0} событий
+          <p className="font-display mt-1 text-2xl text-aura-ivory">
+            {clients.length}
           </p>
         </div>
         <div className="pro-panel">
-          <p className="text-xs text-[var(--pro-faint)]">Slug</p>
-          <p className="font-display text-lg text-aura-ivory">
-            {data.account.brand_slug || "—"}
+          <p className="text-xs uppercase tracking-wider text-[var(--pro-faint)]">
+            Активные кейсы
+          </p>
+          <p className="font-display mt-1 text-2xl text-aura-ivory">
+            {cases.length}
+          </p>
+        </div>
+        <div className="pro-panel">
+          <p className="text-xs uppercase tracking-wider text-[var(--pro-faint)]">
+            Минилендинг
+          </p>
+          <p className="mt-1 truncate font-display text-lg text-aura-ivory">
+            {data.account.brand_slug ? `/${data.account.brand_slug}` : "не задан"}
           </p>
         </div>
       </div>
-      <div className="mt-8 flex flex-wrap gap-3">
+
+      <div className="mt-6 flex flex-wrap gap-2">
         <Link
-          href="/pro/clients"
+          href="/pro/case/new"
           className="btn-luxe btn-luxe--md btn-luxe--gold px-5"
         >
+          Новая практика
+        </Link>
+        <Link href="/pro/clients" className="btn-neon px-4 py-2.5 text-sm">
           Клиенты
         </Link>
-        <Link href="/pro/case/new" className="btn-ghost px-5 py-2.5 text-sm">
-          Новый кейс
-        </Link>
-        <Link href="/pro/inbox" className="btn-ghost px-5 py-2.5 text-sm">
+        <Link href="/pro/inbox" className="btn-ghost px-4 py-2.5 text-sm">
           Входящие
         </Link>
+        <Link href="/pro/landing" className="btn-ghost px-4 py-2.5 text-sm">
+          Минилендинг
+        </Link>
+        <Link
+          href={landingHref}
+          className="btn-ghost px-4 py-2.5 text-sm"
+          target={data.account.brand_slug ? "_blank" : undefined}
+        >
+          Открыть /p
+        </Link>
+        <Link href="/pro/billing" className="btn-ghost px-4 py-2.5 text-sm">
+          Биллинг
+        </Link>
+        <Link href="/pro/settings" className="btn-ghost px-4 py-2.5 text-sm">
+          Настройки
+        </Link>
       </div>
+
+      <section className="mt-10">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <h2 className="font-display text-xl text-[#e8c77e]">Кейсы</h2>
+          <Link
+            href="/pro/case/new"
+            className="text-xs text-[var(--pro-accent-light)] underline"
+          >
+            + Новый
+          </Link>
+        </div>
+        {!cases.length ? (
+          <div className="pro-panel text-sm text-[var(--pro-muted)]">
+            Пока нет кейсов. Создайте практику для клиента — натал, матрица или HD.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {cases.slice(0, 12).map((c) => (
+              <li
+                key={c.id}
+                className="pro-panel flex flex-wrap items-center justify-between gap-3"
+              >
+                <div className="min-w-0">
+                  <Link
+                    href={`/pro/case/${c.id}`}
+                    className="font-medium text-[var(--pro-text)] hover:text-[var(--pro-accent-light)]"
+                  >
+                    {c.client_alias || "Клиент"} · {TYPE_RU[c.type] || c.type}
+                  </Link>
+                  <p className="mt-0.5 truncate text-xs text-[var(--pro-faint)]">
+                    {STATUS_RU[c.status] || c.status}
+                    {c.question ? ` · ${c.question}` : ""}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/pro/case/${c.id}`}
+                    className="rounded border border-[color:var(--pro-border)] px-3 py-1.5 text-xs text-[var(--pro-accent-light)]"
+                  >
+                    Открыть
+                  </Link>
+                  <button
+                    type="button"
+                    className="rounded border border-red-400/25 px-3 py-1.5 text-xs text-red-200/80"
+                    disabled={dashBusy}
+                    onClick={() => void archiveCase(c.id)}
+                  >
+                    В архив
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      <section className="mt-10">
+        <div className="mb-3 flex flex-wrap items-end justify-between gap-2">
+          <h2 className="font-display text-xl text-[#e8c77e]">Клиенты</h2>
+          <Link
+            href="/pro/clients"
+            className="text-xs text-[var(--pro-accent-light)] underline"
+          >
+            Все клиенты
+          </Link>
+        </div>
+        {!clients.length ? (
+          <div className="pro-panel text-sm text-[var(--pro-muted)]">
+            Добавьте клиента или отправьте ссылку-анкету.
+          </div>
+        ) : (
+          <ul className="space-y-2">
+            {clients.slice(0, 8).map((cl) => (
+              <li
+                key={cl.id}
+                className="pro-panel flex flex-wrap items-center justify-between gap-3"
+              >
+                <div>
+                  <Link
+                    href={`/pro/clients/${cl.id}`}
+                    className="font-medium text-[var(--pro-text)] hover:text-[var(--pro-accent-light)]"
+                  >
+                    {cl.alias}
+                  </Link>
+                  <p className="mt-0.5 text-xs text-[var(--pro-faint)]">
+                    {cl.birth_date
+                      ? `др ${String(cl.birth_date).slice(0, 10)}`
+                      : "дата не указана"}
+                  </p>
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <Link
+                    href={`/pro/case/new?clientId=${cl.id}`}
+                    className="btn-neon px-3 py-1.5 text-xs"
+                  >
+                    Новый кейс
+                  </Link>
+                  <Link
+                    href={`/pro/clients/${cl.id}`}
+                    className="rounded border border-[color:var(--pro-border)] px-3 py-1.5 text-xs text-[var(--pro-accent-light)]"
+                  >
+                    Карточка
+                  </Link>
+                  <button
+                    type="button"
+                    className="rounded border border-red-400/25 px-3 py-1.5 text-xs text-red-200/80"
+                    disabled={dashBusy}
+                    onClick={() => void deleteClient(cl.id, cl.alias)}
+                  >
+                    Удалить
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
     </ProShell>
   );
 }

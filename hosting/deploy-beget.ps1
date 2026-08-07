@@ -93,6 +93,14 @@ $RequiredArtifacts = @(
   "scripts/migrations/093_migrate_matrix_subjects.sql",
   "scripts/migrations/094_migrate_human_design.sql",
   "scripts/migrations/108_migrate_hd_async_job_kinds.sql",
+  "scripts/migrations/109_hash_legacy_hd_claim_tokens.sql",
+  "scripts/migrations/110_migrate_hd_chart_gender.sql",
+  "scripts/migrations/111_migrate_premium_report_prices.sql",
+  "scripts/migrations/112_migrate_pro_landing.sql",
+  "scripts/migrations/113_migrate_pro_case_type_hd.sql",
+  "scripts/migrations/114_migrate_async_pro_premium_job_kind.sql",
+  "src/modules/pro/ai/generate-premium.ts",
+  "src/modules/pro/pdf/render-pdf.ts",
   "src/lib/human-design/calculate.ts",
   "src/lib/human-design/constants.ts",
   "src/lib/human-design/ephemeris.ts",
@@ -315,6 +323,13 @@ if ($SshKey) {
 
 Write-Host ">>> Install / restore Telegram bot..."
 Invoke-Remote "sed -i 's/\r$//' /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh; chmod +x /opt/aura-ai/hosting/restore-bot-env-on-server.sh /opt/aura-ai/hosting/install-telegram-bot-on-server.sh; bash /opt/aura-ai/hosting/install-telegram-bot-on-server.sh"
+
+Write-Host ">>> Ensure Chromium for Pro PDF (best-effort)..."
+try {
+  Invoke-Remote "sed -i 's/\r$//' /opt/aura-ai/hosting/ensure-pro-pdf-chromium.sh; chmod +x /opt/aura-ai/hosting/ensure-pro-pdf-chromium.sh; bash /opt/aura-ai/hosting/ensure-pro-pdf-chromium.sh /opt/aura-ai || true; systemctl restart aura-ai || true"
+} catch {
+  Write-Host "WARN: Pro PDF Chromium ensure skipped"
+}
 
 Write-Host ">>> Health check..."
 try {

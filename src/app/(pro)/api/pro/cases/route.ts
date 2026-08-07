@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { requireProPractitioner } from "@/modules/pro/auth";
-import { createCase, listCases } from "@/modules/pro/db/cases";
+import { createCase, listCases, setCaseInput } from "@/modules/pro/db/cases";
+import { getClient } from "@/modules/pro/db/clients";
+import { casePayloadFromClientBirth } from "@/modules/pro/adapters/client-birth";
 import type { ProCaseType } from "@/modules/pro/domain/types";
 
 export async function GET(req: Request) {
@@ -10,6 +12,7 @@ export async function GET(req: Request) {
   const cases = await listCases(prac.ctx.account.id, {
     status: sp.get("status") || undefined,
     clientId: sp.get("clientId") || undefined,
+    includeArchived: sp.get("includeArchived") === "1",
   });
   return NextResponse.json({ ok: true, cases });
 }
@@ -27,6 +30,10 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: "clientId_and_type_required" }, { status: 400 });
   }
   try {
+    const client = await getClient(prac.ctx.account.id, body.clientId);
+    if (!client) {
+      return NextResponse.json({ error: "client_not_found" }, { status: 404 });
+    }
     const c = await createCase(
       prac.ctx.account.id,
       {
@@ -37,6 +44,13 @@ export async function POST(req: Request) {
       },
       prac.ctx.profileUserId
     );
+    // Prefill case input from client birth card (natal / matrix / hd).
+    if (body.type === "natal" || body.type === "matrix" || body.type === "hd") {
+      const seed = casePayloadFromClientBirth(client);
+      if (seed) {
+        await setCaseInput(prac.ctx.account.id, c.id, seed);
+      }
+    }
     return NextResponse.json({ ok: true, case: c });
   } catch (e) {
     const status = (e as { status?: number }).status || 500;

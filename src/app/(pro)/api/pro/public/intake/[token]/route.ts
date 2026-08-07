@@ -14,7 +14,9 @@ export async function POST(req: Request, ctx: Ctx) {
     question?: string;
     birthDate?: string;
     birthPlace?: string;
+    birthTime?: string;
     birthTz?: string;
+    caseType?: string;
     consentPdn?: boolean;
   };
   if (!body.alias?.trim()) {
@@ -35,7 +37,9 @@ export async function POST(req: Request, ctx: Ctx) {
         question: body.question,
         birthDate: body.birthDate,
         birthPlace: body.birthPlace,
+        birthTime: body.birthTime,
         birthTz: body.birthTz,
+        caseType: body.caseType,
         consentPdn: Boolean(body.consentPdn),
       },
       ipHash

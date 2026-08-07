@@ -45,6 +45,7 @@ const NAV_BASE = [
   { href: "/admin/partners", label: "Партнёры", icon: Handshake },
   { href: "/admin/email", label: "Почта", icon: Mail },
   { href: "/admin/ai", label: "Модели и промпты", icon: Brain },
+  { href: "/admin/hd-reports", label: "HD отчёты QA", icon: ScrollText },
   { href: "/admin/settings", label: "Платформа", icon: Settings },
   { href: "/admin/audit", label: "Аудит", icon: ScrollText },
 ] as const;

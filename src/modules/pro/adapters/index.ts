@@ -9,6 +9,13 @@ import { isProAiEnabled, isProModuleEnabled } from "../config";
 import { chargeProAction, refundProAction, type ProChargeResult } from "../db/billing";
 import type { ProPricedAction } from "../pricing";
 import { generateCaseDraft, type DraftGenerateInput } from "../ai/draft";
+import {
+  computeHdFacts,
+  computeMatrixFacts,
+  computeNatalFacts,
+  enrichBirthPlace,
+  normalizeBirthFields,
+} from "./chart-facts";
 
 export type ProAdapter = {
   id: string;
@@ -47,16 +54,24 @@ export const natalAdapter = {
   isAvailable: () => isProModuleEnabled(),
   /** Lightweight birth payload for case input — full chart compute stays in product. */
   summarizeInput(payload: Record<string, unknown>): Record<string, unknown> {
+    const n = normalizeBirthFields(payload);
     return {
-      birthDate: payload.birthDate ?? null,
-      birthTime: payload.birthTime ?? null,
-      birthPlace: payload.birthPlace ?? null,
-      latitude: payload.birthLat ?? payload.latitude ?? null,
-      longitude: payload.birthLon ?? payload.longitude ?? null,
-      timezone: payload.birthTz ?? payload.timezone ?? null,
+      birthDate: n.birthDate ?? null,
+      birthTime: n.birthTime ?? null,
+      birthPlace: n.birthPlace ?? null,
+      birthCity: n.birthCity ?? null,
+      latitude: n.latitude ?? null,
+      longitude: n.longitude ?? null,
+      timezone: n.timezone ?? null,
+      birthLat: n.birthLat ?? null,
+      birthLon: n.birthLon ?? null,
+      birthTz: n.birthTz ?? null,
+      timeKnown: n.timeKnown ?? false,
       tradition: payload.tradition === "vedic" ? "vedic" : "western",
     };
   },
+  enrichPlace: enrichBirthPlace,
+  computeFacts: computeNatalFacts,
 };
 
 export const matrixAdapter = {
@@ -65,6 +80,25 @@ export const matrixAdapter = {
   compute(birthDate: string) {
     return destinyMatrix(birthDate);
   },
+  computeFacts: computeMatrixFacts,
+};
+
+export const hdAdapter = {
+  id: "hd",
+  isAvailable: () => isProModuleEnabled(),
+  summarizeInput(payload: Record<string, unknown>): Record<string, unknown> {
+    const n = normalizeBirthFields(payload);
+    return {
+      birthDate: n.birthDate ?? null,
+      birthTime: n.birthTime ?? null,
+      birthPlace: n.birthPlace ?? null,
+      timezone: n.timezone ?? n.birthTz ?? null,
+      birthTz: n.birthTz ?? n.timezone ?? null,
+      timeKnown: n.timeKnown ?? false,
+    };
+  },
+  enrichPlace: enrichBirthPlace,
+  computeFacts: computeHdFacts,
 };
 
 export const PRO_ADAPTERS: readonly ProAdapter[] = [
@@ -73,6 +107,14 @@ export const PRO_ADAPTERS: readonly ProAdapter[] = [
   geocodeAdapter,
   natalAdapter,
   matrixAdapter,
+  hdAdapter,
 ];
 
 export type { DraftGenerateInput };
+export {
+  computeHdFacts,
+  computeMatrixFacts,
+  computeNatalFacts,
+  enrichBirthPlace,
+  normalizeBirthFields,
+} from "./chart-facts";

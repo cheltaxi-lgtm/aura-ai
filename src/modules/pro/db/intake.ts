@@ -3,6 +3,24 @@ import { mintProToken, hashProToken } from "../tokens";
 import { createClient } from "./clients";
 import { createCase, setCaseInput } from "./cases";
 import { writeAudit } from "./accounts";
+import type { ProCaseType } from "../domain/types";
+import { PRO_BIRTH_CASE_TYPES, PRO_MVP_CASE_TYPES } from "../domain/types";
+
+const INTAKE_CASE_TYPES = new Set<ProCaseType>([
+  ...PRO_BIRTH_CASE_TYPES,
+  "manual_spread",
+]);
+
+function resolveIntakeCaseType(raw: unknown): ProCaseType {
+  const t = typeof raw === "string" ? raw.trim() : "";
+  if (
+    INTAKE_CASE_TYPES.has(t as ProCaseType) &&
+    PRO_MVP_CASE_TYPES.includes(t as (typeof PRO_MVP_CASE_TYPES)[number])
+  ) {
+    return t as ProCaseType;
+  }
+  return "manual_spread";
+}
 
 export async function createIntakeLink(
   accountId: string | number,
@@ -41,7 +59,9 @@ export async function submitIntake(
     question?: string;
     birthDate?: string;
     birthPlace?: string;
+    birthTime?: string;
     birthTz?: string;
+    caseType?: string;
     consentPdn?: boolean;
   },
   ipHash?: string | null
@@ -76,11 +96,13 @@ export async function submitIntake(
     form.account_id
   );
 
+  const caseType = resolveIntakeCaseType(answers.caseType);
+
   const c = await createCase(
     form.account_id,
     {
       clientId: client.id,
-      type: "manual_spread",
+      type: caseType,
       question: answers.question ?? null,
     },
     form.account_id
@@ -88,8 +110,12 @@ export async function submitIntake(
 
   await setCaseInput(form.account_id, c.id, {
     from_intake: true,
+    caseType,
     birthDate: answers.birthDate ?? null,
     birthPlace: answers.birthPlace ?? null,
+    birthTime: answers.birthTime ?? null,
+    timeKnown: Boolean(answers.birthTime?.trim()),
+    birthTz: answers.birthTz ?? null,
   });
 
   await proQuery(

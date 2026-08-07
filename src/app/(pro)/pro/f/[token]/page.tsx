@@ -4,15 +4,29 @@ import { useParams } from "next/navigation";
 import { useState } from "react";
 import Link from "next/link";
 
+type ProductKey = "natal" | "matrix" | "hd" | "manual_spread";
+
+const PRODUCTS: { value: ProductKey; label: string; hint: string }[] = [
+  { value: "natal", label: "Натальная карта", hint: "Планеты, дома, аспекты" },
+  { value: "matrix", label: "Матрица судьбы", hint: "Энергии и линии рода" },
+  { value: "hd", label: "Human Design", hint: "Тип, авторитет, центры" },
+  { value: "manual_spread", label: "Другой запрос", hint: "Вопрос без расчёта карты" },
+];
+
 export default function ProIntakePublicPage() {
   const params = useParams<{ token: string }>();
   const [alias, setAlias] = useState("");
   const [question, setQuestion] = useState("");
+  const [caseType, setCaseType] = useState<ProductKey>("natal");
   const [birthDate, setBirthDate] = useState("");
+  const [birthTime, setBirthTime] = useState("");
+  const [birthPlace, setBirthPlace] = useState("");
   const [consent, setConsent] = useState(false);
   const [done, setDone] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+
+  const needsBirth = caseType === "natal" || caseType === "matrix" || caseType === "hd";
 
   async function submit() {
     setErr(null);
@@ -23,7 +37,10 @@ export default function ProIntakePublicPage() {
       body: JSON.stringify({
         alias,
         question,
+        caseType,
         birthDate: birthDate || undefined,
+        birthTime: birthTime || undefined,
+        birthPlace: birthPlace || undefined,
         consentPdn: consent,
       }),
     });
@@ -66,6 +83,29 @@ export default function ProIntakePublicPage() {
             autoComplete="nickname"
           />
         </div>
+        <fieldset>
+          <legend className="pro-label">Что разобрать</legend>
+          <div className="mt-2 flex flex-col gap-2">
+            {PRODUCTS.map((p) => (
+              <label
+                key={p.value}
+                className="flex cursor-pointer items-start gap-2 rounded border border-[color:var(--pro-border)] px-3 py-2 text-sm"
+              >
+                <input
+                  type="radio"
+                  name="caseType"
+                  className="mt-1"
+                  checked={caseType === p.value}
+                  onChange={() => setCaseType(p.value)}
+                />
+                <span>
+                  <span className="text-[#ede6da]">{p.label}</span>
+                  <span className="mt-0.5 block text-xs text-gray-500">{p.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </fieldset>
         <div>
           <label className="pro-label" htmlFor="intake-question">
             Ваш вопрос
@@ -78,18 +118,47 @@ export default function ProIntakePublicPage() {
             onChange={(e) => setQuestion(e.target.value)}
           />
         </div>
-        <div>
-          <label className="pro-label" htmlFor="intake-birth">
-            Дата рождения (по желанию)
-          </label>
-          <input
-            id="intake-birth"
-            type="date"
-            className="pro-field"
-            value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
-          />
-        </div>
+        {needsBirth ? (
+          <>
+            <div>
+              <label className="pro-label" htmlFor="intake-birth">
+                Дата рождения
+              </label>
+              <input
+                id="intake-birth"
+                type="date"
+                className="pro-field"
+                value={birthDate}
+                onChange={(e) => setBirthDate(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="pro-label" htmlFor="intake-time">
+                Время рождения (если известно)
+              </label>
+              <input
+                id="intake-time"
+                type="time"
+                className="pro-field"
+                value={birthTime}
+                onChange={(e) => setBirthTime(e.target.value)}
+              />
+            </div>
+            <div>
+              <label className="pro-label" htmlFor="intake-place">
+                Город рождения
+              </label>
+              <input
+                id="intake-place"
+                className="pro-field"
+                value={birthPlace}
+                onChange={(e) => setBirthPlace(e.target.value)}
+                placeholder="Например, Москва"
+                autoComplete="address-level2"
+              />
+            </div>
+          </>
+        ) : null}
         <label className="flex items-start gap-2 text-xs text-gray-400">
           <input
             type="checkbox"
@@ -108,7 +177,12 @@ export default function ProIntakePublicPage() {
         <button
           type="button"
           className="btn-neon px-4 py-2 text-sm"
-          disabled={!alias.trim() || !consent || busy}
+          disabled={
+            !alias.trim() ||
+            !consent ||
+            busy ||
+            (needsBirth && !birthDate)
+          }
           onClick={() => void submit()}
         >
           {busy ? "Отправка…" : "Отправить"}

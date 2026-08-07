@@ -7,6 +7,7 @@ import {
   WORKER_USER_HEADER,
 } from "../src/lib/async-job-worker-auth-shared";
 import {
+  ASYNC_JOB_REGISTRY,
   endpointForJob,
   getJobKindConfig,
   resolveWorkerKindsFromEnv,
@@ -41,13 +42,17 @@ const REQUEST_TIMEOUT_MS = Math.max(
   60_000,
   Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 280_000
 );
+/** Longest registered kind timeout (hd_report / hd_composite_report = 600s). */
+const LONGEST_KIND_TIMEOUT_MS = Math.max(
+  ...Object.values(ASYNC_JOB_REGISTRY).map((k) => k.timeoutMs)
+);
 /**
  * Requeue zombies after deploy SIGKILL. Must exceed longest kind timeout
- * (numerology_reading 420s) or live matrix jobs get reaped mid-run.
+ * (+1 min buffer) or live HD/matrix jobs get reaped mid-run.
  */
 const STALE_RUNNING_MS = Math.max(
   60_000,
-  Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || 9 * 60_000
+  Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || LONGEST_KIND_TIMEOUT_MS + 60_000
 );
 const ORPHAN_MIN_AGE_MS = Math.max(
   30_000,

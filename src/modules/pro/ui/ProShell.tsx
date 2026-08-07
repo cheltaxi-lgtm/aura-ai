@@ -6,7 +6,8 @@ import { usePathname } from "next/navigation";
 const NAV = [
   { href: "/pro", label: "Обзор" },
   { href: "/pro/clients", label: "Клиенты" },
-  { href: "/pro/case/new", label: "Новый кейс" },
+  { href: "/pro/case/new", label: "Практика" },
+  { href: "/pro/landing", label: "Лендинг" },
   { href: "/pro/inbox", label: "Входящие" },
   { href: "/pro/billing", label: "Биллинг" },
   { href: "/pro/settings", label: "Настройки" },

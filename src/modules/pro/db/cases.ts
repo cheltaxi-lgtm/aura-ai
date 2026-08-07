@@ -39,18 +39,24 @@ export async function countCasesToday(accountId: string | number): Promise<numbe
   return Number(rows[0]?.n || 0);
 }
 
+export type ProCaseListRow = ProCaseRow & { client_alias: string | null };
+
 export async function listCases(
   accountId: string | number,
-  opts?: { status?: string; clientId?: string }
-): Promise<ProCaseRow[]> {
-  const { rows } = await proQuery<ProCaseRow>(
-    `SELECT * FROM pro.cases
-     WHERE account_id = $1
-       AND ($2::text IS NULL OR status = $2)
-       AND ($3::bigint IS NULL OR client_id = $3::bigint)
-     ORDER BY updated_at DESC
+  opts?: { status?: string; clientId?: string; includeArchived?: boolean }
+): Promise<ProCaseListRow[]> {
+  const includeArchived = Boolean(opts?.includeArchived || opts?.status);
+  const { rows } = await proQuery<ProCaseListRow>(
+    `SELECT c.*, cl.alias AS client_alias
+     FROM pro.cases c
+     LEFT JOIN pro.clients cl ON cl.id = c.client_id
+     WHERE c.account_id = $1
+       AND ($2::text IS NULL OR c.status = $2)
+       AND ($3::bigint IS NULL OR c.client_id = $3::bigint)
+       AND ($4::boolean OR c.status <> 'archived')
+     ORDER BY c.updated_at DESC
      LIMIT 100`,
-    [accountId, opts?.status ?? null, opts?.clientId ?? null]
+    [accountId, opts?.status ?? null, opts?.clientId ?? null, includeArchived]
   );
   return rows;
 }
@@ -212,6 +218,19 @@ export async function markDelivered(
     `UPDATE pro.cases SET status = 'delivered', delivered_at = NOW(), updated_at = NOW()
      WHERE id = $1 AND account_id = $2 RETURNING *`,
     [caseId, accountId]
+  );
+  return rows[0] ?? null;
+}
+
+export async function updateCaseStatus(
+  accountId: string | number,
+  caseId: string | number,
+  status: ProCaseStatus
+): Promise<ProCaseRow | null> {
+  const { rows } = await proQuery<ProCaseRow>(
+    `UPDATE pro.cases SET status = $3, updated_at = NOW()
+     WHERE id = $1 AND account_id = $2 RETURNING *`,
+    [caseId, accountId, status]
   );
   return rows[0] ?? null;
 }
