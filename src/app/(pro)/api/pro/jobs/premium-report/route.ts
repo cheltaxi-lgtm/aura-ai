@@ -21,7 +21,8 @@ import { getClient } from "@/modules/pro/db/clients";
 import { generateProPremiumReport } from "@/modules/pro/ai/generate-premium";
 import { billingAdapter } from "@/modules/pro/adapters";
 
-export const maxDuration = 600;
+/** Sectional HD Pro reports need the same ceiling as consumer hd_report. */
+export const maxDuration = 800;
 
 export async function POST(request: NextRequest) {
   const gated = requireProEnabled();

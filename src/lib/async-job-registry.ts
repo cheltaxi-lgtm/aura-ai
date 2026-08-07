@@ -300,7 +300,8 @@ const HD_COMPOSITE_REPORT: PaidJobKindConfig = {
 const PRO_PREMIUM_REPORT: PaidJobKindConfig = {
   kind: "pro_premium_report",
   maxActivePerUser: 3,
-  timeoutMs: 600_000,
+  /** Sectional HD: 12 batches + editor + quality retries — match hd_report. */
+  timeoutMs: 800_000,
   workerPath: (job) => ({
     path: "/api/pro/jobs/premium-report",
     body: { ...job.input, async: false },

@@ -1,4 +1,5 @@
 import { hostname } from "node:os";
+import { Agent, fetch as undiciFetch } from "undici";
 
 import {
   assertLoopbackAppUrl,
@@ -42,7 +43,7 @@ const REQUEST_TIMEOUT_MS = Math.max(
   60_000,
   Number(process.env.ASYNC_JOB_REQUEST_TIMEOUT_MS) || 280_000
 );
-/** Longest registered kind timeout (hd_report / hd_composite_report = 600s). */
+/** Longest registered kind timeout (hd_report / pro_premium_report = 800s). */
 const LONGEST_KIND_TIMEOUT_MS = Math.max(
   ...Object.values(ASYNC_JOB_REGISTRY).map((k) => k.timeoutMs)
 );
@@ -63,6 +64,23 @@ const TIMEOUT_GRACE_MS = Math.max(
   5_000,
   Number(process.env.ASYNC_JOB_TIMEOUT_GRACE_MS) || 20_000
 );
+
+/**
+ * Sectional HD / Pro premium hold the HTTP connection until generation finishes
+ * (no early headers). Undici's default headersTimeout (~300s) aborts as
+ * TypeError "fetch failed" while Next is still working — every Pro HD case
+ * after the sectional pipeline failed at ~5 min with that message.
+ */
+const WORKER_FETCH_BUDGET_MS = LONGEST_KIND_TIMEOUT_MS + TIMEOUT_GRACE_MS + 60_000;
+const workerFetchAgent = new Agent({
+  connect: { timeout: 30_000 },
+  connections: 16,
+  pipelining: 1,
+  keepAliveTimeout: 30_000,
+  keepAliveMaxTimeout: 60_000,
+  headersTimeout: WORKER_FETCH_BUDGET_MS,
+  bodyTimeout: WORKER_FETCH_BUDGET_MS,
+} as ConstructorParameters<typeof Agent>[0]);
 
 const WORKER_KINDS = resolveWorkerKindsFromEnv();
 
@@ -101,7 +119,7 @@ async function runJob(job: AsyncJobRow): Promise<void> {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), requestTimeoutMs);
   try {
-    const response = await fetch(`${baseUrl}${path}`, {
+    const response = await undiciFetch(`${baseUrl}${path}`, {
       method: "POST",
       headers: {
         "content-type": "application/json",
@@ -111,6 +129,7 @@ async function runJob(job: AsyncJobRow): Promise<void> {
       },
       body: JSON.stringify(body),
       signal: controller.signal,
+      dispatcher: workerFetchAgent,
     });
     const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
