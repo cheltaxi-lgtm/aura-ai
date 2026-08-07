@@ -16,7 +16,8 @@ export type AsyncJobKind =
   | "ritual_generation"
   | "numerology_reading"
   | "hd_report"
-  | "hd_composite_report";
+  | "hd_composite_report"
+  | "pro_premium_report";
 export type AsyncJobStatus = "pending" | "running" | "completed" | "failed";
 export type AsyncJobBillingState = "unbilled" | "charged" | "refunded" | "completed";
 

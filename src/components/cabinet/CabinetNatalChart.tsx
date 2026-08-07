@@ -127,7 +127,7 @@ export default function CabinetNatalChart() {
   }, []);
 
   const readingCostLabel = useMemo(
-    () => (ready ? formatRunes(cost("NATAL_READING")) : "20 ᚢ"),
+    () => (ready ? formatRunes(cost("NATAL_READING")) : "… ᚢ"),
     [cost, formatRunes, ready]
   );
 

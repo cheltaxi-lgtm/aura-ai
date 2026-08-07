@@ -80,7 +80,8 @@ export const PAID_ROUTE_LIMITS = {
   natal_timing: { max: 6, windowMs: 60_000 },
   /** Public HD calculator — per-IP, deterministic compute is cheap but ephemeris is not free. */
   hd_chart_public: { max: 20, windowMs: 60_000 },
-  hd_chart_read: { max: 30, windowMs: 60_000 },
+  /** Includes entity poll every ~3.5s while HD reports generate. */
+  hd_chart_read: { max: 60, windowMs: 60_000 },
   hd_report: { max: 3, windowMs: 60_000 },
   hd_ask: { max: 20, windowMs: 60_000 },
   hd_claim: { max: 10, windowMs: 60_000 },

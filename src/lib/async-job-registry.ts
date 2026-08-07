@@ -262,11 +262,11 @@ const HD_REPORT: PaidJobKindConfig = {
   kind: "hd_report",
   runeAction: "HD_REPORT",
   maxActivePerUser: 2,
-  // Multi-pass full decrypt can run several minutes (route maxDuration 600s).
+  // Sectional generate: ~23 LLM calls (route maxDuration 800s).
   // Charge lives on the hd_reports row (not the job), so a worker HTTP
   // timeout fails the job cosmetically while the route completes — the
   // client polls the report entity, and stale-resume covers a true crash.
-  timeoutMs: 600_000,
+  timeoutMs: 800_000,
   workerPath: (job) => ({
     path: "/api/human-design/report",
     body: { ...job.input, async: false },
@@ -280,7 +280,8 @@ const HD_COMPOSITE_REPORT: PaidJobKindConfig = {
   kind: "hd_composite_report",
   runeAction: "HD_COMPOSITE_REPORT",
   maxActivePerUser: 2,
-  timeoutMs: 300_000,
+  // Same multi-pass budget as personal (route maxDuration 600s).
+  timeoutMs: 600_000,
   workerPath: (job) => ({
     path: "/api/human-design/composite-report",
     body: { ...job.input, async: false },
@@ -293,6 +294,20 @@ const HD_COMPOSITE_REPORT: PaidJobKindConfig = {
       "hd_composite_report",
       ...[String(payload.baseChartId ?? ""), String(payload.partnerChartId ?? "")].sort(),
     ]),
+};
+
+/** Pro practice premium report — billed via Pro module, not consumer runeAction. */
+const PRO_PREMIUM_REPORT: PaidJobKindConfig = {
+  kind: "pro_premium_report",
+  maxActivePerUser: 3,
+  timeoutMs: 600_000,
+  workerPath: (job) => ({
+    path: "/api/pro/jobs/premium-report",
+    body: { ...job.input, async: false },
+  }),
+  matchesWorkerPath: (pathname) => pathname === "/api/pro/jobs/premium-report",
+  buildDedupeKey: (userId, payload) =>
+    hashDedupeParts([userId, "pro_premium_report", payload.caseId, payload.idempotencyKey]),
 };
 
 export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
@@ -311,6 +326,7 @@ export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
   image_generate: IMAGE_GENERATE,
   hd_report: HD_REPORT,
   hd_composite_report: HD_COMPOSITE_REPORT,
+  pro_premium_report: PRO_PREMIUM_REPORT,
 };
 
 /** Kinds the durable worker processes by default (others via ASYNC_JOB_KINDS). */
@@ -330,6 +346,7 @@ export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "joint_combined",
   "hd_report",
   "hd_composite_report",
+  "pro_premium_report",
 ];
 
 export function getJobKindConfig(kind: AsyncJobKind): PaidJobKindConfig {

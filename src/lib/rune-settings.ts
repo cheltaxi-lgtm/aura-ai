@@ -15,7 +15,8 @@ export interface RuneSettings {
 
 export const DEFAULT_RUNE_SETTINGS: RuneSettings = {
   enabled: true,
-  rubPerRune: 2,
+  /** Aligns with production platform setting (₽ per ᚢ). */
+  rubPerRune: 5,
   starterRunes: 30,
   freeQuestions: 2,
   costs: { ...DEFAULT_RUNE_COSTS },

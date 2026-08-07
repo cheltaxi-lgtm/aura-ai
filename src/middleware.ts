@@ -404,6 +404,7 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/pro/") ||
       pathname.startsWith("/api/pro") ||
       pathname.startsWith("/r/") ||
+      pathname.startsWith("/p/") ||
       pathname === "/admin/pro" ||
       pathname.startsWith("/admin/pro/");
     const proFlag = (process.env["PRO_MODULE_ENABLED"] || "").trim().toLowerCase();
@@ -418,6 +419,28 @@ export async function middleware(request: NextRequest) {
           headers: { "Content-Type": "text/html; charset=utf-8" },
         })
       );
+    }
+    // Mini-landing portal: needs PRO_PORTAL_ENABLED in addition to module.
+    const portalPath =
+      pathname.startsWith("/p/") ||
+      pathname.startsWith("/api/pro/public/landing") ||
+      pathname === "/api/pro/landing" ||
+      pathname.startsWith("/pro/landing");
+    if (portalPath && proOn) {
+      const portalFlag = (process.env["PRO_PORTAL_ENABLED"] || "").trim().toLowerCase();
+      const portalOn =
+        portalFlag === "1" || portalFlag === "true" || portalFlag === "yes";
+      if (!portalOn) {
+        if (pathname.startsWith("/api/")) {
+          return withNoStore(NextResponse.json({ error: "Not found" }, { status: 404 }));
+        }
+        return withNoStore(
+          new NextResponse("<!doctype html><title>404</title><h1>Страница не найдена</h1>", {
+            status: 404,
+            headers: { "Content-Type": "text/html; charset=utf-8" },
+          })
+        );
+      }
     }
   }
 

@@ -12,19 +12,20 @@ export const DEFAULT_RUNE_COSTS = {
   DAILY_AMULET: 5,
   DAILY_EXTENDED: 10,
   FINAL_REPORT: 30,
-  NATAL_READING: 20,
+  /** ~1500 ₽ at platform rubPerRune (prod = 5 ₽/ᚢ → 300). */
+  NATAL_READING: 300,
   FORECAST_REPORT: 20,
   SYNASTRY_REPORT: 30,
-  /** Full numerology session (destiny matrix / tools) — matches PRICING.NUMEROLOGY_SESSION. */
-  NUMEROLOGY_SESSION: 20,
-  MATRIX_SUBJECT_REPORT: 20,
+  /** Full numerology / destiny matrix — ~500 ₽ (prod 5 ₽/ᚢ → 100). Matches PRICING. */
+  NUMEROLOGY_SESSION: 100,
+  MATRIX_SUBJECT_REPORT: 100,
   CHILD_MATRIX_REPORT: 25,
   MATRIX_PAIR_REPORT: 30,
   MATRIX_YEAR_FORECAST: 20,
-  /** Human Design: full premium personal report (one SKU, max depth). */
-  HD_REPORT: 40,
-  /** Human Design: Connection Chart premium report (separate billing SKU). */
-  HD_COMPOSITE_REPORT: 40,
+  /** Human Design personal report — ~1500 ₽ (prod 5 ₽/ᚢ → 300). */
+  HD_REPORT: 300,
+  /** Human Design Connection Chart — same premium tier as personal. */
+  HD_COMPOSITE_REPORT: 300,
   /** Human Design: follow-up question after included asks are used. */
   HD_ASK: 10,
   /** Per TTS request; long texts scale by VOICE_TTS_CHARS_PER_UNIT below. */
@@ -88,8 +89,8 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   CHILD_MATRIX_REPORT: "Полный разбор детской матрицы судьбы",
   MATRIX_PAIR_REPORT: "Разбор совместимости пары по матрицам",
   MATRIX_YEAR_FORECAST: "Прогноз по матрице судьбы на 12 месяцев",
-  HD_REPORT: "Полный премиальный разбор карты Дизайна Человека от Эвелины + 5 вопросов и PDF",
-  HD_COMPOSITE_REPORT: "Полный премиальный разбор карты связи (Connection Chart) от Эвелины + PDF",
+  HD_REPORT: "Полный премиальный разбор карты Дизайна Человека от Эвелины + 5 вопросов и печать/PDF",
+  HD_COMPOSITE_REPORT: "Полный премиальный разбор карты связи (Connection Chart) от Эвелины + печать/PDF",
   HD_ASK: "Дополнительный вопрос по разбору после включённых в покупку",
   VOICE_TTS: "Озвучка одного ответа наставника (длинный текст — несколько единиц)",
 };

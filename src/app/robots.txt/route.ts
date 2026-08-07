@@ -22,6 +22,7 @@ const DISALLOW = [
   "/pro",
   "/pro/",
   "/r/",
+  "/p/",
   "/runes/success",
   "/share/",
   "/master/",

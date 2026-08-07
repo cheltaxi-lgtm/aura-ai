@@ -259,8 +259,9 @@ async function main() {
        WHERE key = 'runes'`
     );
     const pricing = pricingResult.rows[0];
+    // Migration 111: natal ~1500 ₽ at rubPerRune=5 → 300 ᚢ. Forecast/synastry unchanged.
     const pricingValid =
-      pricing?.natal_reading === "20" &&
+      pricing?.natal_reading === "300" &&
       pricing?.forecast_report === "20" &&
       pricing?.synastry_report === "30";
 
@@ -296,7 +297,9 @@ async function main() {
         console.error(`[natal-schema] missing triggers: ${missingTriggers.join(", ")}`);
       }
       if (!pricingValid) {
-        console.error("[natal-schema] rune pricing mismatch: natal=20, forecast=20, synastry=30 required");
+        console.error(
+          `[natal-schema] rune pricing mismatch: natal=300, forecast=20, synastry=30 required (got natal=${pricing?.natal_reading}, forecast=${pricing?.forecast_report}, synastry=${pricing?.synastry_report})`
+        );
       }
       process.exitCode = 1;
       return;
