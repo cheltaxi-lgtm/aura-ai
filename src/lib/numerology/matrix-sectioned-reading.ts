@@ -21,6 +21,7 @@ import {
   type MatrixAudience,
 } from "./matrix-audience";
 import {
+  canonicalizeArcanaNamesInText,
   isCompleteMatrixReading,
   matrixMissingSections,
 } from "./matrix-completeness";
@@ -525,13 +526,14 @@ async function generateMatrixZoneLlm(
         ? "Шаги — действия для заказчика (на «ты»), опираясь на матрицу другого человека. Без markdown. Без других зон."
         : "Только «ты» к клиенту. Без markdown. Без других зон. Без «Простыми словами».",
       "Формат: первая строка точно «Шаги на 30 дней», затем 4–6 нумерованных шагов 1) 2) 3)…",
+      "Названия арканов ниже — готовые строки движка. Запрещено переименовывать арканы.",
     ].join("\n");
     const user = [
       audienceBlock,
       gender ? `Пол заказчика: ${genderLabelRu(gender)}` : "",
-      `Аркан года: ${matrix.yearArcana.number} — ${matrix.yearArcana.arcanaName}`,
-      `Зона комфорта: ${matrix.comfort.number} — ${matrix.comfort.arcanaName}`,
-      `Деньги: ${matrix.money.number} — ${matrix.money.arcanaName}`,
+      `Аркан года (готовая строка): ${matrix.yearArcana.number} — ${matrix.yearArcana.arcanaName}`,
+      `Зона комфорта (готовая строка): ${matrix.comfort.number} — ${matrix.comfort.arcanaName}`,
+      `Деньги (готовая строка): ${matrix.money.number} — ${matrix.money.arcanaName}`,
       `Узел периода: ${matrix.focusLabel}`,
       skyHint,
       aboutOther
@@ -551,6 +553,10 @@ async function generateMatrixZoneLlm(
     return raw ? normalizeZoneBlock(raw, zone) : null;
   }
 
+  const lockedArcana =
+    n != null
+      ? `${n} — ${entry?.title ?? zone.arcanaName ?? "аркан"}`
+      : null;
   const system = [
     "Ты — Эвелина. Пишешь ОДНУ зону полной матрицы судьбы.",
     genderBlock,
@@ -560,17 +566,22 @@ async function generateMatrixZoneLlm(
       : "Только «ты» к клиенту.",
     "Без markdown (*, #). Без других зон. Без «Простыми словами».",
     `Первая строка заголовка ДОЛЖНА быть точно: ${headingLine(zone)}`,
+    lockedArcana
+      ? `Название аркана ЗАФИКСИРОВАНО движком: «${lockedArcana}». Запрещено называть иначе (не Правосудие/Justice вместо Справедливость, не Марсельская нумерация 8=Справедливость). Не выдумывай другие номера и названия.`
+      : "",
     aboutOther
       ? "Далее 4–6 предложений про человека матрицы и строка «Практика: …» для заказчика."
       : "Далее 4–6 предложений и строка «Практика: …».",
     "Не копируй словарь дословно — пиши конкретно: ресурс, риск, что делать.",
-  ].join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 
   const user = [
     audienceBlock,
     gender ? `Пол заказчика: ${genderLabelRu(gender)}` : "",
     `Зона: ${zone.label}`,
-    n != null ? `Аркан: ${n} — ${entry?.title ?? zone.arcanaName}` : "",
+    lockedArcana ? `Аркан (готовая строка, копируй как есть): ${lockedArcana}` : "",
     entry
       ? `Словарь: свет=${entry.light}; тень=${entry.shadow}; опора=${entry.resource}; риск=${entry.risk}; совет=${entry.advice}`
       : "",
@@ -592,7 +603,10 @@ async function generateMatrixZoneLlm(
     zone.id
   );
   if (!raw) return null;
-  const normalized = normalizeZoneBlock(raw, zone);
+  const normalized = normalizeZoneBlock(
+    canonicalizeArcanaNamesInText(raw),
+    zone
+  );
   if (!normalized) return null;
   return zoneLlmFidelityOk(normalized, zone, matrix) ? normalized : null;
 }
@@ -941,6 +955,9 @@ export async function generateFullMatrixSectionedReading(input: {
   if (!/Простыми\s+словами/i.test(reading)) {
     reading = appendNumerologFinale(reading, finale);
   }
+
+  // Engine titles win over LLM renames (Marseille swaps / synonyms).
+  reading = canonicalizeArcanaNamesInText(reading);
 
   const meta: MatrixSectionedMeta = {
     aiZones: document.meta.aiZones,

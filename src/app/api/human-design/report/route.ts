@@ -63,8 +63,9 @@ import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 /** Sectional HD report: one call per section + editor. */
 export const maxDuration = 800;
 
+// Plain text only — markdown italics (*…*) leave a trailing `*` that fails HD V5 junk gate.
 const REPORT_DISCLAIMER =
-  "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
+  "\n\n---\nРазбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.";
 
 const INCLUDED_ASKS = 5;
 

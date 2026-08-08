@@ -64,8 +64,9 @@ import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
 export const maxDuration = 600;
 
+// Plain text only — markdown italics (*…*) leave a trailing `*` that fails HD V5 junk gate.
 const DISCLAIMER =
-  "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
+  "\n\n---\nРазбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.";
 
 const RELATION_IDS = new Set(HD_CONNECTION_RELATIONS.map((r) => r.id));
 

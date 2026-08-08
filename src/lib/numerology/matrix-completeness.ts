@@ -4,8 +4,46 @@
  *
  * Note: JS `\b` is ASCII-only — use `(?!\p{L})` for Cyrillic titles.
  */
+import { getArcanaEntry } from "./arcana-dictionary";
 import { matrixZoneDefsFor } from "./matrix-zones";
 import type { DestinyMatrixResult } from "./destiny-matrix";
+
+/** Rider–Waite majors 1–22 (22 = Шут). Engine / prompt / validator SSOT for names. */
+export function majorArcanaNameTable(): ReadonlyArray<{ number: number; name: string }> {
+  const out: Array<{ number: number; name: string }> = [];
+  for (let n = 1; n <= 22; n++) {
+    const title = getArcanaEntry(n)?.title;
+    if (title) out.push({ number: n, name: title });
+  }
+  return out;
+}
+
+const ARCANA_PAIR_RE =
+  /\b(\d{1,2})\s*([—–-])\s*([«"']?)([А-ЯЁA-Z][^\n,()»"']{1,40}?)(?=[,)\n»"']|$)/giu;
+
+function normArcanaName(s: string): string {
+  return s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Rewrite every «N — Name» pair so Name matches ARCANA_DICTIONARY.
+ * Model may invent Marseille swaps / synonyms; saved text must use engine titles.
+ */
+export function canonicalizeArcanaNamesInText(text: string): string {
+  return String(text || "").replace(
+    ARCANA_PAIR_RE,
+    (_full, numStr: string, dash: string, openQuote: string, name: string) => {
+      const n = Number(numStr);
+      const canon = getArcanaEntry(n)?.title;
+      if (!canon || n < 1 || n > 22) {
+        return `${numStr} ${dash} ${openQuote}${name}`;
+      }
+      const close =
+        openQuote === "«" ? "»" : openQuote === '"' ? '"' : openQuote === "'" ? "'" : "";
+      return `${numStr} ${dash} ${openQuote}${canon}${close}`;
+    }
+  );
+}
 
 export type MatrixSectionCheck = {
   id: string;
@@ -83,8 +121,8 @@ export function isCompleteMatrixReading(text: string, toolId?: string): boolean 
 
 /**
  * Post-generation arcana fidelity: every «N — Название» pair in the text must match the
- * engine's number→name mapping, and every required zone heading must carry its own number.
- * Catches LLM number swaps that header/length checks cannot see.
+ * dictionary table (and this matrix's engine names), and every required zone heading must
+ * carry its own number. Catches LLM renames / Marseille swaps that length checks miss.
  */
 export function matrixReadingMatchesEngine(
   text: string,
@@ -119,14 +157,15 @@ export function matrixReadingMatchesEngine(
     ch.points.forEach(add);
   }
 
-  const norm = (s: string) => s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
-  for (const m of t.matchAll(/\b(\d{1,2})\s*[—–-]\s*([«"']?[А-ЯЁA-Z][^\n,()»"']{1,40}?)(?=[,)\n»"']|$)/giu)) {
+  for (const m of t.matchAll(ARCANA_PAIR_RE)) {
     const n = Number(m[1]);
-    const name = norm(m[2] ?? "");
+    const name = normArcanaName(m[4] ?? "");
     if (n < 1 || n > 22 || !name) continue;
+    const tableName = getArcanaEntry(n)?.title;
+    if (!tableName) continue;
+    if (!name.startsWith(normArcanaName(tableName))) return false;
     const engineName = expected.get(n);
-    if (!engineName) continue;
-    if (!name.startsWith(norm(engineName))) return false;
+    if (engineName && !name.startsWith(normArcanaName(engineName))) return false;
   }
 
   // Every required zone heading must carry the engine's number for that zone.

@@ -1103,9 +1103,11 @@ export async function POST(request: NextRequest) {
               throw new Error("matrix_incomplete_after_fill");
             }
             if (matrix) {
-              const { matrixReadingMatchesEngine } = await import(
-                "@/lib/numerology/matrix-completeness"
-              );
+              const {
+                canonicalizeArcanaNamesInText,
+                matrixReadingMatchesEngine,
+              } = await import("@/lib/numerology/matrix-completeness");
+              matrixContent = canonicalizeArcanaNamesInText(matrixContent);
               if (!matrixReadingMatchesEngine(matrixContent, matrix, toolId)) {
                 console.error(
                   `[matrix-save] arcana fidelity mismatch user=${authed.profileUserId} tool=${toolId}`

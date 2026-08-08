@@ -105,6 +105,27 @@ describe("HD report quality gate", () => {
     ).toBe(true);
   });
 
+  it("7b. plain HD disclaimer does not trip V5 (markdown italics did)", () => {
+    const italic =
+      "слово ".repeat(900) +
+      "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
+    const plain =
+      "слово ".repeat(900) +
+      "\n\n---\nРазбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.";
+    expect(
+      validateHdReportText(italic, {
+        engineTypeRu: "Манифестор",
+        requireFocusAnswer: false,
+      }).findings.some((f) => f.rule === "V5")
+    ).toBe(true);
+    expect(
+      validateHdReportText(plain, {
+        engineTypeRu: "Манифестор",
+        requireFocusAnswer: false,
+      }).findings.some((f) => f.rule === "V5")
+    ).toBe(false);
+  });
+
   it("8. needs_regeneration resume does not require a new rune charge", () => {
     expect(
       hdReportRequiresNewCharge({

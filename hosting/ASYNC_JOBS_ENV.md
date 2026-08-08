@@ -27,6 +27,8 @@
 
 Также обязательно для in-process отчётов: `AUTH_SECRET` (подпись session claim / cookies внутри route handlers), `OPENROUTER_API_KEY`, `OPENROUTER_HTTPS_PROXY`.
 
+Для `pro_premium_report` in-process: `PRO_MODULE_ENABLED`, `PRO_AI_ENABLED` (и обычно `PRO_BILLING_MODE`) — иначе `requireProEnabled()` отдаёт `{ error: "Not found" }` и job падает.
+
 ## OpenRouter через Стокгольм
 
 С Beget (`217.12.37.32`) прямой доступ к `openrouter.ai` таймаутится.

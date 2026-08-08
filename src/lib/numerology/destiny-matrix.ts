@@ -1,5 +1,6 @@
 import { parseBirthDate, sumDigits } from "./constants";
 import { MAJOR_ARCANA } from "../tarot";
+import { getArcanaEntry } from "./arcana-dictionary";
 
 /**
  * matrix-v3 — full popular 22-arcana destiny matrix (octagram zones).
@@ -133,12 +134,17 @@ export function reduceToArcanaNumber(n: number): number {
   return value === 0 ? 22 : value;
 }
 
-/** Arcana numbers run 1–22; id 0 (Шут) represents 22. */
+/**
+ * Arcana numbers run 1–22; id 0 (Шут) represents 22.
+ * Display name SSOT for matrix = ARCANA_DICTIONARY (Rider–Waite: 8 Сила, 11 Справедливость).
+ * Meanings stay on MAJOR_ARCANA so deck copy can diverge from matrix editorial text.
+ */
 export function arcanaForNumber(n: number): DestinyMatrixPoint {
   const card = n === 22 ? MAJOR_ARCANA[0] : MAJOR_ARCANA[n];
+  const entry = getArcanaEntry(n);
   return {
     number: n,
-    arcanaName: card?.name ?? `Аркан ${n}`,
+    arcanaName: entry?.title ?? card?.name ?? `Аркан ${n}`,
     arcanaMeaning: card?.meaning ?? "",
   };
 }
