@@ -1105,8 +1105,25 @@ export async function POST(request: NextRequest) {
             if (matrix) {
               const {
                 canonicalizeArcanaNamesInText,
+                canonicalizeMatrixReadingDocument,
+                matrixDocumentMatchesEngine,
                 matrixReadingMatchesEngine,
               } = await import("@/lib/numerology/matrix-completeness");
+              const { renderMatrixReadingMarkdown } = await import(
+                "@/lib/numerology/matrix-reading-document"
+              );
+              // Prefer structured document: titles are engine-locked; prose names are canonicalized.
+              if (matrixDocumentForSave) {
+                const locked = canonicalizeMatrixReadingDocument(matrixDocumentForSave);
+                if (!matrixDocumentMatchesEngine(locked, matrix)) {
+                  console.error(
+                    `[matrix-save] document arcana mismatch user=${authed.profileUserId} tool=${toolId}`
+                  );
+                  throw new Error("matrix_arcana_mismatch");
+                }
+                matrixDocumentForSave = locked;
+                matrixContent = renderMatrixReadingMarkdown(locked);
+              }
               matrixContent = canonicalizeArcanaNamesInText(matrixContent);
               if (!matrixReadingMatchesEngine(matrixContent, matrix, toolId)) {
                 console.error(
@@ -1154,6 +1171,11 @@ export async function POST(request: NextRequest) {
             }
           } catch (saveErr) {
             console.error("Matrix report save failed:", saveErr);
+            const jobIdForRelease = getAsyncJobIdFromRequest(request);
+            if (jobIdForRelease) {
+              const { releaseAsyncJobSaveClaim } = await import("@/lib/async-jobs");
+              await releaseAsyncJobSaveClaim(jobIdForRelease).catch(() => undefined);
+            }
             if (billingCharge) {
               await BillingService.rollbackCharge({
                 userId: authed.profileUserId,

@@ -9,6 +9,7 @@ import {
   markAsyncJobCharged,
   markAsyncJobNeedsRegeneration,
   markAsyncJobRefunded,
+  releaseAsyncJobSaveClaim,
 } from "@/lib/async-jobs";
 import { getAsyncJobIdFromRequest } from "@/lib/async-job-worker-auth";
 import { query } from "@/lib/db";
@@ -55,6 +56,7 @@ export async function trackWorkerJobFailed(
 ): Promise<void> {
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return;
+  await releaseAsyncJobSaveClaim(jobId);
   if (options?.refunded) {
     await markAsyncJobRefunded(jobId);
   }

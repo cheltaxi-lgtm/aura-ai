@@ -5,6 +5,7 @@
  * Note: JS `\b` is ASCII-only — use `(?!\p{L})` for Cyrillic titles.
  */
 import { getArcanaEntry } from "./arcana-dictionary";
+import type { MatrixReadingDocument } from "./matrix-reading-document";
 import { matrixZoneDefsFor } from "./matrix-zones";
 import type { DestinyMatrixResult } from "./destiny-matrix";
 
@@ -43,6 +44,70 @@ export function canonicalizeArcanaNamesInText(text: string): string {
       return `${numStr} ${dash} ${openQuote}${canon}${close}`;
     }
   );
+}
+
+/** Structured document titles/prose must use dictionary names for every zone number. */
+export function matrixDocumentMatchesEngine(
+  doc: MatrixReadingDocument,
+  matrix: DestinyMatrixResult
+): boolean {
+  const expected = new Map<number, string>();
+  const add = (p: { number: number; arcanaName: string } | null | undefined) => {
+    if (p && !expected.has(p.number)) expected.set(p.number, p.arcanaName);
+  };
+  add(matrix.body);
+  add(matrix.energy);
+  add(matrix.roots);
+  add(matrix.comfort);
+  add(matrix.talents);
+  add(matrix.money);
+  add(matrix.relationships);
+  add(matrix.paternal);
+  add(matrix.maternal);
+  add(matrix.purpose);
+  add(matrix.skySpirit);
+  add(matrix.yearArcana);
+  add(matrix.monthArcana);
+  add(matrix.ageCurrent);
+  add(matrix.ageNext);
+  matrix.karmicTail.forEach(add);
+  matrix.agePoints.forEach(add);
+  for (const ch of matrix.channels) ch.points.forEach(add);
+
+  for (const zone of doc.zones) {
+    if (zone.number == null || !zone.arcanaName) continue;
+    const table = getArcanaEntry(zone.number)?.title;
+    if (!table) return false;
+    if (normArcanaName(zone.arcanaName) !== normArcanaName(table)) return false;
+    const engine = expected.get(zone.number);
+    if (engine && normArcanaName(zone.arcanaName) !== normArcanaName(engine)) {
+      return false;
+    }
+    // Title line must carry the zone's own number (engine-locked at parse time).
+    if (!new RegExp(`\\b${zone.number}\\b`).test(zone.title)) return false;
+  }
+  return true;
+}
+
+/** Canonicalize N—Name pairs inside structured zone prose/titles. */
+export function canonicalizeMatrixReadingDocument(
+  doc: MatrixReadingDocument
+): MatrixReadingDocument {
+  return {
+    ...doc,
+    intro: canonicalizeArcanaNamesInText(doc.intro || ""),
+    finale: canonicalizeArcanaNamesInText(doc.finale || ""),
+    zones: doc.zones.map((z) => ({
+      ...z,
+      title: canonicalizeArcanaNamesInText(z.title || ""),
+      prose: canonicalizeArcanaNamesInText(z.prose || ""),
+      practice: z.practice ? canonicalizeArcanaNamesInText(z.practice) : z.practice,
+      arcanaName:
+        z.number != null
+          ? getArcanaEntry(z.number)?.title ?? z.arcanaName
+          : z.arcanaName,
+    })),
+  };
 }
 
 export type MatrixSectionCheck = {

@@ -4,10 +4,17 @@ import { ARCANA_DICTIONARY, getArcanaEntry } from "@/lib/numerology/arcana-dicti
 import { arcanaForNumber, destinyMatrix } from "@/lib/numerology/destiny-matrix";
 import {
   canonicalizeArcanaNamesInText,
+  canonicalizeMatrixReadingDocument,
   majorArcanaNameTable,
+  matrixDocumentMatchesEngine,
   matrixReadingMatchesEngine,
 } from "@/lib/numerology/matrix-completeness";
-import { headingLineForZone } from "@/lib/numerology/matrix-reading-document";
+import {
+  headingLineForZone,
+  MATRIX_READING_SCHEMA_VERSION,
+  parseZoneBlock,
+  renderMatrixReadingMarkdown,
+} from "@/lib/numerology/matrix-reading-document";
 import { listMatrixZones } from "@/lib/numerology/matrix-zones";
 
 function skeletonReading(matrix: ReturnType<typeof destinyMatrix>): string {
@@ -63,6 +70,30 @@ describe("matrix arcana name table (Rider–Waite)", () => {
     expect(matrixReadingMatchesEngine(bad, matrix)).toBe(false);
     expect(
       matrixReadingMatchesEngine(canonicalizeArcanaNamesInText(bad), matrix)
+    ).toBe(true);
+  });
+
+  it("structured document path locks engine titles", () => {
+    const matrix = destinyMatrix("1990-01-15");
+    const zones = listMatrixZones(matrix);
+    const doc = {
+      schemaVersion: MATRIX_READING_SCHEMA_VERSION,
+      intro: "Вступление.",
+      zones: zones.map((z) =>
+        parseZoneBlock(
+          `${headingLineForZone(z)}\nТекст. Практика: шаг.`,
+          z,
+          "ai"
+        )
+      ),
+      finale: "Итог.",
+      meta: { aiZones: zones.length, engineZones: 0, totalZones: zones.length },
+    };
+    expect(matrixDocumentMatchesEngine(doc, matrix)).toBe(true);
+    const locked = canonicalizeMatrixReadingDocument(doc);
+    expect(matrixDocumentMatchesEngine(locked, matrix)).toBe(true);
+    expect(
+      matrixReadingMatchesEngine(renderMatrixReadingMarkdown(locked), matrix)
     ).toBe(true);
   });
 });

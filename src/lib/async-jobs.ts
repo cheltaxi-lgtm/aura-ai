@@ -164,6 +164,20 @@ export async function claimAsyncJobForSave(jobId: string): Promise<boolean> {
   return rowCount === 1;
 }
 
+/**
+ * Drop save_claimed after a failed persist so timeout/reaper can terminalize
+ * refunded+running orphans (handler crashed after claim, before failAsyncJob).
+ */
+export async function releaseAsyncJobSaveClaim(jobId: string): Promise<void> {
+  await query(
+    `UPDATE async_jobs
+     SET period_metadata = COALESCE(period_metadata, '{}'::jsonb) - 'save_claimed',
+         updated_at = NOW()
+     WHERE id = $1 AND status = 'running'`,
+    [jobId]
+  );
+}
+
 /** Merge progress / UI hints into period_metadata while job is running. */
 export async function mergeAsyncJobPeriodMetadata(
   jobId: string,
