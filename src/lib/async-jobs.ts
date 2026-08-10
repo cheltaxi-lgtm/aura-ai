@@ -775,6 +775,9 @@ const RETRYABLE_REPORT_ERROR_CODES = new Set([
   "db_timeout",
   "provider_unavailable",
   "worker_timeout",
+  // Watchdog requeue deleted/replaced the pending row under a still-running attempt.
+  "report_row_lost",
+  "report_persist_failed",
 ]);
 
 export function isRetryableReportErrorCode(code: string | null | undefined): boolean {

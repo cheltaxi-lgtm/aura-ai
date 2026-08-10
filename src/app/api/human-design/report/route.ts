@@ -38,6 +38,7 @@ import {
   failHdReport,
   findDuplicateDoneHdReport,
   getHdChartById,
+  getHdReportById,
   getHdReportForChart,
   hasRuneRefundForTransaction,
   HD_UUID_RE,
@@ -163,23 +164,15 @@ export async function POST(request: NextRequest) {
 
   // Stale pending with a recorded charge → crashed after payment: resume
   // generation on the same row without charging twice.
-  // Worker requeue: also resume a still-fresh pending (see above).
+  // Worker requeue: always resume the live pending — including unlimited /
+  // exempt rows with null transactionId. Deleting that row on requeue races
+  // with the still-running in-process attempt and can false-complete an empty
+  // report (watchdog zombie).
   let resumePaidPending =
     existing?.status === "pending" &&
-    (isStalePendingReport(existing) || Boolean(workerUserId)) &&
-    Boolean(existing.transactionId);
-
-  // Worker found an empty pending without a charge (crash before attach) —
-  // drop it so generation can recreate cleanly instead of CLAIM_BUSY-looping.
-  if (
-    workerUserId &&
-    existing?.status === "pending" &&
-    !existing.transactionId &&
-    !existing.reportText
-  ) {
-    await deleteHdReportRow(existing.id).catch(() => undefined);
-    existing = null;
-  }
+    !existing.reportText &&
+    (Boolean(workerUserId) ||
+      (isStalePendingReport(existing) && Boolean(existing.transactionId)));
 
   if (resumePaidPending && existing?.transactionId) {
     let alreadyRefunded: boolean;
@@ -493,7 +486,7 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
-    await completeHdReport(
+    const saved = await completeHdReport(
       pending.id,
       reportText,
       generated?.modelId || "openrouter",
@@ -504,6 +497,19 @@ export async function POST(request: NextRequest) {
         qualityFindings: generated?.quality.findings ?? [],
       }
     );
+    if (!saved) {
+      // Row vanished mid-flight (watchdog requeue deleted/replaced it). Do NOT
+      // mark the async job completed — that was shipping empty "ready" notices.
+      await trackWorkerJobFailed(
+        request,
+        "Строка разбора была сброшена во время генерации. Задача вернётся в очередь.",
+        { errorCode: "report_row_lost" }
+      );
+      return NextResponse.json(
+        { error: "Строка разбора была сброшена во время генерации.", code: "report_row_lost" },
+        { status: 409 }
+      );
+    }
     completed = true;
     console.warn("[hd-report] cost", {
       sectional: useSectional,
@@ -517,16 +523,23 @@ export async function POST(request: NextRequest) {
       rememberHdChartFact(userId, chart.chart, chart.id);
     }
 
-    const report = await getHdReportForChart(chart.id, userId);
+    const report = await getHdReportById(pending.id, userId);
+    if (!report || report.status !== "done" || !report.reportText?.trim()) {
+      await trackWorkerJobFailed(
+        request,
+        "Разбор не сохранился после генерации.",
+        { errorCode: "report_persist_failed" }
+      );
+      return NextResponse.json(
+        { error: "Разбор не сохранился после генерации.", code: "report_persist_failed" },
+        { status: 502 }
+      );
+    }
     const payload = {
-      report: report
-        ? {
-            ...toPublicHdReport(report),
-            reportText: report.reportText
-              ? sanitizeHdReportText(report.reportText)
-              : report.reportText,
-          }
-        : null,
+      report: {
+        ...toPublicHdReport(report),
+        reportText: sanitizeHdReportText(report.reportText),
+      },
       runeBalance: charge?.newBalance,
     };
     await trackWorkerJobCompleted(request, payload);

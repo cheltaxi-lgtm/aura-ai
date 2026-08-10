@@ -1137,6 +1137,7 @@ export async function lockPendingReportForWorkerResume(reportId: string): Promis
   return (result.rowCount ?? 0) > 0;
 }
 
+/** Returns false when the row is gone (e.g. deleted by a watchdog requeue race). */
 export async function completeHdReport(
   reportId: string,
   reportText: string,
@@ -1147,8 +1148,8 @@ export async function completeHdReport(
     tokenUsage?: unknown;
     qualityFindings?: unknown;
   }
-): Promise<void> {
-  await query(
+): Promise<boolean> {
+  const { rowCount } = await query(
     `UPDATE hd_reports
      SET status = 'done',
          report_text = $2,
@@ -1159,7 +1160,7 @@ export async function completeHdReport(
          quality_findings = COALESCE($7::jsonb, quality_findings),
          error = NULL,
          updated_at = now()
-     WHERE id = $1`,
+     WHERE id = $1 AND status IN ('pending', 'needs_regeneration', 'error')`,
     [
       reportId,
       reportText,
@@ -1170,6 +1171,7 @@ export async function completeHdReport(
       meta?.qualityFindings != null ? JSON.stringify(meta.qualityFindings) : null,
     ]
   );
+  return (rowCount ?? 0) > 0;
 }
 
 /** Free rewrite of an already-paid done report (keeps text until success). */
