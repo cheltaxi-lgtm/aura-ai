@@ -58,6 +58,9 @@ const PUBLIC_API_EXACT = new Set([
   "/api/payment/webhook",
   "/api/payments/webhook",
   "/api/runes/webhook",
+  // Avito messenger webhook (auth via ?token= secret inside the handler;
+  // returns 404 while AVITO_ENABLED is off).
+  "/api/avito/webhook",
   // POST /api/share requires auth (handler + middleware). GET /api/share/* stays public via prefix.
   // Background jobs authenticate via x-cron-secret inside the route handler.
   "/api/ritual/remind",

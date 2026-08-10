@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Loader2, X } from "lucide-react";
@@ -10,14 +11,23 @@ import { useActiveReports } from "@/hooks/useActiveReports";
 /**
  * Global floating indicator: visible on any page while a heavy report is
  * being prepared (or has just finished). Collapsed pill → expandable list.
+ *
+ * Portaled to document.body: AppTopHeader uses backdrop-blur, which creates a
+ * containing block for position:fixed descendants — without a portal the tray
+ * sticks to the header bottom and peeks out behind the gold action pills.
  */
 export default function ActiveReportsTray() {
   const reduceMotion = useReducedMotion();
   const { reports, active } = useActiveReports();
   const [open, setOpen] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   const ready = reports.filter((r) => r.status === "completed");
-  if (active.length === 0 && ready.length === 0) return null;
+  if (!mounted || (active.length === 0 && ready.length === 0)) return null;
 
   const pillLabel =
     active.length > 0
@@ -28,7 +38,7 @@ export default function ActiveReportsTray() {
         ? "Отчёт готов"
         : `Готовы отчёты · ${ready.length}`;
 
-  return (
+  return createPortal(
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 sm:justify-end sm:pr-6">
       <div className="pointer-events-auto w-full max-w-sm">
         <AnimatePresence initial={false}>
@@ -108,6 +118,7 @@ export default function ActiveReportsTray() {
           {pillLabel}
         </motion.button>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }

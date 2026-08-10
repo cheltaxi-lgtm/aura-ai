@@ -420,6 +420,9 @@ export default function ProHomePage() {
         <Link href="/pro/inbox" className="btn-ghost px-4 py-2.5 text-sm">
           Входящие
         </Link>
+        <Link href="/pro/avito" className="btn-ghost px-4 py-2.5 text-sm">
+          Avito
+        </Link>
         <Link href="/pro/landing" className="btn-ghost px-4 py-2.5 text-sm">
           Минилендинг
         </Link>

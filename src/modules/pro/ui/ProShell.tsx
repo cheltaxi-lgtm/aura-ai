@@ -9,6 +9,7 @@ const NAV = [
   { href: "/pro/case/new", label: "Практика" },
   { href: "/pro/landing", label: "Лендинг" },
   { href: "/pro/inbox", label: "Входящие" },
+  { href: "/pro/avito", label: "Avito" },
   { href: "/pro/billing", label: "Биллинг" },
   { href: "/pro/settings", label: "Настройки" },
 ];
