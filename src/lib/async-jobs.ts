@@ -754,6 +754,181 @@ export async function markAsyncJobNeedsRegeneration(
   return rowCount === 1;
 }
 
+/** Max total claims for a report job before terminal failure (model variance). */
+export const REPORT_JOB_MAX_ATTEMPTS = 3;
+/** Max provider-outage reschedules — survives ~15 min of OpenRouter flapping. */
+export const REPORT_JOB_MAX_PROVIDER_RESCHEDULES = 8;
+
+/**
+ * Failure codes that justify an automatic retry for heavy report jobs:
+ * provider/network wobble, model-variance quality failures, DB statement
+ * timeouts. Client/data errors (insufficient, not_found, …) stay terminal.
+ */
+const RETRYABLE_REPORT_ERROR_CODES = new Set([
+  "generation_failed",
+  "invalid_model_report",
+  "invalid_model_output",
+  "empty_or_rejected",
+  "matrix_arcana_mismatch",
+  "db_timeout",
+  "provider_unavailable",
+  "worker_timeout",
+]);
+
+export function isRetryableReportErrorCode(code: string | null | undefined): boolean {
+  return Boolean(code) && RETRYABLE_REPORT_ERROR_CODES.has(code as string);
+}
+
+/**
+ * Retry budget for heavy report jobs: requeue (billing untouched — the retry
+ * reuses the existing charge) while under the attempt budget, then fail +
+ * refund. Never use for client errors — only transient/model-variance codes.
+ */
+export async function retryOrFailReportJob(input: {
+  jobId: string;
+  message: string;
+  errorCode: string;
+  delayMs?: number;
+  maxAttempts?: number;
+}): Promise<"requeued" | "failed"> {
+  const maxAttempts = Math.max(1, input.maxAttempts ?? REPORT_JOB_MAX_ATTEMPTS);
+  const { rows } = await query<{ attempt_count: number }>(
+    `SELECT attempt_count FROM async_jobs WHERE id = $1 AND status = 'running'`,
+    [input.jobId]
+  );
+  const attemptCount = rows[0]?.attempt_count;
+  // Already transitioned elsewhere (reaped / completed) — do not interfere.
+  if (attemptCount === undefined) return "failed";
+  if (attemptCount < maxAttempts) {
+    const wait = Math.max(5_000, Math.min(input.delayMs ?? 30_000, 15 * 60_000));
+    const { rowCount } = await query(
+      `UPDATE async_jobs
+       SET status = 'pending',
+           worker_id = NULL,
+           locked_at = NULL,
+           next_attempt_at = NOW() + make_interval(secs => $2),
+           error_message = $3,
+           error_code = $4,
+           updated_at = NOW()
+       WHERE id = $1 AND status = 'running'`,
+      [
+        input.jobId,
+        Math.floor(wait / 1000),
+        input.message.slice(0, 2000),
+        input.errorCode.slice(0, 100),
+      ]
+    );
+    // Lost the race with reaper/complete — treat as handled elsewhere.
+    return rowCount === 1 ? "requeued" : "failed";
+  }
+  await failAsyncJobAndRefundIfCharged(input.jobId, input.message, input.errorCode);
+  return "failed";
+}
+
+/**
+ * Provider-outage reschedule with a hard cap. rescheduleAsyncJob alone loops
+ * forever on a deterministic network failure (retry_429_count had no ceiling),
+ * which is exactly the «отчёт висит вечно» bug.
+ */
+export async function rescheduleOrFailReportJob(input: {
+  jobId: string;
+  delayMs: number;
+  message: string;
+  maxReschedules?: number;
+}): Promise<"requeued" | "failed"> {
+  const cap = Math.max(1, input.maxReschedules ?? REPORT_JOB_MAX_PROVIDER_RESCHEDULES);
+  const { rows } = await query<{ retry_429_count: number }>(
+    `SELECT retry_429_count FROM async_jobs WHERE id = $1 AND status = 'running'`,
+    [input.jobId]
+  );
+  const count = rows[0]?.retry_429_count;
+  if (count === undefined) return "failed";
+  if (count >= cap) {
+    await failAsyncJobAndRefundIfCharged(input.jobId, input.message, "provider_unavailable");
+    return "failed";
+  }
+  const ok = await rescheduleAsyncJob(input.jobId, input.delayMs, input.message);
+  return ok ? "requeued" : "failed";
+}
+
+/**
+ * Sweep parked needs_regeneration jobs and apply the retry-once policy.
+ * Routes self-mark needs_regeneration via trackWorkerJobNeedsRegeneration, so
+ * by the time the worker learns the code the job is no longer 'running' and
+ * retryNeedsRegenerationOnce cannot fire — this reaper is what actually makes
+ * the auto-retry happen (and heals jobs parked before the policy existed).
+ */
+export async function reapNeedsRegenerationAsyncJobs(input: {
+  minAgeMs: number;
+  kinds: AsyncJobKind[];
+  limit?: number;
+}): Promise<{ requeued: number; failed: number }> {
+  const { rows } = await query<{
+    id: string;
+    error_message: string | null;
+    regen_attempts: number;
+  }>(
+    `SELECT id, error_message,
+            COALESCE((period_metadata->>'regen_attempts')::int, 0) AS regen_attempts
+     FROM async_jobs
+     WHERE status = 'needs_regeneration'
+       AND kind = ANY($2)
+       AND updated_at < NOW() - make_interval(secs => $1)
+     ORDER BY updated_at
+     LIMIT $3`,
+    [Math.floor(input.minAgeMs / 1000), input.kinds, input.limit ?? 10]
+  );
+  let requeued = 0;
+  let failed = 0;
+  for (const row of rows) {
+    if (row.regen_attempts < 1) {
+      const { rowCount } = await query(
+        `UPDATE async_jobs
+         SET status = 'pending',
+             locked_at = NULL,
+             worker_id = NULL,
+             completed_at = NULL,
+             next_attempt_at = NOW() + INTERVAL '15 seconds',
+             period_metadata = jsonb_set(
+               COALESCE(period_metadata, '{}'::jsonb), '{regen_attempts}', '1'::jsonb
+             ),
+             updated_at = NOW()
+         WHERE id = $1 AND status = 'needs_regeneration'`,
+        [row.id]
+      );
+      if (rowCount === 1) requeued += 1;
+      continue;
+    }
+    const { rowCount } = await query(
+      `UPDATE async_jobs
+       SET status = 'failed',
+           error_code = 'regeneration_failed',
+           error_message = $2,
+           completed_at = NOW(),
+           updated_at = NOW()
+       WHERE id = $1 AND status = 'needs_regeneration'`,
+      [
+        row.id,
+        (row.error_message ?? "Разбор требует проверки качества.").slice(0, 2000),
+      ]
+    );
+    if (rowCount !== 1) continue;
+    failed += 1;
+    const latest = await getAsyncJobById(row.id);
+    if (latest?.billing_state === "charged" && latest.charge_transaction_id) {
+      try {
+        await refundChargedAsyncJobIfNeeded(row.id);
+      } catch (error) {
+        console.error(
+          `[async-jobs] refund failed for needs_regeneration job ${row.id}:`,
+          error
+        );
+      }
+    }
+  }
+  return { requeued, failed };
+}
+
 /**
  * Fail a still-running job and refund if charged — but never after save_claimed.
  * Used by the worker after timeout reconciliation.

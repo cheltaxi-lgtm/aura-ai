@@ -43,6 +43,12 @@ async function resolveAiSettings() {
 
 const RETRYABLE_STATUSES = new Set([429, 502, 503]);
 const MAX_LLM_ATTEMPTS = 3;
+/**
+ * Report-pool default per-request timeout. Heavy report sections (large
+ * max_tokens via proxy) legitimately exceed the interactive 90s default —
+ * aborting them produced the AbortError clusters that killed paid reports.
+ */
+const REPORT_POOL_TIMEOUT_MS = 180_000;
 
 function retryDelayMs(attempt: number): number {
   return Math.min(1000 * 2 ** attempt, 8000);
@@ -488,6 +494,8 @@ async function completeChatInternal(
         ? "report"
         : "interactive";
 
+  const effectiveTimeoutMs = timeoutMs ?? (pool === "report" ? REPORT_POOL_TIMEOUT_MS : undefined);
+
   const tryOnce = async (temp?: number) =>
     acceptLlmText(
       await callChatCompletions(
@@ -498,7 +506,7 @@ async function completeChatInternal(
           temperature: temp ?? temperature,
           jsonObject,
         }),
-        timeoutMs,
+        effectiveTimeoutMs,
         maxAttempts,
         extractOpts,
         pool
@@ -551,6 +559,8 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
         ? "report"
         : "interactive";
 
+  const effectiveTimeoutMs = timeoutMs ?? (pool === "report" ? REPORT_POOL_TIMEOUT_MS : undefined);
+
   const tryOnce = async (temp?: number) =>
     callChatCompletionsDetailed(
       OPENROUTER_API,
@@ -560,7 +570,7 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
         temperature: temp ?? temperature,
         jsonObject,
       }),
-      timeoutMs,
+      effectiveTimeoutMs,
       maxAttempts,
       extractOpts,
       pool

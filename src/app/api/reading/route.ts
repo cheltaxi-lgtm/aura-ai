@@ -116,6 +116,27 @@ import {
 } from "@/lib/master-quick-chips";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
 import type { SessionTopicId } from "@/lib/session-topics";
+
+/**
+ * Machine-readable failure cause for the async-job retry budget. The generic
+ * "generation_failed" wrapper hides transient causes (DB statement timeout,
+ * provider wobble, arcana-name drift) that justify an automatic requeue.
+ */
+function classifyReadingFailureCode(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error ?? "");
+  if (msg === "matrix_arcana_mismatch") return "matrix_arcana_mismatch";
+  const pgCode =
+    typeof error === "object" && error !== null && "code" in error
+      ? String((error as { code?: unknown }).code ?? "")
+      : "";
+  if (pgCode === "57014") return "db_timeout";
+  if (pgCode === "23503") return "save_fk_violation";
+  if (/ETIMEDOUT|ECONNRESET|ECONNREFUSED|fetch failed|AbortError|operation was aborted/i.test(msg)) {
+    return "provider_unavailable";
+  }
+  return "generation_failed";
+}
+
 async function persistReadingToSession(input: {
   sessionId: string | undefined;
   profileUserId: string;
@@ -1582,15 +1603,16 @@ export async function POST(request: NextRequest) {
         reportError(refundErr, { route: "reading", stage: "refund" });
       }
     }
+    const errorCode = classifyReadingFailureCode(error);
     await trackWorkerJobFailed(request, "Reading generation failed", {
       refunded: spentRunes > 0,
-      errorCode: "generation_failed",
+      errorCode,
     });
     // Fail-closed: never return template prose as a successful reading.
     return NextResponse.json(
       {
         error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
-        code: "generation_failed",
+        code: errorCode,
         refunded: spentRunes > 0,
       },
       { status: 502 }

@@ -37,13 +37,22 @@ export function getPool(): Pool {
     // borrows, not every physical connection the pool later opens (up to
     // `max`). Apply session GUCs on every new connection instead so they
     // reliably hold for the pool's whole lifetime.
+    // Interactive requests stay snappy at 30s; the async worker process runs
+    // heavy report writes after minutes of LLM work and needs a wider budget
+    // (DB_STATEMENT_TIMEOUT_MS, e.g. 120000 in .env.async-jobs).
+    const statementTimeoutMs = Math.max(
+      1_000,
+      Math.floor(Number(process.env.DB_STATEMENT_TIMEOUT_MS) || 30_000)
+    );
     pool.on("connect", (client) => {
       // Sequential on purpose: parallel unawaited client.query() calls on the
       // same connection trigger a pg deprecation warning (and each GUC must
       // fail independently — e.g. hnsw.* doesn't exist without pgvector).
       void (async () => {
         // Optional — some hosts restrict SET.
-        await client.query("SET statement_timeout = '30s'").catch(() => {});
+        await client
+          .query(`SET statement_timeout = ${statementTimeoutMs}`)
+          .catch(() => {});
         // pgvector HNSW filtered search (e.g. `WHERE user_id = $1 ORDER BY
         // embedding <=> $2 LIMIT n`) can under-return once user_facts grows to
         // many users' vectors mixed in one index, because the ANN walk isn't

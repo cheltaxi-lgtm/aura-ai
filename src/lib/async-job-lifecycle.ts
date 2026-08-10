@@ -6,12 +6,18 @@ import {
   completeAsyncJob,
   failAsyncJob,
   getAsyncJobById,
+  isRetryableReportErrorCode,
   markAsyncJobCharged,
   markAsyncJobNeedsRegeneration,
   markAsyncJobRefunded,
   releaseAsyncJobSaveClaim,
+  retryOrFailReportJob,
   updateAsyncJobProgress,
 } from "@/lib/async-jobs";
+import {
+  isReportJobKind,
+  isReportJobRetryEnabled,
+} from "@/lib/async-report-flags";
 import { getAsyncJobIdFromRequest } from "@/lib/async-job-worker-auth";
 import { query } from "@/lib/db";
 import type { RuneActionType } from "@/lib/rune-costs";
@@ -72,7 +78,12 @@ export async function trackWorkerJobCompleted(
   await completeAsyncJob(jobId, result);
 }
 
-/** Route failed after charge/refund handling; keep job terminal for the poller. */
+/**
+ * Route failed after charge/refund handling; keep job terminal for the poller.
+ * Report kinds with a retryable error code get an automatic requeue instead
+ * (billing untouched — the retry reuses the existing charge); the budget is
+ * enforced by retryOrFailReportJob, which fails + refunds once exhausted.
+ */
 export async function trackWorkerJobFailed(
   request: NextRequest,
   message: string,
@@ -81,10 +92,23 @@ export async function trackWorkerJobFailed(
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return;
   await releaseAsyncJobSaveClaim(jobId);
+  const errorCode = options?.errorCode ?? "generation_failed";
+  if (isReportJobRetryEnabled() && isRetryableReportErrorCode(errorCode)) {
+    const job = await getAsyncJobById(jobId);
+    if (job && job.status === "running" && isReportJobKind(job.kind)) {
+      const outcome = await retryOrFailReportJob({ jobId, message, errorCode });
+      if (outcome === "requeued") {
+        console.warn(
+          `[async-jobs] report auto-retry job=${jobId} kind=${job.kind} code=${errorCode} attempt=${job.attempt_count}`
+        );
+      }
+      return;
+    }
+  }
   if (options?.refunded) {
     await markAsyncJobRefunded(jobId);
   }
-  await failAsyncJob(jobId, message, options?.errorCode ?? "generation_failed");
+  await failAsyncJob(jobId, message, errorCode);
 }
 
 export async function trackWorkerJobNeedsRegeneration(

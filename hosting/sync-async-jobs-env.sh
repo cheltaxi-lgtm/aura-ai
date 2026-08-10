@@ -52,6 +52,11 @@ umask 077
   if [ -z "$(value_of DB_POOL_MAX_WORKER)" ]; then
     printf 'DB_POOL_MAX_WORKER=5\n'
   fi
+  # Report jobs do heavy writes after minutes of LLM work — the interactive
+  # 30s statement_timeout kills them (57014) at the save step.
+  if [ -z "$(value_of DB_STATEMENT_TIMEOUT_MS)" ]; then
+    printf 'DB_STATEMENT_TIMEOUT_MS=120000\n'
+  fi
   if [ -z "$(value_of ASYNC_REPORT_CONCURRENCY)" ]; then
     printf 'ASYNC_REPORT_CONCURRENCY=2\n'
   fi

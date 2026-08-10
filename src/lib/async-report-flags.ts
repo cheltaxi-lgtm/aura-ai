@@ -39,6 +39,16 @@ export function isReportReadyTelegramEnabled(): boolean {
   return v === "1" || v === "true" || v === "on" || v === "yes";
 }
 
+/**
+ * Kill-switch: default OFF. When on, heavy report jobs get an automatic retry
+ * budget (up to REPORT_JOB_MAX_ATTEMPTS claims) for transient/model-variance
+ * failures instead of failing terminally on the first error.
+ */
+export function isReportJobRetryEnabled(): boolean {
+  const v = process.env.REPORT_JOB_RETRY_ENABLED?.trim().toLowerCase();
+  return v === "1" || v === "true" || v === "on" || v === "yes";
+}
+
 export function reportKindsAsAsyncJobKinds(): AsyncJobKind[] {
   return [...REPORT_JOB_KINDS];
 }

@@ -20,11 +20,15 @@ import {
   failAsyncJobAndRefundIfCharged,
   finalizeAsyncJobMetrics,
   getAsyncJobById,
+  isRetryableReportErrorCode,
+  reapNeedsRegenerationAsyncJobs,
   reapOrphanedRunningAsyncJobs,
   reapStaleRunningAsyncJobs,
   reapWatchdogRunningAsyncJobs,
   rescheduleAsyncJob,
+  rescheduleOrFailReportJob,
   retryNeedsRegenerationOnce,
+  retryOrFailReportJob,
   touchAsyncJobHeartbeat,
   type AsyncJobKind,
   type AsyncJobRow,
@@ -39,6 +43,7 @@ import {
 import {
   isAsyncReportInProcessEnabled,
   isReportJobKind,
+  isReportJobRetryEnabled,
   reportKindsAsAsyncJobKinds,
 } from "../src/lib/async-report-flags";
 import {
@@ -224,7 +229,20 @@ async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
   const latest = await getAsyncJobById(job.id);
   if (!latest || latest.status === "completed") return;
   if (latest.status === "failed" || latest.status === "needs_regeneration") return;
+  if (latest.status === "pending") return; // route self-requeued via retry budget
   if (isReportJobKind(job.kind)) recordReportProviderFailure("timeout");
+  if (isReportJobKind(job.kind) && isReportJobRetryEnabled()) {
+    const outcome = await retryOrFailReportJob({
+      jobId: job.id,
+      message: "Генерация превысила лимит ожидания worker.",
+      errorCode: "worker_timeout",
+      delayMs: 30_000,
+    });
+    if (outcome === "requeued") {
+      console.warn(`[async-jobs] worker_timeout retry requeue job=${job.id} kind=${job.kind}`);
+    }
+    return;
+  }
   await failAsyncJobAndRefundIfCharged(
     job.id,
     "Генерация превысила лимит ожидания worker.",
@@ -260,7 +278,8 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
       if (
         latest?.status === "completed" ||
         latest?.status === "failed" ||
-        latest?.status === "needs_regeneration"
+        latest?.status === "needs_regeneration" ||
+        latest?.status === "pending" // route self-requeued via retry budget
       ) {
         return;
       }
@@ -293,6 +312,24 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
         const regen = await retryNeedsRegenerationOnce(job.id, message);
         if (regen === "requeued") {
           console.warn(`[async-jobs] quality regen requeue job=${job.id} kind=${job.kind}`);
+        }
+        return;
+      }
+      if (
+        isReportJobKind(job.kind) &&
+        isReportJobRetryEnabled() &&
+        isRetryableReportErrorCode(codeFromBody)
+      ) {
+        const outcome = await retryOrFailReportJob({
+          jobId: job.id,
+          message,
+          errorCode: codeFromBody,
+          delayMs: 30_000,
+        });
+        if (outcome === "requeued") {
+          console.warn(
+            `[async-jobs] report retry requeue job=${job.id} kind=${job.kind} code=${codeFromBody}`
+          );
         }
         return;
       }
@@ -417,11 +454,17 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
     ) {
       recordReportProviderFailure("other");
       void runProviderProbe("job-provider-error");
-      await rescheduleAsyncJob(
-        job.id,
-        outcome.retryAfterMs ?? 30_000,
-        "Провайдер временно недоступен, задача вернётся в очередь. Повторного списания не будет."
-      );
+      const resched = await rescheduleOrFailReportJob({
+        jobId: job.id,
+        delayMs: outcome.retryAfterMs ?? 30_000,
+        message:
+          "Провайдер временно недоступен, задача вернётся в очередь. Повторного списания не будет.",
+      });
+      if (resched === "failed") {
+        console.error(
+          `[async-jobs] provider reschedule budget exhausted job=${job.id} kind=${job.kind}`
+        );
+      }
       return;
     }
     if (/not implemented/i.test(outcome.message)) {
@@ -432,10 +475,25 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       return;
     }
     recordReportProviderFailure("other");
+    const outcomeCode = outcome.code || "generation_failed";
+    if (isReportJobRetryEnabled() && isRetryableReportErrorCode(outcomeCode)) {
+      const retry = await retryOrFailReportJob({
+        jobId: job.id,
+        message: outcome.message,
+        errorCode: outcomeCode,
+        delayMs: 30_000,
+      });
+      if (retry === "requeued") {
+        console.warn(
+          `[async-jobs] report retry requeue job=${job.id} kind=${job.kind} code=${outcomeCode}`
+        );
+      }
+      return;
+    }
     await failAsyncJobAndRefundIfCharged(
       job.id,
       outcome.message,
-      outcome.code || "generation_failed"
+      outcomeCode
     );
   } catch (error) {
     const msg = error instanceof Error ? error.message : "async job failed";
@@ -457,14 +515,34 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
     if (/ETIMEDOUT|fetch failed|ECONNRESET|provider.?unavailable/i.test(msg)) {
       recordReportProviderFailure("other");
       void runProviderProbe("job-throw-provider-error");
-      await rescheduleAsyncJob(
-        job.id,
-        30_000,
-        "Провайдер временно недоступен, задача вернётся в очередь. Повторного списания не будет."
-      );
+      const resched = await rescheduleOrFailReportJob({
+        jobId: job.id,
+        delayMs: 30_000,
+        message:
+          "Провайдер временно недоступен, задача вернётся в очередь. Повторного списания не будет.",
+      });
+      if (resched === "failed") {
+        console.error(
+          `[async-jobs] provider reschedule budget exhausted job=${job.id} kind=${job.kind}`
+        );
+      }
       return;
     }
     recordReportProviderFailure("other");
+    if (isReportJobRetryEnabled()) {
+      const retry = await retryOrFailReportJob({
+        jobId: job.id,
+        message: msg,
+        errorCode: "generation_failed",
+        delayMs: 30_000,
+      });
+      if (retry === "requeued") {
+        console.warn(
+          `[async-jobs] report retry requeue job=${job.id} kind=${job.kind} code=generation_failed`
+        );
+      }
+      return;
+    }
     await failAsyncJobAndRefundIfCharged(job.id, msg, "generation_failed");
   } finally {
     clearInterval(heartbeat);
@@ -621,15 +699,21 @@ async function main(): Promise<void> {
         maxRunningMs: WATCHDOG_MS,
         kinds: [...WORKER_KINDS],
       });
+      const regen = await reapNeedsRegenerationAsyncJobs({
+        minAgeMs: 60_000,
+        kinds: [...WORKER_KINDS],
+      });
       if (
         orphans ||
         reaped.requeued ||
         reaped.failed ||
         watchdog.requeued ||
-        watchdog.failed
+        watchdog.failed ||
+        regen.requeued ||
+        regen.failed
       ) {
         console.warn(
-          `[async-jobs] reaper orphans=${orphans} staleRequeued=${reaped.requeued} staleFailed=${reaped.failed} watchdogRequeued=${watchdog.requeued} watchdogFailed=${watchdog.failed} reportSlots=${reportInFlightJobs.size}/${REPORT_CONCURRENCY}`
+          `[async-jobs] reaper orphans=${orphans} staleRequeued=${reaped.requeued} staleFailed=${reaped.failed} watchdogRequeued=${watchdog.requeued} watchdogFailed=${watchdog.failed} regenRequeued=${regen.requeued} regenFailed=${regen.failed} reportSlots=${reportInFlightJobs.size}/${REPORT_CONCURRENCY}`
         );
         await reconcileReportSlots();
       }
