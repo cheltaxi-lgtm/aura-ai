@@ -399,19 +399,13 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
   try {
     const outcome = await runReportJobInProcess(job);
     const latest = await getAsyncJobById(job.id);
-    if (
-      latest?.status === "completed" ||
-      latest?.status === "failed" ||
-      latest?.status === "needs_regeneration" ||
-      latest?.status === "pending" ||
-      latest?.worker_id !== workerId
-    ) {
-      return;
-    }
     if (outcome.ok) {
+      // Routes self-complete via trackWorkerJobCompleted, so latest is usually
+      // already "completed" here — metrics and the guaranteed report-ready
+      // notification must still run (both are idempotent).
       recordReportProviderSuccess();
       await finalizeAsyncJobMetrics(job.id, { generationMs: Date.now() - started });
-      if (latest?.status === "running") {
+      if (latest?.status === "running" && latest.worker_id === workerId) {
         const completed = await completeAsyncJob(job.id, outcome.result);
         if (!completed) {
           const again = await getAsyncJobById(job.id);
@@ -428,7 +422,20 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
           }
         }
       }
-      await maybeNotifyReportReady(job, outcome.result);
+      const after =
+        latest?.status === "running" ? await getAsyncJobById(job.id) : latest;
+      if (after?.status === "completed") {
+        await maybeNotifyReportReady(job, outcome.result);
+      }
+      return;
+    }
+    if (
+      latest?.status === "completed" ||
+      latest?.status === "failed" ||
+      latest?.status === "needs_regeneration" ||
+      latest?.status === "pending" ||
+      latest?.worker_id !== workerId
+    ) {
       return;
     }
     if (outcome.needsRegeneration || outcome.code === "needs_regeneration") {
