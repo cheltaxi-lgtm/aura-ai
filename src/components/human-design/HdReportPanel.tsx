@@ -9,6 +9,11 @@ import {
   type HdPublicChart,
 } from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
+import {
+  parseAcceptedAsyncReport,
+  type AcceptedAsyncReport,
+} from "@/lib/client/wait-for-async-job";
 import HdFoundationBrief from "./HdFoundationBrief";
 import HdGenerating from "./HdGenerating";
 import HdJourney, { type HdJourneyStep } from "./HdJourney";
@@ -62,6 +67,8 @@ export default function HdReportPanel({
   const [includedAsks, setIncludedAsks] = useState(0);
   /** Immediate UI flag — not cleared by stale poll races. */
   const [uiGenerating, setUiGenerating] = useState(false);
+  /** «Отчёт принят» envelope when background delivery is enabled. */
+  const [acceptedReport, setAcceptedReport] = useState<AcceptedAsyncReport | null>(null);
   const dialogEndRef = useRef<HTMLDivElement>(null);
   const postInFlightRef = useRef(false);
   const askInFlightRef = useRef(false);
@@ -262,6 +269,10 @@ export default function HdReportPanel({
       if (res.status === 202) {
         setLoading(false);
         setUiGenerating(true);
+        // Background delivery: replace the wait screen with «Отчёт принят».
+        // The wait machinery keeps running — «дождаться здесь» just hides this.
+        const accepted = parseAcceptedAsyncReport(data);
+        if (accepted) setAcceptedReport(accepted);
         const jobId = typeof data.jobId === "string" ? data.jobId : null;
         if (jobId) {
           void (async () => {
@@ -476,14 +487,21 @@ export default function HdReportPanel({
     </div>
   );
   const generatingBlock = isGenerating ? (
-    <div className="hd-panel">
-      <HdGenerating kind="personal" startedAt={startedAt ?? undefined} />
-      {error && (
-        <p className="mt-3 text-sm text-amber-100/70" role="status">
-          {error}
-        </p>
-      )}
-    </div>
+    acceptedReport ? (
+      <ReportAcceptedScreen
+        accepted={acceptedReport}
+        onStay={() => setAcceptedReport(null)}
+      />
+    ) : (
+      <div className="hd-panel">
+        <HdGenerating kind="personal" startedAt={startedAt ?? undefined} />
+        {error && (
+          <p className="mt-3 text-sm text-amber-100/70" role="status">
+            {error}
+          </p>
+        )}
+      </div>
+    )
   ) : null;
 
   if (!authenticated) {

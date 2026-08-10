@@ -9,6 +9,8 @@ type Prefs = {
   reminderHourMsk: number;
   bonusEmail: boolean;
   marketingEmail: boolean;
+  reportReadyEmail: boolean;
+  reportReadyTelegram: boolean;
 };
 
 export default function CabinetDailyNotifications() {
@@ -103,6 +105,38 @@ export default function CabinetDailyNotifications() {
                 </option>
               ))}
             </select>
+          </label>
+        </div>
+      </div>
+
+      <div className="mt-5 border-t border-white/10 pt-4">
+        <p className="text-xs font-medium uppercase tracking-wide text-white/35">Готовность отчётов</p>
+        <p className="mt-0.5 text-xs text-white/40">
+          Когда платный отчёт будет готов, сообщение всегда появится в колокольчике.
+          Дублировать можно на почту и в Telegram.
+        </p>
+        <div className="mt-3 space-y-3">
+          <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
+            <input
+              type="checkbox"
+              checked={prefs.reportReadyEmail ?? true}
+              disabled={saving}
+              onChange={(e) => void save({ reportReadyEmail: e.target.checked })}
+              className="rounded border-white/20"
+            />
+            <Mail className="h-4 w-4 text-white/40" />
+            Письмо о готовности отчёта
+          </label>
+          <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
+            <input
+              type="checkbox"
+              checked={prefs.reportReadyTelegram ?? true}
+              disabled={saving}
+              onChange={(e) => void save({ reportReadyTelegram: e.target.checked })}
+              className="rounded border-white/20"
+            />
+            <Bell className="h-4 w-4 text-white/40" />
+            Сообщение в Telegram о готовности
           </label>
         </div>
       </div>

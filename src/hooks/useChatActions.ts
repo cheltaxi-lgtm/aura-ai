@@ -12,8 +12,10 @@ import {
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
 import {
+  parseAcceptedAsyncReport,
   resumeStoredOrActiveAsyncJob,
   waitForAsyncJob,
+  type AcceptedAsyncReport,
 } from "@/lib/client/wait-for-async-job";
 import { isProseLikelyTruncated } from "@/lib/prose-truncation";
 import { rateLimitMessage } from "@/lib/rate-limit-messages";
@@ -439,6 +441,8 @@ export function useChatActions(options: UseChatActionsOptions) {
 
   const loadReadingAttemptKeyRef = useRef<string | null>(null);
   const loadReadingInFlightKeyRef = useRef<string | null>(null);
+  /** «Отчёт принят» overlay for heavy background reports (matrix etc.). */
+  const [acceptedReport, setAcceptedReport] = useState<AcceptedAsyncReport | null>(null);
 
   const usesRuneBilling =
     isLoggedIn && !session?.hasAccess && !session?.offline && runeConfig.enabled;
@@ -835,6 +839,10 @@ export function useChatActions(options: UseChatActionsOptions) {
           let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
           let status = res.status;
           if (status === 202 && typeof data.jobId === "string") {
+            // Background delivery: overlay «Отчёт принят» on top of the ritual;
+            // the wait below keeps running, so «дождаться здесь» = dismiss.
+            const accepted = parseAcceptedAsyncReport(data);
+            if (accepted) setAcceptedReport(accepted);
             try {
               data = await waitForAsyncJob({
                 jobId: data.jobId,
@@ -854,6 +862,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                 code: "generation_failed",
               };
             }
+            if (accepted) setAcceptedReport(null);
           }
           if (status === 401) {
             closeSpreadReadingRitual();
@@ -2568,5 +2577,7 @@ export function useChatActions(options: UseChatActionsOptions) {
     openChatWithCharacter,
     applyRestoredChatSpread,
     applyHistorySessionMeta,
+    acceptedReport,
+    dismissAcceptedReport: () => setAcceptedReport(null),
   };
 }

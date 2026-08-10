@@ -14,6 +14,16 @@ export type PaidJobKindConfig = {
   matchesWorkerPath: (pathname: string) => boolean;
   /** Stable dedupe key for active-job uniqueness. */
   buildDedupeKey: (userId: string, payload: Record<string, unknown>) => string;
+  /**
+   * "background_notified" — клиент показывает экран «Отчёт принят» и отпускает
+   * пользователя; готовность приходит уведомлением. Дефолт "blocking" — текущее
+   * блокирующее ожидание. Выставляется только при включённом kill-switch.
+   */
+  waitPolicy?: "blocking" | "background_notified";
+  /** Честный диапазон ожидания для копирайта, секунды. */
+  etaRangeSec?: { min: number; max: number };
+  /** Человеческое название продукта для экранов и уведомлений. */
+  productTitle?: string;
 };
 
 export function hashDedupeParts(parts: unknown[]): string {
@@ -25,6 +35,9 @@ const NATAL_INTERPRETATION: PaidJobKindConfig = {
   runeAction: "NATAL_READING",
   maxActivePerUser: 1,
   timeoutMs: 280_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 60, max: 240 },
+  productTitle: "Разбор натальной карты",
   workerPath: (job) => ({
     path: "/api/natal-chart/interpretation",
     body: { ...job.input, async: false },
@@ -39,6 +52,9 @@ const NATAL_FORECAST: PaidJobKindConfig = {
   runeAction: "FORECAST_REPORT",
   maxActivePerUser: 1,
   timeoutMs: 280_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 60, max: 240 },
+  productTitle: "Прогноз по натальной карте",
   workerPath: (job) => ({
     path: "/api/natal-chart/forecast",
     body: { ...job.input, async: false },
@@ -59,6 +75,9 @@ const NATAL_COMPATIBILITY: PaidJobKindConfig = {
   runeAction: "SYNASTRY_REPORT",
   maxActivePerUser: 1,
   timeoutMs: 280_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 60, max: 240 },
+  productTitle: "Разбор совместимости",
   workerPath: (job) => {
     const id = job.input.id;
     if (typeof id !== "string") throw new Error("invalid compatibility job payload");
@@ -212,6 +231,9 @@ const NUMEROLOGY_READING: PaidJobKindConfig = {
   maxActivePerUser: 1,
   /** Full matrix ≈ 19 zone LLM calls; align with bot siteNumerology 420s. */
   timeoutMs: 420_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 180, max: 480 },
+  productTitle: "Разбор матрицы",
   workerPath: (job) => ({
     path: "/api/reading",
     body: { ...job.input, async: false, characterId: "numerolog" },
@@ -267,6 +289,9 @@ const HD_REPORT: PaidJobKindConfig = {
   // timeout fails the job cosmetically while the route completes — the
   // client polls the report entity, and stale-resume covers a true crash.
   timeoutMs: 800_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 180, max: 600 },
+  productTitle: "Разбор Дизайна Человека",
   workerPath: (job) => ({
     path: "/api/human-design/report",
     body: { ...job.input, async: false },
@@ -282,6 +307,9 @@ const HD_COMPOSITE_REPORT: PaidJobKindConfig = {
   maxActivePerUser: 1,
   // Same multi-pass budget as personal (route maxDuration 600s).
   timeoutMs: 600_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 180, max: 540 },
+  productTitle: "Разбор связи по Дизайну Человека",
   workerPath: (job) => ({
     path: "/api/human-design/composite-report",
     body: { ...job.input, async: false },
@@ -302,6 +330,9 @@ const PRO_PREMIUM_REPORT: PaidJobKindConfig = {
   maxActivePerUser: 1,
   /** Sectional HD: 12 batches + editor + quality retries — match hd_report. */
   timeoutMs: 800_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 120, max: 720 },
+  productTitle: "Премиум-отчёт",
   workerPath: (job) => ({
     path: "/api/pro/jobs/premium-report",
     body: { ...job.input, async: false },

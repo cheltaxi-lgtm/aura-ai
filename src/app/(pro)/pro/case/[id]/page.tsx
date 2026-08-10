@@ -4,7 +4,12 @@ import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
 import dynamic from "next/dynamic";
 import ProShell from "@/modules/pro/ui/ProShell";
-import { waitForAsyncJob } from "@/lib/client/wait-for-async-job";
+import {
+  parseAcceptedAsyncReport,
+  waitForAsyncJob,
+  type AcceptedAsyncReport,
+} from "@/lib/client/wait-for-async-job";
+import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import { DESTINY_MATRIX_UI_SLOT_COUNT } from "@/components/numerolog/DestinyMatrixGrid";
 import {
   polishProReportPlainText,
@@ -53,6 +58,7 @@ export default function ProCasePage() {
   const [busy, setBusy] = useState(false);
   const [generating, setGenerating] = useState(false);
   const [generatingElapsedSec, setGeneratingElapsedSec] = useState(0);
+  const [acceptedReport, setAcceptedReport] = useState<AcceptedAsyncReport | null>(null);
 
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
@@ -375,6 +381,9 @@ export default function ProCasePage() {
           ? " Обычно 6–12 минут — можно оставить вкладку открытой."
           : " Обычно 2–5 минут.";
       setMsg(`Мастер готовит премиум-отчёт…${etaHint}`);
+      // Background delivery: «Отчёт принят» overlay; wait continues underneath.
+      const accepted = parseAcceptedAsyncReport(json);
+      if (accepted) setAcceptedReport(accepted);
       try {
         // HD sectional ≈ 6–12 min; 400 × 2.5s ≈ 16.6 min ceiling.
         await waitForAsyncJob({
@@ -387,6 +396,7 @@ export default function ProCasePage() {
       } catch (e) {
         setMsg(e instanceof Error ? e.message : "Генерация не завершилась");
       }
+      setAcceptedReport(null);
       await load();
       setBusy(false);
       setGenerating(false);
@@ -413,6 +423,14 @@ export default function ProCasePage() {
 
   return (
     <ProShell title={`Практика · ${c.type}`}>
+      {acceptedReport ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+          <ReportAcceptedScreen
+            accepted={acceptedReport}
+            onStay={() => setAcceptedReport(null)}
+          />
+        </div>
+      ) : null}
       <p className="text-sm text-gray-400">
         Статус: {c.status} · клиент: {data.client?.alias}
       </p>

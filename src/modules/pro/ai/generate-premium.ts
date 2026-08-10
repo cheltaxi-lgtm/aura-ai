@@ -431,7 +431,8 @@ async function generateMatrix(
 async function generateHd(
   payload: Record<string, unknown>,
   clientAlias: string,
-  focusQuestion?: string | null
+  focusQuestion?: string | null,
+  onProgress?: (p: { done: number; total: number; label: string }) => void
 ): Promise<{
   blocks: ProReportBlock[];
   snapshot: ProChartSnapshot;
@@ -475,6 +476,7 @@ async function generateHd(
         extraSystem: proVoice,
         placeLabel,
         maxSectionRetries: 2,
+        onProgress,
       })
     : null;
   if (!generated) {
@@ -572,6 +574,7 @@ export async function generateProPremiumReport(input: {
   payload: Record<string, unknown>;
   clientAlias: string;
   question?: string | null;
+  onProgress?: (p: { done: number; total: number; label: string }) => void;
 }): Promise<{
   blocks: ProReportBlock[];
   snapshot: ProChartSnapshot;
@@ -592,7 +595,7 @@ export async function generateProPremiumReport(input: {
   } else if (input.type === "matrix") {
     result = await generateMatrix(input.payload, input.clientAlias, focus);
   } else {
-    result = await generateHd(input.payload, input.clientAlias, focus);
+    result = await generateHd(input.payload, input.clientAlias, focus, input.onProgress);
   }
 
   const blocks = normalizeProPremiumBlocks(result.blocks, {

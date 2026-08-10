@@ -287,6 +287,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
           pollUrl: json.pollUrl || `/api/jobs/${json.jobId}`,
           charge,
           status: "generating",
+          // Background-delivery envelope passthrough (present when enabled).
+          ...(typeof json.kind === "string" ? { kind: json.kind } : {}),
+          ...(typeof json.waitPolicy === "string" ? { waitPolicy: json.waitPolicy } : {}),
+          ...(json.etaRangeSec ? { etaRangeSec: json.etaRangeSec } : {}),
+          ...(typeof json.productTitle === "string" ? { productTitle: json.productTitle } : {}),
+          ...(typeof json.destination === "string" ? { destination: json.destination } : {}),
         });
       } catch (e) {
         await billingAdapter.refund({

@@ -18,6 +18,11 @@ import type { ClientSynastryPayload } from "@/lib/natal/synastry";
 import { useAuth } from "@/lib/useAuth";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
+import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
+import {
+  parseAcceptedAsyncReport,
+  type AcceptedAsyncReport,
+} from "@/lib/client/wait-for-async-job";
 import CompositeWheel from "./CompositeWheel";
 import NatalSynastryWheel from "./NatalSynastryWheel";
 import ReportShareControls from "./ReportShareControls";
@@ -162,6 +167,10 @@ export default function NatalCompatibility() {
   const [busy, setBusy] = useState<"create" | "invite" | "accept" | "generate" | "delete" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
+  const [acceptedReport, setAcceptedReport] = useState<{
+    report: AcceptedAsyncReport;
+    resume: () => void;
+  } | null>(null);
   const [citySuggestions, setCitySuggestions] = useState<CitySuggestion[]>([]);
   const [citySelected, setCitySelected] = useState(false);
   const [cityLookupOpen, setCityLookupOpen] = useState(false);
@@ -386,7 +395,7 @@ export default function NatalCompatibility() {
     }
   };
 
-  const generate = async (record: CompatibilityRecord) => {
+  const generate = async (record: CompatibilityRecord, opts?: { forceWait?: boolean }) => {
     setBusy("generate");
     setError("");
     setNotice("");
@@ -411,6 +420,17 @@ export default function NatalCompatibility() {
       let settledOk = response.ok;
       let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
+        const accepted = parseAcceptedAsyncReport(data);
+        if (accepted && !opts?.forceWait) {
+          setAcceptedReport({
+            report: accepted,
+            resume: () => {
+              setAcceptedReport(null);
+              void generate(record, { forceWait: true });
+            },
+          });
+          return;
+        }
         setNotice("Отчёт поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForCompatibilityJob(data.jobId) as typeof data;
         settledOk = true;
@@ -475,6 +495,14 @@ export default function NatalCompatibility() {
 
   return (
     <div className="space-y-6">
+      {acceptedReport ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+          <ReportAcceptedScreen
+            accepted={acceptedReport.report}
+            onStay={acceptedReport.resume}
+          />
+        </div>
+      ) : null}
       <section className="overflow-hidden rounded-3xl border border-rose-300/15 bg-gradient-to-br from-rose-400/[0.08] via-black/25 to-violet-500/[0.08]">
         <div className="p-5 sm:p-7">
           <p className="text-[10px] uppercase tracking-[.2em] text-rose-200/55">

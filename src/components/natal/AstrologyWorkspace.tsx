@@ -20,6 +20,11 @@ import { buildLoginHref } from "@/lib/post-auth-return";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
+import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
+import {
+  parseAcceptedAsyncReport,
+  type AcceptedAsyncReport,
+} from "@/lib/client/wait-for-async-job";
 import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   aspectRows, bigThree, methodology, midpointRows, patternRows,
@@ -158,6 +163,10 @@ export default function AstrologyWorkspace() {
   const [notice, setNotice] = useState("");
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
   const [freshReports, setFreshReports] = useState<Partial<Record<NatalTradition, FreshReport>>>({});
+  const [acceptedReport, setAcceptedReport] = useState<{
+    report: AcceptedAsyncReport;
+    resume: () => void;
+  } | null>(null);
 
   const selectTab = useCallback((nextTab: Tab) => {
     setTab(nextTab);
@@ -304,7 +313,7 @@ export default function AstrologyWorkspace() {
     }, 80);
   }, [selectTab]);
 
-  const requestInterpretation = async (tradition: NatalTradition) => {
+  const requestInterpretation = async (tradition: NatalTradition, opts?: { forceWait?: boolean }) => {
     if (!chart?.[tradition]) {
       setError("Сначала укажите дату и город рождения в настройках карты.");
       selectTab("settings");
@@ -330,6 +339,19 @@ export default function AstrologyWorkspace() {
       let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
         enqueuedJob = true;
+        // Background delivery: show «Отчёт принят» and release the user.
+        // Re-POST dedupes to the same job server-side, so «дождаться здесь» is safe.
+        const accepted = parseAcceptedAsyncReport(data);
+        if (accepted && !opts?.forceWait) {
+          setAcceptedReport({
+            report: accepted,
+            resume: () => {
+              setAcceptedReport(null);
+              void requestInterpretation(tradition, { forceWait: true });
+            },
+          });
+          return;
+        }
         setNotice("Отчёт поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForNatalJob(data.jobId) as typeof data;
         settledOk = true;
@@ -450,7 +472,7 @@ export default function AstrologyWorkspace() {
     }
   };
 
-  const requestForecast = async (horizon: TimingHorizon) => {
+  const requestForecast = async (horizon: TimingHorizon, opts?: { forceWait?: boolean }) => {
     if (!chart?.western) {
       setError("Сначала укажите дату и город рождения в настройках карты.");
       selectTab("settings");
@@ -476,6 +498,17 @@ export default function AstrologyWorkspace() {
       let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
         enqueuedJob = true;
+        const accepted = parseAcceptedAsyncReport(data);
+        if (accepted && !opts?.forceWait) {
+          setAcceptedReport({
+            report: accepted,
+            resume: () => {
+              setAcceptedReport(null);
+              void requestForecast(horizon, { forceWait: true });
+            },
+          });
+          return;
+        }
         setNotice("Прогноз поставлен в очередь. Обычно это занимает 1–3 минуты; страницу можно обновить.");
         data = await waitForNatalJob(data.jobId) as typeof data;
         // Job poll replaces the enqueue Response — treat completion as HTTP 200.
@@ -637,6 +670,14 @@ export default function AstrologyWorkspace() {
   return (
     <main className="relative text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(245,158,11,.12),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(124,58,237,.11),transparent_30%)]" />
+      {acceptedReport ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+          <ReportAcceptedScreen
+            accepted={acceptedReport.report}
+            onStay={acceptedReport.resume}
+          />
+        </div>
+      ) : null}
       <div className="relative mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
         <header className="rounded-3xl border border-amber-300/15 bg-black/35 p-5 backdrop-blur-xl sm:p-7">
           <nav className="flex flex-wrap items-center gap-2 text-xs text-white/50" aria-label="Навигация по сайту">

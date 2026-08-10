@@ -8,8 +8,33 @@ import {
 } from "@/lib/async-jobs";
 import { getJobKindConfig } from "@/lib/async-job-registry";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
+import { isReportBackgroundDeliveryEnabled } from "@/lib/async-report-flags";
+import { resolveAsyncReportDestination } from "@/lib/async-report-destination";
 import { ensureDb } from "@/lib/db";
 import { isAiDeliveryKindEnabled } from "@/lib/settings";
+
+/**
+ * Extra fields for heavy report kinds when the background-delivery kill-switch
+ * is on: the client shows "Отчёт принят" and lets the user leave instead of
+ * blocking on the wait screen. Absent otherwise — old clients unaffected.
+ */
+function acceptedReportExtras(
+  kind: AsyncJobKind,
+  payload: Record<string, unknown>
+): Record<string, unknown> {
+  if (!isReportBackgroundDeliveryEnabled()) return {};
+  const config = getJobKindConfig(kind);
+  if (config.waitPolicy !== "background_notified") return {};
+  const destination = resolveAsyncReportDestination({ kind, jobInput: payload });
+  return {
+    async: true,
+    kind,
+    waitPolicy: "background_notified",
+    etaRangeSec: config.etaRangeSec ?? null,
+    productTitle: config.productTitle ?? "Отчёт",
+    destination,
+  };
+}
 
 export async function enqueuePaidAsyncJob(input: {
   userId: string;
@@ -63,6 +88,7 @@ export async function enqueuePaidAsyncJob(input: {
         status: "pending",
         pollUrl: `/api/jobs/${existingId}`,
         deduped: true,
+        ...acceptedReportExtras(input.kind, input.payload),
       },
       { status: 202 }
     );
@@ -90,7 +116,12 @@ export async function enqueuePaidAsyncJob(input: {
     actionType: input.actionType ?? config.runeAction,
   });
   return NextResponse.json(
-    { jobId, status: "pending", pollUrl: `/api/jobs/${jobId}` },
+    {
+      jobId,
+      status: "pending",
+      pollUrl: `/api/jobs/${jobId}`,
+      ...acceptedReportExtras(input.kind, input.payload),
+    },
     { status: 202 }
   );
 }

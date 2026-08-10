@@ -10,6 +10,7 @@ import NotificationBell, {
   NOTIFICATION_COUNT_EVENT,
   OPEN_NOTIFICATIONS_EVENT,
 } from "@/components/NotificationBell";
+import ActiveReportsTray from "@/components/reports/ActiveReportsTray";
 import RuneBalance, { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import TariffsModal from "@/components/TariffsModal";
 import type { AuthUser } from "@/lib/useAuth";
@@ -191,6 +192,7 @@ export default function AppTopHeader({
           ) : null}
         </div>
       </div>
+      {isLoggedIn && authUser?.role === "user" ? <ActiveReportsTray /> : null}
       <TariffsModal
         open={tariffsOpen}
         onClose={() => setTariffsOpen(false)}

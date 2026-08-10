@@ -697,6 +697,44 @@ export async function failAsyncJob(
 }
 
 /** Park a generated report for manual/quality regeneration without refunding it. */
+/**
+ * Quality-gate failure policy: one automatic regeneration without charging
+ * (billing stays as-is; sync routes skip the charge for already-charged jobs),
+ * then fail + refund — the user must not pay for a report that never passed QA.
+ */
+export async function retryNeedsRegenerationOnce(
+  jobId: string,
+  message: string
+): Promise<"requeued" | "failed"> {
+  const { rows } = await query<{ regen_attempts: number }>(
+    `SELECT COALESCE((period_metadata->>'regen_attempts')::int, 0) AS regen_attempts
+     FROM async_jobs
+     WHERE id = $1 AND status = 'running'`,
+    [jobId]
+  );
+  const attempts = rows[0]?.regen_attempts ?? 0;
+  if (attempts >= 1) {
+    await failAsyncJobAndRefundIfCharged(jobId, message, "regeneration_failed");
+    return "failed";
+  }
+  const { rowCount } = await query(
+    `UPDATE async_jobs
+     SET status = 'pending',
+         locked_at = NULL,
+         worker_id = NULL,
+         next_attempt_at = NOW() + INTERVAL '15 seconds',
+         period_metadata = jsonb_set(
+           COALESCE(period_metadata, '{}'::jsonb), '{regen_attempts}', '1'::jsonb
+         ),
+         updated_at = NOW()
+     WHERE id = $1 AND status = 'running'`,
+    [jobId]
+  );
+  if (rowCount === 1) return "requeued";
+  await markAsyncJobNeedsRegeneration(jobId, message);
+  return "failed";
+}
+
 export async function markAsyncJobNeedsRegeneration(
   jobId: string,
   message: string
@@ -819,6 +857,33 @@ export async function listActiveAsyncJobsForUser(
   return rows;
 }
 
+/**
+ * Heavy report jobs for the user-facing "мои отчёты" surface: active plus
+ * recently terminal (24h) so a finished report does not vanish from the UI
+ * before the user sees the ready state.
+ */
+export async function listReportJobsForUser(
+  userId: string,
+  kinds: AsyncJobKind[]
+): Promise<AsyncJobRow[]> {
+  if (!kinds.length) return [];
+  const { rows } = await query<AsyncJobRow>(
+    `SELECT ${JOB_SELECT}
+     FROM async_jobs
+     WHERE user_id = $1
+       AND kind = ANY($2::text[])
+       AND (
+         (status IN ('pending', 'running') AND expires_at > NOW())
+         OR (status IN ('completed', 'failed', 'needs_regeneration')
+             AND COALESCE(completed_at, updated_at) > NOW() - INTERVAL '24 hours')
+       )
+     ORDER BY created_at DESC
+     LIMIT 20`,
+    [userId, kinds]
+  );
+  return rows;
+}
+
 export function asyncJobPollPayload(job: AsyncJobRow) {
   const refunded = job.billing_state === "refunded";
   const meta = job.period_metadata ?? {};
@@ -847,6 +912,9 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
     refunded,
     createdAt: job.created_at.toISOString(),
     completedAt: job.completed_at?.toISOString() ?? null,
+    /** Worker liveness: locked_at is refreshed by heartbeat during in-process runs. */
+    heartbeatAt: (job.locked_at ?? job.updated_at).toISOString(),
+    startedAt: job.started_at?.toISOString() ?? null,
     attempts: job.attempt_count,
     outputEntityId: job.output_entity_id,
     outputEntityTable: job.output_entity_table,

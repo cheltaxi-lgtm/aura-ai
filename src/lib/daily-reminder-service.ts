@@ -11,6 +11,10 @@ export type NotificationPrefs = {
   bonusEmail: boolean;
   /** Win-back emails for inactive users (requires marketing_consent). */
   marketingEmail: boolean;
+  /** Transactional "paid report is ready" email. Default on. */
+  reportReadyEmail: boolean;
+  /** Transactional "paid report is ready" Telegram DM. Default on. */
+  reportReadyTelegram: boolean;
 };
 
 const DEFAULT_PREFS: NotificationPrefs = {
@@ -19,6 +23,8 @@ const DEFAULT_PREFS: NotificationPrefs = {
   reminderHourMsk: 9,
   bonusEmail: true,
   marketingEmail: true,
+  reportReadyEmail: true,
+  reportReadyTelegram: true,
 };
 
 export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
@@ -36,6 +42,8 @@ export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
     reminderHourMsk,
     bonusEmail: o.bonusEmail !== false,
     marketingEmail: o.marketingEmail !== false,
+    reportReadyEmail: o.reportReadyEmail !== false,
+    reportReadyTelegram: o.reportReadyTelegram !== false,
   };
 }
 

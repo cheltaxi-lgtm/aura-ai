@@ -9,6 +9,22 @@ export type WaitForAsyncJobOptions = {
   maxAttempts?: number;
   pollIntervalMs?: number;
   signal?: AbortSignal;
+  /** Live status updates (queue position, server message, progress) for premium UI. */
+  onUpdate?: (update: {
+    status: string;
+    queuePosition: number | null;
+    clientMessage?: string;
+    progress?: AsyncJobProgress;
+    heartbeatAt?: string | null;
+  }) => void;
+};
+
+export type AsyncJobProgress = {
+  done?: number;
+  total?: number;
+  label?: string;
+  stage?: string;
+  message?: string;
 };
 
 export type AsyncJobPollResult = {
@@ -20,7 +36,50 @@ export type AsyncJobPollResult = {
   refunded?: boolean;
   billingState?: string;
   outputEntityId?: string | null;
+  queuePosition?: number | null;
+  clientMessage?: string;
+  progress?: AsyncJobProgress;
+  heartbeatAt?: string | null;
 };
+
+/** 202 envelope for heavy reports when background delivery is enabled. */
+export type AcceptedAsyncReport = {
+  jobId: string;
+  pollUrl: string;
+  kind?: string;
+  waitPolicy: "background_notified";
+  etaRangeSec: { min: number; max: number } | null;
+  productTitle?: string;
+  destination: string | null;
+};
+
+/**
+ * Detect the "Отчёт принят" envelope from any enqueue response (202 or the
+ * Pro 200 wrapper). Returns null for classic blocking flows — old behaviour.
+ */
+export function parseAcceptedAsyncReport(data: unknown): AcceptedAsyncReport | null {
+  if (!data || typeof data !== "object") return null;
+  const o = data as Record<string, unknown>;
+  if (typeof o.jobId !== "string" || !o.jobId) return null;
+  if (o.waitPolicy !== "background_notified") return null;
+  const etaRaw = o.etaRangeSec;
+  const eta =
+    etaRaw &&
+    typeof etaRaw === "object" &&
+    typeof (etaRaw as Record<string, unknown>).min === "number" &&
+    typeof (etaRaw as Record<string, unknown>).max === "number"
+      ? (etaRaw as { min: number; max: number })
+      : null;
+  return {
+    jobId: o.jobId,
+    pollUrl: typeof o.pollUrl === "string" ? o.pollUrl : `/api/jobs/${o.jobId}`,
+    kind: typeof o.kind === "string" ? o.kind : undefined,
+    waitPolicy: "background_notified",
+    etaRangeSec: eta,
+    productTitle: typeof o.productTitle === "string" ? o.productTitle : undefined,
+    destination: typeof o.destination === "string" ? o.destination : null,
+  };
+}
 
 async function responseJson<T>(response: Response): Promise<T> {
   const text = await response.text();
@@ -94,7 +153,7 @@ export async function waitForAsyncJob(
         }
         terminal = false;
         throw new Error(
-          "Генерация продолжается, но связь нестабильна. Обновите страницу позже — ожидание восстановится."
+          "Разбор продолжается на сервере — результат сохранится в кабинете. Проверьте связь и вернитесь: ожидание продолжится автоматически."
         );
       }
 
@@ -119,7 +178,7 @@ export async function waitForAsyncJob(
         }
         terminal = false;
         throw new Error(
-          "Генерация продолжается, но сервер временно занят. Обновите страницу позже."
+          "Разбор продолжается на сервере, но статус временно недоступен. Он появится в кабинете — повторного списания не будет."
         );
       }
 
@@ -136,7 +195,7 @@ export async function waitForAsyncJob(
         }
         terminal = false;
         throw new Error(
-          "Генерация ещё обрабатывается, но статус временно недоступен. Обновите страницу через 1–2 минуты."
+          "Разбор готовится на сервере, но вход нужно подтвердить. Войдите снова — ожидание продолжится автоматически."
         );
       }
       authFailures = 0;
@@ -153,7 +212,7 @@ export async function waitForAsyncJob(
         throw new Error(
           typeof job.error === "string" && job.error.trim()
             ? job.error
-            : "Разбор проходит проверку качества. Повторного списания рун не будет — откройте страницу позже."
+            : "Разбор проходит дополнительную проверку качества. Повторного списания рун не будет — сообщим, когда всё будет готово."
         );
       }
       if (job.status === "failed") {
@@ -164,15 +223,22 @@ export async function waitForAsyncJob(
           throw new Error("insufficient_runes");
         }
         const fallback = job.refunded
-          ? "Не удалось завершить трактовку. Руны возвращены."
-          : "Не удалось завершить трактовку. Задача может быть перезапущена автоматически — повторного списания не будет. Обновите страницу через пару минут.";
+          ? "Не удалось завершить разбор. Руны уже возвращены на ваш баланс."
+          : "Разбор столкнулся с технической сложностью. Если он не перезапустится автоматически, руны будут возвращены.";
         throw new Error(errText || fallback);
       }
+      options.onUpdate?.({
+        status: job.status,
+        queuePosition: typeof job.queuePosition === "number" ? job.queuePosition : null,
+        clientMessage: typeof job.clientMessage === "string" ? job.clientMessage : undefined,
+        progress: job.progress,
+        heartbeatAt: typeof job.heartbeatAt === "string" ? job.heartbeatAt : null,
+      });
       await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
     }
     terminal = false;
     throw new Error(
-      "Генерация ещё выполняется. Статус сохранён — обновите страницу позже."
+      "Разбор всё ещё готовится на сервере. Он появится в кабинете — придёт уведомление."
     );
   } finally {
     if (terminal && typeof window !== "undefined") {

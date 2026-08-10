@@ -38,6 +38,9 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.dailyInApp === "boolean") patch.dailyInApp = body.dailyInApp;
     if (typeof body.bonusEmail === "boolean") patch.bonusEmail = body.bonusEmail;
     if (typeof body.marketingEmail === "boolean") patch.marketingEmail = body.marketingEmail;
+    if (typeof body.reportReadyEmail === "boolean") patch.reportReadyEmail = body.reportReadyEmail;
+    if (typeof body.reportReadyTelegram === "boolean")
+      patch.reportReadyTelegram = body.reportReadyTelegram;
     if (typeof body.reminderHourMsk === "number") {
       patch.reminderHourMsk = Math.min(23, Math.max(0, Math.round(body.reminderHourMsk)));
     }

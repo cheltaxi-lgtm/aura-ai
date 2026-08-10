@@ -329,6 +329,16 @@ export const copy = {
       "Можете ответить кнопкой ниже — сообщение уйдёт в то же обращение.",
     ].join("\n");
   },
+  reportReady: (title: string) => {
+    const t = (title || "Отчёт готов").trim().slice(0, 160);
+    return [
+      `✦ ${t}`,
+      "",
+      "Разбор сохранён в вашем кабинете — откройте по кнопке ниже.",
+      "Повторного списания рун не будет.",
+    ].join("\n");
+  },
+  reportReadyOpen: "Открыть отчёт ✦",
   chatAskPrompt: "Напишите вопрос по этому раскладу. Чтобы выйти — кнопка «Закончить диалог».",
   chatStopped: "Диалог по раскладу закрыт. Можно открыть новый из истории или меню.",
   chatThinking: "Смотрю в карты…",
@@ -524,6 +534,8 @@ export function collectBodyCopySamples(): string[] {
     copy.supportAskReply,
     copy.supportCreated,
     copy.supportAdminReply("Тема", "Текст ответа"),
+    copy.reportReady("Натальный разбор готов"),
+    copy.reportReadyOpen,
     copy.chatAskPrompt,
     copy.chatStopped,
     copy.chatThinking,

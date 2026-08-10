@@ -30,6 +30,23 @@ export type HdSectionalGenerateOpts = {
   /** Regenerate only these ## titles (keeps other sections from priorText). */
   onlyTitles?: string[] | null;
   priorText?: string | null;
+  /** Wave-level progress for the async job poll payload (best-effort). */
+  onProgress?: (p: { done: number; total: number; label: string }) => void;
+};
+
+const BATCH_PROGRESS_LABELS: Record<string, string> = {
+  type_core: "Тип, стратегия и авторитет",
+  profile_definition: "Профиль и определённость",
+  centers: "Девять центров",
+  channels: "Каналы и ворота",
+  planets: "Планеты и активации",
+  self_reactions: "Реакции и темы «не-я»",
+  work_cross: "Работа и инкарнационный крест",
+  vars_hidden: "Скрытые слои и переменные",
+  sleep_relations: "Сон и отношения",
+  periods: "Периоды и циклы",
+  practices: "Практики",
+  focus_answer: "Ответ на фокус-вопрос",
 };
 
 export type HdSectionalGenerateResult = {
@@ -509,12 +526,22 @@ export async function generateHdReportSectional(
   };
 
   const concurrency = hdPipelineConcurrency();
+  let batchesDone = 0;
   for (let i = 0; i < batchesToRun.length; i += concurrency) {
     const wave = batchesToRun.slice(i, i + concurrency);
     const waveDrafts = await Promise.all(wave.map((b) => runOneBatch(b)));
     for (const drafts of waveDrafts) {
       for (const d of drafts) byTitle.set(d.title, d);
     }
+    batchesDone += wave.length;
+    const nextBatch = batchesToRun[batchesDone];
+    opts.onProgress?.({
+      done: batchesDone,
+      total: batchesToRun.length,
+      label: nextBatch
+        ? BATCH_PROGRESS_LABELS[nextBatch.id] ?? "Собираю разделы разбора"
+        : "Финальная сборка и проверка качества",
+    });
   }
 
   // Assemble in canonical order; partial regen keeps prior for missing titles.

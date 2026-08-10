@@ -17,6 +17,11 @@ import { useRuneConfig } from "@/lib/useRuneConfig";
 import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
 import HdGenerating from "./HdGenerating";
+import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
+import {
+  parseAcceptedAsyncReport,
+  type AcceptedAsyncReport,
+} from "@/lib/client/wait-for-async-job";
 import HdJourney, { type HdJourneyStep } from "./HdJourney";
 import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
@@ -79,6 +84,7 @@ export default function HdComposite({ base, partner }: Props) {
   const [ack, setAck] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>("harmony");
   const [uiGenerating, setUiGenerating] = useState(false);
+  const [acceptedReport, setAcceptedReport] = useState<AcceptedAsyncReport | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const postInFlightRef = useRef(false);
   const loadRef = useRef<(() => Promise<void>) | null>(null);
@@ -285,6 +291,8 @@ export default function HdComposite({ base, partner }: Props) {
         setBusy(false);
         setUiGenerating(true);
         startWait({ baselineText: null });
+        const accepted = parseAcceptedAsyncReport(data);
+        if (accepted) setAcceptedReport(accepted);
         const jobId = typeof data.jobId === "string" ? data.jobId : null;
         if (jobId) {
           void (async () => {
@@ -625,11 +633,20 @@ export default function HdComposite({ base, partner }: Props) {
           </div>
         ) : uiGenerating || waiting || busy ? (
           <div className="mt-4">
-            <HdGenerating kind="composite" startedAt={startedAt ?? undefined} />
-            {error && (
-              <p className="mt-3 text-sm text-amber-100/70" role="status">
-                {error}
-              </p>
+            {acceptedReport ? (
+              <ReportAcceptedScreen
+                accepted={acceptedReport}
+                onStay={() => setAcceptedReport(null)}
+              />
+            ) : (
+              <>
+                <HdGenerating kind="composite" startedAt={startedAt ?? undefined} />
+                {error && (
+                  <p className="mt-3 text-sm text-amber-100/70" role="status">
+                    {error}
+                  </p>
+                )}
+              </>
             )}
           </div>
         ) : (

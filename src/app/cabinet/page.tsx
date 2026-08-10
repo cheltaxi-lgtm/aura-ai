@@ -27,6 +27,7 @@ import CabinetAchievementsRow, {
 import CabinetSessionHistory, {
   CabinetSessionHistorySkeleton,
 } from "@/components/cabinet/CabinetSessionHistory";
+import CabinetActiveReports from "@/components/cabinet/CabinetActiveReports";
 import CabinetDiaryPreview, {
   CabinetDiaryPreviewSkeleton,
 } from "@/components/cabinet/CabinetDiaryPreview";
@@ -605,6 +606,7 @@ export default function CabinetPage() {
                 balancePulse={balancePulse}
               />
             ) : null}
+            <CabinetActiveReports />
             {authUser?.email && !profileLoading ? (
               <CabinetProfilePanel
                 email={authUser.email}

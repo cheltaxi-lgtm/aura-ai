@@ -20,11 +20,11 @@ import {
   failAsyncJobAndRefundIfCharged,
   finalizeAsyncJobMetrics,
   getAsyncJobById,
-  markAsyncJobNeedsRegeneration,
   reapOrphanedRunningAsyncJobs,
   reapStaleRunningAsyncJobs,
   reapWatchdogRunningAsyncJobs,
   rescheduleAsyncJob,
+  retryNeedsRegenerationOnce,
   touchAsyncJobHeartbeat,
   type AsyncJobKind,
   type AsyncJobRow,
@@ -42,8 +42,8 @@ import {
   reportKindsAsAsyncJobKinds,
 } from "../src/lib/async-report-flags";
 import {
-  ctaPathForReportKind,
-  notifyPaidReportReady,
+  enqueueReportReadyDeliveries,
+  processDueReportReadyDeliveries,
 } from "../src/lib/async-report-notify";
 import {
   persistAsyncWorkerHealth,
@@ -91,23 +91,29 @@ async function maybeNotifyReportReady(
   result: Record<string, unknown>
 ): Promise<void> {
   if (!isReportJobKind(job.kind)) return;
-  const ctaPath = ctaPathForReportKind(job.kind, result);
-  if (!ctaPath) return;
-  const titles: Record<string, string> = {
-    hd_report: "Разбор Human Design готов",
-    hd_composite_report: "Разбор связи Human Design готов",
-    pro_premium_report: "Pro-отчёт готов",
-    numerology_reading: "Матрица готова",
-    natal_interpretation: "Натальный разбор готов",
-    natal_forecast: "Натальный прогноз готов",
-    natal_compatibility: "Натальная совместимость готова",
-  };
-  void notifyPaidReportReady({
-    userId: job.user_id,
-    kind: job.kind,
-    title: titles[job.kind] ?? "Отчёт готов",
-    ctaPath,
-  });
+  await enqueueReportReadyDeliveries(job, result);
+  // Flush immediately; failures stay pending for the periodic tick.
+  await processDueReportReadyDeliveries().catch((error) =>
+    console.warn("[async-jobs] report delivery flush failed:", error)
+  );
+}
+
+let lastDeliveryTick = 0;
+const DELIVERY_TICK_MS = 5_000;
+
+async function runDeliveryTick(): Promise<void> {
+  if (stopping) return;
+  const now = Date.now();
+  if (now - lastDeliveryTick < DELIVERY_TICK_MS) return;
+  lastDeliveryTick = now;
+  try {
+    const delivered = await processDueReportReadyDeliveries();
+    if (delivered) {
+      console.log(`[async-jobs] report deliveries sent=${delivered}`);
+    }
+  } catch (error) {
+    console.error("[async-jobs] report delivery tick failed:", error);
+  }
 }
 
 const POLL_INTERVAL_MS = Math.max(250, Number(process.env.ASYNC_JOB_POLL_MS) || 1_000);
@@ -284,7 +290,10 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
             ? "insufficient_runes"
             : "generation_failed";
       if (codeFromBody === "needs_regeneration") {
-        await markAsyncJobNeedsRegeneration(job.id, message);
+        const regen = await retryNeedsRegenerationOnce(job.id, message);
+        if (regen === "requeued") {
+          console.warn(`[async-jobs] quality regen requeue job=${job.id} kind=${job.kind}`);
+        }
         return;
       }
       await failAsyncJobAndRefundIfCharged(job.id, message, codeFromBody);
@@ -386,7 +395,10 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       return;
     }
     if (outcome.needsRegeneration || outcome.code === "needs_regeneration") {
-      await markAsyncJobNeedsRegeneration(job.id, outcome.message);
+      const regen = await retryNeedsRegenerationOnce(job.id, outcome.message);
+      if (regen === "requeued") {
+        console.warn(`[async-jobs] quality regen requeue job=${job.id} kind=${job.kind}`);
+      }
       return;
     }
     if (outcome.code === "rate_limited" || outcome.retryAfterMs) {
@@ -624,6 +636,8 @@ async function main(): Promise<void> {
     } catch (error) {
       console.error("[async-jobs] reaper failed:", error);
     }
+
+    await runDeliveryTick();
 
     const reportSlots = Math.max(
       0,

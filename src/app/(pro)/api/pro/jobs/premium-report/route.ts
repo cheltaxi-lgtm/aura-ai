@@ -5,6 +5,7 @@ import {
 } from "@/lib/async-job-worker-auth";
 import {
   beginWorkerJobSave,
+  makeWorkerProgressReporter,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
@@ -69,6 +70,7 @@ export async function POST(request: NextRequest) {
       payload,
       clientAlias: client?.alias || "клиент",
       question: c.question,
+      onProgress: makeWorkerProgressReporter(request),
     });
 
     if (!(await beginWorkerJobSave(request))) {

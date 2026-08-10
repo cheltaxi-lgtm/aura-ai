@@ -48,6 +48,31 @@ export async function getTelegramStatusForAccount(accountId: string): Promise<{
   };
 }
 
+/** Lookup by profile user id (users.id) — joins through user_accounts. */
+export async function getTelegramStatusForProfileUser(profileUserId: string): Promise<{
+  linked: boolean;
+  telegramUserId?: string;
+  username?: string | null;
+}> {
+  const { rows } = await query<{
+    telegram_user_id: string;
+    username: string | null;
+  }>(
+    `SELECT ti.telegram_user_id::text, ti.username
+     FROM user_telegram_identities ti
+     JOIN user_accounts ua ON ua.id = ti.user_account_id
+     WHERE ua.profile_user_id = $1
+     LIMIT 1`,
+    [profileUserId]
+  );
+  if (!rows[0]) return { linked: false };
+  return {
+    linked: true,
+    telegramUserId: rows[0].telegram_user_id,
+    username: rows[0].username,
+  };
+}
+
 /** Remove Telegram secondary bind. Does not delete the site account. */
 export async function unlinkTelegramFromAccount(accountId: string): Promise<{
   ok: true;

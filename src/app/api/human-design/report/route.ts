@@ -23,6 +23,7 @@ import {
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
+  makeWorkerProgressReporter,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobNeedsRegeneration,
@@ -403,6 +404,7 @@ export async function POST(request: NextRequest) {
           aboutOther,
           placeLabel: chart.placeName,
           maxSectionRetries: 2,
+          onProgress: makeWorkerProgressReporter(request),
         })
       : null;
     const legacyText = useSectional

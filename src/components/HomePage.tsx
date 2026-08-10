@@ -24,6 +24,7 @@ import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
 import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
+import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import PersonalMemoryChoice from "@/components/PersonalMemoryChoice";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { parseInsufficientRunes } from "@/lib/api-errors";
@@ -1802,6 +1803,8 @@ export default function HomePage({
     openChatWithCharacter,
     applyRestoredChatSpread,
     applyHistorySessionMeta,
+    acceptedReport,
+    dismissAcceptedReport,
   } = useChatActions({
     isLoading,
     setIsLoading,
@@ -4056,6 +4059,15 @@ export default function HomePage({
         masters={masters}
         onBrowseDeck={handleBrowseDeck}
       />
+
+      {acceptedReport ? (
+        <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+          <ReportAcceptedScreen
+            accepted={acceptedReport}
+            onStay={dismissAcceptedReport}
+          />
+        </div>
+      ) : null}
 
       <DailyBonusClaimer
         enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}

@@ -10,6 +10,7 @@ import {
   markAsyncJobNeedsRegeneration,
   markAsyncJobRefunded,
   releaseAsyncJobSaveClaim,
+  updateAsyncJobProgress,
 } from "@/lib/async-jobs";
 import { getAsyncJobIdFromRequest } from "@/lib/async-job-worker-auth";
 import { query } from "@/lib/db";
@@ -20,6 +21,29 @@ import {
   BillingService,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
+
+/**
+ * Build a throttled progress reporter for worker-driven generation.
+ * Returns undefined for plain client calls (no job header) so routes can pass
+ * it straight into pipeline opts.
+ */
+export function makeWorkerProgressReporter(
+  request: NextRequest
+): ((p: { done: number; total: number; label: string }) => void) | undefined {
+  const jobId = getAsyncJobIdFromRequest(request);
+  if (!jobId) return undefined;
+  let lastWrite = 0;
+  return (p) => {
+    const now = Date.now();
+    if (now - lastWrite < 2_000 && p.done < p.total) return;
+    lastWrite = now;
+    void updateAsyncJobProgress(jobId, {
+      done: p.done,
+      total: p.total,
+      label: p.label,
+    }).catch(() => undefined);
+  };
+}
 
 /** After a successful charge on a worker-driven paid route. */
 export async function trackWorkerJobCharged(
