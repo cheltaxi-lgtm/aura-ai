@@ -89,6 +89,9 @@ describe("report job retry budget", () => {
     expect(update).toBeDefined();
     const [sql] = update as [string, unknown[]];
     expect(sql).toMatch(/next_attempt_at = NOW\(\)/);
+    // Requeue must extend expiry — an expired pending job is never claimed
+    // (claimAsyncJobs requires expires_at > NOW()).
+    expect(sql).toMatch(/expires_at = GREATEST\(expires_at/);
     expect(sql).not.toMatch(/billing_state/);
     expect(rollbackChargeMock).not.toHaveBeenCalled();
   });
@@ -196,6 +199,7 @@ describe("report job retry budget", () => {
     expect(requeue).toBeDefined();
     expect(String(requeue![0])).toMatch(/regen_attempts/);
     expect(String(requeue![0])).toMatch(/completed_at = NULL/);
+    expect(String(requeue![0])).toMatch(/expires_at = GREATEST\(expires_at/);
 
     // Second sweep: regen_attempts = 1 → terminal fail + refund.
     queryMock.mockReset();

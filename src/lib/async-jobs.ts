@@ -273,6 +273,7 @@ export async function rescheduleAsyncJob(
          next_attempt_at = NOW() + make_interval(secs => $2),
          retry_429_count = COALESCE(retry_429_count, 0) + 1,
          error_message = COALESCE($3, error_message),
+         expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours'),
          updated_at = NOW()
      WHERE id = $1 AND status = 'running'`,
     [jobId, Math.floor(wait / 1000), message?.slice(0, 2000) ?? null]
@@ -723,6 +724,7 @@ export async function retryNeedsRegenerationOnce(
          locked_at = NULL,
          worker_id = NULL,
          next_attempt_at = NOW() + INTERVAL '15 seconds',
+         expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours'),
          period_metadata = jsonb_set(
            COALESCE(period_metadata, '{}'::jsonb), '{regen_attempts}', '1'::jsonb
          ),
@@ -809,6 +811,7 @@ export async function retryOrFailReportJob(input: {
            next_attempt_at = NOW() + make_interval(secs => $2),
            error_message = $3,
            error_code = $4,
+           expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours'),
            updated_at = NOW()
        WHERE id = $1 AND status = 'running'`,
       [
@@ -889,6 +892,7 @@ export async function reapNeedsRegenerationAsyncJobs(input: {
              worker_id = NULL,
              completed_at = NULL,
              next_attempt_at = NOW() + INTERVAL '15 seconds',
+             expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours'),
              period_metadata = jsonb_set(
                COALESCE(period_metadata, '{}'::jsonb), '{regen_attempts}', '1'::jsonb
              ),
