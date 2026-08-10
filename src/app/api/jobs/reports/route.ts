@@ -1,6 +1,7 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 
 import {
+  dismissReportJobsTrayForUser,
   getAsyncJobQueuePosition,
   listReportJobsForUser,
   type AsyncJobRow,
@@ -100,4 +101,38 @@ export async function GET() {
   );
 
   return NextResponse.json({ reports });
+}
+
+/** Dismiss terminal report jobs from the tray (does not delete the report). */
+export async function POST(request: NextRequest) {
+  const resolved = await resolveProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
+  }
+
+  if (!(await ensureDb())) {
+    return NextResponse.json(
+      { error: "Сервис временно недоступен. Попробуйте позже." },
+      { status: 503 }
+    );
+  }
+
+  const body = (await request.json().catch(() => ({}))) as {
+    action?: string;
+    jobIds?: unknown;
+  };
+  if (body.action !== "dismiss") {
+    return NextResponse.json({ error: "unknown_action" }, { status: 400 });
+  }
+
+  const jobIds = Array.isArray(body.jobIds)
+    ? body.jobIds.filter((id): id is string => typeof id === "string" && id.length > 0)
+    : undefined;
+
+  const dismissed = await dismissReportJobsTrayForUser(
+    resolved.profileUserId,
+    reportKindsAsAsyncJobKinds(),
+    jobIds
+  );
+  return NextResponse.json({ ok: true, dismissed });
 }

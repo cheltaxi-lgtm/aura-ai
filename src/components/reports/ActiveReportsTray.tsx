@@ -18,15 +18,22 @@ import { useActiveReports } from "@/hooks/useActiveReports";
  */
 export default function ActiveReportsTray() {
   const reduceMotion = useReducedMotion();
-  const { reports, active } = useActiveReports();
+  const { reports, active, dismissTerminal } = useActiveReports();
   const [open, setOpen] = useState(false);
   const [mounted, setMounted] = useState(false);
+  const [clearing, setClearing] = useState(false);
 
   useEffect(() => {
     setMounted(true);
   }, []);
 
   const ready = reports.filter((r) => r.status === "completed");
+  const terminal = reports.filter(
+    (r) =>
+      r.status === "completed" ||
+      r.status === "failed" ||
+      r.status === "needs_regeneration"
+  );
   if (!mounted || (active.length === 0 && ready.length === 0)) return null;
 
   const pillLabel =
@@ -37,6 +44,17 @@ export default function ActiveReportsTray() {
       : ready.length === 1
         ? "Отчёт готов"
         : `Готовы отчёты · ${ready.length}`;
+
+  const handleClear = async () => {
+    if (clearing || terminal.length === 0) return;
+    setClearing(true);
+    try {
+      await dismissTerminal(terminal.map((r) => r.jobId));
+      if (active.length === 0) setOpen(false);
+    } finally {
+      setClearing(false);
+    }
+  };
 
   return createPortal(
     <div className="pointer-events-none fixed inset-x-0 bottom-4 z-40 flex justify-center px-4 sm:justify-end sm:pr-6">
@@ -51,18 +69,30 @@ export default function ActiveReportsTray() {
               transition={{ duration: 0.22 }}
               className="mb-2 rounded-2xl border border-white/12 bg-[#171310]/95 p-4 shadow-2xl shadow-black/50 backdrop-blur"
             >
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between gap-2">
                 <p className="text-xs font-semibold uppercase tracking-wide text-white/50">
                   Ваши отчёты
                 </p>
-                <button
-                  type="button"
-                  onClick={() => setOpen(false)}
-                  className="rounded-full p-1 text-white/50 transition hover:bg-white/10 hover:text-white/80"
-                  aria-label="Свернуть"
-                >
-                  <X className="h-4 w-4" />
-                </button>
+                <div className="flex items-center gap-1">
+                  {terminal.length > 0 ? (
+                    <button
+                      type="button"
+                      onClick={() => void handleClear()}
+                      disabled={clearing}
+                      className="rounded-full px-2.5 py-1 text-[11px] text-white/55 transition hover:bg-white/10 hover:text-white/85 disabled:opacity-50"
+                    >
+                      {clearing ? "…" : "Очистить"}
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    onClick={() => setOpen(false)}
+                    className="rounded-full p-1 text-white/50 transition hover:bg-white/10 hover:text-white/80"
+                    aria-label="Свернуть"
+                  >
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
               <div className="mt-3 space-y-2.5">
                 {active.map((item) => (

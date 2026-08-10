@@ -36,6 +36,8 @@ export function useActiveReports(enabled = true): {
   reports: ActiveReportItem[];
   active: ActiveReportItem[];
   loading: boolean;
+  /** Hide terminal tray items (completed/failed). Active jobs stay. */
+  dismissTerminal: (jobIds?: string[]) => Promise<void>;
 } {
   const [reports, setReports] = useState<ActiveReportItem[]>([]);
   const [loading, setLoading] = useState(true);
@@ -58,6 +60,30 @@ export function useActiveReports(enabled = true): {
       setLoading(false);
     }
   }, []);
+
+  const dismissTerminal = useCallback(async (jobIds?: string[]) => {
+    const terminalStatuses = new Set(["completed", "failed", "needs_regeneration"]);
+    const ids =
+      jobIds ??
+      reports.filter((r) => terminalStatuses.has(r.status)).map((r) => r.jobId);
+    if (!ids.length) return;
+
+    // Optimistic hide so the tray closes immediately.
+    setReports((prev) =>
+      prev.filter((r) => r.status === "pending" || r.status === "running" || !ids.includes(r.jobId))
+    );
+
+    const res = await fetch("/api/jobs/reports", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "dismiss", jobIds: ids }),
+    });
+    if (!res.ok) {
+      await load();
+      throw new Error("dismiss_failed");
+    }
+  }, [reports, load]);
 
   useEffect(() => {
     if (!enabled) return;
@@ -88,5 +114,5 @@ export function useActiveReports(enabled = true): {
   const active = reports.filter(
     (r) => r.status === "pending" || r.status === "running"
   );
-  return { reports, active, loading };
+  return { reports, active, loading, dismissTerminal };
 }

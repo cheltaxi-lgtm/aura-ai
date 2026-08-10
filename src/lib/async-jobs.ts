@@ -1039,7 +1039,8 @@ export async function listActiveAsyncJobsForUser(
 /**
  * Heavy report jobs for the user-facing "мои отчёты" surface: active plus
  * recently terminal (24h) so a finished report does not vanish from the UI
- * before the user sees the ready state.
+ * before the user sees the ready state. Terminal rows the user cleared from
+ * the tray (period_metadata.tray_dismissed_at) stay hidden.
  */
 export async function listReportJobsForUser(
   userId: string,
@@ -1054,13 +1055,42 @@ export async function listReportJobsForUser(
        AND (
          (status IN ('pending', 'running') AND expires_at > NOW())
          OR (status IN ('completed', 'failed', 'needs_regeneration')
-             AND COALESCE(completed_at, updated_at) > NOW() - INTERVAL '24 hours')
+             AND COALESCE(completed_at, updated_at) > NOW() - INTERVAL '24 hours'
+             AND NOT (period_metadata ? 'tray_dismissed_at'))
        )
      ORDER BY created_at DESC
      LIMIT 20`,
     [userId, kinds]
   );
   return rows;
+}
+
+/**
+ * Hide terminal report jobs from the tray / feed without deleting them.
+ * Active (pending/running) jobs are never dismissed — only completed/failed/
+ * needs_regeneration. Pass jobIds, or omit to clear all recent terminal ones.
+ */
+export async function dismissReportJobsTrayForUser(
+  userId: string,
+  kinds: AsyncJobKind[],
+  jobIds?: string[]
+): Promise<number> {
+  if (!kinds.length) return 0;
+  const ids = (jobIds ?? []).filter((id) => typeof id === "string" && id.length > 0);
+  const { rowCount } = await query(
+    `UPDATE async_jobs
+     SET period_metadata = COALESCE(period_metadata, '{}'::jsonb)
+           || jsonb_build_object('tray_dismissed_at', NOW()::text),
+         updated_at = NOW()
+     WHERE user_id = $1
+       AND kind = ANY($2::text[])
+       AND status IN ('completed', 'failed', 'needs_regeneration')
+       AND COALESCE(completed_at, updated_at) > NOW() - INTERVAL '24 hours'
+       AND NOT (period_metadata ? 'tray_dismissed_at')
+       AND (cardinality($3::uuid[]) = 0 OR id = ANY($3::uuid[]))`,
+    [userId, kinds, ids]
+  );
+  return rowCount ?? 0;
 }
 
 export function asyncJobPollPayload(job: AsyncJobRow) {

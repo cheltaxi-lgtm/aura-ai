@@ -118,7 +118,7 @@ function TerminalRow({ item }: { item: ActiveReportItem }) {
  */
 export default function CabinetActiveReports() {
   const reduceMotion = useReducedMotion();
-  const { reports, loading } = useActiveReports();
+  const { reports, loading, dismissTerminal } = useActiveReports();
 
   if (loading || reports.length === 0) return null;
 
@@ -136,6 +136,15 @@ export default function CabinetActiveReports() {
         <h2 className="text-sm font-semibold uppercase tracking-wide text-white/60">
           Ваши отчёты
         </h2>
+        {terminal.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => void dismissTerminal(terminal.map((r) => r.jobId))}
+            className="ml-auto text-xs text-white/45 transition hover:text-white/75"
+          >
+            Очистить
+          </button>
+        ) : null}
       </div>
       <div className="mt-4 space-y-3">
         <AnimatePresence initial={false}>
