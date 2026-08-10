@@ -472,6 +472,32 @@ export async function unlockSubscription(
   }
 }
 
+export function isPgForeignKeyViolation(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    (error as { code?: unknown }).code === "23503"
+  );
+}
+
+/**
+ * The sessions row can disappear under an in-flight chat (nightly cleanup of
+ * >48h empty stubs racing a resumed old tab). Resurrect a minimal stub so the
+ * active conversation is not lost; ON CONFLICT keeps an existing row intact.
+ */
+export async function resurrectSessionStub(
+  sessionId: string,
+  userId: string | null,
+  characterKey: string | null
+): Promise<void> {
+  await query(
+    `INSERT INTO sessions (id, user_id, character_key)
+     VALUES ($1, $2, $3)
+     ON CONFLICT (id) DO NOTHING`,
+    [sessionId, userId, characterKey]
+  );
+}
+
 export async function saveMessage(
   sessionId: string,
   characterId: string,
@@ -479,11 +505,22 @@ export async function saveMessage(
   content: string,
   ownerUserId?: string | null
 ) {
-  await query(
-    `INSERT INTO chat_messages (session_id, character_id, role, content, owner_user_id)
-     VALUES ($1, $2, $3, $4, $5)`,
-    [sessionId, characterId, role, content, ownerUserId ?? null]
-  );
+  const insert = () =>
+    query(
+      `INSERT INTO chat_messages (session_id, character_id, role, content, owner_user_id)
+       VALUES ($1, $2, $3, $4, $5)`,
+      [sessionId, characterId, role, content, ownerUserId ?? null]
+    );
+  try {
+    await insert();
+  } catch (error) {
+    if (!isPgForeignKeyViolation(error)) throw error;
+    console.warn(
+      `[session] saveMessage FK violation — resurrecting session ${sessionId}`
+    );
+    await resurrectSessionStub(sessionId, ownerUserId ?? null, characterId);
+    await insert();
+  }
 }
 
 export async function getMessages(sessionId: string, characterId: string) {

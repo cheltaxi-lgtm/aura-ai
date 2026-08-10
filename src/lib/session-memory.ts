@@ -1,4 +1,8 @@
 import { query } from "@/lib/db";
+import {
+  isPgForeignKeyViolation,
+  resurrectSessionStub,
+} from "@/lib/session";
 import { MARKDOWN_IMAGE_PATTERN } from "@/lib/reading-text-polish";
 import { SHARE_BODY_MAX } from "@/lib/share/sanitize";
 import { completeChat } from "@/lib/llm";
@@ -179,27 +183,38 @@ export async function upsertSessionMemoryFromChat(input: {
   prediction: string;
   mood?: string;
 }): Promise<void> {
-  await query(
-    `INSERT INTO session_memories
-       (user_id, session_id, character_key, topic_summary, key_cards, prediction, mood)
-     VALUES ($1, $2, $3, $4, $5, $6, $7)
-     ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
-       character_key = EXCLUDED.character_key,
-       topic_summary = EXCLUDED.topic_summary,
-       key_cards = EXCLUDED.key_cards,
-       prediction = EXCLUDED.prediction,
-       mood = COALESCE(EXCLUDED.mood, session_memories.mood),
-       session_date = NOW()`,
-    [
-      input.userId,
-      input.sessionId,
-      input.characterKey,
-      input.topicSummary.slice(0, 500),
-      limitSpreadKeyCards(input.keyCards),
-      cleanPredictionText(input.prediction).slice(0, SHARE_BODY_MAX),
-      input.mood ?? null,
-    ]
-  );
+  const upsert = () =>
+    query(
+      `INSERT INTO session_memories
+         (user_id, session_id, character_key, topic_summary, key_cards, prediction, mood)
+       VALUES ($1, $2, $3, $4, $5, $6, $7)
+       ON CONFLICT (session_id) WHERE session_id IS NOT NULL DO UPDATE SET
+         character_key = EXCLUDED.character_key,
+         topic_summary = EXCLUDED.topic_summary,
+         key_cards = EXCLUDED.key_cards,
+         prediction = EXCLUDED.prediction,
+         mood = COALESCE(EXCLUDED.mood, session_memories.mood),
+         session_date = NOW()`,
+      [
+        input.userId,
+        input.sessionId,
+        input.characterKey,
+        input.topicSummary.slice(0, 500),
+        limitSpreadKeyCards(input.keyCards),
+        cleanPredictionText(input.prediction).slice(0, SHARE_BODY_MAX),
+        input.mood ?? null,
+      ]
+    );
+  try {
+    await upsert();
+  } catch (error) {
+    if (!isPgForeignKeyViolation(error)) throw error;
+    console.warn(
+      `[session-memory] FK violation — resurrecting session ${input.sessionId}`
+    );
+    await resurrectSessionStub(input.sessionId, input.userId, input.characterKey);
+    await upsert();
+  }
 
   void recordLifetimeSessionActivity({
     userId: input.userId,

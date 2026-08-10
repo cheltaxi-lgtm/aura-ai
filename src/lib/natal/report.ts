@@ -117,6 +117,17 @@ function coerceClaimEvidenceIds(
       .map((id) => resolveEvidenceId(id, validIds))
       .filter((id): id is string => Boolean(id))
   )];
+  // Forecast timing sections must cite a timing evidence even when the model
+  // supplied only valid non-timing IDs — otherwise the timing rule rejects the
+  // report after every salvage pass (the dominant invalid_model_report mode).
+  if (
+    expectedReportType === "forecast" &&
+    FORECAST_TIMING_SECTION_KEYS.has(sectionKey) &&
+    !resolved.some((id) => evidence.find((item) => item.id === id)?.tradition === "timing")
+  ) {
+    const timingId = evidence.find((item) => item.tradition === "timing")?.id;
+    if (timingId) resolved.push(timingId);
+  }
   if (resolved.length) return resolved;
   const fallback = defaultEvidenceIdForSection(sectionKey, evidence, expectedReportType);
   return fallback ? [fallback] : [];
