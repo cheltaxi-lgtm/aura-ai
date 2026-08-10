@@ -17,7 +17,10 @@ export async function GET(_req: Request, ctx: Ctx) {
   const { id } = await ctx.params;
   const client = await getClient(prac.ctx.account.id, id);
   if (!client) return NextResponse.json({ error: "not_found" }, { status: 404 });
-  const cases = await listCases(prac.ctx.account.id, { clientId: id });
+  const cases = await listCases(prac.ctx.account.id, {
+    clientId: id,
+    includeArchived: true,
+  });
   return NextResponse.json({ ok: true, client, cases });
 }
 
@@ -37,11 +40,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
   }
   let birthPlace =
     typeof body.birthPlace === "string" ? body.birthPlace : undefined;
-  let birthLat =
+  let birthLat: number | null | undefined =
     typeof body.birthLat === "number" ? body.birthLat : undefined;
-  let birthLon =
+  let birthLon: number | null | undefined =
     typeof body.birthLon === "number" ? body.birthLon : undefined;
-  let birthTz =
+  let birthTz: string | null | undefined =
     typeof body.birthTz === "string" ? body.birthTz : undefined;
   if (birthPlace && (birthLat == null || birthLon == null || !birthTz)) {
     const place = await geocodeAdapter.resolve(birthPlace);
@@ -50,6 +53,11 @@ export async function PATCH(req: Request, ctx: Ctx) {
       birthLat = place.latitude;
       birthLon = place.longitude;
       birthTz = place.timezone || birthTz;
+    } else {
+      // Do not keep stale Moscow coords under a new unresolved label.
+      birthLat = null;
+      birthLon = null;
+      birthTz = null;
     }
   }
   const client = await updateClient(prac.ctx.account.id, id, {

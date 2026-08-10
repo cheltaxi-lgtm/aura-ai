@@ -513,8 +513,13 @@ async function generateMatrixZoneLlm(
   const role = zone.role === "steps" ? null : (zone.role as MatrixPointRole);
   const lens =
     entry && role ? matrixRoleLens(role, entry) : entry ? entry.advice : "";
-  const skyHint = contextFacts?.trim()
-    ? `Небо (мягкий слой, не меняй арканы): ${contextFacts.trim().slice(0, 600)}`
+  const skyRaw = contextFacts?.trim() || "";
+  const skyIsClientFocus =
+    /ГЛАВНЫЙ ЗАПРОС|Фокус запроса заказчика/i.test(skyRaw);
+  const skyHint = skyRaw
+    ? skyIsClientFocus
+      ? `ОБЯЗАТЕЛЬНЫЙ ФОКУС ОТЧЁТА (вернись к нему в тексте этой зоны и в практике; арканы не меняй): ${skyRaw.slice(0, 900)}`
+      : `Небо (мягкий слой, не меняй арканы): ${skyRaw.slice(0, 600)}`
     : "";
 
   if (zone.id === "steps") {

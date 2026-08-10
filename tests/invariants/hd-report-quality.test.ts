@@ -141,6 +141,54 @@ describe("HD report quality gate", () => {
     expect(HD_PIPELINE_SECTIONS).toContain("Ответ на ваш запрос");
   });
 
+  it("V9 contrast/negation does not false-positive on Manifestor", () => {
+    const chart = calculateHdChart(SVETLANA);
+    const contract = buildHdLockedContract(chart);
+    expect(chart.type).toBe("manifestor");
+    const pad = "механика ".repeat(200);
+    const contrastBodies = [
+      `Вы — Манифестор. Вам не нужно ждать приглашения. ${pad}`,
+      `Вы — Манифестор. Не ждите приглашения, как Проектор. ${pad}`,
+      `Вы — Манифестор. В отличие от Проектора (ждать приглашения) вы информируете. ${pad}`,
+      `Вы — Манифестор. Стратегия Проектора — ждать приглашения; ваша — информировать. ${pad}`,
+      `Вы — Манифестор. У вас не два моторных центра, а ${contract.motorCentersDefinedRu.length}. ${pad}`,
+    ];
+    for (const body of contrastBodies) {
+      const q = validateHdReportText(body, {
+        engineTypeRu: contract.typeRu,
+        motorCount: contract.motorCentersDefinedRu.length,
+        contract,
+        requireFocusAnswer: false,
+      });
+      expect(q.findings.some((f) => f.rule === "V9")).toBe(false);
+      expect(
+        q.findings.some((f) => f.detail.startsWith("wrong_motor_count_claimed:"))
+      ).toBe(false);
+    }
+    const affirmative = validateHdReportText(
+      `Вы — Манифестор. Ждите приглашения перед каждым шагом. ${pad}`,
+      {
+        engineTypeRu: contract.typeRu,
+        motorCount: contract.motorCentersDefinedRu.length,
+        contract,
+        requireFocusAnswer: false,
+      }
+    );
+    expect(affirmative.findings.some((f) => f.rule === "V9")).toBe(true);
+
+    // «как у Проектора: ждите…» is bad advice, not contrast.
+    const fakeContrast = validateHdReportText(
+      `Вы — Манифестор. Делайте как у Проектора: ждите приглашения. ${pad}`,
+      {
+        engineTypeRu: contract.typeRu,
+        motorCount: contract.motorCentersDefinedRu.length,
+        contract,
+        requireFocusAnswer: false,
+      }
+    );
+    expect(fakeContrast.findings.some((f) => f.rule === "V9")).toBe(true);
+  });
+
   it("V7–V12: foreign strategy, age, escaped md, missing answer", () => {
     const chart = calculateHdChart(SVETLANA);
     const contract = buildHdLockedContract(chart);

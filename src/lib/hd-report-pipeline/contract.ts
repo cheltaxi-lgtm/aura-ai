@@ -10,6 +10,10 @@ import {
   TYPE_META,
 } from "@/lib/human-design/constants";
 import { hangingGates } from "@/lib/human-design/chart-extras";
+import {
+  formatHdBirthIdentity,
+  type HdEvidenceOpts,
+} from "@/lib/human-design/prompt";
 import type { HdTypeKey } from "@/lib/human-design/types";
 
 export type HdLockedContract = {
@@ -63,6 +67,7 @@ const STRATEGY_BY_TYPE: Record<
     foreign: [
       /информируй(те)?\s+(сначала|до)/iu,
       /ждите\s+приглашен/iu,
+      /ждать\s+приглашен/iu,
       /лунн(ый|ого)\s+цикл/iu,
       /28\s+дн/iu,
     ],
@@ -71,6 +76,8 @@ const STRATEGY_BY_TYPE: Record<
     keywords: ["отклик"],
     foreign: [
       /ждите\s+приглашен/iu,
+      /ждать\s+приглашен/iu,
+      /информируй(те)?\s+(сначала|до)/iu,
       /лунн(ый|ого)\s+цикл/iu,
       /28\s+дн/iu,
     ],
@@ -88,6 +95,7 @@ const STRATEGY_BY_TYPE: Record<
     foreign: [
       /информируй(те)?\s+(сначала|до)/iu,
       /ждите\s+приглашен/iu,
+      /ждать\s+приглашен/iu,
     ],
   },
 };
@@ -108,7 +116,10 @@ function angleAliases(angle: string, angleRu: string): string[] {
   return base;
 }
 
-export function buildHdLockedContract(chart: HdChart): HdLockedContract {
+export function buildHdLockedContract(
+  chart: HdChart,
+  opts?: HdEvidenceOpts
+): HdLockedContract {
   const meta = TYPE_META[chart.type];
   const strat = STRATEGY_BY_TYPE[chart.type];
   const definedChannels = chart.channels
@@ -138,6 +149,7 @@ export function buildHdLockedContract(chart: HdChart): HdLockedContract {
 
   const contractBlock = [
     "КОНТРАКТ СОГЛАСОВАННОСТИ (данные движка — НЕ пересчитывай и НЕ оспаривай):",
+    formatHdBirthIdentity(chart, opts),
     `Тип = ${meta.nameRu}.`,
     `Стратегия = ${meta.strategyRu}.`,
     `Авторитет = ${AUTHORITY_NAMES_RU[chart.authority]}.`,

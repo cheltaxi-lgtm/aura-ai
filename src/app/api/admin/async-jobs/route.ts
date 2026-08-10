@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { requireAdmin } from "@/lib/admin-auth";
+import { countRecentWatchdogReaps } from "@/lib/async-jobs";
 import { getReportCircuitBreakerStats } from "@/lib/async-report-circuit-breaker";
 import { getAsyncWorkerHealth } from "@/lib/async-worker-health";
 import { ensureDb, query } from "@/lib/db";
@@ -111,6 +112,12 @@ export async function GET(_request: NextRequest) {
   if (provider && !provider.proxyConfigured) {
     alerts.push("OPENROUTER_HTTPS_PROXY не задан в env воркера");
   }
+  const watchdogReaps1h = await countRecentWatchdogReaps(1);
+  if (watchdogReaps1h > 0) {
+    alerts.push(
+      `Watchdog за час вернул в очередь ${watchdogReaps1h} задач(и) (лимит ~25 мин)`
+    );
+  }
 
   return NextResponse.json({
     statuses: statusRows.map((r) => ({
@@ -138,6 +145,7 @@ export async function GET(_request: NextRequest) {
       failed24h: Number(t?.failed_24h ?? 0),
       needsRegeneration24h: Number(t?.needs_regen_24h ?? 0),
       queueLen,
+      watchdogReaps1h,
     },
     circuitBreaker: cb,
     provider,

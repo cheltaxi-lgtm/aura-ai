@@ -3,6 +3,10 @@
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import ProShell from "@/modules/pro/ui/ProShell";
+import { formatProDateOnly } from "@/modules/pro/adapters/date-only";
+import ProPlaceSearch, {
+  type ProPlaceHit,
+} from "@/modules/pro/ui/ProPlaceSearch";
 
 type Client = {
   id: string;
@@ -20,6 +24,7 @@ export default function ProClientsPage() {
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [birthPlace, setBirthPlace] = useState("");
+  const [selectedPlace, setSelectedPlace] = useState<ProPlaceHit | null>(null);
   const [consent, setConsent] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
@@ -50,6 +55,9 @@ export default function ProClientsPage() {
         birthDate: birthDate || null,
         birthTime: birthTime || null,
         birthPlace: birthPlace || null,
+        birthLat: selectedPlace?.latitude ?? null,
+        birthLon: selectedPlace?.longitude ?? null,
+        birthTz: selectedPlace?.timezone ?? null,
       }),
     });
     const json = await res.json();
@@ -62,6 +70,7 @@ export default function ProClientsPage() {
     setBirthDate("");
     setBirthTime("");
     setBirthPlace("");
+    setSelectedPlace(null);
     setConsent(false);
     setNotice("Клиент добавлен — данные подтянутся в новый кейс");
     await load();
@@ -138,15 +147,13 @@ export default function ProClientsPage() {
               onChange={(e) => setBirthTime(e.target.value)}
             />
           </label>
-          <label className="block text-sm">
-            <span className="pro-label">Город / место</span>
-            <input
-              className="pro-field w-full"
-              value={birthPlace}
-              onChange={(e) => setBirthPlace(e.target.value)}
-              placeholder="Москва"
-            />
-          </label>
+          <ProPlaceSearch
+            value={birthPlace}
+            selected={selectedPlace}
+            onChange={setBirthPlace}
+            onSelect={setSelectedPlace}
+            placeholder="Москва, Потсдам, Berlin…"
+          />
         </div>
         <div className="flex flex-wrap items-center gap-3">
           <label className="flex items-center gap-2 text-sm text-[var(--pro-muted)]">
@@ -195,8 +202,8 @@ export default function ProClientsPage() {
                   {c.alias}
                 </Link>
                 <p className="mt-0.5 text-xs text-[var(--pro-faint)]">
-                  {c.birth_date
-                    ? `др ${String(c.birth_date).slice(0, 10)}`
+                  {formatProDateOnly(c.birth_date)
+                    ? `др ${formatProDateOnly(c.birth_date)}`
                     : "дата не указана"}
                   {c.birth_place ? ` · ${c.birth_place}` : ""}
                   {` · ${c.consent_state}`}

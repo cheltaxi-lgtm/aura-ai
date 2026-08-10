@@ -90,9 +90,55 @@ export function formatHdChatSummary(chart: HdChart): string {
   return lines.join("\n");
 }
 
-export function formatHdEvidence(chart: HdChart): string {
+export type HdEvidenceOpts = {
+  /** Human-readable birth place (HD engine only needs timezone; place is for LLM context). */
+  placeLabel?: string | null;
+};
+
+/** Birth identity block — must lead evidence/contract so LLM cannot invent «время неизвестно». */
+export function formatHdBirthIdentity(
+  chart: HdChart,
+  opts?: HdEvidenceOpts
+): string {
+  const lines: string[] = [
+    "ДАННЫЕ РОЖДЕНИЯ (уже использованы движком для расчёта карты — не пересчитывай):",
+  ];
+  if (chart.birth?.date) {
+    lines.push(`Дата: ${chart.birth.date}`);
+  }
+  if (chart.timeKnown && chart.birth?.time) {
+    lines.push(
+      `Время: ${chart.birth.time} (ТОЧНОЕ местное — расчёт НЕ на 12:00)`
+    );
+  } else {
+    lines.push(
+      `Время: неизвестно (в расчёте использовано 12:00 местное; учитывай instability)`
+    );
+  }
+  if (chart.timezone) {
+    lines.push(`Часовой пояс: ${chart.timezone}`);
+  }
+  const place = opts?.placeLabel?.trim();
+  if (place) {
+    lines.push(`Место: ${place}`);
+  } else {
+    lines.push("Место: не указано");
+  }
+  lines.push(
+    "Во «Вступлении» один раз назови дату, время (если точное) и место. В «Переменные и среда» опирайся на реальное место, если оно указано. Запрещено писать, что время неизвестно, если выше указано точное время."
+  );
+  return lines.join("\n");
+}
+
+export function formatHdEvidence(
+  chart: HdChart,
+  opts?: HdEvidenceOpts
+): string {
   const typeMeta = TYPE_META[chart.type];
   const lines: string[] = [];
+
+  lines.push(formatHdBirthIdentity(chart, opts));
+  lines.push("");
 
   lines.push(`Тип: ${typeMeta.nameRu}`);
   lines.push(`Стратегия: ${typeMeta.strategyRu}`);

@@ -5,18 +5,15 @@ import { useParams } from "next/navigation";
 import ProResultCharts, {
   type ChartSnapshot,
 } from "@/modules/pro/ui/ProResultCharts";
-import {
-  polishProReportPlainText,
-  polishProReportTitle,
-} from "@/modules/pro/ai/report-plain";
-
-type ReportBlock = { id: string; title: string; body: string };
+import ProReportSections, {
+  type ProReportSectionBlock,
+} from "@/modules/pro/ui/ProReportSections";
 
 type ReportPayload = {
   brandName?: string;
   question?: string;
   caseType?: string;
-  blocks?: ReportBlock[];
+  blocks?: ProReportSectionBlock[];
   chartSnapshot?: ChartSnapshot | null;
   siteUrl?: string;
   siteLabel?: string;
@@ -58,7 +55,10 @@ export default function ProReportPrintPage() {
   }
 
   return (
-    <main className="pro-public pro-public--report pro-report-ready mx-auto max-w-2xl px-6 py-8">
+    <main
+      className="pro-public pro-public--report pro-report-ready mx-auto max-w-2xl px-6 py-8"
+      data-pro-report-loaded="1"
+    >
       <p className="pro-public__eyebrow">Отчёт</p>
       <h1 className="pro-public__title mt-1 text-3xl">
         {report.brandName || "Zovus Pro"}
@@ -69,21 +69,15 @@ export default function ProReportPrintPage() {
         </p>
       ) : null}
       {report.question ? (
-        <p className="mt-4 text-sm text-gray-300">Запрос: {report.question}</p>
+        <div className="pro-report-question mt-5">
+          <p className="pro-report-card__eyebrow">Запрос</p>
+          <p className="mt-1 text-base text-[color:var(--pro-accent-light)]">
+            {report.question}
+          </p>
+        </div>
       ) : null}
       <ProResultCharts snapshot={report.chartSnapshot} size={300} />
-      <div className="mt-8 space-y-6">
-        {(report.blocks || []).map((b) => (
-          <section key={b.id} className="pro-public__section">
-            <h2 className="pro-public__block-title text-xl">
-              {polishProReportTitle(b.title)}
-            </h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-200">
-              {polishProReportPlainText(b.body)}
-            </p>
-          </section>
-        ))}
-      </div>
+      <ProReportSections blocks={report.blocks || []} variant="print" />
       {report.disclaimer ? (
         <p className="mt-10 text-xs text-gray-500">{report.disclaimer}</p>
       ) : null}

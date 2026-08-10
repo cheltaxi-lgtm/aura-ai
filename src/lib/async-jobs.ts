@@ -240,7 +240,8 @@ export async function claimAsyncJobs(input: {
        SET status = 'running',
            worker_id = $3,
            locked_at = NOW(),
-           started_at = COALESCE(jobs.started_at, NOW()),
+           started_at = NOW(),
+           generation_ms = NULL,
            queue_wait_ms = COALESCE(
              jobs.queue_wait_ms,
              GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - jobs.created_at)) * 1000))::int
@@ -352,9 +353,13 @@ export async function getAsyncJobQueuePosition(jobId: string): Promise<number | 
   return rows[0]?.pos ?? null;
 }
 
+/** Absolute wall-clock cap for a single running attempt (watchdog). */
+export const ASYNC_JOB_WATCHDOG_MS_DEFAULT = 25 * 60_000;
+
 /**
  * Requeue jobs left `running` by a dead worker (SIGKILL / deploy restart).
  * Single-host worker: any other worker_id is orphaned after restart.
+ * Preserves billing_state=charged — no second spend on resume.
  */
 export async function reapOrphanedRunningAsyncJobs(input: {
   currentWorkerId: string;
@@ -362,7 +367,7 @@ export async function reapOrphanedRunningAsyncJobs(input: {
   minAgeMs?: number;
   kinds?: AsyncJobKind[];
 }): Promise<number> {
-  const minAgeMs = Math.max(30_000, input.minAgeMs ?? 90_000);
+  const minAgeMs = Math.max(5_000, input.minAgeMs ?? 90_000);
   const kinds = input.kinds ?? [];
   const ageSeconds = Math.floor(minAgeMs / 1000);
   const { rows } = await query<{ id: string }>(
@@ -370,6 +375,14 @@ export async function reapOrphanedRunningAsyncJobs(input: {
      SET status = 'pending',
          worker_id = NULL,
          locked_at = NULL,
+         next_attempt_at = NOW(),
+         error_code = COALESCE(error_code, 'orphan_requeued'),
+         error_message = COALESCE(
+           NULLIF(error_message, ''),
+           'Воркер перезапущен — задача возвращена в очередь без повторного списания.'
+         ),
+         period_metadata = COALESCE(period_metadata, '{}'::jsonb)
+           || jsonb_build_object('orphan_reaped_at', NOW()::text),
          updated_at = NOW()
      WHERE status = 'running'
        AND locked_at IS NOT NULL
@@ -384,21 +397,22 @@ export async function reapOrphanedRunningAsyncJobs(input: {
 }
 
 /**
- * Reset or fail jobs stuck in `running` after a worker crash / hard kill.
- * Fresh stale jobs return to `pending` (up to maxAttempts); older ones fail.
- * Requeue preserves billing_state=charged — natal routes must reuse the ledger
- * via chargeRuneActionForWorkerJob (no second spend).
+ * Requeue/fail jobs whose worker died without a clean handoff.
+ * Never steals jobs still owned by `currentWorkerId` — those are covered by
+ * heartbeat + watchdog (long HD reports must not be requeued mid-LLM).
  */
 export async function reapStaleRunningAsyncJobs(input?: {
   staleAfterMs?: number;
   maxAttempts?: number;
   kinds?: AsyncJobKind[];
+  /** Required: exclude this worker's live in-flight report jobs. */
+  currentWorkerId?: string;
 }): Promise<{ requeued: number; failed: number }> {
-  // Default 4 min — must beat SIGKILL zombies sooner than the old 12 min spinner.
   const staleAfterMs = Math.max(60_000, input?.staleAfterMs ?? 4 * 60_000);
   const maxAttempts = Math.max(1, input?.maxAttempts ?? 3);
   const kinds = input?.kinds ?? [];
   const staleSeconds = Math.floor(staleAfterMs / 1000);
+  const currentWorkerId = input?.currentWorkerId?.trim() || "";
 
   const { requeued, failedIds } = await withTransaction(async (client) => {
     const { rows: requeuedRows } = await client.query<{ id: string }>(
@@ -406,15 +420,24 @@ export async function reapStaleRunningAsyncJobs(input?: {
        SET status = 'pending',
            worker_id = NULL,
            locked_at = NULL,
+           next_attempt_at = NOW(),
+           error_code = COALESCE(error_code, 'stale_requeued'),
+           error_message = COALESCE(
+             NULLIF(error_message, ''),
+             'Задача зависла без воркера — возвращена в очередь без повторного списания.'
+           ),
+           period_metadata = COALESCE(period_metadata, '{}'::jsonb)
+             || jsonb_build_object('stale_reaped_at', NOW()::text),
            updated_at = NOW()
        WHERE status = 'running'
          AND locked_at IS NOT NULL
          AND locked_at < NOW() - make_interval(secs => $1)
          AND attempt_count < $2
          AND expires_at > NOW()
+         AND ($4 = '' OR worker_id IS DISTINCT FROM $4)
          AND (cardinality($3::text[]) = 0 OR kind = ANY($3::text[]))
        RETURNING id`,
-      [staleSeconds, maxAttempts, kinds]
+      [staleSeconds, maxAttempts, kinds, currentWorkerId]
     );
 
     const { rows: failedRows } = await client.query<{ id: string }>(
@@ -428,9 +451,10 @@ export async function reapStaleRunningAsyncJobs(input?: {
          AND locked_at IS NOT NULL
          AND locked_at < NOW() - make_interval(secs => $1)
          AND (attempt_count >= $2 OR expires_at <= NOW())
+         AND ($4 = '' OR worker_id IS DISTINCT FROM $4)
          AND (cardinality($3::text[]) = 0 OR kind = ANY($3::text[]))
        RETURNING id`,
-      [staleSeconds, maxAttempts, kinds]
+      [staleSeconds, maxAttempts, kinds, currentWorkerId]
     );
 
     return {
@@ -446,6 +470,110 @@ export async function reapStaleRunningAsyncJobs(input?: {
   }
 
   return { requeued, failed: failedIds.length };
+}
+
+/**
+ * Watchdog: any job running longer than maxRunningMs is forced back to pending
+ * (or failed after maxAttempts). Includes the current worker — frees stuck slots
+ * after hard LLM hangs. Does not spend runes again.
+ */
+export async function reapWatchdogRunningAsyncJobs(input?: {
+  maxRunningMs?: number;
+  maxAttempts?: number;
+  kinds?: AsyncJobKind[];
+}): Promise<{ requeued: number; failed: number }> {
+  const maxRunningMs = Math.max(
+    5 * 60_000,
+    input?.maxRunningMs ?? ASYNC_JOB_WATCHDOG_MS_DEFAULT
+  );
+  const maxAttempts = Math.max(1, input?.maxAttempts ?? 5);
+  const kinds = input?.kinds ?? [];
+  const ageSeconds = Math.floor(maxRunningMs / 1000);
+
+  const { requeued, failedIds } = await withTransaction(async (client) => {
+    const { rows: requeuedRows } = await client.query<{ id: string }>(
+      `UPDATE async_jobs
+       SET status = 'pending',
+           worker_id = NULL,
+           locked_at = NULL,
+           next_attempt_at = NOW() + interval '5 seconds',
+           error_code = 'watchdog_requeued',
+           error_message = $4,
+           period_metadata = COALESCE(period_metadata, '{}'::jsonb)
+             || jsonb_build_object('watchdog_reaped_at', NOW()::text),
+           updated_at = NOW()
+       WHERE status = 'running'
+         AND COALESCE(started_at, locked_at, created_at) < NOW() - make_interval(secs => $1)
+         AND attempt_count < $2
+         AND expires_at > NOW()
+         AND (cardinality($3::text[]) = 0 OR kind = ANY($3::text[]))
+       RETURNING id`,
+      [
+        ageSeconds,
+        maxAttempts,
+        kinds,
+        `Watchdog: генерация дольше ${Math.round(maxRunningMs / 60000)} мин — задача возвращена в очередь без повторного списания.`,
+      ]
+    );
+
+    const { rows: failedRows } = await client.query<{ id: string }>(
+      `UPDATE async_jobs
+       SET status = 'failed',
+           error_code = 'watchdog_timeout',
+           error_message = $4,
+           completed_at = NOW(),
+           updated_at = NOW()
+       WHERE status = 'running'
+         AND COALESCE(started_at, locked_at, created_at) < NOW() - make_interval(secs => $1)
+         AND (attempt_count >= $2 OR expires_at <= NOW())
+         AND (cardinality($3::text[]) = 0 OR kind = ANY($3::text[]))
+       RETURNING id`,
+      [
+        ageSeconds,
+        maxAttempts,
+        kinds,
+        `Watchdog: превышен лимит попыток после ${Math.round(maxRunningMs / 60000)} мин.`,
+      ]
+    );
+
+    return {
+      requeued: requeuedRows.length,
+      failedIds: failedRows.map((row) => row.id),
+    };
+  });
+
+  for (const jobId of failedIds) {
+    await refundChargedAsyncJobIfNeeded(jobId).catch((error) => {
+      console.error(`[async-jobs] watchdog refund failed for ${jobId}:`, error);
+    });
+  }
+
+  return { requeued, failed: failedIds.length };
+}
+
+/** Keep locked_at fresh so orphan reaper does not treat a live long job as dead. */
+export async function touchAsyncJobHeartbeat(
+  jobId: string,
+  workerId: string
+): Promise<void> {
+  await query(
+    `UPDATE async_jobs
+     SET locked_at = NOW(), updated_at = NOW()
+     WHERE id = $1 AND status = 'running' AND worker_id = $2`,
+    [jobId, workerId]
+  );
+}
+
+/** Count recent watchdog requeues for admin alerts. */
+export async function countRecentWatchdogReaps(withinHours = 1): Promise<number> {
+  const { rows } = await query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n
+     FROM async_jobs
+     WHERE period_metadata ? 'watchdog_reaped_at'
+       AND updated_at > NOW() - make_interval(hours => $1)`,
+    [Math.max(1, withinHours)]
+  );
+  return Number(rows[0]?.n ?? 0);
 }
 
 /** Refund a charged job that already reached a terminal failed state. */
@@ -514,8 +642,10 @@ export async function markAsyncJobRefunded(jobId: string): Promise<void> {
 }
 
 /**
- * Complete only while still running and not refunded.
- * Never re-open a failed/refunded job (prevents free report after timeout refund).
+ * Complete while still running.
+ * Allows billing_state=refunded so already_saved / duplicate-charge rollback can
+ * still deliver the existing report (status→completed, billing stays refunded).
+ * Never re-open a failed/refunded job.
  */
 export async function completeAsyncJob(
   jobId: string,
@@ -527,12 +657,17 @@ export async function completeAsyncJob(
          result = $2::jsonb,
          error_message = NULL,
          error_code = NULL,
-         billing_state = 'completed',
+         billing_state = CASE
+           WHEN billing_state = 'refunded' THEN 'refunded'
+           ELSE 'completed'
+         END,
          completed_at = NOW(),
-         updated_at = NOW()
+         updated_at = NOW(),
+         worker_id = NULL,
+         locked_at = NULL
      WHERE id = $1
        AND status = 'running'
-       AND billing_state IN ('unbilled', 'charged')`,
+       AND billing_state IN ('unbilled', 'charged', 'refunded')`,
     [jobId, JSON.stringify(result)]
   );
   return rowCount === 1;

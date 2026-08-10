@@ -4,6 +4,10 @@ import { useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
 import ProShell from "@/modules/pro/ui/ProShell";
+import { formatProDateOnly } from "@/modules/pro/adapters/date-only";
+import ProPlaceSearch, {
+  type ProPlaceHit,
+} from "@/modules/pro/ui/ProPlaceSearch";
 
 type Client = {
   id: string;
@@ -34,6 +38,7 @@ export default function ProClientDetailPage() {
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [birthPlace, setBirthPlace] = useState("");
+  const [selectedPlace, setSelectedPlace] = useState<ProPlaceHit | null>(null);
   const [notes, setNotes] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -48,9 +53,24 @@ export default function ProClientDetailPage() {
     setClient(c);
     setCases(json.cases || []);
     setAlias(c.alias || "");
-    setBirthDate(c.birth_date ? String(c.birth_date).slice(0, 10) : "");
+    setBirthDate(formatProDateOnly(c.birth_date) || "");
     setBirthTime(c.birth_time ? String(c.birth_time).slice(0, 5) : "");
     setBirthPlace(c.birth_place || "");
+    if (
+      typeof c.birth_lat === "number" &&
+      typeof c.birth_lon === "number" &&
+      c.birth_tz &&
+      c.birth_place
+    ) {
+      setSelectedPlace({
+        label: c.birth_place,
+        latitude: c.birth_lat,
+        longitude: c.birth_lon,
+        timezone: c.birth_tz,
+      });
+    } else {
+      setSelectedPlace(null);
+    }
     setNotes(c.notes || "");
   }
 
@@ -72,6 +92,9 @@ export default function ProClientDetailPage() {
         birthDate: birthDate || null,
         birthTime: birthTime || null,
         birthPlace: birthPlace || null,
+        birthLat: selectedPlace?.latitude ?? null,
+        birthLon: selectedPlace?.longitude ?? null,
+        birthTz: selectedPlace?.timezone ?? null,
       }),
     });
     setBusy(false);
@@ -96,11 +119,46 @@ export default function ProClientDetailPage() {
   }
 
   async function archiveCase(id: string) {
-    if (!confirm("Архивировать кейс?")) return;
+    if (
+      !confirm(
+        "Архивировать кейс? Ссылка мини-лендинга для клиента будет отключена."
+      )
+    )
+      return;
     setBusy(true);
     await fetch(`/api/pro/cases/${id}`, {
       method: "DELETE",
       credentials: "include",
+    });
+    await load();
+    setBusy(false);
+  }
+
+  async function restoreCase(id: string) {
+    setBusy(true);
+    await fetch(`/api/pro/cases/${id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "restore" }),
+    });
+    await load();
+    setBusy(false);
+  }
+
+  async function purgeCase(id: string) {
+    if (
+      !confirm(
+        "Удалить кейс полностью? Отчёт и ссылки исчезнут без восстановления."
+      )
+    )
+      return;
+    setBusy(true);
+    await fetch(`/api/pro/cases/${id}`, {
+      method: "PATCH",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "purge" }),
     });
     await load();
     setBusy(false);
@@ -147,14 +205,14 @@ export default function ProClientDetailPage() {
             onChange={(e) => setBirthTime(e.target.value)}
           />
         </label>
-        <label className="text-sm">
-          <span className="pro-label">Место</span>
-          <input
-            className="pro-field w-full"
-            value={birthPlace}
-            onChange={(e) => setBirthPlace(e.target.value)}
-          />
-        </label>
+        <ProPlaceSearch
+          value={birthPlace}
+          selected={selectedPlace}
+          onChange={setBirthPlace}
+          onSelect={setSelectedPlace}
+          label="Место"
+          placeholder="Потсдам, Москва, Berlin…"
+        />
         <label className="text-sm">
           <span className="pro-label">Заметки</span>
           <textarea
@@ -207,14 +265,37 @@ export default function ProClientDetailPage() {
               >
                 {c.type} · {c.status} · {c.question || "без вопроса"}
               </Link>
-              <button
-                type="button"
-                className="rounded border border-red-400/25 px-3 py-1 text-xs text-red-200/80"
-                disabled={busy || c.status === "archived"}
-                onClick={() => void archiveCase(c.id)}
-              >
-                В архив
-              </button>
+              <div className="flex flex-wrap gap-2">
+                {c.status === "archived" ? (
+                  <>
+                    <button
+                      type="button"
+                      className="rounded border border-[color:var(--pro-border)] px-3 py-1 text-xs text-[var(--pro-accent-light)]"
+                      disabled={busy}
+                      onClick={() => void restoreCase(c.id)}
+                    >
+                      Восстановить
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-red-500/40 px-3 py-1 text-xs text-red-300"
+                      disabled={busy}
+                      onClick={() => void purgeCase(c.id)}
+                    >
+                      Удалить полностью
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    className="rounded border border-red-400/25 px-3 py-1 text-xs text-red-200/80"
+                    disabled={busy}
+                    onClick={() => void archiveCase(c.id)}
+                  >
+                    В архив
+                  </button>
+                )}
+              </div>
             </li>
           ))}
         </ul>

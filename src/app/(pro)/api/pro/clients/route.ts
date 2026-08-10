@@ -23,10 +23,11 @@ export async function POST(req: Request) {
   let birthLat = typeof body.birthLat === "number" ? body.birthLat : null;
   let birthLon = typeof body.birthLon === "number" ? body.birthLon : null;
   let birthTz = typeof body.birthTz === "string" ? body.birthTz : null;
-  const birthPlace = typeof body.birthPlace === "string" ? body.birthPlace : null;
+  let birthPlace = typeof body.birthPlace === "string" ? body.birthPlace : null;
   if (birthPlace && geocodeAdapter.isAvailable() && (birthLat == null || birthLon == null)) {
     const place = await geocodeAdapter.resolve(birthPlace);
     if (place) {
+      birthPlace = place.label || birthPlace;
       birthLat = place.latitude;
       birthLon = place.longitude;
       birthTz = place.timezone || birthTz;

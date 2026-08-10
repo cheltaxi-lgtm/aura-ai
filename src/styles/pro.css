@@ -367,6 +367,74 @@
   color: var(--pro-accent-light);
 }
 
+/* Premium report sections (matrix/HD parity — cards, not a text wall) */
+.pro-report-question {
+  border-left: 2px solid color-mix(in srgb, var(--pro-accent) 70%, transparent);
+  padding: 0.35rem 0 0.35rem 0.9rem;
+}
+
+.pro-report-card__head {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+}
+
+.pro-report-card__eyebrow {
+  margin: 0;
+  font-size: 0.68rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: color-mix(in srgb, var(--pro-accent) 85%, transparent);
+}
+
+.pro-report-card__title {
+  margin: 0;
+  font-size: 1.25rem;
+  line-height: 1.25;
+}
+
+.pro-report-card--focus {
+  border-color: color-mix(in srgb, var(--pro-accent) 55%, transparent);
+  background: linear-gradient(
+    160deg,
+    color-mix(in srgb, var(--pro-accent) 14%, transparent),
+    color-mix(in srgb, var(--pro-surface) 88%, transparent)
+  );
+}
+
+.pro-report-card--finale {
+  border-style: dashed;
+}
+
+.pro-report-practice {
+  border-radius: var(--radius-sm, 8px);
+  border: 1px solid color-mix(in srgb, var(--pro-accent) 35%, transparent);
+  background: color-mix(in srgb, var(--pro-accent) 8%, transparent);
+  padding: 0.7rem 0.85rem;
+}
+
+.pro-report-practice__label {
+  margin: 0;
+  font-size: 0.65rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--pro-accent-light);
+}
+
+.pro-report-practice__text {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: var(--pro-text);
+}
+
+.pro-result-chart__frame {
+  border: 1px solid var(--pro-border);
+  border-radius: var(--radius-md, 12px);
+  background: color-mix(in srgb, var(--pro-surface) 80%, transparent);
+  padding: 0.85rem;
+}
+
 .pro-marketing-hero {
   position: relative;
   min-height: min(88vh, 52rem);

@@ -36,6 +36,8 @@ export const FALLBACK_CITIES: FallbackCity[] = [
   { query: "london", label: "London, England, United Kingdom", latitude: 51.5074, longitude: -0.1278, timezone: "Europe/London" },
   { query: "berlin", label: "Berlin, Berlin, Germany", latitude: 52.52, longitude: 13.405, timezone: "Europe/Berlin" },
   { query: "берлин", label: "Berlin, Berlin, Germany", latitude: 52.52, longitude: 13.405, timezone: "Europe/Berlin" },
+  { query: "potsdam", label: "Potsdam, Brandenburg, Germany", latitude: 52.3989, longitude: 13.0657, timezone: "Europe/Berlin" },
+  { query: "потсдам", label: "Potsdam, Brandenburg, Germany", latitude: 52.3989, longitude: 13.0657, timezone: "Europe/Berlin" },
   { query: "paris", label: "Paris, Île-de-France, France", latitude: 48.8566, longitude: 2.3522, timezone: "Europe/Paris" },
   { query: "париж", label: "Paris, Île-de-France, France", latitude: 48.8566, longitude: 2.3522, timezone: "Europe/Paris" },
   { query: "new york", label: "New York, New York, United States", latitude: 40.7128, longitude: -74.006, timezone: "America/New_York" },

@@ -23,6 +23,15 @@ interface HdReport {
   packageId?: "depth" | "max";
   includedAsksRemaining?: number;
   resumeFree?: boolean;
+  /** ISO from the server — pending row birth, drives the persistent wait timer. */
+  createdAt?: string;
+}
+
+/** Parse server ISO createdAt; null when missing/invalid (timer falls back to now). */
+function hdServerStartedAt(createdAt: unknown): number | null {
+  if (typeof createdAt !== "string" || !createdAt) return null;
+  const ts = Date.parse(createdAt);
+  return Number.isFinite(ts) && ts > 0 ? ts : null;
 }
 
 interface HdReportPanelProps {
@@ -149,19 +158,22 @@ export default function HdReportPanel({
         if (d?.report?.status === "pending") {
           setReport({ ...(d.report as HdReport), reportText: null });
           setUiGenerating(true);
-          startWait({ baselineText: null });
+          startWait({
+            baselineText: null,
+            startedAt: hdServerStartedAt((d.report as HdReport).createdAt),
+          });
           setLoading(true);
           // A paid pending row without an active worker (crash / repaired
           // report) would hang forever — kick a free resume on the server.
           void resumePendingGeneration();
           return;
         }
-        if (d?.report?.status === "error") {
+        if (d?.report?.status === "error" || d?.report?.status === "needs_regeneration") {
           const er = d.report as HdReport;
           setReport({ ...er, reportText: null });
           setError(
-            er.resumeFree
-              ? "Генерация не завершилась. Оплата сохранена — нажмите ещё раз, повторного списания не будет."
+            er.status === "needs_regeneration" || er.resumeFree
+              ? "Разбор требует доработки качества. Оплата сохранена — нажмите ещё раз, повторного списания не будет."
               : "Генерация не завершилась. Если руны списались — они уже возвращены; нажмите ещё раз для новой попытки."
           );
         }

@@ -43,10 +43,25 @@ export type ProCaseStatus =
 
 export type ProCaseVersionSource = "ai" | "human";
 
+export type ProReportSectionKind =
+  | "focus"
+  | "intro"
+  | "zone"
+  | "steps"
+  | "finale"
+  | "chapter"
+  | "generic";
+
 export type ProReportBlock = {
   id: string;
   title: string;
   body: string;
+  /** Optional practice callout (matrix zones) — rendered apart from body. */
+  practice?: string | null;
+  /** Small label under/near title, e.g. «18 — Луна». */
+  eyebrow?: string | null;
+  sectionKind?: ProReportSectionKind | null;
+  arcanaNumber?: number | null;
   position_ref?: string | null;
   locked?: boolean;
   ai_confidence?: number | null;

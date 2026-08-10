@@ -4,6 +4,8 @@ import {
   addVersion,
   getCase,
   getCaseInput,
+  hardDeleteCase,
+  inferRestoreStatus,
   listVersions,
   setCaseInput,
   updateCaseStatus,
@@ -18,7 +20,11 @@ import {
   matrixAdapter,
   natalAdapter,
 } from "@/modules/pro/adapters";
-import { createDelivery, revokeDelivery } from "@/modules/pro/db/deliveries";
+import {
+  createDelivery,
+  revokeAllDeliveriesForCase,
+  revokeDelivery,
+} from "@/modules/pro/db/deliveries";
 import { InsufficientFundsError } from "@/modules/pro/db/billing";
 import { insufficientFundsResponse } from "@/lib/services/billing-service";
 import type { ProCaseType, ProReportBlock } from "@/modules/pro/domain/types";
@@ -132,14 +138,70 @@ export async function PATCH(req: Request, ctx: Ctx) {
   if (action === "archive") {
     const updated = await updateCaseStatus(prac.ctx.account.id, id, "archived");
     if (!updated) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    const revoked = await revokeAllDeliveriesForCase(
+      prac.ctx.account.id,
+      id,
+      prac.ctx.profileUserId,
+      "case.archive"
+    );
     await writeAudit({
       accountId: prac.ctx.account.id,
       actor: "user",
       actorUserId: prac.ctx.profileUserId,
       action: "case.archive",
       target: String(id),
+      meta: { revokedDeliveries: revoked },
     });
-    return NextResponse.json({ ok: true, case: updated });
+    return NextResponse.json({ ok: true, case: updated, revokedDeliveries: revoked });
+  }
+
+  if (action === "restore") {
+    const c = await getCase(prac.ctx.account.id, id);
+    if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (c.status !== "archived") {
+      return NextResponse.json(
+        { error: "not_archived", message: "Кейс не в архиве" },
+        { status: 409 }
+      );
+    }
+    const nextStatus = await inferRestoreStatus(id);
+    const updated = await updateCaseStatus(prac.ctx.account.id, id, nextStatus);
+    await writeAudit({
+      accountId: prac.ctx.account.id,
+      actor: "user",
+      actorUserId: prac.ctx.profileUserId,
+      action: "case.restore",
+      target: String(id),
+      meta: { status: nextStatus },
+    });
+    return NextResponse.json({
+      ok: true,
+      case: updated,
+      message:
+        "Кейс восстановлен. Старые ссылки клиента остаются отключёнными — выдайте заново при необходимости.",
+    });
+  }
+
+  if (action === "purge") {
+    const c = await getCase(prac.ctx.account.id, id);
+    if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    await revokeAllDeliveriesForCase(
+      prac.ctx.account.id,
+      id,
+      prac.ctx.profileUserId,
+      "case.purge"
+    );
+    const ok = await hardDeleteCase(prac.ctx.account.id, id);
+    if (!ok) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    await writeAudit({
+      accountId: prac.ctx.account.id,
+      actor: "user",
+      actorUserId: prac.ctx.profileUserId,
+      action: "case.purge",
+      target: String(id),
+      meta: { clientId: c.client_id, type: c.type },
+    });
+    return NextResponse.json({ ok: true, purged: true });
   }
 
   if (action === "generate") {
@@ -377,7 +439,9 @@ export async function PATCH(req: Request, ctx: Ctx) {
           ? "Сначала нажмите «Принять отчёт», затем выдайте ссылку."
           : code === "delivery_disabled"
             ? "Выдача ссылок отключена (PRO_DELIVERY_ENABLED)."
-            : code;
+            : code === "case_archived"
+              ? "Кейс в архиве — восстановите, затем выдайте ссылку заново."
+              : code;
       return NextResponse.json({ error: code, message }, { status });
     }
   }
@@ -395,19 +459,26 @@ export async function PATCH(req: Request, ctx: Ctx) {
   return NextResponse.json({ error: "unknown_action" }, { status: 400 });
 }
 
-/** Soft-delete = archive (keeps audit / deliveries). */
+/** Soft-delete = archive + revoke all mini-landing tokens. */
 export async function DELETE(_req: Request, ctx: Ctx) {
   const prac = await requireProPractitioner();
   if (!prac.ok) return prac.response;
   const { id } = await ctx.params;
   const updated = await updateCaseStatus(prac.ctx.account.id, id, "archived");
   if (!updated) return NextResponse.json({ error: "not_found" }, { status: 404 });
+  const revoked = await revokeAllDeliveriesForCase(
+    prac.ctx.account.id,
+    id,
+    prac.ctx.profileUserId,
+    "case.archive"
+  );
   await writeAudit({
     accountId: prac.ctx.account.id,
     actor: "user",
     actorUserId: prac.ctx.profileUserId,
     action: "case.archive",
     target: String(id),
+    meta: { revokedDeliveries: revoked },
   });
-  return NextResponse.json({ ok: true, case: updated });
+  return NextResponse.json({ ok: true, case: updated, revokedDeliveries: revoked });
 }

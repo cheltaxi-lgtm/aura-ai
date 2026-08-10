@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
+import { formatProDateOnly } from "@/modules/pro/adapters/date-only";
 import ProShell from "@/modules/pro/ui/ProShell";
 
 type Client = {
@@ -87,18 +88,21 @@ export default function NewCaseForm() {
             onChange={(e) => setClientId(e.target.value)}
           >
             <option value="">Выберите…</option>
-            {clients.map((c) => (
-              <option key={c.id} value={c.id}>
-                {c.alias}
-                {c.birth_date ? ` · ${String(c.birth_date).slice(0, 10)}` : ""}
-              </option>
-            ))}
+            {clients.map((c) => {
+              const bd = formatProDateOnly(c.birth_date);
+              return (
+                <option key={c.id} value={c.id}>
+                  {c.alias}
+                  {bd ? ` · ${bd}` : ""}
+                </option>
+              );
+            })}
           </select>
         </label>
         {selected ? (
           <p className="text-xs text-gray-500">
-            {selected.birth_date
-              ? `В кейс подтянется: ${String(selected.birth_date).slice(0, 10)}${
+            {formatProDateOnly(selected.birth_date)
+              ? `В кейс подтянется: ${formatProDateOnly(selected.birth_date)}${
                   selected.birth_place ? `, ${selected.birth_place}` : ""
                 }`
               : "У клиента нет даты — заполните на следующем шаге (и сохранится в карточку)."}

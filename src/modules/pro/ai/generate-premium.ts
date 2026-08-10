@@ -13,6 +13,12 @@ import {
 } from "@/lib/natal/report";
 import { NATAL_ENGINE_VERSION, type NatalChartRecord } from "@/lib/natal/types";
 import { generateFullMatrixSectionedReading } from "@/lib/numerology/matrix-sectioned-reading";
+import { getArcanaEntry } from "@/lib/numerology/arcana-dictionary";
+import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
+import type {
+  MatrixReadingDocument,
+  MatrixReadingZoneBlock,
+} from "@/lib/numerology/matrix-reading-document";
 import { calculateHdChart } from "@/lib/human-design/calculate";
 import { hdReportTextToPrintSections } from "@/lib/human-design/packages";
 import { generateHdReportSectional } from "@/lib/hd-report-pipeline/generate";
@@ -25,6 +31,7 @@ import {
   polishProReportPlainText,
   polishProReportTitle,
 } from "./report-plain";
+import { normalizeProPremiumBlocks } from "./pro-premium-normalize";
 import {
   computeHdFacts,
   computeMatrixFacts,
@@ -40,12 +47,26 @@ function toProBlock(
   extras?: Partial<ProReportBlock>
 ): ProReportBlock {
   const filtered = filterPractitionerOutput(body);
+  const practiceRaw =
+    typeof extras?.practice === "string" ? extras.practice.trim() : extras?.practice;
+  const practiceFiltered =
+    typeof practiceRaw === "string" && practiceRaw
+      ? filterPractitionerOutput(practiceRaw).text
+      : practiceRaw;
   return {
     id,
     title: polishProReportTitle(title),
     body: polishProReportPlainText(filtered.text),
     ai_confidence: 0.75,
     ...extras,
+    practice:
+      typeof practiceFiltered === "string" && practiceFiltered
+        ? polishProReportPlainText(practiceFiltered)
+        : practiceFiltered ?? null,
+    eyebrow:
+      typeof extras?.eyebrow === "string"
+        ? polishProReportTitle(extras.eyebrow)
+        : extras?.eyebrow ?? null,
   };
 }
 
@@ -56,16 +77,20 @@ function proClientVoiceRules(clientAlias: string, focus: string | null): string 
     ? `
 ФОКУС ЗАПРОСА (главная нить всего отчёта): «${focus}»
 — Если формулировка в 3-м лице («у неё/у него») про носителя карты — это запрос о ВАС (читателе отчёта).
-— Во вступлении явно назови фокус и как карта отвечает на него.
-— В каждом релевантном разделе (особенно «Отношения», «Как вы себя видите», «Автоматические реакции», практики) возвращайся к фокусу конкретно.
+— Во вступлении один раз назови фокус и как карта отвечает на него.
+— В релевантных разделах связывай смысл с фокусом (механика / что помогает / что мешает), но НЕ повторяй формулировку запроса в начале каждого раздела и не открывай зоны фразой «ваш запрос — …».
 — Не отвечай «да/нет» и не ставь сроки. Дай понятную механику: что помогает, что мешает, что делать.`
     : "";
   return `
 ПРАВИЛА ОТЧЁТА ДЛЯ КЛИЕНТА ZOVUS PRO:
-1) Обращение ТОЛЬКО на «Вы», по имени: «${name}, Вы…». Запрещено третье лицо («она/он/Светлана делает») — заказчик читает про себя.
+1) Обращение ТОЛЬКО на «Вы», по имени: «${name}, Вы…». Запрещено «ты/тебе/твой» и третье лицо («она/он/Светлана делает») — заказчик читает про себя.
 2) Текст для клиента: ясный, конкретный, полный, без воды и общих фраз («все уникальны», «важно быть собой»).
 3) В теле разделов НЕ используй markdown-декор: никаких **, *, #, ###, таблиц. Подпункты — обычными абзацами или тире «—». (Служебные ## заголовки разделов из списка — оставляй как требуют правила генерации; внутри раздела — чистая проза.)
-4) Каждый раздел: механика простыми словами → как это проявляется → 1–2 бытовых примера → что делать.
+4) Каждый раздел: механика простыми словами → как это проявляется → 1–2 бытовых примера.
+5) В КАЖДОМ ## разделе (кроме «Вступление») завершай отдельной строкой ровно в формате:
+Практика: <одно конкретное действие на 3–7 дней>
+Не пиши «Что делать:» — только «Практика:». Без практики раздел считается браком.
+6) Если в данных рождения есть точное время и место — во вступлении назови их один раз; в «Переменные и среда» опирайся на реальное место. Не пиши, что время неизвестно, если оно точное.
 ${focusBlock}`;
 }
 
@@ -112,6 +137,103 @@ function markdownToBlocks(markdown: string, prefix: string): ProReportBlock[] {
   return blocks;
 }
 
+function matrixFocusAnswerBlock(
+  clientAlias: string,
+  focus: string,
+  matrix: DestinyMatrixResult
+): ProReportBlock {
+  const money = matrix.money;
+  const love = matrix.relationships;
+  const moneyEntry = getArcanaEntry(money.number);
+  const loveEntry = getArcanaEntry(love.number);
+  const name = clientAlias.trim() || "клиент";
+  const moneySense = moneyEntry?.money ?? money.arcanaMeaning;
+  const loveSense = loveEntry?.love ?? love.arcanaMeaning;
+  const moneyDo =
+    moneyEntry?.advice ??
+    "прозрачный учёт дохода/расхода и один конкретный денежный шаг за 7 дней.";
+  const loveDo =
+    loveEntry?.advice ??
+    "одна честная граница или разговор без давления — без ультиматумов.";
+  return toProBlock(
+    "focus-answer",
+    "Ответ на ваш запрос",
+    [
+      `${name}, Вы пришли с запросом «${focus}». Карта отвечает через две ключевые зоны — деньги (${money.number}, ${money.arcanaName}) и отношения (${love.number}, ${love.arcanaName}). Ниже — сжатый синтез; полный разбор зон идёт следом.`,
+      "",
+      `По деньгам аркан ${money.number} задаёт механику: ${moneySense} На практике это значит не ждать «удачного месяца», а выстроить понятный контур: что приносит ресурс, что его съедает, и какой один шаг Вы делаете на этой неделе. Конкретно: ${moneyDo}`,
+      "",
+      `По отношениям аркан ${love.number}: ${loveSense} Здесь важнее ясность контакта, чем красивая картина. Берите не обещание исхода, а действие: ${loveDo}`,
+      "",
+      "Читайте разделы «Деньги» и «Отношения» как главный ответ на запрос. Остальные зоны показывают опору, риски и то, что усиливает или мешает именно здесь. Без сроков и «да/нет» — только механика и шаги.",
+    ].join("\n"),
+    { ai_confidence: 0.95, sectionKind: "focus" }
+  );
+}
+
+function prioritizeMatrixZones(
+  zones: MatrixReadingZoneBlock[]
+): MatrixReadingZoneBlock[] {
+  const rank = (z: MatrixReadingZoneBlock) => {
+    if (z.id === "money") return 0;
+    if (z.id === "love") return 1;
+    if (z.id === "character") return 2;
+    if (z.id === "steps") return 90;
+    return 50;
+  };
+  return [...zones].sort((a, b) => rank(a) - rank(b));
+}
+
+/** Structured matrix document → premium section cards (not a markdown wall). */
+function matrixDocumentToProBlocks(
+  doc: MatrixReadingDocument,
+  opts: { clientAlias: string; focus: string; matrix: DestinyMatrixResult }
+): ProReportBlock[] {
+  const blocks: ProReportBlock[] = [];
+  if (opts.focus) {
+    blocks.push(matrixFocusAnswerBlock(opts.clientAlias, opts.focus, opts.matrix));
+  }
+  if (doc.intro?.trim()) {
+    blocks.push(
+      toProBlock("matrix-intro", "Вступление", doc.intro.trim(), {
+        sectionKind: "intro",
+        ai_confidence: 0.8,
+      })
+    );
+  }
+
+  const zones = opts.focus ? prioritizeMatrixZones(doc.zones) : doc.zones;
+  let pos = 1;
+  for (const z of zones) {
+    const kind =
+      z.id === "steps" ? ("steps" as const) : ("zone" as const);
+    const eyebrow =
+      z.number != null && z.arcanaName
+        ? `${z.number} — ${z.arcanaName}`
+        : null;
+    blocks.push(
+      toProBlock(`matrix-zone-${z.id}`, z.label, z.prose || z.title, {
+        practice: z.practice,
+        eyebrow,
+        arcanaNumber: z.number,
+        sectionKind: kind,
+        ai_confidence: z.source === "ai" ? 0.78 : 0.55,
+        position_ref: String(pos++),
+      })
+    );
+  }
+
+  if (doc.finale?.trim()) {
+    blocks.push(
+      toProBlock("matrix-finale", "Простыми словами", doc.finale.trim(), {
+        sectionKind: "finale",
+        ai_confidence: 0.9,
+      })
+    );
+  }
+  return blocks;
+}
+
 function natalSectionsToBlocks(report: NatalReport): ProReportBlock[] {
   return report.sections.map((s, i) =>
     toProBlock(s.key || `n-${i + 1}`, s.title, s.claims.map((c) => c.text).join("\n\n"), {
@@ -141,7 +263,10 @@ async function buildNatalSnapshot(
   } = await import("@/lib/natal/time");
   const lat = Number(enriched.latitude ?? enriched.birthLat);
   const lon = Number(enriched.longitude ?? enriched.birthLon);
-  const tz = String(enriched.timezone || enriched.birthTz || "Europe/Moscow");
+  const tz = String(enriched.timezone || enriched.birthTz || "");
+  if (!tz) {
+    throw Object.assign(new Error("timezone_required"), { status: 400 });
+  }
   const decimalHour = n.timeKnown ? parseBirthTimeToDecimal(n.birthTime) : null;
   const effectiveHour = decimalHour ?? 12;
   const timeKnown = Boolean(n.timeKnown && decimalHour != null);
@@ -257,14 +382,23 @@ async function generateMatrix(
   }
   const focus = focusQuestion?.trim() || "";
   const contextFacts = [
+    focus
+      ? [
+          `ГЛАВНЫЙ ЗАПРОС КЛИЕНТА (нить отчёта): «${focus}».`,
+          "Если формулировка в 3-м лице про носителя матрицы — это запрос о самом заказчике.",
+          "Во вступлении один раз назови запрос и как карта на него отвечает.",
+          "НЕ повторяй формулировку запроса в начале каждой зоны и не открывай разделы фразой «ваш запрос — …» / «ты исследуешь деньги и отношения…».",
+          "Связывай зоны с запросом по смыслу (механика, что помогает/мешает), без механического рефрена.",
+          "Зоны «Деньги» и «Отношения» — ключевые: там самый конкретный ответ + практика под запрос.",
+          "Практики без просроченных дат-примеров; только действие на ближайшие дни/неделю.",
+          "Не обещай исход, сроки, «да/нет».",
+        ].join(" ")
+      : null,
     typeof facts.focusLabel === "string"
       ? `Узел периода матрицы: ${facts.focusLabel}.`
       : null,
-    `Обращение к заказчику на «вы» и по имени «${clientAlias}» (не третье лицо).`,
-    focus
-      ? `Фокус запроса заказчика: «${focus}». Если формулировка в 3-м лице про носителя матрицы — это запрос о самом заказчике. Прошей фокус через зоны; не обещай исход и сроки.`
-      : null,
-    "Без markdown (** # ###). Чистая проза.",
+    `Обращение к заказчику ТОЛЬКО на «Вы» и по имени «${clientAlias}» (не «ты», не третье лицо).`,
+    "Без markdown (** # ###) внутри прозы зоны. Чистая проза.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -277,7 +411,11 @@ async function generateMatrix(
     useLlm: true,
     contextFacts: contextFacts || null,
   });
-  const blocks = markdownToBlocks(result.reading, "matrix");
+  const blocks = matrixDocumentToProBlocks(result.document, {
+    clientAlias,
+    focus,
+    matrix: result.matrix,
+  });
   const snapshot: ProChartSnapshot = {
     caseType: "matrix",
     birthDate,
@@ -294,21 +432,38 @@ async function generateHd(
   payload: Record<string, unknown>,
   clientAlias: string,
   focusQuestion?: string | null
-): Promise<{ blocks: ProReportBlock[]; snapshot: ProChartSnapshot }> {
+): Promise<{
+  blocks: ProReportBlock[];
+  snapshot: ProChartSnapshot;
+  uncertaintyMarks?: { blockId: string; note: string }[];
+}> {
   const enriched = await enrichBirthPlace(payload);
   const n = normalizeBirthFields(enriched);
   if (!n.birthDate) {
     throw Object.assign(new Error("birth_date_required"), { status: 400 });
   }
-  const tz = n.timezone || n.birthTz || "Europe/Moscow";
+  const tz = n.timezone || n.birthTz;
+  if (!tz) {
+    throw Object.assign(new Error("timezone_required"), {
+      status: 400,
+      message: "Сохраните город рождения с часовым поясом",
+    });
+  }
+  const placeLabel = n.birthPlace || n.birthCity || null;
   const chart = calculateHdChart({
     birthDate: n.birthDate,
     birthTime: n.timeKnown ? n.birthTime ?? null : null,
     timezone: tz,
   });
-  const facts = computeHdFacts({ ...enriched, timezone: tz, birthTz: tz });
+  const facts = computeHdFacts({
+    ...enriched,
+    timezone: tz,
+    birthTz: tz,
+    birthPlace: placeLabel,
+  });
   const focus = focusQuestion?.trim() || "";
   const proVoice = proClientVoiceRules(clientAlias, focus || null);
+  const birthEvidenceOpts = { placeLabel };
   // Client receives the report about themselves → «Вы», not third person.
   // Rollback flag: HD_SECTIONAL_REPORT=0 → legacy multi-pass path.
   const generated = isHdSectionalReportEnabled()
@@ -318,6 +473,7 @@ async function generateHd(
         aboutOther: false,
         focusQuestion: focus || null,
         extraSystem: proVoice,
+        placeLabel,
         maxSectionRetries: 2,
       })
     : null;
@@ -325,7 +481,7 @@ async function generateHd(
     const text = await completeHdFullReport({
       systemPrompt:
         `${buildHdReportSystemPrompt(clientAlias, "personal", { aboutOther: false })}\n\n${proVoice}`,
-      evidence: formatHdEvidence(chart),
+      evidence: formatHdEvidence(chart, birthEvidenceOpts),
       clientName: clientAlias,
       aboutOther: false,
       focusQuestion: focus || null,
@@ -354,17 +510,27 @@ async function generateHd(
     void facts;
     return { blocks, snapshot };
   }
-  if (!generated.text || generated.needsRegeneration) {
-    throw Object.assign(
-      new Error(
-        generated.needsRegeneration ? "hd_quality_needs_regeneration" : "hd_generation_failed"
-      ),
-      {
+  // Soft-accept only cosmetic meta/md (V1/V11/V12). Everything else hard-fails.
+  const SOFT_HD_QUALITY = new Set(["V1", "V11", "V12"]);
+  if (!generated.text) {
+    throw Object.assign(new Error("hd_generation_failed"), {
+      status: 502,
+      qualityFindings: generated.quality.findings,
+    });
+  }
+  if (generated.needsRegeneration) {
+    const hard = generated.quality.findings.filter(
+      (f) => !SOFT_HD_QUALITY.has(f.rule)
+    );
+    if (hard.length) {
+      throw Object.assign(new Error("hd_quality_needs_regeneration"), {
         status: 502,
         qualityFindings: generated.quality.findings,
-        draftText: generated.text,
-      }
-    );
+      });
+    }
+    console.warn("[pro-premium] hd soft-accept after cosmetic quality findings", {
+      findings: generated.quality.findings.slice(0, 12),
+    });
   }
   const text = generated.text;
   const sections = hdReportTextToPrintSections(text);
@@ -373,7 +539,10 @@ async function generateHd(
       s.key || `h-${i + 1}`,
       s.title,
       s.claims.map((c) => c.text).join("\n\n"),
-      { position_ref: String(i + 1) }
+      {
+        position_ref: String(i + 1),
+        ai_confidence: generated.needsRegeneration ? 0.45 : 0.75,
+      }
     )
   );
   const snapshot: ProChartSnapshot = {
@@ -386,7 +555,16 @@ async function generateHd(
     hdChart: chart as unknown as Record<string, unknown>,
   };
   void facts;
-  return { blocks, snapshot };
+  return {
+    blocks,
+    snapshot,
+    uncertaintyMarks: generated.needsRegeneration
+      ? generated.quality.findings.map((f) => ({
+          blockId: "report",
+          note: `hd_quality:${f.rule}:${f.detail}`,
+        }))
+      : [],
+  };
 }
 
 export async function generateProPremiumReport(input: {
@@ -404,7 +582,11 @@ export async function generateProPremiumReport(input: {
   }
 
   const focus = input.question?.trim() || null;
-  let result: { blocks: ProReportBlock[]; snapshot: ProChartSnapshot };
+  let result: {
+    blocks: ProReportBlock[];
+    snapshot: ProChartSnapshot;
+    uncertaintyMarks?: { blockId: string; note: string }[];
+  };
   if (input.type === "natal") {
     result = await generateNatal(input.payload, input.clientAlias, focus);
   } else if (input.type === "matrix") {
@@ -413,18 +595,27 @@ export async function generateProPremiumReport(input: {
     result = await generateHd(input.payload, input.clientAlias, focus);
   }
 
-  if (focus) {
-    result.blocks = [
-      toProBlock("q0", "Запрос", focus, { ai_confidence: 1 }),
-      ...result.blocks,
-    ];
-  }
+  const blocks = normalizeProPremiumBlocks(result.blocks, {
+    clientAlias: input.clientAlias,
+    focus,
+    caseType: input.type,
+  });
+
+  const fromConfidence = blocks
+    .filter((b) => (b.ai_confidence ?? 1) < 0.5)
+    .map((b) => ({ blockId: b.id, note: "low_confidence" }));
+  const fromHd = result.uncertaintyMarks ?? [];
+  const seen = new Set<string>();
+  const uncertaintyMarks = [...fromHd, ...fromConfidence].filter((m) => {
+    const key = `${m.blockId}:${m.note}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 
   return {
-    blocks: result.blocks,
+    blocks,
     snapshot: result.snapshot,
-    uncertaintyMarks: result.blocks
-      .filter((b) => (b.ai_confidence ?? 1) < 0.5)
-      .map((b) => ({ blockId: b.id, note: "low_confidence" })),
+    uncertaintyMarks,
   };
 }

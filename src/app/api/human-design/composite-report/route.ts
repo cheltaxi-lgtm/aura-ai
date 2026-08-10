@@ -320,7 +320,8 @@ export async function POST(request: NextRequest) {
     base.chart,
     partner.chart,
     { a: clientName ?? "первый человек", b: partnerName },
-    relation
+    relation,
+    { a: base.placeName, b: partner.placeName }
   );
 
   let charge: BillingChargeResult | undefined;

@@ -142,6 +142,7 @@ export default function HdComposite({ base, partner }: Props) {
             status?: string;
             reportText?: string | null;
             resumeFree?: boolean;
+            createdAt?: string;
           };
         };
         if (cancelled) return;
@@ -159,7 +160,12 @@ export default function HdComposite({ base, partner }: Props) {
           if (typeof data.report.id === "string") setReportId(data.report.id);
           setResumeFree(data.report.resumeFree === true);
           setUiGenerating(true);
-          startWait({ baselineText: null });
+          const serverStartedAt =
+            typeof data.report.createdAt === "string" ? Date.parse(data.report.createdAt) : NaN;
+          startWait({
+            baselineText: null,
+            startedAt: Number.isFinite(serverStartedAt) ? serverStartedAt : null,
+          });
           setBusy(true);
           // Paid pending without an active worker (crash / repaired report)
           // would hang forever — kick a free resume on the server.

@@ -259,8 +259,21 @@ export async function generateNumerologStreamReply(
         useLlm: "all",
         onProgress: params.onMatrixProgress,
       });
-      const safe =
-        sanitizeReadingForClient(sectioned.reading) || sectioned.reading;
+      // Sanitize may truncate at checklist markers; never let that fail a
+      // complete sectioned report (paid path would refund + spin forever).
+      const sanitized = sanitizeReadingForClient(sectioned.reading);
+      const rawComplete = isCompleteMatrixReading(
+        sectioned.reading,
+        params.toolId
+      );
+      const sanitizedComplete =
+        Boolean(sanitized) &&
+        isCompleteMatrixReading(sanitized, params.toolId);
+      const safe = sanitizedComplete
+        ? sanitized
+        : rawComplete
+          ? sectioned.reading
+          : sanitized || sectioned.reading;
       if (!isCompleteMatrixReading(safe, params.toolId) && !allowEngineFallback) {
         // Sectioned path force-fills; if still unusable, fail paid path.
         const { matrixMissingSections } = await import(
@@ -269,6 +282,9 @@ export async function generateNumerologStreamReply(
         console.error("[numerolog] sectioned matrix failed completeness gate", {
           rawLen: sectioned.reading.length,
           safeLen: safe.length,
+          sanitizedLen: sanitized?.length ?? 0,
+          rawComplete,
+          sanitizedComplete,
           meta: sectioned.meta,
           missing: matrixMissingSections(safe, params.toolId),
         });

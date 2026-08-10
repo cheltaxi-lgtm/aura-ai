@@ -100,6 +100,7 @@ export async function POST(req: NextRequest) {
           chart,
           clientName: chartRow.subjectName,
           aboutOther: chartRow.subjectKind === "other",
+          placeLabel: chartRow.placeName,
           maxSectionRetries: 2,
           onlyTitles,
           priorText: onlyTitles ? row.reportText : null,
@@ -142,7 +143,9 @@ export async function POST(req: NextRequest) {
     const row = await getHdReportAdminDetail(reportId);
     if (!row?.reportText) return NextResponse.json({ error: "no_text" }, { status: 404 });
     const chartRow = await getHdChartById(row.chartId);
-    const contract = chartRow ? buildHdLockedContract(chartRow.chart) : null;
+    const contract = chartRow
+      ? buildHdLockedContract(chartRow.chart, { placeLabel: chartRow.placeName })
+      : null;
     const quality = validateHdReportText(row.reportText, {
       engineTypeRu: contract?.typeRu ?? null,
       motorCount: contract?.motorCentersDefinedRu.length ?? null,

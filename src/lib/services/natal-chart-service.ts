@@ -503,6 +503,64 @@ export type NatalInterpretationClaimResult =
  * Removes empty paid-report placeholders and expired in-flight claims so OAuth /
  * partial-profile users can retry generation after a failed attempt.
  */
+/**
+ * Force-regenerate: drop the paid report in both storage places claim reads —
+ * natal_report_history and natal_charts.chart_data (interpretations + claims).
+ * Without this, forceRegenerate is a no-op when chart_data still holds text.
+ */
+export async function invalidateNatalReportForRegenerate(params: {
+  userId: string;
+  tradition: NatalTradition;
+  reportType?: string;
+  claimKey?: string;
+}): Promise<void> {
+  const reportType = params.reportType ?? "interpretation";
+  const claimKey = params.claimKey ?? params.tradition;
+  const isInterpretation = reportType === "interpretation";
+
+  await query(
+    `DELETE FROM natal_report_history
+     WHERE user_id = $1
+       AND tradition = $2
+       AND report_type = $3`,
+    [params.userId, params.tradition, reportType]
+  );
+
+  if (isInterpretation) {
+    await query(
+      `UPDATE natal_charts
+       SET chart_data = jsonb_set(
+             jsonb_set(
+               CASE WHEN $2 = 'western' THEN chart_data - 'interpretation' ELSE chart_data END,
+               '{interpretations}',
+               COALESCE(chart_data->'interpretations', '{}'::jsonb) - $2::text,
+               true
+             ),
+             '{interpretationClaims}',
+             COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $3::text,
+             true
+           ),
+           updated_at = NOW()
+       WHERE user_id = $1`,
+      [params.userId, params.tradition, claimKey]
+    );
+    return;
+  }
+
+  await query(
+    `UPDATE natal_charts
+     SET chart_data = jsonb_set(
+           chart_data,
+           '{interpretationClaims}',
+           COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $2::text,
+           true
+         ),
+         updated_at = NOW()
+     WHERE user_id = $1`,
+    [params.userId, claimKey]
+  );
+}
+
 export async function clearStaleNatalInterpretationBlocks(
   userId: string,
   tradition: NatalTradition,

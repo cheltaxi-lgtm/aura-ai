@@ -167,6 +167,7 @@ export async function updateClient(
     notes: string | null;
   }>
 ): Promise<ProClientRow | null> {
+  // birth_lat/lon/tz: undefined = keep; null = clear (COALESCE cannot clear).
   const { rows } = await proQuery<ProClientRow>(
     `UPDATE pro.clients SET
        alias = COALESCE($3, alias),
@@ -176,9 +177,9 @@ export async function updateClient(
        birth_date = COALESCE($7, birth_date),
        birth_time = COALESCE($8, birth_time),
        birth_place = COALESCE($9, birth_place),
-       birth_lat = COALESCE($10, birth_lat),
-       birth_lon = COALESCE($11, birth_lon),
-       birth_tz = COALESCE($12, birth_tz),
+       birth_lat = CASE WHEN $16::boolean THEN $10 ELSE birth_lat END,
+       birth_lon = CASE WHEN $17::boolean THEN $11 ELSE birth_lon END,
+       birth_tz = CASE WHEN $18::boolean THEN $12 ELSE birth_tz END,
        gender = COALESCE($13, gender),
        tags = COALESCE($14, tags),
        notes = COALESCE($15, notes),
@@ -195,12 +196,15 @@ export async function updateClient(
       patch.birthDate === undefined ? null : patch.birthDate,
       patch.birthTime === undefined ? null : patch.birthTime,
       patch.birthPlace === undefined ? null : patch.birthPlace,
-      patch.birthLat === undefined ? null : patch.birthLat,
-      patch.birthLon === undefined ? null : patch.birthLon,
-      patch.birthTz === undefined ? null : patch.birthTz,
+      patch.birthLat ?? null,
+      patch.birthLon ?? null,
+      patch.birthTz ?? null,
       patch.gender === undefined ? null : patch.gender,
       patch.tags ?? null,
       patch.notes === undefined ? null : patch.notes,
+      patch.birthLat !== undefined,
+      patch.birthLon !== undefined,
+      patch.birthTz !== undefined,
     ]
   );
   return rows[0] ?? null;

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import Link from "next/link";
+import { formatProDateOnly } from "@/modules/pro/adapters/date-only";
 import ProShell from "@/modules/pro/ui/ProShell";
 
 type AccountResp = {
@@ -115,7 +116,12 @@ export default function ProHomePage() {
   }, []);
 
   async function archiveCase(id: string) {
-    if (!confirm("Архивировать кейс?")) return;
+    if (
+      !confirm(
+        "Архивировать кейс? Ссылка мини-лендинга для клиента будет отключена."
+      )
+    )
+      return;
     setDashBusy(true);
     await fetch(`/api/pro/cases/${id}`, {
       method: "DELETE",
@@ -516,8 +522,8 @@ export default function ProHomePage() {
                     {cl.alias}
                   </Link>
                   <p className="mt-0.5 text-xs text-[var(--pro-faint)]">
-                    {cl.birth_date
-                      ? `др ${String(cl.birth_date).slice(0, 10)}`
+                    {formatProDateOnly(cl.birth_date)
+                      ? `др ${formatProDateOnly(cl.birth_date)}`
                       : "дата не указана"}
                   </p>
                 </div>

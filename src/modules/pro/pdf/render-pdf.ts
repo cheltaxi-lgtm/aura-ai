@@ -1,4 +1,29 @@
+import { existsSync } from "node:fs";
 import { getProPdfChromiumPath, isProPdfEnabled, getProPdfRenderSecret } from "../config";
+
+function resolveChromiumExecutable(): string {
+  const configured = getProPdfChromiumPath();
+  // Debian/Ubuntu wrapper shells out to snap and often breaks headless PDF.
+  const normalizedConfigured =
+    configured === "/usr/bin/chromium-browser" && existsSync("/snap/bin/chromium")
+      ? "/snap/bin/chromium"
+      : configured;
+
+  const candidates = [
+    normalizedConfigured,
+    process.env.CHROME_PATH?.trim(),
+    process.env.PUPPETEER_EXECUTABLE_PATH?.trim(),
+    "/snap/bin/chromium",
+    "/usr/bin/chromium-browser",
+    "/usr/bin/chromium",
+    "/usr/bin/google-chrome",
+  ].filter((v): v is string => Boolean(v && v.trim()));
+
+  for (const path of candidates) {
+    if (existsSync(path)) return path;
+  }
+  return candidates[0] || "/usr/bin/chromium-browser";
+}
 
 export async function renderProReportPdf(opts: {
   token: string;
@@ -13,11 +38,7 @@ export async function renderProReportPdf(opts: {
     throw Object.assign(new Error("pdf_secret_missing"), { status: 503 });
   }
 
-  const executablePath =
-    getProPdfChromiumPath() ||
-    process.env.CHROME_PATH?.trim() ||
-    process.env.PUPPETEER_EXECUTABLE_PATH?.trim() ||
-    "/usr/bin/chromium-browser";
+  const executablePath = resolveChromiumExecutable();
 
   let launch: typeof import("puppeteer-core").launch;
   try {
@@ -30,11 +51,12 @@ export async function renderProReportPdf(opts: {
     throw Object.assign(new Error("puppeteer_launch_missing"), { status: 503 });
   }
 
+  // Prefer loopback first — public HTTPS can hang Chromium behind Caddy/CSP.
   const origins = [
-    opts.origin.replace(/\/$/, ""),
     process.env.ASYNC_JOB_APP_URL?.trim()?.replace(/\/$/, "") || "",
     "http://127.0.0.1:3000",
     "http://localhost:3000",
+    opts.origin.replace(/\/$/, ""),
   ].filter((v, i, a) => Boolean(v) && a.indexOf(v) === i);
 
   const browser = await launch({
@@ -44,12 +66,16 @@ export async function renderProReportPdf(opts: {
       "--no-sandbox",
       "--disable-setuid-sandbox",
       "--disable-dev-shm-usage",
+      "--disable-gpu",
       "--font-render-hinting=none",
+      "--single-process",
     ],
   });
 
   try {
     const page = await browser.newPage();
+    page.setDefaultTimeout(120_000);
+    page.setDefaultNavigationTimeout(120_000);
     await page.setExtraHTTPHeaders({
       "x-pro-pdf-render-secret": secret,
     });
@@ -58,13 +84,16 @@ export async function renderProReportPdf(opts: {
       try {
         const printUrl = new URL(`/r/${opts.token}/print`, origin);
         printUrl.searchParams.set("pdfRender", "1");
+        // networkidle0 never settles on pages with analytics/chunk polling.
         await page.goto(printUrl.toString(), {
-          waitUntil: "networkidle0",
+          waitUntil: "domcontentloaded",
           timeout: 90_000,
         });
-        await page.waitForSelector(".pro-report-ready", { timeout: 45_000 });
+        await page.waitForSelector(".pro-report-ready[data-pro-report-loaded='1']", {
+          timeout: 60_000,
+        });
         // Allow client charts a beat to paint
-        await new Promise((r) => setTimeout(r, 1500));
+        await new Promise((r) => setTimeout(r, 2000));
         const pdf = await page.pdf({
           format: "A4",
           printBackground: true,
@@ -73,6 +102,10 @@ export async function renderProReportPdf(opts: {
         return Buffer.from(pdf);
       } catch (e) {
         lastErr = e;
+        console.warn(
+          `[pro-pdf] origin failed origin=${origin}`,
+          e instanceof Error ? e.message : e
+        );
       }
     }
     throw Object.assign(

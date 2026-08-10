@@ -288,7 +288,9 @@ export async function POST(request: NextRequest) {
   const legacySystemPrompt = useSectional
     ? null
     : buildHdReportSystemPrompt(clientName, "personal", { aboutOther });
-  const legacyEvidence = useSectional ? null : formatHdEvidence(chart.chart);
+  const legacyEvidence = useSectional
+    ? null
+    : formatHdEvidence(chart.chart, { placeLabel: chart.placeName });
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
@@ -399,6 +401,7 @@ export async function POST(request: NextRequest) {
           chart: chart.chart,
           clientName,
           aboutOther,
+          placeLabel: chart.placeName,
           maxSectionRetries: 2,
         })
       : null;

@@ -43,6 +43,9 @@ export async function createDelivery(
   }
   const c = await getCase(accountId, caseId);
   if (!c) throw Object.assign(new Error("case_not_found"), { status: 404 });
+  if (c.status === "archived") {
+    throw Object.assign(new Error("case_archived"), { status: 409 });
+  }
   const versions = await listVersions(caseId);
   assertCanDeliver(versions);
 
@@ -116,6 +119,43 @@ export async function revokeDelivery(
   return Boolean(rowCount);
 }
 
+/** Revoke every live mini-landing token for a case (archive / purge prep). */
+export async function revokeAllDeliveriesForCase(
+  accountId: string | number,
+  caseId: string | number,
+  actorUserId: string,
+  reason: "case.archive" | "case.purge" = "case.archive"
+): Promise<number> {
+  const { rows } = await proQuery<{ id: string }>(
+    `UPDATE pro.deliveries d
+     SET revoked_at = NOW()
+     FROM pro.cases c
+     WHERE d.case_id = c.id
+       AND c.id = $1
+       AND c.account_id = $2
+       AND d.revoked_at IS NULL
+     RETURNING d.id`,
+    [caseId, accountId]
+  );
+  if (rows.length) {
+    await writeAudit({
+      accountId,
+      actor: "user",
+      actorUserId,
+      action: "delivery.revoke_all",
+      target: String(caseId),
+      meta: { reason, count: rows.length, deliveryIds: rows.map((r) => r.id) },
+    });
+  }
+  await proQuery(
+    `UPDATE pro.client_threads
+     SET status = 'closed', closed_at = COALESCE(closed_at, NOW())
+     WHERE case_id = $1 AND account_id = $2 AND status = 'open'`,
+    [caseId, accountId]
+  );
+  return rows.length;
+}
+
 export async function resolveDeliveryByRawToken(raw: string): Promise<{
   delivery: ProDeliveryRow;
   accountId: string;
@@ -124,9 +164,13 @@ export async function resolveDeliveryByRawToken(raw: string): Promise<{
 } | null> {
   const hash = hashProToken(raw);
   const { rows } = await proQuery<
-    ProDeliveryRow & { account_id: string; client_id: string }
+    ProDeliveryRow & {
+      account_id: string;
+      client_id: string;
+      case_status: string;
+    }
   >(
-    `SELECT d.*, c.account_id, c.client_id
+    `SELECT d.*, c.account_id, c.client_id, c.status AS case_status
      FROM pro.deliveries d
      JOIN pro.cases c ON c.id = d.case_id
      WHERE d.token_hash = $1
@@ -136,6 +180,8 @@ export async function resolveDeliveryByRawToken(raw: string): Promise<{
   const row = rows[0];
   if (!row) return null;
   if (row.revoked_at) return null;
+  // Archived cases must not serve mini-landings even if revoke was missed.
+  if (row.case_status === "archived") return null;
   if (row.ttl_expires_at && new Date(row.ttl_expires_at).getTime() < Date.now()) {
     return null;
   }

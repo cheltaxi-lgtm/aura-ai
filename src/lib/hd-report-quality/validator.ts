@@ -83,6 +83,54 @@ const MOTOR_COUNT_WORDS: Record<number, RegExp> = {
   4: /(?:четырёх|четырех|четырьмя|четыре)\s+моторн/iu,
 };
 
+/**
+ * Contrast / negation window before a foreign-strategy or wrong-count hit.
+ * Catches «не ждите приглашения», «в отличие от Проектора (ждать…)», «не два моторных».
+ */
+export function isHdQualityContrastContext(
+  text: string,
+  matchIndex: number
+): boolean {
+  const before = text.slice(Math.max(0, matchIndex - 96), matchIndex);
+  // Avoid \\b — with Unicode it misses Cyrillic «Не ждите…».
+  if (/(?:^|[^\p{L}])не\s+$/iu.test(before)) return true;
+  if (
+    /(?:не\s+нужно|не\s+надо|не\s+следует|нет\s+нужды|не\s+требуется)\s+$/iu.test(
+      before
+    )
+  ) {
+    return true;
+  }
+  if (
+    /(?:в\s+отличие\s+от|в\s+отличии\s+от|вместо\s+(?:того\s+чтобы\s+)?|а\s+не\s+|без\s+того\s+чтобы\s+)/iu.test(
+      before
+    )
+  ) {
+    return true;
+  }
+  // Explanatory «стратегия Проектора — ждать…» — not reader advice.
+  // Do NOT treat bare «как у Проектора: ждите…» as contrast (that is bad advice).
+  if (
+    /стратеги[яи]\s+(?:проектор|генератор|манифестор|манифестирующ\w*|рефлектор)\w*/iu.test(
+      before
+    )
+  ) {
+    return true;
+  }
+  return false;
+}
+
+/** True if pattern matches outside contrast/negation windows. */
+export function regexHitsOutsideContrast(text: string, re: RegExp): boolean {
+  const flags = re.flags.includes("g") ? re.flags : `${re.flags}g`;
+  const global = new RegExp(re.source, flags);
+  let m: RegExpExecArray | null;
+  while ((m = global.exec(text)) !== null) {
+    if (!isHdQualityContrastContext(text, m.index)) return true;
+  }
+  return false;
+}
+
 /** Age constructions near HD mechanics (gates/channels/planets). */
 const AGE_NEAR_MECHANICS =
   /(?:в\s+\d{1,2}\s+лет|\d{1,2}\s*[–-]\s*\d{1,2}\s+год)[^.!?\n]{0,80}(?:ворот|канал|солнц|лун|сатурн|юпитер|уран|нептун|плутон|меркур|венер|марс)/iu;
@@ -192,7 +240,7 @@ export function validateHdReportText(
   if (typeof motorCount === "number" && motorCount >= 0) {
     for (const [nStr, re] of Object.entries(MOTOR_COUNT_WORDS)) {
       const n = Number(nStr);
-      if (n !== motorCount && re.test(body)) {
+      if (n !== motorCount && regexHitsOutsideContrast(body, re)) {
         findings.push({
           rule: "V4",
           detail: `wrong_motor_count_claimed:${n}_vs_engine_${motorCount}`,
@@ -244,7 +292,11 @@ export function validateHdReportText(
     for (const ang of HD_CROSS_ANGLE_ALL) {
       const isOwn = aliases.some((a) => a.toLowerCase() === ang.toLowerCase());
       if (isOwn) continue;
-      if (new RegExp(ang.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "iu").test(body)) {
+      const angRe = new RegExp(
+        ang.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+        "iu"
+      );
+      if (regexHitsOutsideContrast(body, angRe)) {
         findings.push({ rule: "V7", detail: `wrong_cross_angle:${ang}` });
       }
     }
@@ -288,10 +340,10 @@ export function validateHdReportText(
     }
   }
 
-  // V9 — strategy vs type
+  // V9 — strategy vs type (ignore contrast/negation: «не ждите приглашения»)
   if (contract) {
     for (const re of contract.foreignStrategyPatterns) {
-      if (re.test(body)) {
+      if (regexHitsOutsideContrast(body, re)) {
         findings.push({ rule: "V9", detail: `foreign_strategy:${re.source}` });
         break;
       }

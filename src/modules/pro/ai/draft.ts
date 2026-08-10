@@ -9,6 +9,7 @@ import {
   sectionsForType,
   stubPremiumBlocks,
 } from "./premium-sections";
+import { normalizeProPremiumBlocks } from "./pro-premium-normalize";
 
 export type DraftGenerateInput = {
   accountId: string | number;
@@ -33,9 +34,10 @@ function stubBlocks(input: DraftGenerateInput): ProReportBlock[] {
     return cards.map((c, i) => ({
       id: `b${i + 1}`,
       title: c.position || `Позиция ${i + 1}`,
-      body: `${c.name || "Карта"}: черновик ожидает включения PRO_AI_ENABLED. Вопрос: ${input.question || "—"}.`,
+      body: `${c.name || "Карта"}: черновик ожидает включения PRO_AI_ENABLED. Вопрос: ${input.question || "—"}.\n\nПрактика: один конкретный шаг по этой позиции на ближайшие 3 дня.`,
       position_ref: String(i + 1),
       ai_confidence: 0.4,
+      sectionKind: "zone" as const,
     }));
   }
   return [
@@ -70,10 +72,22 @@ function parseDraftJson(text: string): {
 function sanitizeBlocks(blocks: ProReportBlock[]): ProReportBlock[] {
   return blocks.map((b, i) => {
     const filtered = filterPractitionerOutput(String(b.body || ""));
+    const practiceRaw =
+      typeof b.practice === "string" ? b.practice.trim() : b.practice;
+    const practiceFiltered =
+      typeof practiceRaw === "string" && practiceRaw
+        ? filterPractitionerOutput(practiceRaw).text
+        : practiceRaw;
     return {
       id: b.id || `b${i + 1}`,
       title: String(b.title || `Блок ${i + 1}`),
       body: filtered.text,
+      practice:
+        typeof practiceFiltered === "string" && practiceFiltered
+          ? practiceFiltered
+          : practiceFiltered ?? null,
+      eyebrow: typeof b.eyebrow === "string" ? b.eyebrow : b.eyebrow ?? null,
+      sectionKind: b.sectionKind ?? null,
       position_ref: b.position_ref ?? null,
       ai_confidence:
         typeof b.ai_confidence === "number" ? b.ai_confidence : 0.55,
@@ -229,6 +243,26 @@ async function generatePremiumBatches(
   };
 }
 
+function finishDraft(
+  input: DraftGenerateInput,
+  result: {
+    blocks: ProReportBlock[];
+    uncertaintyMarks: { blockId: string; note: string }[];
+    model: string | null;
+    outcome: "ok" | "filtered" | "failed";
+    stub: boolean;
+  }
+) {
+  return {
+    ...result,
+    blocks: normalizeProPremiumBlocks(result.blocks, {
+      clientAlias: input.clientAlias,
+      focus: input.question,
+      caseType: input.type,
+    }),
+  };
+}
+
 export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
   blocks: ProReportBlock[];
   uncertaintyMarks: { blockId: string; note: string }[];
@@ -240,7 +274,7 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
   if (!isProAiEnabled()) {
     const blocks = stubBlocks(input);
     await logRun(input, null, "ok", started);
-    return {
+    return finishDraft(input, {
       blocks,
       uncertaintyMarks: blocks.map((b) => ({
         blockId: b.id,
@@ -249,36 +283,39 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
       model: null,
       outcome: "ok",
       stub: true,
-    };
+    });
   }
 
   if (input.type === "natal" || input.type === "matrix" || input.type === "hd") {
     try {
       const premium = await generatePremiumBatches(input, input.type);
       await logRun(input, premium.model, premium.outcome, started);
-      return {
+      return finishDraft(input, {
         blocks: premium.blocks,
         uncertaintyMarks: premium.uncertainty,
         model: premium.model,
         outcome: premium.outcome,
         stub: premium.stub,
-      };
+      });
     } catch {
       await logRun(input, null, "failed", started);
-      return {
+      return finishDraft(input, {
         blocks: stubBlocks(input),
         uncertaintyMarks: [{ blockId: "b1", note: "ai_exception" }],
         model: null,
         outcome: "failed",
         stub: true,
-      };
+      });
     }
   }
 
   const system = `Ты помощник практикующего эзотерика в Zovus Pro.
-Пиши на русском, обращение: ${input.addressForm === "ty" ? "на ты" : "на вы"}.
-Верни JSON: {"blocks":[{"id":"b1","title":"...","body":"...","ai_confidence":0.0}],"uncertainty":[{"blockId":"b1","note":"..."}]}.
-Без медицинских советов и гарантий исхода. Развлекательный тон, бережно.`;
+Пиши на русском, обращение ТОЛЬКО на «Вы» и по имени клиента (не «ты», не третье лицо).
+Если есть вопрос клиента — первый блок id="focus-answer", title="Ответ на ваш запрос", sectionKind="focus": 2–3 абзаца синтеза (не одна строка вопроса).
+Для каждой карты/позиции: механика → как проявляется → бытовой пример → поле "practice" (одно действие на 3–7 дней).
+Не повторяй формулировку запроса в начале каждого блока.
+Верни JSON: {"blocks":[{"id":"b1","title":"...","body":"...","practice":"...","sectionKind":"zone","ai_confidence":0.0}],"uncertainty":[{"blockId":"b1","note":"..."}]}.
+Минимум 120 слов на карту/позицию. Без медицинских советов и гарантий исхода. Бережный тон.`;
 
   const userPayload = {
     type: input.type,
@@ -297,7 +334,7 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
       inputParts: ["pro-draft", input.caseId, input.type, input.question],
       modelFamily: "paid",
       jsonObject: true,
-      maxTokens: 2500,
+      maxTokens: 4500,
       temperature: 0.7,
       validate: (text) => {
         const parsed = parseDraftJson(text);
@@ -310,25 +347,25 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
 
     if (!result.ok || !("content" in result) || !result.content) {
       await logRun(input, null, "failed", started);
-      return {
+      return finishDraft(input, {
         blocks: stubBlocks(input),
         uncertaintyMarks: [{ blockId: "b1", note: "ai_failed_fallback" }],
         model: result.ok ? result.provenance?.model ?? null : null,
         outcome: "failed",
         stub: true,
-      };
+      });
     }
 
     const parsed = parseDraftJson(result.content);
     if (!parsed) {
       await logRun(input, result.provenance?.model ?? null, "failed", started);
-      return {
+      return finishDraft(input, {
         blocks: stubBlocks(input),
         uncertaintyMarks: [{ blockId: "b1", note: "parse_failed" }],
         model: result.provenance?.model ?? null,
         outcome: "failed",
         stub: true,
-      };
+      });
     }
 
     const blocks = sanitizeBlocks(parsed.blocks);
@@ -340,22 +377,22 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
             .map((b) => ({ blockId: b.id, note: "low_confidence" }));
 
     await logRun(input, result.provenance?.model ?? null, "ok", started);
-    return {
+    return finishDraft(input, {
       blocks,
       uncertaintyMarks: uncertainty,
       model: result.provenance?.model ?? null,
       outcome: "ok",
       stub: false,
-    };
+    });
   } catch {
     await logRun(input, null, "failed", started);
-    return {
+    return finishDraft(input, {
       blocks: stubBlocks(input),
       uncertaintyMarks: [{ blockId: "b1", note: "ai_exception" }],
       model: null,
       outcome: "failed",
       stub: true,
-    };
+    });
   }
 }
 

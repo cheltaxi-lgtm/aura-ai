@@ -132,8 +132,15 @@ export async function setCaseInput(
      ON CONFLICT (case_id) DO UPDATE SET payload = EXCLUDED.payload, source = EXCLUDED.source`,
     [caseId, JSON.stringify(payload), source]
   );
+  // Never clobber generating / terminal delivery states — enqueue + worker
+  // both call setCaseInput to stash jobId/snapshot mid-flight.
   const { rows } = await proQuery<ProCaseRow>(
-    `UPDATE pro.cases SET status = 'input_ready', updated_at = NOW()
+    `UPDATE pro.cases
+     SET status = CASE
+           WHEN status IN ('generating', 'delivered', 'archived') THEN status
+           ELSE 'input_ready'
+         END,
+         updated_at = NOW()
      WHERE id = $1 AND account_id = $2 RETURNING *`,
     [caseId, accountId]
   );
@@ -233,4 +240,31 @@ export async function updateCaseStatus(
     [caseId, accountId, status]
   );
   return rows[0] ?? null;
+}
+
+/** Infer status after restore from archive (links stay revoked until re-deliver). */
+export async function inferRestoreStatus(
+  caseId: string | number
+): Promise<Exclude<ProCaseStatus, "archived" | "generating">> {
+  const versions = await listVersions(caseId);
+  if (versions.some((v) => v.source === "human")) return "edited";
+  if (versions.some((v) => v.source === "ai")) return "draft";
+  const { rows } = await proQuery<{ delivered_at: Date | null }>(
+    `SELECT delivered_at FROM pro.cases WHERE id = $1`,
+    [caseId]
+  );
+  if (rows[0]?.delivered_at) return "edited";
+  return "input_ready";
+}
+
+/** Permanently delete case (CASCADE: versions, input, deliveries, threads). */
+export async function hardDeleteCase(
+  accountId: string | number,
+  caseId: string | number
+): Promise<boolean> {
+  const { rowCount } = await proQuery(
+    `DELETE FROM pro.cases WHERE id = $1 AND account_id = $2`,
+    [caseId, accountId]
+  );
+  return rowCount === 1;
 }

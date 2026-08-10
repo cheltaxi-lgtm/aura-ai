@@ -97,7 +97,7 @@ export async function POST(request: NextRequest) {
   }
 
   const clientName = normalizePersonDisplayName(profileRow.name) || null;
-  const evidence = formatHdEvidence(chart.chart);
+  const evidence = formatHdEvidence(chart.chart, { placeLabel: chart.placeName });
   const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));
 
   // Cap prompt history: every ask re-sends evidence + full report text, so

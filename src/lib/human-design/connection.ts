@@ -373,7 +373,8 @@ export function formatHdConnectionEvidence(
   chartA: HdChart,
   chartB: HdChart,
   names: { a: string; b: string },
-  relation?: HdConnectionRelation | null
+  relation?: HdConnectionRelation | null,
+  places?: { a?: string | null; b?: string | null }
 ): string {
   const conn = analyzeHdConnection(chartA, chartB, names);
   const rel =
@@ -424,10 +425,10 @@ export function formatHdConnectionEvidence(
   if (!conn.frictionNotes.length) lines.push("- явного трения по механике мало");
   lines.push("");
   lines.push(`КАРТА ${names.a}:`);
-  lines.push(formatHdEvidence(chartA));
+  lines.push(formatHdEvidence(chartA, { placeLabel: places?.a ?? null }));
   lines.push("");
   lines.push(`КАРТА ${names.b}:`);
-  lines.push(formatHdEvidence(chartB));
+  lines.push(formatHdEvidence(chartB, { placeLabel: places?.b ?? null }));
   return lines.join("\n");
 }
 

@@ -61,7 +61,7 @@ function substantiveThresholds(params: GenerateValidatedNatalReportParams): {
     return { minSection: MIN_SECTION_TEXT_LENGTH, minReport: MIN_REPORT_TEXT_LENGTH };
   }
   const horizon = params.horizonDays ?? 30;
-  if (horizon <= 7) return { minSection: 160, minReport: 1_400 };
+  if (horizon <= 7) return { minSection: 240, minReport: 1_900 };
   if (horizon <= 30) return { minSection: 200, minReport: 1_800 };
   // Long horizons: prefer complete JSON over very long prose.
   return { minSection: 180, minReport: 1_600 };
@@ -337,7 +337,7 @@ function buildRepairMessage(errors: string[], params: GenerateValidatedNatalRepo
     "Исправь JSON и верни его полностью, без сокращений и markdown.",
     "В массиве sections должно быть ровно 8 объектов в порядке: summary, personality, relationships, career, resources, tensions, currentPeriod, recommendations.",
     params.reportType === "forecast" && (params.horizonDays ?? 30) <= 7
-      ? "Каждый раздел: 3–6 предложений, минимум 180 знаков, конкретные факторы из evidence и практический вывод."
+      ? "Каждый раздел: 4–7 предложений, минимум 300 знаков, конкретные факторы из evidence и практический вывод."
       : "Каждый раздел должен содержать глубокий персональный текст: 5–8 предложений, минимум 300 знаков, конкретные факторы из evidence и практический вывод.",
     "Каждый claim должен содержать непустой text и хотя бы один точный evidence ID из списка ниже.",
     "Удали универсальные фразы и смысловые повторы между разделами.",
@@ -384,7 +384,7 @@ function sectionRepairPrompt(
   const { minSection } = substantiveThresholds(params);
   const depthHint =
     params.reportType === "forecast" && (params.horizonDays ?? 30) <= 7
-      ? `персональный разбор объёмом 3–5 предложений и не менее ${minSection} знаков`
+      ? `персональный разбор объёмом 4–7 предложений и не менее ${minSection} знаков`
       : params.reportType === "forecast"
         ? `персональный разбор объёмом 3–6 предложений и не менее ${minSection} знаков`
         : `глубокий персональный разбор объёмом 5–8 предложений и не менее ${minSection} знаков`;
@@ -837,8 +837,10 @@ export async function generateValidatedNatalReport(
     }
   }
 
-  // Absolute fallback for forecasts: evidence-grounded salvage from any available JSON,
-  // even if some claims are slightly under the prose threshold (still real timing evidence).
+  // Absolute fallback for forecasts: evidence-grounded salvage from any available
+  // JSON — but still gated on the substantive floor. A paid forecast must never
+  // degrade to one stub sentence per section; fail closed instead (caller
+  // refunds and the user can regenerate).
   if (params.reportType === "forecast" && needsMoreWork() && raw) {
     try {
       const salvaged = salvageNatalReport(
@@ -848,12 +850,16 @@ export async function generateValidatedNatalReport(
         params.reportType,
         params.horizonDays
       );
-      if (salvaged.ok) {
+      if (salvaged.ok && isSubstantiveReport(salvaged.report, params)) {
         console.warn(
           `[natal-chart] ${params.reportType} accepted via final evidence salvage (model=${model})`
         );
         validation = salvaged;
         acceptedViaSalvage = true;
+      } else if (salvaged.ok) {
+        console.warn(
+          `[natal-chart] ${params.reportType} final salvage below substantive floor — failing closed (model=${model})`
+        );
       }
     } catch {
       /* keep prior validation errors */

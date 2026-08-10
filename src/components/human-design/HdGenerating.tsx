@@ -28,10 +28,11 @@ const PHASES: Record<HdGeneratingKind, string[]> = {
 };
 
 /** Soft ETA for the wait UI + progress ease. Sectional personal HD is
- * 12 batches + editor (~6–12 min with Kimi); composite similar. */
+ * 12 batched calls in concurrent waves + editor (~3–8 min with Kimi);
+ * composite similar. */
 const ETA_MIN: Record<HdGeneratingKind, { min: number; max: number }> = {
-  personal: { min: 6, max: 12 },
-  composite: { min: 5, max: 10 },
+  personal: { min: 3, max: 8 },
+  composite: { min: 3, max: 7 },
   center: { min: 0.5, max: 1 },
 };
 

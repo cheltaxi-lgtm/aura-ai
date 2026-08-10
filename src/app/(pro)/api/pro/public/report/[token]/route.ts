@@ -54,6 +54,16 @@ export async function GET(_req: Request, ctx: Ctx) {
     ...b,
     title: polishProReportTitle(String(b.title || "")),
     body: polishProReportPlainText(String(b.body || "")),
+    practice:
+      typeof b.practice === "string" && b.practice.trim()
+        ? polishProReportPlainText(b.practice)
+        : b.practice ?? null,
+    eyebrow:
+      typeof b.eyebrow === "string" && b.eyebrow.trim()
+        ? polishProReportTitle(b.eyebrow)
+        : b.eyebrow ?? null,
+    sectionKind: b.sectionKind ?? null,
+    arcanaNumber: b.arcanaNumber ?? null,
   }));
 
   const siteUrl = (

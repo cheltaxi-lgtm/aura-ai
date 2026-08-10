@@ -45,17 +45,19 @@ export default function ProResultCharts({
   }
   if (snapshot.matrix) {
     return (
-      <div className="pro-result-chart py-4">
-        <DestinyMatrixGrid
-          matrix={snapshot.matrix}
-          revealed={DESTINY_MATRIX_UI_SLOT_COUNT}
-        />
+      <div className="pro-result-chart pro-result-chart--matrix flex justify-center py-6">
+        <div className="pro-result-chart__frame w-full max-w-md">
+          <DestinyMatrixGrid
+            matrix={snapshot.matrix}
+            revealed={DESTINY_MATRIX_UI_SLOT_COUNT}
+          />
+        </div>
       </div>
     );
   }
   if (snapshot.hdChart) {
     return (
-      <div className="pro-result-chart flex justify-center py-4">
+      <div className="pro-result-chart pro-result-chart--hd flex justify-center py-6">
         <Bodygraph chart={snapshot.hdChart} />
       </div>
     );

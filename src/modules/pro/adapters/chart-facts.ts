@@ -74,6 +74,29 @@ export async function enrichBirthPlace(
     timeKnown: n.timeKnown,
   };
 
+  const city = n.birthPlace || n.birthCity;
+
+  // Prefer geocode timezone for the labeled city — guards silent
+  // Europe/Moscow stuck on a Berlin/Potsdam (etc.) place card.
+  if (city) {
+    const resolved = await resolveBirthPlace(city);
+    if (resolved) {
+      out.birthPlace = resolved.label;
+      out.birthCity = resolved.label;
+      out.latitude = resolved.latitude;
+      out.longitude = resolved.longitude;
+      out.timezone = resolved.timezone;
+      out.birthLat = resolved.latitude;
+      out.birthLon = resolved.longitude;
+      out.birthTz = resolved.timezone;
+      if (n.timezone && n.timezone !== resolved.timezone) {
+        out.geocodeWarning = "timezone_relabeled";
+      }
+      return out;
+    }
+    out.geocodeWarning = "place_unresolved";
+  }
+
   if (n.latitude != null && n.longitude != null && n.timezone) {
     out.latitude = n.latitude;
     out.longitude = n.longitude;
@@ -84,23 +107,6 @@ export async function enrichBirthPlace(
     return out;
   }
 
-  const city = n.birthPlace || n.birthCity;
-  if (!city) return out;
-
-  const resolved = await resolveBirthPlace(city);
-  if (!resolved) {
-    out.geocodeWarning = "place_unresolved";
-    return out;
-  }
-
-  out.birthPlace = resolved.label;
-  out.birthCity = resolved.label;
-  out.latitude = resolved.latitude;
-  out.longitude = resolved.longitude;
-  out.timezone = resolved.timezone;
-  out.birthLat = resolved.latitude;
-  out.birthLon = resolved.longitude;
-  out.birthTz = resolved.timezone;
   return out;
 }
 
@@ -320,20 +326,30 @@ export function computeHdFacts(payload: Record<string, unknown>): Record<string,
   if (!n.birthDate) {
     return { ok: false, error: "birth_date_required", warnings: ["Нет даты рождения"] };
   }
-  const tz = n.timezone || n.birthTz || "Europe/Moscow";
+  const tz = n.timezone || n.birthTz;
+  if (!tz) {
+    return {
+      ok: false,
+      error: "timezone_required",
+      birthDate: n.birthDate,
+      warnings: ["Нужен город рождения с часовым поясом (не угадываем Москву)"],
+    };
+  }
   try {
     const chart = calculateHdChart({
       birthDate: n.birthDate,
       birthTime: n.timeKnown ? n.birthTime ?? null : null,
       timezone: tz,
     });
-    const evidenceText = formatHdEvidence(chart);
+    const placeLabel = n.birthPlace || n.birthCity || null;
+    const evidenceText = formatHdEvidence(chart, { placeLabel });
     return {
       ok: true,
       birthDate: n.birthDate,
       birthTime: chart.birth?.time ?? null,
       timeKnown: chart.timeKnown,
       timezone: tz,
+      birthPlace: placeLabel,
       type: chart.type,
       authority: chart.authority,
       profile: chart.profile,

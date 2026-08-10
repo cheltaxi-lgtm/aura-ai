@@ -338,6 +338,25 @@ async function main() {
     tokenHashOk ? "delivery tokens stored as sha256 hash" : "token storage unsafe"
   );
 
+  const casesRouteSrc = readFileSync(
+    join(ROOT, "src/app/(pro)/api/pro/cases/[id]/route.ts"),
+    "utf8"
+  );
+  const archiveRevokes =
+    /revokeAllDeliveriesForCase/.test(delivSrc) &&
+    /case_status === ["']archived["']/.test(delivSrc) &&
+    /action === ["']archive["']/.test(casesRouteSrc) &&
+    /revokeAllDeliveriesForCase/.test(casesRouteSrc) &&
+    /action === ["']restore["']/.test(casesRouteSrc) &&
+    /action === ["']purge["']/.test(casesRouteSrc);
+  log(
+    "8b",
+    archiveRevokes ? "PASS" : "FAIL",
+    archiveRevokes
+      ? "archive revokes mini-landing + restore/purge actions"
+      : "archive does not revoke deliveries / missing restore|purge"
+  );
+
   // —— 15/17 billing idempotency + shadow
   const billingSrc = readFileSync(join(ROOT, "src/modules/pro/db/billing.ts"), "utf8");
   const billingOk =

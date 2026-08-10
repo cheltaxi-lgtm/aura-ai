@@ -16,8 +16,11 @@ export type HdWaitReport = {
 const POLL_MS = 3500;
 /** Let POST flip the row to pending before the first poll. */
 const FIRST_POLL_DELAY_MS = 1200;
-/** Hard cap on waiting: full multi-pass generation can take minutes, not hours. */
-const MAX_WAIT_MS = 15 * 60 * 1000;
+/**
+ * Hard cap on waiting. Sectional HD runs ~3–8 min; the worker watchdog reaps
+ * at 25 min and requeues, so the UI must outlive one full retry cycle.
+ */
+const MAX_WAIT_MS = 35 * 60 * 1000;
 /** Consecutive network/poll failures before surfacing an error. */
 const MAX_CONSECUTIVE_FAILURES = 6;
 
@@ -50,15 +53,25 @@ export function useHdReportWait(opts: {
   onDoneRef.current = opts.onDone;
   onErrorRef.current = opts.onError;
 
-  const startWait = useCallback((opts?: { baselineText?: string | null }) => {
-    genIdRef.current += 1;
-    seenPendingRef.current = false;
-    failCountRef.current = 0;
-    baselineTextRef.current =
-      typeof opts?.baselineText === "string" ? opts.baselineText.trim() : null;
-    setWaiting(true);
-    setStartedAt(Date.now());
-  }, []);
+  const startWait = useCallback(
+    (opts?: { baselineText?: string | null; startedAt?: number | null }) => {
+      genIdRef.current += 1;
+      seenPendingRef.current = false;
+      failCountRef.current = 0;
+      baselineTextRef.current =
+        typeof opts?.baselineText === "string" ? opts.baselineText.trim() : null;
+      setWaiting(true);
+      // Prefer the server-side pending-row timestamp so leaving the page does
+      // not reset the visible timer — total generation time survives reloads.
+      const fromServer = opts?.startedAt;
+      setStartedAt(
+        typeof fromServer === "number" && Number.isFinite(fromServer) && fromServer > 0
+          ? fromServer
+          : Date.now()
+      );
+    },
+    []
+  );
 
   const stopWait = useCallback(() => {
     seenPendingRef.current = false;
@@ -161,15 +174,15 @@ export function useHdReportWait(opts: {
           return;
         }
 
-        if (r.status === "error") {
+        if (r.status === "error" || r.status === "needs_regeneration") {
           if (cancelled || genIdRef.current !== genAtStart) return;
           seenPendingRef.current = false;
           baselineTextRef.current = null;
           setWaiting(false);
           setStartedAt(null);
           onErrorRef.current?.(
-            r.resumeFree
-              ? "Генерация не завершилась. Оплата сохранена — нажмите ещё раз, повторного списания не будет."
+            r.status === "needs_regeneration" || r.resumeFree
+              ? "Разбор требует доработки качества. Оплата сохранена — нажмите ещё раз, повторного списания не будет."
               : "Генерация не завершилась. Если руны списались — они уже возвращены; нажмите ещё раз для новой попытки."
           );
         }

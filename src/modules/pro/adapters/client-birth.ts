@@ -2,8 +2,10 @@
  * Map pro.clients birth columns ↔ case_inputs payload.
  */
 
+import { formatProDateOnly } from "./date-only";
+
 export type ProClientBirthSource = {
-  birth_date?: string | null;
+  birth_date?: string | Date | null;
   birth_time?: string | null;
   birth_place?: string | null;
   birth_lat?: number | null;
@@ -14,23 +16,24 @@ export type ProClientBirthSource = {
 export function casePayloadFromClientBirth(
   client: ProClientBirthSource | null | undefined
 ): Record<string, unknown> | null {
-  if (!client?.birth_date) return null;
+  const birthDate = formatProDateOnly(client?.birth_date);
+  if (!birthDate) return null;
   const time =
-    typeof client.birth_time === "string" && client.birth_time.trim()
+    typeof client?.birth_time === "string" && client.birth_time.trim()
       ? client.birth_time.trim().slice(0, 8)
       : null;
   return {
-    birthDate: String(client.birth_date).slice(0, 10),
+    birthDate,
     birthTime: time,
     timeKnown: Boolean(time),
-    birthPlace: client.birth_place ?? null,
-    birthCity: client.birth_place ?? null,
-    latitude: client.birth_lat ?? null,
-    longitude: client.birth_lon ?? null,
-    timezone: client.birth_tz ?? null,
-    birthLat: client.birth_lat ?? null,
-    birthLon: client.birth_lon ?? null,
-    birthTz: client.birth_tz ?? null,
+    birthPlace: client?.birth_place ?? null,
+    birthCity: client?.birth_place ?? null,
+    latitude: client?.birth_lat ?? null,
+    longitude: client?.birth_lon ?? null,
+    timezone: client?.birth_tz ?? null,
+    birthLat: client?.birth_lat ?? null,
+    birthLon: client?.birth_lon ?? null,
+    birthTz: client?.birth_tz ?? null,
   };
 }
 
@@ -42,10 +45,7 @@ export function clientBirthPatchFromPayload(payload: Record<string, unknown>): {
   birthLon: number | null;
   birthTz: string | null;
 } {
-  const date =
-    typeof payload.birthDate === "string" && payload.birthDate.trim()
-      ? payload.birthDate.trim().slice(0, 10)
-      : null;
+  const date = formatProDateOnly(payload.birthDate);
   const time =
     typeof payload.birthTime === "string" && payload.birthTime.trim()
       ? payload.birthTime.trim().slice(0, 8)

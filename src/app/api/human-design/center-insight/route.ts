@@ -124,7 +124,9 @@ export async function POST(request: NextRequest) {
     chart.subjectKind === "other" && chart.subjectName
       ? normalizePersonDisplayName(chart.subjectName) || null
       : normalizePersonDisplayName(profileRow.name) || null;
-  const evidence = formatHdEvidence(chart.chart);
+  const evidence = formatHdEvidence(chart.chart, {
+    placeLabel: chart.placeName,
+  });
   const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));
 
   const messages: ChatMessage[] = [

@@ -14,6 +14,7 @@ import { generateValidatedNatalReport } from "@/lib/natal/generate-validated-rep
 import {
   claimNatalInterpretationResilient,
   getOrComputeNatalChart,
+  invalidateNatalReportForRegenerate,
   releaseNatalInterpretationClaim,
   saveCurrentNatalInterpretation,
 } from "@/lib/services/natal-chart-service";
@@ -80,7 +81,9 @@ export async function POST(request: NextRequest) {
     tradition?: unknown;
     aiDataUseAcknowledged?: unknown;
     async?: unknown;
+    forceRegenerate?: unknown;
   };
+  const forceRegenerate = body.forceRegenerate === true;
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных натальных evidence внешней языковой модели." },
@@ -92,7 +95,11 @@ export async function POST(request: NextRequest) {
     return enqueueNatalAsyncJob({
       userId: ctx.profileUserId,
       kind: "natal_interpretation",
-      payload: { tradition: body.tradition, aiDataUseAcknowledged: true },
+      payload: {
+        tradition: body.tradition,
+        aiDataUseAcknowledged: true,
+        ...(forceRegenerate ? { forceRegenerate: true } : {}),
+      },
     });
   }
   const tradition: NatalTradition =
@@ -148,6 +155,15 @@ export async function POST(request: NextRequest) {
     user = await getUserById(ctx.profileUserId);
   } catch {
     return NextResponse.json({ error: "Не удалось подготовить трактовку." }, { status: 500 });
+  }
+
+  if (forceRegenerate) {
+    await invalidateNatalReportForRegenerate({
+      userId: ctx.profileUserId,
+      tradition,
+      reportType: "interpretation",
+      claimKey: tradition,
+    });
   }
 
   const claim = await claimNatalInterpretationResilient(

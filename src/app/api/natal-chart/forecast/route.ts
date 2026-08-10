@@ -19,6 +19,7 @@ import { generateValidatedNatalReport } from "@/lib/natal/generate-validated-rep
 import { parseTimingHorizon } from "@/lib/natal/timing";
 import {
   claimNatalInterpretationResilient,
+  invalidateNatalReportForRegenerate,
   getOrComputeNatalChart,
   releaseNatalInterpretationClaim,
   saveCurrentNatalInterpretation,
@@ -76,7 +77,9 @@ export async function POST(request: NextRequest) {
     horizon?: unknown;
     aiDataUseAcknowledged?: unknown;
     async?: unknown;
+    forceRegenerate?: unknown;
   };
+  const forceRegenerate = body.forceRegenerate === true;
   const horizon = parseTimingHorizon(String(body.horizon ?? ""));
   if (!horizon) {
     return NextResponse.json({ error: "Выберите горизонт: 7, 30, 90 или 365 дней." }, { status: 400 });
@@ -94,6 +97,7 @@ export async function POST(request: NextRequest) {
       payload: {
         horizon: body.horizon,
         aiDataUseAcknowledged: true,
+        ...(forceRegenerate ? { forceRegenerate: true } : {}),
       },
     });
   }
@@ -133,6 +137,14 @@ export async function POST(request: NextRequest) {
       { error: "Для выбранного периода нет расчётных событий. Попробуйте другой горизонт или обновите карту." },
       { status: 422 }
     );
+  }
+  if (forceRegenerate) {
+    await invalidateNatalReportForRegenerate({
+      userId: auth.profileUserId,
+      tradition: "western",
+      reportType,
+      claimKey,
+    });
   }
   const claim = await claimNatalInterpretationResilient(
     auth.profileUserId,

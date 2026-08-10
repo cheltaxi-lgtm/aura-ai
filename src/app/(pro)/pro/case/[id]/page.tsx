@@ -10,6 +10,9 @@ import {
   polishProReportPlainText,
   polishProReportTitle,
 } from "@/modules/pro/ai/report-plain";
+import { formatProDateOnly } from "@/modules/pro/adapters/date-only";
+import type { ProReportBlock } from "@/modules/pro/domain/types";
+import ProReportSections from "@/modules/pro/ui/ProReportSections";
 
 function formatElapsed(sec: number): string {
   const m = Math.floor(sec / 60);
@@ -30,7 +33,7 @@ const Bodygraph = dynamic(
   { ssr: false }
 );
 
-type Block = { id: string; title: string; body: string };
+type Block = ProReportBlock;
 type PlaceHit = {
   label: string;
   latitude: number;
@@ -86,18 +89,51 @@ export default function ProCasePage() {
             ...b,
             title: polishProReportTitle(b.title || ""),
             body: polishProReportPlainText(b.body || ""),
+            practice:
+              typeof b.practice === "string"
+                ? polishProReportPlainText(b.practice)
+                : b.practice ?? null,
+            eyebrow:
+              typeof b.eyebrow === "string"
+                ? polishProReportTitle(b.eyebrow)
+                : b.eyebrow ?? null,
           }))
         );
       }
       const p = json.input?.payload || {};
       const cl = json.client || {};
-      const birthDateVal = p.birthDate || cl.birth_date;
+      // Prefer valid YYYY-MM-DD; ignore legacy "Thu Jul 07" payload bugs.
+      const birthDateVal =
+        formatProDateOnly(p.birthDate) || formatProDateOnly(cl.birth_date);
       const birthTimeVal = p.birthTime || cl.birth_time;
       const placeVal = p.birthPlace || p.birthCity || cl.birth_place;
-      const lat = p.latitude ?? p.birthLat ?? cl.birth_lat;
-      const lon = p.longitude ?? p.birthLon ?? cl.birth_lon;
-      const tz = p.timezone || p.birthTz || cl.birth_tz;
-      if (birthDateVal) setBirthDate(String(birthDateVal).slice(0, 10));
+      const placeStr = placeVal ? String(placeVal) : "";
+      const clientPlace = cl.birth_place ? String(cl.birth_place) : "";
+      // Never glue a new place label onto stale client coords (Moscow-on-Potsdam).
+      const placeMatchesClient =
+        Boolean(placeStr) && placeStr.trim() === clientPlace.trim();
+      const latRaw = p.latitude ?? p.birthLat;
+      const lonRaw = p.longitude ?? p.birthLon;
+      const tzRaw = p.timezone || p.birthTz;
+      const lat =
+        typeof latRaw === "number"
+          ? latRaw
+          : placeMatchesClient
+            ? cl.birth_lat
+            : undefined;
+      const lon =
+        typeof lonRaw === "number"
+          ? lonRaw
+          : placeMatchesClient
+            ? cl.birth_lon
+            : undefined;
+      const tz =
+        typeof tzRaw === "string" && tzRaw
+          ? tzRaw
+          : placeMatchesClient
+            ? cl.birth_tz
+            : undefined;
+      if (birthDateVal) setBirthDate(birthDateVal);
       if (birthTimeVal) {
         setBirthTime(String(birthTimeVal).slice(0, 5));
         setTimeKnown(true);
@@ -112,6 +148,8 @@ export default function ProCasePage() {
           longitude: lon,
           timezone: String(tz),
         });
+      } else {
+        setSelectedPlace(null);
       }
       try {
         const cached = sessionStorage.getItem(deliverStorageKey);
@@ -126,6 +164,51 @@ export default function ProCasePage() {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [params.id]);
+
+  // Resume wait after refresh while premium job is still in flight.
+  useEffect(() => {
+    if (!data) return;
+    if (generating || busy) return;
+    if ((data.versions || []).length > 0) return;
+    const jobId = data.input?.payload?.premiumJobId;
+    if (typeof jobId !== "string" || !jobId) return;
+    // Only resume when status stayed generating (setCaseInput preserves it).
+    if (data.case?.status !== "generating") return;
+    let cancelled = false;
+    const caseType = String(data.case?.type || "");
+    const etaHint =
+      caseType === "hd"
+        ? " Обычно 6–12 минут — можно оставить вкладку открытой."
+        : " Обычно 2–5 минут.";
+    setBusy(true);
+    setGenerating(true);
+    setMsg(`Мастер готовит премиум-отчёт…${etaHint}`);
+    void (async () => {
+      try {
+        await waitForAsyncJob({
+          jobId,
+          storageKey: `pro-case-job-${params.id}`,
+          maxAttempts: 400,
+          pollIntervalMs: 2500,
+        });
+        if (cancelled) return;
+        setMsg("Отчёт готов");
+      } catch (e) {
+        if (cancelled) return;
+        setMsg(e instanceof Error ? e.message : "Генерация не завершилась");
+      } finally {
+        if (!cancelled) {
+          await load();
+          setBusy(false);
+          setGenerating(false);
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [data?.case?.id, data?.case?.status, data?.input?.payload?.premiumJobId, data?.versions?.length]);
 
   useEffect(() => {
     if (birthPlace.trim().length < 2) {
@@ -204,8 +287,20 @@ export default function ProCasePage() {
       await load();
       return json;
     }
+    if (action === "purge") {
+      setMsg("Удалено");
+      return json;
+    }
     await load();
-    setMsg(action === "save_human" ? "Отчёт принят" : "Сохранено");
+    if (typeof json.message === "string" && json.message) {
+      setMsg(json.message);
+    } else if (action === "save_human") {
+      setMsg("Отчёт принят");
+    } else if (action === "archive") {
+      setMsg("В архиве — ссылки клиента отключены");
+    } else {
+      setMsg("Сохранено");
+    }
     return json;
   }
 
@@ -214,18 +309,42 @@ export default function ProCasePage() {
   }
 
   function birthPayload() {
+    const prev = (data?.input?.payload || {}) as Record<string, unknown>;
+    const prevPlace = String(prev.birthPlace || prev.birthCity || "").trim();
+    const nextPlace = (selectedPlace?.label || birthPlace || "").trim();
+    // Place text edited without a new suggestion → drop stale coords/tz so
+    // server geocode (or timezone_required) cannot keep Moscow on Potsdam.
+    const placeEditedWithoutPick =
+      Boolean(nextPlace) &&
+      nextPlace !== prevPlace &&
+      !selectedPlace;
+    const lat = placeEditedWithoutPick
+      ? undefined
+      : selectedPlace?.latitude ??
+        (typeof prev.latitude === "number" ? prev.latitude : undefined) ??
+        (typeof prev.birthLat === "number" ? prev.birthLat : undefined);
+    const lon = placeEditedWithoutPick
+      ? undefined
+      : selectedPlace?.longitude ??
+        (typeof prev.longitude === "number" ? prev.longitude : undefined) ??
+        (typeof prev.birthLon === "number" ? prev.birthLon : undefined);
+    const tz = placeEditedWithoutPick
+      ? undefined
+      : selectedPlace?.timezone ||
+        (typeof prev.timezone === "string" ? prev.timezone : undefined) ||
+        (typeof prev.birthTz === "string" ? prev.birthTz : undefined);
     return {
       birthDate: birthDate || undefined,
       birthTime: timeKnown && birthTime ? birthTime : null,
       timeKnown: timeKnown && Boolean(birthTime),
       birthPlace: selectedPlace?.label || birthPlace || undefined,
       birthCity: selectedPlace?.label || birthPlace || undefined,
-      latitude: selectedPlace?.latitude,
-      longitude: selectedPlace?.longitude,
-      timezone: selectedPlace?.timezone,
-      birthLat: selectedPlace?.latitude,
-      birthLon: selectedPlace?.longitude,
-      birthTz: selectedPlace?.timezone,
+      latitude: lat,
+      longitude: lon,
+      timezone: tz,
+      birthLat: lat,
+      birthLon: lon,
+      birthTz: tz,
     };
   }
 
@@ -422,7 +541,9 @@ export default function ProCasePage() {
         <button
           type="button"
           className="btn-neon px-4 py-2 text-sm"
-          disabled={busy || generating}
+          disabled={
+            busy || generating || data?.case?.status === "archived"
+          }
           onClick={() => void generate()}
         >
           {generating
@@ -432,7 +553,9 @@ export default function ProCasePage() {
         <button
           type="button"
           className="btn-neon px-4 py-2 text-sm"
-          disabled={busy || !blocks.length}
+          disabled={
+            busy || !blocks.length || data?.case?.status === "archived"
+          }
           onClick={() => void patch("save_human", { blocks })}
         >
           Принять отчёт
@@ -443,6 +566,7 @@ export default function ProCasePage() {
             className="rounded border border-[#c9a24a]/30 bg-black/30 px-2 py-1"
             value={ttl}
             onChange={(e) => setTtl(e.target.value as typeof ttl)}
+            disabled={data?.case?.status === "archived"}
           >
             <option value="7">7 дней</option>
             <option value="30">30 дней</option>
@@ -453,23 +577,99 @@ export default function ProCasePage() {
         <button
           type="button"
           className="btn-neon px-4 py-2 text-sm"
-          disabled={busy || !blocks.length}
+          disabled={
+            busy || !blocks.length || data?.case?.status === "archived"
+          }
           onClick={() => void deliver()}
         >
           Выдать ссылку клиенту
         </button>
-        <button
-          type="button"
-          className="rounded border border-red-400/30 px-4 py-2 text-sm text-red-200/90"
-          disabled={busy || data?.case?.status === "archived"}
-          onClick={() => {
-            if (!confirm("Архивировать кейс? Он исчезнет из активного списка.")) return;
-            void patch("archive");
-          }}
-        >
-          В архив
-        </button>
+        {data?.case?.status === "archived" ? (
+          <>
+            <button
+              type="button"
+              className="btn-neon px-4 py-2 text-sm"
+              disabled={busy}
+              onClick={() => {
+                void (async () => {
+                  const json = await patch("restore");
+                  if (json?.ok) {
+                    setDeliverUrl(null);
+                    try {
+                      sessionStorage.removeItem(deliverStorageKey);
+                    } catch {
+                      /* ignore */
+                    }
+                  }
+                })();
+              }}
+            >
+              Восстановить
+            </button>
+            <button
+              type="button"
+              className="rounded border border-red-500/50 px-4 py-2 text-sm text-red-300"
+              disabled={busy}
+              onClick={() => {
+                if (
+                  !confirm(
+                    "Удалить кейс полностью? Отчёт, ссылки и версии исчезнут без возможности восстановления."
+                  )
+                ) {
+                  return;
+                }
+                void (async () => {
+                  const json = await patch("purge");
+                  if (json?.ok || json?.purged) {
+                    try {
+                      sessionStorage.removeItem(deliverStorageKey);
+                    } catch {
+                      /* ignore */
+                    }
+                    window.location.href = "/pro";
+                  }
+                })();
+              }}
+            >
+              Удалить полностью
+            </button>
+          </>
+        ) : (
+          <button
+            type="button"
+            className="rounded border border-red-400/30 px-4 py-2 text-sm text-red-200/90"
+            disabled={busy}
+            onClick={() => {
+              if (
+                !confirm(
+                  "Архивировать кейс? Ссылка мини-лендинга для клиента отключится, кейс исчезнет из активного списка."
+                )
+              ) {
+                return;
+              }
+              void (async () => {
+                const json = await patch("archive");
+                if (json?.ok) {
+                  setDeliverUrl(null);
+                  try {
+                    sessionStorage.removeItem(deliverStorageKey);
+                  } catch {
+                    /* ignore */
+                  }
+                }
+              })();
+            }}
+          >
+            В архив
+          </button>
+        )}
       </div>
+      {data?.case?.status === "archived" ? (
+        <p className="mt-2 text-xs text-amber-200/80">
+          Кейс в архиве — публичная ссылка отключена. Восстановление не
+          включает старые ссылки; выдайте заново при необходимости.
+        </p>
+      ) : null}
       {!blocks.length ? (
         <p className="mt-2 text-xs text-gray-500">
           Ссылка появится после генерации отчёта. «Выдать ссылку» также принимает
@@ -547,31 +747,17 @@ export default function ProCasePage() {
         </div>
       ) : null}
 
-      <div className="mt-8 space-y-4">
-        {blocks.map((b, idx) => (
-          <div key={b.id} className="rounded border border-[#c9a24a]/20 p-4">
-            <input
-              className="mb-2 w-full bg-transparent font-display text-lg text-[#e8c77e]"
-              value={b.title}
-              onChange={(e) => {
-                const next = [...blocks];
-                next[idx] = { ...b, title: e.target.value };
-                setBlocks(next);
-              }}
-            />
-            <textarea
-              className="w-full rounded bg-black/20 p-2 text-sm text-gray-200"
-              rows={8}
-              value={b.body}
-              onChange={(e) => {
-                const next = [...blocks];
-                next[idx] = { ...b, body: e.target.value };
-                setBlocks(next);
-              }}
-            />
-          </div>
-        ))}
-      </div>
+      <ProReportSections
+        blocks={blocks}
+        editable
+        onChange={(idx, patch) => {
+          const next = [...blocks];
+          const cur = next[idx];
+          if (!cur) return;
+          next[idx] = { ...cur, ...patch };
+          setBlocks(next);
+        }}
+      />
     </ProShell>
   );
 }

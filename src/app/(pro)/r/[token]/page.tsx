@@ -5,18 +5,15 @@ import { useParams } from "next/navigation";
 import ProResultCharts, {
   type ChartSnapshot,
 } from "@/modules/pro/ui/ProResultCharts";
-import {
-  polishProReportPlainText,
-  polishProReportTitle,
-} from "@/modules/pro/ai/report-plain";
-
-type ReportBlock = { id: string; title: string; body: string };
+import ProReportSections, {
+  type ProReportSectionBlock,
+} from "@/modules/pro/ui/ProReportSections";
 
 type ReportPayload = {
   brandName?: string;
   question?: string;
   caseType?: string;
-  blocks?: ReportBlock[];
+  blocks?: ProReportSectionBlock[];
   chartSnapshot?: ChartSnapshot | null;
   pdfAvailable?: boolean;
   siteUrl?: string;
@@ -156,7 +153,10 @@ export default function ProReportPublicPage() {
   }
 
   return (
-    <main className="pro-public pro-public--report pro-report-ready mx-auto max-w-2xl px-4 py-12">
+    <main
+      className="pro-public pro-public--report pro-report-ready mx-auto max-w-2xl px-4 py-12"
+      data-pro-report-loaded="1"
+    >
       <div className="pro-public__toolbar print:hidden flex flex-wrap items-start justify-between gap-3">
         <div>
           <p className="pro-public__eyebrow">Отчёт</p>
@@ -170,6 +170,7 @@ export default function ProReportPublicPage() {
           ) : null}
         </div>
         <div className="flex flex-wrap gap-2">
+          {report.pdfAvailable !== false ? (
           <button
             type="button"
             className="rounded-lg border border-[color:var(--pro-border)] px-4 py-2 text-sm text-[color:var(--pro-accent-light)] disabled:opacity-50"
@@ -178,6 +179,7 @@ export default function ProReportPublicPage() {
           >
             {pdfBusy ? "PDF…" : "Скачать PDF"}
           </button>
+          ) : null}
           <button
             type="button"
             className="rounded-lg border border-[color:var(--pro-border)] px-4 py-2 text-sm text-[color:var(--pro-accent-light)]"
@@ -189,23 +191,17 @@ export default function ProReportPublicPage() {
       </div>
 
       {report.question ? (
-        <p className="mt-4 text-sm text-gray-300">Запрос: {report.question}</p>
+        <div className="pro-report-question mt-5">
+          <p className="pro-report-card__eyebrow">Запрос</p>
+          <p className="mt-1 text-base text-[color:var(--pro-accent-light)]">
+            {report.question}
+          </p>
+        </div>
       ) : null}
 
       <ProResultCharts snapshot={report.chartSnapshot} />
 
-      <div className="pro-public__blocks mt-8 space-y-6">
-        {(report.blocks || []).map((b) => (
-          <section key={b.id} className="pro-panel pro-public__section">
-            <h2 className="pro-public__block-title text-xl">
-              {polishProReportTitle(b.title)}
-            </h2>
-            <p className="mt-2 whitespace-pre-wrap text-sm leading-relaxed text-gray-200">
-              {polishProReportPlainText(b.body)}
-            </p>
-          </section>
-        ))}
-      </div>
+      <ProReportSections blocks={report.blocks || []} />
       {report.disclaimer ? (
         <p className="mt-10 text-xs text-gray-500">{report.disclaimer}</p>
       ) : null}

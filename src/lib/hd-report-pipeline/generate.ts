@@ -24,6 +24,8 @@ export type HdSectionalGenerateOpts = {
   aboutOther?: boolean;
   focusQuestion?: string | null;
   extraSystem?: string | null;
+  /** Birth place label for LLM (engine uses timezone only). */
+  placeLabel?: string | null;
   maxSectionRetries?: number;
   /** Regenerate only these ## titles (keeps other sections from priorText). */
   onlyTitles?: string[] | null;
@@ -43,6 +45,17 @@ export type HdSectionalGenerateResult = {
 };
 
 type SectionDraft = { title: string; body: string; thesis: string };
+
+/**
+ * Batches run in concurrent waves: 12 sequential Kimi calls took 8–25 min and
+ * tripped the 25-min worker watchdog. Wave N sees theses of waves < N so the
+ * "не повторяй тезисы" hint still works across waves.
+ */
+function hdPipelineConcurrency(): number {
+  const raw = Number(process.env.HD_PIPELINE_CONCURRENCY);
+  if (Number.isFinite(raw) && raw >= 1) return Math.min(6, Math.floor(raw));
+  return 4;
+}
 
 function thesisOf(body: string): string {
   const plain = body.replace(/\s+/g, " ").trim();
@@ -69,7 +82,9 @@ function buildSystemPrompt(
     "",
     "Формат: для КАЖДОГО запрошенного раздела — строка `## ТочныйЗаголовок`, затем текст.",
     "Вступление (если запрошено) — без ##, просто проза в начале ответа.",
-    "Структура каждого раздела: механика → жизнь → 1–2 бытовых примера → что делать.",
+    "Структура каждого раздела: механика → жизнь → 1–2 бытовых примера.",
+    "Завершай каждый раздел (кроме Вступления) отдельной строкой ровно: `Практика: <одно конкретное действие>`.",
+    "Допустимый синоним хвоста — `Что делать:`; предпочтительно `Практика:`.",
     "Не повторяй тезисы из уже готовых разделов.",
     extraSystem?.trim() || "",
   ]
@@ -279,13 +294,14 @@ async function editorPass(
 
 function sectionTitlesHitByFindings(
   sections: SectionDraft[],
-  findings: HdQualityFinding[]
+  findings: HdQualityFinding[],
+  contract: HdLockedContract
 ): Set<string> {
   const hit = new Set<string>();
   for (const f of findings) {
     if (f.rule === "V2" && f.detail.startsWith("duplicate_title:")) {
       const title = f.detail.slice("duplicate_title:".length).split("×")[0];
-      if (title) hit.add(title);
+      if (title) hit.add(title.toLowerCase());
     }
     if (f.rule === "V6" && f.detail.startsWith("section_too_short:")) {
       const title = f.detail.slice("section_too_short:".length).split(":")[0];
@@ -294,15 +310,32 @@ function sectionTitlesHitByFindings(
     if (f.rule === "V6" && f.detail === "missing_focus_answer_section") {
       hit.add("ответ на ваш запрос");
     }
+    if (f.rule === "V9") hit.add("стратегия");
+    if (f.rule === "V4" && f.detail.includes("wrong_type")) {
+      hit.add("тип и его особенности");
+    }
+    if (f.rule === "V4" && f.detail.includes("motor")) {
+      hit.add("девять центров");
+      hit.add("определённость и самодостаточность");
+    }
+    if (f.rule === "V7") hit.add("инкарнационный крест");
+    if (f.rule === "V8") hit.add("скрытые разделы карты");
   }
   for (const s of sections) {
     const local = validateHdReportText(
       s.title === "Вступление" ? s.body : `## ${s.title}\n${s.body}`,
-      { requireFocusAnswer: false, engineTypeRu: null }
+      {
+        requireFocusAnswer: false,
+        engineTypeRu: contract.typeRu,
+        motorCount: contract.motorCentersDefinedRu.length,
+        contract,
+      }
     );
     if (
       local.findings.some((x) =>
-        ["V1", "V3", "V5", "V9", "V10", "V11", "V12"].includes(x.rule)
+        ["V1", "V3", "V4", "V5", "V7", "V8", "V9", "V10", "V11", "V12"].includes(
+          x.rule
+        )
       )
     ) {
       hit.add(s.title.toLowerCase());
@@ -373,8 +406,9 @@ export async function generateHdReportSectional(
   opts: HdSectionalGenerateOpts
 ): Promise<HdSectionalGenerateResult> {
   const started = Date.now();
-  const contract = buildHdLockedContract(opts.chart);
-  const evidence = formatHdEvidence(opts.chart);
+  const birthOpts = { placeLabel: opts.placeLabel ?? null };
+  const contract = buildHdLockedContract(opts.chart, birthOpts);
+  const evidence = formatHdEvidence(opts.chart, birthOpts);
   const aboutOther = Boolean(opts.aboutOther);
   const system = buildSystemPrompt(
     contract,
@@ -404,34 +438,44 @@ export async function generateHdReportSectional(
   }
 
   const sections: SectionDraft[] = [];
+  /** Canonical title → latest draft; sections are re-ordered canonically later. */
+  const byTitle = new Map<string, SectionDraft>();
+  const currentPrior = (): SectionDraft[] => [
+    ...byTitle.values(),
+    ...[...priorMap.values()].filter((p) => !byTitle.has(p.title)),
+  ];
 
+  // Batches to (re)generate; skipped ones keep prior sections.
+  const batchesToRun: Array<{
+    id: string;
+    titles: readonly HdPipelineSectionTitle[];
+    maxTokens: number;
+  }> = [];
   for (const batch of HD_PIPELINE_BATCHES) {
     const titles = batch.titles.filter((t) => {
       if (!only.length) return true;
       return only.includes(t.toLowerCase());
     });
     if (!titles.length) {
-      // Keep prior sections for skipped batches
       for (const t of batch.titles) {
         const prev = priorMap.get(t.toLowerCase());
-        if (prev) sections.push(prev);
+        if (prev) byTitle.set(prev.title, prev);
       }
       continue;
     }
+    batchesToRun.push({ id: batch.id, titles: titles as readonly HdPipelineSectionTitle[], maxTokens: batch.maxTokens });
+  }
 
-    // For partial regen, seed prior from already kept sections + priorMap
-    const prior = [
-      ...sections,
-      ...[...priorMap.values()].filter(
-        (p) => !sections.some((s) => s.title === p.title)
-      ),
-    ];
-
+  const runOneBatch = async (batch: {
+    titles: readonly HdPipelineSectionTitle[];
+    maxTokens: number;
+  }): Promise<SectionDraft[]> => {
+    const prior = currentPrior();
     let { drafts, calls, usage } = await generateBatch({
       system,
       evidence,
       contract,
-      titles: titles as readonly HdPipelineSectionTitle[],
+      titles: batch.titles,
       focus,
       prior,
       maxTokens: batch.maxTokens,
@@ -449,7 +493,7 @@ export async function generateHdReportSectional(
         contract,
         titles: thin.map((t) => t.title) as readonly HdPipelineSectionTitle[],
         focus,
-        prior: [...sections, ...drafts.filter((d) => d.body.length >= 40)],
+        prior: [...prior, ...drafts.filter((d) => d.body.length >= 40)],
         maxTokens: batch.maxTokens,
         modelOverride: modelId,
       });
@@ -461,10 +505,22 @@ export async function generateHdReportSectional(
         return d;
       });
     }
+    return drafts;
+  };
 
-    // Merge: for full run push all batch titles in order; for partial keep others from prior
+  const concurrency = hdPipelineConcurrency();
+  for (let i = 0; i < batchesToRun.length; i += concurrency) {
+    const wave = batchesToRun.slice(i, i + concurrency);
+    const waveDrafts = await Promise.all(wave.map((b) => runOneBatch(b)));
+    for (const drafts of waveDrafts) {
+      for (const d of drafts) byTitle.set(d.title, d);
+    }
+  }
+
+  // Assemble in canonical order; partial regen keeps prior for missing titles.
+  for (const batch of HD_PIPELINE_BATCHES) {
     for (const t of batch.titles) {
-      const draft = drafts.find((d) => d.title === t);
+      const draft = byTitle.get(t);
       if (draft) sections.push(draft);
       else {
         const prev = priorMap.get(t.toLowerCase());
@@ -481,33 +537,45 @@ export async function generateHdReportSectional(
   }
 
   // Fill missing/thin batches before editor (editor must not invent sections).
-  for (const batch of HD_PIPELINE_BATCHES) {
-    const thinTitles = batch.titles.filter((t) => {
+  const fillBatches = HD_PIPELINE_BATCHES.map((batch) => ({
+    batch,
+    thinTitles: batch.titles.filter((t) => {
       const s = sections.find((x) => x.title === t);
       return !s || s.body.trim().length < 80;
-    });
-    if (!thinTitles.length) continue;
-    const prior = sections.filter((s) => !thinTitles.includes(s.title as HdPipelineSectionTitle));
-    const { drafts, calls, usage } = await generateBatch({
-      system,
-      evidence,
-      contract,
-      titles: thinTitles as readonly HdPipelineSectionTitle[],
-      focus,
-      prior,
-      maxTokens: batch.maxTokens,
-      modelOverride: modelId,
-    });
-    llmCalls += calls;
-    addUsage(usage);
-    for (const d of drafts) {
-      const idx = sections.findIndex((s) => s.title === d.title);
-      if (idx >= 0) {
-        if (d.body.trim().length > (sections[idx]?.body.trim().length ?? 0)) {
-          sections[idx] = d;
+    }),
+  })).filter((entry) => entry.thinTitles.length > 0);
+  if (fillBatches.length) {
+    const priorSnapshot = [...sections];
+    const filled = await Promise.all(
+      fillBatches.map(async ({ batch, thinTitles }) => {
+        const prior = priorSnapshot.filter(
+          (s) => !thinTitles.includes(s.title as HdPipelineSectionTitle)
+        );
+        const { drafts, calls, usage } = await generateBatch({
+          system,
+          evidence,
+          contract,
+          titles: thinTitles as readonly HdPipelineSectionTitle[],
+          focus,
+          prior,
+          maxTokens: batch.maxTokens,
+          modelOverride: modelId,
+        });
+        llmCalls += calls;
+        addUsage(usage);
+        return drafts;
+      })
+    );
+    for (const drafts of filled) {
+      for (const d of drafts) {
+        const idx = sections.findIndex((s) => s.title === d.title);
+        if (idx >= 0) {
+          if (d.body.trim().length > (sections[idx]?.body.trim().length ?? 0)) {
+            sections[idx] = d;
+          }
+        } else {
+          sections.push(d);
         }
-      } else {
-        sections.push(d);
       }
     }
   }
@@ -547,24 +615,34 @@ export async function generateHdReportSectional(
   let round = 0;
   while (!quality.ok && round < maxRetries) {
     round++;
-    const bad = sectionTitlesHitByFindings(sections, quality.findings);
+    const bad = sectionTitlesHitByFindings(sections, quality.findings, contract);
     if (bad.size === 0) break;
-    for (const batch of HD_PIPELINE_BATCHES) {
-      const titles = batch.titles.filter((t) => bad.has(t.toLowerCase()));
-      if (!titles.length) continue;
-      const prior = sections.filter((s) => !titles.includes(s.title as HdPipelineSectionTitle));
-      const { drafts, calls, usage } = await generateBatch({
-        system,
-        evidence,
-        contract,
-        titles: titles as readonly HdPipelineSectionTitle[],
-        focus,
-        prior,
-        maxTokens: batch.maxTokens,
-        modelOverride: modelId,
-      });
-      llmCalls += calls;
-      addUsage(usage);
+    const retryBatches = HD_PIPELINE_BATCHES.map((batch) => ({
+      batch,
+      titles: batch.titles.filter((t) => bad.has(t.toLowerCase())),
+    })).filter((entry) => entry.titles.length > 0);
+    const priorSnapshot = [...sections];
+    const retried = await Promise.all(
+      retryBatches.map(async ({ batch, titles }) => {
+        const prior = priorSnapshot.filter(
+          (s) => !titles.includes(s.title as HdPipelineSectionTitle)
+        );
+        const { drafts, calls, usage } = await generateBatch({
+          system,
+          evidence,
+          contract,
+          titles: titles as readonly HdPipelineSectionTitle[],
+          focus,
+          prior,
+          maxTokens: batch.maxTokens,
+          modelOverride: modelId,
+        });
+        llmCalls += calls;
+        addUsage(usage);
+        return drafts;
+      })
+    );
+    for (const drafts of retried) {
       for (const d of drafts) {
         const idx = sections.findIndex((s) => s.title === d.title);
         if (idx >= 0) sections[idx] = d;

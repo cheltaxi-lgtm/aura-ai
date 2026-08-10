@@ -1122,14 +1122,19 @@ export async function POST(request: NextRequest) {
                   throw new Error("matrix_arcana_mismatch");
                 }
                 matrixDocumentForSave = locked;
-                matrixContent = renderMatrixReadingMarkdown(locked);
-              }
-              matrixContent = canonicalizeArcanaNamesInText(matrixContent);
-              if (!matrixReadingMatchesEngine(matrixContent, matrix, toolId)) {
-                console.error(
-                  `[matrix-save] arcana fidelity mismatch user=${authed.profileUserId} tool=${toolId}`
+                matrixContent = canonicalizeArcanaNamesInText(
+                  renderMatrixReadingMarkdown(locked)
                 );
-                throw new Error("matrix_arcana_mismatch");
+                // Document already validated — do not re-fail on brittle markdown
+                // heading geometry (LLM prose may still contain extra N—Name pairs).
+              } else {
+                matrixContent = canonicalizeArcanaNamesInText(matrixContent);
+                if (!matrixReadingMatchesEngine(matrixContent, matrix, toolId)) {
+                  console.error(
+                    `[matrix-save] arcana fidelity mismatch user=${authed.profileUserId} tool=${toolId}`
+                  );
+                  throw new Error("matrix_arcana_mismatch");
+                }
               }
             }
             reading = matrixContent;
@@ -1145,6 +1150,8 @@ export async function POST(request: NextRequest) {
               runeCost: billingCharge?.spentRunes ?? tool.cost,
               chargeTransactionId: billingCharge?.transactionId,
               sessionId,
+              // Buy-once reuse returns already_saved; forceRegenerate must overwrite.
+              overwrite: forceRegenerate,
               structuredData: {
                 ...structuredBase,
                 ...(matrixDocumentForSave
@@ -1509,15 +1516,17 @@ export async function POST(request: NextRequest) {
     }
 
     if (lockedResult.kind === "failed") {
+      // spentRunes may already be 0 after in-handler rollback — still mark refunded
+      // when the async job ledger was rolled back (billing_state=refunded).
       await trackWorkerJobFailed(request, "Reading generation failed", {
-        refunded: spentRunes > 0,
+        refunded: true,
         errorCode: "generation_failed",
       });
       return NextResponse.json(
         {
           error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
           code: "generation_failed",
-          refunded: spentRunes > 0,
+          refunded: true,
         },
         { status: 502 }
       );

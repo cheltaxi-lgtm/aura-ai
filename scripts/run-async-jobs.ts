@@ -14,6 +14,7 @@ import {
   resolveWorkerKindsFromEnv,
 } from "../src/lib/async-job-registry";
 import {
+  ASYNC_JOB_WATCHDOG_MS_DEFAULT,
   claimAsyncJobs,
   completeAsyncJob,
   failAsyncJobAndRefundIfCharged,
@@ -22,7 +23,9 @@ import {
   markAsyncJobNeedsRegeneration,
   reapOrphanedRunningAsyncJobs,
   reapStaleRunningAsyncJobs,
+  reapWatchdogRunningAsyncJobs,
   rescheduleAsyncJob,
+  touchAsyncJobHeartbeat,
   type AsyncJobKind,
   type AsyncJobRow,
 } from "../src/lib/async-jobs";
@@ -139,8 +142,21 @@ const STALE_RUNNING_MS = Math.max(
   Number(process.env.ASYNC_JOB_STALE_RUNNING_MS) || LONGEST_KIND_TIMEOUT_MS + 60_000
 );
 const ORPHAN_MIN_AGE_MS = Math.max(
-  30_000,
+  5_000,
   Number(process.env.ASYNC_JOB_ORPHAN_MIN_AGE_MS) || 90_000
+);
+/** Startup orphan sweep — reclaim jobs from the previous PID after deploy/restart. */
+const ORPHAN_STARTUP_MIN_AGE_MS = Math.max(
+  1_000,
+  Number(process.env.ASYNC_JOB_ORPHAN_STARTUP_MIN_AGE_MS) || 5_000
+);
+const WATCHDOG_MS = Math.max(
+  5 * 60_000,
+  Number(process.env.ASYNC_JOB_WATCHDOG_MS) || ASYNC_JOB_WATCHDOG_MS_DEFAULT
+);
+const HEARTBEAT_MS = Math.max(
+  15_000,
+  Number(process.env.ASYNC_JOB_HEARTBEAT_MS) || 60_000
 );
 const TIMEOUT_GRACE_MS = Math.max(
   5_000,
@@ -171,12 +187,30 @@ const baseUrl = assertLoopbackAppUrl(
 
 let stopping = false;
 const inFlight = new Set<Promise<void>>();
-const reportInFlight = new Set<Promise<void>>();
+/** Report-lane occupancy by job id — never survives process restart; reconciled vs DB. */
+const reportInFlightJobs = new Map<string, Promise<void>>();
 const otherInFlight = new Set<Promise<void>>();
 let memoryDrain: Promise<void> | null = null;
 
 function sleep(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+/**
+ * Drop slot reservations for jobs this worker no longer owns (reaped / completed
+ * elsewhere). Prevents a hung LLM promise from blocking concurrency after DB requeue.
+ */
+async function reconcileReportSlots(): Promise<void> {
+  if (reportInFlightJobs.size === 0) return;
+  for (const jobId of [...reportInFlightJobs.keys()]) {
+    const job = await getAsyncJobById(jobId).catch(() => null);
+    if (!job || job.status !== "running" || job.worker_id !== workerId) {
+      reportInFlightJobs.delete(jobId);
+      console.warn(
+        `[async-jobs] freed report slot job=${jobId} dbStatus=${job?.status ?? "missing"} dbWorker=${job?.worker_id ?? "-"}`
+      );
+    }
+  }
 }
 
 async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
@@ -260,7 +294,18 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
     await finalizeAsyncJobMetrics(job.id, { generationMs: Date.now() - started });
     const latest = await getAsyncJobById(job.id);
     if (latest?.status === "running") {
-      await completeAsyncJob(job.id, data);
+      const completed = await completeAsyncJob(job.id, data);
+      if (!completed) {
+        const again = await getAsyncJobById(job.id);
+        if (again?.status === "running") {
+          await failAsyncJobAndRefundIfCharged(
+            job.id,
+            "Worker could not finalize job after successful generation",
+            "complete_rejected"
+          );
+          return;
+        }
+      }
     }
     await maybeNotifyReportReady(job, data);
   } catch (error) {
@@ -295,13 +340,25 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
 
 async function runJobInProcess(job: AsyncJobRow): Promise<void> {
   const started = Date.now();
+  const beat = () => {
+    void touchAsyncJobHeartbeat(job.id, workerId).catch((err) => {
+      console.warn(
+        `[async-jobs] heartbeat failed job=${job.id}:`,
+        err instanceof Error ? err.message : err
+      );
+    });
+  };
+  beat();
+  const heartbeat = setInterval(beat, HEARTBEAT_MS);
   try {
     const outcome = await runReportJobInProcess(job);
     const latest = await getAsyncJobById(job.id);
     if (
       latest?.status === "completed" ||
       latest?.status === "failed" ||
-      latest?.status === "needs_regeneration"
+      latest?.status === "needs_regeneration" ||
+      latest?.status === "pending" ||
+      latest?.worker_id !== workerId
     ) {
       return;
     }
@@ -309,7 +366,21 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       recordReportProviderSuccess();
       await finalizeAsyncJobMetrics(job.id, { generationMs: Date.now() - started });
       if (latest?.status === "running") {
-        await completeAsyncJob(job.id, outcome.result);
+        const completed = await completeAsyncJob(job.id, outcome.result);
+        if (!completed) {
+          const again = await getAsyncJobById(job.id);
+          if (again?.status === "running") {
+            console.error(
+              `[async-jobs] complete rejected job=${job.id} billing=${again.billing_state} — forcing fail`
+            );
+            await failAsyncJobAndRefundIfCharged(
+              job.id,
+              "Worker could not finalize job after successful generation",
+              "complete_rejected"
+            );
+            return;
+          }
+        }
       }
       await maybeNotifyReportReady(job, outcome.result);
       return;
@@ -383,6 +454,8 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
     }
     recordReportProviderFailure("other");
     await failAsyncJobAndRefundIfCharged(job.id, msg, "generation_failed");
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 
@@ -398,14 +471,24 @@ async function runJob(job: AsyncJobRow): Promise<void> {
 
 function trackLane(
   lane: "report" | "other",
+  job: AsyncJobRow,
   promise: Promise<void>
 ): Promise<void> {
   inFlight.add(promise);
-  const set = lane === "report" ? reportInFlight : otherInFlight;
-  set.add(promise);
+  if (lane === "report") {
+    reportInFlightJobs.set(job.id, promise);
+  } else {
+    otherInFlight.add(promise);
+  }
   return promise.finally(() => {
     inFlight.delete(promise);
-    set.delete(promise);
+    if (lane === "report") {
+      if (reportInFlightJobs.get(job.id) === promise) {
+        reportInFlightJobs.delete(job.id);
+      }
+    } else {
+      otherInFlight.delete(promise);
+    }
   });
 }
 
@@ -425,7 +508,11 @@ function scheduleMemoryDrain(): void {
   })().finally(() => {
     memoryDrain = null;
   });
-  void trackLane("other", memoryDrain);
+  void trackLane(
+    "other",
+    { id: "memory-drain" } as AsyncJobRow,
+    memoryDrain
+  );
 }
 
 async function claimLane(
@@ -454,7 +541,16 @@ async function claimLane(
       kinds: [...kinds],
     });
     for (const job of jobs) {
-      void trackLane(lane, runJob(job));
+      console.log(
+        `[async-jobs] claim lane=${lane} kind=${job.kind} job=${job.id} attempt=${job.attempt_count}`
+      );
+      void trackLane(
+        lane,
+        job,
+        runJob(job).finally(() => {
+          console.log(`[async-jobs] finish lane=${lane} kind=${job.kind} job=${job.id}`);
+        })
+      );
     }
   } catch (error) {
     console.error(`[async-jobs] ${lane} claim failed:`, error);
@@ -465,9 +561,24 @@ async function main(): Promise<void> {
   if (!process.env.ASYNC_JOB_WORKER_SECRET) {
     throw new Error("ASYNC_JOB_WORKER_SECRET is required");
   }
+  // reportInFlightJobs is process-local — always empty on start.
   console.log(
-    `[async-jobs] worker ${workerId} polling ${baseUrl} inprocess=${isAsyncReportInProcessEnabled()} reportConcurrency=${REPORT_CONCURRENCY} otherConcurrency=${OTHER_CONCURRENCY} proxy=${process.env.OPENROUTER_HTTPS_PROXY || "NONE"} reportKinds=${REPORT_KINDS.join(",")} otherKinds=${OTHER_KINDS.join(",")}`
+    `[async-jobs] worker ${workerId} polling ${baseUrl} inprocess=${isAsyncReportInProcessEnabled()} reportConcurrency=${REPORT_CONCURRENCY} otherConcurrency=${OTHER_CONCURRENCY} proxy=${process.env.OPENROUTER_HTTPS_PROXY || "NONE"} reportSlots=0/${REPORT_CONCURRENCY} watchdogMs=${WATCHDOG_MS} reportKinds=${REPORT_KINDS.join(",")} otherKinds=${OTHER_KINDS.join(",")}`
   );
+  try {
+    const startupOrphans = await reapOrphanedRunningAsyncJobs({
+      currentWorkerId: workerId,
+      minAgeMs: ORPHAN_STARTUP_MIN_AGE_MS,
+      kinds: [...WORKER_KINDS],
+    });
+    if (startupOrphans) {
+      console.warn(
+        `[async-jobs] startup orphan reclaim count=${startupOrphans}`
+      );
+    }
+  } catch (error) {
+    console.error("[async-jobs] startup orphan reclaim failed:", error);
+  }
   await runProviderProbe("startup");
   if (lastProviderHealth && !lastProviderHealth.ok) {
     console.error(
@@ -483,6 +594,7 @@ async function main(): Promise<void> {
   probeTimer.unref();
   while (!stopping) {
     try {
+      await reconcileReportSlots();
       const orphans = await reapOrphanedRunningAsyncJobs({
         currentWorkerId: workerId,
         minAgeMs: ORPHAN_MIN_AGE_MS,
@@ -491,17 +603,32 @@ async function main(): Promise<void> {
       const reaped = await reapStaleRunningAsyncJobs({
         staleAfterMs: STALE_RUNNING_MS,
         kinds: [...WORKER_KINDS],
+        currentWorkerId: workerId,
       });
-      if (orphans || reaped.requeued || reaped.failed) {
+      const watchdog = await reapWatchdogRunningAsyncJobs({
+        maxRunningMs: WATCHDOG_MS,
+        kinds: [...WORKER_KINDS],
+      });
+      if (
+        orphans ||
+        reaped.requeued ||
+        reaped.failed ||
+        watchdog.requeued ||
+        watchdog.failed
+      ) {
         console.warn(
-          `[async-jobs] reaper orphans=${orphans} requeued=${reaped.requeued} failed=${reaped.failed}`
+          `[async-jobs] reaper orphans=${orphans} staleRequeued=${reaped.requeued} staleFailed=${reaped.failed} watchdogRequeued=${watchdog.requeued} watchdogFailed=${watchdog.failed} reportSlots=${reportInFlightJobs.size}/${REPORT_CONCURRENCY}`
         );
+        await reconcileReportSlots();
       }
     } catch (error) {
       console.error("[async-jobs] reaper failed:", error);
     }
 
-    const reportSlots = Math.max(0, REPORT_CONCURRENCY - reportInFlight.size);
+    const reportSlots = Math.max(
+      0,
+      REPORT_CONCURRENCY - reportInFlightJobs.size
+    );
     const otherSlots = Math.max(0, OTHER_CONCURRENCY - otherInFlight.size);
     await claimLane("report", REPORT_KINDS, reportSlots);
     await claimLane("other", OTHER_KINDS, otherSlots);

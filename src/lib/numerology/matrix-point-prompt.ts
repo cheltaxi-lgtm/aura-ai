@@ -130,6 +130,7 @@ export function buildMatrixPlainFinale(
   const body = getArcanaEntry(matrix.body.number);
   const purpose = getArcanaEntry(matrix.purpose.number);
   const money = getArcanaEntry(matrix.money.number);
+  const love = getArcanaEntry(matrix.relationships.number);
   const year = getArcanaEntry(matrix.yearArcana.number);
   const who = name.trim() || "друг";
   const subject = (opts?.subjectName ?? "").trim() || "этот человек";
@@ -145,6 +146,9 @@ export function buildMatrixPlainFinale(
       `Кармический хвост — ${matrix.karmicTail.map((p) => `${p.number} ${p.arcanaName}`).join(" → ")}.`,
       `Деньги — через ${money?.title ?? matrix.money.arcanaName}: ${
         money?.money ?? matrix.money.arcanaMeaning
+      }`,
+      `Отношения — через ${love?.title ?? matrix.relationships.arcanaName}: ${
+        love?.love ?? matrix.relationships.arcanaMeaning
       }`,
       `Узел периода — ${matrix.focusLabel}.`,
       `Аркан этого года — ${year?.title ?? matrix.yearArcana.arcanaName} (${matrix.yearArcana.number}): ${
@@ -163,6 +167,9 @@ export function buildMatrixPlainFinale(
     `Кармический хвост — ${matrix.karmicTail.map((p) => `${p.number} ${p.arcanaName}`).join(" → ")}.`,
     `Деньги — через ${money?.title ?? matrix.money.arcanaName}: ${
       money?.money ?? matrix.money.arcanaMeaning
+    }`,
+    `Отношения — через ${love?.title ?? matrix.relationships.arcanaName}: ${
+      love?.love ?? matrix.relationships.arcanaMeaning
     }`,
     `Узел периода — ${matrix.focusLabel}.`,
     `Аркан этого года — ${year?.title ?? matrix.yearArcana.arcanaName} (${matrix.yearArcana.number}): ${
