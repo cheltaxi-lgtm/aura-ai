@@ -55,6 +55,9 @@ const PUBLIC_API_EXACT = new Set([
   "/api/human-design/places",
   "/api/human-design/transits",
   "/api/human-design/og",
+  // Guest Natal calculator (age-gate + IP RL in handlers; claim stays auth-gated).
+  "/api/natal-chart/guest",
+  "/api/natal-chart/places",
   "/api/payment/webhook",
   "/api/payments/webhook",
   "/api/runes/webhook",
