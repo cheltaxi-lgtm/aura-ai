@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { Suspense, useCallback, useEffect, useState } from "react";
 import { buildAuthHref } from "@/lib/post-auth-return";
+import { isValidLinkCode } from "@/lib/telegram/link-code-format";
 
 function TelegramLinkInner() {
   const router = useRouter();
@@ -14,7 +15,7 @@ function TelegramLinkInner() {
   const [username, setUsername] = useState<string | null>(null);
 
   const bind = useCallback(async () => {
-    if (!/^[a-f0-9]{10}$/.test(code)) {
+    if (!isValidLinkCode(code)) {
       setStatus("invalid");
       setMessage("Некорректный код привязки. Запросите новую ссылку в боте.");
       return;
@@ -59,7 +60,7 @@ function TelegramLinkInner() {
 
   useEffect(() => {
     void (async () => {
-      if (!/^[a-f0-9]{10}$/.test(code)) {
+      if (!isValidLinkCode(code)) {
         setStatus("invalid");
         setMessage("Некорректный код привязки. Запросите новую ссылку в боте.");
         return;

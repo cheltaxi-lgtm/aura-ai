@@ -87,6 +87,10 @@ CREATE TABLE IF NOT EXISTS bot_events (
 CREATE INDEX IF NOT EXISTS idx_events_name_created
   ON bot_events(name, created_at DESC);
 
+-- hasUserEvent / reminder dedupe lookups go by (user, name).
+CREATE INDEX IF NOT EXISTS idx_events_user_name
+  ON bot_events(telegram_user_id, name);
+
 CREATE TABLE IF NOT EXISTS bot_flags (
   key TEXT PRIMARY KEY,
   value TEXT NOT NULL,

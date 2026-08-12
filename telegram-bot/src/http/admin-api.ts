@@ -25,7 +25,14 @@ function secretOk(req: IncomingMessage): boolean {
   const provided = String(req.headers["x-bot-internal-secret"] || "");
   const a = Buffer.from(provided);
   const b = Buffer.from(expected);
-  return a.length === b.length && timingSafeEqual(a, b);
+  const ok = a.length === b.length && timingSafeEqual(a, b);
+  if (!ok) {
+    console.warn(
+      "[admin-api] unauthorized",
+      req.socket.remoteAddress || "unknown"
+    );
+  }
+  return ok;
 }
 
 function readBody(req: IncomingMessage): Promise<string> {
@@ -167,11 +174,7 @@ export async function handleAdminApi(
     }
   } catch (err) {
     console.error("[admin-api]", err);
-    json(res, 500, {
-      ok: false,
-      error: "internal_error",
-      message: err instanceof Error ? err.message : String(err),
-    });
+    json(res, 500, { ok: false, error: "internal_error" });
     return true;
   }
 }

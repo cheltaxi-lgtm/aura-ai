@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type Sharp } from "sharp";
 import { brandHeader, frameDefs, ornateFrame } from "./frame.js";
 
 /**
@@ -20,7 +20,7 @@ export const BOT_JPEG = {
   chromaSubsampling: "4:2:0",
 } as const;
 
-export function encodeBotJpeg(pipeline: sharp.Sharp): Promise<Buffer> {
+export function encodeBotJpeg(pipeline: Sharp): Promise<Buffer> {
   return pipeline.jpeg(BOT_JPEG).toBuffer();
 }
 

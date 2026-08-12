@@ -28,6 +28,7 @@ import {
 import { markIrreversible } from "../middleware/irreversible.js";
 import { ensureOnboarded, track } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
+import { SPREAD_QUESTION_STEPS } from "./spread-steps.js";
 
 let copyCounter = 0;
 
@@ -63,7 +64,7 @@ export async function handleFreeTextQuestion(ctx: Context, text: string): Promis
   const user = await ensureOnboarded(ctx);
   if (!user) return true;
   const flow = getFlow(user.telegram_user_id);
-  if (!flow || flow.flow !== "spread" || flow.step !== "await_free_text") {
+  if (!flow || flow.flow !== "spread" || !SPREAD_QUESTION_STEPS.has(flow.step)) {
     return false;
   }
   const linked = await ensureSiteLinked(ctx);
@@ -100,40 +101,58 @@ export async function runCatalogIntent(
     channel: "site",
   });
   const priorCatalog = getFlow(user.telegram_user_id);
+  // Catalog retries re-navigate (flow is overwritten), so the retry key must
+  // not depend on flow state: same item inside a 10-minute bucket collapses
+  // to one site charge; after the bucket it is a legitimate new purchase.
+  const catalogRetryBucket = Math.floor(Date.now() / (10 * 60_000));
   const catalogEventId =
     priorCatalog?.flow === "spread" &&
     priorCatalog.step === "drawing" &&
     priorCatalog.data.intentSlug === slug &&
     typeof priorCatalog.data.clientEventId === "string"
       ? priorCatalog.data.clientEventId
-      : String(ctx.update.update_id);
+      : `cat:${slug}:${catalogRetryBucket}`;
   setFlow(user.telegram_user_id, "spread", "drawing", {
     intentSlug: slug,
     question: questionHint || "",
     source: "catalog",
     clientEventId: catalogEventId,
   });
-  markIrreversible(ctx);
 
   await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
   await ctx.replyWithChatAction("typing");
   await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
+
+  // Point of no return: the next call may charge runes.
+  markIrreversible(ctx);
 
   let result: Awaited<ReturnType<typeof siteCatalogSpread>>;
   try {
     result = await siteCatalogSpread(user.telegram_user_id, slug, catalogEventId);
   } catch (err) {
     console.error("[spread] catalog intent failed", err);
-    clearFlow(user.telegram_user_id);
+    // Keep the drawing flow: re-tapping the same catalog item reuses
+    // catalogEventId, so a request that reached the site is not charged twice.
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
     return;
   }
 
-  await deliverSiteSpreadResult(ctx, user, result.data, {
-    source: "catalog",
-    question: questionHint || "",
-    spreadIdFallback: result.data.spreadId,
-  });
+  try {
+    await deliverSiteSpreadResult(ctx, user, result.data, {
+      source: "catalog",
+      question: questionHint || "",
+      spreadIdFallback: result.data.spreadId,
+    });
+  } catch (err) {
+    console.error("[spread] catalog delivery failed after site success", err);
+    trackEvent("spread_delivery_failed", user.telegram_user_id, {
+      session_id: result.data.sessionId ?? null,
+      source: "catalog",
+    });
+    await ctx
+      .reply(copy.spreadSavedOnSite, { reply_markup: salonKeyboard() })
+      .catch(() => undefined);
+  }
 }
 
 async function runSiteSpread(
@@ -164,38 +183,66 @@ async function runSiteSpread(
 
   track(user, "question_submitted", { source, question_len: validated.question.length, channel: "site" });
   const prior = getFlow(user.telegram_user_id);
-  const clientEventId =
-    prior?.flow === "spread" &&
-    prior.step === "drawing" &&
-    prior.data.question === validated.question &&
-    typeof prior.data.clientEventId === "string"
+  // Reuse the event id when the user retries the SAME question after a
+  // network failure — the site dedupes by this key, so no double charge.
+  const priorEventId =
+    prior?.flow === "spread" && typeof prior.data.clientEventId === "string"
       ? prior.data.clientEventId
-      : String(ctx.update.update_id);
+      : null;
+  const isRetryOfSameQuestion =
+    (prior?.step === "drawing" && prior.data.question === validated.question) ||
+    (SPREAD_QUESTION_STEPS.has(prior?.step ?? "") &&
+      prior?.data.failedQuestion === validated.question);
+  const clientEventId =
+    isRetryOfSameQuestion && priorEventId ? priorEventId : String(ctx.update.update_id);
   setFlow(user.telegram_user_id, "spread", "drawing", {
     question: validated.question,
     source,
     clientEventId,
   });
-  markIrreversible(ctx);
 
   await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
   await ctx.replyWithChatAction("typing");
   await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
+
+  // Point of no return: the next call may charge runes. Telegram retries of
+  // this update must stay no-ops from here on.
+  markIrreversible(ctx);
 
   let result: Awaited<ReturnType<typeof siteSpread>>;
   try {
     result = await siteSpread(user.telegram_user_id, validated.question, clientEventId);
   } catch (err) {
     console.error("[spread] site call failed", err);
-    clearFlow(user.telegram_user_id);
+    // Do NOT clearFlow: restore the entry step with the same event id so a
+    // user retry of the same question is idempotent on the site.
+    setFlow(
+      user.telegram_user_id,
+      "spread",
+      source === "free" ? "await_free_text" : "await_question",
+      { failedQuestion: validated.question, clientEventId }
+    );
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
     return;
   }
 
-  await deliverSiteSpreadResult(ctx, user, result.data, {
-    source,
-    question: validated.question,
-  });
+  try {
+    await deliverSiteSpreadResult(ctx, user, result.data, {
+      source,
+      question: validated.question,
+    });
+  } catch (err) {
+    // Runes may be charged and the session saved on the site — never leave
+    // the user in silence. The reading is waiting in history.
+    console.error("[spread] delivery failed after site success", err);
+    trackEvent("spread_delivery_failed", user.telegram_user_id, {
+      session_id: result.data.sessionId ?? null,
+      source,
+    });
+    await ctx
+      .reply(copy.spreadSavedOnSite, { reply_markup: salonKeyboard() })
+      .catch(() => undefined);
+  }
 }
 
 async function deliverSiteSpreadResult(
@@ -310,7 +357,9 @@ export async function handleCtaResend(ctx: Context, sessionId: string): Promise<
 
   const session = findSessionById(sessionId);
   if (!session || session.telegram_user_id !== user.telegram_user_id) {
+    // Row may already be purged — still answer with the friendly expired copy.
     await ctx.answerCallbackQuery({ text: "Ссылка недоступна" });
+    await ctx.reply(copy.ctaExpired, { reply_markup: salonKeyboard() });
     return;
   }
   if (session.claimed_at) {

@@ -21,6 +21,14 @@ export function assertBotInternalAuth(request: NextRequest): { ok: true } | { ok
   }
   const provided = request.headers.get(BOT_INTERNAL_SECRET_HEADER)?.trim() || "";
   if (!provided || !secretsMatch(provided, expected)) {
+    // Never log the secret — path + IP only for rotation / intrusion signals.
+    console.warn(
+      "[bot-internal-auth] unauthorized",
+      request.nextUrl.pathname,
+      request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
+        request.headers.get("x-real-ip") ||
+        "unknown"
+    );
     return { ok: false, status: 401, error: "unauthorized" };
   }
   return { ok: true };

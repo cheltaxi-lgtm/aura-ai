@@ -113,8 +113,14 @@ export function startHttpServer(bot?: Bot): void {
     }
 
     if (handleUpdate && req.method === "POST" && path === "/telegram/webhook") {
+      // Webhook mode requires a non-empty secret (assertBotRuntimeGuards). Never skip.
       const secret = req.headers["x-telegram-bot-api-secret-token"];
-      if (botConfig.webhookSecret && secret !== botConfig.webhookSecret) {
+      if (
+        !botConfig.webhookSecret ||
+        typeof secret !== "string" ||
+        secret !== botConfig.webhookSecret
+      ) {
+        console.warn("[webhook] unauthorized update rejected");
         res.writeHead(401);
         res.end("unauthorized");
         return;

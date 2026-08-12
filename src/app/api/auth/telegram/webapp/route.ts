@@ -12,7 +12,8 @@ export const runtime = "nodejs";
 
 /**
  * Mini App bootstrap auth: verify Telegram initData → mint site session if linked.
- * Does not create accounts (Telegram login remains disabled).
+ * Does not create accounts and is not Login Widget / «Войти через Telegram».
+ * Allowed only for telegram_user_id already bound in user_telegram_identities.
  */
 export async function POST(request: NextRequest) {
   const ip = clientIp(request);

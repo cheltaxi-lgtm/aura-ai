@@ -807,6 +807,26 @@ export function markReminderSent(telegramUserId: number, kind: string): void {
     .run(telegramUserId, kind, localDateKey(user), nowIso());
 }
 
+/**
+ * True when a reminder of this kind was sent within the last `days` days.
+ * Use for one-shot follow-ups whose selection window spans several days —
+ * the day-keyed reminderAlreadySent would re-send on every tick of the window.
+ */
+export function reminderSentWithinDays(
+  telegramUserId: number,
+  kind: string,
+  days: number
+): boolean {
+  const since = new Date(Date.now() - days * 86_400_000).toISOString();
+  const row = getDb()
+    .prepare(
+      `SELECT 1 AS ok FROM bot_reminder_log
+       WHERE telegram_user_id = ? AND kind = ? AND created_at >= ? LIMIT 1`
+    )
+    .get(telegramUserId, kind, since) as { ok: number } | undefined;
+  return Boolean(row?.ok);
+}
+
 export function usersForReminder(mode: "morning" | "evening"): BotUser[] {
   return getDb()
     .prepare(
@@ -943,6 +963,34 @@ export function expireSessions(): number {
     `UPDATE bot_guest_sessions SET expired_at = COALESCE(expired_at, ?)
      WHERE expires_at < ? AND claimed_at IS NULL AND expired_at IS NULL`
   ).run(now, now);
+  return Number(res.changes ?? 0);
+}
+
+/**
+ * Delete legacy guest rows that can no longer be claimed, after a 7-day grace
+ * window past expiry — the "Срок истёк" CTA answer needs the row to exist.
+ * Claimed rows are kept: they are finite legacy history powering admin metrics.
+ */
+export function purgeExpiredGuestSessions(): number {
+  const graceCutoff = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
+  const unclaimed = getDb()
+    .prepare(
+      `DELETE FROM bot_guest_sessions
+       WHERE claimed_at IS NULL AND expires_at < ?`
+    )
+    .run(graceCutoff);
+  return Number(unclaimed.changes ?? 0);
+}
+
+/**
+ * processed_updates grows one row per Telegram update forever. Telegram never
+ * resends updates older than a day; keep a week for margin.
+ */
+export function purgeProcessedUpdates(olderThanMs = 7 * 86_400_000): number {
+  const cutoff = new Date(Date.now() - olderThanMs).toISOString();
+  const res = getDb()
+    .prepare(`DELETE FROM bot_processed_updates WHERE processed_at < ?`)
+    .run(cutoff);
   return Number(res.changes ?? 0);
 }
 

@@ -2,14 +2,18 @@ import { NextRequest, NextResponse } from "next/server";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { authRequiredResponse, requireUserAuth } from "@/lib/require-auth";
 import { clientIp } from "@/lib/api-guards";
-import { consumeLinkCodeForAccount, peekLinkCode } from "@/lib/telegram/link-code";
+import {
+  consumeLinkCodeForAccount,
+  isValidLinkCode,
+  peekLinkCode,
+} from "@/lib/telegram/link-code";
 
 export const runtime = "nodejs";
 
 /** Peek link-code status (no auth). Does not bind. */
 export async function GET(request: NextRequest) {
   const code = request.nextUrl.searchParams.get("code")?.trim() || "";
-  if (!/^[a-f0-9]{10}$/i.test(code)) {
+  if (!isValidLinkCode(code)) {
     return NextResponse.json({ ok: false, error: "invalid_code" }, { status: 400 });
   }
   const peek = await peekLinkCode(code);
@@ -42,7 +46,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: false, error: "invalid_json" }, { status: 400 });
   }
   const code = typeof body.code === "string" ? body.code.trim() : "";
-  if (!/^[a-f0-9]{10}$/i.test(code)) {
+  if (!isValidLinkCode(code)) {
     return NextResponse.json({ ok: false, error: "invalid_code" }, { status: 400 });
   }
 

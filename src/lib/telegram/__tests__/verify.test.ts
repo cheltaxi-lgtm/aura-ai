@@ -10,7 +10,7 @@ function assert(cond: boolean, msg: string) {
 
 const token = "test-bot-token-for-hmac";
 process.env.TELEGRAM_BOT_TOKEN = token;
-process.env.TELEGRAM_AUTH_MAX_AGE_SEC = "86400";
+process.env.TELEGRAM_AUTH_MAX_AGE_SEC = "3600";
 
 function sign(fields: Record<string, string | number>): string {
   const pairs = Object.entries(fields)

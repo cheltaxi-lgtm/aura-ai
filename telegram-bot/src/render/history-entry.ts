@@ -1,4 +1,4 @@
-import sharp from "sharp";
+import sharp, { type OverlayOptions } from "sharp";
 import { botConfig } from "../config.js";
 import { resolveAssetPath } from "../domain/deck/asset-check.js";
 import { FULL_DECK } from "../domain/deck/cards.js";
@@ -194,7 +194,7 @@ async function loadCardThumbs(
       }
     })
   );
-  return bufs.filter((b): b is Buffer => Boolean(b));
+  return bufs.filter((b) => b !== null);
 }
 
 /**
@@ -350,7 +350,7 @@ export async function renderHistoryEntryImage(opts: {
   );
 
   const plate = await getOrnatePlate();
-  const composites: sharp.OverlayOptions[] = thumbs.map((input, i) => {
+  const composites: OverlayOptions[] = thumbs.map((input, i) => {
     const col = i % grid.cols;
     const row = Math.floor(i / grid.cols);
     return {

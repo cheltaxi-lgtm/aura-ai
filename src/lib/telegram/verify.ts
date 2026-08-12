@@ -18,10 +18,11 @@ function botToken(): string {
   return process.env.TELEGRAM_BOT_TOKEN?.trim() || "";
 }
 
+/** Default 1h — Mini App initData should not stay valid for a full day. */
 export function telegramAuthMaxAgeSec(): number {
   const raw = process.env.TELEGRAM_AUTH_MAX_AGE_SEC?.trim();
-  const n = raw ? Number(raw) : 86_400;
-  return Number.isFinite(n) && n > 0 ? n : 86_400;
+  const n = raw ? Number(raw) : 3_600;
+  return Number.isFinite(n) && n > 0 ? n : 3_600;
 }
 
 function safeEqualHex(a: string, b: string): boolean {

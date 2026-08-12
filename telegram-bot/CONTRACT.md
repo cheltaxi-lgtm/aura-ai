@@ -11,9 +11,11 @@
 
 Один аккаунт = строка в `user_telegram_identities` (`telegram_user_id` ↔ `user_account_id`). После link бот синхронизирует `bot_users.zovus_user_id = profileUserId`.
 
-**Инвариант (149-ФЗ ч.10 ст.8):** нет «Входа через Telegram» / Login Widget / session-from-TG HMAC.
+**Инвариант (149-ФЗ ч.10 ст.8):** нет «Входа через Telegram» / Login Widget / создания аккаунта по Telegram HMAC.
 Аккаунт Zovus может быть создан **по оферте в боте** (age + terms) с синтетическим email и bind в `user_telegram_identities` — Telegram здесь канал договора, не заявленный способ авторизации.
 Апгрейд (email / Яндекс / VK) — опционально через link-code. Запрещены Widget и `POST /api/auth/telegram`.
+
+**Mini App bootstrap (разрешён):** `POST /api/auth/telegram/webapp` проверяет `initData` HMAC и выдаёт site session cookie **только** если `telegram_user_id` уже в `user_telegram_identities`. Не создаёт аккаунт и не заменяет Login Widget.
 
 ## Привязка Telegram (link-code)
 
@@ -25,8 +27,11 @@
 
 Запрещено и отключено (410):
 - Telegram Login Widget / «Войти через Telegram»
-- `POST /api/auth/telegram` (issue session по Telegram HMAC)
+- `POST /api/auth/telegram` (login / создание аккаунта по Telegram HMAC)
 - Site→bot auth bridge `/start a_<token>` / `POST /api/internal/bot/auth-bridge`
+
+Разрешено (не login):
+- `POST /api/auth/telegram/webapp` — session bootstrap для **уже привязанных** (см. выше)
 
 ## Internal API сайта (bot → site)
 
@@ -53,7 +58,8 @@
 | `POST /chat` | API follow-up (продуктовый UX бота: deep-link `/?chat_session=` на сайт) |
 | `POST /auth-bridge` | **disabled** (410) |
 
-Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECRET`, `BOT_REQUIRE_SITE_ACCOUNT=true`.
+Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECRET`, `BOT_REQUIRE_SITE_ACCOUNT=true` (в production `false` — hard-fail на старте).
+Webhook mode: обязателен `TELEGRAM_WEBHOOK_SECRET` (≥32 символов); без секрета апдейты отклоняются.
 
 ## Internal API бота (site → bot)
 

@@ -481,12 +481,20 @@ export async function showMatrixReports(ctx: Context): Promise<void> {
 export async function runMatrixFull(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
-  const activeFlow = getFlow(linked.user.telegram_user_id);
+  const tid = linked.user.telegram_user_id;
+  const activeFlow = getFlow(tid);
+  // Double-tap guard: a paid run is already in flight. getFlow→setFlow below
+  // is synchronous, so two concurrent callback updates cannot both pass.
+  if (activeFlow?.flow === "matrix_run" && activeFlow.step === "running") {
+    await ctx.reply(copy.matrixRunning);
+    return;
+  }
   const subjectId =
     activeFlow?.flow === "matrix_subject" &&
     typeof activeFlow.data?.subjectId === "string"
       ? activeFlow.data.subjectId
       : undefined;
+  setFlow(tid, "matrix_run", "running", { subjectId: subjectId ?? null });
   await ctx.reply(copy.matrixRunning);
   try {
     await ctx.replyWithChatAction("typing");
@@ -554,6 +562,13 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
       console.warn("[cabinet] matrix run recovery failed", recoverErr);
     }
     await ctx.reply(copy.matrixStillWorking, { reply_markup: salonKeyboard() });
+  } finally {
+    // Release the double-tap lock unless a reading album already took the flow.
+    const cur = getFlow(tid);
+    if (cur?.flow === "matrix_run") {
+      if (subjectId) setFlow(tid, "matrix_subject", "active", { subjectId });
+      else clearFlow(tid);
+    }
   }
 }
 
@@ -637,19 +652,24 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     await ctx.answerCallbackQuery().catch(() => undefined);
     const linked = await ensureSiteLinked(ctx);
     if (!linked) return true;
-    const { data: subjects } = await siteNumerology(linked.user.telegram_user_id, "subjects");
-    if (!subjects.ok) {
-      await ctx.reply(subjects.message || copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-      return true;
+    try {
+      const { data: subjects } = await siteNumerology(linked.user.telegram_user_id, "subjects");
+      if (!subjects.ok) {
+        await ctx.reply(subjects.message || copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+        return true;
+      }
+      const items = subjects.subjects || [];
+      const kb = new InlineKeyboard();
+      for (const subject of items) {
+        const name = subject.displayName || (subject.kind === "self" ? "Я" : subject.kind);
+        kb.text(`${name} · ${subject.birthDate}`.slice(0, 60), `${CB.mxSubjectSelectPrefix}${subject.id}`).row();
+      }
+      kb.text("➕ Добавить", CB.mxSubjectNew);
+      await ctx.reply("Чья матрица?", { reply_markup: kb });
+    } catch (err) {
+      console.error("[cabinet] matrix subjects", err);
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
     }
-    const items = subjects.subjects || [];
-    const kb = new InlineKeyboard();
-    for (const subject of items) {
-      const name = subject.displayName || (subject.kind === "self" ? "Я" : subject.kind);
-      kb.text(`${name} · ${subject.birthDate}`.slice(0, 60), `${CB.mxSubjectSelectPrefix}${subject.id}`).row();
-    }
-    kb.text("➕ Добавить", CB.mxSubjectNew);
-    await ctx.reply("Чья матрица?", { reply_markup: kb });
     return true;
   }
 
@@ -658,13 +678,18 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     const subjectId = data.slice(CB.mxSubjectSelectPrefix.length);
     const linked = await ensureSiteLinked(ctx);
     if (!linked || !subjectId) return true;
-    setFlow(linked.user.telegram_user_id, "matrix_subject", "active", { subjectId });
-    const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary", undefined, { subjectId });
-    if (!summary.ok) {
-      await ctx.reply(summary.message || copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-      return true;
+    try {
+      setFlow(linked.user.telegram_user_id, "matrix_subject", "active", { subjectId });
+      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary", undefined, { subjectId });
+      if (!summary.ok) {
+        await ctx.reply(summary.message || copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+        return true;
+      }
+      await renderMatrixTeaserFromSummary(ctx, summary);
+    } catch (err) {
+      console.error("[cabinet] matrix subject select", err);
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
     }
-    await renderMatrixTeaserFromSummary(ctx, summary);
     return true;
   }
 
@@ -877,7 +902,9 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
         name: summary.name,
       });
       await ctx.replyWithPhoto(new InputFile(buf, "matrix-share.jpg"), {
-        caption: summary.shareCard || undefined,
+        // Telegram rejects captions over 1024 chars — the send must not fail
+        // after the card was already rendered.
+        caption: summary.shareCard ? summary.shareCard.slice(0, 1024) : undefined,
         reply_markup: summary.owned
           ? matrixOwnedKeyboard({ siteUrl: summary.url })
           : matrixGetKeyboard({

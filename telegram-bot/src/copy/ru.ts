@@ -332,13 +332,13 @@ export const copy = {
   reportReady: (title: string) => {
     const t = (title || "Отчёт готов").trim().slice(0, 160);
     return [
-      `✦ ${t}`,
+      t,
       "",
       "Разбор сохранён в вашем кабинете — откройте по кнопке ниже.",
       "Повторного списания рун не будет.",
     ].join("\n");
   },
-  reportReadyOpen: "Открыть отчёт ✦",
+  reportReadyOpen: "Открыть отчёт",
   chatAskPrompt: "Напишите вопрос по этому раскладу. Чтобы выйти — кнопка «Закончить диалог».",
   chatStopped: "Диалог по раскладу закрыт. Можно открыть новый из истории или меню.",
   chatThinking: "Смотрю в карты…",
@@ -367,6 +367,8 @@ export const copy = {
   shareDisabled: "Сейчас поделиться раскладом из салона нельзя.",
   spreadFailed:
     "Расклад не состоялся. Можно попробовать снова с тем же вопросом — салон вас ждёт.",
+  spreadSavedOnSite:
+    "Расклад готов и сохранён в вашей истории. Откройте «История» в меню — он уже там.",
   profile: (p: {
     since: string;
     streak: number;
@@ -461,6 +463,7 @@ export function collectBodyCopySamples(): string[] {
     copy.ownQuestion(uid, 3),
     copy.limitReached(uid, 4),
     copy.spreadInProgress,
+    copy.spreadSavedOnSite,
     copy.ctaSendFailed,
     copy.ctaExpired,
     copy.continueOnSite,

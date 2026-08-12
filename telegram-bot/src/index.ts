@@ -1,9 +1,15 @@
 import { setDefaultResultOrder } from "node:dns";
 import { createBot } from "./bot.js";
-import { botConfig } from "./config.js";
+import { assertBotRuntimeGuards, botConfig } from "./config.js";
 import { migrate } from "./db/client.js";
 import { ensureCriticalColumns, migrateUp } from "./db/migrate-runner.js";
-import { expireSessions, metricsSummary, setFlag } from "./db/repos.js";
+import {
+  expireSessions,
+  metricsSummary,
+  purgeExpiredGuestSessions,
+  purgeProcessedUpdates,
+  setFlag,
+} from "./db/repos.js";
 import {
   assertDeckAssetsOrExit,
   setAssetMissingAlerter,
@@ -24,6 +30,7 @@ try {
 installTelegramIpv4Networking();
 
 async function main(): Promise<void> {
+  assertBotRuntimeGuards();
   migrate();
   console.log("[migrate] up", migrateUp());
   ensureCriticalColumns();
@@ -72,6 +79,10 @@ async function main(): Promise<void> {
     try {
       const n = expireSessions();
       if (n) console.log(`[expire] marked ${n} sessions`);
+      const purged = purgeExpiredGuestSessions();
+      if (purged) console.log(`[expire] purged ${purged} legacy guest rows`);
+      const purgedUpdates = purgeProcessedUpdates();
+      if (purgedUpdates) console.log(`[expire] purged ${purgedUpdates} processed update rows`);
     } catch (e) {
       console.error("[expire]", e);
     }
@@ -104,11 +115,8 @@ async function main(): Promise<void> {
   }, 60_000);
 
   if (botConfig.mode === "webhook") {
-    if (!botConfig.webhookUrl) {
-      throw new Error("TELEGRAM_WEBHOOK_URL required in webhook mode");
-    }
     await bot.api.setWebhook(botConfig.webhookUrl, {
-      secret_token: botConfig.webhookSecret || undefined,
+      secret_token: botConfig.webhookSecret,
       drop_pending_updates: true,
     });
     console.log(`[bot] webhook set → ${botConfig.webhookUrl}`);

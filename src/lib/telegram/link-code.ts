@@ -1,9 +1,12 @@
 import { createHash, randomBytes } from "node:crypto";
 import { query } from "@/lib/db";
 import { linkTelegramToAccount } from "@/lib/telegram/accounts";
+import { LINK_CODE_HEX_LEN } from "@/lib/telegram/link-code-format";
 import { notifyBotAccountLinked } from "@/lib/telegram/notify-bot-link";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import type { TelegramLoginPayload } from "@/lib/telegram/verify";
+
+export { isValidLinkCode, LINK_CODE_HEX_LEN } from "@/lib/telegram/link-code-format";
 
 const TTL_MS = 10 * 60 * 1000;
 
@@ -13,7 +16,7 @@ function siteBase(): string {
 
 /** Short single-use code for bot → site link (not an auth credential). */
 export function newLinkCode(): string {
-  return randomBytes(5).toString("hex"); // 10 hex chars
+  return randomBytes(LINK_CODE_HEX_LEN / 2).toString("hex");
 }
 
 export function hashLinkCode(code: string): string {

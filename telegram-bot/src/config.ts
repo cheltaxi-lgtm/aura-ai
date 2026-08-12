@@ -113,3 +113,26 @@ export const botConfig = {
     weeklyDigestEnabled: bool("BOT_WEEKLY_DIGEST_ENABLED", false),
   },
 } as const;
+
+/** Fail closed on prod misconfig before the bot accepts updates. */
+export function assertBotRuntimeGuards(): void {
+  // Re-read env at call time (startup) so guards match the process environment.
+  const mode = (process.env.BOT_MODE?.trim() || "polling") as "polling" | "webhook";
+  const webhookUrl = process.env.TELEGRAM_WEBHOOK_URL?.trim() || "";
+  const webhookSecret = process.env.TELEGRAM_WEBHOOK_SECRET?.trim() || "";
+  if (mode === "webhook") {
+    if (!webhookUrl) {
+      throw new Error("TELEGRAM_WEBHOOK_URL required in webhook mode");
+    }
+    if (webhookSecret.length < 32) {
+      throw new Error(
+        "TELEGRAM_WEBHOOK_SECRET required in webhook mode (min 32 chars)"
+      );
+    }
+  }
+  if (process.env.NODE_ENV === "production" && !bool("BOT_REQUIRE_SITE_ACCOUNT", true)) {
+    throw new Error(
+      "BOT_REQUIRE_SITE_ACCOUNT=false is forbidden in production (site SoT)"
+    );
+  }
+}

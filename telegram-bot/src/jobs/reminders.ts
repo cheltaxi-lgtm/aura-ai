@@ -8,6 +8,7 @@ import {
   localHourForUser,
   markReminderSent,
   reminderAlreadySent,
+  reminderSentWithinDays,
   trackEvent,
   usersForMatrixPeriodFollowup,
   usersForReactivation,
@@ -51,7 +52,8 @@ export async function runReminderTick(bot: Bot): Promise<void> {
 
     const abandoned = abandonedFlows(botConfig.abandonedHours * 3600_000);
     for (const row of abandoned) {
-      if (reminderAlreadySent(row.telegram_user_id, "abandoned")) continue;
+      // A stale flow stays "abandoned" for days — nudge at most every 3 days.
+      if (reminderSentWithinDays(row.telegram_user_id, "abandoned", 3)) continue;
       await withBlockDetect(async () => {
         await bot.api.sendMessage(row.chat_id, copy.abandoned);
         markReminderSent(row.telegram_user_id, "abandoned");
@@ -77,7 +79,8 @@ export async function runReminderTick(bot: Bot): Promise<void> {
     // Matrix period follow-up ~D7 after full report (free period node refresh).
     for (const u of usersForMatrixPeriodFollowup()) {
       const kind = "matrix_period_d7";
-      if (reminderAlreadySent(u.telegram_user_id, kind)) continue;
+      // Selection window spans 2 days — suppress re-sends within it.
+      if (reminderSentWithinDays(u.telegram_user_id, kind, 4)) continue;
       const kb = new InlineKeyboard()
         .text("📅 Узел периода", CB.mxPeriod)
         .row()
