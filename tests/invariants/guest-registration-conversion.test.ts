@@ -110,7 +110,7 @@ describe("guest-registration-conversion", () => {
     const auth = await fs.readFile("src/components/AuthForm.tsx", "utf8");
     expect(guest).not.toContain("Сохранить расклад и продолжить");
     expect(guest).toContain("Получить трактовку");
-    expect(guest).toContain("Открыть полный разбор бесплатно");
+    expect(guest).toContain("Получить полный разбор");
     expect(guest).toContain("showAuthGate");
     expect(auth).not.toContain("Аккаунт для сохранения истории");
     expect(auth).toContain("Создать аккаунт и открыть разбор");
