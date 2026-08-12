@@ -10,20 +10,20 @@ export const revalidate = 3600;
 
 export const metadata: Metadata = {
   ...buildSeoMetadata({
-    title: "Расклад Таро онлайн бесплатно — гадание на картах",
+    title: "Матрица судьбы, Натальная карта, Дизайн человека и Таро",
     description:
-      "Расклад Таро онлайн бесплатно: три карты до регистрации, каталог вопросов на любовь и будущее, расшифровка по фото. ИИ-наставник разберёт ситуацию в чате — Zovus.",
+      "Zovus — персональные AI-разборы и расчёты: матрица судьбы, натальная карта, дизайн человека и Таро. Бесплатные калькуляторы и три карты до регистрации.",
     path: "/",
   }),
   title: {
-    absolute: "Расклад Таро онлайн бесплатно — гадание на картах | Zovus",
+    absolute: "Zovus — Матрица судьбы, Натальная карта, Дизайн человека и Таро",
   },
   alternates: {
     canonical: BRAND_URL,
   },
 };
 
-/** Главная: guest spread → регистрация → мастер. SEO-текст — sr-only в конце. */
+/** Главная: multiproduct platform → guest Tarot / birth tools. SEO — sr-only в конце. */
 export default function Page() {
   return (
     <>

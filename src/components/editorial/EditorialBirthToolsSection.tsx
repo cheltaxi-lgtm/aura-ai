@@ -40,7 +40,7 @@ export default function EditorialBirthToolsSection() {
           </Link>
           {humanDesignEnabled ? (
             <Link
-              href="/dizayn-cheloveka"
+              href="/dizayn-cheloveka/rasschitat"
               className="salon-reveal__item group block rounded-2xl border border-white/10 bg-white/[0.03] p-5 transition hover:border-amber-300/40 hover:bg-white/[0.05]"
               style={{ ["--salon-i" as string]: 2 }}
             >

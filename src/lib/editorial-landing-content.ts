@@ -9,15 +9,51 @@ export const EDITORIAL_SECTION_IDS = {
 } as const;
 
 export const EDITORIAL_HERO = {
-  title: "Расклад Таро онлайн бесплатно",
+  title: "Понять себя. Увидеть ситуацию. Выбрать следующий шаг.",
   subtitle:
-    "Три карты откроются прямо здесь — без регистрации. Или загрузите фото своего расклада на расшифровку.",
+    "Zovus — персональные AI-разборы и расчёты: матрица судьбы, натальная карта, дизайн человека и Таро. Начните с бесплатного расчёта или откройте три карты по своему вопросу.",
   primaryCta: "Открыть 3 карты бесплатно",
   secondaryCta: "Как проходит сеанс",
   microcopy: "Без регистрации · без банковской карты · 18+",
   /** Rolling 24h — consumer benefit, not funnel jargon. */
   retentionHook: "Каждый день — 3 карты с подсказкой на текущий день",
 } as const;
+
+/** Compact multiproduct entries under hero (not full marketing blocks). */
+export const EDITORIAL_PRODUCT_ENTRIES = [
+  {
+    id: "matrix",
+    title: "Матрица судьбы",
+    text: "Схема по дате рождения",
+    cta: "Рассчитать бесплатно",
+    href: "/numerology/destiny-matrix",
+    kind: "link" as const,
+  },
+  {
+    id: "natal",
+    title: "Натальная карта",
+    text: "Планеты, дома, аспекты",
+    cta: "Построить карту",
+    href: "/natalnaya-karta",
+    kind: "link" as const,
+  },
+  {
+    id: "hd",
+    title: "Дизайн человека",
+    text: "Тип, стратегия, центры",
+    cta: "Рассчитать бодиграф",
+    href: "/dizayn-cheloveka/rasschitat",
+    kind: "link" as const,
+  },
+  {
+    id: "tarot",
+    title: "Таро",
+    text: "Три карты по вопросу",
+    cta: "Открыть 3 карты",
+    href: "/?ask=1&spread=1",
+    kind: "action" as const,
+  },
+] as const;
 
 export const EDITORIAL_DAILY_CARDS = {
   kicker: "Ежедневный ритуал",

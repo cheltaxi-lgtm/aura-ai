@@ -551,6 +551,106 @@ html[data-motion-lite="1"] .salon-bg__lines {
   backdrop-filter: blur(8px);
 }
 
+/* Compact multiproduct map under hero — not four full marketing blocks */
+.editorial-product-entries {
+  padding: 1.25rem 0 0.25rem;
+  position: relative;
+  z-index: 1;
+}
+
+.editorial-product-entries__kicker {
+  margin: 0 0 0.75rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 212, 168, 0.55);
+  text-align: center;
+}
+
+.editorial-product-entries__grid {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.625rem;
+}
+
+@media (min-width: 768px) {
+  .editorial-product-entries__grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.75rem;
+  }
+}
+
+.editorial-product-entry {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  min-height: 100%;
+  margin: 0;
+  padding: 0.875rem 0.9rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.2s ease, opacity 0.2s ease;
+  touch-action: manipulation;
+}
+
+.editorial-product-entry:hover {
+  border-color: rgba(232, 199, 126, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+  transform: translateY(-1px);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .editorial-product-entry {
+    transition: none;
+  }
+}
+
+.editorial-product-entry__title {
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: 0.95rem;
+  font-weight: 500;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.editorial-product-entry__text {
+  margin-top: 0.3rem;
+  font-size: 0.75rem;
+  line-height: 1.35;
+  color: rgba(255, 255, 255, 0.48);
+}
+
+.editorial-product-entry__cta {
+  margin-top: auto;
+  padding-top: 0.65rem;
+  font-size: 0.8125rem;
+  font-weight: 500;
+  color: rgba(232, 199, 126, 0.92);
+}
+
+@media (max-width: 390px) {
+  .editorial-product-entries {
+    padding-inline: 0;
+  }
+
+  .editorial-product-entry {
+    padding: 0.75rem 0.7rem;
+  }
+
+  .editorial-product-entry__title {
+    font-size: 0.875rem;
+  }
+}
+
 /* Aura functional blocks inside editorial shell */
 .editorial-landing .aura-landing-section {
   margin-bottom: 2rem;

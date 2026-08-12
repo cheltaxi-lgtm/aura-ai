@@ -23,14 +23,25 @@ export default function HomeSeoContent() {
   const featured = getFeaturedSpreadIntents(4);
 
   return (
-    <section className="home-seo-panel" aria-label="Расклад Таро онлайн на Zovus">
+    <section className="home-seo-panel" aria-label="Zovus — матрица, натал, дизайн человека и Таро">
       <h2 className="font-display text-2xl font-medium text-aura-ivory">
-        Расклад Таро онлайн бесплатно — с разбором под ваш вопрос
+        Zovus — матрица судьбы, натальная карта, дизайн человека и Таро
       </h2>
       <p className="mt-4 leading-relaxed">
-        Zovus — сервис раскладов Таро онлайн: вы формулируете вопрос о связи, решении, работе или
-        будущем и получаете связный разбор, а не общий шаблон. На главной три карты открываются
-        бесплатно до регистрации; после входа классический расклад на три карты — раз в сутки.
+        Zovus — платформа персональных AI-разборов и расчётов. На главной можно начать с{" "}
+        <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+          матрицы судьбы
+        </Link>
+        ,{" "}
+        <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+          натальной карты
+        </Link>
+        ,{" "}
+        <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
+          дизайна человека
+        </Link>{" "}
+        или открыть три карты Таро бесплатно до регистрации. После входа классический расклад на три
+        карты доступен раз в сутки.
       </p>
       <p className="mt-3 leading-relaxed">
         Можно выбрать готовый вопрос в каталоге, загрузить{" "}
@@ -46,18 +57,14 @@ export default function HomeSeoContent() {
           Ленорман
         </Link>
         ,{" "}
-        <Link href="/dizayn-cheloveka" className="text-aura-gold hover:underline">
-          Дизайн Человека
-        </Link>
-        ,{" "}
         <Link href="/telegram" className="text-aura-gold hover:underline">
           Telegram-бот
-        </Link>
-        {" "}и раздел{" "}
+        </Link>{" "}
+        и раздел{" "}
         <Link href="/faq" className="text-aura-gold hover:underline">
           FAQ
         </Link>
-        . Полные сессии, нумерология, натал и обряды — по тарифу в рунах ᚢ. Это не медицинская и не
+        . Полные сессии и углублённые разборы — по тарифу в рунах ᚢ. Это не медицинская и не
         юридическая услуга:{" "}
         <Link href="/disclaimer" className="text-aura-gold hover:underline">
           подробнее об ограничениях
@@ -83,6 +90,21 @@ export default function HomeSeoContent() {
 
       <h2 className="mt-8 font-display text-lg text-aura-gold">С чего начать</h2>
       <ul className="mt-3 flex flex-wrap gap-2 text-sm">
+        <li>
+          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+            Матрица судьбы бесплатно
+          </Link>
+        </li>
+        <li>
+          <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+            Натальная карта
+          </Link>
+        </li>
+        <li>
+          <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
+            Дизайн человека
+          </Link>
+        </li>
         <li>
           <Link href="/taro#besplatno" className="text-aura-gold hover:underline">
             Бесплатный расклад Таро
