@@ -1,0 +1,23 @@
+---
+description: After finishing work — commit, push to main, and production deploy by default
+alwaysApply: true
+---
+
+# Commit → push → deploy (default)
+
+When a task is finished and changes are ready:
+
+1. **Commit** logical changes (unless the user explicitly said not to commit).
+2. **Push** the branch and **fast-forward merge into `main`**, then push `main` (no force-push).
+3. **Deploy production** with `scripts/deploy-prod.sh` via Git Bash (`C:\Program Files\Git\bin\bash.exe`), not WSL bash and not a hand-rolled wipe.
+
+Do this without waiting for a separate «пушь и деплой» confirmation when the work is clearly done and green (typecheck/relevant tests/build as appropriate).
+
+## Still respect
+
+- Never force-push `main`/`master`.
+- Never skip hooks unless the user explicitly asks.
+- Never deploy destructive DB resets or secret rotations.
+- If pre-push/invariants fail, fix and create a **new** commit (do not amend after reject).
+- After deploy: check `aura-ai` + `aura-ai-async-jobs` active and `https://zovus.ru/api/health` → 200.
+- If migration is part of the change, confirm `npm run migrate` ran on the server (deploy script does this).
