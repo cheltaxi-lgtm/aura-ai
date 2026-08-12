@@ -145,6 +145,15 @@ export function trackRetentionReturn(state: "d1" | "d7" | "later"): void {
   });
 }
 
+/** Explicit daily-cards reminder opt-in/out. Params: product/source/state only. */
+export function trackReminderOpt(enabled: boolean): void {
+  reachGoal(enabled ? "reminder_opt_in" : "reminder_opt_out", {
+    product: "tarot",
+    source: "personal_zovus",
+    state: "daily_cards",
+  });
+}
+
 /**
  * Infer product from public path for shared paywall CTAs.
  * No query parsing (may contain PII).

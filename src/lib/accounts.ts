@@ -114,6 +114,28 @@ export async function getAccountCreatedAt(accountId: string): Promise<Date | nul
   return rows[0]?.created_at ?? null;
 }
 
+/** Explicit daily-cards reminder opt-in. Default OFF. Not delivery. */
+export async function getAccountDailyCardsReminder(accountId: string): Promise<boolean> {
+  const { rows } = await query<{ daily_cards_reminder: boolean }>(
+    `SELECT daily_cards_reminder FROM user_accounts WHERE id = $1`,
+    [accountId]
+  );
+  return Boolean(rows[0]?.daily_cards_reminder);
+}
+
+export async function setAccountDailyCardsReminder(
+  accountId: string,
+  enabled: boolean
+): Promise<boolean> {
+  const { rows } = await query<{ daily_cards_reminder: boolean }>(
+    `UPDATE user_accounts SET daily_cards_reminder = $2
+     WHERE id = $1
+     RETURNING daily_cards_reminder`,
+    [accountId, enabled]
+  );
+  return Boolean(rows[0]?.daily_cards_reminder);
+}
+
 export async function getAccountConsentSnapshot(
   accountId: string
 ): Promise<AccountConsentSnapshot | null> {

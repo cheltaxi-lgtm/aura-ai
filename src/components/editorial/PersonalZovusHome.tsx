@@ -18,6 +18,7 @@ import {
 import { resolveAuthRetentionState } from "@/lib/auth-retention";
 import {
   trackPersonalZovusEvent,
+  trackReminderOpt,
   trackRetentionReturn,
   type ProductFunnelProduct,
 } from "@/lib/seo/product-funnel";
@@ -76,6 +77,9 @@ export default function PersonalZovusHome({
   const viewed = useRef(false);
   const homeViewed = useRef(false);
   const retentionEmitted = useRef(false);
+  const [reminderEnabled, setReminderEnabled] = useState(false);
+  const [reminderReady, setReminderReady] = useState(false);
+  const [reminderSaving, setReminderSaving] = useState(false);
 
   useEffect(() => {
     if (homeViewed.current) return;
@@ -115,6 +119,55 @@ export default function PersonalZovusHome({
       /* ignore */
     }
   }, [accountCreatedAt]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/auth/daily-cards-reminder", {
+          credentials: "include",
+          cache: "no-store",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as { dailyCardsReminder?: boolean };
+        if (!cancelled) setReminderEnabled(data.dailyCardsReminder === true);
+      } catch {
+        /* keep default OFF */
+      } finally {
+        if (!cancelled) setReminderReady(true);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const saveReminder = async (next: boolean) => {
+    if (reminderSaving) return;
+    const prev = reminderEnabled;
+    setReminderEnabled(next);
+    setReminderSaving(true);
+    try {
+      const res = await fetch("/api/auth/daily-cards-reminder", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dailyCardsReminder: next }),
+      });
+      if (!res.ok) {
+        setReminderEnabled(prev);
+        return;
+      }
+      const data = (await res.json()) as { dailyCardsReminder?: boolean };
+      const saved = data.dailyCardsReminder === true;
+      setReminderEnabled(saved);
+      trackReminderOpt(saved);
+    } catch {
+      setReminderEnabled(prev);
+    } finally {
+      setReminderSaving(false);
+    }
+  };
 
   useEffect(() => {
     let cancelled = false;
@@ -281,6 +334,17 @@ export default function PersonalZovusHome({
             >
               {EDITORIAL_DAILY_CARDS.authCooldownCta}
             </button>
+          ) : null}
+          {reminderReady ? (
+            <label className="personal-zovus__reminder">
+              <input
+                type="checkbox"
+                checked={reminderEnabled}
+                disabled={reminderSaving}
+                onChange={(e) => void saveReminder(e.target.checked)}
+              />
+              Напоминать о 3 картах дня
+            </label>
           ) : null}
         </div>
       </div>
