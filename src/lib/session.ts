@@ -358,6 +358,113 @@ export async function updateSessionChatMeta(
   await query(`UPDATE sessions SET ${sets.join(", ")} WHERE id = $1`, params);
 }
 
+/**
+ * Owner-scoped session meta write.
+ * Defense-in-depth: WHERE includes user_id so a foreign sessionId cannot mutate.
+ */
+export async function updateSessionChatMetaForUser(
+  sessionId: string,
+  userId: string,
+  meta: {
+    characterKey?: string;
+    intention?: string | null;
+    spreadType?: string | null;
+    spreadId?: string | null;
+    cards?: string[] | null;
+    numerologToolParams?: NumerologToolParams | null;
+  },
+  client?: PoolClient
+): Promise<boolean> {
+  const run = <T extends Record<string, unknown> = Record<string, unknown>>(
+    text: string,
+    params?: unknown[]
+  ) => (client ? queryClient<T>(client, text, params) : query<T>(text, params));
+
+  const sets: string[] = ["updated_at = NOW()"];
+  const params: unknown[] = [sessionId, userId];
+  let idx = 3;
+
+  if (meta.characterKey !== undefined) {
+    sets.push(`character_key = $${idx++}`);
+    params.push(meta.characterKey);
+  }
+  if (meta.intention !== undefined) {
+    sets.push(`intention = $${idx++}`);
+    params.push(meta.intention);
+  }
+  if (meta.spreadType !== undefined) {
+    sets.push(`spread_type = $${idx++}`);
+    params.push(meta.spreadType);
+  }
+  if (meta.spreadId !== undefined) {
+    sets.push(`spread_id = $${idx++}`);
+    params.push(meta.spreadId);
+  }
+  if (meta.cards !== undefined) {
+    let preserveGuestPayload = false;
+    if (meta.cards?.length) {
+      try {
+        const { rows } = await run<{ cards: unknown; spread_type: string | null }>(
+          `SELECT cards, spread_type FROM sessions WHERE id = $1 AND user_id = $2 LIMIT 1`,
+          [sessionId, userId]
+        );
+        const existing = rows[0];
+        const existingCards = existing?.cards;
+        const isGuestPayload =
+          existingCards &&
+          typeof existingCards === "object" &&
+          !Array.isArray(existingCards) &&
+          (existingCards as { kind?: unknown }).kind === "guest_triplet_resume";
+        const isGuestSpread =
+          existing?.spread_type === "guest_resume" || meta.spreadType === "guest_resume";
+        preserveGuestPayload = Boolean(isGuestPayload || isGuestSpread);
+      } catch {
+        preserveGuestPayload = false;
+      }
+    }
+    if (!preserveGuestPayload) {
+      sets.push(`cards = $${idx++}::jsonb`);
+      params.push(meta.cards?.length ? JSON.stringify(meta.cards) : null);
+    }
+  }
+  if (meta.numerologToolParams !== undefined) {
+    sets.push(`numerolog_tool_params = $${idx++}::jsonb`);
+    params.push(
+      meta.numerologToolParams && Object.keys(meta.numerologToolParams).length
+        ? JSON.stringify(meta.numerologToolParams)
+        : null
+    );
+  }
+
+  if (
+    meta.characterKey !== undefined ||
+    meta.intention !== undefined ||
+    meta.spreadType !== undefined ||
+    meta.spreadId !== undefined ||
+    meta.cards !== undefined ||
+    meta.numerologToolParams !== undefined
+  ) {
+    sets.push(`status = 'active'`);
+  }
+
+  if (sets.length === 1) {
+    const { rows } = await run<{ id: string }>(
+      `SELECT id FROM sessions WHERE id = $1 AND user_id = $2 LIMIT 1`,
+      [sessionId, userId]
+    );
+    return Boolean(rows[0]);
+  }
+
+  const { rows } = await run<{ id: string }>(
+    `UPDATE sessions
+     SET ${sets.join(", ")}
+     WHERE id = $1 AND user_id = $2
+     RETURNING id`,
+    params
+  );
+  return Boolean(rows[0]);
+}
+
 export function hasPaidAccess(session: SessionRow, opts?: { unlimited?: boolean }): boolean {
   if (opts?.unlimited) return true;
   if (session.has_single_unlock) return true;

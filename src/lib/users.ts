@@ -331,13 +331,19 @@ export async function attachSessionToProfile(
   return linkSessionToUser(sessionId, profileUserId, claimToken);
 }
 
-export async function createHistoryEntry(data: {
-  userId: string;
-  characterName: string;
-  contextData: Record<string, unknown>;
-  isPaid?: boolean;
-}) {
-  const { rows } = await query<{ id: string }>(
+export async function createHistoryEntry(
+  data: {
+    userId: string;
+    characterName: string;
+    contextData: Record<string, unknown>;
+    isPaid?: boolean;
+  },
+  client?: import("./db").PoolClient
+) {
+  const run = client
+    ? (text: string, params?: unknown[]) => queryClient<{ id: string }>(client, text, params)
+    : (text: string, params?: unknown[]) => query<{ id: string }>(text, params);
+  const { rows } = await run(
     `INSERT INTO history (user_id, character_name, context_data, is_paid)
      VALUES ($1, $2, $3, $4)
      RETURNING id`,
@@ -348,7 +354,8 @@ export async function createHistoryEntry(data: {
 
 export async function getLatestHistoryEntry(
   userId: string,
-  opts?: { characterName?: string; contextType?: string }
+  opts?: { characterName?: string; contextType?: string },
+  client?: import("./db").PoolClient
 ): Promise<{ id: string; context_data: Record<string, unknown>; created_at: Date } | null> {
   const params: unknown[] = [userId];
   let sql = `SELECT id, context_data, created_at FROM history WHERE user_id = $1`;
@@ -364,10 +371,17 @@ export async function getLatestHistoryEntry(
 
   sql += ` ORDER BY created_at DESC LIMIT 1`;
 
-  const { rows } = await query<{ id: string; context_data: Record<string, unknown>; created_at: Date }>(
-    sql,
-    params
-  );
+  const run = client
+    ? (text: string, p?: unknown[]) =>
+        queryClient<{ id: string; context_data: Record<string, unknown>; created_at: Date }>(
+          client,
+          text,
+          p
+        )
+    : (text: string, p?: unknown[]) =>
+        query<{ id: string; context_data: Record<string, unknown>; created_at: Date }>(text, p);
+
+  const { rows } = await run(sql, params);
   return rows[0] ?? null;
 }
 
@@ -457,10 +471,14 @@ export async function deleteHistoryEntry(userId: string, entryId: string): Promi
 
 export async function recordTripletDrawAnchor(
   userId: string,
-  at: Date | string = new Date()
+  at: Date | string = new Date(),
+  client?: import("./db").PoolClient
 ): Promise<void> {
   const iso = at instanceof Date ? at.toISOString() : at;
-  await query(
+  const run = client
+    ? (text: string, params?: unknown[]) => queryClient(client, text, params)
+    : (text: string, params?: unknown[]) => query(text, params);
+  await run(
     `UPDATE users SET astro_meta = jsonb_set(
        COALESCE(astro_meta, '{}'::jsonb),
        '{lastTripletDrawAt}',

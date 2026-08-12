@@ -4,6 +4,7 @@ import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getUserById } from "@/lib/users";
 import { saveAuthenticatedDailyTriplet } from "@/lib/daily-triplet-save";
+import { readSessionClaimCookie } from "@/lib/session-claim";
 
 export const runtime = "nodejs";
 
@@ -38,6 +39,8 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_body" }, { status: 400 });
   }
 
+  const claimToken = await readSessionClaimCookie();
+
   const result = await saveAuthenticatedDailyTriplet({
     userId: profileUserId,
     cards: body.cards ?? body.tarotCards,
@@ -45,6 +48,7 @@ export async function POST(request: NextRequest) {
     deckSystem: typeof body.deckSystem === "string" ? body.deckSystem : null,
     teaser: typeof body.teaser === "string" ? body.teaser : null,
     sessionId: typeof body.sessionId === "string" ? body.sessionId : null,
+    claimToken,
   });
 
   if (!result.ok) {

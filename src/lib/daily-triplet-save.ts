@@ -4,16 +4,16 @@ import {
   linkSessionToUser,
   recordTripletDrawAnchor,
 } from "@/lib/users";
-import { checkTripletCooldown } from "@/lib/triplet-limit-server";
-import { updateSessionChatMeta } from "@/lib/session";
-import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
-import type { DeckSystem } from "@/lib/decks/types";
 import {
-  dailyCardsKey,
-  normalizeDailyTripletCards,
-  type DailyTripletCard,
-} from "@/lib/daily-triplet-cards";
+  checkTripletCooldown,
+  checkTripletCooldownWithClient,
+} from "@/lib/triplet-limit-server";
+import { updateSessionChatMetaForUser } from "@/lib/session";
+import { queryClient, withTransaction } from "@/lib/db";
+import { dailyCardsKey, type DailyTripletCard } from "@/lib/daily-triplet-cards";
+import { validateDailyTripletInput } from "@/lib/daily-triplet-validate";
 import { buildHomeRecapKey } from "@/lib/home-recap-key";
+import type { DeckSystem } from "@/lib/decks/types";
 
 export type SavedDailyArtifact = {
   exists: true;
@@ -35,6 +35,8 @@ export type SaveDailyTripletInput = {
   deckSystem?: string | null;
   teaser?: string | null;
   sessionId?: string | null;
+  /** Optional signed session claim for orphan attach. */
+  claimToken?: string | null;
 };
 
 export type SaveDailyTripletResult =
@@ -46,133 +48,185 @@ export type SaveDailyTripletResult =
     }
   | {
       ok: false;
-      code: "COOLDOWN" | "INVALID_CARDS" | "INVALID_MASTER";
+      code: "COOLDOWN" | "INVALID_CARDS" | "INVALID_MASTER" | "INVALID_DECK";
       nextAvailableAt?: string | null;
       message: string;
     };
 
-function resolveDeckSystem(raw: unknown): DeckSystem {
-  if (typeof raw === "string" && raw.trim()) return raw.trim() as DeckSystem;
-  return DEFAULT_DECK_SYSTEM;
+function toArtifact(input: {
+  historyId: string;
+  sessionId: string | null;
+  masterId: string;
+  deckSystem: DeckSystem;
+  cards: DailyTripletCard[];
+  createdAt: string;
+}): SavedDailyArtifact {
+  const cardsKey = dailyCardsKey(input.cards);
+  return {
+    exists: true,
+    historyId: input.historyId,
+    sessionId: input.sessionId,
+    masterId: input.masterId,
+    deckSystem: input.deckSystem,
+    cards: input.cards,
+    cardNames: input.cards.map((c) => c.name),
+    cardsKey,
+    createdAt: input.createdAt,
+    recapKey: buildHomeRecapKey({ historyId: input.historyId }),
+  };
 }
 
+/**
+ * Authenticated daily Tarot save — atomic entitlement + owner-safe session bind.
+ */
 export async function saveAuthenticatedDailyTriplet(
   input: SaveDailyTripletInput
 ): Promise<SaveDailyTripletResult> {
-  const cards = normalizeDailyTripletCards(input.cards);
-  if (!cards) {
-    return { ok: false, code: "INVALID_CARDS", message: "Нужно ровно три карты" };
-  }
-
-  const masterId =
-    typeof input.masterId === "string" && input.masterId.trim()
-      ? input.masterId.trim()
-      : "veronika";
-  if (!masterId) {
-    return { ok: false, code: "INVALID_MASTER", message: "Не выбран мастер" };
-  }
-
-  const deckSystem = resolveDeckSystem(input.deckSystem);
-  const cardsKey = dailyCardsKey(cards);
-  const teaser =
-    typeof input.teaser === "string" && input.teaser.trim() ? input.teaser.trim() : undefined;
-
-  const cooldown = await checkTripletCooldown(input.userId);
-  if (!cooldown.allowed) {
+  const validated = validateDailyTripletInput({
+    cards: input.cards,
+    masterId: input.masterId,
+    deckSystem: input.deckSystem,
+  });
+  if (!validated.ok) {
     return {
       ok: false,
-      code: "COOLDOWN",
-      nextAvailableAt: cooldown.nextAvailableAt,
-      message: "Новый расклад из 3 карт доступен один раз в сутки",
+      code: validated.code,
+      message: validated.message,
     };
   }
 
-  const latest = await getLatestHistoryEntry(input.userId, { characterName: "triplet" });
-  if (latest) {
-    const existingCards = normalizeDailyTripletCards(latest.context_data?.tarotCards);
-    const existingKey = existingCards ? dailyCardsKey(existingCards) : "";
-    const ageMs = Date.now() - new Date(latest.created_at).getTime();
-    if (existingCards && existingKey === cardsKey && ageMs < 60_000) {
-      const deck = resolveDeckSystem(latest.context_data?.deckSystem ?? deckSystem);
-      const master =
-        typeof latest.context_data?.masterId === "string" && latest.context_data.masterId.trim()
-          ? latest.context_data.masterId.trim()
-          : masterId;
-      return {
-        ok: true,
-        reused: true,
-        daily: {
-          exists: true,
-          historyId: latest.id,
-          sessionId: null,
-          masterId: master,
-          deckSystem: deck,
-          cards: existingCards,
-          cardNames: existingCards.map((c) => c.name),
-          cardsKey: existingKey,
-          createdAt: latest.created_at.toISOString(),
-          recapKey: buildHomeRecapKey({ historyId: latest.id }),
-        },
-        nextAvailableAt: cooldown.nextAvailableAt,
-      };
-    }
-  }
-
-  const history = await createHistoryEntry({
-    userId: input.userId,
-    characterName: "triplet",
-    contextData: {
-      type: "daily_triplet",
-      spreadType: "daily",
-      tarotCards: cards,
-      deckSystem,
-      masterId,
-      ...(teaser ? { teaser } : {}),
-    },
-  });
-
-  await recordTripletDrawAnchor(input.userId);
-
-  let sessionId: string | null =
+  const { masterId, deckSystem, cards, cardsKey } = validated;
+  const teaser =
+    typeof input.teaser === "string" && input.teaser.trim() ? input.teaser.trim() : undefined;
+  const requestedSessionId =
     typeof input.sessionId === "string" && input.sessionId.trim()
       ? input.sessionId.trim()
       : null;
 
-  if (sessionId) {
-    try {
-      await linkSessionToUser(sessionId, input.userId);
-      await updateSessionChatMeta(sessionId, {
-        characterKey: masterId,
-        intention: null,
-        spreadType: "daily",
-        spreadId: "triplet",
-        cards: cards.map((c) => c.name),
-      });
-    } catch {
-      sessionId = null;
+  return withTransaction(async (client) => {
+    // Profile-scoped daily entitlement lock (separate namespace from guest-resume).
+    await queryClient(client, `SELECT pg_advisory_xact_lock(hashtext($1))`, [
+      `daily-triplet-user:${input.userId}`,
+    ]);
+
+    const cooldown = await checkTripletCooldownWithClient(client, input.userId);
+
+    const latest = await getLatestHistoryEntry(
+      input.userId,
+      { characterName: "triplet" },
+      client
+    );
+    if (latest) {
+      const existingCards = (() => {
+        const raw = latest.context_data?.tarotCards;
+        const again = validateDailyTripletInput({
+          cards: raw,
+          masterId:
+            typeof latest.context_data?.masterId === "string"
+              ? latest.context_data.masterId
+              : masterId,
+          deckSystem:
+            typeof latest.context_data?.deckSystem === "string"
+              ? latest.context_data.deckSystem
+              : deckSystem,
+        });
+        return again.ok ? again.cards : null;
+      })();
+      const existingKey = existingCards ? dailyCardsKey(existingCards) : "";
+      const ageMs = Date.now() - new Date(latest.created_at).getTime();
+      if (existingCards && existingKey === cardsKey && ageMs < 60_000) {
+        return {
+          ok: true as const,
+          reused: true,
+          daily: toArtifact({
+            historyId: latest.id,
+            sessionId: null,
+            masterId:
+              typeof latest.context_data?.masterId === "string" &&
+              latest.context_data.masterId.trim()
+                ? latest.context_data.masterId.trim()
+                : masterId,
+            deckSystem:
+              typeof latest.context_data?.deckSystem === "string"
+                ? (latest.context_data.deckSystem as DeckSystem)
+                : deckSystem,
+            cards: existingCards,
+            createdAt: latest.created_at.toISOString(),
+          }),
+          nextAvailableAt: cooldown.nextAvailableAt,
+        };
+      }
     }
-  }
 
-  const createdAt = new Date().toISOString();
-  const daily: SavedDailyArtifact = {
-    exists: true,
-    historyId: history.id,
-    sessionId,
-    masterId,
-    deckSystem,
-    cards,
-    cardNames: cards.map((c) => c.name),
-    cardsKey,
-    createdAt,
-    recapKey: buildHomeRecapKey({ historyId: history.id }),
-  };
+    if (!cooldown.allowed) {
+      return {
+        ok: false as const,
+        code: "COOLDOWN" as const,
+        nextAvailableAt: cooldown.nextAvailableAt,
+        message: "Новый расклад из 3 карт доступен один раз в сутки",
+      };
+    }
 
-  const nextCooldown = await checkTripletCooldown(input.userId);
-  return {
-    ok: true,
-    daily,
-    nextAvailableAt: nextCooldown.nextAvailableAt,
-  };
+    const history = await createHistoryEntry(
+      {
+        userId: input.userId,
+        characterName: "triplet",
+        contextData: {
+          type: "daily_triplet",
+          spreadType: "daily",
+          tarotCards: cards,
+          deckSystem,
+          masterId,
+          ...(teaser ? { teaser } : {}),
+        },
+      },
+      client
+    );
+
+    const drawAt = new Date().toISOString();
+    await recordTripletDrawAnchor(input.userId, drawAt, client);
+
+    let sessionId: string | null = null;
+    if (requestedSessionId) {
+      const linked = await linkSessionToUser(
+        requestedSessionId,
+        input.userId,
+        input.claimToken
+      );
+      if (linked) {
+        const updated = await updateSessionChatMetaForUser(
+          requestedSessionId,
+          input.userId,
+          {
+            characterKey: masterId,
+            intention: null,
+            spreadType: "daily",
+            spreadId: "triplet",
+            cards: cards.map((c) => c.name),
+          },
+          client
+        );
+        if (updated) sessionId = requestedSessionId;
+      }
+    }
+
+    const nextCooldown = await checkTripletCooldownWithClient(client, input.userId);
+    return {
+      ok: true as const,
+      daily: toArtifact({
+        historyId: history.id,
+        sessionId,
+        masterId,
+        deckSystem,
+        cards,
+        createdAt: drawAt,
+      }),
+      nextAvailableAt: nextCooldown.nextAvailableAt,
+    };
+  });
 }
 
 export type { DailyTripletCard };
+
+/** Fast path used by tests to inspect cooldown without save. */
+export { checkTripletCooldown };
