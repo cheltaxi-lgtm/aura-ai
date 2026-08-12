@@ -755,8 +755,9 @@ export default function GuestTripletDraw({
                   onClick={openFullReadingGate}
                   disabled={teaserLoading || !teaserText}
                   className="btn-primary w-full px-6 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
+                  data-guest-cta="full_reading"
                 >
-                  Открыть полный разбор бесплатно
+                  Получить полный разбор
                 </button>
                 <p className="text-center text-xs text-aura-ivory/50">
                   Ваш вопрос и карты уже сохранены.

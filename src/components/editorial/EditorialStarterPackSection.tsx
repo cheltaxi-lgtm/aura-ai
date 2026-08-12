@@ -7,22 +7,19 @@ import { buildLoginHref, resolveRegistrationReturnTo } from "@/lib/post-auth-ret
 import { EDITORIAL_STARTER_PACK } from "@/lib/editorial-landing-content";
 
 type EditorialStarterPackSectionProps = {
-  /** When cards are already drawn — primary CTA continues to full reading auth. */
-  onContinueFullReading?: () => void;
-  /** Fallback: start first free cards if no spread yet. */
+  /**
+   * Before-cards acquisition only.
+   * Must start guest picker — never claim «полный разбор» here.
+   * Post-teaser full-reading CTA lives in GuestTripletDraw.
+   */
   onOpenFreeSpread?: () => void;
-  hasDrawnCards?: boolean;
 };
 
 export default function EditorialStarterPackSection({
-  onContinueFullReading,
   onOpenFreeSpread,
-  hasDrawnCards = false,
 }: EditorialStarterPackSectionProps) {
   const loginHref = buildLoginHref(resolveRegistrationReturnTo({ guestSpread: true }));
   const { ref, className } = useScrollReveal<HTMLElement>();
-  const primaryAction = hasDrawnCards ? onContinueFullReading ?? onOpenFreeSpread : onOpenFreeSpread;
-  const primaryLabel = EDITORIAL_STARTER_PACK.primaryCta;
 
   return (
     <section
@@ -30,6 +27,7 @@ export default function EditorialStarterPackSection({
       id={GUEST_SPREAD_SECTION_ID}
       className={`editorial-starter-pack scroll-mt-24 ${className}`}
       aria-labelledby="editorial-starter-pack-title"
+      data-starter-state="before_cards"
     >
       <div className="editorial-landing__inner">
         <div className="editorial-starter-pack__card salon-reveal__item" style={{ ["--salon-i" as string]: 0 }}>
@@ -61,13 +59,14 @@ export default function EditorialStarterPackSection({
                 <li>{EDITORIAL_STARTER_PACK.noCardBenefit}</li>
               </ul>
               <div className="editorial-starter-pack__actions">
-                {primaryAction ? (
+                {onOpenFreeSpread ? (
                   <button
                     type="button"
                     className="editorial-btn editorial-btn--gold editorial-starter-pack__cta-primary"
-                    onClick={primaryAction}
+                    onClick={onOpenFreeSpread}
+                    data-starter-cta="try_cards"
                   >
-                    {primaryLabel}
+                    {EDITORIAL_STARTER_PACK.primaryCta}
                   </button>
                 ) : null}
                 <Link href={loginHref} className="editorial-btn editorial-btn--ghost">

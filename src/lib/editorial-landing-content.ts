@@ -50,10 +50,11 @@ export const EDITORIAL_DAILY_CARDS = {
 } as const;
 
 export const EDITORIAL_STARTER_PACK = {
-  eyebrow: "Ваш расклад готов",
-  title: "Узнайте, что эти три карты говорят именно о Вашей ситуации",
+  /** Landing conversion before guest cards — CTA must start the picker, not claim full reading. */
+  eyebrow: "Первый расклад",
+  title: "Узнайте, что три карты говорят о Вашей ситуации",
   subtitle:
-    "Ваш вопрос и выбранные карты уже сохранены. После регистрации мастер соединит их в цельный разбор — без повторного выбора и без нового расклада.",
+    "Откройте три карты по своему вопросу. После короткого намёка можно получить полный разбор — без повторного выбора карт.",
   benefits: [
     "полный смысл сочетания трёх карт",
     "вероятное развитие ситуации",
@@ -66,7 +67,10 @@ export const EDITORIAL_STARTER_PACK = {
   spaceBenefit: "Можно вернуться к раскладу позже — он сохранится в Вашем пространстве.",
   runesBenefit: "После регистрации на балансе появятся стартовые руны для первых обращений к мастеру.",
   noCardBenefit: "Без банковской карты.",
-  primaryCta: "Получить полный разбор",
+  /** Honest next step before cards exist. Full-reading CTA lives in GuestTripletDraw after teaser. */
+  primaryCta: "Попробовать 3 карты бесплатно",
+  /** @deprecated alias — post-teaser CTA is in GuestTripletDraw */
+  fullReadingCta: "Получить полный разбор",
   secondaryCta: "Уже есть аккаунт — войти",
   fine: "18+",
 } as const;
