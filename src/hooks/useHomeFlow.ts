@@ -364,8 +364,9 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
         };
         localStorage.setItem(PROFILE_KEY, JSON.stringify(draft));
         setProfile(draft);
-        setStepState(guest.tarotCards.length >= 3 ? "onboarding" : "triplet");
-        persistStep(guest.tarotCards.length >= 3 ? "onboarding" : "triplet");
+        // Guest Tarot resume: masters/claim coordinator — never birth onboarding.
+        setStepState(guest.tarotCards.length >= 3 ? "masters" : "triplet");
+        persistStep(guest.tarotCards.length >= 3 ? "masters" : "triplet");
       }
       finishBootstrap();
       return;
@@ -381,9 +382,14 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
 
       const effectiveStep = resolveStoredFlowStep(parsed, rawEffectiveStep);
 
+      // Missing birth is progressive profile completion — Tarot/chat stay available.
       if (!String(parsed.birthDate ?? "").trim()) {
-        setStepState("onboarding");
-        persistStep("onboarding");
+        const nextStep =
+          effectiveStep && effectiveStep !== "onboarding" && effectiveStep !== "intro"
+            ? effectiveStep
+            : "masters";
+        setStepState(nextStep);
+        persistStep(nextStep);
         finishBootstrap();
         return;
       }

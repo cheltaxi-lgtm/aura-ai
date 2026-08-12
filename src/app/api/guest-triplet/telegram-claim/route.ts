@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { enforceGuestTripletClaimRateLimit } from "@/lib/api-guards";
 import { requireUserAuth } from "@/lib/require-auth";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { findUserById, getProfileUserIdForAccount } from "@/lib/accounts";
+import { ensureMinimalConsumerProfile } from "@/lib/users";
 import { claimTelegramBotReceipt } from "@/lib/telegram/claim-bot-receipt";
 import { isTgReceiptToken } from "@/lib/telegram/bot-receipt-client";
 
@@ -25,16 +26,15 @@ export async function POST(request: NextRequest) {
   const limited = await enforceGuestTripletClaimRateLimit(auth.sub);
   if (limited) return limited;
 
-  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  let profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
-    return NextResponse.json(
-      {
-        error: "needs_profile",
-        code: "NEEDS_PROFILE",
-        message: "Завершите профиль: укажите дату и город рождения.",
-      },
-      { status: 403 }
-    );
+    // Align with web claim: stub consumer profile — birth not required for Tarot.
+    const account = await findUserById(auth.sub);
+    const stub = await ensureMinimalConsumerProfile({
+      accountId: auth.sub,
+      name: account?.name || auth.name || "Гость",
+    });
+    profileUserId = stub.id;
   }
 
   let body: { tg_receipt?: string; token?: string };

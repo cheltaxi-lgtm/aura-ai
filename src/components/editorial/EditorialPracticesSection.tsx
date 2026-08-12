@@ -8,9 +8,14 @@ import { buildRegisterHref, resolveRegistrationReturnTo } from "@/lib/post-auth-
 
 type EditorialPracticesSectionProps = {
   isLoggedIn: boolean;
+  /** Prefer same-page guest triplet over /?ask&spread=1 when landing already mounts GuestTripletDraw. */
+  onGuestTarot?: () => void;
 };
 
-export default function EditorialPracticesSection({ isLoggedIn }: EditorialPracticesSectionProps) {
+export default function EditorialPracticesSection({
+  isLoggedIn,
+  onGuestTarot,
+}: EditorialPracticesSectionProps) {
   const { ref, className } = useScrollReveal<HTMLElement>();
 
   return (
@@ -38,10 +43,37 @@ export default function EditorialPracticesSection({ isLoggedIn }: EditorialPract
               "guestHref" in practice && typeof practice.guestHref === "string"
                 ? practice.guestHref
                 : null;
+            const useInlineGuestTarot =
+              !isLoggedIn && practice.id === "tarot" && typeof onGuestTarot === "function";
             const href = isLoggedIn
               ? practice.loggedInHref
               : guestDirect ??
                 buildRegisterHref(resolveRegistrationReturnTo(practice.guestReturn));
+
+            const copy = (
+              <>
+                <EditorialImage src={practice.image} alt="" className="editorial-practice-card__img" />
+                <div className="editorial-practice-card__overlay" aria-hidden />
+                <div className="editorial-practice-card__copy">
+                  <p className="editorial-practice-card__title">{practice.title}</p>
+                  <p className="editorial-practice-card__subtitle">{practice.subtitle}</p>
+                </div>
+              </>
+            );
+
+            if (useInlineGuestTarot) {
+              return (
+                <button
+                  key={practice.id}
+                  type="button"
+                  onClick={onGuestTarot}
+                  className="editorial-practice-card salon-reveal__item"
+                  style={{ ["--salon-i" as string]: index + 2 }}
+                >
+                  {copy}
+                </button>
+              );
+            }
 
             return (
               <Link
@@ -50,12 +82,7 @@ export default function EditorialPracticesSection({ isLoggedIn }: EditorialPract
                 className="editorial-practice-card salon-reveal__item"
                 style={{ ["--salon-i" as string]: index + 2 }}
               >
-                <EditorialImage src={practice.image} alt="" className="editorial-practice-card__img" />
-                <div className="editorial-practice-card__overlay" aria-hidden />
-                <div className="editorial-practice-card__copy">
-                  <p className="editorial-practice-card__title">{practice.title}</p>
-                  <p className="editorial-practice-card__subtitle">{practice.subtitle}</p>
-                </div>
+                {copy}
               </Link>
             );
           })}

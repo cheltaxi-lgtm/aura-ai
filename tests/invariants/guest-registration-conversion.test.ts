@@ -82,6 +82,25 @@ describe("guest-registration-conversion", () => {
     expect(src).not.toContain("Guest topic cards → login/register");
   });
 
+  it("practices classic Tarot is guest-open, not register-gated", async () => {
+    const fs = await import("node:fs/promises");
+    const content = await fs.readFile("src/lib/editorial-landing-content.ts", "utf8");
+    const practices = await fs.readFile(
+      "src/components/editorial/EditorialPracticesSection.tsx",
+      "utf8"
+    );
+    expect(content).toMatch(/id:\s*"tarot"[\s\S]*?guestHref:/);
+    expect(practices).toContain("onGuestTarot");
+  });
+
+  it("home flow bootstrap does not force birth onboarding for stub profiles", async () => {
+    const src = await import("node:fs/promises").then((fs) =>
+      fs.readFile("src/hooks/useHomeFlow.ts", "utf8")
+    );
+    expect(src).toContain("Missing birth is progressive profile completion");
+    expect(src).toContain('guest.tarotCards.length >= 3 ? "masters"');
+  });
+
   it("resume copy uses recovery language, not technical jargon", () => {
     expect(GUEST_RESUME_TRANSITION_TITLE).toContain("Восстанавливаем");
     expect(GUEST_RESUME_TRANSITION_SUBTITLE.toLowerCase()).toContain("карты уже выбраны");

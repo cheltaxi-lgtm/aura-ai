@@ -404,7 +404,10 @@ export default function AuraSellingLanding({
             className="aura-landing-masters"
           />
         ) : null}
-        <EditorialPracticesSection isLoggedIn={false} />
+        <EditorialPracticesSection
+          isLoggedIn={false}
+          onGuestTarot={() => startGuestSpread()}
+        />
         <LandingClosingBand onOpenCards={() => handlePrimaryCta("final")} />
         {showTariffs ? (
           <LandingSeoHub
@@ -609,7 +612,10 @@ export default function AuraSellingLanding({
       ) : null}
 
       {showSellingSections && isEditorial ? (
-        <EditorialPracticesSection isLoggedIn={isLoggedIn} />
+        <EditorialPracticesSection
+          isLoggedIn={isLoggedIn}
+          onGuestTarot={isLoggedIn ? undefined : () => startGuestSpread()}
+        />
       ) : null}
 
       {showSellingSections && !isEditorial ? (

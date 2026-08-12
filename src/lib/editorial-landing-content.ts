@@ -123,6 +123,8 @@ export const EDITORIAL_PRACTICES = [
     subtitle: "Три карты по вашему вопросу — ясный ориентир ещё до оплаты.",
     image: "/landing/practices/classic-tarot.jpg",
     cta: "Открыть три карты",
+    /** Free guest triplet — no registration before first personal result. */
+    guestHref: "/?ask=1&spread=1",
     guestReturn: { guestSpread: true },
     loggedInHref: "/rasklad",
   },
@@ -141,6 +143,7 @@ export const EDITORIAL_PRACTICES = [
     subtitle: "Числа пути, квадрат Пифагора и циклы — с Эвелиной.",
     image: "/landing/practices/numerology.jpg",
     cta: "Перейти к числам",
+    guestHref: "/numerology",
     guestReturn: { custom: "/numerology" },
     loggedInHref: "/numerology",
   },

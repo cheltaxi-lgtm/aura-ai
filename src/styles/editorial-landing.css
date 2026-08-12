@@ -1116,6 +1116,31 @@ html[data-motion-lite="1"] .salon-bg__lines {
   }
 }
 
+button.editorial-practice-card {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  width: 100%;
+}
+
+button.editorial-practice-card {
+  appearance: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  font: inherit;
+  color: inherit;
+  text-align: inherit;
+  cursor: pointer;
+  width: 100%;
+  background: transparent;
+}
+
 .editorial-practice-card {
   position: relative;
   display: block;
