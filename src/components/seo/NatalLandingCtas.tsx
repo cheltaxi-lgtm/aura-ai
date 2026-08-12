@@ -10,7 +10,7 @@ const CALCULATOR = "#natal-calculator";
 function hasPendingNatalClaimIntent(): boolean {
   if (typeof window === "undefined") return false;
   try {
-    if (sessionStorage.getItem("natal:pending-claim") === "1") return true;
+    if (sessionStorage.getItem("natal:resume-intent") === "1") return true;
   } catch {
     /* ignore */
   }

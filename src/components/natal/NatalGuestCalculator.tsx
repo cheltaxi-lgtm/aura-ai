@@ -17,7 +17,8 @@ const NatalChartWheel = dynamic(() => import("@/components/natal/NatalChartWheel
 });
 
 const RESUME_RETURN = "/natalnaya-karta?resumeNatal=1";
-const PENDING_INTENT_KEY = "natal:pending-claim";
+/** UI navigation intent only — NOT a claim secret (cookie is authoritative). */
+const PENDING_INTENT_KEY = "natal:resume-intent";
 
 type PlaceOption = {
   label: string;
