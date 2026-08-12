@@ -6,6 +6,7 @@ import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import NatalLandingCtas from "@/components/seo/NatalLandingCtas";
 import NatalGuestCalculator from "@/components/natal/NatalGuestCalculator";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
@@ -98,19 +99,19 @@ const RELATED = [
     text: "Бесплатный расчёт по дате рождения на 22 арканах.",
   },
   {
-    href: "/sovmestimost-znakov-zodiaka",
-    title: "Совместимость знаков",
-    text: "Общий ориентир по стихиям — до персональной синастрии.",
+    href: "/dizayn-cheloveka/rasschitat",
+    title: "Дизайн человека",
+    text: "Тип, стратегия и бодиграф по тем же данным рождения.",
   },
   {
-    href: "/numerology",
-    title: "Нумерология",
-    text: "Числа пути, квадрат Пифагора и совместимость с Эвелиной.",
+    href: "/numerology/matrica-sovmestimosti",
+    title: "Совместимость матриц",
+    text: "Две даты — score пары по методике Zovus.",
   },
   {
-    href: "/prognoz",
-    title: "Прогнозы",
-    text: "Сезонные и знаковые ориентиры — вход в тему периода.",
+    href: "/taro",
+    title: "Таро онлайн",
+    text: "Расклады и значения карт, если нужен ситуативный срез.",
   },
 ] as const;
 
@@ -150,6 +151,12 @@ export default function NatalnayaKartaPage() {
         goal="natal_landing_view"
         funnelProduct="natal"
         funnelSource="natal_landing"
+      />
+      <SeoBreadcrumbs
+        items={[
+          { name: "Zovus", path: "/" },
+          { name: "Натальная карта", path: PATH },
+        ]}
       />
       <p className="text-sm text-aura-gold/80">Астрология · Натальная карта</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
@@ -214,6 +221,10 @@ export default function NatalnayaKartaPage() {
           Если нужен быстрый числовой срез по дате без времени рождения — начните с{" "}
           <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
             матрицы судьбы
+          </Link>
+          . Для типа и стратегии по рождению —{" "}
+          <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
+            дизайн человека
           </Link>
           . Если вопрос про пару на уровне знаков — загляните в{" "}
           <Link href="/sovmestimost-znakov-zodiaka" className="text-aura-gold hover:underline">

@@ -3,6 +3,8 @@ import { notFound } from "next/navigation";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import HdCalculator from "@/components/human-design/HdCalculator";
 import { isHumanDesignEnabled } from "@/lib/settings";
@@ -51,6 +53,13 @@ export default async function HumanDesignCalculatePage() {
         funnelProduct="human_design"
         funnelSource="hd_calc"
       />
+      <SeoBreadcrumbs
+        items={[
+          { name: "Zovus", path: "/" },
+          { name: "Дизайн человека", path: "/dizayn-cheloveka" },
+          { name: "Рассчитать", path: "/dizayn-cheloveka/rasschitat" },
+        ]}
+      />
       <p className="text-sm text-aura-gold/80">Дизайн Человека · Калькулятор</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
         Рассчитать карту Дизайна Человека
@@ -74,6 +83,15 @@ export default async function HumanDesignCalculatePage() {
           ))}
         </div>
       </SeoSection>
+
+      <SeoRelatedTools
+        title="Смотрите также"
+        links={[
+          { href: "/natalnaya-karta", label: "Натальная карта" },
+          { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
+          { href: "/taro", label: "Таро онлайн" },
+        ]}
+      />
 
       <p className="mt-8 text-xs leading-relaxed text-white/40">
         Дизайн Человека — система символической интерпретации. Результат не является

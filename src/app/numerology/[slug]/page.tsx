@@ -6,6 +6,8 @@ import { PRICING } from "@/lib/config/pricing";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
+import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
+import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import DestinyMatrixPreview from "@/components/numerolog/DestinyMatrixPreview";
@@ -104,6 +106,21 @@ const MATRIX_FAQ = [
   },
 ] as const;
 
+const MATRIX_PAIR_FAQ = [
+  {
+    q: "Что показывает совместимость матриц судьбы?",
+    a: "Две даты сравниваются по ключевым точкам матрицы: комфорт, любовь, деньги, напряжение и годовой фон. Общий score — ориентир методики Zovus, а не «процент любви».",
+  },
+  {
+    q: "Нужна ли регистрация для расчёта пары?",
+    a: "Для бесплатного preview — нет. Полный разбор пары с Эвелиной открывается после входа; та же пара дат сохраняется.",
+  },
+  {
+    q: "Чем это отличается от личной матрицы судьбы?",
+    a: "Личная матрица — схема одного человека. Совместимость матриц сопоставляет две схемы и показывает, где пара усиливает друг друга, а где нужна осознанность.",
+  },
+] as const;
+
 type TopicSlug = keyof typeof TOPICS;
 
 export function generateStaticParams() {
@@ -149,7 +166,14 @@ export default async function NumerologyTopicPage({
         path: `/numerology/${slug}`,
         faq: MATRIX_FAQ.map((item) => ({ q: item.q, a: item.a })),
       })
-    : null;
+    : isMatrixPair
+      ? buildForecastStructuredData({
+          title: topic.title,
+          description: topic.description,
+          path: `/numerology/${slug}`,
+          faq: MATRIX_PAIR_FAQ.map((item) => ({ q: item.q, a: item.a })),
+        })
+      : null;
 
   return (
     <SeoPageShell backHref="/numerology" backLabel="Нумерология">
@@ -173,6 +197,15 @@ export default async function NumerologyTopicPage({
         }
         funnelSource={isDestinyMatrix ? "destiny_matrix" : isMatrixPair ? "matrix_pair" : undefined}
       />
+      {isDestinyMatrix || isMatrixPair ? (
+        <SeoBreadcrumbs
+          items={[
+            { name: "Zovus", path: "/" },
+            { name: "Нумерология", path: "/numerology" },
+            { name: topic.title, path: `/numerology/${slug}` },
+          ]}
+        />
+      ) : null}
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
       <h1 className="mt-2 font-display text-3xl font-bold">{topic.title}</h1>
       <p className="mt-4 text-white/70">{topic.intro}</p>
@@ -237,9 +270,33 @@ export default async function NumerologyTopicPage({
               <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
                 личной матрицы
               </Link>
-              , а затем сравнить пару.
+              , а затем сравнить пару. Для астрологического слоя —{" "}
+              <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+                натальная карта
+              </Link>
+              .
             </p>
           </SeoSection>
+
+          <SeoSection title="Частые вопросы">
+            <div className="space-y-4">
+              {MATRIX_PAIR_FAQ.map((item) => (
+                <div key={item.q}>
+                  <p className="font-medium text-white">{item.q}</p>
+                  <p className="mt-1 text-sm text-white/70">{item.a}</p>
+                </div>
+              ))}
+            </div>
+          </SeoSection>
+
+          <SeoRelatedTools
+            title="Смотрите также"
+            links={[
+              { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
+              { href: "/natalnaya-karta", label: "Натальная карта" },
+              { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн человека" },
+            ]}
+          />
         </>
       ) : null}
 
@@ -319,22 +376,29 @@ export default async function NumerologyTopicPage({
 
           <SeoSection title="Матрица судьбы и другие методы">
             <p>
-              <Link href="/numerology/pythagoras-square" className="text-aura-gold hover:underline">
-                Квадрат Пифагора
+              <Link
+                href="/numerology/matrica-sovmestimosti"
+                className="text-aura-gold hover:underline"
+              >
+                Совместимость матриц
               </Link>{" "}
-              ближе к структуре характера через повторяющиеся числа даты.{" "}
-              <Link href="/numerology/compatibility" className="text-aura-gold hover:underline">
-                Совместимость по дате
-              </Link>{" "}
-              сравнивает два числовых профиля.{" "}
+              сравнивает две даты по методике Zovus.{" "}
               <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
                 Натальная карта
               </Link>{" "}
-              требует время и место рождения и говорит языком планет.
+              требует время и место рождения и говорит языком планет.{" "}
+              <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
+                Дизайн человека
+              </Link>{" "}
+              даёт тип, стратегию и бодиграф.{" "}
+              <Link href="/numerology/pythagoras-square" className="text-aura-gold hover:underline">
+                Квадрат Пифагора
+              </Link>{" "}
+              ближе к структуре характера через повторяющиеся числа даты.
             </p>
             <p>
-              Выбирайте инструмент под вопрос: быстрый срез по дате — матрица; глубина характера и
-              периодов — натал; пара в числах — нумерологическая совместимость.
+              Выбирайте инструмент под вопрос: быстрый срез по дате — матрица; пара — совместимость
+              матриц; глубина характера и периодов — натал; тип и стратегия — дизайн человека.
             </p>
           </SeoSection>
 
@@ -358,6 +422,14 @@ export default async function NumerologyTopicPage({
               Рассчитать матрицу бесплатно
             </SeoTrackedCta>
             <SeoTrackedCta
+              href="/numerology/matrica-sovmestimosti"
+              variant="ghost"
+              trackGoal="numerology_cta_click"
+              trackParams={{ topic: "matrica-sovmestimosti" }}
+            >
+              Совместимость матриц
+            </SeoTrackedCta>
+            <SeoTrackedCta
               href="/natalnaya-karta"
               variant="ghost"
               trackGoal="natal_landing_cta_click"
@@ -366,6 +438,17 @@ export default async function NumerologyTopicPage({
               Натальная карта
             </SeoTrackedCta>
           </div>
+
+          <SeoRelatedTools
+            title="Смотрите также"
+            excludeHrefs={["/numerology/destiny-matrix"]}
+            links={[
+              { href: "/numerology/matrica-sovmestimosti", label: "Совместимость матриц" },
+              { href: "/natalnaya-karta", label: "Натальная карта" },
+              { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн человека" },
+              { href: "/taro", label: "Таро онлайн" },
+            ]}
+          />
         </>
       ) : isMatrixPair ? null : (
         <>

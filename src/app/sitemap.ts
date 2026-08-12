@@ -231,6 +231,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPage("/numerology/compatibility", 0.55, "monthly"),
     staticPage("/numerology/name-compatibility", 0.55, "monthly"),
     staticPage("/numerology/destiny-matrix", 0.85, "weekly"),
+    staticPage("/numerology/matrica-sovmestimosti", 0.85, "weekly"),
     ...(natalEnabled ? [staticPage("/natalnaya-karta", 0.9, "weekly")] : []),
     ...(hdEnabled
       ? [
