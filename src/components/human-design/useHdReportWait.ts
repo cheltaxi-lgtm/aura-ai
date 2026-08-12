@@ -17,10 +17,10 @@ const POLL_MS = 3500;
 /** Let POST flip the row to pending before the first poll. */
 const FIRST_POLL_DELAY_MS = 1200;
 /**
- * Hard cap on waiting. Sectional HD runs ~3–8 min; the worker watchdog reaps
- * at 25 min and requeues, so the UI must outlive one full retry cycle.
+ * Hard cap on waiting. Sectional HD often runs 20–40 min; the worker watchdog
+ * reaps at ~55 min and requeues, so the UI must outlive one full attempt.
  */
-const MAX_WAIT_MS = 35 * 60 * 1000;
+const MAX_WAIT_MS = 60 * 60 * 1000;
 /** Consecutive network/poll failures before surfacing an error. */
 const MAX_CONSECUTIVE_FAILURES = 6;
 

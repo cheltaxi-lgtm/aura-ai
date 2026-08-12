@@ -115,7 +115,7 @@ export async function GET(_request: NextRequest) {
   const watchdogReaps1h = await countRecentWatchdogReaps(1);
   if (watchdogReaps1h > 0) {
     alerts.push(
-      `Watchdog за час вернул в очередь ${watchdogReaps1h} задач(и) (лимит ~25 мин)`
+      `Watchdog за час вернул в очередь ${watchdogReaps1h} задач(и) (лимит ~55 мин)`
     );
   }
 

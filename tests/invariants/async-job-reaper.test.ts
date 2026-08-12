@@ -34,8 +34,8 @@ describe("async job orphan / stale / watchdog reapers", () => {
     });
   });
 
-  it("watchdog default is 25 minutes", () => {
-    expect(ASYNC_JOB_WATCHDOG_MS_DEFAULT).toBe(25 * 60_000);
+  it("watchdog default is 55 minutes (covers long HD final assembly)", () => {
+    expect(ASYNC_JOB_WATCHDOG_MS_DEFAULT).toBe(55 * 60_000);
   });
 
   it("orphan reaper returns jobs to pending with next_attempt_at and excludes current worker", async () => {

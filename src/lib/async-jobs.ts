@@ -354,8 +354,12 @@ export async function getAsyncJobQueuePosition(jobId: string): Promise<number | 
   return rows[0]?.pos ?? null;
 }
 
-/** Absolute wall-clock cap for a single running attempt (watchdog). */
-export const ASYNC_JOB_WATCHDOG_MS_DEFAULT = 25 * 60_000;
+/**
+ * Absolute wall-clock cap for a single running attempt (watchdog).
+ * HD sectional reports routinely exceed 25–35 min (12 batches + editor);
+ * 25 min was killing live jobs mid-final-assembly despite fresh heartbeats.
+ */
+export const ASYNC_JOB_WATCHDOG_MS_DEFAULT = 55 * 60_000;
 
 /**
  * Requeue jobs left `running` by a dead worker (SIGKILL / deploy restart).

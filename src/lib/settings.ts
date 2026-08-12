@@ -161,8 +161,8 @@ const DEFAULTS = {
     natalModel: "openai/gpt-4o-mini",
     /** Empty at runtime → DEFAULT_MATRIX_MODEL (see ai-model.ts), not paid chat. */
     matrixModel: "deepseek/deepseek-chat-v3-0324",
-    /** Empty → paidModel (kimi) → model. Sectional HD gate fails on thin DeepSeek output. */
-    hdModel: "",
+    /** Sectional HD: DeepSeek ~2 min; empty at runtime still resolves via DEFAULT_HD_MODEL. */
+    hdModel: "deepseek/deepseek-chat-v3-0324",
     fallbackModels: [] as string[],
     natalFallbackModels: [] as string[],
     matrixFallbackModels: ["moonshotai/kimi-k2.5", "openai/gpt-4o-mini"] as string[],

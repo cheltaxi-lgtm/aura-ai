@@ -1,6 +1,10 @@
+import { getModelUsdPerToken, usdToRubRate } from "@/lib/openrouter-pricing";
 import { expectedHdSectionalLlmCalls } from "./sections";
 
-/** OpenRouter list prices RUB/1k tokens for known paid models (update when invoice changes). */
+/**
+ * Offline fallback only — live rates come from the OpenRouter catalog via
+ * resolveCostRubFromUsage. Used when the catalog is unreachable.
+ */
 export const HD_MODEL_RUB_PER_1K: Record<
   string,
   { input: number; output: number }
@@ -26,6 +30,32 @@ export function estimateCostRubFromUsage(
     (usage.promptTokens / 1000) * rates.input +
     (usage.completionTokens / 1000) * rates.output;
   return Math.round(rub * 100) / 100;
+}
+
+export type HdCostBreakdown = {
+  rub: number;
+  /** Where the rates came from — "static" means the catalog was unreachable. */
+  source: "openrouter" | "static";
+};
+
+/**
+ * Cost for any model, priced from the live OpenRouter catalog so a model switch
+ * in the admin picker does not silently bill at DeepSeek rates.
+ */
+export async function resolveCostRubFromUsage(
+  usage: HdTokenUsage,
+  modelId: string
+): Promise<HdCostBreakdown> {
+  const live = await getModelUsdPerToken(modelId);
+  if (live) {
+    const usd =
+      usage.promptTokens * live.input + usage.completionTokens * live.output;
+    return {
+      rub: Math.round(usd * usdToRubRate() * 100) / 100,
+      source: "openrouter",
+    };
+  }
+  return { rub: estimateCostRubFromUsage(usage, modelId), source: "static" };
 }
 
 /** Legacy estimate when usage is unavailable. */

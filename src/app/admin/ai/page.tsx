@@ -192,22 +192,22 @@ export default function AdminAiPage() {
             <p className="text-sm font-medium text-violet-100">Дизайн Человека</p>
             <p className="mt-1 text-xs leading-relaxed text-gray-500">
               Отдельная модель для HD-отчётов, ответов по отчёту и инсайтов центров
-              (посекционная генерация, ~13 вызовов). Гейт качества V1–V12 бракует тонкий
-              текст: deepseek-chat-v3 пишет 3–7k символов и не проходит — рекомендуется
-              moonshotai/kimi-k2.5. Пусто = платная модель чата.
+              (посекционная генерация, ~12 вызовов). deepseek-chat-v3 — ~2 мин и
+              проходит гейт; kimi-k2.5 — 15–32 мин (тяжёлый output + editor Abort).
+              Пусто = deepseek-chat-v3 (DEFAULT_HD_MODEL), не платная модель чата.
             </p>
           </div>
           <ModelPicker
             label="Модель для Дизайна Человека"
-            value={String(ai.hdModel || ai.paidModel || ai.model || "")}
+            value={String(ai.hdModel || "deepseek/deepseek-chat-v3-0324")}
             onChange={(modelId) => setAi({ ...ai, hdModel: modelId })}
           />
           <button
             type="button"
-            onClick={() => setAi({ ...ai, hdModel: "" })}
+            onClick={() => setAi({ ...ai, hdModel: "deepseek/deepseek-chat-v3-0324" })}
             className="text-xs text-gray-400 underline-offset-2 hover:text-white hover:underline"
           >
-            Сбросить → платная модель чата
+            Сбросить → deepseek-chat-v3 (дефолт HD)
           </button>
         </div>
 

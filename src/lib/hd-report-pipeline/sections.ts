@@ -19,6 +19,8 @@ export const HD_PIPELINE_BATCHES: ReadonlyArray<{
   maxTokens: number;
 }> = [
   {
+    // Six sections in one call — at the 1800–2600 char/section target this is the
+    // only batch that would otherwise truncate (≈5.7k tokens against a 7k cap).
     id: "type_core",
     titles: [
       "Вступление",
@@ -28,7 +30,7 @@ export const HD_PIPELINE_BATCHES: ReadonlyArray<{
       "Ложное «я»",
       "Подпись",
     ],
-    maxTokens: 7000,
+    maxTokens: 9000,
   },
   {
     id: "profile_definition",

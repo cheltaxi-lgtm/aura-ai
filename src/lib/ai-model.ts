@@ -60,13 +60,24 @@ export async function getMatrixModel(): Promise<string> {
 }
 
 /**
+ * Default when admin left hdModel empty.
+ * DeepSeek finishes sectional HD in ~2 min; kimi-k2.5 as paidModel fallback
+ * routinely runs 15–32 min (editor AbortError on full-report rewrite).
+ */
+export const DEFAULT_HD_MODEL = "deepseek/deepseek-chat-v3-0324";
+
+/**
  * Human Design report/insight model.
- * hdModel → paidModel → model. Sectional pipeline quality gate fails on thin
- * output (DeepSeek v3 writes ~3–7k chars vs required long-form) — kimi-k2.5 passes.
+ * hdModel → DEFAULT_HD_MODEL → paidModel → model.
  */
 export async function getHdModel(): Promise<string> {
   const ai = await getAdminAiSettings();
-  return ai.hdModel?.trim() || ai.paidModel?.trim() || ai.model;
+  return (
+    ai.hdModel?.trim() ||
+    DEFAULT_HD_MODEL ||
+    ai.paidModel?.trim() ||
+    ai.model
+  );
 }
 
 /** Ordered chat/reading backup models from admin settings (may be empty). */

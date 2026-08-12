@@ -9,7 +9,7 @@ import {
   type HdPipelineSectionTitle,
 } from "./sections";
 import {
-  estimateCostRubFromUsage,
+  resolveCostRubFromUsage,
   type HdTokenUsage,
 } from "./cost";
 import {
@@ -64,14 +64,35 @@ export type HdSectionalGenerateResult = {
 type SectionDraft = { title: string; body: string; thesis: string };
 
 /**
- * Batches run in concurrent waves: 12 sequential Kimi calls took 8–25 min and
- * tripped the 25-min worker watchdog. Wave N sees theses of waves < N so the
+ * Batches run in concurrent waves. Wave N sees theses of waves < N so the
  * "не повторяй тезисы" hint still works across waves.
+ * Default 6 → 2 waves of 12 batches (was 4 → 3 waves).
  */
 function hdPipelineConcurrency(): number {
   const raw = Number(process.env.HD_PIPELINE_CONCURRENCY);
   if (Number.isFinite(raw) && raw >= 1) return Math.min(6, Math.floor(raw));
-  return 4;
+  return 6;
+}
+
+/** Full-report LLM editor: off by default (AbortError + no-op on long outputs). */
+function hdPipelineLlmEditorEnabled(): boolean {
+  const raw = (process.env.HD_PIPELINE_LLM_EDITOR || "").trim().toLowerCase();
+  return raw === "1" || raw === "true" || raw === "on" || raw === "yes";
+}
+
+/**
+ * Volume floor per section. DeepSeek used only 10k of ~54k available output
+ * tokens (25k chars vs kimi's 65k) — it is terse by default, not capped, so the
+ * lever is an explicit target in the prompt rather than a bigger maxTokens.
+ */
+const HD_SECTION_TARGET_CHARS_MIN = 1800;
+const HD_SECTION_TARGET_CHARS_MAX = 2600;
+
+/** Below this a section is treated as broken and regenerated once inside the batch. */
+function hdThinSectionChars(): number {
+  const raw = Number(process.env.HD_MIN_SECTION_CHARS);
+  if (Number.isFinite(raw) && raw >= 40) return Math.floor(raw);
+  return 700;
 }
 
 function thesisOf(body: string): string {
@@ -99,7 +120,10 @@ function buildSystemPrompt(
     "",
     "Формат: для КАЖДОГО запрошенного раздела — строка `## ТочныйЗаголовок`, затем текст.",
     "Вступление (если запрошено) — без ##, просто проза в начале ответа.",
-    "Структура каждого раздела: механика → жизнь → 1–2 бытовых примера.",
+    "Структура каждого раздела: механика → жизнь → 2–3 развёрнутых бытовых примера.",
+    `Объём: каждый раздел — ${HD_SECTION_TARGET_CHARS_MIN}–${HD_SECTION_TARGET_CHARS_MAX} символов, Вступление — 900–1400. Короткий раздел = брак.`,
+    "Объём набирается ТОЛЬКО конкретикой: детали механики карты, разбор ситуаций, примеры из быта и работы.",
+    "Добивать объём повторами, пересказом уже сказанного, общими словами и водой — запрещено (повторы бракуют отчёт).",
     "Завершай каждый раздел (кроме Вступления) отдельной строкой ровно: `Практика: <одно конкретное действие>`.",
     "Допустимый синоним хвоста — `Что делать:`; предпочтительно `Практика:`.",
     "Не повторяй тезисы из уже готовых разделов.",
@@ -400,6 +424,7 @@ async function generateBatch(opts: {
     sleepHint,
     answerHint,
     `Напиши ТОЛЬКО эти разделы с точными заголовками:\n${headingList}`,
+    `Каждый раздел — развёрнутый текст на ${HD_SECTION_TARGET_CHARS_MIN}–${HD_SECTION_TARGET_CHARS_MAX} символов. Не сокращай и не сворачивай разделы в тезисы.`,
     `Канон: Тип=${opts.contract.typeRu}; Стратегия=${opts.contract.strategyRu}; Авторитет=${opts.contract.authorityRu}; Угол=${opts.contract.crossAngleRu}; Крест=«${opts.contract.crossNameRu}»; Висячие=${opts.contract.hangingGatesRu}.`,
   ]
     .filter(Boolean)
@@ -502,7 +527,8 @@ export async function generateHdReportSectional(
     addUsage(usage);
 
     // Retry thin titles once inside the batch
-    const thin = drafts.filter((d) => d.body.length < 40);
+    const thinChars = hdThinSectionChars();
+    const thin = drafts.filter((d) => d.body.length < thinChars);
     if (thin.length) {
       const again = await generateBatch({
         system,
@@ -510,7 +536,7 @@ export async function generateHdReportSectional(
         contract,
         titles: thin.map((t) => t.title) as readonly HdPipelineSectionTitle[],
         focus,
-        prior: [...prior, ...drafts.filter((d) => d.body.length >= 40)],
+        prior: [...prior, ...drafts.filter((d) => d.body.length >= thinChars)],
         maxTokens: batch.maxTokens,
         modelOverride: modelId,
       });
@@ -616,21 +642,31 @@ export async function generateHdReportSectional(
   sections.length = 0;
   sections.push(...ordered);
 
+  const batchesMs = Date.now() - started;
   let combined = glue(sections);
-  const edited = await editorPass(combined, contract, modelId);
-  llmCalls += edited.calls;
-  addUsage(edited.usage);
-  // Prefer edited text only if it keeps all required ## titles.
-  const editedClean = sanitizeHdGeneratedText(edited.text);
-  const missingAfterEdit = HD_PIPELINE_BATCHES.flatMap((b) => b.titles).filter(
-    (t) =>
-      t !== "Вступление" &&
-      !editedClean.toLowerCase().includes(`## ${t}`.toLowerCase())
-  );
-  combined =
-    missingAfterEdit.length === 0
+
+  const applyEditorOrSanitize = async (raw: string): Promise<string> => {
+    if (!hdPipelineLlmEditorEnabled()) {
+      return sanitizeHdGeneratedText(raw);
+    }
+    const edited = await editorPass(raw, contract, modelId);
+    llmCalls += edited.calls;
+    addUsage(edited.usage);
+    // Prefer edited text only if it keeps all required ## titles.
+    const editedClean = sanitizeHdGeneratedText(edited.text);
+    const missingAfterEdit = HD_PIPELINE_BATCHES.flatMap((b) => b.titles).filter(
+      (t) =>
+        t !== "Вступление" &&
+        !editedClean.toLowerCase().includes(`## ${t}`.toLowerCase())
+    );
+    return missingAfterEdit.length === 0
       ? editedClean
-      : sanitizeHdGeneratedText(combined);
+      : sanitizeHdGeneratedText(raw);
+  };
+
+  const editorStarted = Date.now();
+  combined = await applyEditorOrSanitize(combined);
+  const editorMs = Date.now() - editorStarted;
 
   let quality = validateHdReportText(combined, {
     engineTypeRu: contract.typeRu,
@@ -640,6 +676,7 @@ export async function generateHdReportSectional(
   });
 
   let round = 0;
+  const retryStarted = Date.now();
   while (!quality.ok && round < maxRetries) {
     round++;
     const bad = sectionTitlesHitByFindings(sections, quality.findings, contract);
@@ -675,17 +712,7 @@ export async function generateHdReportSectional(
         if (idx >= 0) sections[idx] = d;
       }
     }
-    combined = glue(sections);
-    const reEdit = await editorPass(combined, contract, modelId);
-    llmCalls += reEdit.calls;
-    addUsage(reEdit.usage);
-    const reEditClean = sanitizeHdGeneratedText(reEdit.text);
-    const reEditMissing = HD_PIPELINE_BATCHES.flatMap((b) => b.titles).filter(
-      (t) =>
-        t !== "Вступление" &&
-        !reEditClean.toLowerCase().includes(`## ${t}`.toLowerCase())
-    );
-    combined = reEditMissing.length === 0 ? reEditClean : sanitizeHdGeneratedText(combined);
+    combined = await applyEditorOrSanitize(glue(sections));
     quality = validateHdReportText(combined, {
       engineTypeRu: contract.typeRu,
       motorCount: contract.motorCentersDefinedRu.length,
@@ -693,9 +720,25 @@ export async function generateHdReportSectional(
       requireFocusAnswer: true,
     });
   }
+  const retryMs = Date.now() - retryStarted;
 
-  const costRub = estimateCostRubFromUsage(usageTotal, modelId);
+  const cost = await resolveCostRubFromUsage(usageTotal, modelId);
+  const costRub = cost.rub;
   const durationMs = Date.now() - started;
+  console.info("[hd-report] stages", {
+    modelId,
+    concurrency: hdPipelineConcurrency(),
+    llmEditor: hdPipelineLlmEditorEnabled(),
+    batchesMs,
+    editorMs,
+    retryMs,
+    retryRounds: round,
+    llmCalls,
+    durationMs,
+    qualityOk: quality.ok,
+    costRub,
+    costSource: cost.source,
+  });
 
   return {
     text: combined,
