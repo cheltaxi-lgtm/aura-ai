@@ -1,6 +1,13 @@
 import { toParagraphs } from "@/lib/format-paragraphs";
 import { normalizeClientTyAddress } from "@/lib/reading-quality-gate";
 import type { NatalEvidence } from "./evidence";
+import {
+  findNearDuplicateSections,
+  natalSectionRoleSubtitle,
+  NATAL_FLUFF_RE,
+  SECTION_ROLE_CONTRACTS,
+  type NatalSectionKey,
+} from "./report-quality";
 import type { NatalTradition } from "./types";
 
 export const NATAL_REPORT_VERSION = "1.0";
@@ -234,17 +241,22 @@ export function salvageNatalReport(
       typeof firstClaim?.text === "string" && firstClaim.text.trim()
         ? firstClaim.text.trim()
         : "";
+    const keepRaw =
+      rawText &&
+      rawText.length >= 120 &&
+      !/Ключевой вывод по разделу/i.test(rawText) &&
+      !NATAL_FLUFF_RE.test(rawText);
     const text =
-      rawText && !/Ключевой вывод по разделу/i.test(rawText) && rawText.length >= 120
+      keepRaw && item
         ? rawText
         : item
           ? buildEvidenceGroundedClaimText(
               item,
-              SECTION_TITLES[expectedKey],
+              expectedKey,
               expectedReportType,
               expectedHorizonDays
             )
-          : `Раздел «${SECTION_TITLES[expectedKey]}» опирается на рассчитанные астрологические факторы периода. Интерпретация символическая и вероятностная: сверяйте выводы с датами и положениями в шкале транзитов, а не воспринимайте их как гарантию событий. Практический акцент — наблюдать проявления темы и фиксировать, что подтверждается опытом.`;
+          : buildFallbackSectionText(expectedKey, expectedReportType, expectedHorizonDays);
     return {
       key: expectedKey,
       title:
@@ -254,6 +266,58 @@ export function salvageNatalReport(
       claims: [{ text, evidenceIds: evidenceIds.length ? evidenceIds : primaryId ? [primaryId] : [] }],
     };
   });
+
+  // Collapse near-duplicates in the timing trio (and other pairs) into role-specific templates.
+  const draft = {
+    sections: prepared.sections as Array<{
+      key: NatalReportSectionKey;
+      claims: Array<{ text: string; evidenceIds: string[] }>;
+    }>,
+  };
+  const dupes = findNearDuplicateSections(draft, 0.62);
+  if (dupes.length) {
+    const forceKeys = new Set<NatalReportSectionKey>();
+    const timingTrioHit = dupes.some(
+      (pair) =>
+        (pair.a === "summary" || pair.a === "currentPeriod" || pair.a === "recommendations") &&
+        (pair.b === "summary" || pair.b === "currentPeriod" || pair.b === "recommendations")
+    );
+    if (timingTrioHit) {
+      // Identical timing essays → rebuild all three with role-specific templates.
+      forceKeys.add("summary");
+      forceKeys.add("currentPeriod");
+      forceKeys.add("recommendations");
+    }
+    for (const pair of dupes) {
+      forceKeys.add(pair.a);
+      forceKeys.add(pair.b);
+    }
+    prepared.sections = (prepared.sections as Array<Record<string, unknown>>).map((section) => {
+      const key = section.key as NatalReportSectionKey;
+      if (!forceKeys.has(key)) return section;
+      const evidenceIds = Array.isArray(section.claims)
+        ? ((record((section.claims as unknown[])[0])?.evidenceIds as string[] | undefined) ?? [])
+        : [];
+      const primaryId = evidenceIds[0] ?? evidence[0]?.id;
+      const item =
+        (primaryId ? evidence.find((entry) => entry.id === primaryId) : null) ?? evidence[0];
+      if (!item) return section;
+      return {
+        ...section,
+        claims: [
+          {
+            text: buildEvidenceGroundedClaimText(
+              item,
+              key,
+              expectedReportType,
+              expectedHorizonDays
+            ),
+            evidenceIds: evidenceIds.length ? evidenceIds : [item.id],
+          },
+        ],
+      };
+    });
+  }
 
   return validateNatalReport(
     prepared,
@@ -265,31 +329,87 @@ export function salvageNatalReport(
   );
 }
 
-function buildEvidenceGroundedClaimText(
-  item: NatalEvidence,
-  sectionTitle: string,
+function buildFallbackSectionText(
+  sectionKey: NatalReportSectionKey,
   reportType: NatalReport["reportType"],
   horizonDays?: NatalReport["horizonDays"]
 ): string {
   const horizonBit =
-    reportType === "forecast" && horizonDays
-      ? ` на выбранном горизонте ${horizonDays} дней`
-      : "";
+    reportType === "forecast" && horizonDays ? ` на горизонте ${horizonDays} дней` : "";
+  return `Раздел «${SECTION_TITLES[sectionKey]}»${horizonBit} опирается на рассчитанные астрологические факторы. Назови в разборе конкретные планеты, аспекты и даты из evidence и не подменяй их общими формулировками.`;
+}
+
+function buildEvidenceGroundedClaimText(
+  item: NatalEvidence,
+  sectionKey: NatalReportSectionKey,
+  reportType: NatalReport["reportType"],
+  horizonDays?: NatalReport["horizonDays"]
+): string {
+  const horizonBit =
+    reportType === "forecast" && horizonDays ? ` на ${horizonDays} дней` : "";
   const uncertainty = item.uncertainty?.trim()
     ? ` ${item.uncertainty.trim().replace(/\.*$/, ".")}`
     : "";
-  return [
-    `${item.label}: ${item.value}.`,
-    uncertainty,
-    `В разделе «${sectionTitle}» этот рассчитанный фактор задаёт основную тему${horizonBit}.`,
-    "Интерпретация символическая и вероятностная: опирайтесь на конкретные даты и положения из расчёта, а не на абсолютные обещания событий.",
-    `Практический акцент: отслеживайте проявления темы «${item.label.toLowerCase()}» и сверяйте ощущения с пиковыми датами и положениями в шкале транзитов и натальном контексте.`,
-    "Если тема усиливается, зафиксируйте наблюдение и вернитесь к этому фактору в конце периода, чтобы оценить, что подтвердилось, а что осталось фоном.",
-  ]
-    .filter(Boolean)
-    .join(" ")
-    .replace(/\s+/g, " ")
-    .trim();
+  const fact = `${item.label}: ${item.value}.${uncertainty}`.replace(/\s+/g, " ").trim();
+
+  switch (sectionKey) {
+    case "summary":
+      return [
+        fact,
+        `Главная тема${horizonBit}: «${item.label}» задаёт тон окна — держи её как рамку.`,
+        "Детали и даты смотри в «Текущем периоде», шаги — в «Рекомендациях».",
+        "Это тезис по расчёту, не список советов и не гарантия событий.",
+      ].join(" ");
+    case "currentPeriod":
+      return [
+        fact,
+        `На шкале периода отметь этот фактор как опорную точку${horizonBit}.`,
+        "Сверяй ощущения с датой и положением из расчёта, а не с общим настроением дня.",
+        "Здесь важны пики и окна; советы вынесены в отдельный раздел.",
+      ].join(" ");
+    case "recommendations":
+      return [
+        fact,
+        `Сделай одно конкретное действие вокруг темы «${item.label}»${horizonBit}.`,
+        "Заранее заложи время на пик или аспект из расчёта и в конце окна зафиксируй, что подтвердилось.",
+        "Не растягивай решение на всё окно — привяжи шаг к названному фактору.",
+      ].join(" ");
+    case "tensions":
+      return [
+        fact,
+        `Точка давления: тема «${item.label}» требует ясного контура, а не избегания.`,
+        "Назови себе, где проявляется трение, и сузь реакцию до одного управляемого шага.",
+      ].join(" ");
+    case "personality":
+      return [
+        fact,
+        `В характере это читается как устойчивый стиль «${item.label}».`,
+        "Опирайся на него как на сильную сторону и не жди от себя противоположного паттерна без причины из карты.",
+      ].join(" ");
+    case "relationships":
+      return [
+        fact,
+        `В близости фактор «${item.label}» задаёт ритм сближения и дистанции.`,
+        "Замечай, где повторяется этот паттерн в паре, и называй его в разговоре без обвинений.",
+      ].join(" ");
+    case "career":
+      return [
+        fact,
+        `В деле «${item.label}» показывает, где ты держишь рамку и где просится рост нагрузки.`,
+        "Выбери один рабочий фокус под этот фактор и не распыляйся на соседние темы карты.",
+      ].join(" ");
+    case "resources":
+      return [
+        fact,
+        `По ресурсам «${item.label}» подсказывает, куда уходит и откуда возвращается энергия или средства.`,
+        "Отслеживай один денежный или энергетический контур и сверяй его с этим фактором из расчёта.",
+      ].join(" ");
+    default:
+      return [
+        fact,
+        "Сверяй выводы с этим рассчитанным фактором и не подменяй его общими словами из воздуха.",
+      ].join(" ");
+  }
 }
 
 /** Deterministic last-resort report that always validates when evidence is non-empty. */
@@ -321,7 +441,7 @@ export function buildMinimalNatalReport(
       claims: [{
         text: buildEvidenceGroundedClaimText(
           item,
-          SECTION_TITLES[key],
+          key,
           reportType,
           horizonDays
         ),
@@ -485,12 +605,19 @@ export function validateNatalReport(
       const allowed = !options.skipCategoryRules && expectedReportType === "interpretation"
         ? SECTION_CATEGORY_HINTS[expectedKey]
         : undefined;
-      if (
-        allowed &&
-        !unknown.length &&
-        !evidenceIds.some((id) => allowed.has(evidenceById.get(id)?.category ?? ""))
-      ) {
-        errors.push(`${expectedKey}.claims[${claimIndex}]: citation не относится к тематике раздела.`);
+      if (allowed && !unknown.length) {
+        const okCitation =
+          expectedKey === "currentPeriod"
+            ? evidenceIds.some((id) => {
+                const item = evidenceById.get(id);
+                return Boolean(
+                  item && (item.category === "timing" || item.tradition === "timing")
+                );
+              })
+            : evidenceIds.some((id) => allowed.has(evidenceById.get(id)?.category ?? ""));
+        if (!okCitation) {
+          errors.push(`${expectedKey}.claims[${claimIndex}]: citation не относится к тематике раздела.`);
+        }
       }
       if (
         expectedReportType === "forecast" &&
@@ -590,18 +717,21 @@ export function formatLegacyNatalProseForDisplay(raw: string): string {
 
 /** One report section as mystic markdown (same pipeline as spread readings). */
 export function formatNatalSectionForDisplay(section: {
+  key?: string;
   title: string;
   claims: Array<{ text: string }>;
 }): string {
   const title = section.title.trim();
+  const subtitle = natalSectionRoleSubtitle(section.key);
   const body = section.claims
     .map((claim) => claim.text.trim())
     .filter(Boolean)
     .join("\n\n");
   if (!title && !body) return "";
   if (!title) return body;
-  if (!body) return `## ${title}`;
-  return `## ${title}\n\n${body}`;
+  const headed = subtitle ? `## ${title}\n\n*${subtitle}*` : `## ${title}`;
+  if (!body) return headed;
+  return `${headed}\n\n${body}`;
 }
 
 /** Full structured natal report as premium reading markdown. */
@@ -631,37 +761,46 @@ export function buildNatalReportJsonInstructions(
   const shortForecast = reportType === "forecast" && (horizonDays ?? 30) <= 7;
   const longForecast = reportType === "forecast" && (horizonDays ?? 30) >= 90;
   const sectionDepth = shortForecast
-    ? "каждый раздел — 4–7 содержательных предложений и не менее 320 знаков: конкретный фактор → символика → проявление в жизни → практический вывод"
+    ? "каждый раздел — плотный текст 4–7 предложений и не менее 320 знаков: назови фактор из evidence и сделай один точный вывод без воды"
     : longForecast
-      ? "каждый раздел — 3–6 содержательных предложений и не менее 220 знаков (не раздувай текст)"
-      : "каждый раздел — полноценная часть единого персонального текста: 5–8 содержательных предложений и не менее 300 знаков";
+      ? "каждый раздел — плотный текст 3–5 предложений и не менее 220 знаков; приоритет — конкретика, не объём"
+      : reportType === "forecast"
+        ? "каждый раздел — плотный текст 3–5 предложений и не менее 220 знаков: фактор из evidence → вывод; без канцелярита"
+        : "каждый раздел — плотный текст 4–6 предложений и не менее 220 знаков: фактор из evidence → вывод; без канцелярита";
   const totalDepth = shortForecast
     ? "общий объём текста восьми разделов — не менее 2400 знаков"
     : longForecast
-      ? "общий объём текста восьми разделов — не менее 1800 знаков; приоритет — полный валидный JSON, а не длина абзацев"
-      : "общий объём текста восьми разделов — не менее 2400 знаков";
+      ? "общий объём текста восьми разделов — не менее 1800 знаков; приоритет — полный валидный JSON и разные роли разделов"
+      : reportType === "forecast"
+        ? "общий объём текста восьми разделов — не менее 1800 знаков"
+        : "общий объём текста восьми разделов — не менее 2000 знаков";
+  const roleBlock = NATAL_REPORT_SECTION_KEYS.map(
+    (key) => `- ${key}: ${SECTION_ROLE_CONTRACTS[key as NatalSectionKey]}`
+  ).join("\n");
   return `Верни ТОЛЬКО JSON-объект без markdown.
 Схема:
 {"version":"${NATAL_REPORT_VERSION}","tradition":"${tradition}","reportType":"${reportType}"${horizonField},"sections":[
 ${NATAL_REPORT_SECTION_KEYS.map((key) => `{"key":"${key}","title":"локализованный заголовок","claims":[{"text":"вывод на русском","evidenceIds":["точный ID из блока evidence"]}]}`).join(",\n")}
 ],"disclaimer":"не научный прогноз и не замена профессиональной консультации","methodology":"как использованы расчёты и ограничения"}
+Роли разделов (обязательны, не смешивай):
+${roleBlock}
 Правила качества:
 - все восемь разделов обязательны и идут в указанном порядке;
 - ${sectionDepth};
 - ${totalDepth};
-- раскрывай причинно-следственную связь: конкретный рассчитанный фактор → его символическое значение → проявление в жизни → практический вывод;
-- называй конкретные планеты, знаки, дома, аспекты, даты или периоды только из переданных evidence; не заменяй их общими словами;
+- плотность важнее объёма: убери воду, повторы и общие фразы; каждое предложение должно опираться на названный фактор из evidence;
+- в тексте claim обязательно назови планету, знак, дом, аспект или дату из evidence (не только ID в JSON);
 - используй имя клиента из пользовательского сообщения естественно, но не в каждом разделе; имя — Title Case, не КАПСОМ;
 - обращайся к клиенту строго на «ты» (ты/тебе/твой/твоя/твои); запрещены «вы/вам/вас/ваш/ваша/ваши» в обращении к клиенту;
-- не пиши универсальные фразы вроде «у тебя есть потенциал», «возможны изменения», «сосредоточься на целях» без конкретного объяснения через evidence;
-- разделы не должны повторять друг друга по смыслу или формулировкам;
+- запрещены универсальные фразы: «у тебя есть потенциал», «возможны изменения», «сосредоточься на целях», «практический акцент», «интерпретация символическая»;
+- разделы НЕ должны повторять друг друга по смыслу или формулировкам; summary ≠ recommendations ≠ currentPeriod;
 - в каждом разделе минимум один непустой claim; у каждого claim один или несколько существующих evidenceIds;
 - не добавляй факты, которые прямо не поддержаны указанными evidence;
 - копируй evidenceIds ТОЧНО из блока EVIDENCE, без сокращений и выдуманных ID;
 - JSON должен быть синтаксически полным: закрой все массивы и объекты, не обрывай ответ на середине claim.
 ${reportType === "forecast"
-  ? `Это прогноз на ${horizonDays} дней: формулируй возможности, напряжения и практические рекомендации как вероятностные темы, а не гарантированные события. Опирайся на события выбранного окна; если транзитов мало — углубляй натальный контекст в personality/relationships/career/resources/tensions, а summary/currentPeriod/recommendations держи на timing evidence. В разделах summary, currentPeriod и recommendations каждый claim обязан содержать минимум один точный timing evidence ID (префикс ne.timing.). В остальных разделах можно ссылаться на натальные или timing evidence из блока ниже.`
-  : "Для personality цитируй identity/emotions; relationships — relationships/emotions; career — career/identity; resources — resources/career; tensions — tensions/emotions; currentPeriod — только evidence категории timing."}`;
+  ? `Это прогноз на ${horizonDays} дней: формулируй темы как вероятностные, не как гарантию событий. Опирайся на события выбранного окна; если транзитов мало — углубляй натальный контекст в personality/relationships/career/resources/tensions, а summary/currentPeriod/recommendations держи на timing evidence. В разделах summary, currentPeriod и recommendations каждый claim обязан содержать минимум один точный timing evidence ID (префикс ne.timing.). В остальных разделах можно ссылаться на натальные или timing evidence из блока ниже.`
+  : "Для personality цитируй identity/emotions; relationships — relationships/emotions; career — career/identity; resources — resources/career; tensions — tensions/emotions; currentPeriod — evidence традиции timing (транзиты/даши/солнечное возвращение)."}`;
 }
 
 export function isNatalReport(value: unknown): value is NatalReport {

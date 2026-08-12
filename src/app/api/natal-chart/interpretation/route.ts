@@ -210,8 +210,9 @@ export async function POST(request: NextRequest) {
   const traditionLabel = tradition === "western" ? "западную тропическую" : "ведическую сидерическую";
   const clientDisplayName = normalizePersonDisplayName(user?.name) || null;
   const systemPrompt = await appendNatalPersonalizationLens(
-    await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Составь доказуемую ${traditionLabel} натальную трактовку на русском языке.
+    await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Составь плотную доказуемую ${traditionLabel} натальную трактовку на русском языке.
 Опирайся ТОЛЬКО на evidence ниже. Нельзя выдумывать положения, дома, даты или evidence ID.
+Пиши премиально и по-человечески: коротко, без воды. Каждый вывод — из расчёта карты.
 ${buildNatalReportJsonInstructions(tradition)}
 ${chart.timeKnown ? "" : "Время рождения неизвестно: не заявляй дома, ASC, MC или лагну; явно отрази неопределённость."}
 Координаты рождения не переданы и не нужны.

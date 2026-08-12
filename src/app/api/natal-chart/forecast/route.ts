@@ -187,10 +187,11 @@ export async function POST(request: NextRequest) {
   const forecastUser = await getUserById(auth.profileUserId).catch(() => null);
   const clientDisplayName = normalizePersonDisplayName(forecastUser?.name) || null;
   const systemPrompt = await appendNatalPersonalizationLens(
-    await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Создай персональный вероятностный прогноз на русском языке на период ${timing.windowStart} — ${timing.windowEnd}.
+    await wrapSystemPrompt(`Ты — Shri Raj, мастер астрологии Zovus. Создай плотный персональный вероятностный прогноз на русском на период ${timing.windowStart} — ${timing.windowEnd}.
 Опирайся ТОЛЬКО на evidence ниже. Не придумывай события, даты, положения или evidence ID. Конкретные даты называй только при наличии соответствующего evidence.
+Пиши премиально и по-человечески: коротко, без воды и канцелярита. Каждый вывод — из расчёта, не из воздуха.
 ${buildNatalReportJsonInstructions("western", "forecast", horizon)}
-Не используй фатальные формулировки. Отделяй рассчитанные астрологические факторы от символической интерпретации.
+Не используй фатальные формулировки.
 Координаты, дата, время и город рождения не переданы.
 ${clientDisplayName ? `Имя клиента в тексте: «${clientDisplayName}» — только кириллица, без латиницы и смешанных написаний.` : ""}
 

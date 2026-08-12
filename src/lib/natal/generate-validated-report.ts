@@ -14,6 +14,13 @@ import {
   type NatalReportValidation,
   type ValidateNatalReportOptions,
 } from "./report";
+import {
+  claimHasEvidenceAnchor,
+  findNearDuplicateSections,
+  NATAL_FLUFF_RE,
+  SECTION_ROLE_CONTRACTS,
+  type NatalSectionKey,
+} from "./report-quality";
 import type { NatalTradition } from "./types";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import {
@@ -45,10 +52,9 @@ const MAX_REPAIR_PASSES_DEFAULT = 1;
 const MAX_REPAIR_PASSES_FORECAST = 2;
 
 const PLACEHOLDER_CLAIM_RE = /Ключевой вывод по разделу/i;
-const GENERIC_TEXT_RE =
-  /(?:натальная карта указывает|вы обладаете потенциалом|могут возникать изменения|сфокусируйтесь на своих целях)/i;
-const MIN_SECTION_TEXT_LENGTH = 300;
-const MIN_REPORT_TEXT_LENGTH = 2_800;
+/** Dense floor — quality is anchors + roles, not essay padding. */
+const MIN_SECTION_TEXT_LENGTH = 220;
+const MIN_REPORT_TEXT_LENGTH = 2_000;
 const EVIDENCE_ID_PAREN_RE =
   /\s*\((?:ne|не)\.(?:timing|western|vedic)\.[a-z0-9._-]+\)/giu;
 const EVIDENCE_ID_RE = /(?:ne|не)\.(?:timing|western|vedic)\.[a-z0-9._-]+/giu;
@@ -109,19 +115,31 @@ function isSubstantiveReport(
   params: GenerateValidatedNatalReportParams
 ): boolean {
   const { minSection, minReport } = substantiveThresholds(params);
+  const evidenceById = new Map(params.evidence.map((item) => [item.id, item]));
   const totalLength = report.sections.reduce(
     (sum, section) =>
       sum + section.claims.reduce((sectionSum, claim) => sectionSum + claim.text.trim().length, 0),
     0
   );
-  return totalLength >= minReport && report.sections.every((section) =>
-    section.claims.some(
-      (claim) =>
-        claim.text.trim().length >= minSection &&
-        !PLACEHOLDER_CLAIM_RE.test(claim.text) &&
-        !GENERIC_TEXT_RE.test(claim.text) &&
-        claim.evidenceIds.length > 0
-    )
+  if (totalLength < minReport) return false;
+  if (findNearDuplicateSections(report).length > 0) return false;
+  return report.sections.every((section) =>
+    section.claims.some((claim) => {
+      const text = claim.text.trim();
+      if (
+        text.length < minSection ||
+        PLACEHOLDER_CLAIM_RE.test(text) ||
+        NATAL_FLUFF_RE.test(text) ||
+        !claim.evidenceIds.length
+      ) {
+        return false;
+      }
+      const cited = claim.evidenceIds
+        .map((id) => evidenceById.get(id))
+        .filter((item): item is NatalEvidence => Boolean(item));
+      // Require a visible calculation anchor in the prose (planet/date/label).
+      return claimHasEvidenceAnchor(text, cited);
+    })
   );
 }
 
@@ -234,7 +252,7 @@ function isSubstantiveSection(
     return (
       text.length >= minSection &&
       !PLACEHOLDER_CLAIM_RE.test(text) &&
-      !GENERIC_TEXT_RE.test(text)
+      !NATAL_FLUFF_RE.test(text)
     );
   });
 }
@@ -368,14 +386,24 @@ function sectionRepairPrompt(
     career: ["career", "identity"],
     resources: ["resources", "career"],
     tensions: ["tensions", "emotions"],
-    currentPeriod: ["timing"],
   };
   const allowedCategories = categoryHints[key];
-  const allowedIds = allowedCategories
-    ? params.evidence
-        .filter((item) => allowedCategories.includes(item.category))
-        .map((item) => item.id)
-    : params.evidence.map((item) => item.id);
+  // Forecast timing trio: tradition===timing (transit categories are often thematic).
+  const forecastTimingTrio =
+    params.reportType === "forecast" &&
+    (key === "summary" || key === "currentPeriod" || key === "recommendations");
+  const interpretationPeriod = params.reportType === "interpretation" && key === "currentPeriod";
+  const allowedIds = forecastTimingTrio
+    ? params.evidence.filter((item) => item.tradition === "timing").map((item) => item.id)
+    : interpretationPeriod
+      ? params.evidence
+          .filter((item) => item.tradition === "timing" || item.category === "timing")
+          .map((item) => item.id)
+      : allowedCategories
+        ? params.evidence
+            .filter((item) => allowedCategories.includes(item.category))
+            .map((item) => item.id)
+        : params.evidence.map((item) => item.id);
   const timingRule =
     params.reportType === "forecast" &&
     (key === "summary" || key === "currentPeriod" || key === "recommendations")
@@ -384,21 +412,26 @@ function sectionRepairPrompt(
   const { minSection } = substantiveThresholds(params);
   const depthHint =
     params.reportType === "forecast" && (params.horizonDays ?? 30) <= 7
-      ? `персональный разбор объёмом 4–7 предложений и не менее ${minSection} знаков`
+      ? `плотный разбор 4–7 предложений и не менее ${minSection} знаков`
       : params.reportType === "forecast"
-        ? `персональный разбор объёмом 3–6 предложений и не менее ${minSection} знаков`
-        : `глубокий персональный разбор объёмом 5–8 предложений и не менее ${minSection} знаков`;
+        ? `плотный разбор 3–5 предложений и не менее ${minSection} знаков`
+        : `плотный разбор 4–6 предложений и не менее ${minSection} знаков`;
+  const role = SECTION_ROLE_CONTRACTS[key as NatalSectionKey];
   return [
     `Предыдущий JSON не содержал полноценный раздел "${key}".`,
     "Создай ТОЛЬКО этот раздел как JSON-объект без markdown:",
     `{"key":"${key}","title":"выразительный русский заголовок","claims":[{"text":"${depthHint}","evidenceIds":["точный ID из EVIDENCE"]}]}`,
-    "Свяжи конкретные evidence, их символическое значение, проявление в жизни и практический вывод.",
-    "Не используй универсальные, шаблонные или технические фразы.",
-    "Не повторяй содержание других разделов.",
+    `Роль раздела: ${role}`,
+    "Назови в тексте конкретную планету, аспект, знак или дату из evidence. Без воды и без универсальных фраз.",
+    "Не повторяй содержание других разделов — у этого раздела своя роль.",
     "Не выдумывай факты и ID. Используй только EVIDENCE из системного сообщения.",
-    allowedCategories
-      ? `Для раздела "${key}" разрешены только evidence категорий: ${allowedCategories.join(", ")}.`
-      : "",
+    forecastTimingTrio
+      ? `Для раздела "${key}" используй только timing evidence (tradition=timing).`
+      : interpretationPeriod
+        ? `Для раздела "${key}" используй evidence традиции timing или категории timing.`
+        : allowedCategories
+          ? `Для раздела "${key}" разрешены только evidence категорий: ${allowedCategories.join(", ")}.`
+          : "",
     allowedIds.length
       ? `Точные допустимые evidenceIds для этого раздела:\n${allowedIds.join("\n")}`
       : "",
@@ -607,6 +640,109 @@ async function repairMissingSections(
   return root;
 }
 
+/**
+ * Lightweight rewrite for summary / currentPeriod / recommendations only.
+ * Used after section-wise forecasts where full-JSON editorial truncates.
+ */
+async function timingTrioEditorialPass(
+  report: NatalReport,
+  params: GenerateValidatedNatalReportParams,
+  model: string
+): Promise<NatalReport | null> {
+  const trio = report.sections.filter((section) =>
+    section.key === "summary" ||
+    section.key === "currentPeriod" ||
+    section.key === "recommendations"
+  );
+  if (trio.length < 3) return null;
+  const prompt = [
+    "Отредактируй ТОЛЬКО три раздела прогноза и верни JSON-объект без markdown:",
+    '{"sections":[{"key":"summary",...},{"key":"currentPeriod",...},{"key":"recommendations",...}]}',
+    "Ключи строго: summary, currentPeriod, recommendations — в этом порядке.",
+    "Сохрани key и evidenceIds каждого раздела; перепиши text так, чтобы роли не пересекались:",
+    `- summary: ${SECTION_ROLE_CONTRACTS.summary}`,
+    `- currentPeriod: ${SECTION_ROLE_CONTRACTS.currentPeriod}`,
+    `- recommendations: ${SECTION_ROLE_CONTRACTS.recommendations}`,
+    "Убери воду и повторы. В каждом text назови планету/аспект/дату из evidence.",
+    "Обращение — на «ты». Без «практический акцент» и универсальных фраз.",
+    "",
+    "РАЗДЕЛЫ:",
+    JSON.stringify(trio),
+  ].join("\n");
+
+  const editedRaw = await requestNatalReportJson(
+    [
+      ...params.baseMessages,
+      { role: "user", content: prompt },
+    ],
+    REPAIR_TIMEOUT_MS,
+    0.12,
+    model,
+    params,
+    "section"
+  );
+  if (!editedRaw) return null;
+  try {
+    const parsed = extractJsonObject(editedRaw);
+    const list = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray(record(parsed)?.sections)
+        ? (record(parsed)!.sections as unknown[])
+        : null;
+    if (!list?.length) return null;
+    const byKey = new Map<string, unknown>();
+    for (const item of list) {
+      const section = record(item);
+      if (section && typeof section.key === "string") byKey.set(section.key, item);
+    }
+    if (
+      !byKey.has("summary") ||
+      !byKey.has("currentPeriod") ||
+      !byKey.has("recommendations")
+    ) {
+      return null;
+    }
+    const merged: NatalReport = {
+      ...report,
+      sections: report.sections.map((section) => {
+        if (
+          section.key !== "summary" &&
+          section.key !== "currentPeriod" &&
+          section.key !== "recommendations"
+        ) {
+          return section;
+        }
+        const raw = record(byKey.get(section.key));
+        if (!raw) return section;
+        const claimsRaw = Array.isArray(raw.claims) ? raw.claims : [];
+        const claims = claimsRaw
+          .map((value) => {
+            const claim = record(value);
+            const text = typeof claim?.text === "string" ? claim.text.trim() : "";
+            const evidenceIds = Array.isArray(claim?.evidenceIds)
+              ? claim.evidenceIds.filter((id): id is string => typeof id === "string")
+              : section.claims[0]?.evidenceIds ?? [];
+            if (!text) return null;
+            return { text, evidenceIds: evidenceIds.length ? evidenceIds : section.claims[0]?.evidenceIds ?? [] };
+          })
+          .filter((claim): claim is { text: string; evidenceIds: string[] } => Boolean(claim));
+        if (!claims.length) return section;
+        return {
+          key: section.key,
+          title:
+            typeof raw.title === "string" && raw.title.trim()
+              ? raw.title.trim()
+              : section.title,
+          claims,
+        };
+      }),
+    };
+    return isSubstantiveReport(merged, params) ? merged : null;
+  } catch {
+    return null;
+  }
+}
+
 async function editorialPass(
   report: NatalReport,
   params: GenerateValidatedNatalReportParams,
@@ -622,10 +758,10 @@ async function editorialPass(
     "Отредактируй готовый JSON-отчёт и верни весь JSON целиком без markdown.",
     "Сохрани ровно 8 разделов, их key и массивы evidenceIds.",
     "Удали смысловые повторы: у каждого раздела должен быть свой набор тем и конкретных факторов.",
-    `Не сокращай текст: общий объём claims должен остаться не менее ${substantiveThresholds(params).minReport} знаков.`,
+    "Сделай текст плотным и человечным: без воды, канцелярита и универсальных советов.",
+    `Не сокращай текст ниже ${substantiveThresholds(params).minReport} знаков суммарно.`,
     "Не показывай технические evidence ID внутри поля text — они допустимы только в evidenceIds.",
     "Не используй слово «расклад»: это натальный отчёт или прогноз.",
-    "Сделай русский язык естественным, редакторским, без канцелярита и универсальных советов.",
     "Обращение к клиенту — строго на «ты» (ты/тебе/твой). Не используй «вы/вам/ваш».",
     traditionRule,
     nameRule,
@@ -872,12 +1008,32 @@ export async function generateValidatedNatalReport(
       (params.reportType === "forecast" && acceptedViaSalvage))
   ) {
     const sanitized = sanitizeNatalReport(validation.report, params);
-    // Skip editorial for section-wise forecasts: rewriting the full JSON often truncates again.
-    const edited =
-      !usedSectionWise && isSubstantiveReport(sanitized, params)
-        ? await editorialPass(sanitized, params, model)
-        : null;
-    return { ok: true, report: edited ?? sanitized, raw };
+    // Full-JSON editorial truncates long forecasts; for section-wise run a
+    // lightweight timing-trio rewrite instead (roles + anti-dupe).
+    let edited: NatalReport | null = null;
+    if (usedSectionWise && params.reportType === "forecast") {
+      edited = await timingTrioEditorialPass(sanitized, params, model);
+    } else if (!usedSectionWise && isSubstantiveReport(sanitized, params)) {
+      edited = await editorialPass(sanitized, params, model);
+    }
+    const finalReport = edited ?? sanitized;
+    // Last-chance dedupe: if trio still collides, salvage role-templates for those keys.
+    if (
+      params.reportType === "forecast" &&
+      findNearDuplicateSections(finalReport).length > 0
+    ) {
+      const salvaged = salvageNatalReport(
+        finalReport,
+        params.evidence,
+        params.tradition,
+        params.reportType,
+        params.horizonDays
+      );
+      if (salvaged.ok) {
+        return { ok: true, report: salvaged.report, raw };
+      }
+    }
+    return { ok: true, report: finalReport, raw };
   }
 
   if (validation.ok) {
