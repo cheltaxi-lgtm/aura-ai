@@ -98,7 +98,10 @@ export default function HdCalculator({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<HdChartPayload | null>(initialChart);
-  const [authenticated, setAuthenticated] = useState(false);
+  /** Session + linked profile — enough for ownership/claim/mine/reports. */
+  const [accountReady, setAccountReady] = useState(false);
+  /** Account birth anketa complete — prefill only; must not gate guest claim. */
+  const [birthProfileReady, setBirthProfileReady] = useState(false);
   const [mine, setMine] = useState<HdChartPayload[]>([]);
   const [showConnection, setShowConnection] = useState(false);
   const placeBoxRef = useRef<HTMLDivElement>(null);
@@ -109,12 +112,15 @@ export default function HdCalculator({
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) =>
-        setAuthenticated(
-          Boolean(d?.authenticated && !d?.needsProfile && !d?.needsBirthProfile)
-        )
-      )
-      .catch(() => setAuthenticated(false));
+      .then((d) => {
+        const ready = Boolean(d?.authenticated && !d?.needsProfile);
+        setAccountReady(ready);
+        setBirthProfileReady(Boolean(ready && !d?.needsBirthProfile));
+      })
+      .catch(() => {
+        setAccountReady(false);
+        setBirthProfileReady(false);
+      });
   }, []);
 
   // Soft default from first name until the user picks gender manually.
@@ -125,7 +131,7 @@ export default function HdCalculator({
 
   // Logged-in visitors see their existing charts above the form.
   useEffect(() => {
-    if (!authenticated) return;
+    if (!accountReady) return;
     fetch("/api/human-design/mine")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
@@ -146,11 +152,11 @@ export default function HdCalculator({
         setMine(list);
       })
       .catch(() => undefined);
-  }, [authenticated]);
+  }, [accountReady]);
 
   // Prefill birth data from the cabinet profile + natal chart place (self only).
   useEffect(() => {
-    if (!authenticated || subjectKind !== "self" || prefillDoneRef.current) return;
+    if (!birthProfileReady || subjectKind !== "self" || prefillDoneRef.current) return;
     prefillDoneRef.current = true;
     fetch("/api/human-design/prefill")
       .then((r) => (r.ok ? r.json() : null))
@@ -179,7 +185,7 @@ export default function HdCalculator({
       })
       .catch(() => undefined);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated, subjectKind]);
+  }, [birthProfileReady, subjectKind]);
 
   const switchSubject = (kind: "self" | "other") => {
     setSubjectKind(kind);
@@ -252,8 +258,9 @@ export default function HdCalculator({
 
   // After login, claim every guest chart this browser created — the main
   // calculator's and the compatibility calculator's alike.
+  // accountReady is enough: guest charts carry their own birth inputs.
   useEffect(() => {
-    if (!authenticated) return;
+    if (!accountReady) return;
     void claimAllPendingHdCharts().then((claimed) => {
       if (claimed.length === 0) return;
       const stored = readStoredFingerprint();
@@ -264,7 +271,7 @@ export default function HdCalculator({
       if (result) onChartCreated?.(result);
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [authenticated]);
+  }, [accountReady]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -436,7 +443,7 @@ export default function HdCalculator({
   const otherMine = mine.filter((c) => c.subjectKind === "other");
 
   const mineChips =
-    authenticated && mine.length > 0 ? (
+    accountReady && mine.length > 0 ? (
       <div className="hd-panel hd-print-hidden space-y-4">
         {selfMine.length > 0 && (
           <div>
@@ -532,7 +539,7 @@ export default function HdCalculator({
           <HdReportPanel
             chartId={result.id}
             chart={result.chart}
-            authenticated={authenticated}
+            authenticated={accountReady}
             loginReturnTo={returnTo}
           />
         </HdChartSlot>
