@@ -255,6 +255,40 @@ export function trackGuestTripletResumeFailed(
   trackLandingEvent("guest_triplet_resume_failed", { stage });
 }
 
+/** Lifetime guest intro already consumed for this account. */
+export function trackGuestIntroAlreadyUsed(source: string): void {
+  trackLandingEvent("guest_intro_already_used", { source });
+}
+
+/** Authenticated request tried to mint acquisition guest receipt. */
+export function trackGuestIntroBlockedAuthenticated(source: string): void {
+  trackLandingEvent("guest_intro_blocked_authenticated", { source });
+}
+
+export function trackGuestIntroClaimRejected(reason: string): void {
+  trackLandingEvent("guest_intro_claim_rejected", { reason });
+}
+
+export function trackDailyCardsOfferView(source: string): void {
+  trackLandingEvent("daily_cards_offer_view", { source });
+}
+
+export function trackDailyCardsCtaClick(source: string): void {
+  trackLandingEvent("daily_cards_cta_click", { source });
+}
+
+export function trackDailyCardsStarted(source: string): void {
+  trackLandingEvent("daily_cards_started", { source });
+}
+
+export function trackDailyCardsCompleted(source: string): void {
+  trackLandingEvent("daily_cards_completed", { source });
+}
+
+export function trackDailyCardsReturnView(source: string): void {
+  trackLandingEvent("daily_cards_return_view", { source });
+}
+
 export function trackGuestTripletRedrawPrevented(props: {
   had_ask_params: boolean;
   master_id: string;

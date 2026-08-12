@@ -13,7 +13,7 @@ import {
   type GuestResumeSessionRow,
 } from "@/lib/guest-triplet-receipt-db";
 import { withTransaction, queryClient } from "@/lib/db";
-import { recordTripletDrawAnchor } from "@/lib/users";
+import { recordGuestIntroUsed } from "@/lib/rate-limit-anchors";
 import type { DeckSystem } from "@/lib/decks/types";
 import {
   claimBotReceipt,
@@ -195,7 +195,7 @@ export async function claimTelegramBotReceipt(opts: {
       if (!row) return { ok: false as const, code: "unavailable" as const };
 
       try {
-        await recordTripletDrawAnchor(opts.profileUserId, new Date());
+        await recordGuestIntroUsed(opts.profileUserId, new Date(), client);
       } catch {
         /* non-fatal */
       }

@@ -4,6 +4,7 @@ import { getRuneSettings } from "./rune-settings";
 import { getSetting } from "./settings";
 import { creditRunesToUser } from "./rune-service";
 import { deleteUserTripletForSession } from "./triplet-cleanup";
+import { recordGuestIntroUsed } from "./rate-limit-anchors";
 import type { NumerologToolParams } from "@/lib/numerology/tools";
 
 export interface SessionRow {
@@ -1124,14 +1125,34 @@ export async function deleteConsultationSession(
      ) AS exists`,
     [sessionId]
   );
-  if (paymentBlock.rows[0]?.exists) {
+
+  const guestStatusRes = await query<{ guest_resume_status: string | null }>(
+    `SELECT guest_resume_status FROM sessions WHERE id = $1 AND user_id = $2`,
+    [sessionId, userId]
+  );
+  const guestIntroStatus = guestStatusRes.rows[0]?.guest_resume_status;
+  const isGuestIntro =
+    guestIntroStatus === "claimed" || guestIntroStatus === "reading_consumed";
+
+  if (isGuestIntro) {
+    try {
+      await recordGuestIntroUsed(userId);
+    } catch {
+      /* non-fatal */
+    }
+  }
+
+  if (paymentBlock.rows[0]?.exists || isGuestIntro) {
+    // Soft-clear: keep guest_resume_* so lifetime intro cannot be reminted.
     await query(
       `UPDATE sessions
        SET status = 'completed',
-           character_key = NULL,
+           character_key = CASE
+             WHEN guest_resume_status IN ('claimed', 'reading_consumed')
+               THEN COALESCE(character_key, 'veronika')
+             ELSE NULL
+           END,
            intention = NULL,
-           spread_type = NULL,
-           cards = NULL,
            awaiting_context = FALSE,
            updated_at = NOW()
        WHERE id = $1 AND user_id = $2`,

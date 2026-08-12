@@ -156,6 +156,9 @@ import {
   takeStashedTgReceipt,
 } from "@/lib/telegram/tg-receipt-client";
 import {
+  GUEST_RESUME_ALREADY_USED_CABINET_CTA,
+  GUEST_RESUME_ALREADY_USED_DAILY_CTA,
+  GUEST_RESUME_ALREADY_USED_NEW_CTA,
   GUEST_RESUME_TRANSITION_SUBTITLE,
 } from "@/lib/guest-triplet-resume";
 import {
@@ -537,6 +540,8 @@ export default function HomePage({
     tripletNotice,
     setTripletNotice,
     guestResumeCanRetry,
+    guestIntroAlreadyUsed,
+    setGuestIntroAlreadyUsed,
     retryGuestTripletResume,
     tripletCooldown,
     spreadRitual,
@@ -629,7 +634,7 @@ export default function HomePage({
     // keep "готовит трактовку" sticky after recoverable_error / idle.
     const phase = loadGuestResumeUiCache()?.phase;
     return isGuestResumeBannerPhase(phase) ? tripletNotice : null;
-  }, [tripletNotice, guestResumeCanRetry]);
+  }, [tripletNotice]);
 
   const openSpreadIntentFlow = useCallback(
     (
@@ -3560,6 +3565,16 @@ export default function HomePage({
               <LoggedInHomeBanner
                 userName={effectiveProfile.name || authUser?.name}
                 onQuestionSubmit={handleLandingCustomQuestion}
+                dailyCardsAvailable={
+                  !tripletCooldown || Boolean(tripletCooldown.allowed)
+                }
+                onOpenDailyCards={() => void handleNewReading()}
+                onViewTodayDailyCards={() => {
+                  document.getElementById("мой-расклад")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                }}
               />
             ) : null}
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
@@ -3612,6 +3627,41 @@ export default function HomePage({
                       >
                         Попробовать восстановить
                       </button>
+                    ) : null}
+                    {guestIntroAlreadyUsed ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGuestIntroAlreadyUsed(false);
+                            void handleNewReading();
+                          }}
+                          className="btn-primary px-5 py-2 text-sm"
+                        >
+                          {GUEST_RESUME_ALREADY_USED_DAILY_CTA}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGuestIntroAlreadyUsed(false);
+                            setTripletNotice(null);
+                            document.getElementById("наставники")?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }}
+                          className="btn-luxe btn-luxe--sm btn-luxe--ghost px-5 py-2 text-sm"
+                        >
+                          {GUEST_RESUME_ALREADY_USED_NEW_CTA}
+                        </button>
+                        <Link
+                          href="/cabinet"
+                          className="btn-luxe btn-luxe--sm btn-luxe--ghost px-5 py-2 text-sm"
+                          onClick={() => setGuestIntroAlreadyUsed(false)}
+                        >
+                          {GUEST_RESUME_ALREADY_USED_CABINET_CTA}
+                        </Link>
+                      </div>
                     ) : null}
                   </div>
                 ) : null}
@@ -3800,6 +3850,41 @@ export default function HomePage({
                         Попробовать восстановить
                       </button>
                     ) : null}
+                    {guestIntroAlreadyUsed ? (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGuestIntroAlreadyUsed(false);
+                            void handleNewReading();
+                          }}
+                          className="btn-primary px-5 py-2 text-sm"
+                        >
+                          {GUEST_RESUME_ALREADY_USED_DAILY_CTA}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setGuestIntroAlreadyUsed(false);
+                            setTripletNotice(null);
+                            document.getElementById("наставники")?.scrollIntoView({
+                              behavior: "smooth",
+                              block: "start",
+                            });
+                          }}
+                          className="btn-luxe btn-luxe--sm btn-luxe--ghost px-5 py-2 text-sm"
+                        >
+                          {GUEST_RESUME_ALREADY_USED_NEW_CTA}
+                        </button>
+                        <Link
+                          href="/cabinet"
+                          className="btn-luxe btn-luxe--sm btn-luxe--ghost px-5 py-2 text-sm"
+                          onClick={() => setGuestIntroAlreadyUsed(false)}
+                        >
+                          {GUEST_RESUME_ALREADY_USED_CABINET_CTA}
+                        </Link>
+                      </div>
+                    ) : null}
                   </div>
                 ) : null}
                 {deckGalleryOpen && (profile || browseDeckMaster) && (
@@ -3849,6 +3934,24 @@ export default function HomePage({
                   showMasters
                   showTariffs
                   homeUserName={effectiveProfile.name || authUser?.name}
+                  dailyCardsAvailable={
+                    isLoggedIn
+                      ? !tripletCooldown || Boolean(tripletCooldown.allowed)
+                      : undefined
+                  }
+                  onOpenDailyCards={
+                    isLoggedIn ? () => void handleNewReading() : undefined
+                  }
+                  onViewTodayDailyCards={
+                    isLoggedIn
+                      ? () => {
+                          document.getElementById("мой-расклад")?.scrollIntoView({
+                            behavior: "smooth",
+                            block: "start",
+                          });
+                        }
+                      : undefined
+                  }
                   onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
                   onOpenDestinyMatrixSession={
                     isLoggedIn ? () => openNumerologSessionFlow("destiny_matrix") : undefined

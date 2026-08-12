@@ -16,7 +16,7 @@ export async function preserveUserRateLimitsBeforePurge(
   userId: string,
   client: PoolClient
 ): Promise<void> {
-  const [historyRes, userRes, dailyRes] = await Promise.all([
+  const [historyRes, userRes, dailyRes, introRes] = await Promise.all([
     client.query<{ created_at: Date | null }>(
       `SELECT MAX(created_at) AS created_at FROM history
        WHERE user_id = $1
@@ -30,11 +30,18 @@ export async function preserveUserRateLimitsBeforePurge(
       `SELECT astro_meta FROM users WHERE id = $1`,
       [userId]
     ),
-    client.query<{ reading_date: Date | string; spread_id: string | null }>(
-      `SELECT reading_date, spread_id FROM daily_readings
+    client.query<{ reading_date: Date | string; character_key: string | null }>(
+      `SELECT reading_date, character_key FROM daily_readings
        WHERE user_id = $1
        ORDER BY reading_date DESC
        LIMIT 1`,
+      [userId]
+    ),
+    client.query<{ first_claim: Date | null }>(
+      `SELECT MIN(COALESCE(guest_resume_claimed_at, updated_at, created_at)) AS first_claim
+       FROM sessions
+       WHERE user_id = $1
+         AND guest_resume_status IN ('claimed', 'reading_consumed')`,
       [userId]
     ),
   ]);
@@ -46,17 +53,33 @@ export async function preserveUserRateLimitsBeforePurge(
       ? historyAt.toISOString()
       : String(historyAt)
     : null;
-  const anchorRaw = userRes.rows[0]?.astro_meta?.lastTripletDrawAt;
+  const meta = userRes.rows[0]?.astro_meta ?? {};
+  const anchorRaw = meta.lastTripletDrawAt;
   const anchorIso =
     typeof anchorRaw === "string" && anchorRaw.trim() ? anchorRaw.trim() : null;
   const tripletIso = laterIso(historyIso, anchorIso);
   if (tripletIso) patch.lastTripletDrawAt = tripletIso;
 
+  const existingIntro =
+    typeof meta.guestIntroUsedAt === "string" && meta.guestIntroUsedAt.trim()
+      ? meta.guestIntroUsedAt.trim()
+      : null;
+  const introAt = introRes.rows[0]?.first_claim;
+  const introIso = introAt
+    ? introAt instanceof Date
+      ? introAt.toISOString()
+      : String(introAt)
+    : null;
+  // Lifetime acquisition flag — never clear on purge; keep earliest stamp.
+  if (existingIntro) patch.guestIntroUsedAt = existingIntro;
+  else if (introIso) patch.guestIntroUsedAt = introIso;
+
   const dailyRow = dailyRes.rows[0];
   if (dailyRow?.reading_date) {
     patch.lastDailyReadingDate = toDateStr(dailyRow.reading_date);
-    if (dailyRow.spread_id?.trim()) {
-      patch.lastDailyReadingSpreadId = dailyRow.spread_id.trim();
+    // daily_readings has no spread_id column — character_key is the durable hint.
+    if (dailyRow.character_key?.trim()) {
+      patch.lastDailyReadingSpreadId = dailyRow.character_key.trim();
     }
   }
 
@@ -68,6 +91,52 @@ export async function preserveUserRateLimitsBeforePurge(
      WHERE id = $1`,
     [userId, JSON.stringify(patch)]
   );
+}
+
+/** Lifetime one-time guest intro (acquisition) — independent of daily triplet cooldown. */
+export async function recordGuestIntroUsed(
+  userId: string,
+  at: Date | string = new Date(),
+  client?: PoolClient
+): Promise<void> {
+  const iso = at instanceof Date ? at.toISOString() : at;
+  const run = client
+    ? (text: string, params?: unknown[]) => client.query(text, params)
+    : (text: string, params?: unknown[]) => query(text, params);
+  await run(
+    `UPDATE users
+     SET astro_meta = CASE
+       WHEN COALESCE(astro_meta->>'guestIntroUsedAt', '') <> '' THEN astro_meta
+       ELSE jsonb_set(
+         COALESCE(astro_meta, '{}'::jsonb),
+         '{guestIntroUsedAt}',
+         to_jsonb($2::text),
+         true
+       )
+     END
+     WHERE id = $1`,
+    [userId, iso]
+  );
+}
+
+export async function profileHasGuestIntroLifetimeFlag(
+  userId: string,
+  client?: PoolClient
+): Promise<boolean> {
+  if (client) {
+    const { rows } = await client.query<{ used_at: string | null }>(
+      `SELECT astro_meta->>'guestIntroUsedAt' AS used_at FROM users WHERE id = $1`,
+      [userId]
+    );
+    const usedAt = rows[0]?.used_at;
+    return typeof usedAt === "string" && Boolean(usedAt.trim());
+  }
+  const { rows } = await query<{ used_at: string | null }>(
+    `SELECT astro_meta->>'guestIntroUsedAt' AS used_at FROM users WHERE id = $1`,
+    [userId]
+  );
+  const usedAt = rows[0]?.used_at;
+  return typeof usedAt === "string" && Boolean(usedAt.trim());
 }
 
 /** Admin reset: drop persisted daily-reading cooldown after content is wiped. */
@@ -135,8 +204,8 @@ export async function isDailyReadingUsedToday(
   userId: string,
   localDate: string
 ): Promise<{ used: boolean; spreadId: string | null; hasContent: boolean }> {
-  const { rows } = await query<{ spread_id: string | null }>(
-    `SELECT spread_id FROM daily_readings
+  const { rows } = await query<{ character_key: string | null }>(
+    `SELECT character_key FROM daily_readings
      WHERE user_id = $1 AND reading_date = $2::date
      LIMIT 1`,
     [userId, localDate]
@@ -144,7 +213,7 @@ export async function isDailyReadingUsedToday(
   if (rows[0]) {
     return {
       used: true,
-      spreadId: rows[0].spread_id,
+      spreadId: rows[0].character_key,
       hasContent: true,
     };
   }

@@ -387,7 +387,7 @@ export function useChatSession(options: UseChatSessionOptions) {
       }
       return null;
     },
-    [getActiveProfile, sessionOffline, spreadCardsKey, masters, isLoggedIn]
+    [getActiveProfile, spreadCardsKey, masters, isLoggedIn]
   );
 
   const refreshSessionsList = useCallback(async (masterId: string) => {

@@ -81,16 +81,19 @@ export function buildLandingOfferCopy(
   const heroTitle = heroCopy.heroTitle;
   const heroSubtitle = heroCopy.heroSubtitle;
   const finalCtaText = "Три карты бесплатно. Дальше решаете вы.";
+  /** Honest: authenticated daily triplet is a rolling 24h window (раз в сутки). */
   const heroMicrocopy = "Без регистрации · без банковской карты · 18+";
+  const heroRetentionHook =
+    "После регистрации — 3 карты дня бесплатно раз в сутки";
   const primaryCta = "Открыть 3 карты бесплатно";
   const secondaryCta = "Как проходит сеанс";
 
   const pricingLine = config.enabled
-    ? `3 карты бесплатно · разбор ≈ ${fmtPrice(config.costs.READING)} · ${freeQLabel} мастеру бесплатно`
-    : `3 карты бесплатно · ${freeQLabel} мастеру бесплатно`;
+    ? `3 карты сейчас · разбор ≈ ${fmtPrice(config.costs.READING)} · 3 карты дня раз в сутки`
+    : `3 карты сейчас · 3 карты дня раз в сутки · ${freeQLabel} мастеру бесплатно`;
 
   const seoFreeParagraph =
-    "На главной три карты открываются бесплатно до регистрации. После входа классический расклад на три карты — раз в сутки; история сохраняется в кабинете. Полные расклады, фото-анализ, нумерология и обряды — по тарифу в рунах ᚢ.";
+    "На главной три карты открываются бесплатно до регистрации — один стартовый расклад. После входа классический расклад на три карты доступен раз в сутки; история сохраняется в кабинете. Полные расклады, фото-анализ, нумерология и обряды — по тарифу в рунах ᚢ.";
 
   return {
     heroEyebrow,
@@ -98,6 +101,7 @@ export function buildLandingOfferCopy(
     heroSubtitle,
     finalCtaText,
     heroMicrocopy,
+    heroRetentionHook,
     primaryCta,
     secondaryCta,
     pricingLine,

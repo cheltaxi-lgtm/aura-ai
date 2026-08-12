@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureDb } from "@/lib/db";
+import { getAuth } from "@/lib/auth";
 import { AGE_REQUIRED_ERROR } from "@/lib/age-gate";
 import { isAgeGateCookieConfirmed } from "@/lib/age-gate-cookie";
 import {
@@ -23,10 +24,25 @@ export const runtime = "nodejs";
 /**
  * Pre-auth: seal a completed guest triplet as an anonymous server receipt.
  * Issues HttpOnly receipt cookie + session-claim binding. No LLM / no free reading.
+ * Authenticated users must use the daily authenticated triplet path — not this
+ * acquisition mint (lifetime one-time intro is claimed post-auth).
  */
 export async function POST(request: NextRequest) {
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "unavailable" }, { status: 503 });
+  }
+
+  const auth = await getAuth();
+  if (auth?.role === "user") {
+    return NextResponse.json(
+      {
+        error: "guest_intro_not_available_authenticated",
+        code: "GUEST_INTRO_NOT_AVAILABLE_AUTHENTICATED",
+        message:
+          "Стартовый расклад с лендинга доступен до входа. Откройте карты дня в салоне — раз в сутки.",
+      },
+      { status: 403 }
+    );
   }
 
   if (!(await isAgeGateCookieConfirmed(request))) {

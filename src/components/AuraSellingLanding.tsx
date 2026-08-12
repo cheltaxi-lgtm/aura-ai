@@ -58,6 +58,8 @@ import EditorialBirthToolsSection from "@/components/editorial/EditorialBirthToo
 import EditorialSessionStepsSection from "@/components/editorial/EditorialSessionStepsSection";
 import EditorialStarterPackSection from "@/components/editorial/EditorialStarterPackSection";
 import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
+import EditorialDailyCardsSection from "@/components/editorial/EditorialDailyCardsSection";
+import EditorialFreeValueSection from "@/components/editorial/EditorialFreeValueSection";
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import HomeDestinyMatrixBanner from "@/components/editorial/HomeDestinyMatrixBanner";
 import HomeHumanDesignBanner from "@/components/editorial/HomeHumanDesignBanner";
@@ -226,6 +228,10 @@ export interface AuraSellingLandingProps {
   homeUserName?: string | null;
   /** When false, parent renders LoggedInHomeBanner (e.g. above ReadingRecap). */
   showLoggedInHomeBanner?: boolean;
+  /** Authenticated daily triplet availability (rolling 24h). */
+  dailyCardsAvailable?: boolean;
+  onOpenDailyCards?: () => void;
+  onViewTodayDailyCards?: () => void;
   /** Classic mystic shell or editorial mockup shell — same blocks and handlers. */
   layout?: "classic" | "editorial";
 }
@@ -258,6 +264,9 @@ export default function AuraSellingLanding({
   onQuickQuestionSelect,
   homeUserName,
   showLoggedInHomeBanner = true,
+  dailyCardsAvailable,
+  onOpenDailyCards,
+  onViewTodayDailyCards,
   layout = "classic",
 }: AuraSellingLandingProps) {
   const isEditorial = layout === "editorial";
@@ -382,7 +391,12 @@ export default function AuraSellingLanding({
         <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
         <LandingDemoSection onOpenCards={() => handlePrimaryCta("final")} />
         <EditorialSessionStepsSection />
+        <EditorialDailyCardsSection
+          isLoggedIn={false}
+          onGuestCta={() => startGuestSpread()}
+        />
         <EditorialBirthToolsSection />
+        <EditorialFreeValueSection />
         <LandingHonestSection />
         <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
         {showMasters ? (
@@ -480,6 +494,9 @@ export default function AuraSellingLanding({
           onQuestionSubmit={onCustomQuestionSubmit ?? onQuickQuestionSelect}
           onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
           onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
+          dailyCardsAvailable={dailyCardsAvailable}
+          onOpenDailyCards={onOpenDailyCards}
+          onViewTodayDailyCards={onViewTodayDailyCards}
         />
       ) : null}
 
@@ -515,6 +532,18 @@ export default function AuraSellingLanding({
       {!isLoggedIn ? <GuestTripletDraw startRequest={guestSpreadRequest} /> : null}
 
       {showSellingSections && isEditorial ? <EditorialSessionStepsSection /> : null}
+
+      {showSellingSections && isEditorial ? (
+        <EditorialDailyCardsSection
+          isLoggedIn={isLoggedIn}
+          dailyAvailable={dailyCardsAvailable}
+          onGuestCta={() => startGuestSpread()}
+          onOpenDaily={onOpenDailyCards}
+          onViewToday={onViewTodayDailyCards}
+        />
+      ) : null}
+
+      {showSellingSections && isEditorial && !isLoggedIn ? <EditorialFreeValueSection /> : null}
 
       {!isLoggedIn ? (
         <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />

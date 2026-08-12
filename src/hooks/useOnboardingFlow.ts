@@ -177,7 +177,11 @@ import {
   resolvePostOnboardingDestination,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import { trackProfileCompleted } from "@/lib/seo/metrika";
+import {
+  trackDailyCardsStarted,
+  trackGuestIntroAlreadyUsed,
+  trackProfileCompleted,
+} from "@/lib/seo/metrika";
 import {
   clearShareRegistrationAttribution,
   resolveRegistrationSource,
@@ -411,6 +415,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
   const [tripletNotice, setTripletNotice] = useState<string | null>(null);
   const [guestResumeCanRetry, setGuestResumeCanRetry] = useState(false);
+  const [guestIntroAlreadyUsed, setGuestIntroAlreadyUsed] = useState(false);
 
   /** Leave chat/salon and show birth profile form — never leave selectedCharacter set. */
   const forceProfileOnboarding = useCallback(() => {
@@ -1901,6 +1906,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           }
           if (resumeResult.stage === "already_used") {
             setGuestResumeCanRetry(false);
+            setGuestIntroAlreadyUsed(true);
+            trackGuestIntroAlreadyUsed("onboarding_resume");
             clearGuestTriplet();
             clearGuestResumeUiCache();
             setTripletNotice(GUEST_RESUME_ALREADY_USED);
@@ -2913,6 +2920,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const handleNewReading = async () => {
     const deps = chat();
     setTripletNotice(null);
+    setGuestIntroAlreadyUsed(false);
+    trackDailyCardsStarted("handle_new_reading");
     if (
       !tripletCooldownReady ||
       !effectiveTripletCooldown.allowed ||
@@ -4485,6 +4494,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       }
       if (result.stage === "already_used") {
         setGuestResumeCanRetry(false);
+        setGuestIntroAlreadyUsed(true);
+        trackGuestIntroAlreadyUsed("boot_resume");
         clearGuestTriplet();
         clearGuestResumeUiCache();
         setTripletNotice(GUEST_RESUME_ALREADY_USED);
@@ -4498,7 +4509,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setGuestResumeCanRetry(true);
       setTripletNotice(GUEST_RESUME_RETRY_TITLE);
     },
-    [forceProfileOnboarding]
+    []
   );
 
   const retryGuestTripletResume = useCallback(() => {
@@ -4690,6 +4701,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     tripletNotice,
     setTripletNotice,
     guestResumeCanRetry,
+    guestIntroAlreadyUsed,
+    setGuestIntroAlreadyUsed,
     retryGuestTripletResume,
     tripletCooldown,
     tripletCooldownReady,

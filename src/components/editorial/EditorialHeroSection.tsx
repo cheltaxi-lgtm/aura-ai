@@ -93,6 +93,9 @@ export default function EditorialHeroSection({
           </button>
         </div>
         <p className="editorial-hero__micro">{EDITORIAL_HERO.microcopy}</p>
+        {!isLoggedIn ? (
+          <p className="editorial-hero__retention-hook">{EDITORIAL_HERO.retentionHook}</p>
+        ) : null}
         {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}
         {conversionHero && !isLoggedIn ? (
           <p className="editorial-hero__legal-note">

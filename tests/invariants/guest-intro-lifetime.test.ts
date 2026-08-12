@@ -1,0 +1,209 @@
+import { describe, expect, it } from "vitest";
+import { claimGuestResumeSession, profileHasUsedGuestResume } from "@/lib/guest-triplet-receipt-db";
+import {
+  profileHasGuestIntroLifetimeFlag,
+  recordGuestIntroUsed,
+} from "@/lib/rate-limit-anchors";
+import { checkTripletCooldown } from "@/lib/triplet-limit-server";
+import { resetTripletCooldown } from "@/lib/users";
+import { deleteConsultationSession } from "@/lib/session";
+import { purgeUserCabinetData } from "@/lib/cabinet-data";
+import { query } from "@/lib/db";
+import { hasTestDb, installDbLifecycle } from "./db/setup";
+import { createTestUser, issueGuestReceipt } from "./db/fixtures";
+
+describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
+  installDbLifecycle();
+
+  it("TEST1: first guest receipt + new profile → claim success", async () => {
+    const issued = await issueGuestReceipt();
+    const user = await createTestUser();
+    const claim = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+    });
+    expect(claim.ok).toBe(true);
+    if (!claim.ok) return;
+    expect(claim.alreadyClaimed).toBe(false);
+    expect(await profileHasUsedGuestResume(user.id)).toBe(true);
+    expect(await profileHasGuestIntroLifetimeFlag(user.id)).toBe(true);
+  });
+
+  it("TEST2: same profile + second receipt → already_used", async () => {
+    const user = await createTestUser();
+    const first = await issueGuestReceipt();
+    const claim1 = await claimGuestResumeSession({
+      token: first.token,
+      profileUserId: user.id,
+    });
+    expect(claim1.ok).toBe(true);
+
+    const second = await issueGuestReceipt({
+      symbols: [
+        { id: 10, name: "Колесо Фортуны", position: 0, reversed: false },
+        { id: 11, name: "Справедливость", position: 1, reversed: true },
+        { id: 12, name: "Повешенный", position: 2, reversed: false },
+      ],
+    });
+    const claim2 = await claimGuestResumeSession({
+      token: second.token,
+      profileUserId: user.id,
+    });
+    expect(claim2.ok).toBe(false);
+    if (claim2.ok) return;
+    expect(claim2.code).toBe("already_used");
+  });
+
+  it("TEST3: history/cabinet purge still rejects second intro", async () => {
+    const user = await createTestUser();
+    const first = await issueGuestReceipt();
+    const claim1 = await claimGuestResumeSession({
+      token: first.token,
+      profileUserId: user.id,
+    });
+    expect(claim1.ok).toBe(true);
+    if (!claim1.ok) return;
+
+    await purgeUserCabinetData(user.id);
+    expect(await profileHasGuestIntroLifetimeFlag(user.id)).toBe(true);
+    expect(await profileHasUsedGuestResume(user.id)).toBe(true);
+
+    const second = await issueGuestReceipt();
+    const claim2 = await claimGuestResumeSession({
+      token: second.token,
+      profileUserId: user.id,
+    });
+    expect(claim2.ok).toBe(false);
+    if (claim2.ok) return;
+    expect(claim2.code).toBe("already_used");
+  });
+
+  it("TEST4: new browser receipt after login still rejected (lifetime flag)", async () => {
+    const user = await createTestUser();
+    await recordGuestIntroUsed(user.id, "2024-01-01T00:00:00.000Z");
+    expect(await profileHasUsedGuestResume(user.id)).toBe(true);
+
+    const issued = await issueGuestReceipt();
+    const claim = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+    });
+    expect(claim.ok).toBe(false);
+    if (claim.ok) return;
+    expect(claim.code).toBe("already_used");
+  });
+
+  it("TEST5: parallel claims → only one first entitlement", async () => {
+    const user = await createTestUser();
+    const a = await issueGuestReceipt();
+    const b = await issueGuestReceipt({
+      symbols: [
+        { id: 20, name: "Суд", position: 0, reversed: false },
+        { id: 21, name: "Мир", position: 1, reversed: false },
+        { id: 0, name: "Шут", position: 2, reversed: true },
+      ],
+    });
+
+    const [r1, r2] = await Promise.all([
+      claimGuestResumeSession({ token: a.token, profileUserId: user.id }),
+      claimGuestResumeSession({ token: b.token, profileUserId: user.id }),
+    ]);
+
+    const oks = [r1, r2].filter((r) => r.ok);
+    const fails = [r1, r2].filter((r) => !r.ok);
+    expect(oks).toHaveLength(1);
+    expect(fails).toHaveLength(1);
+    if (!fails[0].ok) expect(fails[0].code).toBe("already_used");
+  });
+
+  it("TEST7: daily cooldown reset does not restore intro", async () => {
+    const user = await createTestUser();
+    const issued = await issueGuestReceipt();
+    const claim = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+    });
+    expect(claim.ok).toBe(true);
+
+    await resetTripletCooldown(user.id);
+    expect(await profileHasGuestIntroLifetimeFlag(user.id)).toBe(true);
+
+    const second = await issueGuestReceipt();
+    const blocked = await claimGuestResumeSession({
+      token: second.token,
+      profileUserId: user.id,
+    });
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) return;
+    expect(blocked.code).toBe("already_used");
+  });
+
+  it("TEST8: client flags alone never grant intro (server gate)", async () => {
+    const user = await createTestUser();
+    // Simulate client-only "guestResume/isFree" noise — server has no sessions/flag.
+    expect(await profileHasUsedGuestResume(user.id)).toBe(false);
+    const issued = await issueGuestReceipt();
+    const claim = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+    });
+    expect(claim.ok).toBe(true);
+  });
+
+  it("TEST12/13: daily cooldown and intro lifetime are independent", async () => {
+    const user = await createTestUser();
+    const issued = await issueGuestReceipt();
+    const claim = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+    });
+    expect(claim.ok).toBe(true);
+
+    // Intro must not consume daily triplet slot.
+    const cooldown = await checkTripletCooldown(user.id);
+    expect(cooldown.allowed).toBe(true);
+
+    // Daily usage must not clear intro lifetime.
+    await query(
+      `UPDATE users SET astro_meta = jsonb_set(
+         COALESCE(astro_meta, '{}'::jsonb),
+         '{lastTripletDrawAt}',
+         to_jsonb($2::text),
+         true
+       ) WHERE id = $1`,
+      [user.id, new Date().toISOString()]
+    );
+    expect(await profileHasUsedGuestResume(user.id)).toBe(true);
+    const afterDaily = await checkTripletCooldown(user.id);
+    expect(afterDaily.allowed).toBe(false);
+  });
+
+  it("single session delete soft-clears intro and keeps lifetime gate", async () => {
+    const user = await createTestUser();
+    const issued = await issueGuestReceipt();
+    const claim = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+    });
+    expect(claim.ok).toBe(true);
+    if (!claim.ok) return;
+
+    await deleteConsultationSession(claim.sessionId, user.id);
+    expect(await profileHasGuestIntroLifetimeFlag(user.id)).toBe(true);
+
+    const { rows } = await query<{ guest_resume_status: string | null }>(
+      `SELECT guest_resume_status FROM sessions WHERE id = $1`,
+      [claim.sessionId]
+    );
+    expect(rows[0]?.guest_resume_status).toMatch(/claimed|reading_consumed/);
+
+    const second = await issueGuestReceipt();
+    const blocked = await claimGuestResumeSession({
+      token: second.token,
+      profileUserId: user.id,
+    });
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) return;
+    expect(blocked.code).toBe("already_used");
+  });
+});

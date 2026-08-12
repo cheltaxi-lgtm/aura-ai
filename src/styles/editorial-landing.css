@@ -500,6 +500,27 @@ html[data-motion-lite="1"] .salon-bg__lines {
   gap: 0.875rem;
 }
 
+.editorial-hero__retention-hook {
+  margin: 0.55rem 0 0;
+  max-width: 28rem;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(232, 212, 168, 0.88);
+  text-align: center;
+}
+
+.editorial-hero__daily {
+  text-align: left;
+}
+
+@media (max-width: 430px) {
+  .editorial-hero__retention-hook {
+    font-size: 0.75rem;
+    max-width: 20rem;
+    margin-inline: auto;
+  }
+}
+
 .editorial-hero__micro {
   margin-top: 1.25rem;
   font-size: 0.75rem;

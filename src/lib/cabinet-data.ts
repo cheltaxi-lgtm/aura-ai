@@ -923,10 +923,26 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
       [userId]
     );
 
+    // Keep claimed/consumed guest intro receipts — lifetime acquisition evidence
+    // (also mirrored to astro_meta.guestIntroUsedAt). Soft-clear content below.
     const sessionsRemoved = await run(
       `DELETE FROM sessions s
        WHERE s.user_id = $1
-         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.session_id = s.id)`,
+         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.session_id = s.id)
+         AND COALESCE(s.guest_resume_status, '') NOT IN ('claimed', 'reading_consumed')`,
+      [userId]
+    );
+
+    await run(
+      `UPDATE sessions
+       SET character_key = COALESCE(character_key, 'veronika'),
+           intention = NULL,
+           awaiting_context = FALSE,
+           status = 'completed',
+           free_questions_used = 0,
+           updated_at = NOW()
+       WHERE user_id = $1
+         AND guest_resume_status IN ('claimed', 'reading_consumed')`,
       [userId]
     );
 

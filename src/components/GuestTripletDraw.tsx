@@ -40,6 +40,7 @@ import {
   trackGuestAuth,
   trackGuestTeaserCta,
   trackGuestTeaserView,
+  trackGuestIntroBlockedAuthenticated,
   trackRegistrationGateView,
   trackRegistrationStarted,
 } from "@/lib/seo/metrika";
@@ -530,6 +531,24 @@ export default function GuestTripletDraw({
           }),
         });
         if (!res.ok) {
+          let code = "";
+          try {
+            const data = (await res.json()) as { code?: string; error?: string };
+            code = String(data.code || data.error || "");
+          } catch {
+            /* ignore */
+          }
+          if (
+            code === "GUEST_INTRO_NOT_AVAILABLE_AUTHENTICATED" ||
+            code === "guest_intro_not_available_authenticated"
+          ) {
+            trackGuestIntroBlockedAuthenticated("guest_triplet_complete");
+            setAgeGateError(
+              "Стартовый расклад с лендинга доступен до входа. Откройте карты дня в салоне — раз в сутки."
+            );
+            setCompleting(false);
+            return;
+          }
           setAgeGateError(
             res.status === 403
               ? "Подтвердите возраст 18+, чтобы сохранить расклад."
@@ -722,16 +741,14 @@ export default function GuestTripletDraw({
                 <div>
                   <h3 className="font-display text-lg text-white">Полный разбор готов</h3>
                   <p className="mt-1 text-sm text-aura-ivory/70">
-                    Откройте полный ответ по этим же трём картам.
+                    Создайте бесплатный профиль и получите:
                   </p>
                 </div>
                 <ul className="space-y-1.5 text-sm text-aura-ivory/75">
-                  <li>✓ итог расклада</li>
-                  <li>✓ что происходит сейчас</li>
-                  <li>✓ вероятное развитие ситуации</li>
-                  <li>✓ что помогает и что мешает</li>
-                  <li>✓ что делать дальше</li>
-                  <li>✓ возможность задать уточняющий вопрос</li>
+                  <li>✓ полный разбор этих трёх карт</li>
+                  <li>✓ сохранение вопроса и расклада</li>
+                  <li>✓ продолжение диалога с мастером</li>
+                  <li>✓ 3 карты дня бесплатно раз в сутки</li>
                 </ul>
                 <button
                   type="button"
@@ -742,7 +759,7 @@ export default function GuestTripletDraw({
                   Открыть полный разбор бесплатно
                 </button>
                 <p className="text-center text-xs text-aura-ivory/50">
-                  Ваш вопрос и выбранные карты уже сохранены.
+                  Ваш вопрос и карты уже сохранены.
                 </p>
               </div>
             ) : (
@@ -753,7 +770,8 @@ export default function GuestTripletDraw({
                 <div>
                   <h3 className="font-display text-lg text-white">Полный разбор готов</h3>
                   <p className="mt-1 text-sm text-aura-ivory/65">
-                    Войдите одним способом — Ваш вопрос и три выбранные карты уже сохранены.
+                    Войдите одним способом — эти карты сохранятся, а после регистрации Вы сможете
+                    открывать 3 карты дня бесплатно раз в сутки.
                   </p>
                 </div>
 

@@ -44,4 +44,14 @@ test.describe("guest funnel golden path (public)", () => {
     ).toBeVisible();
     await expect(page.getByText(/Без регистрации/i).first()).toBeVisible();
   });
+
+  test("landing sells daily retention hook without guest-auth demand", async ({ page }) => {
+    await page.goto("/?app=1");
+    await expect(
+      page.getByText(/После регистрации — 3 карты дня бесплатно раз в сутки/i).first()
+    ).toBeVisible();
+    await expect(page.getByRole("heading", { name: /3 карты дня бесплатно/i })).toBeVisible();
+    await expect(page.getByRole("button", { name: /Получить мои карты дня/i }).first()).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Что доступно бесплатно/i })).toBeVisible();
+  });
 });

@@ -11,7 +11,10 @@ import {
   type GuestResumeSymbol,
 } from "@/lib/guest-triplet-receipt";
 import type { DeckSystem } from "@/lib/decks/types";
-import { recordTripletDrawAnchor } from "@/lib/users";
+import {
+  profileHasGuestIntroLifetimeFlag,
+  recordGuestIntroUsed,
+} from "@/lib/rate-limit-anchors";
 import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 
@@ -154,6 +157,11 @@ export async function profileHasUsedGuestResume(
   profileUserId: string,
   options?: { exceptSessionId?: string; client?: PoolClient }
 ): Promise<boolean> {
+  // Durable lifetime flag survives history/cabinet purge (sessions may be gone).
+  if (await profileHasGuestIntroLifetimeFlag(profileUserId, options?.client)) {
+    return true;
+  }
+
   const run = options?.client
     ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) =>
         queryClient(options.client!, text, params)
@@ -299,11 +307,11 @@ export async function claimGuestResumeSession(input: {
       return { ok: false, code: "unavailable" };
     }
 
-    // Anti-abuse: consume daily triplet slot so resume cannot mint an extra free triplet.
+    // Lifetime acquisition marker — independent of daily triplet cooldown.
     try {
-      await recordTripletDrawAnchor(input.profileUserId, new Date());
+      await recordGuestIntroUsed(input.profileUserId, new Date(), client);
     } catch {
-      /* non-fatal */
+      /* non-fatal: session row still gates until purge */
     }
 
     return {
