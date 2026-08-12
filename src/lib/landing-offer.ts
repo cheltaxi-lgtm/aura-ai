@@ -37,15 +37,15 @@ const HERO_VARIANTS: Record<
   { heroTitle: string; heroSubtitle: string }
 > = {
   a: {
-    heroTitle: "Спросите то, о чём думаете каждый день",
+    heroTitle: "Расклад Таро онлайн бесплатно",
     heroSubtitle: "Три карты откроются прямо здесь — бесплатно и без регистрации.",
   },
   b: {
-    heroTitle: "Спросите то, о чём думаете каждый день",
+    heroTitle: "Расклад Таро онлайн бесплатно",
     heroSubtitle: "Три карты откроются прямо здесь — бесплатно и без регистрации.",
   },
   c: {
-    heroTitle: "Спросите то, о чём думаете каждый день",
+    heroTitle: "Расклад Таро онлайн бесплатно",
     heroSubtitle: "Три карты откроются прямо здесь — бесплатно и без регистрации.",
   },
 };
@@ -81,8 +81,8 @@ export function buildLandingOfferCopy(
   const heroTitle = heroCopy.heroTitle;
   const heroSubtitle = heroCopy.heroSubtitle;
   const finalCtaText = "Три карты бесплатно. Дальше решаете вы.";
-  const heroMicrocopy = "Бесплатно · без привязки карты · 18+";
-  const primaryCta = "Открыть 3 карты";
+  const heroMicrocopy = "Без регистрации · без банковской карты · 18+";
+  const primaryCta = "Открыть 3 карты бесплатно";
   const secondaryCta = "Как проходит сеанс";
 
   const pricingLine = config.enabled

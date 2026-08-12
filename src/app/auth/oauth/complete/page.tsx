@@ -11,8 +11,6 @@ import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
 import { navigateViaSessionBridge, shouldUseSessionBridge } from "@/lib/session-bridge";
 import { readUtmAttribution } from "@/lib/utm/attribution";
-import { onboardingRedirectUrl } from "@/lib/post-auth-return";
-
 type RegistrationPreview = {
   providerLabel: string;
   name: string;
@@ -144,9 +142,9 @@ export default function OAuthCompletePage() {
     }
     const handoff = locationHandoff || handoffFromStore;
 
-    const urgentFallback =
-      needsProfile || isNewUser ? onboardingRedirectUrl() : returnTo;
-    setFallbackHref(withAppShellAuthParams(urgentFallback));
+    // Prefer returnTo / home — finishUserAuthSuccess decides guest vs onboarding.
+    // Do not force birth onboarding as the timeout fallback for guest resumes.
+    setFallbackHref(withAppShellAuthParams(returnTo || "/"));
 
     // A handoff is consumed only by a document response. This avoids the
     // fetch Set-Cookie race on web and WebView alike. Claim navigation before

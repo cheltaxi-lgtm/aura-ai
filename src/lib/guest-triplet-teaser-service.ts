@@ -32,7 +32,8 @@ export const TEASER_MAX_CHARS = 720;
 export const TEASER_MIN_CHARS = 80;
 export const TEASER_TIMEOUT_MS = 7000;
 export const TEASER_MAX_TOKENS = 220;
-export const TEASER_RECEIPT_MIN_AGE_MS = 3_000;
+/** Short consistency window (anti race / double-submit), not a UX “thinking” delay. */
+export const TEASER_RECEIPT_MIN_AGE_MS = 800;
 export const TEASER_RECEIPT_MAX_AGE_MS = 30 * 60_000;
 const TEASER_CONCURRENCY_CAP = 5;
 const TEASER_MAX_FAILS = 2;

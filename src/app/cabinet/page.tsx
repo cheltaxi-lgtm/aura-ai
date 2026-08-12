@@ -731,22 +731,7 @@ export default function CabinetPage() {
               title="Руны и доступ"
               subtitle="Пополнение, история операций и статус подписки."
             />
-            {needsOnboarding ? (
-              <div className="rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-5 text-sm text-aura-champagne">
-                <p className="font-medium text-white">Баланс появится после профиля</p>
-                <p className="mt-2 text-white/70">
-                  Укажите дату рождения — мы создадим профиль, начислим стартовые руны и откроем
-                  историю операций.
-                </p>
-                <button
-                  type="button"
-                  className="btn-luxe btn-luxe--sm btn-luxe--gold mt-4"
-                  onClick={() => navigateToBirthProfileOnboarding()}
-                >
-                  Указать дату рождения
-                </button>
-              </div>
-            ) : runesEnabled && runes ? (
+            {runesEnabled && runes ? (
               <CabinetRunesPanel
                 balance={runes.balance}
                 enabled={runes.enabled}
@@ -786,18 +771,20 @@ export default function CabinetPage() {
 
         {needsOnboarding ? (
           <div className="mb-6 rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-4 text-sm text-aura-champagne">
-            <p className="font-medium text-white">Укажите дату рождения</p>
+            <p className="font-medium text-white">Сделать Zovus ещё точнее?</p>
             <p className="mt-1 text-white/70">
-              Аккаунт уже создан. Остался один шаг — дата рождения для персонализации раскладов.
-              После этого откроется кабинет и начислятся стартовые руны.
+              Добавьте дату рождения — откроются персональные расчёты, Матрица судьбы и
+              астрологические возможности. Таро уже доступно без этого шага.
             </p>
-            <button
-              type="button"
-              className="btn-luxe btn-luxe--sm btn-luxe--gold mt-4"
-              onClick={() => navigateToBirthProfileOnboarding()}
-            >
-              Указать дату рождения
-            </button>
+            <div className="mt-4 flex flex-wrap gap-3">
+              <button
+                type="button"
+                className="btn-luxe btn-luxe--sm btn-luxe--gold"
+                onClick={() => navigateToBirthProfileOnboarding()}
+              >
+                Заполнить профиль
+              </button>
+            </div>
           </div>
         ) : null}
 

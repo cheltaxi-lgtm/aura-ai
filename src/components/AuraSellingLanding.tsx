@@ -20,9 +20,7 @@ import {
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MastersShowcase from "@/components/MastersShowcase";
 import LandingHeroVisual from "@/components/seo/LandingHeroVisual";
-import BodyPortal from "@/components/BodyPortal";
 import GuestTripletDraw from "@/components/GuestTripletDraw";
-import RegisterGate from "@/components/RegisterGate";
 import QuickQuestions from "@/components/seo/QuickQuestions";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import OfflineSpreadBlock from "@/components/seo/OfflineSpreadBlock";
@@ -45,7 +43,6 @@ import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import {
   trackLandingView,
   trackLandingPrimaryCtaClick,
-  trackRegistrationGateView,
 } from "@/lib/seo/metrika";
 import {
   buildLoginHref,
@@ -275,7 +272,6 @@ export default function AuraSellingLanding({
     id: number;
     detail: GuestSpreadStartDetail;
   } | null>(null);
-  const [topicAuthSlug, setTopicAuthSlug] = useState<string | null>(null);
   const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub, heroVariant);
   useLandingSocialProofVisible(
     !isGuestEditorial && (showSellingSections || (showHero && !isLoggedIn))
@@ -288,11 +284,6 @@ export default function AuraSellingLanding({
       trackLandingView({ hero_variant: isEditorial ? "editorial" : variant });
     }
   }, [showHero, isLoggedIn, isEditorial]);
-
-  useEffect(() => {
-    if (!topicAuthSlug) return;
-    trackRegistrationGateView("editorial_topic");
-  }, [topicAuthSlug]);
 
   const scrollToMasters = () => {
     document.getElementById("наставники")?.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -310,8 +301,9 @@ export default function AuraSellingLanding({
       onQuickQuestionSelect(intent.questionTemplate, intentSlug);
       return;
     }
-    // Guest topic cards → login/register, then resume intent after auth.
-    setTopicAuthSlug(intentSlug);
+    // Guest: topic → question template → recommended master → free cards → teaser → auth.
+    // No registration before first personal result.
+    startGuestSpread(intent.questionTemplate, intent.recommendedMasterId);
   };
 
   const startGuestSpread = (question?: string, masterId?: string) => {
@@ -371,61 +363,9 @@ export default function AuraSellingLanding({
     }
   };
 
-  const topicAuthReturnTo = topicAuthSlug
-    ? resolveRegistrationReturnTo({ intentSlug: topicAuthSlug })
-    : null;
-
-  const topicAuthPortal = (
-    <BodyPortal active={Boolean(topicAuthSlug)}>
-      {topicAuthSlug && topicAuthReturnTo ? (
-        <div className="fixed inset-0 z-[7000] flex items-end justify-center sm:items-center">
-          <button
-            type="button"
-            className="absolute inset-0 bg-black/75 backdrop-blur-sm"
-            onClick={() => setTopicAuthSlug(null)}
-            aria-label="Закрыть"
-          />
-          <div
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="topic-auth-title"
-            className="relative z-10 flex max-h-[min(90dvh,calc(100dvh-2rem))] w-full max-w-lg flex-col overflow-hidden rounded-t-3xl border border-white/10 bg-[#0a0612] shadow-2xl sm:mx-4 sm:rounded-2xl"
-          >
-            <div className="flex shrink-0 items-center justify-between border-b border-white/10 px-5 py-4">
-              <div>
-                <p className="text-[10px] uppercase tracking-[0.2em] text-amber-400/70">Zovus</p>
-                <h2 id="topic-auth-title" className="font-display text-lg font-bold text-white">
-                  Войти или зарегистрироваться
-                </h2>
-              </div>
-              <button
-                type="button"
-                onClick={() => setTopicAuthSlug(null)}
-                className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 hover:bg-white/10 hover:text-white"
-                aria-label="Закрыть"
-              >
-                <X className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="lux-scroll min-h-0 flex-1 overflow-y-auto px-4 py-5 sm:px-5">
-              <RegisterGate
-                compact
-                title="Продолжите выбранную тему"
-                description="После входа откроем расклад по этой теме — вопрос и мастер уже будут подставлены."
-                returnTo={topicAuthReturnTo}
-                source="editorial_topic"
-              />
-            </div>
-          </div>
-        </div>
-      ) : null}
-    </BodyPortal>
-  );
-
   if (isGuestEditorial) {
     return (
       <div className="editorial-landing editorial-landing--guest-conversion">
-        {topicAuthPortal}
         <EditorialHeroSection
           isLoggedIn={false}
           conversionHero
@@ -481,8 +421,6 @@ export default function AuraSellingLanding({
 
   return (
     <div className={isEditorial ? "editorial-landing" : "aura-landing"}>
-      {topicAuthPortal}
-
       {!showHero ? (
         <h1 className="sr-only">
           Zovus — приватный цифровой салон: расклады Таро, числа и астрология

@@ -356,29 +356,16 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         // Guest resume: server receipt + cookies are authoritative. Do not clear UI cache here.
       }
 
-      if (typeof window !== "undefined" && isUserRegister && !data.profile) {
-        persistPostAuthReturnTo(
-          guestRegisterHasCards
-            ? resolveRegistrationReturnTo({
-                guestSpread: true,
-                guestMasterId:
-                  guestRegisterMasterId ??
-                  resolveGuestSpreadMasterId(loadGuestTriplet()?.masterId),
-                guestQuestion: loadGuestTriplet()?.question,
-              })
-            : destination
-        );
-        window.location.assign(onboardingRedirectUrl());
+      // Guest Tarot: never route through birth onboarding before full reading.
+      if (typeof window !== "undefined" && isUserRegister && guestRegisterHasCards) {
+        window.location.assign(destination);
         return;
       }
 
-      if (
-        typeof window !== "undefined" &&
-        isUserRegister &&
-        data.profile &&
-        guestRegisterHasCards
-      ) {
-        window.location.assign(destination);
+      // Non-guest register without profile row (legacy) → progressive birth onboarding.
+      if (typeof window !== "undefined" && isUserRegister && !data.profile) {
+        persistPostAuthReturnTo(destination);
+        window.location.assign(onboardingRedirectUrl());
         return;
       }
 
@@ -626,7 +613,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
       <div className={isUserRegister ? "border-t border-white/10 pt-5" : ""}>
         <p className={isUserRegister ? "mb-4 text-center text-xs text-aura-ivory/45" : "hidden"}>
-          Аккаунт для сохранения истории
+          Откройте полный разбор и сохраните его в Zovus
         </p>
         <div className="space-y-4">
           <div>
@@ -699,8 +686,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           </summary>
           <div className="mt-4 space-y-3">
             <p className="text-xs leading-relaxed text-aura-ivory/45">
-              Если укажете сейчас, сразу откроем кабинет и начислим стартовые руны. Иначе спросим на
-              следующем экране.
+              Нужна для натальной карты, Матрицы судьбы и Human Design. Для Таро можно пропустить —
+              спросим позже.
             </p>
             <div>
               <label className={labelClass}>Дата рождения</label>
@@ -770,7 +757,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             : "Сохраняем…"
           : mode === "login"
             ? "Войти"
-            : "Создать аккаунт и продолжить"}
+            : "Создать аккаунт и открыть разбор"}
       </button>
       {!canSubmit && requiresLegalConsent && (!acceptedTerms || !ageConfirmed) && !loading ? (
         <p className="auth-salon-hint -mt-2 text-center">

@@ -8,7 +8,11 @@ import ProfileAstroFields, {
 } from "@/components/ProfileAstroFields";
 import type { AstroMeta, LifeFocus } from "@/lib/astro-profile";
 import { MIN_DISPLAY_NAME_LENGTH } from "@/lib/auth-policy";
-import { trackOnboardingStarted } from "@/lib/seo/metrika";
+import {
+  trackOnboardingStarted,
+  trackProfileCompleted,
+  trackProfileCompletionStarted,
+} from "@/lib/seo/metrika";
 
 export interface OnboardingData {
   name: string;
@@ -55,6 +59,9 @@ export default function OnboardingForm({
     if (params.get("welcome") === "1") {
       setShowWelcome(true);
       trackOnboardingStarted();
+      trackProfileCompletionStarted("onboarding_welcome");
+    } else {
+      trackProfileCompletionStarted("onboarding");
     }
   }, []);
 
@@ -71,6 +78,7 @@ export default function OnboardingForm({
     setSubmitting(true);
     try {
       await onComplete(payload);
+      trackProfileCompleted("onboarding");
     } catch (error) {
       setFormError(error instanceof Error ? error.message : "Не удалось сохранить профиль.");
       setSubmitting(false);
@@ -86,22 +94,22 @@ export default function OnboardingForm({
       transition={{ duration: 0.35 }}
     >
       <h2 className="font-display text-center text-xl font-semibold text-white">
-        Один шаг до старта
+        Сделать Zovus ещё точнее
       </h2>
 
       {showWelcome ? (
         <div className="rounded-xl border border-aura-gold/25 bg-aura-gold/10 px-4 py-4 text-center">
           <p className="text-sm font-medium text-aura-champagne">Аккаунт создан</p>
           <p className="mt-1 text-xs leading-relaxed text-gray-400">
-            Остался один шаг — дата рождения для персонализации. После сохранения начислим стартовые
-            руны и откроем ваш расклад.
+            Добавьте дату рождения — откроются натальная карта, Матрица судьбы и Human Design.
+            Таро уже доступно без этого шага.
           </p>
         </div>
       ) : null}
 
       <p className="text-center text-sm text-gray-400">
-        Аккаунт уже создан. Укажите дату рождения — мы рассчитаем знак зодиака, откроем кабинет и
-        начислим стартовые руны на расклады.
+        Укажите дату рождения — откроются персональные расчёты, Матрица судьбы и астрологические
+        возможности. Таро уже доступно.
       </p>
 
       {nameLocked ? (

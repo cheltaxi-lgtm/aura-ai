@@ -1340,11 +1340,10 @@ export default function HomePage({
     if (typeof window !== "undefined") {
       const savedStep = localStorage.getItem(FLOW_STEP_KEY);
       const urlStep = new URLSearchParams(window.location.search).get("step");
-      // Only force anketa when profile is still incomplete — never after birthDate
-      // was just saved (profileUserId may lag a tick behind refreshAuth).
-      const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
+      // Only force anketa when no consumer profile is linked (legacy).
+      // Missing birth_date is progressive — Tarot works with stub profiles.
       const needsAnketa =
-        hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth);
+        hasPendingServerProfile() || !authUser?.profileUserId;
       if (needsAnketa) {
         setStep("onboarding");
         localStorage.setItem(FLOW_STEP_KEY, "onboarding");
@@ -1357,8 +1356,7 @@ export default function HomePage({
         return;
       }
     }
-    const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
-    if (hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth)) {
+    if (hasPendingServerProfile() || !authUser?.profileUserId) {
       setStep("onboarding");
       return;
     }
@@ -1373,9 +1371,8 @@ export default function HomePage({
   useEffect(() => {
     if (authLoading || !flowBootstrapped || !isLoggedIn) return;
     if (sessionListMaster) return;
-    const localBirth = Boolean(String(readStoredProfile()?.birthDate ?? "").trim());
     const needsAnketa =
-      hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth);
+      hasPendingServerProfile() || !authUser?.profileUserId;
     // Do NOT clear an in-flight guest-resume chat while profileUserId is catching up.
     if (needsAnketa) {
       if (selectedCharacter) setSelectedCharacter(null);
@@ -3613,7 +3610,7 @@ export default function HomePage({
                         onClick={retryGuestTripletResume}
                         className="btn-primary mt-3 px-5 py-2 text-sm"
                       >
-                        Повторить
+                        Попробовать восстановить
                       </button>
                     ) : null}
                   </div>
@@ -3800,7 +3797,7 @@ export default function HomePage({
                         onClick={retryGuestTripletResume}
                         className="btn-primary mt-3 px-5 py-2 text-sm"
                       >
-                        Повторить
+                        Попробовать восстановить
                       </button>
                     ) : null}
                   </div>

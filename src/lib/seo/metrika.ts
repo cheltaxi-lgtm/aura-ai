@@ -192,8 +192,17 @@ export function trackRegistrationAccountCreated(source: string): void {
   trackLandingEvent("registration_account_created", { source });
 }
 
+/** Consumer account ready for Tarot/chat (birth profile may still be missing). */
 export function trackRegistrationCompleted(source: string): void {
   trackLandingEvent("registration_completed", { source });
+}
+
+export function trackProfileCompletionStarted(source: string): void {
+  trackLandingEvent("profile_completion_started", { source });
+}
+
+export function trackProfileCompleted(source: string): void {
+  trackLandingEvent("profile_completed", { source });
 }
 
 export function trackRegistrationError(errorType: string): void {

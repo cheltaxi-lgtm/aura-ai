@@ -177,7 +177,7 @@ import {
   resolvePostOnboardingDestination,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import { trackRegistrationCompleted } from "@/lib/seo/metrika";
+import { trackProfileCompleted } from "@/lib/seo/metrika";
 import {
   clearShareRegistrationAttribution,
   resolveRegistrationSource,
@@ -1676,7 +1676,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     const finishProfileOnboarding = async (nextStep: FlowStep) => {
-      trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
+      // Birth profile completion ≠ consumer registration completion.
+      trackProfileCompleted(resolveRegistrationSource("onboarding"));
       clearShareRegistrationAttribution();
       clearOnboardingUrlParams();
       persistStep(nextStep);
@@ -1882,7 +1883,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               setGuestResumeCanRetry(false);
               clearGuestTriplet();
               setTripletNotice(null);
-              trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
+              trackProfileCompleted(resolveRegistrationSource("onboarding"));
               clearShareRegistrationAttribution();
               clearOnboardingUrlParams();
               return;
@@ -1922,7 +1923,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setGuestResumeCanRetry(false);
         clearGuestTriplet();
         setTripletNotice(null);
-        trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
+        trackProfileCompleted(resolveRegistrationSource("onboarding"));
         clearShareRegistrationAttribution();
         clearOnboardingUrlParams();
         return;
@@ -1962,7 +1963,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           chatSessionId = await beginNewSpreadSession(masterToBind);
         }
         await bindSessionToMasterRef.current(masterToBind, chatSessionId);
-        trackRegistrationCompleted(resolveRegistrationSource("onboarding"));
+        trackProfileCompleted(resolveRegistrationSource("onboarding"));
         clearShareRegistrationAttribution();
         clearOnboardingUrlParams();
         persistStep("chat");
@@ -2644,14 +2645,22 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     const activeForCheck = mergeActiveProfile(profile, storedProfile);
-    if (!activeForCheck?.birthDate || !activeForCheck?.zodiac || !activeForCheck?.name) {
-      const msg = "Не хватает данных профиля. Заполните анкету заново.";
+    // Authenticated triplet after guest/teaser: name is enough; birth is optional.
+    if (!activeForCheck?.name && !authUser?.name) {
+      const msg = "Не хватает имени в профиле. Укажите имя и продолжите.";
       setTripletNotice(msg);
       setStep("onboarding");
       return;
     }
 
-    const base = activeForCheck;
+    const base: StoredProfile = {
+      ...activeForCheck,
+      name: activeForCheck?.name || authUser?.name || "Гость",
+      gender: activeForCheck?.gender || "female",
+      birthDate: activeForCheck?.birthDate || "",
+      zodiac: activeForCheck?.zodiac || "",
+      tarotCards: activeForCheck?.tarotCards ?? [],
+    };
     const previousCards =
       profile?.tarotCards?.length ? profile.tarotCards : (storedProfile?.tarotCards ?? []);
 
@@ -2929,7 +2938,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       return;
     }
     const base = synced?.profile ?? profile ?? getActiveProfile();
-    if (!base?.birthDate) {
+    if (!base?.name && !authUser?.profileUserId) {
       setStep("onboarding");
       return;
     }
@@ -3808,19 +3817,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       });
     }
 
-    const activeProfile = getActiveProfile();
-    const localBirth = Boolean(
-      String(activeProfile?.birthDate ?? profile?.birthDate ?? "").trim()
-    );
-    if (hasPendingServerProfile() || (!authUser?.profileUserId && !localBirth)) {
-      forceProfileOnboarding();
-      return;
-    }
-    if (!localBirth) {
+    // Tarot / salon: only need a linked consumer profile (stub ok). Birth is
+    // progressive and required only for natal / matrix / HD entry points.
+    if (hasPendingServerProfile() || !authUser?.profileUserId) {
       forceProfileOnboarding();
       return;
     }
 
+    const activeProfile = getActiveProfile();
     const hasSpread =
       displayTarotCards.length >= 3 ||
       (activeProfile?.tarotCards?.length ?? 0) >= 3 ||
@@ -4469,7 +4473,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return;
       }
       if (result.phase === "onboarding_required") {
-        forceProfileOnboarding();
+        // Legacy phase: never block guest Tarot on birth profile.
+        setGuestResumeCanRetry(true);
+        setTripletNotice(GUEST_RESUME_RETRY_TITLE);
         return;
       }
       if (result.capacitorRecovery || result.phase === "safe_recovery") {
@@ -4526,8 +4532,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (step === "intro") return;
     if (authLoading) return;
 
-    const active = getActiveProfile();
-    const hasBirth = Boolean(String(active?.birthDate ?? "").trim());
     const savedProfileAuthority = profileSaveAuthorityRef.current;
     const hasServerProfile = Boolean(
       authUser?.profileUserId ||
@@ -4535,7 +4539,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     );
 
     let cache = loadGuestResumeUiCache();
-    if (!cache && !(hasBirth && hasServerProfile)) {
+    if (!cache && !hasServerProfile) {
       setTripletNotice((prev) =>
         prev &&
         (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
@@ -4552,7 +4556,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     void (async () => {
       // Cookie/localStorage loss after re-register: hydrate from latest owned claim (once).
-      if (!cache && hasBirth && hasServerProfile) {
+      if (!cache && hasServerProfile) {
         if (guestResumeHydrateAttemptedRef.current) {
           guestResumeBootRef.current = false;
           return;
@@ -4626,30 +4630,28 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return;
       }
 
-      if (!hasBirth || !hasServerProfile) {
-        if (step !== "onboarding" || selectedCharacter) {
-          forceProfileOnboarding();
-        } else {
-          patchGuestResumeUiCache({ phase: "onboarding_required" });
-          setTripletNotice(null);
-        }
+      if (!hasServerProfile) {
+        // Legacy account without profile row — soft recovery, not birth anketa.
+        setGuestResumeCanRetry(true);
+        setTripletNotice(GUEST_RESUME_RETRY_TITLE);
         guestResumeBootRef.current = false;
         return;
       }
 
-      // Profile is ready — resume even if the form step is still "onboarding".
+      // Linked profile (stub ok) — resume guest Tarot without birth onboarding.
       setGuestResumeCanRetry(false);
       setTripletNotice(
         `${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`
       );
 
+      const profileBase = getActiveProfile();
       const result = await runGuestTripletResume({
         authMethod: "bootstrap",
         loadReading: (args) =>
           loadGuestResumeReadingRef.current({
             ...args,
-            profileBase: active,
-            questionFallback: active?.mainQuestion,
+            profileBase,
+            questionFallback: profileBase?.mainQuestion,
             teaserFallback: cache!.teaser,
             deckSystem: cache!.system as StoredProfile["deckSystem"],
           }),
@@ -4672,9 +4674,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     authLoading,
     authUser?.profileUserId,
     step,
-    profile?.birthDate,
     applyGuestResumeResultNotice,
-    forceProfileOnboarding,
     selectedCharacter,
     getActiveProfile,
   ]);

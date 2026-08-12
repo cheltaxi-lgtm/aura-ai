@@ -109,7 +109,11 @@ export default function HdCalculator({
   useEffect(() => {
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
-      .then((d) => setAuthenticated(Boolean(d?.authenticated && !d?.needsProfile)))
+      .then((d) =>
+        setAuthenticated(
+          Boolean(d?.authenticated && !d?.needsProfile && !d?.needsBirthProfile)
+        )
+      )
       .catch(() => setAuthenticated(false));
   }, []);
 

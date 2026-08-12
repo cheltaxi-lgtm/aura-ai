@@ -236,12 +236,13 @@ export async function runGuestTripletResume(opts?: {
           });
         }
       } else if (claimRes.status === 403) {
-        setPhase("onboarding_required");
+        // Age / legal gates — never birth onboarding. Retry or recovery UI.
+        setPhase("recoverable_error");
         trackGuestTripletResumeFailed("claim");
         return {
           ok: false,
           stage: "claim" as const,
-          phase: "onboarding_required",
+          phase: "recoverable_error",
         };
       } else if (claimRes.status === 409) {
         setPhase("idle");
@@ -390,13 +391,13 @@ export async function runGuestTripletResume(opts?: {
   }
 }
 
-export const GUEST_RESUME_TRANSITION_TITLE = "Ваш расклад сохранён";
+export const GUEST_RESUME_TRANSITION_TITLE = "Восстанавливаем Ваш расклад…";
 export const GUEST_RESUME_TRANSITION_SUBTITLE =
-  "Вероника готовит полную трактовку…";
+  "Карты уже выбраны — повторно выбирать ничего не нужно.";
 export const GUEST_RESUME_RETRY_TITLE =
-  "Не удалось подготовить трактовку. Ваш расклад сохранён.";
-export const GUEST_RESUME_RETRY_CTA = "Повторить";
+  "Не удалось восстановить расклад. Аккаунт создан, но предыдущий расклад не удалось открыть автоматически.";
+export const GUEST_RESUME_RETRY_CTA = "Попробовать восстановить";
 export const GUEST_RESUME_CAPACITOR_RECOVERY =
-  "Не удалось безопасно восстановить расклад после входа. Ваш аккаунт создан, но для нового разбора откройте новый расклад.";
+  "Не удалось восстановить расклад. Аккаунт создан, но предыдущий расклад не удалось открыть автоматически. Вы можете попробовать снова или открыть новый расклад.";
 export const GUEST_RESUME_ALREADY_USED =
   "Бесплатный расклад с лендинга уже использован для этого аккаунта. Новый разбор — через тариф или ежедневный расклад.";

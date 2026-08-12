@@ -871,9 +871,18 @@ export function useChatActions(options: UseChatActionsOptions) {
             const isGuestResume =
               sessionSpreadMetaRef.current?.spreadType === "guest_resume";
             if (isLoggedIn && code === "NEEDS_PROFILE") {
-              // Never leave the user in chat with a stub — show the anketa.
+              // Missing linked profile row (legacy). Guest Tarot must not be
+              // sent to birth onboarding — show recoverable notice instead.
+              if (isGuestResume) {
+                markNeedsServerProfile();
+                setSelectedCharacter(null);
+                chatLoadedForRef.current = null;
+                setMessages([]);
+                setStep("masters");
+                localStorage.setItem(FLOW_STEP_KEY, "masters");
+                return;
+              }
               markNeedsServerProfile();
-              patchGuestResumeUiCache({ phase: "onboarding_required" });
               setSelectedCharacter(null);
               chatLoadedForRef.current = null;
               setMessages([]);
@@ -885,7 +894,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             if (isLoggedIn) {
               if (isGuestResume) {
                 content =
-                  "Не удалось подтвердить сессию для сохранённого расклада. Нажмите «Повторить» или обновите страницу — карты не сгорят.";
+                  "Не удалось подтвердить сессию для сохранённого расклада. Нажмите «Попробовать восстановить» или обновите страницу — карты не сгорят.";
               } else {
                 content =
                   "Не удалось подтвердить вход. Обновите страницу или войдите снова — ваш расклад сохранён.";

@@ -52,7 +52,7 @@ const GUEST_ID_KEY = "zovus_guest_id";
 const CARD_COUNT = 3;
 const GUEST_TEASER_AUTH_ID = "guest-teaser-auth";
 /** Match server TEASER_RECEIPT_MIN_AGE_MS before first teaser fetch. */
-const TEASER_FETCH_MIN_DELAY_MS = 3200;
+const TEASER_FETCH_MIN_DELAY_MS = 800;
 
 function getGuestId(): string {
   if (typeof window === "undefined") return "guest";
@@ -126,9 +126,12 @@ export default function GuestTripletDraw({
   const [teaserText, setTeaserText] = useState("");
   const [teaserLoading, setTeaserLoading] = useState(false);
   const [teaserPaused, setTeaserPaused] = useState(false);
+  /** Auth gate only after explicit conversion CTA — not immediately after teaser. */
+  const [showAuthGate, setShowAuthGate] = useState(false);
   const receiptReadyAtRef = useRef<number | null>(null);
   const teaserFetchedRef = useRef(false);
   const teaserBlockRef = useRef<HTMLDivElement | null>(null);
+  const authGateViewTracked = useRef(false);
 
   const oauthReturnTo = useMemo(
     () =>
@@ -282,9 +285,14 @@ export default function GuestTripletDraw({
     if (step !== "done" || teaserViewTracked.current) return;
     teaserViewTracked.current = true;
     trackGuestTeaserView();
+  }, [step]);
+
+  useEffect(() => {
+    if (!showAuthGate || authGateViewTracked.current) return;
+    authGateViewTracked.current = true;
     trackRegistrationGateView("guest_triplet_done");
     trackGuestAuth("guest_triplet_done");
-  }, [step]);
+  }, [showAuthGate]);
 
   const resetSpreadState = useCallback(() => {
     setSessionSeed("");
@@ -295,8 +303,10 @@ export default function GuestTripletDraw({
     setAgeGateError("");
     setTeaserText("");
     setTeaserLoading(false);
+    setShowAuthGate(false);
     receiptReadyAtRef.current = null;
     teaserFetchedRef.current = false;
+    authGateViewTracked.current = false;
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   }, []);
 
@@ -307,6 +317,17 @@ export default function GuestTripletDraw({
     teaserViewTracked.current = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
   }, [resetSpreadState]);
+
+  const openFullReadingGate = useCallback(() => {
+    trackGuestTeaserCta();
+    setShowAuthGate(true);
+    window.requestAnimationFrame(() => {
+      document.getElementById(GUEST_TEASER_AUTH_ID)?.scrollIntoView({
+        behavior: "smooth",
+        block: "start",
+      });
+    });
+  }, []);
 
   const resetPickProgress = useCallback(() => {
     setPickedIndices([]);
@@ -692,65 +713,87 @@ export default function GuestTripletDraw({
               )}
             </div>
 
-            <p className="text-center text-sm leading-relaxed text-aura-ivory/70">
-              После входа мастер разберёт{" "}
-              <span className="text-aura-champagne/90">этот же расклад</span>
-              {landingQuestion ? " по вашему вопросу" : ""} — что с этим делать и ответы в чате.
-              Пересчёта не будет.
-            </p>
-
             <p className="text-center text-xs text-aura-ivory/50">
               Карты зафиксированы — пересчёта не будет · 18+
             </p>
 
-            <div
-              id={GUEST_TEASER_AUTH_ID}
-              className="guest-teaser-auth scroll-mt-28 space-y-4 rounded-xl border border-white/8 bg-black/20 p-4"
-            >
-              <div>
-                <h3 className="font-display text-lg text-white">Получить полный разбор</h3>
-                <p className="mt-1 text-sm text-aura-ivory/65">
-                  Войдите — откроется расшифровка именно этих трёх карт, а не новый расклад.
+            {!showAuthGate ? (
+              <div className="guest-teaser-conversion space-y-4 rounded-xl border border-aura-gold/25 bg-black/25 p-4 text-left">
+                <div>
+                  <h3 className="font-display text-lg text-white">Полный разбор готов</h3>
+                  <p className="mt-1 text-sm text-aura-ivory/70">
+                    Откройте полный ответ по этим же трём картам.
+                  </p>
+                </div>
+                <ul className="space-y-1.5 text-sm text-aura-ivory/75">
+                  <li>✓ итог расклада</li>
+                  <li>✓ что происходит сейчас</li>
+                  <li>✓ вероятное развитие ситуации</li>
+                  <li>✓ что помогает и что мешает</li>
+                  <li>✓ что делать дальше</li>
+                  <li>✓ возможность задать уточняющий вопрос</li>
+                </ul>
+                <button
+                  type="button"
+                  onClick={openFullReadingGate}
+                  disabled={teaserLoading || !teaserText}
+                  className="btn-primary w-full px-6 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
+                >
+                  Открыть полный разбор бесплатно
+                </button>
+                <p className="text-center text-xs text-aura-ivory/50">
+                  Ваш вопрос и выбранные карты уже сохранены.
                 </p>
               </div>
+            ) : (
+              <div
+                id={GUEST_TEASER_AUTH_ID}
+                className="guest-teaser-auth scroll-mt-28 space-y-4 rounded-xl border border-white/8 bg-black/20 p-4"
+              >
+                <div>
+                  <h3 className="font-display text-lg text-white">Полный разбор готов</h3>
+                  <p className="mt-1 text-sm text-aura-ivory/65">
+                    Войдите одним способом — Ваш вопрос и три выбранные карты уже сохранены.
+                  </p>
+                </div>
 
-              <div id="guest-oauth-consent">
-                <OAuthConsentFields
+                <div id="guest-oauth-consent">
+                  <OAuthConsentFields
+                    acceptedTerms={acceptedTerms}
+                    ageConfirmed={oauthAgeConfirmed}
+                    marketingConsent={marketingConsent}
+                    onAcceptedTermsChange={setAcceptedTerms}
+                    onAgeConfirmedChange={setOauthAgeConfirmed}
+                    onMarketingConsentChange={setMarketingConsent}
+                    showDisclaimer
+                    termsId="guest-oauth-terms"
+                    ageId="guest-oauth-age"
+                  />
+                </div>
+
+                <SocialAuthButtons
+                  mode="register"
+                  returnTo={oauthReturnTo}
+                  requireConsent
                   acceptedTerms={acceptedTerms}
                   ageConfirmed={oauthAgeConfirmed}
                   marketingConsent={marketingConsent}
-                  onAcceptedTermsChange={setAcceptedTerms}
-                  onAgeConfirmedChange={setOauthAgeConfirmed}
-                  onMarketingConsentChange={setMarketingConsent}
-                  showDisclaimer
-                  termsId="guest-oauth-terms"
-                  ageId="guest-oauth-age"
+                  consentScrollTargetId="guest-oauth-consent"
+                  showEmailDivider
+                  emailDividerLabel="или email"
                 />
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    goToEmailRegistration();
+                  }}
+                  className="btn-luxe btn-luxe--md btn-luxe--ghost w-full"
+                >
+                  Регистрация по email
+                </button>
               </div>
-
-              <SocialAuthButtons
-                mode="register"
-                returnTo={oauthReturnTo}
-                requireConsent
-                acceptedTerms={acceptedTerms}
-                ageConfirmed={oauthAgeConfirmed}
-                marketingConsent={marketingConsent}
-                consentScrollTargetId="guest-oauth-consent"
-                showEmailDivider
-                emailDividerLabel="или email"
-              />
-
-              <button
-                type="button"
-                onClick={() => {
-                  trackGuestTeaserCta();
-                  goToEmailRegistration();
-                }}
-                className="btn-luxe btn-luxe--md btn-luxe--ghost w-full"
-              >
-                Регистрация по email
-              </button>
-            </div>
+            )}
           </motion.div>
         </div>
       </GuestSpreadSection>
@@ -829,9 +872,9 @@ export default function GuestTripletDraw({
             className="btn-primary px-10 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
           >
             {completing
-              ? "Сохраняем…"
+              ? "Готовим трактовку…"
               : allRevealed
-                ? "Сохранить расклад и продолжить"
+                ? "Получить трактовку"
                 : `Откройте все карты (${revealed.filter(Boolean).length}/${CARD_COUNT})`}
           </button>
         </div>

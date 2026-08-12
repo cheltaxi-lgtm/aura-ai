@@ -53,7 +53,7 @@ export type UserAuthSuccessOptions = {
 
 /**
  * Post-auth handoff for email + OAuth.
- * Guest triplet path: auth → onboarding (date/gender/city/time) → same cards → full reading.
+ * Guest triplet path: auth → same cards → full reading (birth profile is progressive).
  * Must never hijack normal provider login with a stale guest UI cache.
  */
 export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promise<string> {
@@ -170,51 +170,10 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
     persistPendingGuestQuestion(guestQuestion);
   }
 
-  // New account without birth profile → анкета (дата, пол, город, время), then resume.
-  if (isRegisterFlow && opts.needsProfile) {
-    persistPostAuthReturnTo(hasGuestCards ? guestHome : returnTo);
-    clearOnboardingUrlParams();
-    return onboardingRedirectUrl();
-  }
-
-  if (isRegisterFlow && opts.profile && hasGuestCards) {
-    return guestHome;
-  }
-
-  if (isRegisterFlow) {
-    return hasGuestCards ? guestHome : returnTo;
-  }
-
-  // ——— Login (existing account, OAuth or email) ———
-  markAuthPending();
-  await flushWebViewCookies();
-
-  if (opts.skipAuthRecheck) {
-    if (opts.needsProfile) {
-      markNeedsServerProfile();
-      persistPostAuthReturnTo(hasGuestCards ? guestHome : returnTo);
-      localStorage.setItem(
-        "aura_profile",
-        JSON.stringify({
-          name: opts.userName?.trim() || "",
-          gender: defaultGender,
-          birthDate: "",
-          zodiac: "",
-          tarotCards: guestTarotCards,
-          deckSystem: guestDeckSystem,
-          teaser: guestTeaser,
-          mainQuestion: guestQuestion,
-          tripletMasterId: hasGuestCards ? guestMasterId : undefined,
-        })
-      );
-      if (hasGuestCards) {
-        localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
-      }
-      localStorage.setItem("aura_flow_step", "onboarding");
-      return onboardingRedirectUrl();
-    }
-    if (hasGuestCards) {
-      const resumeCache = loadGuestResumeUiCache();
+  // Guest Tarot resume: never insert birth onboarding between account and full reading.
+  if (hasGuestCards) {
+    const resumeCache = loadGuestResumeUiCache();
+    if (!isRegisterFlow) {
       clearClientAuthState();
       if (resumeCache) {
         saveGuestResumeUiCache(resumeCache);
@@ -226,11 +185,47 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
           question: guestQuestion,
           masterId: guestMasterId,
         });
-        localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
-        localStorage.setItem("aura_flow_step", "masters");
       }
-      clearNeedsServerProfile();
-      return guestHome;
+    }
+    localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
+    localStorage.setItem("aura_flow_step", "masters");
+    clearNeedsServerProfile();
+    clearOnboardingUrlParams();
+    return withAppShellAuthParams(guestHome);
+  }
+
+  // Non-guest register without profile row (legacy) → progressive birth onboarding.
+  if (isRegisterFlow && opts.needsProfile) {
+    persistPostAuthReturnTo(returnTo);
+    clearOnboardingUrlParams();
+    return onboardingRedirectUrl();
+  }
+
+  if (isRegisterFlow) {
+    return returnTo;
+  }
+
+  // ——— Login (existing account, OAuth or email) ———
+  markAuthPending();
+  await flushWebViewCookies();
+
+  if (opts.skipAuthRecheck) {
+    // Guest cards already returned guestHome above. Login without guest:
+    if (opts.needsProfile) {
+      markNeedsServerProfile();
+      persistPostAuthReturnTo(returnTo);
+      localStorage.setItem(
+        "aura_profile",
+        JSON.stringify({
+          name: opts.userName?.trim() || "",
+          gender: defaultGender,
+          birthDate: "",
+          zodiac: "",
+          tarotCards: [],
+        })
+      );
+      localStorage.setItem("aura_flow_step", "onboarding");
+      return onboardingRedirectUrl();
     }
     clearClientAuthState();
     clearNeedsServerProfile();
@@ -241,13 +236,13 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
 
   const me = await fetchAuthMeWithRetry({ attempts: 5, delayMs: 300 });
   if (!me?.authenticated) {
-    return withAppShellAuthParams(hasGuestCards ? guestHome : returnTo);
+    return withAppShellAuthParams(returnTo);
   }
 
   const needsProfile = Boolean(me.needsProfile || !me.user?.profileUserId);
   if (needsProfile) {
     markNeedsServerProfile();
-    persistPostAuthReturnTo(hasGuestCards ? guestHome : returnTo);
+    persistPostAuthReturnTo(returnTo);
     localStorage.setItem(
       "aura_profile",
       JSON.stringify({
@@ -255,39 +250,11 @@ export async function finishUserAuthSuccess(opts: UserAuthSuccessOptions): Promi
         gender: defaultGender,
         birthDate: "",
         zodiac: "",
-        tarotCards: guestTarotCards,
-        deckSystem: guestDeckSystem,
-        teaser: guestTeaser,
-        mainQuestion: guestQuestion,
-        tripletMasterId: hasGuestCards ? guestMasterId : undefined,
+        tarotCards: [],
       })
     );
-    if (hasGuestCards) {
-      localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
-    }
     localStorage.setItem("aura_flow_step", "onboarding");
     return withAppShellAuthParams(onboardingRedirectUrl());
-  }
-
-  // Full profile: wipe generic client auth noise, but KEEP active guest resume cache.
-  if (hasGuestCards) {
-    const resumeCache = loadGuestResumeUiCache();
-    clearClientAuthState();
-    if (resumeCache) {
-      saveGuestResumeUiCache(resumeCache);
-      saveGuestTriplet({
-        tarotCards: guestTarotCards,
-        deckSystem: (guestDeckSystem as DeckSystem) || "tarot-veronika",
-        teaser: guestTeaser || "",
-        completedAt: resumeCache.completedAt,
-        question: guestQuestion,
-        masterId: guestMasterId,
-      });
-      localStorage.setItem(PENDING_MASTER_KEY, guestMasterId);
-      localStorage.setItem("aura_flow_step", "masters");
-    }
-    clearNeedsServerProfile();
-    return withAppShellAuthParams(guestHome);
   }
 
   clearClientAuthState();
