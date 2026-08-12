@@ -20,6 +20,8 @@ import {
   readHdClaimToken,
   storeHdClaimToken,
 } from "./hd-claim";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
+import { trackSeoEvent } from "@/lib/seo/metrika";
 
 interface PlaceSuggestion {
   label: string;
@@ -263,6 +265,10 @@ export default function HdCalculator({
     if (!accountReady) return;
     void claimAllPendingHdCharts().then((claimed) => {
       if (claimed.length === 0) return;
+      trackProductFunnel("claim_complete", {
+        product: "human_design",
+        source: "guest_claim",
+      });
       const stored = readStoredFingerprint();
       if (stored && claimed.includes(stored)) {
         clearStoredFingerprint();
@@ -344,6 +350,8 @@ export default function HdCalculator({
       return;
     }
     setLoading(true);
+    trackSeoEvent("hd_calc_start");
+    trackProductFunnel("free_start", { product: "human_design", source: "hd_calc" });
     try {
       // Recomputing the same data after login adopts the guest row via its token.
       const storedFp = readStoredFingerprint();
@@ -384,6 +392,7 @@ export default function HdCalculator({
       });
       storeFingerprint(payload.fingerprint);
       storeHdClaimToken(payload.fingerprint, data.claimToken);
+      trackProductFunnel("free_complete", { product: "human_design", source: "hd_calc" });
       onChartCreated?.(payload);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {

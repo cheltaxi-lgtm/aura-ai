@@ -45,7 +45,12 @@ export default async function HumanDesignCalculatePage() {
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
-      <SeoPageTracker goal="hd_calc_view" params={{}} />
+      <SeoPageTracker
+        goal="hd_calc_view"
+        params={{}}
+        funnelProduct="human_design"
+        funnelSource="hd_calc"
+      />
       <p className="text-sm text-aura-gold/80">Дизайн Человека · Калькулятор</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
         Рассчитать карту Дизайна Человека

@@ -9,6 +9,7 @@ import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
 import { trackSeoEvent } from "@/lib/seo/metrika";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { PRICING } from "@/lib/config/pricing";
 import type { MatrixCompatFreeSummary } from "@/lib/numerology/matrix-compat-free-summary";
 import { parseBirthDate } from "@/lib/numerology/constants";
@@ -140,6 +141,10 @@ export default function MatrixCompatibilityPreview() {
       }
       clearPendingClaimIntent();
       trackSeoEvent("matrix_pair_guest_claim_complete");
+      trackProductFunnel("claim_complete", {
+        product: "matrix_compatibility",
+        source: "guest_claim",
+      });
       window.location.assign(data.workspacePath || FULL_HREF);
     } catch {
       setClaimError("Не удалось сохранить расчёт. Проверьте соединение.");
@@ -215,9 +220,17 @@ export default function MatrixCompatibilityPreview() {
 
     setPending(true);
     trackSeoEvent("matrix_pair_guest_calc_start");
+    trackProductFunnel("free_start", {
+      product: "matrix_compatibility",
+      source: "guest_calc",
+    });
     try {
       await persistPair(dateA, dateB, nameA, nameB);
       trackSeoEvent("matrix_pair_guest_calc_complete");
+      trackProductFunnel("free_complete", {
+        product: "matrix_compatibility",
+        source: "guest_calc",
+      });
       if (isLoggedIn && !claimStartedRef.current) {
         claimStartedRef.current = true;
         void runClaim(false);
@@ -235,7 +248,15 @@ export default function MatrixCompatibilityPreview() {
 
   async function openFullReport() {
     trackSeoEvent("matrix_pair_cta_full");
+    trackProductFunnel("paid_cta", {
+      product: "matrix_compatibility",
+      source: "pair_full",
+    });
     if (!isLoggedIn) {
+      trackProductFunnel("auth_cta", {
+        product: "matrix_compatibility",
+        source: "pair_full",
+      });
       if (!dateA || !dateB || !parseBirthDate(dateA) || !parseBirthDate(dateB)) {
         setError("Сначала рассчитайте совместимость по двум датам.");
         return;

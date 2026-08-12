@@ -1,5 +1,9 @@
 "use client";
 
+import {
+  inferProductFunnelFromPath,
+  trackProductFunnel,
+} from "@/lib/seo/product-funnel";
 import { utmParamsForMetrika } from "@/lib/utm/attribution";
 
 const YANDEX_METRIKA_ID = 110138367;
@@ -79,6 +83,7 @@ export function trackLandingEvent(
 
 export function trackLandingView(params?: Record<string, string | number>): void {
   trackLandingEvent("landing_view", params);
+  trackProductFunnel("product_view", { product: "tarot", source: "homepage" });
 }
 
 export function trackSocialProofView(): void {
@@ -95,6 +100,7 @@ export function trackHeroQuestionSubmitted(entryPoint: string): void {
 
 export function trackGuestSpreadStarted(): void {
   trackLandingEvent("guest_spread_started");
+  trackProductFunnel("free_start", { product: "tarot", source: "guest_triplet" });
 }
 
 export function trackGuestCardRevealed(index: number): void {
@@ -103,6 +109,7 @@ export function trackGuestCardRevealed(index: number): void {
 
 export function trackGuestSpreadCompleted(): void {
   trackLandingEvent("guest_spread_completed");
+  trackProductFunnel("free_complete", { product: "tarot", source: "guest_triplet" });
 }
 
 export function trackGuestTeaserView(): void {
@@ -111,11 +118,13 @@ export function trackGuestTeaserView(): void {
 
 export function trackGuestTeaserCta(): void {
   trackLandingEvent("guest_teaser_cta");
+  trackProductFunnel("auth_cta", { product: "tarot", source: "guest_teaser" });
 }
 
 /** Auth step of guest funnel (gate / OAuth / email start). */
 export function trackGuestAuth(source: string): void {
   trackLandingEvent("guest_auth", { source });
+  trackProductFunnel("auth_cta", { product: "tarot", source: "guest_auth", state: source });
 }
 
 /** Claim/resume of the same guest receipt after auth. */
@@ -128,6 +137,11 @@ export function trackGuestClaim(props: {
     master_id: props.master_id,
     cards_count: props.cards_count,
     has_question: props.has_question ? 1 : 0,
+  });
+  trackProductFunnel("claim_complete", {
+    product: "tarot",
+    source: "guest_claim",
+    state: props.has_question ? "has_q" : "no_q",
   });
 }
 
@@ -181,6 +195,12 @@ export function trackRegistrationStarted(source: string): void {
 
 export function trackPaywallOpen(source: string): void {
   trackLandingEvent("paywall_open", { source });
+  if (typeof window !== "undefined") {
+    const product = inferProductFunnelFromPath(window.location.pathname);
+    if (product) {
+      trackProductFunnel("paid_cta", { product, source: "paywall", state: source });
+    }
+  }
 }
 
 export function trackPaymentCancelled(source: string): void {

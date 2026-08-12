@@ -19,6 +19,7 @@ import {
 } from "@/lib/age-gate";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { trackSeoEvent } from "@/lib/seo/metrika";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 import MatrixSubjectPicker from "@/components/numerolog/MatrixSubjectPicker";
@@ -164,6 +165,7 @@ export default function DestinyMatrixPreview() {
       }
       clearPendingClaimIntent();
       trackSeoEvent("matrix_guest_claim_complete");
+      trackProductFunnel("claim_complete", { product: "matrix", source: "guest_claim" });
       window.location.assign(data.workspacePath || FULL_HREF);
     } catch {
       setClaimError(
@@ -187,6 +189,8 @@ export default function DestinyMatrixPreview() {
         }
         setSummary(result);
         trackSeoEvent("matrix_preview_complete");
+        trackProductFunnel("free_start", { product: "matrix", source: "preview" });
+        trackProductFunnel("free_complete", { product: "matrix", source: "preview" });
         // Guest only: server pending + HttpOnly claim cookie (no localStorage authority).
         if (!isLoggedIn) {
           void persistGuestMatrix(date, personName);
@@ -309,8 +313,14 @@ export default function DestinyMatrixPreview() {
 
   const openFullMatrix = async () => {
     trackSeoEvent("matrix_cta_full", { source: "preview", owned: ownedFull ? "1" : "0" });
+    trackProductFunnel("paid_cta", {
+      product: "matrix",
+      source: "preview",
+      state: ownedFull ? "owned" : "new",
+    });
 
     if (!isLoggedIn) {
+      trackProductFunnel("auth_cta", { product: "matrix", source: "preview" });
       if (!birthDate || !parseBirthDate(birthDate)) {
         setError("Введите корректную дату рождения.");
         return;

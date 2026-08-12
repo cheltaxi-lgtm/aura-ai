@@ -168,6 +168,10 @@ export default async function NumerologyTopicPage({
               : "numerology_topic_view"
         }
         params={{ topic: slug }}
+        funnelProduct={
+          isDestinyMatrix ? "matrix" : isMatrixPair ? "matrix_compatibility" : undefined
+        }
+        funnelSource={isDestinyMatrix ? "destiny_matrix" : isMatrixPair ? "matrix_pair" : undefined}
       />
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
       <h1 className="mt-2 font-display text-3xl font-bold">{topic.title}</h1>

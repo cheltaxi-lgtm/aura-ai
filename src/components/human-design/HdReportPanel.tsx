@@ -20,6 +20,7 @@ import HdJourney, { type HdJourneyStep } from "./HdJourney";
 import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
 import { useHdReportWait } from "./useHdReportWait";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
 
 interface HdReport {
   id: string;
@@ -237,6 +238,7 @@ export default function HdReportPanel({
       setError("Подтвердите передачу данных карты языковой модели.");
       return;
     }
+    trackProductFunnel("paid_cta", { product: "human_design", source: "hd_report" });
     setLoading(true);
     setUiGenerating(true);
     setError(null);
@@ -526,6 +528,16 @@ export default function HdReportPanel({
           <a
             href={`/auth/user/login?returnTo=${encodeURIComponent(loginReturnTo)}`}
             className="btn-luxe btn-luxe--gold mt-5 inline-flex"
+            onClick={() => {
+              trackProductFunnel("auth_cta", {
+                product: "human_design",
+                source: "hd_report",
+              });
+              trackProductFunnel("paid_cta", {
+                product: "human_design",
+                source: "hd_report",
+              });
+            }}
           >
             Войти и получить полный разбор ·{" "}
             {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}

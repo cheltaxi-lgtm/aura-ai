@@ -10,6 +10,7 @@ import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
 import { trackSeoEvent } from "@/lib/seo/metrika";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import type { NatalGuestSafePayload } from "@/lib/natal/guest-free-summary";
 
 const NatalChartWheel = dynamic(() => import("@/components/natal/NatalChartWheel"), {
@@ -156,6 +157,7 @@ export default function NatalGuestCalculator() {
         }
         clearPendingClaimIntent();
         trackSeoEvent("natal_guest_claim_complete");
+        trackProductFunnel("claim_complete", { product: "natal", source: "guest_claim" });
         window.location.assign(data.workspacePath || "/cabinet/astrology?natalClaimed=1");
       } catch {
         setClaimError(
@@ -210,6 +212,7 @@ export default function NatalGuestCalculator() {
 
     setPending(true);
     trackSeoEvent("natal_guest_calc_start");
+    trackProductFunnel("free_start", { product: "natal", source: "guest_calc" });
     try {
       const res = await fetch("/api/natal-chart/guest", {
         method: "POST",
@@ -240,6 +243,7 @@ export default function NatalGuestCalculator() {
       setResult(data.chart);
       markPendingClaimIntent();
       trackSeoEvent("natal_guest_calc_complete");
+      trackProductFunnel("free_complete", { product: "natal", source: "guest_calc" });
       if (isLoggedIn) {
         claimStartedRef.current = true;
         void runClaim(false);
@@ -520,6 +524,7 @@ export default function NatalGuestCalculator() {
                   disabled={claiming}
                   onClick={() => {
                     trackSeoEvent("natal_guest_full_cta");
+                    trackProductFunnel("paid_cta", { product: "natal", source: "guest_full" });
                     void runClaim(false);
                   }}
                   className="inline-flex items-center justify-center rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-60"
@@ -533,6 +538,8 @@ export default function NatalGuestCalculator() {
                     onClick={() => {
                       markPendingClaimIntent();
                       trackSeoEvent("natal_guest_full_cta");
+                      trackProductFunnel("auth_cta", { product: "natal", source: "guest_full" });
+                      trackProductFunnel("paid_cta", { product: "natal", source: "guest_full" });
                     }}
                     className="inline-flex items-center justify-center rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-black"
                   >

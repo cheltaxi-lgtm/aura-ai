@@ -146,7 +146,11 @@ export default function NatalnayaKartaPage() {
           }),
         }}
       />
-      <SeoPageTracker goal="natal_landing_view" />
+      <SeoPageTracker
+        goal="natal_landing_view"
+        funnelProduct="natal"
+        funnelSource="natal_landing"
+      />
       <p className="text-sm text-aura-gold/80">Астрология · Натальная карта</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
         Натальная карта онлайн — расчёт и расшифровка

@@ -15,7 +15,26 @@ import {
   trackDailyCardsOfferView,
   trackDailyCardsReturnView,
 } from "@/lib/seo/metrika";
+import {
+  trackPersonalZovusEvent,
+  type ProductFunnelProduct,
+} from "@/lib/seo/product-funnel";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+
+function continueKindToProduct(
+  kind: PersonalContinueItem["kind"]
+): ProductFunnelProduct {
+  if (kind === "hd") return "human_design";
+  return kind;
+}
+
+function exploreIdToProduct(
+  id: (typeof PERSONAL_ZOVUS_EXPLORE)[number]["id"]
+): ProductFunnelProduct {
+  if (id === "hd") return "human_design";
+  if (id === "matrix_pair") return "matrix_compatibility";
+  return id;
+}
 
 type PersonalZovusHomeProps = {
   userName?: string | null;
@@ -48,6 +67,16 @@ export default function PersonalZovusHome({
   const [hdChartId, setHdChartId] = useState<string | null>(null);
   const [continueReady, setContinueReady] = useState(false);
   const viewed = useRef(false);
+  const homeViewed = useRef(false);
+
+  useEffect(() => {
+    if (homeViewed.current) return;
+    homeViewed.current = true;
+    trackPersonalZovusEvent("personal_home_view", {
+      product: "home",
+      source: "personal_zovus",
+    });
+  }, []);
 
   useEffect(() => {
     if (viewed.current) return;
@@ -146,6 +175,10 @@ export default function PersonalZovusHome({
   );
 
   const handleContinue = (item: PersonalContinueItem) => {
+    trackPersonalZovusEvent("personal_continue_click", {
+      product: continueKindToProduct(item.kind),
+      source: "continue",
+    });
     if (item.kind === "tarot") {
       onContinueTarot?.();
       return;
@@ -256,7 +289,13 @@ export default function PersonalZovusHome({
                   <button
                     type="button"
                     className="personal-zovus__chip"
-                    onClick={onPickRegularSpread}
+                    onClick={() => {
+                      trackPersonalZovusEvent("personal_explore_click", {
+                        product: exploreIdToProduct(entry.id),
+                        source: "explore",
+                      });
+                      onPickRegularSpread();
+                    }}
                   >
                     {entry.title}
                   </button>
@@ -265,7 +304,16 @@ export default function PersonalZovusHome({
             }
             return (
               <li key={entry.id}>
-                <Link href={entry.href!} className="personal-zovus__chip">
+                <Link
+                  href={entry.href!}
+                  className="personal-zovus__chip"
+                  onClick={() => {
+                    trackPersonalZovusEvent("personal_explore_click", {
+                      product: exploreIdToProduct(entry.id),
+                      source: "explore",
+                    });
+                  }}
+                >
                   {entry.title}
                 </Link>
               </li>
