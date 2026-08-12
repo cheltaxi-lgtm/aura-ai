@@ -551,6 +551,178 @@ html[data-motion-lite="1"] .salon-bg__lines {
   backdrop-filter: blur(8px);
 }
 
+/* Personal Zovus — compact auth home (Today → Continue → Explore) */
+.personal-zovus {
+  position: relative;
+  z-index: 1;
+  margin: 0 auto 1.25rem;
+  max-width: 36rem;
+  padding: 0.75rem 1rem 0.25rem;
+}
+
+.personal-zovus__header {
+  margin-bottom: 1rem;
+  text-align: left;
+}
+
+.personal-zovus__eyebrow {
+  margin: 0 0 0.35rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 212, 168, 0.55);
+}
+
+.personal-zovus__title {
+  margin: 0;
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: clamp(1.35rem, 4vw, 1.75rem);
+  font-weight: 500;
+  line-height: 1.25;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.personal-zovus__name {
+  color: rgba(232, 199, 126, 0.95);
+}
+
+.personal-zovus__block {
+  margin-top: 0.85rem;
+}
+
+.personal-zovus__kicker {
+  margin: 0 0 0.45rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(232, 212, 168, 0.55);
+}
+
+.personal-zovus__panel {
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(232, 199, 126, 0.22);
+  background: rgba(0, 0, 0, 0.28);
+  text-align: left;
+}
+
+.personal-zovus__panel-title {
+  margin: 0;
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: 1.05rem;
+  color: rgba(255, 255, 255, 0.94);
+}
+
+.personal-zovus__panel-text {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.personal-zovus__cta {
+  margin-top: 0.75rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.5rem;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(232, 199, 126, 0.45);
+  background: linear-gradient(180deg, rgba(232, 199, 126, 0.22), rgba(232, 199, 126, 0.1));
+  color: rgba(255, 244, 214, 0.95);
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.personal-zovus__cta--ghost {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.82);
+}
+
+.personal-zovus__list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+
+.personal-zovus__row {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  width: 100%;
+  margin: 0;
+  padding: 0.7rem 0.85rem;
+  border-radius: 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+
+.personal-zovus__row:hover {
+  border-color: rgba(232, 199, 126, 0.35);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.personal-zovus__row-title {
+  font-size: 0.9rem;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.personal-zovus__row-text {
+  margin-top: 0.15rem;
+  font-size: 0.75rem;
+  color: rgba(232, 199, 126, 0.85);
+}
+
+.personal-zovus__explore {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+
+.personal-zovus__chip {
+  display: inline-flex;
+  align-items: center;
+  min-height: 2.15rem;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(0, 0, 0, 0.22);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.8125rem;
+  text-decoration: none;
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: border-color 0.2s ease, color 0.2s ease;
+}
+
+.personal-zovus__chip:hover {
+  border-color: rgba(232, 199, 126, 0.4);
+  color: rgba(232, 199, 126, 0.95);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .personal-zovus__row,
+  .personal-zovus__chip {
+    transition: none;
+  }
+}
+
 /* Compact multiproduct map under hero — not four full marketing blocks */
 .editorial-product-entries {
   padding: 1.25rem 0 0.25rem;

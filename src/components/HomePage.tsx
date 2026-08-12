@@ -46,7 +46,7 @@ import {
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
-import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
+import PersonalZovusHome from "@/components/editorial/PersonalZovusHome";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
 import type {
@@ -3607,9 +3607,8 @@ export default function HomePage({
         ) : inPersonalFlow ? (
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
-              <LoggedInHomeBanner
+              <PersonalZovusHome
                 userName={effectiveProfile.name || authUser?.name}
-                onQuestionSubmit={handleLandingCustomQuestion}
                 dailyCardsState={resolveDailyCardsUiState({
                   cooldownReady: tripletCooldownReady,
                   allowed: effectiveTripletCooldown.allowed,
@@ -3622,6 +3621,28 @@ export default function HomePage({
                   document.getElementById("наставники")?.scrollIntoView({
                     behavior: "smooth",
                     block: "start",
+                  });
+                }}
+                tarotContinueMasterName={
+                  hasActiveSpread && recapContinueMasterId
+                    ? findShowcaseMaster(recapContinueMasterId, masters)?.name ??
+                      getCharacterById(recapContinueMasterId)?.name ??
+                      "мастером"
+                    : null
+                }
+                onContinueTarot={
+                  hasActiveSpread && recapContinueMasterId
+                    ? () => void handleMasterPick(recapContinueMasterId)
+                    : undefined
+                }
+                onOpenOwnedMatrix={() => {
+                  void openChatWithSessionParams({
+                    characterKey: "numerolog",
+                    intention: null,
+                    spreadType: "new",
+                    cards: [],
+                    cardsRevealed: true,
+                    numerologToolId: "destiny_matrix",
                   });
                 }}
               />
@@ -3808,7 +3829,11 @@ export default function HomePage({
 
             {showPersonalSalonContent ? (
               <>
-                {isLoggedIn && hasActiveSpread && recapContinueMasterId ? (
+                {/* Tarot continue lives in PersonalZovusHome (compact); skip huge ReadingRecap on salon home. */}
+                {isLoggedIn &&
+                hasActiveSpread &&
+                recapContinueMasterId &&
+                !(step === "masters" && showPersonalSalonContent) ? (
                   <ReadingRecap
                     userName={effectiveProfile.name || authUser?.name || "друг"}
                     birthDate={effectiveProfile.birthDate}
