@@ -1082,11 +1082,35 @@ export default function HomePage({
       params.get("matrixAsOf")?.trim() || null
     );
 
+    // Guest Matrix pair claim → same partner date without re-entry.
+    if (params.get("resumePair") === "1" || tool === "matrix_compatibility") {
+      try {
+        const raw = sessionStorage.getItem("matrix:pair-resume");
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            dateB?: string;
+            nameB?: string | null;
+            nameA?: string | null;
+          };
+          if (parsed.dateB && /^\d{4}-\d{2}-\d{2}$/.test(parsed.dateB)) {
+            setSessionFlowInitialPartnerInfo({
+              partnerDate: parsed.dateB,
+              partnerName: parsed.nameB?.trim() || undefined,
+            });
+          }
+          sessionStorage.removeItem("matrix:pair-resume");
+        }
+      } catch {
+        /* ignore */
+      }
+    }
+
     const url = new URL(window.location.href);
     url.searchParams.delete("numerolog");
     url.searchParams.delete("tool");
     url.searchParams.delete("subjectId");
     url.searchParams.delete("matrixAsOf");
+    url.searchParams.delete("resumePair");
     // Legacy replace=1 from SEO preview after DELETE — wipe already done; strip leftover.
     url.searchParams.delete("replace");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);

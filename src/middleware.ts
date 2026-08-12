@@ -60,6 +60,9 @@ const PUBLIC_API_EXACT = new Set([
   "/api/natal-chart/places",
   // Guest Matrix pending identity (age-gate + IP RL; claim stays auth-gated).
   "/api/numerology/matrix-guest",
+  // Guest Matrix pair compatibility (age-gate + IP RL; claim stays auth-gated).
+  "/api/numerology/matrix-pair-guest",
+
 
   "/api/payment/webhook",
   "/api/payments/webhook",

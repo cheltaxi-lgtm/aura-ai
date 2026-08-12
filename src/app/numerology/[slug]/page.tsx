@@ -9,6 +9,7 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import DestinyMatrixPreview from "@/components/numerolog/DestinyMatrixPreview";
+import MatrixCompatibilityPreview from "@/components/numerolog/MatrixCompatibilityPreview";
 import type { NumerologToolId } from "@/lib/numerology/tools";
 
 const TOPICS = {
@@ -37,6 +38,13 @@ const TOPICS = {
     intro:
       "Введите дату рождения — и получите полную схему на 22 арканах: зона комфорта, кармический хвост, каналы, родовые линии, точки возраста и узел периода. Базовый расчёт бесплатно; полный разбор и ведение — с Эвелиной.",
   },
+  "matrica-sovmestimosti": {
+    title: "Совместимость матриц судьбы",
+    description:
+      "Бесплатный расчёт совместимости по матрице судьбы двух дат: score методики Zovus, сильные стороны, зоны напряжения, любовь, деньги и комфорт. Полный разбор пары — с Эвелиной.",
+    intro:
+      "Введите две даты рождения — и получите бесплатный preview совместимости матриц по методике Zovus: общий score, сильные стороны, зоны напряжения, любовь, деньги и комфорт. Полный разбор пары открывается после входа.",
+  },
   "detskaya-matritsa": {
     title: "Детская матрица по дате рождения",
     description: "Бережный нумерологический разбор ресурсов ребёнка, обучения и поддержки.",
@@ -56,6 +64,7 @@ const NUMEROLOGY_TOPIC_TOOLS: Record<TopicSlug, NumerologToolId> = {
   compatibility: "compatibility",
   "name-compatibility": "compatibility",
   "destiny-matrix": "destiny_matrix",
+  "matrica-sovmestimosti": "matrix_compatibility",
   "detskaya-matritsa": "child_matrix",
   "favorable-dates": "favorable_dates",
 };
@@ -130,6 +139,8 @@ export default async function NumerologyTopicPage({
   const numerologTool = NUMEROLOGY_TOPIC_TOOLS[slug as TopicSlug];
   const startHref = `/?numerolog=1&tool=${encodeURIComponent(numerologTool)}`;
   const isDestinyMatrix = slug === "destiny-matrix";
+  const isMatrixPair = slug === "matrica-sovmestimosti";
+  const pairCost = PRICING.MATRIX_PAIR_REPORT;
 
   const matrixStructuredData = isDestinyMatrix
     ? buildForecastStructuredData({
@@ -149,24 +160,84 @@ export default async function NumerologyTopicPage({
         />
       ) : null}
       <SeoPageTracker
-        goal={isDestinyMatrix ? "matrix_landing_view" : "numerology_topic_view"}
+        goal={
+          isDestinyMatrix
+            ? "matrix_landing_view"
+            : isMatrixPair
+              ? "matrix_pair_landing_view"
+              : "numerology_topic_view"
+        }
         params={{ topic: slug }}
       />
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
       <h1 className="mt-2 font-display text-3xl font-bold">{topic.title}</h1>
       <p className="mt-4 text-white/70">{topic.intro}</p>
-      {isDestinyMatrix ? (
+      {isDestinyMatrix || isMatrixPair ? (
         <ul className="mt-4 space-y-1.5 text-sm text-white/55">
-          <li>нужна только дата рождения;</li>
-          <li>расчёт за минуту;</li>
-          <li>без сложных анкет;</li>
-          <li>базовый результат сразу на экране — без регистрации.</li>
+          {isMatrixPair ? (
+            <>
+              <li>нужны две даты рождения;</li>
+              <li>бесплатный preview по методике Zovus;</li>
+              <li>без регистрации для базового результата;</li>
+              <li>полный разбор пары — с Эвелиной за {pairCost} ᚢ.</li>
+            </>
+          ) : (
+            <>
+              <li>нужна только дата рождения;</li>
+              <li>расчёт за минуту;</li>
+              <li>без сложных анкет;</li>
+              <li>базовый результат сразу на экране — без регистрации.</li>
+            </>
+          )}
         </ul>
       ) : (
         <p className="mt-3 text-sm text-white/50">
           С {evelina?.name ?? "Эвелиной"} · от {sessionCost} ᚢ
         </p>
       )}
+
+      {isMatrixPair ? (
+        <>
+          <div className="mt-8 flex flex-wrap gap-3">
+            <SeoTrackedCta
+              href="#calculate"
+              trackGoal="matrix_pair_preview_start"
+              trackParams={{ topic: slug }}
+            >
+              Рассчитать бесплатно
+            </SeoTrackedCta>
+            <SeoTrackedCta
+              href={startHref}
+              variant="ghost"
+              trackGoal="numerology_cta_click"
+              trackParams={{ topic: slug }}
+            >
+              Полный разбор пары
+            </SeoTrackedCta>
+          </div>
+          <SeoSection title="Что показывает совместимость матриц">
+            <p>
+              Сравниваются ключевые точки двух матриц судьбы: комфорт, любовь, деньги, напряжение и
+              годовой фон. Общий score — ориентир методики Zovus, а не универсальный официальный
+              показатель «совместимости на всю жизнь».
+            </p>
+          </SeoSection>
+          <MatrixCompatibilityPreview />
+          <SeoSection title="Что входит в полный разбор">
+            <p>
+              {pairCost} ᚢ — разбор пары с Эвелиной: практики по ключам, общий совет и диалог.
+              Бесплатный preview не списывает руны и не открывает платный отчёт сам по себе.
+            </p>
+            <p>
+              Можно начать с{" "}
+              <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+                личной матрицы
+              </Link>
+              , а затем сравнить пару.
+            </p>
+          </SeoSection>
+        </>
+      ) : null}
 
       {isDestinyMatrix ? (
         <>
@@ -292,7 +363,7 @@ export default async function NumerologyTopicPage({
             </SeoTrackedCta>
           </div>
         </>
-      ) : (
+      ) : isMatrixPair ? null : (
         <>
           <div className="mt-8">
             <SeoTrackedCta

@@ -44,6 +44,12 @@ const NUMEROLOGY_DIRECTIONS = [
     href: "/numerology/destiny-matrix",
   },
   {
+    title: "Совместимость матриц",
+    text: "Две даты — score методики Zovus, сильные стороны и зоны напряжения.",
+    action: "Бесплатный preview пары; полный разбор — с Эвелиной.",
+    href: "/numerology/matrica-sovmestimosti",
+  },
+  {
     title: "Благоприятные даты",
     text: "Окна для решений, стартов и важных разговоров.",
     action: "Когда нужен спокойный ориентир по срокам, а не «счастливое число».",

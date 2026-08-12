@@ -1,0 +1,3 @@
+DROP INDEX IF EXISTS idx_matrix_pair_guest_pending_expires_unclaimed;
+DROP INDEX IF EXISTS idx_matrix_pair_guest_pending_claim_hash;
+DROP TABLE IF EXISTS matrix_pair_guest_pending;

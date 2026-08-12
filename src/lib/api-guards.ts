@@ -493,3 +493,39 @@ export async function enforceMatrixGuestClaimRateLimit(
   }
   return null;
 }
+
+/** Guest Matrix pair compat persist: IP-bound (pre-auth). */
+export async function enforceMatrixPairGuestCalcRateLimit(
+  ip: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("matrix_pair_guest_calc", ip),
+    12,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много расчётов. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
+
+/** Guest Matrix pair claim: per account. */
+export async function enforceMatrixPairGuestClaimRateLimit(
+  accountId: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("matrix_pair_guest_claim", accountId),
+    20,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
