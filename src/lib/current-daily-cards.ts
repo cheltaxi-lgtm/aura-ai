@@ -6,7 +6,7 @@ import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import type { DeckSystem } from "@/lib/decks/types";
 import {
   dailyCardsKey,
-  isDailyHistoryMarker,
+  isExplicitDailyTriplet,
   normalizeDailyTripletCards,
   parseSessionDailyCardNames,
   type DailyTripletCard,
@@ -64,6 +64,7 @@ export async function resolveCurrentDailyCards(
   const cooldown = await checkTripletCooldown(userId);
   const anchor = cooldown.lastTripletAt;
 
+  // Explicit daily_triplet only — ordinary type=triplet never becomes current daily.
   const historyRes = await query<{
     id: string;
     context_data: Record<string, unknown> | null;
@@ -72,7 +73,7 @@ export async function resolveCurrentDailyCards(
     `SELECT id, context_data, created_at
      FROM history
      WHERE user_id = $1
-       AND character_name = 'triplet'
+       AND context_data->>'type' = 'daily_triplet'
      ORDER BY created_at DESC
      LIMIT 8`,
     [userId]
@@ -82,7 +83,7 @@ export async function resolveCurrentDailyCards(
   let historyCards: DailyTripletCard[] | null = null;
   for (const row of historyRes.rows) {
     const ctx = row.context_data ?? {};
-    if (!isDailyHistoryMarker(ctx)) continue;
+    if (!isExplicitDailyTriplet(ctx)) continue;
     const cards = normalizeDailyTripletCards(ctx.tarotCards);
     if (!cards || cards.length < 3) continue;
     const at = row.created_at?.toISOString?.() ?? null;

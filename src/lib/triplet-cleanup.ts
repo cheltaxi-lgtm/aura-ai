@@ -22,20 +22,35 @@ function parseSessionCardNames(raw: unknown): string[] {
   return [];
 }
 
-/** Keep 24h cooldown when triplet rows are removed from display/history. */
+/** Keep daily rolling cooldown when daily_triplet rows are removed from display/history. */
 async function preserveTripletDrawAnchor(userId: string): Promise<void> {
+  const { rows: userRows } = await query<{ astro_meta: Record<string, unknown> | null }>(
+    `SELECT astro_meta FROM users WHERE id = $1`,
+    [userId]
+  );
+  const meta = userRows[0]?.astro_meta ?? {};
+  const existing =
+    (typeof meta.lastDailyTripletDrawAt === "string" && meta.lastDailyTripletDrawAt.trim()
+      ? meta.lastDailyTripletDrawAt.trim()
+      : null) ||
+    (typeof meta.lastTripletDrawAt === "string" && meta.lastTripletDrawAt.trim()
+      ? meta.lastTripletDrawAt.trim()
+      : null);
+
   const { rows } = await query<{ max_at: Date | null }>(
     `SELECT MAX(created_at) AS max_at FROM history
      WHERE user_id = $1
-       AND (
-         character_name = 'triplet'
-         OR context_data->>'type' = 'triplet'
-       )`,
+       AND context_data->>'type' = 'daily_triplet'`,
     [userId]
   );
   const maxAt = rows[0]?.max_at;
   if (maxAt) {
     await recordTripletDrawAnchor(userId, maxAt);
+    return;
+  }
+  // No daily history left — keep dedicated daily anchor if already present.
+  if (existing) {
+    await recordTripletDrawAnchor(userId, existing);
   }
 }
 
@@ -184,7 +199,10 @@ export async function deleteUserTripletForSession(
   const ownerMatch = !owner || owner === characterKey;
 
   if (dailyLike && ownerMatch && (cardsMatch || !sessionKey)) {
-    await recordTripletDrawAnchor(userId, triplet.created_at);
+    // Preserve daily entitlement only when removing an explicit daily artifact.
+    if (ctx.type === "daily_triplet") {
+      await recordTripletDrawAnchor(userId, triplet.created_at);
+    }
     const result = await query(`DELETE FROM history WHERE id = $1 AND user_id = $2`, [
       triplet.id,
       userId,
@@ -214,7 +232,9 @@ export async function deleteUserTripletForMaster(
   const owner = typeof ctx.masterId === "string" ? ctx.masterId : null;
   if (owner && owner !== masterId) return false;
 
-  await recordTripletDrawAnchor(userId, triplet.created_at);
+  if (ctx.type === "daily_triplet") {
+    await recordTripletDrawAnchor(userId, triplet.created_at);
+  }
 
   const result = await query(`DELETE FROM history WHERE id = $1 AND user_id = $2`, [
     triplet.id,

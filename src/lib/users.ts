@@ -294,12 +294,18 @@ export async function updateUserProfile(
 export async function linkSessionToUser(
   sessionId: string,
   profileUserId: string,
-  claimToken?: string | null
+  claimToken?: string | null,
+  client?: import("./db").PoolClient
 ): Promise<boolean> {
   const { verifySessionClaimForId } = await import("@/lib/session-claim");
-  const { getSession } = await import("@/lib/session");
+  const run = <T extends Record<string, unknown>>(text: string, params?: unknown[]) =>
+    client ? queryClient<T>(client, text, params) : query<T>(text, params);
 
-  const session = await getSession(sessionId);
+  const { rows: sessionRows } = await run<{ id: string; user_id: string | null }>(
+    `SELECT id, user_id FROM sessions WHERE id = $1 LIMIT 1`,
+    [sessionId]
+  );
+  const session = sessionRows[0];
   if (!session) return false;
   if (session.user_id === profileUserId) return true;
   if (session.user_id != null) return false;
@@ -308,7 +314,7 @@ export async function linkSessionToUser(
   const claimed = await verifySessionClaimForId(sessionId, claimToken);
   if (!claimed) return false;
 
-  const { rows } = await query<{ id: string }>(
+  const { rows } = await run<{ id: string }>(
     `UPDATE sessions AS s
      SET user_id = u.id, updated_at = NOW()
      FROM users u
@@ -385,6 +391,18 @@ export async function getLatestHistoryEntry(
   return rows[0] ?? null;
 }
 
+/** Latest explicit daily_triplet history only — never ordinary type=triplet. */
+export async function getLatestDailyTripletHistory(
+  userId: string,
+  client?: import("./db").PoolClient
+): Promise<{ id: string; context_data: Record<string, unknown>; created_at: Date } | null> {
+  return getLatestHistoryEntry(
+    userId,
+    { characterName: "triplet", contextType: "daily_triplet" },
+    client
+  );
+}
+
 export async function patchHistorySceneArt(
   userId: string,
   entryId: string,
@@ -458,10 +476,10 @@ export async function deleteHistoryEntry(userId: string, entryId: string): Promi
   }
 
   if ((result.rowCount ?? 0) > 0 && entry?.created_at) {
-    const isTripletDraw =
-      entry.character_name === "triplet" ||
-      (entry.context_data as Record<string, unknown> | undefined)?.type === "triplet";
-    if (isTripletDraw) {
+    const ctx = entry.context_data as Record<string, unknown> | undefined;
+    // Deleting ordinary triplet must not mint a daily cooldown.
+    // Deleting daily history must keep entitlement consumed for the rolling window.
+    if (ctx?.type === "daily_triplet") {
       await recordTripletDrawAnchor(userId, entry.created_at);
     }
   }
@@ -469,6 +487,11 @@ export async function deleteHistoryEntry(userId: string, entryId: string): Promi
   return (result.rowCount ?? 0) > 0;
 }
 
+/**
+ * Server daily entitlement anchor (rolling 24h).
+ * Writes lastDailyTripletDrawAt; mirrors lastTripletDrawAt for legacy client readers.
+ * Ordinary triplets must never call this.
+ */
 export async function recordTripletDrawAnchor(
   userId: string,
   at: Date | string = new Date(),
@@ -479,18 +502,18 @@ export async function recordTripletDrawAnchor(
     ? (text: string, params?: unknown[]) => queryClient(client, text, params)
     : (text: string, params?: unknown[]) => query(text, params);
   await run(
-    `UPDATE users SET astro_meta = jsonb_set(
-       COALESCE(astro_meta, '{}'::jsonb),
-       '{lastTripletDrawAt}',
-       to_jsonb($2::text),
-       true
-     )
+    `UPDATE users
+     SET astro_meta = COALESCE(astro_meta, '{}'::jsonb)
+       || jsonb_build_object(
+            'lastDailyTripletDrawAt', $2::text,
+            'lastTripletDrawAt', $2::text
+          )
      WHERE id = $1`,
     [userId, iso]
   );
 }
 
-/** Admin / support: allow a new daily 3-card spread and daily energy reading immediately. */
+/** Admin / support: reset daily cards + daily energy only — never guestIntroUsedAt / ordinary triplets. */
 export async function resetTripletCooldown(userId: string): Promise<{
   ok: boolean;
   deletedHistory: number;
@@ -516,22 +539,27 @@ export async function resetTripletCooldown(userId: string): Promise<{
     return empty;
   }
 
+  const meta = rows[0].astro_meta ?? {};
   const hadTripletAnchor =
-    typeof rows[0].astro_meta?.lastTripletDrawAt === "string" &&
-    Boolean(String(rows[0].astro_meta.lastTripletDrawAt).trim());
+    (typeof meta.lastDailyTripletDrawAt === "string" &&
+      Boolean(String(meta.lastDailyTripletDrawAt).trim())) ||
+    (typeof meta.lastTripletDrawAt === "string" &&
+      Boolean(String(meta.lastTripletDrawAt).trim()));
 
   await query(
     `UPDATE users
-     SET astro_meta = COALESCE(astro_meta, '{}'::jsonb) - 'lastTripletDrawAt'
+     SET astro_meta = COALESCE(astro_meta, '{}'::jsonb)
+       - 'lastTripletDrawAt'
+       - 'lastDailyTripletDrawAt'
      WHERE id = $1`,
     [userId]
   );
 
-  const [tripletDel, dailyHistoryDel, dailyReadingsDel, hadDailyAnchor] = await Promise.all([
+  const [dailyTripletDel, dailyHistoryDel, dailyReadingsDel, hadDailyAnchor] = await Promise.all([
     query(
       `DELETE FROM history
        WHERE user_id = $1
-         AND (character_name = 'triplet' OR context_data->>'type' = 'triplet')`,
+         AND context_data->>'type' = 'daily_triplet'`,
       [userId]
     ),
     query(
@@ -549,7 +577,7 @@ export async function resetTripletCooldown(userId: string): Promise<{
 
   return {
     ok: true,
-    deletedHistory: tripletDel.rowCount ?? 0,
+    deletedHistory: dailyTripletDel.rowCount ?? 0,
     deletedDailyHistory: dailyHistoryDel.rowCount ?? 0,
     deletedDailyReadings: dailyReadingsDel.rowCount ?? 0,
     hadTripletAnchor,

@@ -1,6 +1,6 @@
 import {
   createHistoryEntry,
-  getLatestHistoryEntry,
+  getLatestDailyTripletHistory,
   linkSessionToUser,
   recordTripletDrawAnchor,
 } from "@/lib/users";
@@ -10,7 +10,11 @@ import {
 } from "@/lib/triplet-limit-server";
 import { updateSessionChatMetaForUser } from "@/lib/session";
 import { queryClient, withTransaction } from "@/lib/db";
-import { dailyCardsKey, type DailyTripletCard } from "@/lib/daily-triplet-cards";
+import {
+  dailyCardsKey,
+  isExplicitDailyTriplet,
+  type DailyTripletCard,
+} from "@/lib/daily-triplet-cards";
 import { validateDailyTripletInput } from "@/lib/daily-triplet-validate";
 import { buildHomeRecapKey } from "@/lib/home-recap-key";
 import type { DeckSystem } from "@/lib/decks/types";
@@ -78,6 +82,7 @@ function toArtifact(input: {
 
 /**
  * Authenticated daily Tarot save — atomic entitlement + owner-safe session bind.
+ * Ordinary type=triplet history never participates in reuse or cooldown.
  */
 export async function saveAuthenticatedDailyTriplet(
   input: SaveDailyTripletInput
@@ -111,12 +116,8 @@ export async function saveAuthenticatedDailyTriplet(
 
     const cooldown = await checkTripletCooldownWithClient(client, input.userId);
 
-    const latest = await getLatestHistoryEntry(
-      input.userId,
-      { characterName: "triplet" },
-      client
-    );
-    if (latest) {
+    const latest = await getLatestDailyTripletHistory(input.userId, client);
+    if (latest && isExplicitDailyTriplet(latest.context_data)) {
       const existingCards = (() => {
         const raw = latest.context_data?.tarotCards;
         const again = validateDailyTripletInput({
@@ -191,7 +192,8 @@ export async function saveAuthenticatedDailyTriplet(
       const linked = await linkSessionToUser(
         requestedSessionId,
         input.userId,
-        input.claimToken
+        input.claimToken,
+        client
       );
       if (linked) {
         const updated = await updateSessionChatMetaForUser(

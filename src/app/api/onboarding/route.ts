@@ -16,13 +16,11 @@ import {
   updateUserProfile,
   getLatestHistoryEntry,
   linkSessionToUser,
-  recordTripletDrawAnchor,
 } from "@/lib/users";
 import { readSessionClaimCookie } from "@/lib/session-claim";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import type { AstroMeta } from "@/lib/astro-profile";
 import { astroMetaFromBirthDate } from "@/lib/registration-consent";
-import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { tarotCardsKey } from "@/lib/tarot";
 import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
 import { isNatalChartEnabled } from "@/lib/settings";
@@ -204,29 +202,23 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    step = "cooldown_check";
-    const cooldown = await checkTripletCooldown(user.id);
-    if (!cooldown.allowed) {
-      return NextResponse.json({
-        userId: user.id,
-        profile: serializeUserProfile(user),
-        cooldownBlocked: true,
-        message: "Новый расклад из 3 карт доступен один раз в сутки",
-        nextAvailableAt: cooldown.nextAvailableAt,
-      });
-    }
+    // Ordinary/legacy onboarding triplet is independent of daily entitlement.
+    // Do not gate this path on checkTripletCooldown / lastDailyTripletDrawAt.
 
     const cardsKey = tarotCardsKey(tarotCards ?? []);
-    const latestTriplet = await getLatestHistoryEntry(user.id, { characterName: "triplet" });
-    if (latestTriplet && cardsKey) {
+    const latestOrdinary = await getLatestHistoryEntry(user.id, {
+      characterName: "triplet",
+      contextType: "triplet",
+    });
+    if (latestOrdinary && cardsKey) {
       const existingKey = tarotCardsKey(
-        latestTriplet.context_data?.tarotCards as { name: string }[] | undefined
+        latestOrdinary.context_data?.tarotCards as { name: string }[] | undefined
       );
-      const ageMs = Date.now() - new Date(latestTriplet.created_at).getTime();
+      const ageMs = Date.now() - new Date(latestOrdinary.created_at).getTime();
       if (existingKey === cardsKey && ageMs < 60_000) {
         return NextResponse.json({
           userId: user.id,
-          historyId: latestTriplet.id,
+          historyId: latestOrdinary.id,
           profile: serializeUserProfile(user),
           reused: true,
         });
@@ -238,6 +230,7 @@ export async function POST(request: NextRequest) {
       userId: user.id,
       characterName: "triplet",
       contextData: {
+        // Ordinary / legacy onboarding triplet — NOT daily entitlement.
         type: "triplet",
         tarotCards: tarotCards ?? [],
         deckSystem: typeof deckSystem === "string" ? deckSystem : undefined,
@@ -257,7 +250,7 @@ export async function POST(request: NextRequest) {
       },
     });
 
-    await recordTripletDrawAnchor(user.id);
+    // Do NOT record daily entitlement anchor here — daily lives on /api/tarot/daily only.
 
     return NextResponse.json({
       userId: user.id,

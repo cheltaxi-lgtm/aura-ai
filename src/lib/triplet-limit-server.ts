@@ -7,7 +7,26 @@ function laterIso(a: string | null | undefined, b: string | null | undefined): s
   return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
-async function loadTripletCooldown(
+function dailyAnchorFromMeta(meta: Record<string, unknown> | null | undefined): string | null {
+  if (!meta) return null;
+  const primary =
+    typeof meta.lastDailyTripletDrawAt === "string" && meta.lastDailyTripletDrawAt.trim()
+      ? meta.lastDailyTripletDrawAt.trim()
+      : null;
+  // Legacy: older daily saves wrote lastTripletDrawAt (now daily-only write target is lastDaily*).
+  const legacy =
+    typeof meta.lastTripletDrawAt === "string" && meta.lastTripletDrawAt.trim()
+      ? meta.lastTripletDrawAt.trim()
+      : null;
+  return laterIso(primary, legacy);
+}
+
+/**
+ * Rolling 24h daily entitlement cooldown.
+ * Evidence = explicit daily_triplet history OR dedicated daily anchor only.
+ * Ordinary character_name='triplet' / type='triplet' do NOT consume daily.
+ */
+async function loadDailyTripletCooldown(
   userId: string,
   client?: PoolClient
 ): Promise<TripletCooldownStatus> {
@@ -16,10 +35,7 @@ async function loadTripletCooldown(
 
   const historySql = `SELECT MAX(created_at) AS created_at FROM history
        WHERE user_id = $1
-         AND (
-           character_name = 'triplet'
-           OR context_data->>'type' IN ('triplet', 'daily_triplet')
-         )`;
+         AND context_data->>'type' = 'daily_triplet'`;
   const userSql = `SELECT astro_meta FROM users WHERE id = $1`;
 
   // Same PoolClient cannot run concurrent queries (pg@8 deprecation / pg@9 break).
@@ -39,28 +55,29 @@ async function loadTripletCooldown(
   }
 
   const historyAt = historyRows[0]?.created_at;
-  const anchorRaw = userRows[0]?.astro_meta?.lastTripletDrawAt;
-  const anchorAt =
-    typeof anchorRaw === "string" && anchorRaw.trim() ? anchorRaw : null;
-
   const historyIso = historyAt
     ? historyAt instanceof Date
       ? historyAt.toISOString()
       : String(historyAt)
     : null;
+  const anchorAt = dailyAnchorFromMeta(userRows[0]?.astro_meta ?? null);
 
   const effectiveIso = laterIso(historyIso, anchorAt);
   return tripletCooldownFromLastDraw(effectiveIso);
 }
 
+/** @deprecated name kept for call-site compatibility — daily entitlement only. */
 export async function checkTripletCooldown(userId: string): Promise<TripletCooldownStatus> {
-  return loadTripletCooldown(userId);
+  return loadDailyTripletCooldown(userId);
 }
 
-/** Cooldown decision inside an open transaction (same client as the entitlement write). */
+/** Daily cooldown decision inside an open transaction (same client as entitlement write). */
 export async function checkTripletCooldownWithClient(
   client: PoolClient,
   userId: string
 ): Promise<TripletCooldownStatus> {
-  return loadTripletCooldown(userId, client);
+  return loadDailyTripletCooldown(userId, client);
 }
+
+export const checkDailyTripletCooldown = checkTripletCooldown;
+export const checkDailyTripletCooldownWithClient = checkTripletCooldownWithClient;

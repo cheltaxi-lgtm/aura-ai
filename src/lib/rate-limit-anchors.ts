@@ -20,10 +20,7 @@ export async function preserveUserRateLimitsBeforePurge(
     client.query<{ created_at: Date | null }>(
       `SELECT MAX(created_at) AS created_at FROM history
        WHERE user_id = $1
-         AND (
-           character_name = 'triplet'
-           OR context_data->>'type' = 'triplet'
-         )`,
+         AND context_data->>'type' = 'daily_triplet'`,
       [userId]
     ),
     client.query<{ astro_meta: Record<string, unknown> | null }>(
@@ -54,11 +51,19 @@ export async function preserveUserRateLimitsBeforePurge(
       : String(historyAt)
     : null;
   const meta = userRes.rows[0]?.astro_meta ?? {};
-  const anchorRaw = meta.lastTripletDrawAt;
-  const anchorIso =
-    typeof anchorRaw === "string" && anchorRaw.trim() ? anchorRaw.trim() : null;
-  const tripletIso = laterIso(historyIso, anchorIso);
-  if (tripletIso) patch.lastTripletDrawAt = tripletIso;
+  const primaryAnchor =
+    typeof meta.lastDailyTripletDrawAt === "string" && meta.lastDailyTripletDrawAt.trim()
+      ? meta.lastDailyTripletDrawAt.trim()
+      : null;
+  const legacyAnchor =
+    typeof meta.lastTripletDrawAt === "string" && meta.lastTripletDrawAt.trim()
+      ? meta.lastTripletDrawAt.trim()
+      : null;
+  const tripletIso = laterIso(historyIso, laterIso(primaryAnchor, legacyAnchor));
+  if (tripletIso) {
+    patch.lastDailyTripletDrawAt = tripletIso;
+    patch.lastTripletDrawAt = tripletIso;
+  }
 
   const existingIntro =
     typeof meta.guestIntroUsedAt === "string" && meta.guestIntroUsedAt.trim()

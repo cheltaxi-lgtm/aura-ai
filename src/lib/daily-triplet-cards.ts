@@ -59,14 +59,31 @@ export function parseSessionDailyCardNames(raw: unknown): string[] {
   return [];
 }
 
+/**
+ * Explicit authenticated daily artifact.
+ * Ordinary type="triplet" is NEVER daily entitlement evidence.
+ */
+export function isExplicitDailyTriplet(
+  context: Record<string, unknown> | null | undefined
+): boolean {
+  if (!context) return false;
+  const type = typeof context.type === "string" ? context.type : "";
+  if (type === "guest_resume" || type === "guest_intro") return false;
+  return type === "daily_triplet";
+}
+
+/**
+ * Resolver / display helper for current daily cards.
+ * Prefer explicit daily_triplet; allow spreadType=daily only when type is not ordinary triplet.
+ */
 export function isDailyHistoryMarker(context: Record<string, unknown> | null | undefined): boolean {
   if (!context) return false;
+  if (isExplicitDailyTriplet(context)) return true;
   const type = typeof context.type === "string" ? context.type : "";
   const spreadType = typeof context.spreadType === "string" ? context.spreadType : "";
   if (type === "guest_resume" || type === "guest_intro") return false;
   if (spreadType === "guest_resume" || spreadType === "guest_intro") return false;
-  if (type === "daily_triplet" || spreadType === "daily") return true;
-  // Legacy authenticated daily rows from /api/onboarding.
-  if (type === "triplet") return true;
-  return false;
+  // Ordinary authenticated/catalog triplets must not become "today's daily".
+  if (type === "triplet") return false;
+  return spreadType === "daily";
 }
