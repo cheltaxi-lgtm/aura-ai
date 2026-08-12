@@ -155,6 +155,7 @@ import {
   stashTgReceipt,
   takeStashedTgReceipt,
 } from "@/lib/telegram/tg-receipt-client";
+import { resolveDailyCardsUiState } from "@/lib/daily-cards-ui";
 import {
   GUEST_RESUME_ALREADY_USED_CABINET_CTA,
   GUEST_RESUME_ALREADY_USED_DAILY_CTA,
@@ -544,6 +545,8 @@ export default function HomePage({
     setGuestIntroAlreadyUsed,
     retryGuestTripletResume,
     tripletCooldown,
+    tripletCooldownReady,
+    effectiveTripletCooldown,
     spreadRitual,
     setSpreadRitual,
     sessionIntention,
@@ -3565,9 +3568,10 @@ export default function HomePage({
               <LoggedInHomeBanner
                 userName={effectiveProfile.name || authUser?.name}
                 onQuestionSubmit={handleLandingCustomQuestion}
-                dailyCardsAvailable={
-                  !tripletCooldown || Boolean(tripletCooldown.allowed)
-                }
+                dailyCardsState={resolveDailyCardsUiState({
+                  cooldownReady: tripletCooldownReady,
+                  allowed: effectiveTripletCooldown.allowed,
+                })}
                 onOpenDailyCards={() => void handleNewReading()}
                 onViewTodayDailyCards={() => {
                   document.getElementById("мой-расклад")?.scrollIntoView({
@@ -3934,9 +3938,12 @@ export default function HomePage({
                   showMasters
                   showTariffs
                   homeUserName={effectiveProfile.name || authUser?.name}
-                  dailyCardsAvailable={
+                  dailyCardsState={
                     isLoggedIn
-                      ? !tripletCooldown || Boolean(tripletCooldown.allowed)
+                      ? resolveDailyCardsUiState({
+                          cooldownReady: tripletCooldownReady,
+                          allowed: effectiveTripletCooldown.allowed,
+                        })
                       : undefined
                   }
                   onOpenDailyCards={

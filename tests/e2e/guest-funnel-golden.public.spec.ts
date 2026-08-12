@@ -51,7 +51,10 @@ test.describe("guest funnel golden path (public)", () => {
       page.getByText(/После регистрации — 3 карты дня бесплатно раз в сутки/i).first()
     ).toBeVisible();
     await expect(page.getByRole("heading", { name: /3 карты дня бесплатно/i })).toBeVisible();
-    await expect(page.getByRole("button", { name: /Получить мои карты дня/i }).first()).toBeVisible();
+    await expect(page.getByRole("button", { name: /Открыть 3 карты сейчас/i }).first()).toBeVisible();
+    await expect(
+      page.getByText(/После регистрации этот формат будет доступен бесплатно раз в сутки/i).first()
+    ).toBeVisible();
     await expect(page.getByRole("heading", { name: /Что доступно бесплатно/i })).toBeVisible();
   });
 });

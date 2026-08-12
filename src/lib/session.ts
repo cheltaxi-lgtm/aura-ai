@@ -1142,18 +1142,21 @@ export async function deleteConsultationSession(
     }
   }
 
-  if (paymentBlock.rows[0]?.exists || isGuestIntro) {
-    // Soft-clear: keep guest_resume_* so lifetime intro cannot be reminted.
+  if (paymentBlock.rows[0]?.exists) {
+    // Soft-clear payment-linked row; strip personal + guest payload.
     await query(
       `UPDATE sessions
        SET status = 'completed',
-           character_key = CASE
-             WHEN guest_resume_status IN ('claimed', 'reading_consumed')
-               THEN COALESCE(character_key, 'veronika')
-             ELSE NULL
-           END,
+           character_key = NULL,
            intention = NULL,
+           spread_type = NULL,
+           spread_id = NULL,
+           cards = NULL,
            awaiting_context = FALSE,
+           guest_resume_token_hash = NULL,
+           guest_resume_fingerprint = NULL,
+           guest_resume_reading_id = NULL,
+           guest_resume_expires_at = NULL,
            updated_at = NOW()
        WHERE id = $1 AND user_id = $2`,
       [sessionId, userId]
@@ -1161,6 +1164,7 @@ export async function deleteConsultationSession(
     return true;
   }
 
+  // Guest intro lifetime is in astro_meta.guestIntroUsedAt — delete the session row.
   const result = await query(
     `DELETE FROM sessions WHERE id = $1 AND user_id = $2`,
     [sessionId, userId]

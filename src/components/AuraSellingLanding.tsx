@@ -63,6 +63,7 @@ import EditorialFreeValueSection from "@/components/editorial/EditorialFreeValue
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import HomeDestinyMatrixBanner from "@/components/editorial/HomeDestinyMatrixBanner";
 import HomeHumanDesignBanner from "@/components/editorial/HomeHumanDesignBanner";
+import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
 import { trackQuickQuestionClick } from "@/lib/seo/metrika";
 
@@ -228,8 +229,8 @@ export interface AuraSellingLandingProps {
   homeUserName?: string | null;
   /** When false, parent renders LoggedInHomeBanner (e.g. above ReadingRecap). */
   showLoggedInHomeBanner?: boolean;
-  /** Authenticated daily triplet availability (rolling 24h). */
-  dailyCardsAvailable?: boolean;
+  /** Authenticated daily triplet UI state (loading | available | used). */
+  dailyCardsState?: DailyCardsUiState;
   onOpenDailyCards?: () => void;
   onViewTodayDailyCards?: () => void;
   /** Classic mystic shell or editorial mockup shell — same blocks and handlers. */
@@ -264,7 +265,7 @@ export default function AuraSellingLanding({
   onQuickQuestionSelect,
   homeUserName,
   showLoggedInHomeBanner = true,
-  dailyCardsAvailable,
+  dailyCardsState,
   onOpenDailyCards,
   onViewTodayDailyCards,
   layout = "classic",
@@ -494,7 +495,7 @@ export default function AuraSellingLanding({
           onQuestionSubmit={onCustomQuestionSubmit ?? onQuickQuestionSelect}
           onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
           onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
-          dailyCardsAvailable={dailyCardsAvailable}
+          dailyCardsState={dailyCardsState}
           onOpenDailyCards={onOpenDailyCards}
           onViewTodayDailyCards={onViewTodayDailyCards}
         />
@@ -536,7 +537,7 @@ export default function AuraSellingLanding({
       {showSellingSections && isEditorial ? (
         <EditorialDailyCardsSection
           isLoggedIn={isLoggedIn}
-          dailyAvailable={dailyCardsAvailable}
+          dailyState={isLoggedIn ? dailyCardsState : undefined}
           onGuestCta={() => startGuestSpread()}
           onOpenDaily={onOpenDailyCards}
           onViewToday={onViewTodayDailyCards}

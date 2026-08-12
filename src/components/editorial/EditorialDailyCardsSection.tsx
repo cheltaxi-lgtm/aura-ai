@@ -2,13 +2,14 @@
 
 import { useEffect, useRef } from "react";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
+import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
 import { EDITORIAL_DAILY_CARDS, EDITORIAL_SECTION_IDS } from "@/lib/editorial-landing-content";
 import { trackDailyCardsCtaClick, trackDailyCardsOfferView } from "@/lib/seo/metrika";
 
 type EditorialDailyCardsSectionProps = {
   isLoggedIn: boolean;
-  /** Authenticated: daily triplet available (rolling 24h). */
-  dailyAvailable?: boolean;
+  /** Authenticated daily triplet UI state (loading until cooldown ready). */
+  dailyState?: DailyCardsUiState;
   onGuestCta: () => void;
   onOpenDaily?: () => void;
   onViewToday?: () => void;
@@ -16,7 +17,7 @@ type EditorialDailyCardsSectionProps = {
 
 export default function EditorialDailyCardsSection({
   isLoggedIn,
-  dailyAvailable = true,
+  dailyState = "loading",
   onGuestCta,
   onOpenDaily,
   onViewToday,
@@ -26,26 +27,34 @@ export default function EditorialDailyCardsSection({
 
   useEffect(() => {
     if (viewed.current) return;
+    if (isLoggedIn && dailyState === "loading") return;
     viewed.current = true;
     trackDailyCardsOfferView(isLoggedIn ? "landing_auth" : "landing_guest");
-  }, [isLoggedIn]);
+  }, [isLoggedIn, dailyState]);
 
   const ctaLabel = !isLoggedIn
     ? EDITORIAL_DAILY_CARDS.guestCta
-    : dailyAvailable
+    : dailyState === "available"
       ? EDITORIAL_DAILY_CARDS.authAvailableCta
-      : EDITORIAL_DAILY_CARDS.authUsedCta;
+      : dailyState === "used"
+        ? EDITORIAL_DAILY_CARDS.authUsedCta
+        : EDITORIAL_DAILY_CARDS.authLoadingLabel;
 
   const onClick = () => {
+    if (isLoggedIn && dailyState === "loading") return;
     trackDailyCardsCtaClick(
-      !isLoggedIn ? "landing_guest" : dailyAvailable ? "landing_auth_available" : "landing_auth_used"
+      !isLoggedIn
+        ? "landing_guest"
+        : dailyState === "available"
+          ? "landing_auth_available"
+          : "landing_auth_used"
     );
     if (!isLoggedIn) {
       onGuestCta();
       return;
     }
-    if (dailyAvailable) onOpenDaily?.();
-    else onViewToday?.();
+    if (dailyState === "available") onOpenDaily?.();
+    else if (dailyState === "used") onViewToday?.();
   };
 
   return (
@@ -77,13 +86,19 @@ export default function EditorialDailyCardsSection({
           {EDITORIAL_DAILY_CARDS.body}
         </p>
         <div className="mt-6 salon-reveal__item" style={{ ["--salon-i" as string]: 3 }}>
-          <button type="button" className="editorial-btn editorial-btn--gold" onClick={onClick}>
+          <button
+            type="button"
+            className="editorial-btn editorial-btn--gold"
+            onClick={onClick}
+            disabled={isLoggedIn && dailyState === "loading"}
+            aria-busy={isLoggedIn && dailyState === "loading" ? true : undefined}
+          >
             {ctaLabel}
           </button>
         </div>
         {!isLoggedIn ? (
           <p className="mt-3 text-xs text-white/45 salon-reveal__item" style={{ ["--salon-i" as string]: 4 }}>
-            Сначала откройте стартовый расклад или войдите — карты дня доступны после регистрации.
+            {EDITORIAL_DAILY_CARDS.guestCtaHint}
           </p>
         ) : null}
       </div>

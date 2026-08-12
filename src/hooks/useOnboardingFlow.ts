@@ -177,6 +177,7 @@ import {
   resolvePostOnboardingDestination,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
+import { shouldEmitDailyCardsStarted } from "@/lib/daily-cards-ui";
 import {
   trackDailyCardsStarted,
   trackGuestIntroAlreadyUsed,
@@ -2921,7 +2922,6 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     const deps = chat();
     setTripletNotice(null);
     setGuestIntroAlreadyUsed(false);
-    trackDailyCardsStarted("handle_new_reading");
     if (
       !tripletCooldownReady ||
       !effectiveTripletCooldown.allowed ||
@@ -2969,6 +2969,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       applyTripletMaster(defaultMaster);
     } else {
       clearPendingMasterResume();
+    }
+    if (
+      shouldEmitDailyCardsStarted({
+        cooldownReady: tripletCooldownReady,
+        localAllowed: effectiveTripletCooldown.allowed,
+        syncedAllowed: cooldown.allowed,
+      })
+    ) {
+      trackDailyCardsStarted("handle_new_reading");
     }
     newTripletInProgressRef.current = true;
     setNewTripletDraft(true);

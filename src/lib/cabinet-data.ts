@@ -911,6 +911,7 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
     const factsRemoved = await run(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
     await run(`DELETE FROM numerology_report_history WHERE user_id = $1`, [userId]);
 
+    // Persist lifetime guest intro + daily cooldown anchors BEFORE wiping sessions.
     await preserveUserRateLimitsBeforePurge(userId, client);
 
     const dailyReadingsRemoved = await run(`DELETE FROM daily_readings WHERE user_id = $1`, [userId]);
@@ -923,38 +924,31 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
       [userId]
     );
 
-    // Keep claimed/consumed guest intro receipts — lifetime acquisition evidence
-    // (also mirrored to astro_meta.guestIntroUsedAt). Soft-clear content below.
+    // Lifetime entitlement lives in astro_meta.guestIntroUsedAt — guest intro
+    // session rows (cards/question/token) must not survive an irreversible purge.
     const sessionsRemoved = await run(
       `DELETE FROM sessions s
        WHERE s.user_id = $1
-         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.session_id = s.id)
-         AND COALESCE(s.guest_resume_status, '') NOT IN ('claimed', 'reading_consumed')`,
+         AND NOT EXISTS (SELECT 1 FROM payments p WHERE p.session_id = s.id)`,
       [userId]
     );
 
-    await run(
-      `UPDATE sessions
-       SET character_key = COALESCE(character_key, 'veronika'),
-           intention = NULL,
-           awaiting_context = FALSE,
-           status = 'completed',
-           free_questions_used = 0,
-           updated_at = NOW()
-       WHERE user_id = $1
-         AND guest_resume_status IN ('claimed', 'reading_consumed')`,
-      [userId]
-    );
-
+    // Payment-linked rows cannot be deleted: strip all personal payload, including
+    // guest resume content/token metadata.
     const sessionsCleared = await run(
       `UPDATE sessions
        SET character_key = NULL,
            intention = NULL,
            spread_type = NULL,
+           spread_id = NULL,
            cards = NULL,
            awaiting_context = FALSE,
            status = 'completed',
            free_questions_used = 0,
+           guest_resume_token_hash = NULL,
+           guest_resume_fingerprint = NULL,
+           guest_resume_reading_id = NULL,
+           guest_resume_expires_at = NULL,
            updated_at = NOW()
        WHERE user_id = $1
          AND EXISTS (SELECT 1 FROM payments p WHERE p.session_id = sessions.id)`,

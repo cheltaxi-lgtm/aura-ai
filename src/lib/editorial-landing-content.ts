@@ -25,9 +25,13 @@ export const EDITORIAL_DAILY_CARDS = {
   subtitle:
     "Каждые сутки — новый ориентир: на что обратить внимание, где Ваш ресурс и что потребует осторожности.",
   body: "Бесплатно раз в сутки. Это отдельная возможность — не путать со стартовым раскладом с лендинга.",
-  guestCta: "Получить мои карты дня",
+  /** Anonymous CTA opens guest intro (startGuestSpread), not authenticated daily. */
+  guestCta: "Открыть 3 карты сейчас",
+  guestCtaHint:
+    "После регистрации этот формат будет доступен бесплатно раз в сутки.",
   authAvailableCta: "Открыть карты дня",
   authUsedCta: "Посмотреть сегодняшний расклад",
+  authLoadingLabel: "Проверяем карты дня…",
 } as const;
 
 export const EDITORIAL_FREE_VALUE = {

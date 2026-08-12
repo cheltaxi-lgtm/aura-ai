@@ -4,6 +4,8 @@ import { useEffect, useRef } from "react";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
+import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
+import { EDITORIAL_DAILY_CARDS } from "@/lib/editorial-landing-content";
 import {
   trackDailyCardsCtaClick,
   trackDailyCardsOfferView,
@@ -15,8 +17,8 @@ type LoggedInHomeBannerProps = {
   onQuestionSubmit?: (question: string) => void;
   onOpenDestinyMatrix?: () => void;
   onOpenDestinyMatrixSession?: () => void;
-  /** Rolling 24h authenticated daily triplet. */
-  dailyCardsAvailable?: boolean;
+  /** Rolling 24h authenticated daily triplet UI state. */
+  dailyCardsState?: DailyCardsUiState;
   onOpenDailyCards?: () => void;
   onViewTodayDailyCards?: () => void;
 };
@@ -33,7 +35,7 @@ export default function LoggedInHomeBanner({
   onQuestionSubmit,
   onOpenDestinyMatrix,
   onOpenDestinyMatrixSession,
-  dailyCardsAvailable,
+  dailyCardsState,
   onOpenDailyCards,
   onViewTodayDailyCards,
 }: LoggedInHomeBannerProps) {
@@ -43,15 +45,23 @@ export default function LoggedInHomeBanner({
 
   useEffect(() => {
     if (viewed.current) return;
-    if (dailyCardsAvailable === undefined) return;
+    if (!dailyCardsState || dailyCardsState === "loading") return;
     viewed.current = true;
-    if (dailyCardsAvailable) trackDailyCardsOfferView("logged_in_home");
+    if (dailyCardsState === "available") trackDailyCardsOfferView("logged_in_home");
     else trackDailyCardsReturnView("logged_in_home");
-  }, [dailyCardsAvailable]);
+  }, [dailyCardsState]);
 
-  const dailyReady = dailyCardsAvailable !== false;
-  const dailyCtaLabel = dailyReady ? "Открыть карты дня" : "Посмотреть сегодняшний расклад";
-  const dailyTitle = dailyReady ? "Ваши 3 карты дня готовы" : "Карты дня уже открыты";
+  const showDaily = Boolean(dailyCardsState && (onOpenDailyCards || onViewTodayDailyCards));
+  const dailyTitle =
+    dailyCardsState === "loading"
+      ? EDITORIAL_DAILY_CARDS.authLoadingLabel
+      : dailyCardsState === "available"
+        ? "Ваши 3 карты дня готовы"
+        : "Карты дня уже открыты";
+  const dailyCtaLabel =
+    dailyCardsState === "available"
+      ? EDITORIAL_DAILY_CARDS.authAvailableCta
+      : EDITORIAL_DAILY_CARDS.authUsedCta;
 
   return (
     <section
@@ -83,27 +93,35 @@ export default function LoggedInHomeBanner({
           Задайте вопрос или продолжите с мастером, с которым уже говорили.
         </p>
 
-        {dailyCardsAvailable !== undefined && (onOpenDailyCards || onViewTodayDailyCards) ? (
-          <div className="editorial-hero__daily mt-5 mx-auto max-w-md rounded-xl border border-aura-gold/25 bg-black/30 px-4 py-3 text-left">
+        {showDaily ? (
+          <div className="editorial-hero__daily mt-5 mx-auto max-w-md rounded-xl border border-aura-gold/25 bg-black/30 px-4 py-3 text-left min-h-[7.5rem]">
             <p className="font-display text-base text-white">{dailyTitle}</p>
-            <p className="mt-1 text-xs text-white/55">
-              {dailyReady
-                ? "Бесплатно раз в сутки — короткий ориентир на сегодня."
-                : "Новый бесплатный расклад будет доступен через сутки."}
-            </p>
-            <button
-              type="button"
-              className="editorial-btn editorial-btn--gold mt-3 w-full sm:w-auto"
-              onClick={() => {
-                trackDailyCardsCtaClick(
-                  dailyReady ? "logged_in_home_available" : "logged_in_home_used"
-                );
-                if (dailyReady) onOpenDailyCards?.();
-                else onViewTodayDailyCards?.();
-              }}
-            >
-              {dailyCtaLabel}
-            </button>
+            {dailyCardsState === "loading" ? (
+              <p className="mt-1 text-xs text-white/55">Уточняем доступ к бесплатному раскладу.</p>
+            ) : (
+              <>
+                <p className="mt-1 text-xs text-white/55">
+                  {dailyCardsState === "available"
+                    ? "Бесплатно раз в сутки — короткий ориентир на сегодня."
+                    : "Новый бесплатный расклад будет доступен через сутки."}
+                </p>
+                <button
+                  type="button"
+                  className="editorial-btn editorial-btn--gold mt-3 w-full sm:w-auto"
+                  onClick={() => {
+                    trackDailyCardsCtaClick(
+                      dailyCardsState === "available"
+                        ? "logged_in_home_available"
+                        : "logged_in_home_used"
+                    );
+                    if (dailyCardsState === "available") onOpenDailyCards?.();
+                    else onViewTodayDailyCards?.();
+                  }}
+                >
+                  {dailyCtaLabel}
+                </button>
+              </>
+            )}
           </div>
         ) : null}
 

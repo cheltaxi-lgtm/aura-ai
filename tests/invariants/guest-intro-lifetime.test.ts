@@ -56,7 +56,9 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
 
   it("TEST3: history/cabinet purge still rejects second intro", async () => {
     const user = await createTestUser();
-    const first = await issueGuestReceipt();
+    const first = await issueGuestReceipt({
+      question: "Секретный вопрос для privacy purge",
+    });
     const claim1 = await claimGuestResumeSession({
       token: first.token,
       profileUserId: user.id,
@@ -64,9 +66,34 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     expect(claim1.ok).toBe(true);
     if (!claim1.ok) return;
 
+    const before = await query<{ cards: unknown }>(
+      `SELECT cards FROM sessions WHERE id = $1`,
+      [claim1.sessionId]
+    );
+    expect(JSON.stringify(before.rows[0]?.cards ?? "")).toContain("Шут");
+
     await purgeUserCabinetData(user.id);
     expect(await profileHasGuestIntroLifetimeFlag(user.id)).toBe(true);
     expect(await profileHasUsedGuestResume(user.id)).toBe(true);
+
+    const after = await query<{ id: string; cards: unknown }>(
+      `SELECT id, cards FROM sessions WHERE id = $1`,
+      [claim1.sessionId]
+    );
+    expect(after.rows).toHaveLength(0);
+
+    const leaked = await query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM sessions
+       WHERE user_id = $1
+         AND (
+           cards::text ILIKE '%Секретный вопрос%'
+           OR cards::text ILIKE '%Шут%'
+           OR guest_resume_token_hash IS NOT NULL
+           OR guest_resume_fingerprint IS NOT NULL
+         )`,
+      [user.id]
+    );
+    expect(Number(leaked.rows[0]?.n ?? 0)).toBe(0);
 
     const second = await issueGuestReceipt();
     const claim2 = await claimGuestResumeSession({
@@ -178,9 +205,11 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     expect(afterDaily.allowed).toBe(false);
   });
 
-  it("single session delete soft-clears intro and keeps lifetime gate", async () => {
+  it("single session delete removes personal payload and keeps lifetime gate", async () => {
     const user = await createTestUser();
-    const issued = await issueGuestReceipt();
+    const issued = await issueGuestReceipt({
+      question: "Вопрос для удаления сессии",
+    });
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
@@ -191,11 +220,11 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     await deleteConsultationSession(claim.sessionId, user.id);
     expect(await profileHasGuestIntroLifetimeFlag(user.id)).toBe(true);
 
-    const { rows } = await query<{ guest_resume_status: string | null }>(
-      `SELECT guest_resume_status FROM sessions WHERE id = $1`,
+    const { rows } = await query<{ id: string }>(
+      `SELECT id FROM sessions WHERE id = $1`,
       [claim.sessionId]
     );
-    expect(rows[0]?.guest_resume_status).toMatch(/claimed|reading_consumed/);
+    expect(rows).toHaveLength(0);
 
     const second = await issueGuestReceipt();
     const blocked = await claimGuestResumeSession({
