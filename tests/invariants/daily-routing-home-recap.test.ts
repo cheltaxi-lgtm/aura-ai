@@ -41,9 +41,11 @@ describe.skipIf(!hasTestDb)("daily routing + home recap (db)", () => {
       userId: user.id,
       characterName: "triplet",
       contextData: {
-        type: "triplet",
+        type: "daily_triplet",
+        spreadType: "daily",
         tarotCards: cards,
         masterId: "veronika",
+        deckSystem: "tarot-veronika",
       },
     });
     const { rows } = await query<{ created_at: Date }>(

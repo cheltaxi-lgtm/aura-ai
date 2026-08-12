@@ -24,9 +24,9 @@ describe("daily card symbol helpers", () => {
     expect(cards?.[2]?.reversed).toBe(true);
   });
 
-  it("daily history marker accepts new and legacy types", () => {
+  it("daily history marker accepts explicit daily only (not ordinary triplet)", () => {
     expect(isDailyHistoryMarker({ type: "daily_triplet", spreadType: "daily" })).toBe(true);
-    expect(isDailyHistoryMarker({ type: "triplet" })).toBe(true);
+    expect(isDailyHistoryMarker({ type: "triplet" })).toBe(false);
     expect(isDailyHistoryMarker({ type: "guest_resume" })).toBe(false);
   });
 
