@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import {
   polishProReportPlainText,
   polishProReportTitle,
@@ -88,12 +89,17 @@ export default function ProReportSections({
   variant = "public",
   editable = false,
   onChange,
+  onRefine,
+  refiningIndex = null,
 }: {
   blocks: ProReportSectionBlock[];
   variant?: "public" | "print";
   /** Case preview: same cards + title/body/practice editors. */
   editable?: boolean;
   onChange?: (index: number, patch: Partial<ProReportSectionBlock>) => void;
+  /** Case preview: AI-rewrite one block with a practitioner instruction. */
+  onRefine?: (index: number, instruction: string) => void;
+  refiningIndex?: number | null;
 }) {
   if (!blocks?.length) return null;
 
@@ -164,9 +170,77 @@ export default function ProReportSections({
                 <p className="pro-report-practice__text">{b.practice}</p>
               </div>
             ) : null}
+            {editable && onRefine ? (
+              <RefineBlockControl
+                index={idx}
+                busy={refiningIndex !== null}
+                active={refiningIndex === idx}
+                onSubmit={onRefine}
+              />
+            ) : null}
           </section>
         );
       })}
+    </div>
+  );
+}
+
+function RefineBlockControl({
+  index,
+  busy,
+  active,
+  onSubmit,
+}: {
+  index: number;
+  busy: boolean;
+  active: boolean;
+  onSubmit: (index: number, instruction: string) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [instruction, setInstruction] = useState("");
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        className="mt-3 text-xs text-[var(--pro-faint,#888)] underline-offset-2 hover:text-[var(--pro-accent-light)] hover:underline"
+        onClick={() => setOpen(true)}
+      >
+        Уточнить с ИИ
+      </button>
+    );
+  }
+
+  return (
+    <div className="mt-3 rounded-lg border border-[var(--pro-border)] bg-black/20 p-3">
+      <input
+        className="w-full rounded bg-black/30 px-2 py-1.5 text-xs text-gray-200"
+        placeholder="Инструкция: «теплее», «короче», «больше про отношения»…"
+        value={instruction}
+        maxLength={500}
+        onChange={(e) => setInstruction(e.target.value)}
+      />
+      <div className="mt-2 flex gap-2">
+        <button
+          type="button"
+          className="btn-primary px-3 py-1 text-xs"
+          disabled={busy || !instruction.trim()}
+          onClick={() => {
+            onSubmit(index, instruction.trim());
+            setInstruction("");
+          }}
+        >
+          {active ? "Переписываю…" : "Переписать секцию"}
+        </button>
+        <button
+          type="button"
+          className="px-3 py-1 text-xs text-[var(--pro-faint,#888)]"
+          disabled={busy}
+          onClick={() => setOpen(false)}
+        >
+          Отмена
+        </button>
+      </div>
     </div>
   );
 }

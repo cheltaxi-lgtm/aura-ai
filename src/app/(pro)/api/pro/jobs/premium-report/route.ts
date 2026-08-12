@@ -20,6 +20,7 @@ import {
 } from "@/modules/pro/db/cases";
 import { getClient } from "@/modules/pro/db/clients";
 import { generateProPremiumReport } from "@/modules/pro/ai/generate-premium";
+import { estimateProReportCostRub } from "@/modules/pro/ai/cost";
 import { billingAdapter } from "@/modules/pro/adapters";
 
 /** Sectional HD Pro reports need the same ceiling as consumer hd_report. */
@@ -92,6 +93,7 @@ export async function POST(request: NextRequest) {
       authorUserId: null,
       status: "draft",
       aiCostRunes: typeof body.chargeRunes === "number" ? body.chargeRunes : 0,
+      aiCostRub: await estimateProReportCostRub(generated.blocks).catch(() => 0),
     });
 
     await trackWorkerJobCompleted(request, {

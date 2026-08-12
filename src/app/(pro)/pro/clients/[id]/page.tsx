@@ -42,12 +42,21 @@ export default function ProClientDetailPage() {
   const [notes, setNotes] = useState("");
   const [msg, setMsg] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
 
   async function load() {
     const res = await fetch(`/api/pro/clients/${params.id}`, {
       credentials: "include",
     });
-    if (!res.ok) return;
+    if (!res.ok) {
+      setLoadError(
+        res.status === 404
+          ? "Клиент не найден или принадлежит другому аккаунту"
+          : "Не удалось загрузить карточку клиента"
+      );
+      return;
+    }
+    setLoadError(null);
     const json = await res.json();
     const c = json.client as Client;
     setClient(c);
@@ -167,7 +176,31 @@ export default function ProClientDetailPage() {
   if (!client) {
     return (
       <ProShell title="Клиент">
-        <p className="text-sm text-gray-400">Загрузка…</p>
+        {loadError ? (
+          <div className="pro-panel text-sm" role="alert">
+            <p className="text-red-300">{loadError}</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="btn-ghost px-3 py-1.5 text-xs"
+                onClick={() => {
+                  setLoadError(null);
+                  void load();
+                }}
+              >
+                Повторить
+              </button>
+              <Link
+                href="/pro/clients"
+                className="rounded border border-[color:var(--pro-border)] px-3 py-1.5 text-xs text-[var(--pro-accent-light)]"
+              >
+                К списку клиентов
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">Загрузка…</p>
+        )}
       </ProShell>
     );
   }

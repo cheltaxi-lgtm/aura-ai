@@ -320,8 +320,8 @@ async function generateNatal(
     .map((e) => `- [${e.id}] ${e.label}: ${e.value}${e.uncertainty ? ` (${e.uncertainty})` : ""}`)
     .join("\n");
   const focus = focusQuestion?.trim() || "";
-  const systemPrompt = `Ты — астролог Zovus Pro. Составь доказуемую западную натальную трактовку на русском.
-Опирайся ТОЛЬКО на evidence. Не выдумывай положения и дома.
+  const systemPrompt = `Ты — астролог Zovus Pro. Составь плотную доказуемую западную натальную трактовку на русском.
+Опирайся ТОЛЬКО на evidence. Не выдумывай положения и дома. Без воды — каждый вывод из расчёта.
 ${buildNatalReportJsonInstructions("western")}
 ${record.timeKnown ? "" : "Время рождения неизвестно: не заявляй дома/ASC/MC однозначно."}
 Имя клиента: «${clientAlias}».

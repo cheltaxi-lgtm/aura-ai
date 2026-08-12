@@ -1,6 +1,10 @@
 import { NextResponse } from "next/server";
 import { requireProEnabled } from "@/modules/pro/gate";
-import { isProModuleEnabled } from "@/modules/pro/config";
+import {
+  getProRetentionIntakeDays,
+  getProRetentionThreadDays,
+  isProModuleEnabled,
+} from "@/modules/pro/config";
 import { listEnabledProJobs } from "@/modules/pro/jobs";
 import { proQuery } from "@/modules/pro/db";
 
@@ -33,10 +37,30 @@ export async function POST(req: Request) {
        AND created_at < NOW() - INTERVAL '30 days'`
   );
 
+  // Retention purge: raw intake answers and closed-dialog content are PII.
+  const intakeDays = getProRetentionIntakeDays();
+  const threadDays = getProRetentionThreadDays();
+  const purgedIntakes = await proQuery(
+    `DELETE FROM pro.intake_responses
+     WHERE submitted_at < NOW() - make_interval(days => $1)`,
+    [intakeDays]
+  );
+  const purgedMessages = await proQuery(
+    `DELETE FROM pro.thread_messages m
+     USING pro.client_threads t
+     WHERE m.thread_id = t.id
+       AND t.status = 'closed'
+       AND t.closed_at IS NOT NULL
+       AND t.closed_at < NOW() - make_interval(days => $1)`,
+    [threadDays]
+  );
+
   return NextResponse.json({
     ok: true,
     jobs,
     expiredDeliveries: expired.rowCount ?? 0,
     closedThreads: closed.rowCount ?? 0,
+    purgedIntakeResponses: purgedIntakes.rowCount ?? 0,
+    purgedThreadMessages: purgedMessages.rowCount ?? 0,
   });
 }

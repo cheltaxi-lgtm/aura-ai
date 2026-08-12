@@ -1,4 +1,5 @@
 import { proQuery } from "../db";
+import { getAvitoProOwnerUserId } from "../config";
 import {
   AvitoApiError,
   getChatMessages,
@@ -9,8 +10,54 @@ import {
   type AvitoMessageItem,
 } from "@/lib/avito/client";
 
+let ownerAccountCache: { userId: string; accountId: string | null } | null = null;
+
+/** Pro account that owns the deploy-global Avito connection (null = legacy shared). */
+export async function resolveAvitoOwnerAccountId(): Promise<string | null> {
+  const ownerUserId = getAvitoProOwnerUserId();
+  if (!ownerUserId) return null;
+  if (ownerAccountCache?.userId === ownerUserId) return ownerAccountCache.accountId;
+  const { rows } = await proQuery<{ id: string }>(
+    `SELECT id::text AS id FROM pro.accounts
+     WHERE user_id = $1 AND deleted_at IS NULL LIMIT 1`,
+    [ownerUserId]
+  );
+  const accountId = rows[0]?.id ?? null;
+  ownerAccountCache = { userId: ownerUserId, accountId };
+  return accountId;
+}
+
+export type AvitoProAccess =
+  | { allowed: true; scoped: false }
+  | { allowed: true; scoped: true; ownerAccountId: string }
+  | { allowed: false; scoped: true };
+
+/** Tenancy gate: scoped mode allows only the owner account; legacy mode shares. */
+export async function getAvitoProAccess(
+  accountId: string | number
+): Promise<AvitoProAccess> {
+  const ownerUserId = getAvitoProOwnerUserId();
+  if (!ownerUserId) return { allowed: true, scoped: false };
+  const ownerAccountId = await resolveAvitoOwnerAccountId();
+  if (!ownerAccountId) return { allowed: false, scoped: true };
+  return String(accountId) === String(ownerAccountId)
+    ? { allowed: true, scoped: true, ownerAccountId }
+    : { allowed: false, scoped: true };
+}
+
+/** SQL fragment binding chats to the owner; NULL rows count as owner's (pre-tenancy). */
+function scopeClause(access: AvitoProAccess, paramIdx: number): { sql: string; params: unknown[] } {
+  if (!access.scoped) return { sql: "TRUE", params: [] };
+  if (!access.allowed) return { sql: "FALSE", params: [] };
+  return {
+    sql: `(account_id = $${paramIdx}::bigint OR account_id IS NULL)`,
+    params: [access.ownerAccountId],
+  };
+}
+
 export interface AvitoChatRow {
   id: string;
+  account_id: string | null;
   avito_user_id: string | null;
   client_avito_user_id: string | null;
   client_name: string | null;
@@ -62,6 +109,7 @@ function toUnixDate(value: unknown): Date | null {
 
 async function upsertAvitoChat(params: {
   id: string;
+  accountId?: string | number | null;
   avitoUserId?: number | null;
   clientAvitoUserId?: number | null;
   clientName?: string | null;
@@ -69,9 +117,10 @@ async function upsertAvitoChat(params: {
   itemTitle?: string | null;
 }): Promise<void> {
   await proQuery(
-    `INSERT INTO pro.avito_chats (id, avito_user_id, client_avito_user_id, client_name, item_id, item_title)
-     VALUES ($1, $2, $3, $4, $5, $6)
+    `INSERT INTO pro.avito_chats (id, account_id, avito_user_id, client_avito_user_id, client_name, item_id, item_title)
+     VALUES ($1, $2, $3, $4, $5, $6, $7)
      ON CONFLICT (id) DO UPDATE SET
+       account_id           = COALESCE(EXCLUDED.account_id, pro.avito_chats.account_id),
        avito_user_id        = COALESCE(EXCLUDED.avito_user_id, pro.avito_chats.avito_user_id),
        client_avito_user_id = COALESCE(EXCLUDED.client_avito_user_id, pro.avito_chats.client_avito_user_id),
        client_name          = COALESCE(EXCLUDED.client_name, pro.avito_chats.client_name),
@@ -80,6 +129,7 @@ async function upsertAvitoChat(params: {
        updated_at           = NOW()`,
     [
       params.id,
+      params.accountId ?? null,
       params.avitoUserId ?? null,
       params.clientAvitoUserId ?? null,
       params.clientName ?? null,
@@ -150,9 +200,11 @@ export async function ingestAvitoWebhookMessage(
     value.author_id != null && value.author_id === value.user_id ? "out" : "in";
   const text = typeof value.content?.text === "string" ? value.content.text : null;
   const at = toUnixDate(value.created);
+  const ownerAccountId = await resolveAvitoOwnerAccountId();
 
   await upsertAvitoChat({
     id: chatId,
+    accountId: ownerAccountId,
     avitoUserId: value.user_id ?? null,
     itemId: value.item_id ?? null,
   });
@@ -172,27 +224,39 @@ export async function ingestAvitoWebhookMessage(
 }
 
 export async function listProAvitoChats(params: {
+  accountId: string | number;
   unreadOnly?: boolean;
   limit?: number;
   offset?: number;
 }): Promise<AvitoChatRow[]> {
+  const access = await getAvitoProAccess(params.accountId);
+  if (!access.allowed) return [];
+  const scope = scopeClause(access, 4);
   const limit = Math.min(Math.max(params.limit ?? 50, 1), 200);
   const offset = Math.max(params.offset ?? 0, 0);
   const { rows } = await proQuery<AvitoChatRow>(
     `SELECT * FROM pro.avito_chats
      WHERE ($1::boolean = FALSE OR unread_by_practitioner = TRUE)
+       AND ${scope.sql}
      ORDER BY last_message_at DESC NULLS LAST, updated_at DESC
      LIMIT $2 OFFSET $3`,
-    [params.unreadOnly === true, limit, offset]
+    [params.unreadOnly === true, limit, offset, ...scope.params]
   );
   return rows;
 }
 
-export async function getAvitoProStats(): Promise<{ total: number; unread: number }> {
+export async function getAvitoProStats(
+  accountId: string | number
+): Promise<{ total: number; unread: number }> {
+  const access = await getAvitoProAccess(accountId);
+  if (!access.allowed) return { total: 0, unread: 0 };
+  const scope = scopeClause(access, 1);
   const { rows } = await proQuery<{ total: string; unread: string }>(
     `SELECT COUNT(*)::text AS total,
             COUNT(*) FILTER (WHERE unread_by_practitioner)::text AS unread
-     FROM pro.avito_chats`
+     FROM pro.avito_chats
+     WHERE ${scope.sql}`,
+    scope.params
   );
   return {
     total: Number(rows[0]?.total ?? 0),
@@ -200,51 +264,80 @@ export async function getAvitoProStats(): Promise<{ total: number; unread: numbe
   };
 }
 
-export async function getProAvitoChat(chatId: string): Promise<AvitoChatRow | null> {
+export async function getProAvitoChat(
+  chatId: string,
+  accountId?: string | number
+): Promise<AvitoChatRow | null> {
+  let scope: { sql: string; params: unknown[] } = { sql: "TRUE", params: [] };
+  if (accountId !== undefined) {
+    const access = await getAvitoProAccess(accountId);
+    if (!access.allowed) return null;
+    scope = scopeClause(access, 2);
+  }
   const { rows } = await proQuery<AvitoChatRow>(
-    `SELECT * FROM pro.avito_chats WHERE id = $1`,
-    [chatId]
+    `SELECT * FROM pro.avito_chats WHERE id = $1 AND ${scope.sql}`,
+    [chatId, ...scope.params]
   );
   return rows[0] ?? null;
 }
 
 export async function getAvitoChatMessages(
   chatId: string,
-  limit = 200
+  limit = 200,
+  accountId?: string | number
 ): Promise<AvitoMessageRow[]> {
+  let scope: { sql: string; params: unknown[] } = { sql: "TRUE", params: [] };
+  if (accountId !== undefined) {
+    const access = await getAvitoProAccess(accountId);
+    if (!access.allowed) return [];
+    scope = scopeClause(access, 3);
+  }
   const { rows } = await proQuery<AvitoMessageRow>(
-    `SELECT id, chat_id, direction, type, text, author_id, avito_created_at, created_at
+    `SELECT m.id, m.chat_id, m.direction, m.type, m.text, m.author_id, m.avito_created_at, m.created_at
      FROM (
        SELECT * FROM pro.avito_messages WHERE chat_id = $1
        ORDER BY avito_created_at DESC NULLS LAST, created_at DESC
        LIMIT $2
-     ) recent
-     ORDER BY avito_created_at ASC NULLS LAST, created_at ASC`,
-    [chatId, Math.min(Math.max(limit, 1), 500)]
+     ) m
+     JOIN pro.avito_chats c ON c.id = m.chat_id
+     WHERE ${scope.sql.replace(/\baccount_id\b/g, "c.account_id")}
+     ORDER BY m.avito_created_at ASC NULLS LAST, m.created_at ASC`,
+    [chatId, Math.min(Math.max(limit, 1), 500), ...scope.params]
   );
   return rows;
 }
 
-export async function markAvitoChatReadByPractitioner(chatId: string): Promise<void> {
+export async function markAvitoChatReadByPractitioner(
+  chatId: string,
+  accountId?: string | number
+): Promise<void> {
+  let scope: { sql: string; params: unknown[] } = { sql: "TRUE", params: [] };
+  if (accountId !== undefined) {
+    const access = await getAvitoProAccess(accountId);
+    if (!access.allowed) return;
+    scope = scopeClause(access, 2);
+  }
   await proQuery(
-    `UPDATE pro.avito_chats SET unread_by_practitioner = FALSE, updated_at = NOW() WHERE id = $1`,
-    [chatId]
+    `UPDATE pro.avito_chats SET unread_by_practitioner = FALSE, updated_at = NOW()
+     WHERE id = $1 AND ${scope.sql}`,
+    [chatId, ...scope.params]
   );
   const chat = await getProAvitoChat(chatId);
-  const accountId = chat?.avito_user_id ? Number(chat.avito_user_id) : null;
-  if (!accountId) return;
+  const avitoUserId = chat?.avito_user_id ? Number(chat.avito_user_id) : null;
+  if (!avitoUserId) return;
   // Best-effort: a failed read receipt must not break the Pro UI.
-  await markChatRead(accountId, chatId).catch(() => {});
+  await markChatRead(avitoUserId, chatId).catch(() => {});
 }
 
 export async function sendProAvitoMessage(params: {
   chatId: string;
   content: string;
+  accountId?: string | number;
 }): Promise<AvitoMessageRow> {
   const text = sanitizeAvitoText(params.content, MAX_MESSAGE_LEN);
   if (!text) throw new Error("message_required");
 
-  const chat = await getProAvitoChat(params.chatId);
+  const chat = await getProAvitoChat(params.chatId, params.accountId);
   if (!chat) throw new Error("chat_not_found");
 
   const self = await getSelf();
@@ -284,6 +377,7 @@ export async function sendProAvitoMessage(params: {
  */
 export async function syncAvitoChatsFromApi(): Promise<{ chats: number; messages: number }> {
   const self = await getSelf();
+  const ownerAccountId = await resolveAvitoOwnerAccountId();
   const limit = 50;
   let chatsCount = 0;
   let messagesCount = 0;
@@ -300,6 +394,7 @@ export async function syncAvitoChatsFromApi(): Promise<{ chats: number; messages
       const item = chat.context?.type === "item" ? chat.context.value : undefined;
       await upsertAvitoChat({
         id: chat.id,
+        accountId: ownerAccountId,
         avitoUserId: self.id,
         clientAvitoUserId: clientUser?.user_id ?? null,
         clientName: clientUser?.name ?? null,

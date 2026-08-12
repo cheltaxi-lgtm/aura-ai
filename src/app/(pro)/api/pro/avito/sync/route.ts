@@ -2,11 +2,12 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireProPractitioner } from "@/modules/pro/auth";
 import { isAvitoConfigured, isAvitoEnabled } from "@/lib/avito/config";
 import {
+  AvitoApiError,
   getSubscriptions,
   subscribeWebhook,
   unsubscribeWebhook,
 } from "@/lib/avito/client";
-import { syncAvitoChatsFromApi } from "@/modules/pro/avito/service";
+import { getAvitoProAccess, syncAvitoChatsFromApi } from "@/modules/pro/avito/service";
 
 export async function POST(request: NextRequest) {
   const prac = await requireProPractitioner();
@@ -16,12 +17,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "avito_not_configured" }, { status: 503 });
   }
 
+  const access = await getAvitoProAccess(prac.ctx.account.id);
+  if (!access.allowed) {
+    return NextResponse.json({ error: "avito_not_owner" }, { status: 403 });
+  }
+
   const body = await request.json().catch(() => ({}));
   const action = typeof body.action === "string" ? body.action : "sync";
 
   if (action === "sync") {
-    const result = await syncAvitoChatsFromApi();
-    return NextResponse.json({ ok: true, ...result });
+    try {
+      const result = await syncAvitoChatsFromApi();
+      return NextResponse.json({ ok: true, ...result });
+    } catch (err) {
+      if (err instanceof AvitoApiError) {
+        return NextResponse.json(
+          { error: "avito_api_error", status: err.status, detail: err.message },
+          { status: 502 }
+        );
+      }
+      throw err;
+    }
   }
 
   if (action === "subscriptions") {

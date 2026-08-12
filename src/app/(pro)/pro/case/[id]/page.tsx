@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "next/navigation";
+import Link from "next/link";
 import dynamic from "next/dynamic";
 import ProShell from "@/modules/pro/ui/ProShell";
 import {
@@ -67,6 +68,9 @@ export default function ProCasePage() {
   const [placeHits, setPlaceHits] = useState<PlaceHit[]>([]);
   const [selectedPlace, setSelectedPlace] = useState<PlaceHit | null>(null);
   const [ttl, setTtl] = useState<"7" | "30" | "90" | "forever">("30");
+  const [reviewConfirmOpen, setReviewConfirmOpen] = useState(false);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [refiningIdx, setRefiningIdx] = useState<number | null>(null);
 
   const deliverStorageKey = `pro-case-deliver-url-${params.id}`;
 
@@ -85,8 +89,19 @@ export default function ProCasePage() {
 
   async function load() {
     const res = await fetch(`/api/pro/cases/${params.id}`, { credentials: "include" });
-    const json = await res.json();
-    if (res.ok) {
+    const json = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLoadError(
+        res.status === 404
+          ? "Кейс не найден или принадлежит другому аккаунту"
+          : typeof json.message === "string"
+            ? json.message
+            : "Не удалось загрузить кейс. Попробуйте обновить страницу."
+      );
+      return;
+    }
+    setLoadError(null);
+    {
       setData(json);
       const latest = [...(json.versions || [])].reverse()[0];
       if (latest?.blocks) {
@@ -311,7 +326,24 @@ export default function ProCasePage() {
   }
 
   async function deliver() {
-    await patch("deliver", { ttl, dialogMode: "b", blocks });
+    const versions = (data?.versions || []) as { source?: string }[];
+    const hasHuman = versions.some((v) => v.source === "human");
+    if (hasHuman) {
+      await patch("deliver", { ttl, dialogMode: "b", blocks });
+      return;
+    }
+    const json = await patch("deliver", { ttl, dialogMode: "b", blocks });
+    if (json?.requiresReview) setReviewConfirmOpen(true);
+  }
+
+  async function deliverConfirmed() {
+    const json = await patch("deliver", {
+      ttl,
+      dialogMode: "b",
+      blocks,
+      confirmReview: true,
+    });
+    if (json?.ok) setReviewConfirmOpen(false);
   }
 
   function birthPayload() {
@@ -371,7 +403,7 @@ export default function ProCasePage() {
     if (!res.ok) {
       setBusy(false);
       setGenerating(false);
-      setMsg(json.error || json.message || "Ошибка генерации");
+      setMsg(json.message || json.error || "Ошибка генерации");
       return;
     }
     if (json.async && json.jobId) {
@@ -412,7 +444,31 @@ export default function ProCasePage() {
   if (!data) {
     return (
       <ProShell title="Практика">
-        <p className="text-sm text-gray-400">Загрузка…</p>
+        {loadError ? (
+          <div className="pro-panel text-sm" role="alert">
+            <p className="text-red-300">{loadError}</p>
+            <div className="mt-3 flex gap-2">
+              <button
+                type="button"
+                className="btn-ghost px-3 py-1.5 text-xs"
+                onClick={() => {
+                  setLoadError(null);
+                  void load();
+                }}
+              >
+                Повторить
+              </button>
+              <Link
+                href="/pro"
+                className="rounded border border-[color:var(--pro-border)] px-3 py-1.5 text-xs text-[var(--pro-accent-light)]"
+              >
+                К списку кейсов
+              </Link>
+            </div>
+          </div>
+        ) : (
+          <p className="text-sm text-gray-400">Загрузка…</p>
+        )}
       </ProShell>
     );
   }
@@ -602,6 +658,26 @@ export default function ProCasePage() {
         >
           Выдать ссылку клиенту
         </button>
+        {(data?.deliveries || []).some((d: { revoked_at?: string | null }) => !d.revoked_at) ? (
+          <button
+            type="button"
+            className="btn-ghost px-4 py-2 text-sm"
+            disabled={busy || data?.case?.status === "archived"}
+            title="Старая ссылка перестанет работать, будет создана новая"
+            onClick={() => {
+              if (
+                !confirm(
+                  "Перевыпустить ссылку? Старая перестанет работать — клиенту нужно отправить новую."
+                )
+              ) {
+                return;
+              }
+              void patch("remint", { ttl });
+            }}
+          >
+            Перевыпустить ссылку
+          </button>
+        ) : null}
         {data?.case?.status === "archived" ? (
           <>
             <button
@@ -688,10 +764,42 @@ export default function ProCasePage() {
           включает старые ссылки; выдайте заново при необходимости.
         </p>
       ) : null}
+      {reviewConfirmOpen ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-label="Подтверждение проверки отчёта"
+          className="mt-3 rounded-xl border border-[#c9a24a]/40 bg-[#c9a24a]/10 p-4"
+        >
+          <p className="text-sm text-[#e8c77e]">
+            Ссылка клиенту ещё не выдана. Подтвердите, что прочитали все секции
+            отчёта и принимаете его как финальную версию — это действие
+            записывается в журнал.
+          </p>
+          <div className="mt-3 flex flex-wrap gap-2">
+            <button
+              type="button"
+              className="btn-neon px-4 py-2 text-sm"
+              disabled={busy}
+              onClick={() => void deliverConfirmed()}
+            >
+              Прочитал все секции — выдать ссылку
+            </button>
+            <button
+              type="button"
+              className="btn-ghost px-4 py-2 text-sm"
+              disabled={busy}
+              onClick={() => setReviewConfirmOpen(false)}
+            >
+              Вернуться к отчёту
+            </button>
+          </div>
+        </div>
+      ) : null}
       {!blocks.length ? (
         <p className="mt-2 text-xs text-gray-500">
           Ссылка появится после генерации отчёта. «Выдать ссылку» также принимает
-          текущий черновик.
+          текущий черновик — с явным подтверждением проверки.
         </p>
       ) : null}
 
@@ -774,6 +882,18 @@ export default function ProCasePage() {
           if (!cur) return;
           next[idx] = { ...cur, ...patch };
           setBlocks(next);
+        }}
+        refiningIndex={refiningIdx}
+        onRefine={(idx, instruction) => {
+          setRefiningIdx(idx);
+          void (async () => {
+            try {
+              const json = await patch("refine_block", { blockIndex: idx, instruction });
+              if (json?.ok) setMsg("Секция переписана — проверьте и примите отчёт");
+            } finally {
+              setRefiningIdx(null);
+            }
+          })();
         }}
       />
     </ProShell>

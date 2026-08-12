@@ -106,3 +106,32 @@ export function isProAllowlistedUser(userId: string | null | undefined): boolean
   if (list.length === 0) return false;
   return list.includes(userId);
 }
+
+/**
+ * Avito credentials are deploy-global (one Avito account). When set, only the
+ * pro account owned by this user UUID sees Avito chats. Unset = legacy shared
+ * single-operator mode (every practitioner sees all chats).
+ */
+export function getAvitoProOwnerUserId(): string | null {
+  const raw = process.env.AVITO_PRO_OWNER_USER_ID?.trim();
+  return raw || null;
+}
+
+/**
+ * Trial limits (tier=free_trial: trial_runes / trial_ends_at in accounts.limits)
+ * are enforced on charges only when explicitly enabled — existing deployments
+ * keep soft-trial behaviour until they flip the switch.
+ */
+export function isProTrialEnforced(): boolean {
+  return process.env.PRO_TRIAL_ENFORCE === "true";
+}
+
+/** Raw intake answers hold PII — purged by pro-maintenance cron after N days. */
+export function getProRetentionIntakeDays(): number {
+  return intEnv("PRO_RETENTION_INTAKE_DAYS", 365);
+}
+
+/** Dialog content in threads closed longer than N days is purged. */
+export function getProRetentionThreadDays(): number {
+  return intEnv("PRO_RETENTION_THREAD_DAYS", 180);
+}

@@ -14,6 +14,7 @@ export type ProCaseRow = {
   practitioner_context: string | null;
   layout_id: string | null;
   ai_cost_runes: number;
+  ai_cost_rub: number;
   delivered_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -84,6 +85,15 @@ export async function createCase(
 ): Promise<ProCaseRow> {
   if (!PRO_MVP_CASE_TYPES.includes(input.type as (typeof PRO_MVP_CASE_TYPES)[number])) {
     throw Object.assign(new Error("unsupported_case_type"), { status: 400 });
+  }
+  // IDOR guard: the client must belong to this account.
+  const { rows: owned } = await proQuery<{ id: string }>(
+    `SELECT id FROM pro.clients
+     WHERE id = $1 AND account_id = $2 AND deleted_at IS NULL LIMIT 1`,
+    [input.clientId, accountId]
+  );
+  if (!owned[0]) {
+    throw Object.assign(new Error("client_not_found"), { status: 404 });
   }
   const today = await countCasesToday(accountId);
   if (today >= getProMaxCasesPerDay()) {
@@ -179,35 +189,50 @@ export async function addVersion(
     authorUserId?: string | null;
     status?: ProCaseStatus;
     aiCostRunes?: number;
+    /** Estimated AI spend (RUB) for telemetry; accumulated on the case row. */
+    aiCostRub?: number;
   }
 ): Promise<ProCaseVersionRow> {
   const c = await getCase(accountId, caseId);
   if (!c) throw Object.assign(new Error("case_not_found"), { status: 404 });
-  const { rows: vmax } = await proQuery<{ m: number | null }>(
-    `SELECT MAX(version) AS m FROM pro.case_versions WHERE case_id = $1`,
-    [caseId]
-  );
-  const next = Number(vmax[0]?.m || 0) + 1;
-  const { rows } = await proQuery<ProCaseVersionRow>(
-    `INSERT INTO pro.case_versions
-       (case_id, version, source, blocks, uncertainty_marks, author_user_id)
-     VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
-     RETURNING *`,
-    [
-      caseId,
-      next,
-      input.source,
-      JSON.stringify(input.blocks),
-      JSON.stringify(input.uncertaintyMarks ?? []),
-      input.authorUserId ?? null,
-    ]
-  );
+  // MAX+1 races with concurrent writers; UNIQUE(case_id, version) is the
+  // real guard, so retry on conflict instead of holding a transaction open.
+  let rows: ProCaseVersionRow[] | null = null;
+  for (let attempt = 0; attempt < 3 && !rows; attempt++) {
+    const { rows: vmax } = await proQuery<{ m: number | null }>(
+      `SELECT MAX(version) AS m FROM pro.case_versions WHERE case_id = $1`,
+      [caseId]
+    );
+    const next = Number(vmax[0]?.m || 0) + 1;
+    try {
+      const res = await proQuery<ProCaseVersionRow>(
+        `INSERT INTO pro.case_versions
+           (case_id, version, source, blocks, uncertainty_marks, author_user_id)
+         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
+         RETURNING *`,
+        [
+          caseId,
+          next,
+          input.source,
+          JSON.stringify(input.blocks),
+          JSON.stringify(input.uncertaintyMarks ?? []),
+          input.authorUserId ?? null,
+        ]
+      );
+      rows = res.rows;
+    } catch (e) {
+      if ((e as { code?: string }).code === "23505") continue;
+      throw e;
+    }
+  }
+  if (!rows) throw Object.assign(new Error("version_conflict"), { status: 409 });
   const status =
     input.status ?? (input.source === "human" ? "edited" : "draft");
   await proQuery(
-    `UPDATE pro.cases SET status = $3, ai_cost_runes = ai_cost_runes + $4, updated_at = NOW()
+    `UPDATE pro.cases SET status = $3, ai_cost_runes = ai_cost_runes + $4,
+       ai_cost_rub = ai_cost_rub + $5, updated_at = NOW()
      WHERE id = $1 AND account_id = $2`,
-    [caseId, accountId, status, input.aiCostRunes ?? 0]
+    [caseId, accountId, status, input.aiCostRunes ?? 0, input.aiCostRub ?? 0]
   );
   const row = rows[0]!;
   return {

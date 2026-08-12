@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import ProResultCharts, {
   type ChartSnapshot,
@@ -8,6 +8,8 @@ import ProResultCharts, {
 import ProReportSections, {
   type ProReportSectionBlock,
 } from "@/modules/pro/ui/ProReportSections";
+
+type DialogMsg = { author: "client" | "practitioner"; body: string; at: string };
 
 type ReportPayload = {
   brandName?: string;
@@ -20,6 +22,9 @@ type ReportPayload = {
   siteLabel?: string;
   disclaimer?: string;
   dialogMode?: string;
+  dialogQuota?: number;
+  questionsUsed?: number;
+  dialog?: DialogMsg[];
 };
 
 export default function ProReportPublicPage() {
@@ -31,31 +36,60 @@ export default function ProReportPublicPage() {
   const [err, setErr] = useState<string | null>(null);
   const [sending, setSending] = useState(false);
   const [pdfBusy, setPdfBusy] = useState(false);
+  // Idempotency key for the question being composed: retries reuse it so a
+  // double-submit cannot consume the dialog quota twice.
+  const msgIdRef = useRef<string | null>(null);
   const ASK_TIMEOUT_MS = 45_000;
 
   useEffect(() => {
-    void (async () => {
+    let cancelled = false;
+    async function load() {
       const res = await fetch(`/api/pro/public/report/${params.token}`);
+      if (cancelled) return;
       if (!res.ok) {
         setErr("Отчёт недоступен");
         return;
       }
       const json = await res.json();
-      setReport(json.report as ReportPayload);
-    })();
+      if (!cancelled) setReport(json.report as ReportPayload);
+    }
+    void load();
+    // Answers arrive asynchronously — poll lightly while the page is open.
+    const timer = setInterval(() => void load(), 20_000);
+    return () => {
+      cancelled = true;
+      clearInterval(timer);
+    };
   }, [params.token]);
+
+  const ASK_STATUS_RU: Record<string, string> = {
+    draft_pending: "Вопрос отправлен — практик утвердит ответ",
+    awaiting_practitioner: "Вопрос отправлен — практик ответит лично",
+    answered: "Ответ получен",
+    duplicate: "Вопрос уже отправлен",
+    quota_exceeded: "Лимит вопросов по этому отчёту исчерпан",
+    closed: "Диалог по этому отчёту закрыт",
+    escalated: "Вопрос передан практику",
+  };
 
   async function ask() {
     setAskMsg(null);
     setAskError(null);
     setSending(true);
+    if (!msgIdRef.current) {
+      msgIdRef.current =
+        typeof crypto !== "undefined" && "randomUUID" in crypto
+          ? crypto.randomUUID()
+          : `q-${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
+    }
+    const clientMsgId = msgIdRef.current;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), ASK_TIMEOUT_MS);
     try {
       const res = await fetch(`/api/pro/public/report/${params.token}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ question }),
+        body: JSON.stringify({ question, clientMsgId }),
         signal: controller.signal,
       });
       const json = await res.json().catch(() => ({}));
@@ -71,15 +105,17 @@ export default function ProReportPublicPage() {
         return;
       }
       setAskMsg(
-        json.status === "draft_pending"
-          ? "Вопрос отправлен — практик утвердит ответ"
-          : typeof json.message === "string"
-            ? json.message
-            : json.status === "answered"
-              ? "Ответ получен"
-              : String(json.status || "Готово")
+        ASK_STATUS_RU[String(json.status)] ??
+          (typeof json.message === "string" ? json.message : String(json.status || "Готово"))
       );
       setQuestion("");
+      msgIdRef.current = null;
+      // Refresh the dialog immediately — the question (and maybe an answer) is in.
+      const fresh = await fetch(`/api/pro/public/report/${params.token}`);
+      if (fresh.ok) {
+        const fj = await fresh.json();
+        setReport(fj.report as ReportPayload);
+      }
     } catch (e) {
       const timedOut =
         e instanceof DOMException && e.name === "AbortError";
@@ -220,12 +256,45 @@ export default function ProReportPublicPage() {
 
       {report.dialogMode !== "a" ? (
         <div className="pro-public__dialog print:hidden mt-10 border-t border-[color:var(--pro-border)] pt-6">
-          <h3 className="pro-public__title text-lg">Спросить по отчёту</h3>
+          <h3 className="pro-public__title text-lg">Диалог по отчёту</h3>
+
+          {report.dialog && report.dialog.length > 0 ? (
+            <div className="mt-4 flex flex-col gap-3">
+              {report.dialog.map((m, i) => (
+                <div
+                  key={i}
+                  className={
+                    m.author === "client"
+                      ? "ml-8 rounded-xl border border-[color:var(--pro-border)] bg-black/20 px-3 py-2"
+                      : "mr-8 rounded-xl border border-aura-gold/25 bg-aura-gold/5 px-3 py-2"
+                  }
+                >
+                  <p className="text-[11px] uppercase tracking-wide text-gray-500">
+                    {m.author === "client" ? "Вы" : report.brandName || "Практик"}
+                  </p>
+                  <p className="mt-1 whitespace-pre-wrap text-sm text-[#ede6da]">
+                    {m.body}
+                  </p>
+                </div>
+              ))}
+            </div>
+          ) : null}
+
+          {typeof report.dialogQuota === "number" ? (
+            <p className="mt-4 text-xs text-gray-500">
+              Осталось вопросов:{" "}
+              {Math.max(0, report.dialogQuota - (report.questionsUsed ?? 0))} из{" "}
+              {report.dialogQuota}
+            </p>
+          ) : null}
           <textarea
             className="pro-field mt-3"
             rows={3}
             value={question}
-            onChange={(e) => setQuestion(e.target.value)}
+            onChange={(e) => {
+              setQuestion(e.target.value);
+              msgIdRef.current = null;
+            }}
             placeholder="Ваш уточняющий вопрос"
           />
           <div className="mt-2 flex flex-wrap items-center gap-2">

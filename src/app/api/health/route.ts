@@ -11,6 +11,8 @@ export async function GET() {
     {
       ok: healthy,
       status: healthy ? "ok" : "degraded",
+      db: dbOk,
+      llm: { active: llm.active, max: llm.max },
     },
     { status: healthy ? 200 : 503 }
   );

@@ -12,6 +12,21 @@ type InboxRow = {
   status: string;
 };
 
+const AUTHOR_RU: Record<string, string> = {
+  client: "Клиент",
+  ai_draft: "Черновик ИИ",
+  ai_direct: "ИИ",
+  practitioner: "Вы",
+  system: "Система",
+};
+
+const MODERATION_RU: Record<string, string> = {
+  pending: "на утверждении",
+  approved: "отправлено",
+  rejected: "отклонено",
+  auto: "",
+};
+
 export default function ProInboxPage() {
   const [inbox, setInbox] = useState<InboxRow[]>([]);
   const [messages, setMessages] = useState<
@@ -20,10 +35,14 @@ export default function ProInboxPage() {
       author: string;
       body: string;
       moderation_state: string;
+      feedback?: string | null;
     }[]
   >([]);
   const [threadId, setThreadId] = useState<string | null>(null);
   const [editBody, setEditBody] = useState<Record<string, string>>({});
+  const [rejectOpen, setRejectOpen] = useState<string | null>(null);
+  const [rejectFeedback, setRejectFeedback] = useState("");
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function loadInbox() {
     const res = await fetch("/api/pro/inbox", { credentials: "include" });
@@ -33,6 +52,7 @@ export default function ProInboxPage() {
 
   async function openThread(id: string) {
     setThreadId(id);
+    setActionError(null);
     const res = await fetch(`/api/pro/inbox?threadId=${id}`, {
       credentials: "include",
     });
@@ -45,7 +65,8 @@ export default function ProInboxPage() {
   }, []);
 
   async function approve(messageId: string) {
-    await fetch("/api/pro/inbox", {
+    setActionError(null);
+    const res = await fetch("/api/pro/inbox", {
       method: "POST",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
@@ -54,6 +75,32 @@ export default function ProInboxPage() {
         body: editBody[messageId],
       }),
     });
+    if (!res.ok) {
+      setActionError("Не удалось отправить — возможно, черновик уже обработан");
+      return;
+    }
+    if (threadId) await openThread(threadId);
+    await loadInbox();
+  }
+
+  async function reject(messageId: string) {
+    setActionError(null);
+    const res = await fetch("/api/pro/inbox", {
+      method: "POST",
+      credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        messageId,
+        action: "reject",
+        feedback: rejectFeedback,
+      }),
+    });
+    if (!res.ok) {
+      setActionError("Не удалось отклонить — возможно, черновик уже обработан");
+      return;
+    }
+    setRejectOpen(null);
+    setRejectFeedback("");
     if (threadId) await openThread(threadId);
     await loadInbox();
   }
@@ -103,15 +150,18 @@ export default function ProInboxPage() {
               Выберите тред слева
             </p>
           )}
+          {actionError ? (
+            <p className="text-sm text-red-300" role="alert">
+              {actionError}
+            </p>
+          ) : null}
           {messages.map((m) => (
             <div key={m.id} className="pro-panel text-sm">
               <p className="text-xs text-[var(--pro-faint,#888)]">
-                {m.author === "client"
-                  ? "Клиент"
-                  : m.author === "ai_draft"
-                    ? "Черновик ИИ"
-                    : m.author}{" "}
-                · {m.moderation_state}
+                {AUTHOR_RU[m.author] ?? m.author}
+                {MODERATION_RU[m.moderation_state]
+                  ? ` · ${MODERATION_RU[m.moderation_state]}`
+                  : ""}
               </p>
               {m.author === "ai_draft" && m.moderation_state === "pending" ? (
                 <>
@@ -122,18 +172,55 @@ export default function ProInboxPage() {
                       setEditBody((prev) => ({ ...prev, [m.id]: e.target.value }))
                     }
                   />
-                  <button
-                    type="button"
-                    className="btn-primary mt-2 px-3 py-1.5 text-xs"
-                    onClick={() => void approve(m.id)}
-                  >
-                    Утвердить и отправить
-                  </button>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      className="btn-primary px-3 py-1.5 text-xs"
+                      onClick={() => void approve(m.id)}
+                    >
+                      Утвердить и отправить
+                    </button>
+                    <button
+                      type="button"
+                      className="rounded border border-red-400/30 px-3 py-1.5 text-xs text-red-200/90"
+                      onClick={() => {
+                        setRejectOpen(rejectOpen === m.id ? null : m.id);
+                        setRejectFeedback("");
+                      }}
+                    >
+                      Отклонить
+                    </button>
+                  </div>
+                  {rejectOpen === m.id ? (
+                    <div className="mt-2">
+                      <textarea
+                        className="pro-field min-h-[60px] text-xs"
+                        placeholder="Что не так? (необязательно — поможет следующим черновикам)"
+                        value={rejectFeedback}
+                        onChange={(e) => setRejectFeedback(e.target.value)}
+                        maxLength={2000}
+                      />
+                      <button
+                        type="button"
+                        className="mt-2 rounded border border-red-400/40 px-3 py-1.5 text-xs text-red-200"
+                        onClick={() => void reject(m.id)}
+                      >
+                        Подтвердить отклонение
+                      </button>
+                    </div>
+                  ) : null}
                 </>
               ) : (
-                <p className="mt-1 whitespace-pre-wrap text-[var(--pro-text,#ede6da)]">
-                  {m.body}
-                </p>
+                <>
+                  <p className="mt-1 whitespace-pre-wrap text-[var(--pro-text,#ede6da)]">
+                    {m.body}
+                  </p>
+                  {m.moderation_state === "rejected" && m.feedback ? (
+                    <p className="mt-1 text-xs text-[var(--pro-faint,#888)]">
+                      Причина: {m.feedback}
+                    </p>
+                  ) : null}
+                </>
               )}
             </div>
           ))}

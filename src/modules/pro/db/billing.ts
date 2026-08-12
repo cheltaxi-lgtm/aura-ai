@@ -1,7 +1,7 @@
 import { chargeForSession, rollbackChargeEx, InsufficientFundsError } from "@/lib/services/billing-service";
 import { getRuneBalance } from "@/lib/rune-service";
 import { proQuery } from "../db";
-import { getProBillingMode } from "../config";
+import { getProBillingMode, isProTrialEnforced } from "../config";
 import { proRuneCost, type ProPricedAction } from "../pricing";
 
 export type ProChargeResult = {
@@ -11,6 +11,82 @@ export type ProChargeResult = {
   newBalance: number | null;
   deduplicated: boolean;
 };
+
+export class ProTrialExceededError extends Error {
+  constructor(public readonly reason: "expired" | "runes_exhausted") {
+    super(`pro_trial_${reason}`);
+    this.name = "ProTrialExceededError";
+  }
+}
+
+export type ProTrialState = {
+  tier: string;
+  enforced: boolean;
+  trialEndsAt: string | null;
+  trialRunes: number;
+  spentRunes: number;
+  runesLeft: number | null;
+  daysLeft: number | null;
+  blocked: boolean;
+  blockReason: "expired" | "runes_exhausted" | null;
+};
+
+export async function getProTrialState(accountId: string | number): Promise<ProTrialState | null> {
+  const { rows } = await proQuery<{
+    tier: string;
+    limits: Record<string, unknown> | null;
+    spent: number;
+  }>(
+    `SELECT a.tier, a.limits,
+            (SELECT COALESCE(SUM(u.runes), 0)::int FROM pro.usage_log u WHERE u.account_id = a.id) AS spent
+     FROM pro.accounts a
+     WHERE a.id = $1 AND a.deleted_at IS NULL
+     LIMIT 1`,
+    [accountId]
+  );
+  const acc = rows[0];
+  if (!acc) return null;
+  const limits = acc.limits ?? {};
+  const trialEndsAt =
+    typeof limits.trial_ends_at === "string" ? limits.trial_ends_at : null;
+  const trialRunes = Number(limits.trial_runes ?? 0) || 0;
+  const spentRunes = Number(acc.spent ?? 0);
+  const endsMs = trialEndsAt ? Date.parse(trialEndsAt) : NaN;
+  const expired = Number.isFinite(endsMs) && endsMs < Date.now();
+  const runesLeft = trialRunes > 0 ? Math.max(0, trialRunes - spentRunes) : null;
+  const runesExhausted = trialRunes > 0 && spentRunes >= trialRunes;
+  const daysLeft = Number.isFinite(endsMs)
+    ? Math.max(0, Math.ceil((endsMs - Date.now()) / 86_400_000))
+    : null;
+  const blocked = acc.tier === "free_trial" && (expired || runesExhausted);
+  return {
+    tier: acc.tier,
+    enforced: isProTrialEnforced(),
+    trialEndsAt,
+    trialRunes,
+    spentRunes,
+    runesLeft,
+    daysLeft,
+    blocked,
+    blockReason: blocked ? (expired ? "expired" : "runes_exhausted") : null,
+  };
+}
+
+/** Throws ProTrialExceededError when an enforced trial account may not spend. */
+async function assertTrialAllowsCharge(
+  accountId: string | number,
+  runes: number
+): Promise<void> {
+  const state = await getProTrialState(accountId);
+  if (!state || state.tier !== "free_trial") return;
+  if (state.blockReason === "expired") throw new ProTrialExceededError("expired");
+  if (
+    state.trialRunes > 0 &&
+    state.spentRunes + runes > state.trialRunes
+  ) {
+    throw new ProTrialExceededError("runes_exhausted");
+  }
+}
 
 export async function chargeProAction(input: {
   accountId: string | number;
@@ -44,6 +120,7 @@ export async function chargeProAction(input: {
   }
 
   if (runes <= 0) {
+    if (isProTrialEnforced()) await assertTrialAllowsCharge(input.accountId, 0);
     await proQuery(
       `INSERT INTO pro.usage_log (account_id, action, case_id, runes, idempotency_key, shadow)
        VALUES ($1, $2, $3, 0, $4, $5)
@@ -58,6 +135,8 @@ export async function chargeProAction(input: {
       deduplicated: false,
     };
   }
+
+  if (isProTrialEnforced()) await assertTrialAllowsCharge(input.accountId, runes);
 
   if (shadow) {
     await proQuery(

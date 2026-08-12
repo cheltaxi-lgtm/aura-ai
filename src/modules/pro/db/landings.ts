@@ -8,6 +8,11 @@ import {
 } from "../landing-defaults";
 import { createIntakeLink } from "./intake";
 import { writeAudit } from "./accounts";
+import {
+  encryptProSecret,
+  isEncryptedProSecret,
+  resolveProCapabilityUrl,
+} from "../token-crypto";
 
 export type { ProLandingPublicPayload };
 
@@ -56,10 +61,22 @@ function mapRow(r: {
     sections: normalizeLandingSections(r.sections),
     contact_note: r.contact_note,
     intake_form_id: r.intake_form_id == null ? null : String(r.intake_form_id),
-    intake_url: r.intake_url,
+    intake_url: resolveProCapabilityUrl(r.intake_url),
     created_at: r.created_at,
     updated_at: r.updated_at,
   };
+}
+
+/** Legacy plaintext capability URLs get encrypted on first read (lazy migration). */
+async function reencryptIntakeUrlIfPlaintext(
+  accountId: string | number,
+  stored: string | null
+): Promise<void> {
+  if (!stored || !stored.startsWith("/") || isEncryptedProSecret(stored)) return;
+  await proQuery(
+    `UPDATE pro.landings SET intake_url = $2 WHERE account_id = $1 AND intake_url = $3`,
+    [accountId, encryptProSecret(stored), stored]
+  ).catch(() => {});
 }
 
 /** Ensure a landing row exists (defaults from Avito skeleton). */
@@ -121,7 +138,9 @@ export async function getLandingByAccountId(
     created_at: Date;
     updated_at: Date;
   }>(`SELECT * FROM pro.landings WHERE account_id = $1 LIMIT 1`, [accountId]);
-  return rows[0] ? mapRow(rows[0]) : null;
+  if (!rows[0]) return null;
+  await reencryptIntakeUrlIfPlaintext(accountId, rows[0].intake_url);
+  return mapRow(rows[0]);
 }
 
 export type ProLandingPatch = {
@@ -225,7 +244,7 @@ export async function ensureLandingIntake(
   }
 
   const link = await createIntakeLink(accountId, actorUserId, "Минилендинг · заявка");
-  const url = `/pro/f/${link.rawToken}`;
+  const url = encryptProSecret(`/pro/f/${link.rawToken}`);
   const { rows } = await proQuery<{
     account_id: string | number;
     published: boolean;
@@ -259,6 +278,7 @@ export async function getPublishedLandingBySlug(
   if (!clean || !/^[a-z0-9а-яё-]+$/i.test(clean)) return null;
 
   const { rows } = await proQuery<{
+    account_id: string | number;
     brand_slug: string;
     display_name: string | null;
     bio: string | null;
@@ -277,6 +297,7 @@ export async function getPublishedLandingBySlug(
     intake_url: string | null;
   }>(
     `SELECT
+       l.account_id,
        a.brand_slug,
        a.display_name,
        a.bio,
@@ -306,6 +327,9 @@ export async function getPublishedLandingBySlug(
   );
   const r = rows[0];
   if (!r?.intake_url) return null;
+  const intakeUrl = resolveProCapabilityUrl(r.intake_url);
+  if (!intakeUrl) return null;
+  await reencryptIntakeUrlIfPlaintext(r.account_id, r.intake_url);
 
   const sections = normalizeLandingSections(r.sections);
   const promoLimit = r.promo_limit == null ? null : Number(r.promo_limit);
@@ -330,7 +354,7 @@ export async function getPublishedLandingBySlug(
     promoRemaining,
     sections,
     contactNote: r.contact_note,
-    intakeUrl: r.intake_url,
+    intakeUrl,
     ctaLabel: sections.cta || DEFAULT_LANDING_SECTIONS.cta,
   };
 }

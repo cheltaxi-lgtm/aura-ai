@@ -91,6 +91,8 @@ export async function createClient(
     notes?: string | null;
     source?: "manual" | "intake" | "import";
     consentConfirmed?: boolean;
+    /** How consent was captured — recorded in pro.client_consents.method. */
+    consentMethod?: "intake_form" | "practitioner_confirm";
   },
   actorUserId: string
 ): Promise<ProClientRow> {
@@ -131,10 +133,13 @@ export async function createClient(
   );
   const client = rows[0]!;
   if (input.consentConfirmed) {
+    const method =
+      input.consentMethod ??
+      (input.source === "intake" ? "intake_form" : "practitioner_confirm");
     await proQuery(
       `INSERT INTO pro.client_consents (client_id, kind, granted, doc_version, method, granted_at)
-       VALUES ($1, 'pdn', TRUE, '2026-08-pro', 'practitioner_confirm', NOW())`,
-      [client.id]
+       VALUES ($1, 'pdn', TRUE, '2026-08-pro', $2, NOW())`,
+      [client.id, method]
     );
   }
   const actorIsUser = /^[0-9a-f-]{36}$/i.test(actorUserId);

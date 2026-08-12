@@ -186,6 +186,42 @@ export async function setAccountStatus(
   return rows[0] ?? null;
 }
 
+export async function setAccountTier(
+  accountId: string | number,
+  tier: ProAccountRow["tier"],
+  adminUserId: string,
+  opts?: { trialEndsAt?: string | null; trialRunes?: number | null }
+): Promise<ProAccountRow | null> {
+  const { rows } = await proQuery<ProAccountRow>(
+    `UPDATE pro.accounts SET
+       tier = $2,
+       limits = limits
+         || CASE WHEN $3::text IS NOT NULL
+                 THEN jsonb_build_object('trial_ends_at', $3::text) ELSE '{}'::jsonb END
+         || CASE WHEN $4::int IS NOT NULL
+                 THEN jsonb_build_object('trial_runes', $4::int) ELSE '{}'::jsonb END,
+       updated_at = NOW()
+     WHERE id = $1 AND deleted_at IS NULL
+     RETURNING *`,
+    [accountId, tier, opts?.trialEndsAt ?? null, opts?.trialRunes ?? null]
+  );
+  if (rows[0]) {
+    await writeAudit({
+      accountId,
+      actor: "admin",
+      actorUserId: adminUserId,
+      action: "account.tier",
+      target: String(accountId),
+      meta: {
+        tier,
+        trial_ends_at: opts?.trialEndsAt ?? undefined,
+        trial_runes: opts?.trialRunes ?? undefined,
+      },
+    });
+  }
+  return rows[0] ?? null;
+}
+
 export async function listAccounts(limit = 100): Promise<ProAccountRow[]> {
   const { rows } = await proQuery<ProAccountRow>(
     `SELECT * FROM pro.accounts WHERE deleted_at IS NULL

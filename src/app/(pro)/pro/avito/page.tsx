@@ -45,6 +45,7 @@ export default function ProAvitoPage() {
   const [stats, setStats] = useState({ total: 0, unread: 0 });
   const [enabled, setEnabled] = useState(true);
   const [configured, setConfigured] = useState(true);
+  const [ownerOnly, setOwnerOnly] = useState(false);
   const [unreadOnly, setUnreadOnly] = useState(false);
   const [loading, setLoading] = useState(true);
   const [syncing, setSyncing] = useState(false);
@@ -66,6 +67,7 @@ export default function ProAvitoPage() {
     setStats(data.stats ?? { total: 0, unread: 0 });
     setEnabled(data.enabled !== false);
     setConfigured(data.configured !== false);
+    setOwnerOnly(data.ownerOnly === true);
   }, [unreadOnly]);
 
   const loadChat = useCallback(
@@ -153,7 +155,17 @@ export default function ProAvitoPage() {
 
   return (
     <ProShell title="Avito">
-      {notReady ? (
+      {ownerOnly ? (
+        <div className="pro-panel mb-6 text-sm text-[var(--pro-text,#ede6da)]">
+          <p className="font-medium">Avito подключён к другому аккаунту</p>
+          <p className="mt-1 text-xs text-[var(--pro-faint,#888)]">
+            Мессенджер Avito на этой установке привязан к одному аккаунту
+            практика. Если это ваш аккаунт — попросите администратора задать
+            AVITO_PRO_OWNER_USER_ID.
+          </p>
+        </div>
+      ) : null}
+      {notReady && !ownerOnly ? (
         <div className="pro-panel mb-6 text-sm text-[var(--pro-text,#ede6da)]">
           <p className="font-medium">Avito API не активен</p>
           <p className="mt-1 text-xs text-[var(--pro-faint,#888)]">

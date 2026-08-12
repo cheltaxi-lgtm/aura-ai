@@ -73,6 +73,8 @@ export async function clientAskOnDelivery(input: {
   question: string;
   dialogMode: "a" | "b" | "c";
   dialogQuota: number;
+  /** Client-generated idempotency key: retries must reuse it. */
+  clientMsgId?: string | null;
 }): Promise<{ status: string; message?: string }> {
   const crisis = detectCrisis(input.question);
   const { rows: threads } = await proQuery<{
@@ -92,15 +94,34 @@ export async function clientAskOnDelivery(input: {
     return { status: "quota_exceeded" };
   }
 
-  await proQuery(
-    `INSERT INTO pro.thread_messages (thread_id, author, body, moderation_state, safety_flags, sent_at)
-     VALUES ($1, 'client', $2, 'auto', $3, NOW())`,
-    [thread.id, input.question.slice(0, 4000), crisis.crisis ? ["crisis"] : []]
+  // Idempotent insert first: a retry with the same client_msg_id is a no-op.
+  const clientMsgId = input.clientMsgId?.slice(0, 64) || null;
+  const { rows: insertedMsg } = await proQuery<{ id: string }>(
+    `INSERT INTO pro.thread_messages
+       (thread_id, author, body, moderation_state, safety_flags, sent_at, client_msg_id)
+     VALUES ($1, 'client', $2, 'auto', $3, NOW(), $4)
+     ON CONFLICT (thread_id, client_msg_id) WHERE client_msg_id IS NOT NULL
+     DO NOTHING
+     RETURNING id`,
+    [thread.id, input.question.slice(0, 4000), crisis.crisis ? ["crisis"] : [], clientMsgId]
   );
-  await proQuery(
-    `UPDATE pro.client_threads SET questions_used = questions_used + 1 WHERE id = $1`,
-    [thread.id]
+  if (!insertedMsg[0]) {
+    return { status: "duplicate" };
+  }
+
+  // CAS quota: concurrent questions cannot both pass the limit.
+  const { rows: cas } = await proQuery<{ questions_used: number }>(
+    `UPDATE pro.client_threads
+     SET questions_used = questions_used + 1
+     WHERE id = $1 AND status = 'open' AND questions_used < $2
+     RETURNING questions_used`,
+    [thread.id, input.dialogQuota]
   );
+  if (!cas[0]) {
+    await proQuery(`DELETE FROM pro.thread_messages WHERE id = $1`, [insertedMsg[0].id]);
+    return { status: "quota_exceeded" };
+  }
+  const questionNumber = cas[0].questions_used;
 
   if (crisis.crisis) {
     await proQuery(
@@ -136,7 +157,7 @@ export async function clientAskOnDelivery(input: {
   }
 
   // Mode B: AI draft pending approval
-  const idem = `pro-dialog-${thread.id}-${thread.questions_used + 1}`;
+  const idem = `pro-dialog-${thread.id}-${questionNumber}`;
   const charge = await chargeProAction({
     accountId: input.accountId,
     userId: input.userIdForBilling,
@@ -226,4 +247,21 @@ export async function approveDraftMessage(
     [messageId, filtered.text]
   );
   return true;
+}
+
+export async function rejectDraftMessage(
+  accountId: string | number,
+  messageId: string | number,
+  feedback?: string
+): Promise<boolean> {
+  const { rows } = await proQuery<{ id: string }>(
+    `UPDATE pro.thread_messages m
+     SET moderation_state = 'rejected', feedback = NULLIF($3, '')
+     FROM pro.client_threads t
+     WHERE m.id = $1 AND t.id = m.thread_id AND t.account_id = $2
+       AND m.author = 'ai_draft' AND m.moderation_state = 'pending'
+     RETURNING m.id`,
+    [messageId, accountId, (feedback ?? "").trim().slice(0, 2000)]
+  );
+  return Boolean(rows[0]);
 }

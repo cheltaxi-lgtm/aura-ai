@@ -1,9 +1,17 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
 import { formatProDateOnly } from "@/modules/pro/adapters/date-only";
 import ProShell from "@/modules/pro/ui/ProShell";
+
+const ERROR_RU: Record<string, string> = {
+  pro_case_daily_limit: "Дневной лимит кейсов исчерпан — продолжите завтра",
+  client_not_found: "Клиент не найден — обновите страницу",
+  unsupported_case_type: "Этот тип практики пока недоступен",
+  pro_trial_exceeded: "Пробный период исчерпан — см. страницу «Биллинг»",
+};
 
 type Client = {
   id: string;
@@ -44,12 +52,20 @@ export default function NewCaseForm() {
   const [question, setQuestion] = useState("");
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const [clientsLoaded, setClientsLoaded] = useState(false);
 
   useEffect(() => {
     void (async () => {
-      const res = await fetch("/api/pro/clients", { credentials: "include" });
-      const json = await res.json();
-      if (res.ok) setClients(json.clients || []);
+      try {
+        const res = await fetch("/api/pro/clients", { credentials: "include" });
+        const json = await res.json().catch(() => ({}));
+        if (res.ok) setClients(json.clients || []);
+        else setErr("Не удалось загрузить список клиентов");
+      } catch {
+        setErr("Сеть недоступна. Обновите страницу.");
+      } finally {
+        setClientsLoaded(true);
+      }
     })();
   }, []);
 
@@ -64,10 +80,15 @@ export default function NewCaseForm() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ clientId, type, question }),
     });
-    const json = await res.json();
+    const json = await res.json().catch(() => ({}));
     setBusy(false);
     if (!res.ok) {
-      setErr(json.error || "Ошибка");
+      const code = typeof json.error === "string" ? json.error : "";
+      setErr(
+        typeof json.message === "string"
+          ? json.message
+          : ERROR_RU[code] ?? "Не удалось создать кейс. Попробуйте ещё раз."
+      );
       return;
     }
     router.push(`/pro/case/${json.case.id}`);
@@ -80,6 +101,14 @@ export default function NewCaseForm() {
         клиента, если они сохранены.
       </p>
       <div className="flex max-w-lg flex-col gap-4">
+        {clientsLoaded && clients.length === 0 ? (
+          <div className="pro-panel text-sm text-[var(--pro-muted)]">
+            <p>Сначала добавьте клиента — кейс всегда привязан к карточке.</p>
+            <Link href="/pro/clients" className="btn-neon mt-3 inline-block px-4 py-2 text-xs">
+              Добавить клиента
+            </Link>
+          </div>
+        ) : null}
         <label className="text-sm text-gray-300">
           Клиент
           <select

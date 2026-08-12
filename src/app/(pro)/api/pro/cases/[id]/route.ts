@@ -22,10 +22,11 @@ import {
 } from "@/modules/pro/adapters";
 import {
   createDelivery,
+  remintDelivery,
   revokeAllDeliveriesForCase,
   revokeDelivery,
 } from "@/modules/pro/db/deliveries";
-import { InsufficientFundsError } from "@/modules/pro/db/billing";
+import { InsufficientFundsError, ProTrialExceededError } from "@/modules/pro/db/billing";
 import { insufficientFundsResponse } from "@/lib/services/billing-service";
 import type { ProCaseType, ProReportBlock } from "@/modules/pro/domain/types";
 import { proQuery } from "@/modules/pro/db";
@@ -33,6 +34,11 @@ import { isProAiEnabled } from "@/modules/pro/config";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import { generateProPremiumReport } from "@/modules/pro/ai/generate-premium";
+import { refineProReportBlock } from "@/modules/pro/ai/refine-block";
+import {
+  estimateProRefineCostRub,
+  estimateProReportCostRub,
+} from "@/modules/pro/ai/cost";
 
 export const maxDuration = 600;
 
@@ -241,6 +247,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
       });
     } catch (e) {
       if (e instanceof InsufficientFundsError) return insufficientFundsResponse(e);
+      if (e instanceof ProTrialExceededError) {
+        return NextResponse.json(
+          {
+            error: "pro_trial_exceeded",
+            reason: e.reason,
+            message:
+              e.reason === "expired"
+                ? "Пробный период завершён. Перейдите на тариф Pro, чтобы продолжить."
+                : "Руны пробного периода исчерпаны. Перейдите на тариф Pro, чтобы продолжить.",
+          },
+          { status: 402 }
+        );
+      }
       throw e;
     }
 
@@ -327,6 +346,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
           authorUserId: null,
           status: "draft",
           aiCostRunes: charge.runes,
+          aiCostRub: await estimateProReportCostRub(generated.blocks).catch(() => 0),
         });
         return NextResponse.json({
           ok: true,
@@ -354,6 +374,7 @@ export async function PATCH(req: Request, ctx: Ctx) {
         authorUserId: null,
         status: "draft",
         aiCostRunes: charge.runes,
+        aiCostRub: await estimateProReportCostRub(draft.blocks).catch(() => 0),
       });
       return NextResponse.json({
         ok: true,
@@ -375,6 +396,120 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
   }
 
+  // Rewrite ONE block of the latest version with a practitioner instruction.
+  // Charged as refine_block; result lands as a new AI version (human-gate
+  // still applies on deliver).
+  if (action === "refine_block") {
+    const instruction = String(body.instruction || "").trim();
+    const blockIndex =
+      typeof body.blockIndex === "number" && Number.isInteger(body.blockIndex)
+        ? body.blockIndex
+        : -1;
+    if (!instruction || blockIndex < 0) {
+      return NextResponse.json(
+        { error: "refine_params_required", message: "Укажите секцию и инструкцию" },
+        { status: 400 }
+      );
+    }
+    const c = await getCase(prac.ctx.account.id, id);
+    if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (c.status === "archived") {
+      return NextResponse.json({ error: "case_archived" }, { status: 409 });
+    }
+    if (!isProAiEnabled()) {
+      return NextResponse.json({ error: "pro_ai_disabled" }, { status: 503 });
+    }
+    const versions = await listVersions(id);
+    const latest = [...versions]
+      .reverse()
+      .find((v) => v.source === "ai" || v.source === "human");
+    const block = latest?.blocks?.[blockIndex];
+    if (!latest || !block) {
+      return NextResponse.json(
+        { error: "block_not_found", message: "Секция не найдена — обновите страницу" },
+        { status: 404 }
+      );
+    }
+    const client = await getClient(prac.ctx.account.id, c.client_id);
+
+    const idem = `pro-refine-${id}-${latest.id}-${blockIndex}-${Date.now()}`;
+    let charge;
+    try {
+      charge = await billingAdapter.charge({
+        accountId: prac.ctx.account.id,
+        userId: prac.ctx.profileUserId,
+        action: "refine_block",
+        caseId: id,
+        idempotencyKey: idem,
+      });
+    } catch (e) {
+      if (e instanceof InsufficientFundsError) return insufficientFundsResponse(e);
+      if (e instanceof ProTrialExceededError) {
+        return NextResponse.json(
+          {
+            error: "pro_trial_exceeded",
+            reason: e.reason,
+            message:
+              e.reason === "expired"
+                ? "Пробный период завершён. Перейдите на тариф Pro, чтобы продолжить."
+                : "Руны пробного периода исчерпаны. Перейдите на тариф Pro, чтобы продолжить.",
+          },
+          { status: 402 }
+        );
+      }
+      throw e;
+    }
+
+    try {
+      const refined = await refineProReportBlock({
+        block,
+        instruction,
+        clientAlias: client?.alias || "клиент",
+        question: c.question,
+      });
+      if (!refined) {
+        throw Object.assign(new Error("refine_failed"), { status: 502 });
+      }
+      const blocks = latest.blocks.map((b, i) => (i === blockIndex ? refined : b));
+      const version = await addVersion(prac.ctx.account.id, id, {
+        source: "ai",
+        blocks,
+        authorUserId: prac.ctx.profileUserId,
+        status: "edited",
+        aiCostRub: await estimateProRefineCostRub(refined).catch(() => 0),
+      });
+      await writeAudit({
+        accountId: prac.ctx.account.id,
+        actor: "user",
+        actorUserId: prac.ctx.profileUserId,
+        action: "case.refine_block",
+        target: String(id),
+        meta: { blockIndex, versionId: version.id, instruction: instruction.slice(0, 200) },
+      });
+      return NextResponse.json({ ok: true, version, block: refined, blockIndex });
+    } catch (e) {
+      await billingAdapter.refund({
+        userId: prac.ctx.profileUserId,
+        idempotencyKey: idem,
+        transactionId: charge.ledgerTxnRef,
+        spentRunes: charge.runes,
+        shadow: charge.shadow,
+      });
+      const status = (e as { status?: number }).status || 500;
+      const code = e instanceof Error ? e.message : "error";
+      return NextResponse.json(
+        {
+          error: code,
+          message:
+            code === "refine_failed"
+              ? "Модель не смогла переписать секцию — руны возвращены. Попробуйте переформулировать."
+              : "Ошибка переписывания — руны возвращены.",
+        },
+        { status }
+      );
+    }
+  }
+
   if (action === "save_human") {
     const blocks = body.blocks as ProReportBlock[];
     if (!Array.isArray(blocks) || !blocks.length) {
@@ -392,8 +527,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
   if (action === "deliver") {
     const ttl = (body.ttl as "7" | "30" | "90" | "forever") || "30";
     try {
-      // Practitioner UX: «Выдать ссылку» accepts the current/latest AI draft
-      // as human if needed (human-gate still enforced inside createDelivery).
+      // Human-gate: accepting an AI draft as the client-facing report is an
+      // explicit, audited act — never a silent side effect of «Выдать ссылку».
       const versions = await listVersions(id);
       const hasHuman = versions.some((v) => v.source === "human");
       if (!hasHuman) {
@@ -413,11 +548,30 @@ export async function PATCH(req: Request, ctx: Ctx) {
             { status: 409 }
           );
         }
-        await addVersion(prac.ctx.account.id, id, {
+        if (body.confirmReview !== true) {
+          return NextResponse.json(
+            {
+              error: "pro_deliver_requires_review",
+              requiresReview: true,
+              message:
+                "Подтвердите, что прочитали все секции отчёта, — только после этого ссылка будет выдана.",
+            },
+            { status: 409 }
+          );
+        }
+        const accepted = await addVersion(prac.ctx.account.id, id, {
           source: "human",
           blocks: acceptBlocks,
           authorUserId: prac.ctx.profileUserId,
           status: "edited",
+        });
+        await writeAudit({
+          accountId: prac.ctx.account.id,
+          actor: "user",
+          actorUserId: prac.ctx.profileUserId,
+          action: "case.accept_ai_draft",
+          target: String(id),
+          meta: { versionId: accepted.id, version: accepted.version },
         });
       }
 
@@ -460,6 +614,42 @@ export async function PATCH(req: Request, ctx: Ctx) {
       prac.ctx.profileUserId
     );
     return NextResponse.json({ ok });
+  }
+
+  // Re-issue the client link: old tokens die, fresh token minted. Requires an
+  // already-accepted human version (the case was deliverable before).
+  if (action === "remint") {
+    const ttl = (body.ttl as "7" | "30" | "90" | "forever") || "30";
+    try {
+      const { delivery, rawToken } = await remintDelivery(
+        prac.ctx.account.id,
+        id,
+        {
+          ttl,
+          dialogMode: (body.dialogMode as "a" | "b" | "c") || "b",
+          dialogQuota: typeof body.dialogQuota === "number" ? body.dialogQuota : 5,
+          actorUserId: prac.ctx.profileUserId,
+        }
+      );
+      return NextResponse.json({
+        ok: true,
+        delivery,
+        url: `/r/${rawToken}`,
+        token: rawToken,
+      });
+    } catch (e) {
+      const status = (e as { status?: number }).status || 500;
+      const code = e instanceof Error ? e.message : "error";
+      const message =
+        code === "pro_deliver_requires_human_version"
+          ? "Сначала примите отчёт — без принятого текста ссылку перевыпустить нельзя."
+          : code === "delivery_disabled"
+            ? "Выдача ссылок отключена (PRO_DELIVERY_ENABLED)."
+            : code === "case_archived"
+              ? "Кейс в архиве — восстановите, затем перевыпустите ссылку."
+              : code;
+      return NextResponse.json({ error: code, message }, { status });
+    }
   }
 
   return NextResponse.json({ error: "unknown_action" }, { status: 400 });

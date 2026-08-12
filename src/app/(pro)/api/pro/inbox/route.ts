@@ -4,6 +4,7 @@ import {
   approveDraftMessage,
   listInbox,
   listThreadMessages,
+  rejectDraftMessage,
 } from "@/modules/pro/db/threads";
 
 export async function GET(req: Request) {
@@ -24,9 +25,20 @@ export async function POST(req: Request) {
   const body = (await req.json().catch(() => ({}))) as {
     messageId?: string;
     body?: string;
+    action?: string;
+    feedback?: string;
   };
   if (!body.messageId) {
     return NextResponse.json({ error: "messageId_required" }, { status: 400 });
+  }
+  if (body.action === "reject") {
+    const ok = await rejectDraftMessage(
+      prac.ctx.account.id,
+      body.messageId,
+      typeof body.feedback === "string" ? body.feedback : undefined
+    );
+    if (!ok) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    return NextResponse.json({ ok: true });
   }
   const ok = await approveDraftMessage(
     prac.ctx.account.id,

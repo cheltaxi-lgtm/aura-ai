@@ -9,6 +9,10 @@ import { getAccountById } from "@/modules/pro/db/accounts";
 import { proQuery } from "@/modules/pro/db";
 import { clientAskOnDelivery } from "@/modules/pro/db/threads";
 import { PRO_PUBLIC_DISCLAIMER } from "@/modules/pro/safety";
+import {
+  notifyProClientQuestion,
+  notifyProCrisisEscalation,
+} from "@/lib/email/pro-notify";
 import { isProDeliveryEnabled, isProPdfEnabled } from "@/modules/pro/config";
 import {
   polishProReportPlainText,
@@ -40,6 +44,27 @@ export async function GET(_req: Request, ctx: Ctx) {
   }>(`SELECT signature, extra_disclaimer FROM pro.brand WHERE account_id = $1`, [
     resolved.accountId,
   ]);
+
+  // Client-visible dialog: own questions + anything sent/approved.
+  // Pending AI drafts are practitioner-only and must never leak here.
+  const { rows: dialogRows } = await proQuery<{
+    author: string;
+    body: string;
+    created_at: Date;
+  }>(
+    `SELECT m.author, m.body, m.created_at
+     FROM pro.client_threads t
+     JOIN pro.thread_messages m ON m.thread_id = t.id
+     WHERE t.delivery_id = $1
+       AND (m.author = 'client' OR m.moderation_state IN ('approved', 'auto'))
+     ORDER BY m.created_at ASC
+     LIMIT 200`,
+    [resolved.delivery.id]
+  );
+  const { rows: threadState } = await proQuery<{ questions_used: number }>(
+    `SELECT questions_used FROM pro.client_threads WHERE delivery_id = $1 LIMIT 1`,
+    [resolved.delivery.id]
+  );
 
   if (firstOpen) {
     await proQuery(
@@ -89,6 +114,12 @@ export async function GET(_req: Request, ctx: Ctx) {
       disclaimer: brand[0]?.extra_disclaimer || PRO_PUBLIC_DISCLAIMER,
       dialogMode: resolved.delivery.dialog_mode,
       dialogQuota: resolved.delivery.dialog_quota,
+      questionsUsed: Number(threadState[0]?.questions_used ?? 0),
+      dialog: dialogRows.map((m) => ({
+        author: m.author === "client" ? "client" : "practitioner",
+        body: m.body,
+        at: m.created_at,
+      })),
       viewCount: resolved.delivery.view_count + 1,
     },
   });
@@ -105,10 +136,17 @@ export async function POST(req: Request, ctx: Ctx) {
   if (!resolved) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
   }
-  const body = (await req.json().catch(() => ({}))) as { question?: string };
+  const body = (await req.json().catch(() => ({}))) as {
+    question?: string;
+    clientMsgId?: string;
+  };
   if (!body.question?.trim()) {
     return NextResponse.json({ error: "question_required" }, { status: 400 });
   }
+  const clientMsgId =
+    typeof body.clientMsgId === "string" && /^[\w-]{8,64}$/.test(body.clientMsgId)
+      ? body.clientMsgId
+      : null;
   const account = await getAccountById(resolved.accountId);
   if (!account) {
     return NextResponse.json({ error: "Not found" }, { status: 404 });
@@ -124,11 +162,24 @@ export async function POST(req: Request, ctx: Ctx) {
         question: body.question.trim(),
         dialogMode: resolved.delivery.dialog_mode,
         dialogQuota: resolved.delivery.dialog_quota,
+        clientMsgId,
       }),
       new Promise<never>((_, reject) =>
         setTimeout(() => reject(new Error("ask_timeout")), 45_000)
       ),
     ]);
+    if (result.status === "escalated") {
+      void notifyProCrisisEscalation({
+        profileUserId: account.user_id,
+        caseId: resolved.caseId,
+      }).catch(() => {});
+    } else if (result.status !== "duplicate") {
+      void notifyProClientQuestion({
+        profileUserId: account.user_id,
+        caseId: resolved.caseId,
+        questionPreview: body.question.trim(),
+      }).catch(() => {});
+    }
     return NextResponse.json({ ok: true, ...result });
   } catch (e) {
     const timedOut =

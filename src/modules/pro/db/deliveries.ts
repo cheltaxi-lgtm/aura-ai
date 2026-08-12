@@ -124,7 +124,7 @@ export async function revokeAllDeliveriesForCase(
   accountId: string | number,
   caseId: string | number,
   actorUserId: string,
-  reason: "case.archive" | "case.purge" = "case.archive"
+  reason: "case.archive" | "case.purge" | "delivery.remint" = "case.archive"
 ): Promise<number> {
   const { rows } = await proQuery<{ id: string }>(
     `UPDATE pro.deliveries d
@@ -154,6 +154,24 @@ export async function revokeAllDeliveriesForCase(
     [caseId, accountId]
   );
   return rows.length;
+}
+
+/**
+ * Re-issue the client link: every live token dies, a fresh one is minted.
+ * Old links stop serving immediately (revoked_at), dialog on them closes.
+ */
+export async function remintDelivery(
+  accountId: string | number,
+  caseId: string | number,
+  opts: {
+    ttl: "7" | "30" | "90" | "forever";
+    dialogMode?: "a" | "b" | "c";
+    dialogQuota?: number;
+    actorUserId: string;
+  }
+): Promise<{ delivery: ProDeliveryRow; rawToken: string }> {
+  await revokeAllDeliveriesForCase(accountId, caseId, opts.actorUserId, "delivery.remint");
+  return createDelivery(accountId, caseId, opts);
 }
 
 export async function resolveDeliveryByRawToken(raw: string): Promise<{

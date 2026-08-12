@@ -14,7 +14,8 @@ import {
   getAccountByUserId,
   updateOnboarding,
 } from "@/modules/pro/db/accounts";
-import { getUsageSummary } from "@/modules/pro/db/billing";
+import { getProTrialState, getUsageSummary } from "@/modules/pro/db/billing";
+import { proQuery } from "@/modules/pro/db";
 import { requireProEnabled } from "@/modules/pro/gate";
 
 export async function GET() {
@@ -27,7 +28,14 @@ export async function GET() {
   }
   const account = await getAccountByUserId(profile.profileUserId);
   if (!account) return NextResponse.json({ ok: true, account: null });
-  const usage = await getUsageSummary(account.id);
+  const [usage, trial, costRows] = await Promise.all([
+    getUsageSummary(account.id),
+    getProTrialState(account.id),
+    proQuery<{ total: string | null }>(
+      `SELECT SUM(ai_cost_rub)::text AS total FROM pro.cases WHERE account_id = $1`,
+      [account.id]
+    ),
+  ]);
   const balance = await getRuneBalance(profile.profileUserId);
   return NextResponse.json({
     ok: true,
@@ -35,6 +43,8 @@ export async function GET() {
     billingMode: getProBillingMode(),
     runeBalance: balance,
     usage,
+    trial,
+    aiCostRubTotal: Number(costRows.rows[0]?.total ?? 0),
   });
 }
 
