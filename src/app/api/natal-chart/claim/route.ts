@@ -95,7 +95,6 @@ export async function POST(request: NextRequest) {
     ok: true,
     status: result.status,
     artifactId: result.artifactId,
-    birthFingerprint: result.birthFingerprint,
     workspacePath: "/cabinet/astrology?natalClaimed=1",
   });
   clearNatalGuestClaimCookieOnResponse(response, request);

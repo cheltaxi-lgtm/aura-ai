@@ -76,12 +76,34 @@ export function createNatalGuestClaimToken(): string {
   return randomBytes(24).toString("hex");
 }
 
+function todayUtcIsoDate(): string {
+  const now = new Date();
+  const y = now.getUTCFullYear();
+  const m = String(now.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(now.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 function normalizeBirthDate(raw: string): string {
-  const d = raw.trim().slice(0, 10);
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+  const date = raw.trim().slice(0, 10);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
     throw new Error("INVALID_BIRTH_DATE");
   }
-  return d;
+  const year = Number(date.slice(0, 4));
+  const month = Number(date.slice(5, 7));
+  const day = Number(date.slice(8, 10));
+  const utc = new Date(Date.UTC(year, month - 1, day));
+  if (
+    utc.getUTCFullYear() !== year ||
+    utc.getUTCMonth() !== month - 1 ||
+    utc.getUTCDate() !== day
+  ) {
+    throw new Error("INVALID_BIRTH_DATE");
+  }
+  if (date > todayUtcIsoDate()) {
+    throw new Error("INVALID_BIRTH_DATE");
+  }
+  return date;
 }
 
 function normalizeBirthTime(raw: string | null | undefined, timeKnown: boolean): string | null {
@@ -93,6 +115,15 @@ function normalizeBirthTime(raw: string | null | undefined, timeKnown: boolean):
   return t;
 }
 
+function isValidIanaTimezone(timezone: string): boolean {
+  try {
+    Intl.DateTimeFormat("en-US", { timeZone: timezone });
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function validatePlace(place: NatalPlace): NatalPlace {
   if (
     !place ||
@@ -100,11 +131,15 @@ function validatePlace(place: NatalPlace): NatalPlace {
     !place.label.trim() ||
     typeof place.latitude !== "number" ||
     !Number.isFinite(place.latitude) ||
+    place.latitude < -90 ||
+    place.latitude > 90 ||
     typeof place.longitude !== "number" ||
     !Number.isFinite(place.longitude) ||
+    place.longitude < -180 ||
+    place.longitude > 180 ||
     typeof place.timezone !== "string" ||
     !place.timezone.trim() ||
-    !place.timezone.includes("/")
+    !isValidIanaTimezone(place.timezone.trim())
   ) {
     throw new Error("INVALID_PLACE");
   }

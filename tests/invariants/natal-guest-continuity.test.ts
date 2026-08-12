@@ -2,6 +2,8 @@
  * P1.0: guest Natal continuity — same server artifact after stub claim.
  */
 import { createHash } from "crypto";
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { createUser, recordAccountLegalConsent } from "@/lib/accounts";
 import { query } from "@/lib/db";
@@ -21,6 +23,8 @@ import {
 } from "@/lib/users";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
 import { countSpendTransactions } from "./db/fixtures";
+
+const ROOT = path.resolve(__dirname, "../..");
 
 const MOSCOW = {
   label: "Moscow, Moscow, Russia",
@@ -60,6 +64,11 @@ describe.skipIf(!hasTestDb)("natal-guest-continuity (db)", () => {
     expect(payload.timeKnown).toBe(true);
     expect(payload.western).toBeTruthy();
     expect(payload.highlights.length).toBeGreaterThan(0);
+    expect(payload).not.toHaveProperty("birthFingerprint");
+    const publicJson = JSON.stringify(payload);
+    expect(publicJson).not.toContain("birthFingerprint");
+    expect(publicJson).not.toContain(rawClaimToken);
+    expect(publicJson).not.toMatch(/claim_token|claimTokenHash|userId/);
 
     const meta = await getGuestNatalArtifactMeta(payload.artifactId);
     expect(meta).toBeTruthy();
@@ -124,8 +133,9 @@ describe.skipIf(!hasTestDb)("natal-guest-continuity (db)", () => {
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
 
-    expect(claim.birthFingerprint).toBe(payload.birthFingerprint);
+    expect(claim.birthFingerprint).toBe(guestMeta!.birthFingerprint);
     expect(claim.artifactId).toBe(payload.artifactId);
+    expect(payload).not.toHaveProperty("birthFingerprint");
 
     const owned = await getStoredNatalChart(stub.id);
     expect(owned).toBeTruthy();
@@ -186,7 +196,9 @@ describe.skipIf(!hasTestDb)("natal-guest-continuity (db)", () => {
     });
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
-    expect(claim.birthFingerprint).toBe(payload.birthFingerprint);
+    const meta = await getGuestNatalArtifactMeta(payload.artifactId);
+    expect(claim.birthFingerprint).toBe(meta!.birthFingerprint);
+    expect(payload).not.toHaveProperty("birthFingerprint");
   });
 
   it("N7+N8: conflict then explicit replace adopts guest chart", async () => {
@@ -236,12 +248,12 @@ describe.skipIf(!hasTestDb)("natal-guest-continuity (db)", () => {
     });
     expect(replaced.ok).toBe(true);
     if (!replaced.ok) return;
-    expect(replaced.birthFingerprint).toBe(payload.birthFingerprint);
+    expect(replaced.birthFingerprint).toBe(guestStill!.birthFingerprint);
 
     const userAfter = await getUserById(stub.id);
     expect(String(userAfter!.birth_date).slice(0, 10)).toBe("1990-01-01");
     const owned = await getStoredNatalChart(stub.id);
-    expect(owned!.birthFingerprint).toBe(payload.birthFingerprint);
+    expect(owned!.birthFingerprint).toBe(guestStill!.birthFingerprint);
   });
 
   it("N9+N10+N11+N12: foreign / invalid / expired / id-only denied", async () => {
@@ -316,5 +328,91 @@ describe.skipIf(!hasTestDb)("natal-guest-continuity (db)", () => {
     });
     expect(expired.ok).toBe(false);
     if (!expired.ok) expect(expired.code).toBe("EXPIRED");
+  });
+
+  it("privacy: claim HTTP response omits birthFingerprint", () => {
+    const claimRoute = readFileSync(
+      path.join(ROOT, "src/app/api/natal-chart/claim/route.ts"),
+      "utf8"
+    );
+    expect(claimRoute).not.toMatch(/birthFingerprint\s*:/);
+    const safe = readFileSync(
+      path.join(ROOT, "src/lib/natal/guest-free-summary.ts"),
+      "utf8"
+    );
+    expect(safe).not.toMatch(/birthFingerprint:\s*opts\.chart/);
+    expect(safe).not.toMatch(/birthFingerprint:\s*string/);
+  });
+
+  it("validation: invalid place/date rejected without creating artifact", async () => {
+    await ensureNatalEnabled();
+    const before = await query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM natal_guest_charts`
+    );
+    const countBefore = Number(before.rows[0]?.n ?? 0);
+
+    await expect(
+      createGuestNatalChart({
+        birthDate: "1990-01-01",
+        birthTime: "12:00",
+        timeKnown: true,
+        place: { ...MOSCOW, latitude: 91 },
+      })
+    ).rejects.toThrow("INVALID_PLACE");
+
+    await expect(
+      createGuestNatalChart({
+        birthDate: "1990-01-01",
+        birthTime: "12:00",
+        timeKnown: true,
+        place: { ...MOSCOW, longitude: 181 },
+      })
+    ).rejects.toThrow("INVALID_PLACE");
+
+    await expect(
+      createGuestNatalChart({
+        birthDate: "1990-01-01",
+        birthTime: "12:00",
+        timeKnown: true,
+        place: { ...MOSCOW, timezone: "Fake/Zone" },
+      })
+    ).rejects.toThrow("INVALID_PLACE");
+
+    await expect(
+      createGuestNatalChart({
+        birthDate: "2020-02-31",
+        birthTime: "12:00",
+        timeKnown: true,
+        place: MOSCOW,
+      })
+    ).rejects.toThrow("INVALID_BIRTH_DATE");
+
+    const future = new Date();
+    future.setUTCFullYear(future.getUTCFullYear() + 1);
+    const futureDate = `${future.getUTCFullYear()}-01-15`;
+    await expect(
+      createGuestNatalChart({
+        birthDate: futureDate,
+        birthTime: "12:00",
+        timeKnown: true,
+        place: MOSCOW,
+      })
+    ).rejects.toThrow("INVALID_BIRTH_DATE");
+
+    const after = await query<{ n: string }>(
+      `SELECT count(*)::text AS n FROM natal_guest_charts`
+    );
+    expect(Number(after.rows[0]?.n ?? 0)).toBe(countBefore);
+
+    // Valid IANA timezone still works.
+    const ok = await createGuestNatalChart({
+      birthDate: "1990-01-01",
+      birthTime: "12:00",
+      timeKnown: true,
+      place: MOSCOW,
+    });
+    expect(ok.payload.artifactId).toBeTruthy();
+    expect(ok.payload.timezone).toBe("Europe/Moscow");
+    expect(ok.payload).not.toHaveProperty("birthFingerprint");
   });
 });

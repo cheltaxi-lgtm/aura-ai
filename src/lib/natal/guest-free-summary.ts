@@ -16,7 +16,6 @@ export type NatalGuestFreeHighlight = {
 
 export type NatalGuestSafePayload = {
   artifactId: string;
-  birthFingerprint: string;
   timeKnown: boolean;
   placeLabel: string;
   timezone: string;
@@ -61,9 +60,11 @@ function sanitizeWesternForGuest(
         .join(", ");
     }
   }
-  // Drop heavy / paid-adjacent fields if present.
+  // Drop heavy / paid-adjacent / PII-adjacent fields if present.
   delete copy.interpretations;
   delete copy.interpretation;
+  delete copy.birthFingerprint;
+  delete copy.userId;
   return copy;
 }
 
@@ -152,7 +153,6 @@ export function buildNatalGuestSafePayload(opts: {
 
   return {
     artifactId: opts.artifactId,
-    birthFingerprint: opts.chart.birthFingerprint ?? "",
     timeKnown,
     placeLabel,
     timezone,
@@ -165,7 +165,7 @@ export function buildNatalGuestSafePayload(opts: {
     majorAspects,
     highlights: western ? buildHighlights(western, timeKnown) : [],
     warnings: (opts.chart.warnings ?? []).filter(
-      (w) => !/claim|artifact|engine|hash|token/i.test(w)
+      (w) => !/claim|artifact|engine|hash|token|fingerprint/i.test(w)
     ),
   };
 }
