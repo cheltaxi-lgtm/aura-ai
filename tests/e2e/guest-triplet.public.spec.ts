@@ -4,7 +4,9 @@ const PICKER = "#guest-spread-picker";
 
 async function openFreshLanding(page: Page) {
   await page.goto("/?app=1");
-  await expect(page.getByRole("heading", { name: "Когда нужен разговор с собой" })).toBeVisible();
+  await expect(page.locator(".editorial-starter-pack, .editorial-hero").first()).toBeVisible({
+    timeout: 20_000,
+  });
 }
 
 async function expectPickerOpened(page: Page) {
@@ -28,8 +30,9 @@ test.describe("mobile guest triplet entry points", () => {
   test("starter-pack CTA opens and focuses the actual picker", async ({ page }) => {
     await openFreshLanding(page);
     const button = page.locator(".editorial-starter-pack").getByRole("button", {
-      name: "Сначала открыть 3 карты",
+      name: /Попробовать 3 карты бесплатно/i,
     });
+    await expect(button).toHaveAttribute("data-starter-cta", "try_cards");
     await button.scrollIntoViewIfNeeded();
     await button.click();
     await expectPickerOpened(page);

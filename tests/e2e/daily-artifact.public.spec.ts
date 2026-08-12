@@ -159,8 +159,12 @@ test.describe("daily artifact + landing copy", () => {
     await expect(
       page.getByRole("button", { name: /Попробовать 3 карты бесплатно/i }).first()
     ).toBeVisible();
-    await expect(page.getByText(/Ваш расклад готов/i)).toBeVisible();
-    await expect(page.getByRole("button", { name: /Получить полный разбор/i })).toBeVisible();
+    // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).
+    const starter = page.locator(".editorial-starter-pack");
+    await expect(starter).toBeVisible();
+    await expect(starter).toHaveAttribute("data-starter-state", "before_cards");
+    await expect(starter.getByRole("button", { name: /Попробовать 3 карты бесплатно/i })).toBeVisible();
+    await expect(starter.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.locator("#карты-дня").screenshot({
@@ -176,6 +180,17 @@ test.describe("daily artifact + landing copy", () => {
     await page.locator(".editorial-starter-pack").screenshot({
       path: testInfo.outputPath("starter-guest-mobile.png"),
     });
+  });
+
+  test("Scenario starter: before-cards CTA opens guest picker", async ({ page }) => {
+    await page.goto("/?app=1");
+    const starterCta = page.locator(".editorial-starter-pack [data-starter-cta='try_cards']");
+    await expect(starterCta).toBeVisible();
+    await expect(starterCta).toHaveText(/Попробовать 3 карты бесплатно/i);
+    await starterCta.scrollIntoViewIfNeeded();
+    await starterCta.click();
+    await expect(page.locator("#guest-spread-picker")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
   });
 
   test("Scenario A: opened state CTA opens exact daily artifact identity", async ({ page }) => {

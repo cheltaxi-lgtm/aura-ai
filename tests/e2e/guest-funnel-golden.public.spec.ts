@@ -56,4 +56,14 @@ test.describe("guest funnel golden path (public)", () => {
     await expect(page.getByText(/^После входа$/i)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /Что доступно бесплатно/i })).toBeVisible();
   });
+
+  test("starter before cards never promises full reading", async ({ page }) => {
+    await page.goto("/?app=1");
+    const starter = page.locator(".editorial-starter-pack");
+    await expect(starter).toBeVisible();
+    await expect(starter).toHaveAttribute("data-starter-state", "before_cards");
+    await expect(starter.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
+    await starter.getByRole("button", { name: /Попробовать 3 карты бесплатно/i }).click();
+    await expect(page.locator(PICKER)).toBeVisible({ timeout: 15_000 });
+  });
 });
