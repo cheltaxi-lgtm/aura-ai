@@ -183,7 +183,7 @@ export async function POST(request: NextRequest) {
     userName: normalizePersonDisplayNameOr(profile?.name ?? auth.name, "друг"),
     gender: profile?.gender === "male" ? "Мужской" : profile?.gender === "female" ? "Женский" : undefined,
     zodiac: profile?.zodiac,
-    birthDate: profile?.birthDate,
+    birthDate: profile?.birthDate ?? undefined,
     question,
     today,
     isPaid: true,

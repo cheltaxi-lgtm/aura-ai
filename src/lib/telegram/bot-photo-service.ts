@@ -216,7 +216,7 @@ export async function botPhotoRecognize(input: {
     gender:
       profile?.gender === "male" ? "Мужской" : profile?.gender === "female" ? "Женский" : undefined,
     zodiac: profile?.zodiac,
-    birthDate: profile?.birthDate,
+    birthDate: profile?.birthDate ?? undefined,
     question,
     today,
     isPaid: true,
@@ -523,7 +523,7 @@ export async function botPhotoInterpret(input: {
             ? "Женский"
             : undefined,
       zodiac: profile?.zodiac,
-      birthDate: profile?.birthDate,
+      birthDate: profile?.birthDate ?? undefined,
       birthTime: profile?.birthTime ?? undefined,
       birthCity: profile?.birthCity ?? undefined,
       lifeFocus: profile?.lifeFocus ?? undefined,

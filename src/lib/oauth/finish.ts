@@ -6,9 +6,16 @@ import {
   recordAccountLegalConsent,
 } from "@/lib/accounts";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
-import { getUserById, linkSessionToUser, serializeUserProfile } from "@/lib/users";
+import {
+  ensureMinimalConsumerProfile,
+  getUserById,
+  linkSessionToUser,
+  profileHasBirthData,
+  serializeUserProfile,
+} from "@/lib/users";
 import { sendWelcomeEmail } from "@/lib/email/send";
 import { readSessionClaimCookie } from "@/lib/session-claim";
+import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
 import type { OAuthFinishResult, OAuthMode, OAuthTransaction } from "./types";
 import {
   linkOAuthIdentityToAccount,
@@ -115,12 +122,31 @@ export async function finishOAuthLogin(opts: {
     });
   }
 
-  let profile = null;
-  const profileUserId = await getProfileUserIdForAccount(accountResult.accountId);
-  if (profileUserId) {
-    const row = await getUserById(profileUserId);
-    if (row) profile = serializeUserProfile(row);
+  let profileUserId = await getProfileUserIdForAccount(accountResult.accountId);
+  // New OAuth accounts get a stub consumer profile immediately so guest Tarot
+  // claim is not blocked by birth onboarding (migration 124).
+  if (!profileUserId) {
+    const gender =
+      opts.info.gender === "male" || opts.info.gender === "female"
+        ? opts.info.gender
+        : inferGenderFromFirstName(accountResult.name) ?? "female";
+    const stub = await ensureMinimalConsumerProfile({
+      accountId: accountResult.accountId,
+      name: accountResult.name || "Гость",
+      gender,
+    });
+    profileUserId = stub.id;
+    // Consent may have been recorded before the stub existed — sync age onto profile meta.
+    await recordAccountLegalConsent(accountResult.accountId, {
+      ageConfirmed: true,
+      acceptedTerms: true,
+      marketingConsent: consent?.marketingConsent,
+    });
   }
+
+  let profile = null;
+  const row = profileUserId ? await getUserById(profileUserId) : null;
+  if (row) profile = serializeUserProfile(row);
 
   let sessionLinked = false;
   if (opts.pending.sessionId && profileUserId) {
@@ -150,9 +176,10 @@ export async function finishOAuthLogin(opts: {
     opts.request
   );
 
+  const needsBirth = !profileHasBirthData(row);
   if (accountResult.isNewUser) {
     void sendWelcomeEmail(accountResult.email, accountResult.name || accountResult.email, {
-      needsOnboarding: !profileUserId,
+      needsOnboarding: needsBirth,
     });
   }
 
@@ -164,7 +191,9 @@ export async function finishOAuthLogin(opts: {
     },
     profile,
     sessionLinked,
-    needsProfile: !profileUserId,
+    // Profile row exists (possibly stub) — consumer registration complete.
+    needsProfile: false,
+    needsBirthProfile: needsBirth,
     isNewUser: accountResult.isNewUser,
   };
 }

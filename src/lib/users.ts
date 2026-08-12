@@ -14,7 +14,8 @@ export interface UserRow {
   id: string;
   name: string;
   gender: "male" | "female";
-  birth_date: string;
+  /** Null = stub consumer profile (Tarot/chat ok; natal/matrix/HD blocked). */
+  birth_date: string | null;
   zodiac: string;
   birth_time: string | null;
   birth_city: string | null;
@@ -27,13 +28,28 @@ export interface UserRow {
 export interface CreateUserProfileInput {
   name: string;
   gender: "male" | "female";
-  birthDate: string;
-  zodiac: string;
+  /** Omit / empty → stub profile without birth (migration 124). */
+  birthDate?: string | null;
+  zodiac?: string;
   birthTime?: string;
   birthCity?: string;
   lifeFocus?: LifeFocus;
   mainQuestion?: string;
-  astroMeta?: AstroMeta;
+  astroMeta?: AstroMeta | Record<string, unknown>;
+}
+
+/** True when the profile can power natal / matrix / HD calculations. */
+export function profileHasBirthData(
+  profile: Pick<UserRow, "birth_date"> | { birthDate?: string | null } | null | undefined
+): boolean {
+  if (!profile) return false;
+  const raw =
+    "birth_date" in profile
+      ? profile.birth_date
+      : "birthDate" in profile
+        ? profile.birthDate
+        : null;
+  return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw.trim());
 }
 
 const USER_COLUMNS = `id, name, gender, birth_date::text, zodiac,
@@ -44,6 +60,10 @@ export async function createUserProfileForAccount(
   accountId: string,
   data: CreateUserProfileInput
 ): Promise<UserRow> {
+  const birthDate =
+    typeof data.birthDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(data.birthDate.trim())
+      ? data.birthDate.trim().slice(0, 10)
+      : null;
   return withTransaction(async (client) => {
     const profileResult = await queryClient<UserRow>(
       client,
@@ -56,8 +76,8 @@ export async function createUserProfileForAccount(
       [
         storedProfileName(data.name),
         data.gender,
-        data.birthDate,
-        data.zodiac,
+        birthDate,
+        data.zodiac ?? "",
         data.birthTime ?? null,
         data.birthCity ?? null,
         data.lifeFocus ?? "general",
@@ -100,6 +120,10 @@ export async function createUserProfileForAccount(
 }
 
 export async function createUserProfile(data: CreateUserProfileInput): Promise<UserRow> {
+  const birthDate =
+    typeof data.birthDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(data.birthDate.trim())
+      ? data.birthDate.trim().slice(0, 10)
+      : null;
   const { rows } = await query<UserRow>(
     `INSERT INTO users (
       name, gender, birth_date, zodiac,
@@ -110,8 +134,8 @@ export async function createUserProfile(data: CreateUserProfileInput): Promise<U
     [
       storedProfileName(data.name),
       data.gender,
-      data.birthDate,
-      data.zodiac,
+      birthDate,
+      data.zodiac ?? "",
       data.birthTime ?? null,
       data.birthCity ?? null,
       data.lifeFocus ?? "general",
@@ -120,6 +144,41 @@ export async function createUserProfile(data: CreateUserProfileInput): Promise<U
     ]
   );
   return rows[0];
+}
+
+/**
+ * Idempotent: ensure the account has a consumer profile row so Tarot / claim /
+ * chat work without birth onboarding. Does nothing if profile already linked.
+ */
+export async function ensureMinimalConsumerProfile(opts: {
+  accountId: string;
+  name: string;
+  gender?: "male" | "female";
+}): Promise<UserRow> {
+  const existingId = await query<{ profile_user_id: string | null }>(
+    `SELECT profile_user_id FROM user_accounts WHERE id = $1`,
+    [opts.accountId]
+  );
+  const linked = existingId.rows[0]?.profile_user_id;
+  if (linked) {
+    const row = await getUserById(linked);
+    if (row) return row;
+  }
+  // Stubs are only created after explicit 18+/terms consent (register/OAuth).
+  // Persist ageConfirmed so chat/reading age gates accept null birth_date.
+  const now = new Date().toISOString();
+  return createUserProfileForAccount(opts.accountId, {
+    name: opts.name,
+    gender: opts.gender ?? "female",
+    birthDate: null,
+    zodiac: "",
+    lifeFocus: "general",
+    astroMeta: {
+      stubProfile: true,
+      ageConfirmed: true,
+      ageConfirmedAt: now,
+    },
+  });
 }
 
 export async function getUserById(id: string): Promise<UserRow | null> {
@@ -137,7 +196,16 @@ export async function updateUserProfile(
   const current = await getUserById(id);
   if (!current) return null;
 
-  const astroMeta = data.astroMeta ?? buildAstroMeta(data.birthDate) ?? current.astro_meta;
+  const birthDate =
+    typeof data.birthDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(data.birthDate.trim())
+      ? data.birthDate.trim().slice(0, 10)
+      : data.birthDate === null
+        ? null
+        : current.birth_date;
+  const astroMeta =
+    data.astroMeta ??
+    (birthDate ? buildAstroMeta(birthDate) : null) ??
+    current.astro_meta;
 
   const { rows } = await query<UserRow>(
     `UPDATE users SET
@@ -156,8 +224,8 @@ export async function updateUserProfile(
       id,
       storedProfileName(data.name),
       data.gender,
-      data.birthDate,
-      data.zodiac,
+      birthDate,
+      data.zodiac ?? current.zodiac,
       data.birthTime ?? null,
       data.birthCity ?? null,
       data.lifeFocus ?? "general",

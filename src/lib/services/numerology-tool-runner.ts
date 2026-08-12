@@ -96,7 +96,7 @@ export async function runNumerologTool(
   const engineParams = {
     characterId: "numerolog",
     userName: profile?.name,
-    birthDate: profile?.birthDate,
+    birthDate: profile?.birthDate ?? undefined,
     profileName: profile?.name,
     gender: profile?.gender ?? null,
     lastUserMessage: userMessage,

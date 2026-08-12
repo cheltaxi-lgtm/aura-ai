@@ -288,7 +288,7 @@ export class ChatOrchestrator {
                 ? "female"
                 : "",
           zodiac: serverProfile.zodiac,
-          birthDate: serverProfile.birth_date,
+          birthDate: serverProfile.birth_date ?? undefined,
           birthTime: serverProfile.birth_time ?? undefined,
           birthCity: serverProfile.birth_city ?? undefined,
           lifeFocus: serverProfile.life_focus ?? undefined,

@@ -4,12 +4,12 @@
 CREATE EXTENSION IF NOT EXISTS "pgcrypto";
 CREATE EXTENSION IF NOT EXISTS vector;
 
--- === SPEC: Users (РїСЂРѕС„РёР»СЊ РѕРЅР±РѕСЂРґРёРЅРіР°) ===
+-- === SPEC: Users (РїСЂРѕС„РёР»СЊ; birth_date optional for stub consumer accounts) ===
 CREATE TABLE IF NOT EXISTS users (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   name TEXT NOT NULL,
   gender TEXT NOT NULL CHECK (gender IN ('male', 'female')),
-  birth_date DATE NOT NULL,
+  birth_date DATE,
   zodiac TEXT NOT NULL,
   birth_time TIME,
   birth_city TEXT,

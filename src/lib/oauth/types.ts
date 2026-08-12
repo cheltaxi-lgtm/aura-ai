@@ -40,7 +40,10 @@ export interface OAuthFinishResult {
   account: { id: string; email: string; name: string };
   profile: ReturnType<typeof import("@/lib/users").serializeUserProfile> | null;
   sessionLinked: boolean;
+  /** True only when no profile row is linked (legacy); stub profiles count as complete. */
   needsProfile: boolean;
+  /** True when birth_date is missing — natal/matrix/HD need progressive completion. */
+  needsBirthProfile?: boolean;
   isNewUser: boolean;
 }
 

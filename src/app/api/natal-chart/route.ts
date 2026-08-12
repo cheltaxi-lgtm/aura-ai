@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   profileAuthFailureResponse,
-  resolveProfileUserContext,
+  resolveBirthProfileUserContext,
 } from "@/lib/require-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
 import {
@@ -29,7 +29,7 @@ export async function GET() {
     return NextResponse.json({ enabled: false, chart: null });
   }
 
-  const resolved = await resolveProfileUserContext();
+  const resolved = await resolveBirthProfileUserContext();
   if (!resolved.ok) {
     return profileAuthFailureResponse(resolved.reason);
   }
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
 
-  const resolved = await resolveProfileUserContext();
+  const resolved = await resolveBirthProfileUserContext();
   if (!resolved.ok) {
     return profileAuthFailureResponse(resolved.reason);
   }

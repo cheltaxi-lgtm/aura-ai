@@ -52,9 +52,13 @@ function isBirthDateAdult(birthDate: string): boolean {
 type AgeMeta = Record<string, unknown> | AstroMeta | null | undefined;
 
 /** Server-side: user eligible for 18+ content (explicit consent or birth date). */
-export function isUserAgeEligible(user: { birth_date: string; astro_meta: AgeMeta }): boolean {
+export function isUserAgeEligible(user: {
+  birth_date: string | null;
+  astro_meta: AgeMeta;
+}): boolean {
   const meta = user.astro_meta as { ageConfirmed?: boolean } | null | undefined;
   if (meta?.ageConfirmed === true) return true;
+  if (!user.birth_date) return false;
   return isBirthDateAdult(user.birth_date);
 }
 

@@ -136,7 +136,11 @@ export async function getOrComputeNatalChart(userId: string): Promise<NatalChart
   const user = await getUserById(userId);
   if (!user?.birth_date) return null;
 
-  const fingerprint = fingerprintFromUser(user);
+  const fingerprint = fingerprintFromUser({
+    birth_date: user.birth_date,
+    birth_time: user.birth_time,
+    birth_city: user.birth_city,
+  });
   const stored = await getStoredNatalChart(userId);
   const settings = await getSetting("natalChart");
   const expectedEphemeris =

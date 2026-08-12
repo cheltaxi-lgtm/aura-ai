@@ -9,11 +9,16 @@ import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { getZodiacFromDate, formatZodiacLabel } from "@/utils/zodiac";
-import { linkSessionToUser, serializeUserProfile, type UserRow } from "@/lib/users";
+import {
+  linkSessionToUser,
+  serializeUserProfile,
+  type UserRow,
+} from "@/lib/users";
 import { sendWelcomeEmail } from "@/lib/email/send";
 import { mergeConsentIntoAstroMeta } from "@/lib/registration-consent";
 import { readSessionClaimCookie } from "@/lib/session-claim";
 import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
+import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
 
 export async function POST(request: NextRequest) {
   try {
@@ -89,17 +94,24 @@ export async function POST(request: NextRequest) {
       marketingConsentAt: marketingConsent ? consentNow : null,
     };
 
+    // Always create a consumer profile at registration — birth is optional.
+    // Stub (null birth_date) unblocks Tarot claim; natal/matrix/HD still require birth.
     const hasAstroProfile = Boolean(gender && birthDate);
+    const stubGender: "male" | "female" =
+      gender === "male" || gender === "female"
+        ? gender
+        : inferGenderFromFirstName(trimmedName) ?? "female";
+
     let profilePayload: {
       gender: "male" | "female";
-      birthDate: string;
+      birthDate: string | null;
       zodiac: string;
       birthTime?: string;
       birthCity?: string;
       lifeFocus?: string;
       mainQuestion?: string;
       astroMeta: Record<string, unknown>;
-    } | null = null;
+    };
 
     if (hasAstroProfile) {
       const sign = getZodiacFromDate(String(birthDate));
@@ -109,7 +121,7 @@ export async function POST(request: NextRequest) {
       }
 
       profilePayload = {
-        gender,
+        gender: stubGender,
         birthDate: String(birthDate),
         zodiac: zodiac || formatZodiacLabel(sign),
         birthTime,
@@ -118,6 +130,17 @@ export async function POST(request: NextRequest) {
         mainQuestion,
         astroMeta: mergeConsentIntoAstroMeta(
           baseAstroMeta as unknown as Record<string, unknown>,
+          accountConsent
+        ),
+      };
+    } else {
+      profilePayload = {
+        gender: stubGender,
+        birthDate: null,
+        zodiac: "",
+        lifeFocus: "general",
+        astroMeta: mergeConsentIntoAstroMeta(
+          { stubProfile: true },
           accountConsent
         ),
       };
@@ -146,44 +169,38 @@ export async function POST(request: NextRequest) {
         ]
       );
       const createdAccount = accountResult.rows[0];
-      let createdProfile: UserRow | null = null;
-
-      if (profilePayload) {
-        const profileResult = await queryClient<UserRow>(
-          client,
-          `INSERT INTO users (
-             name, gender, birth_date, zodiac,
-             birth_time, birth_city, life_focus, main_question, astro_meta
-           )
-           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
-           RETURNING id, name, gender, birth_date::text, zodiac,
-             birth_time::text, birth_city, life_focus, main_question, astro_meta, created_at`,
-          [
-            trimmedName,
-            profilePayload.gender,
-            profilePayload.birthDate,
-            profilePayload.zodiac,
-            profilePayload.birthTime ?? null,
-            profilePayload.birthCity ?? null,
-            profilePayload.lifeFocus ?? "general",
-            profilePayload.mainQuestion ?? null,
-            JSON.stringify(profilePayload.astroMeta),
-          ]
-        );
-        createdProfile = profileResult.rows[0];
-        await queryClient(
-          client,
-          "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
-          [createdAccount.id, createdProfile.id]
-        );
-      }
+      const profileResult = await queryClient<UserRow>(
+        client,
+        `INSERT INTO users (
+           name, gender, birth_date, zodiac,
+           birth_time, birth_city, life_focus, main_question, astro_meta
+         )
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
+         RETURNING id, name, gender, birth_date::text, zodiac,
+           birth_time::text, birth_city, life_focus, main_question, astro_meta, created_at`,
+        [
+          trimmedName,
+          profilePayload.gender,
+          profilePayload.birthDate,
+          profilePayload.zodiac,
+          profilePayload.birthTime ?? null,
+          profilePayload.birthCity ?? null,
+          profilePayload.lifeFocus ?? "general",
+          profilePayload.mainQuestion ?? null,
+          JSON.stringify(profilePayload.astroMeta),
+        ]
+      );
+      const createdProfile = profileResult.rows[0]!;
+      await queryClient(
+        client,
+        "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
+        [createdAccount.id, createdProfile.id]
+      );
 
       return { account: createdAccount, profile: createdProfile };
     });
 
-    if (profile) {
-      await grantStarterRunesIfNeeded(profile.id);
-    }
+    await grantStarterRunesIfNeeded(profile.id);
 
     let sessionLinked = false;
     if (sessionId && profile) {
@@ -208,16 +225,19 @@ export async function POST(request: NextRequest) {
       request
     );
 
+    const needsBirthProfile = !profile.birth_date;
     void sendWelcomeEmail(account.email, account.name || account.email, {
-      needsOnboarding: !profile,
+      needsOnboarding: needsBirthProfile,
     });
 
     return NextResponse.json({
       ok: true,
       user: { id: account.id, email: account.email, name: account.name },
-      profile: profile ? serializeUserProfile(profile) : null,
+      profile: serializeUserProfile(profile),
       sessionLinked,
-      needsProfile: !profile,
+      // Account+profile row exist — registration complete for Tarot.
+      needsProfile: false,
+      needsBirthProfile,
     });
   } catch (error) {
     if ((error as { code?: string })?.code === "23505") {

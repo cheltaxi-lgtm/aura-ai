@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import {
   profileAuthFailureResponse,
-  resolveProfileUserContext,
+  resolveBirthProfileUserContext,
 } from "@/lib/require-auth";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (workerUserId) {
     ctx = { profileUserId: workerUserId };
   } else {
-    const resolved = await resolveProfileUserContext();
+    const resolved = await resolveBirthProfileUserContext();
     if (!resolved.ok) return profileAuthFailureResponse(resolved.reason);
     ctx = { profileUserId: resolved.profileUserId };
   }

@@ -30,7 +30,7 @@ import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
 import {
   profileAuthFailureResponse,
-  resolveProfileUserContext,
+  resolveBirthProfileUserContext,
 } from "@/lib/require-auth";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
   if (workerUserId) {
     auth = { profileUserId: workerUserId };
   } else {
-    const resolved = await resolveProfileUserContext();
+    const resolved = await resolveBirthProfileUserContext();
     if (!resolved.ok) return profileAuthFailureResponse(resolved.reason);
     auth = { profileUserId: resolved.profileUserId };
   }

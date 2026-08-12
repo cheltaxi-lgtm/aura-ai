@@ -166,11 +166,13 @@ export async function GET(request: NextRequest) {
     safe("dailyReadings", () => getCabinetDailyReadings(profileUserId), [], errors),
   ]);
 
-  const needsOnboarding =
+  // Progressive birth profile — does not block Tarot or cabinet access.
+  const needsBirthProfile =
     !profile.birthDate || !(profile.birthCity || "").trim();
 
   return NextResponse.json({
-    needsOnboarding,
+    needsOnboarding: needsBirthProfile,
+    needsBirthProfile,
     profile,
     stats,
     achievements,

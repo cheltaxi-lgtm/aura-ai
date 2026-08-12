@@ -221,7 +221,7 @@ export async function POST(request: NextRequest) {
       characterKey: charKey,
       name: user.name,
       zodiac: user.zodiac,
-      birthDate: user.birth_date,
+      birthDate: user.birth_date ?? "",
       localDate,
       spreadId,
     });

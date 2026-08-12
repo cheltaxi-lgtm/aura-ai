@@ -325,7 +325,7 @@ export async function POST(request: NextRequest) {
             ? "Женский"
             : undefined,
       zodiac: profile?.zodiac,
-      birthDate: profile?.birthDate,
+      birthDate: profile?.birthDate ?? undefined,
       birthTime: profile?.birthTime ?? undefined,
       birthCity: profile?.birthCity ?? undefined,
       lifeFocus: profile?.lifeFocus ?? undefined,

@@ -13,7 +13,8 @@ import {
 } from "@/lib/guest-triplet-receipt-db";
 import { hashGuestResumeToken } from "@/lib/guest-triplet-receipt";
 import { requireUserAuth } from "@/lib/require-auth";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { findUserById, getProfileUserIdForAccount } from "@/lib/accounts";
+import { ensureMinimalConsumerProfile } from "@/lib/users";
 import {
   clearSessionClaimCookie,
   readSessionClaimCookie,
@@ -40,12 +41,16 @@ export async function POST(request: NextRequest) {
   const limited = await enforceGuestTripletClaimRateLimit(auth.sub);
   if (limited) return limited;
 
-  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  let profileUserId = await getProfileUserIdForAccount(auth.sub);
   if (!profileUserId) {
-    return NextResponse.json(
-      { error: "Завершите профиль: укажите дату и город рождения.", code: "NEEDS_PROFILE" },
-      { status: 403 }
-    );
+    // Legacy accounts without a profile row: create a stub so Tarot claim works.
+    // Birth is NOT required for guest full reading.
+    const account = await findUserById(auth.sub);
+    const stub = await ensureMinimalConsumerProfile({
+      accountId: auth.sub,
+      name: account?.name || auth.name || "Гость",
+    });
+    profileUserId = stub.id;
   }
 
   const token = await readGuestResumeCookie(request);

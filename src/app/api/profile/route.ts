@@ -208,7 +208,10 @@ export async function PATCH(request: NextRequest) {
       return NextResponse.json({ error: "Укажите дату рождения" }, { status: 400 });
     }
 
-    const effectiveBirthDate = birthDate ?? profile!.birth_date;
+    const effectiveBirthDate = (birthDate ?? profile?.birth_date ?? "").trim();
+    if (!effectiveBirthDate) {
+      return NextResponse.json({ error: "Укажите дату рождения" }, { status: 400 });
+    }
     const sign = getZodiacFromDate(effectiveBirthDate);
     const consent = (await getAccountConsentSnapshot(auth.sub)) ?? {
       termsAcceptedAt: null,

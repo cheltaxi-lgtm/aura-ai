@@ -421,7 +421,7 @@ export async function getExistingDailyReading(
       const repaired = await resolveDailyReadingText(charKey, reading, {
         name: normalizePersonDisplayNameOr(user.name, "друг"),
         zodiac: user.zodiac,
-        birthDate: user.birth_date,
+        birthDate: user.birth_date ?? "",
         dateRu,
         cards,
         spreadId: storedSpreadId,
