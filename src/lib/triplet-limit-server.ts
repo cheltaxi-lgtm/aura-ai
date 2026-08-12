@@ -7,18 +7,20 @@ function laterIso(a: string | null | undefined, b: string | null | undefined): s
   return new Date(a).getTime() >= new Date(b).getTime() ? a : b;
 }
 
+/**
+ * Dedicated daily entitlement anchor only.
+ * Legacy lastTripletDrawAt is ignored: it was polluted by ordinary onboarding triplets
+ * and must never be standalone daily authority.
+ */
 function dailyAnchorFromMeta(meta: Record<string, unknown> | null | undefined): string | null {
   if (!meta) return null;
-  const primary =
-    typeof meta.lastDailyTripletDrawAt === "string" && meta.lastDailyTripletDrawAt.trim()
-      ? meta.lastDailyTripletDrawAt.trim()
-      : null;
-  // Legacy: older daily saves wrote lastTripletDrawAt (now daily-only write target is lastDaily*).
-  const legacy =
-    typeof meta.lastTripletDrawAt === "string" && meta.lastTripletDrawAt.trim()
-      ? meta.lastTripletDrawAt.trim()
-      : null;
-  return laterIso(primary, legacy);
+  if (
+    typeof meta.lastDailyTripletDrawAt === "string" &&
+    meta.lastDailyTripletDrawAt.trim()
+  ) {
+    return meta.lastDailyTripletDrawAt.trim();
+  }
+  return null;
 }
 
 /**

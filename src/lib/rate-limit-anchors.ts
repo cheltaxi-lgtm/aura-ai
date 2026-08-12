@@ -51,18 +51,16 @@ export async function preserveUserRateLimitsBeforePurge(
       : String(historyAt)
     : null;
   const meta = userRes.rows[0]?.astro_meta ?? {};
+  // Never promote ambiguous legacy lastTripletDrawAt into dedicated daily authority.
   const primaryAnchor =
     typeof meta.lastDailyTripletDrawAt === "string" && meta.lastDailyTripletDrawAt.trim()
       ? meta.lastDailyTripletDrawAt.trim()
       : null;
-  const legacyAnchor =
-    typeof meta.lastTripletDrawAt === "string" && meta.lastTripletDrawAt.trim()
-      ? meta.lastTripletDrawAt.trim()
-      : null;
-  const tripletIso = laterIso(historyIso, laterIso(primaryAnchor, legacyAnchor));
-  if (tripletIso) {
-    patch.lastDailyTripletDrawAt = tripletIso;
-    patch.lastTripletDrawAt = tripletIso;
+  const dailyIso = laterIso(historyIso, primaryAnchor);
+  if (dailyIso) {
+    patch.lastDailyTripletDrawAt = dailyIso;
+    // Mirror for transitional client readers only — not used as entitlement authority.
+    patch.lastTripletDrawAt = dailyIso;
   }
 
   const existingIntro =

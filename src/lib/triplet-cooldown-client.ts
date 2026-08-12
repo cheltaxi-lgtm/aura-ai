@@ -1,4 +1,4 @@
-import { effectiveTripletCooldown, type TripletCooldownStatus } from "@/lib/triplet-limit";
+import { type TripletCooldownStatus } from "@/lib/triplet-limit";
 
 const LOCAL_TRIPLET_AT_KEY = "aura_last_triplet_at";
 
@@ -31,22 +31,16 @@ export function clearLocalTripletDrawAt(): void {
   }
 }
 
+/**
+ * Daily entitlement is server-authoritative.
+ * Legacy profile/local lastTripletDrawAt may be polluted by ordinary triplets —
+ * never let those override server.allowed.
+ */
 export function mergeTripletCooldownWithAnchors(
   server: TripletCooldownStatus | null | undefined,
-  profileAnchor?: string | null
+  _profileAnchor?: string | null
 ): TripletCooldownStatus {
-  // After server-side reset there is no DB anchor; stale local/profile anchors must not block.
-  if (
-    server &&
-    !server.lastTripletAt &&
-    server.allowed &&
-    !server.nextAvailableAt
-  ) {
-    return server;
-  }
-  return effectiveTripletCooldown(
-    server?.lastTripletAt,
-    profileAnchor,
-    readLocalTripletDrawAt()
-  );
+  if (server) return server;
+  // Before first profile sync: do not invent a daily cooldown from polluted local anchors.
+  return { allowed: true, nextAvailableAt: null, lastTripletAt: null };
 }

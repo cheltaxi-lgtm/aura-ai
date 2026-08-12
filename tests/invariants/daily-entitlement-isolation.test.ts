@@ -52,6 +52,9 @@ describe("daily marker semantics (unit)", () => {
     expect(src).toMatch(/context_data->>'type' = 'daily_triplet'/);
     expect(src).not.toMatch(/character_name = 'triplet'/);
     expect(src).not.toMatch(/IN \('triplet', 'daily_triplet'\)/);
+    // Option A: legacy lastTripletDrawAt is not entitlement authority.
+    expect(src).toMatch(/lastDailyTripletDrawAt/);
+    expect(src).toMatch(/Legacy lastTripletDrawAt is ignored/);
   });
 
   it("onboarding ordinary path no longer records daily anchor", () => {
@@ -72,7 +75,24 @@ describe("daily marker semantics (unit)", () => {
     // daily_cards_completed only after successful daily save, not ordinary catalog paths.
     expect(block).not.toMatch(/fetch\("\/api\/onboarding"/);
   });
+
+  it("client merge trusts server and ignores polluted profile/local anchors", () => {
+    const src = readFileSync(resolve("src/lib/triplet-cooldown-client.ts"), "utf8");
+    expect(src).toMatch(/if \(server\) return server/);
+    expect(src).toMatch(/never let those override server\.allowed/);
+  });
 });
+
+async function setLegacyPollutedAnchor(userId: string, at = new Date().toISOString()) {
+  await query(
+    `UPDATE users SET astro_meta = (
+       COALESCE(astro_meta, '{}'::jsonb)
+       - 'lastDailyTripletDrawAt'
+     ) || jsonb_build_object('lastTripletDrawAt', $2::text)
+     WHERE id = $1`,
+    [userId, at]
+  );
+}
 
 describe.skipIf(!hasTestDb)("daily entitlement isolation (db)", () => {
   installDbLifecycle();
@@ -80,6 +100,77 @@ describe.skipIf(!hasTestDb)("daily entitlement isolation (db)", () => {
   it("TEST1: ordinary triplet does not consume daily", async () => {
     const user = await createTestUser();
     await createOrdinaryTriplet(user.id);
+    const cooldown = await checkTripletCooldown(user.id);
+    expect(cooldown.allowed).toBe(true);
+  });
+
+  it("LEGACY1: polluted lastTripletDrawAt + ordinary history → daily available", async () => {
+    const user = await createTestUser();
+    await createOrdinaryTriplet(user.id);
+    await setLegacyPollutedAnchor(user.id);
+    const { rows } = await query<{ astro_meta: Record<string, unknown> }>(
+      `SELECT astro_meta FROM users WHERE id = $1`,
+      [user.id]
+    );
+    expect(rows[0]!.astro_meta.lastTripletDrawAt).toBeTruthy();
+    expect(rows[0]!.astro_meta.lastDailyTripletDrawAt).toBeFalsy();
+    const cooldown = await checkTripletCooldown(user.id);
+    expect(cooldown.allowed).toBe(true);
+  });
+
+  it("LEGACY2: polluted lastTripletDrawAt alone without history → daily available", async () => {
+    const user = await createTestUser();
+    await setLegacyPollutedAnchor(user.id);
+    const cooldown = await checkTripletCooldown(user.id);
+    expect(cooldown.allowed).toBe(true);
+  });
+
+  it("LEGACY3: dedicated lastDailyTripletDrawAt without history → daily denied", async () => {
+    const user = await createTestUser();
+    await recordTripletDrawAnchor(user.id);
+    const { rows } = await query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM history
+       WHERE user_id = $1 AND context_data->>'type' = 'daily_triplet'`,
+      [user.id]
+    );
+    expect(Number(rows[0]!.n)).toBe(0);
+    const cooldown = await checkTripletCooldown(user.id);
+    expect(cooldown.allowed).toBe(false);
+  });
+
+  it("LEGACY4: explicit daily_triplet history without dedicated anchor → denied", async () => {
+    const user = await createTestUser();
+    await createHistoryEntry({
+      userId: user.id,
+      characterName: "triplet",
+      contextData: {
+        type: "daily_triplet",
+        spreadType: "daily",
+        tarotCards: sampleCards(),
+        masterId: "veronika",
+        deckSystem: "tarot-veronika",
+      },
+    });
+    // Clear any accidental anchors.
+    await query(
+      `UPDATE users SET astro_meta = COALESCE(astro_meta, '{}'::jsonb)
+         - 'lastDailyTripletDrawAt' - 'lastTripletDrawAt'
+       WHERE id = $1`,
+      [user.id]
+    );
+    const cooldown = await checkTripletCooldown(user.id);
+    expect(cooldown.allowed).toBe(false);
+  });
+
+  it("LEGACY5: deleting ordinary history does not mint daily anchor", async () => {
+    const user = await createTestUser();
+    const ordinary = await createOrdinaryTriplet(user.id);
+    await deleteHistoryEntry(user.id, ordinary.id);
+    const { rows } = await query<{ astro_meta: Record<string, unknown> }>(
+      `SELECT astro_meta FROM users WHERE id = $1`,
+      [user.id]
+    );
+    expect(rows[0]!.astro_meta.lastDailyTripletDrawAt).toBeFalsy();
     const cooldown = await checkTripletCooldown(user.id);
     expect(cooldown.allowed).toBe(true);
   });

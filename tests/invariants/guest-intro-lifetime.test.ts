@@ -194,7 +194,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     await query(
       `UPDATE users SET astro_meta = jsonb_set(
          COALESCE(astro_meta, '{}'::jsonb),
-         '{lastTripletDrawAt}',
+         '{lastDailyTripletDrawAt}',
          to_jsonb($2::text),
          true
        ) WHERE id = $1`,

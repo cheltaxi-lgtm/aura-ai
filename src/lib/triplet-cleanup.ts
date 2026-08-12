@@ -29,13 +29,11 @@ async function preserveTripletDrawAnchor(userId: string): Promise<void> {
     [userId]
   );
   const meta = userRows[0]?.astro_meta ?? {};
+  // Dedicated field only — never promote polluted legacy lastTripletDrawAt.
   const existing =
-    (typeof meta.lastDailyTripletDrawAt === "string" && meta.lastDailyTripletDrawAt.trim()
+    typeof meta.lastDailyTripletDrawAt === "string" && meta.lastDailyTripletDrawAt.trim()
       ? meta.lastDailyTripletDrawAt.trim()
-      : null) ||
-    (typeof meta.lastTripletDrawAt === "string" && meta.lastTripletDrawAt.trim()
-      ? meta.lastTripletDrawAt.trim()
-      : null);
+      : null;
 
   const { rows } = await query<{ max_at: Date | null }>(
     `SELECT MAX(created_at) AS max_at FROM history

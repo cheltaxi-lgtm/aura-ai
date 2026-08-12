@@ -62,12 +62,28 @@ describe.skipIf(!hasTestDb)("daily routing + home recap (db)", () => {
     expect(daily.cardsKey).toBe(tarotCardsKey(cards));
   });
 
-  it("TEST6: legacy lastTripletDrawAt without daily artifact → exists false", async () => {
+  it("TEST6: dedicated daily anchor without artifact → cooldown denied, exists false", async () => {
     const user = await createTestUser();
-    // Simulate pre-separation guest claim that stamped daily cooldown only.
     await recordTripletDrawAnchor(user.id, new Date().toISOString());
     const cooldown = await checkTripletCooldown(user.id);
     expect(cooldown.allowed).toBe(false);
+    const daily = await resolveCurrentDailyCards(user.id);
+    expect(daily.exists).toBe(false);
+  });
+
+  it("TEST6b: polluted legacy lastTripletDrawAt alone does not block daily", async () => {
+    const user = await createTestUser();
+    await query(
+      `UPDATE users SET astro_meta = jsonb_set(
+         COALESCE(astro_meta, '{}'::jsonb),
+         '{lastTripletDrawAt}',
+         to_jsonb($2::text),
+         true
+       ) WHERE id = $1`,
+      [user.id, new Date().toISOString()]
+    );
+    const cooldown = await checkTripletCooldown(user.id);
+    expect(cooldown.allowed).toBe(true);
     const daily = await resolveCurrentDailyCards(user.id);
     expect(daily.exists).toBe(false);
   });
