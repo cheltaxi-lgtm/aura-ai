@@ -123,6 +123,13 @@ export function trackPersonalZovusEvent(
   reachGoal(event, payload);
 }
 
+/** Cross-product next-step CTA — product/source/state only, never PII. */
+export function trackCrossProductClick(params: ProductFunnelParams): void {
+  const clean = sanitizeProductFunnelParams(params as unknown as Record<string, unknown>);
+  if (!clean) return;
+  reachGoal("cross_product_click", clean);
+}
+
 /**
  * Infer product from public path for shared paywall CTAs.
  * No query parsing (may contain PII).

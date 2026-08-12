@@ -18,6 +18,7 @@ import {
   isAgeGateConfirmed,
 } from "@/lib/age-gate";
 import LegalDocLink from "@/components/legal/LegalDocLink";
+import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
@@ -595,6 +596,8 @@ export default function DestinyMatrixPreview() {
               {summary.denseTeaser || summary.portrait}
             </pre>
           </div>
+
+          <CrossProductNextSteps context="matrix" />
 
           {isLoggedIn && skyProfileComplete === false ? (
             <div className="rounded-2xl border border-sky-400/25 bg-sky-500/[0.06] p-4">

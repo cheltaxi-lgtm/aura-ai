@@ -20,6 +20,7 @@ import {
   readHdClaimToken,
   storeHdClaimToken,
 } from "./hd-claim";
+import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 
@@ -545,6 +546,7 @@ export default function HdCalculator({
         </div>
         <HdChartSlot slotKey={result.id}>
           <HdChartView payload={result} />
+          <CrossProductNextSteps context="human_design" />
           <HdReportPanel
             chartId={result.id}
             chart={result.chart}

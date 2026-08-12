@@ -8,6 +8,7 @@ import {
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { PRICING } from "@/lib/config/pricing";
@@ -475,6 +476,13 @@ export default function MatrixCompatibilityPreview() {
               ))}
             </ul>
           </div>
+
+          <CrossProductNextSteps
+            context="matrix_compatibility"
+            onAction={(action) => {
+              if (action === "pair_full") void openFullReport();
+            }}
+          />
 
           <div className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
             <p className="text-sm font-medium text-aura-gold">Полный разбор пары пока скрыт</p>

@@ -9,6 +9,7 @@ import {
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import type { NatalGuestSafePayload } from "@/lib/natal/guest-free-summary";
@@ -511,6 +512,8 @@ export default function NatalGuestCalculator() {
               </ul>
             </div>
           ) : null}
+
+          <CrossProductNextSteps context="natal" />
 
           <div className="rounded-2xl border border-aura-gold/25 bg-gradient-to-br from-aura-gold/10 to-transparent p-5">
             <h4 className="font-display text-xl text-white">Получить полный разбор</h4>
