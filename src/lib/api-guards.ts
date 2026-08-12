@@ -421,3 +421,39 @@ export async function enforceGuestTripletClaimRateLimit(
   }
   return null;
 }
+
+/** Guest Natal calc: IP-bound (pre-auth acquisition). */
+export async function enforceNatalGuestCalcRateLimit(
+  ip: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("natal_guest_calc", ip),
+    8,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много расчётов. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}
+
+/** Guest Natal claim: per account. */
+export async function enforceNatalGuestClaimRateLimit(
+  accountId: string
+): Promise<NextResponse | null> {
+  const { allowed, retryAfterSec } = await checkRateLimit(
+    rateLimitKey("natal_guest_claim", accountId),
+    20,
+    60 * 60 * 1000
+  );
+  if (!allowed) {
+    return NextResponse.json(
+      { error: "rate_limit", message: "Слишком много попыток. Попробуйте позже." },
+      { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 3600) } }
+    );
+  }
+  return null;
+}

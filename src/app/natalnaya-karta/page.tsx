@@ -7,6 +7,7 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import NatalLandingCtas from "@/components/seo/NatalLandingCtas";
+import NatalGuestCalculator from "@/components/natal/NatalGuestCalculator";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
 const PATH = "/natalnaya-karta";
@@ -45,13 +46,13 @@ const HOW_IT_WORKS = [
   },
   {
     step: "2",
-    title: "Построение карты",
-    text: "Сервис считает положения планет и строит колесо — без ручного ввода эфемерид.",
+    title: "Карта на этой странице",
+    text: "Расчёт бесплатный и до регистрации: колесо и основные акценты появляются сразу.",
   },
   {
     step: "3",
-    title: "Разбор и следующий шаг",
-    text: "Полная трактовка, прогноз или совместимость — с сохранением в кабинете и вопросами мастеру.",
+    title: "Полный разбор в кабинете",
+    text: "После входа сохраняется эта же карта — дальше трактовка, прогноз и совместимость.",
   },
 ] as const;
 
@@ -70,7 +71,7 @@ const FAQ = [
   },
   {
     q: "Можно ли рассчитать натальную карту онлайн бесплатно?",
-    a: "В Zovus карта строится в личном кабинете после входа. Базовый доступ к астрологическому пространству открывается с аккаунтом; полная трактовка и прогнозы — по тарифу рун сервиса.",
+    a: "Да — на этой странице можно построить персональную карту до регистрации. Полная трактовка, прогноз и совместимость открываются после входа и списываются по тарифу рун сервиса.",
   },
   {
     q: "Что лучше — западная астрология или джйотиш?",
@@ -166,6 +167,8 @@ export default function NatalnayaKartaPage() {
       </p>
 
       <NatalLandingCtas placement="hero" />
+
+      <NatalGuestCalculator />
 
       <SeoSection title="Что вы получите">
         <div className="grid gap-3 sm:grid-cols-2">

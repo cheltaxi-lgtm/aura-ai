@@ -35,7 +35,22 @@ export async function computeNatalChartRecord(
   });
 
   let place: NatalPlace | null = null;
-  if (input.birthCity?.trim()) {
+  if (
+    input.place &&
+    typeof input.place.latitude === "number" &&
+    typeof input.place.longitude === "number" &&
+    typeof input.place.timezone === "string" &&
+    input.place.timezone.trim() &&
+    typeof input.place.label === "string" &&
+    input.place.label.trim()
+  ) {
+    place = {
+      label: input.place.label.trim(),
+      latitude: input.place.latitude,
+      longitude: input.place.longitude,
+      timezone: input.place.timezone.trim(),
+    };
+  } else if (input.birthCity?.trim()) {
     const resolved = await resolveBirthPlace(input.birthCity.trim());
     if (resolved) {
       place = {
@@ -108,7 +123,9 @@ export async function computeNatalChartRecord(
     }
 
     if (!effectiveTimeKnown) {
-      warnings.push("Точное время неизвестно — асцендент и дома приблизительны (полдень).");
+      warnings.push(
+        "Точное время неизвестно — асцендент, MC и дома не считаются достоверными."
+      );
     }
   } else {
     warnings.push("Полная карта недоступна без места рождения.");

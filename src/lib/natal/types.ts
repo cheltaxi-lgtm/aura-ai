@@ -22,6 +22,8 @@ export interface NatalChartInput {
   birthTime?: string | null;
   birthCity?: string | null;
   timeKnown: boolean;
+  /** Pre-resolved place (guest autocomplete / claim adopt). Skips geocode when set. */
+  place?: NatalPlace | null;
 }
 
 export interface NatalChartRecord {
