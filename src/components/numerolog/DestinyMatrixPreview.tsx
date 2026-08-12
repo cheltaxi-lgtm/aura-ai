@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
@@ -22,8 +22,41 @@ import { trackSeoEvent } from "@/lib/seo/metrika";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 import MatrixSubjectPicker from "@/components/numerolog/MatrixSubjectPicker";
+import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
 
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
+const RESUME_RETURN = "/numerology/destiny-matrix?resumeMatrix=1";
+/** UI navigation intent only — NOT a claim secret (cookie is authoritative). */
+const PENDING_INTENT_KEY = "matrix:resume-intent";
+
+type MatrixConflictInfo = {
+  existingBirthDate: string | null;
+  guestBirthDate: string;
+};
+
+function markPendingClaimIntent() {
+  try {
+    sessionStorage.setItem(PENDING_INTENT_KEY, "1");
+  } catch {
+    /* ignore */
+  }
+}
+
+function clearPendingClaimIntent() {
+  try {
+    sessionStorage.removeItem(PENDING_INTENT_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
+function hasPendingClaimIntent(): boolean {
+  try {
+    return sessionStorage.getItem(PENDING_INTENT_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
 
 const LOCKED_SECTIONS = [
   "Полный разбор зоны комфорта и всех каналов",
@@ -67,21 +100,101 @@ export default function DestinyMatrixPreview() {
   const [ageReady, setAgeReady] = useState(false);
   const [ageConfirming, setAgeConfirming] = useState(false);
   const [ageGateError, setAgeGateError] = useState("");
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
+  const [conflict, setConflict] = useState<MatrixConflictInfo | null>(null);
+  const [guestPersisting, setGuestPersisting] = useState(false);
   const autoRanRef = useRef(false);
+  const claimStartedRef = useRef(false);
+  const pendingBirthRef = useRef<string | null>(null);
 
-  const runCalculate = (date: string, personName: string) => {
-    setError(null);
-    startTransition(() => {
-      const result = buildMatrixFreeSummary(date, { name: personName || undefined });
-      if (!result) {
-        setSummary(null);
-        setError("Введите корректную дату рождения.");
+  const persistGuestMatrix = useCallback(async (date: string, personName: string) => {
+    setGuestPersisting(true);
+    try {
+      const res = await fetch("/api/numerology/matrix-guest", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          birthDate: date,
+          displayName: personName.trim() || null,
+        }),
+      });
+      if (!res.ok) return false;
+      pendingBirthRef.current = date;
+      markPendingClaimIntent();
+      return true;
+    } catch {
+      return false;
+    } finally {
+      setGuestPersisting(false);
+    }
+  }, []);
+
+  const runClaim = useCallback(async (confirmReplace = false) => {
+    setClaiming(true);
+    setClaimError(null);
+    try {
+      const res = await fetch("/api/numerology/matrix-claim", {
+        method: "POST",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ confirmReplace }),
+      });
+      const data = (await res.json().catch(() => ({}))) as {
+        code?: string;
+        message?: string;
+        workspacePath?: string;
+        conflict?: MatrixConflictInfo;
+      };
+      if (res.status === 409 && data.code === "MATRIX_PROFILE_CONFLICT") {
+        setConflict(data.conflict ?? null);
+        trackSeoEvent("matrix_guest_claim_conflict");
+        setClaiming(false);
         return;
       }
-      setSummary(result);
-      trackSeoEvent("matrix_preview_complete");
-    });
-  };
+      if (!res.ok) {
+        setClaimError(
+          data.message ||
+            "Не удалось сохранить рассчитанную Матрицу. Рассчитайте снова или откройте полный разбор."
+        );
+        clearPendingClaimIntent();
+        setClaiming(false);
+        return;
+      }
+      clearPendingClaimIntent();
+      trackSeoEvent("matrix_guest_claim_complete");
+      window.location.assign(data.workspacePath || FULL_HREF);
+    } catch {
+      setClaimError(
+        "Не удалось сохранить рассчитанную Матрицу. Проверьте соединение и попробуйте ещё раз."
+      );
+      setClaiming(false);
+    }
+  }, []);
+
+  const runCalculate = useCallback(
+    (date: string, personName: string) => {
+      setError(null);
+      setConflict(null);
+      setClaimError(null);
+      startTransition(() => {
+        const result = buildMatrixFreeSummary(date, { name: personName || undefined });
+        if (!result) {
+          setSummary(null);
+          setError("Введите корректную дату рождения.");
+          return;
+        }
+        setSummary(result);
+        trackSeoEvent("matrix_preview_complete");
+        // Guest only: server pending + HttpOnly claim cookie (no localStorage authority).
+        if (!isLoggedIn) {
+          void persistGuestMatrix(date, personName);
+        }
+      });
+    },
+    [isLoggedIn, persistGuestMatrix]
+  );
 
   useEffect(() => {
     // Registered users already confirmed 18+ at signup; guests need the age gate.
@@ -90,6 +203,15 @@ export default function DestinyMatrixPreview() {
       setAgeReady(true);
     }
   }, [authLoading, isLoggedIn]);
+
+  useEffect(() => {
+    if (authLoading || !isLoggedIn || claimStartedRef.current) return;
+    const params = new URLSearchParams(window.location.search);
+    const resume = params.get("resumeMatrix") === "1";
+    if (!resume && !hasPendingClaimIntent()) return;
+    claimStartedRef.current = true;
+    void runClaim(false);
+  }, [authLoading, isLoggedIn, runClaim]);
 
   useEffect(() => {
     if (authLoading || !ageReady || autoRanRef.current) return;
@@ -155,8 +277,8 @@ export default function DestinyMatrixPreview() {
     return () => {
       cancelled = true;
     };
-    // Hydrate once after auth + age gate settle.
-  }, [authLoading, ageReady, isLoggedIn, user?.name]);
+    // Hydrate once after auth + age gate settle (autoRanRef guards re-entry).
+  }, [authLoading, ageReady, isLoggedIn, user?.name, runCalculate]);
 
   useEffect(() => {
     if (!summary) {
@@ -187,6 +309,24 @@ export default function DestinyMatrixPreview() {
 
   const openFullMatrix = async () => {
     trackSeoEvent("matrix_cta_full", { source: "preview", owned: ownedFull ? "1" : "0" });
+
+    if (!isLoggedIn) {
+      if (!birthDate || !parseBirthDate(birthDate)) {
+        setError("Введите корректную дату рождения.");
+        return;
+      }
+      const ok =
+        pendingBirthRef.current === birthDate ||
+        (await persistGuestMatrix(birthDate, name));
+      if (!ok) {
+        setError("Не удалось сохранить расчёт перед входом. Попробуйте ещё раз.");
+        return;
+      }
+      markPendingClaimIntent();
+      window.location.assign(buildRegisterHref(RESUME_RETURN));
+      return;
+    }
+
     if (selectedSubjectId) {
       window.location.assign(
         `${FULL_HREF}&subjectId=${encodeURIComponent(selectedSubjectId)}`
@@ -266,6 +406,57 @@ export default function DestinyMatrixPreview() {
       <p className="mt-2 text-xs text-white/40">
         Сервис 18+. Дата рождения используется только для расчёта и не публикуется.
       </p>
+
+      {claimError ? (
+        <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
+          <p>{claimError}</p>
+          <div className="mt-3 flex flex-wrap gap-3">
+            <button
+              type="button"
+              className="text-aura-gold underline-offset-2 hover:underline"
+              onClick={() => {
+                setClaimError(null);
+                clearPendingClaimIntent();
+              }}
+            >
+              Остаться на расчёте
+            </button>
+            <a href={FULL_HREF} className="text-aura-gold underline-offset-2 hover:underline">
+              Открыть полный разбор
+            </a>
+          </div>
+        </div>
+      ) : null}
+
+      {conflict ? (
+        <div className="mt-5 rounded-xl border border-white/15 bg-white/[0.04] p-5">
+          <h3 className="font-display text-lg text-white">
+            В аккаунте уже сохранена другая дата рождения
+          </h3>
+          <p className="mt-2 text-sm text-white/60">
+            Сейчас в профиле: {conflict.existingBirthDate ?? "—"}.
+            <br />
+            Эта Матрица: {conflict.guestBirthDate}.
+          </p>
+          <div className="mt-4 flex flex-wrap gap-3">
+            <button
+              type="button"
+              disabled={claiming}
+              onClick={() => void runClaim(true)}
+              className="inline-flex items-center justify-center rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-60"
+            >
+              Использовать данные этой Матрицы
+            </button>
+            <a
+              href={FULL_HREF}
+              className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2.5 text-sm text-white/80"
+              onClick={() => clearPendingClaimIntent()}
+            >
+              Открыть мою сохранённую Матрицу
+            </a>
+          </div>
+        </div>
+      ) : null}
 
       {isLoggedIn ? (
         <div className="mt-5">
@@ -544,23 +735,54 @@ export default function DestinyMatrixPreview() {
                 ))}
               </ul>
             )}
-            <div className="mt-5">
+            <div className="mt-5 flex flex-wrap items-center gap-3">
               <button
                 type="button"
+                disabled={claiming || guestPersisting}
                 onClick={() => void openFullMatrix()}
-                className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
+                className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex disabled:opacity-60"
               >
                 {ownedFull
                   ? "Открыть сохранённый разбор"
-                  : "Открыть полный разбор с Эвелиной"}
+                  : isLoggedIn
+                    ? "Открыть полный разбор с Эвелиной"
+                    : claiming || guestPersisting
+                      ? "Сохраняем…"
+                      : "Получить полный разбор"}
               </button>
+              {!isLoggedIn ? (
+                <button
+                  type="button"
+                  disabled={guestPersisting}
+                  className="text-sm text-aura-champagne/80 underline-offset-2 hover:underline disabled:opacity-60"
+                  onClick={() => {
+                    void (async () => {
+                      if (!birthDate || !parseBirthDate(birthDate)) {
+                        setError("Введите корректную дату рождения.");
+                        return;
+                      }
+                      const ok =
+                        pendingBirthRef.current === birthDate ||
+                        (await persistGuestMatrix(birthDate, name));
+                      if (!ok) {
+                        setError("Не удалось сохранить расчёт перед входом. Попробуйте ещё раз.");
+                        return;
+                      }
+                      markPendingClaimIntent();
+                      window.location.assign(buildLoginHref(RESUME_RETURN));
+                    })();
+                  }}
+                >
+                  Уже есть аккаунт — войти
+                </button>
+              ) : null}
             </div>
             <p className="mt-2 text-xs text-white/40">
               {ownedFull
                 ? `В комплекте — ${PRICING.MATRIX_INCLUDED_QUESTIONS} вопроса в чате, дальше по тарифу вопроса.`
                 : isLoggedIn
                   ? `Платите за разбор Эвелины и сохранение, не за цифры — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз.`
-                  : `Нужен вход. Затем ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз за разбор с сохранением.`}
+                  : `После входа откроется та же Матрица. Затем ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз за разбор с сохранением.`}
             </p>
           </div>
         </div>

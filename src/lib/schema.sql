@@ -1093,6 +1093,33 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_matrix_subjects_self
 CREATE INDEX IF NOT EXISTS idx_matrix_subjects_user
   ON matrix_subjects (user_id, created_at DESC);
 
+-- Guest Matrix pending identity (pre-auth). Claim via hashed opaque cookie token.
+CREATE TABLE IF NOT EXISTS matrix_guest_pending (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  birth_date DATE NOT NULL,
+  display_name TEXT,
+  as_of_date DATE NOT NULL,
+  calculation_version TEXT NOT NULL,
+  matrix_snapshot JSONB NOT NULL,
+  claim_token_hash TEXT NOT NULL,
+  claimed_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  claimed_subject_id UUID REFERENCES matrix_subjects(id) ON DELETE SET NULL,
+  claimed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT matrix_guest_pending_claim_state CHECK (
+    (claimed_user_id IS NULL AND claimed_at IS NULL AND claimed_subject_id IS NULL)
+    OR (claimed_user_id IS NOT NULL AND claimed_at IS NOT NULL AND claimed_subject_id IS NOT NULL)
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_matrix_guest_pending_claim_hash
+  ON matrix_guest_pending (claim_token_hash);
+
+CREATE INDEX IF NOT EXISTS idx_matrix_guest_pending_expires_unclaimed
+  ON matrix_guest_pending (expires_at)
+  WHERE claimed_user_id IS NULL;
+
 CREATE TABLE IF NOT EXISTS numerology_report_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

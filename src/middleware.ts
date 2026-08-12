@@ -58,6 +58,9 @@ const PUBLIC_API_EXACT = new Set([
   // Guest Natal calculator (age-gate + IP RL in handlers; claim stays auth-gated).
   "/api/natal-chart/guest",
   "/api/natal-chart/places",
+  // Guest Matrix pending identity (age-gate + IP RL; claim stays auth-gated).
+  "/api/numerology/matrix-guest",
+
   "/api/payment/webhook",
   "/api/payments/webhook",
   "/api/runes/webhook",
