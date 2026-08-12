@@ -28,10 +28,12 @@ import { completeChatDetailed } from "@/lib/llm";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 
 export const TEASER_QUESTION_PROMPT_MAX = 300;
-export const TEASER_MAX_CHARS = 720;
-export const TEASER_MIN_CHARS = 80;
+/** Conversion teaser: personal value without replacing the full reading. */
+export const TEASER_MAX_CHARS = 500;
+export const TEASER_MIN_CHARS = 120;
 export const TEASER_TIMEOUT_MS = 7000;
-export const TEASER_MAX_TOKENS = 220;
+/** ~250–500 Cyrillic chars in 3 sentences. */
+export const TEASER_MAX_TOKENS = 140;
 /** Short consistency window (anti race / double-submit), not a UX “thinking” delay. */
 export const TEASER_RECEIPT_MIN_AGE_MS = 800;
 export const TEASER_RECEIPT_MAX_AGE_MS = 30 * 60_000;
@@ -770,7 +772,7 @@ export async function resolveGuestTeaser(input: {
 
 /** Continuity block for full reading after auth. */
 export function buildTeaserContinuityPromptBlock(teaserText: string): string {
-  const clipped = truncateTeaserText(teaserText, 900);
+  const clipped = truncateTeaserText(teaserText, TEASER_MAX_CHARS);
   return [
     "",
     "<guest_teaser_shown>",
