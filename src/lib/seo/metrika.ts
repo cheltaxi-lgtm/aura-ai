@@ -281,8 +281,11 @@ export function trackDailyCardsStarted(source: string): void {
   trackLandingEvent("daily_cards_started", { source });
 }
 
-export function trackDailyCardsCompleted(source: string): void {
-  trackLandingEvent("daily_cards_completed", { source });
+export function trackDailyCardsCompleted(source: string, artifactId?: string): void {
+  trackLandingEvent("daily_cards_completed", {
+    source,
+    ...(artifactId ? { artifact_id: artifactId } : {}),
+  });
 }
 
 export function trackDailyCardsReturnView(source: string): void {

@@ -12,11 +12,12 @@ import {
 import { TRIPLET_COOLDOWN_MS, tripletCooldownFromLastDraw } from "@/lib/triplet-limit";
 
 describe("daily retention product copy (honest 24h)", () => {
-  it("TEST15: anonymous landing sells intro + daily registration benefit", () => {
+  it("TEST15: anonymous landing sells consumer benefit without internal jargon", () => {
     expect(EDITORIAL_HERO.primaryCta).toMatch(/3 карты/i);
-    expect(EDITORIAL_HERO.retentionHook).toMatch(/раз в сутки/i);
-    expect(EDITORIAL_HERO.retentionHook).not.toMatch(/каждый день/i);
+    expect(EDITORIAL_HERO.retentionHook).toMatch(/3 карты/i);
     expect(EDITORIAL_DAILY_CARDS.body).toMatch(/раз в сутки/i);
+    expect(EDITORIAL_DAILY_CARDS.body).not.toMatch(/не путать/i);
+    expect(EDITORIAL_DAILY_CARDS.kicker).not.toMatch(/После регистрации/i);
     expect(EDITORIAL_FREE_VALUE.items.some((i) => /карты дня/i.test(i.title))).toBe(true);
   });
 
@@ -31,7 +32,7 @@ describe("daily retention product copy (honest 24h)", () => {
       undefined,
       "a"
     );
-    expect(offer.heroRetentionHook).toMatch(/раз в сутки/i);
+    expect(offer.heroRetentionHook).toMatch(/3 карты/i);
     expect(offer.seoFreeParagraph).toMatch(/раз в сутки/i);
     expect(offer.seoFreeParagraph).toMatch(/один стартовый/i);
   });

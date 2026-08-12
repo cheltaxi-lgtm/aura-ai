@@ -63,13 +63,12 @@ export default function LoggedInHomeBanner({
 
   const dailyHint =
     dailyCardsState === "loading"
-      ? "Уточняем доступ к бесплатному раскладу."
+      ? "Готовим карты дня…"
       : dailyCardsState === "available"
-        ? "Бесплатно раз в сутки — короткий ориентир на сегодня."
+        ? EDITORIAL_DAILY_CARDS.authAvailableSubtitle
         : dailyCardsState === "opened"
-          ? "Откройте тот же расклад, который уже сохранён как карты дня."
-          : dailyCooldownHint?.trim() ||
-            "Новый бесплатный расклад будет доступен через сутки.";
+          ? EDITORIAL_DAILY_CARDS.authOpenedSubtitle
+          : dailyCooldownHint?.trim() || EDITORIAL_DAILY_CARDS.authCooldownSubtitle;
 
   return (
     <section

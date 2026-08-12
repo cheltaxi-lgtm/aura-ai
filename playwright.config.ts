@@ -39,6 +39,11 @@ export default defineConfig({
       testMatch: /guest-funnel-golden\.public\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "daily-artifact",
+      testMatch: /daily-artifact\.public\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
     ...(fixtureBaseURL && storageState
       ? [{
           name: "authenticated-natal",

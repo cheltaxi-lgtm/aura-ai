@@ -120,9 +120,15 @@ export function resolveDefaultTripletMasterId(
 }
 
 export function mapProfileReadings(
-  readings: { characterName: string; createdAt?: string; contextData: Record<string, unknown> }[]
+  readings: {
+    id?: string;
+    characterName: string;
+    createdAt?: string;
+    contextData: Record<string, unknown>;
+  }[]
 ): StoredReadingRow[] {
   return readings.map((r) => ({
+    id: typeof r.id === "string" ? r.id : undefined,
     characterName: r.characterName,
     createdAt: r.createdAt,
     contextData: r.contextData as StoredReadingRow["contextData"],

@@ -620,20 +620,38 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       }
       // Prefer current daily artifact when present and not hidden.
       if (currentDailyReading?.exists) {
-        const dailyCards = reconcileSpreadDeck(
-          tripletSystem,
-          currentDailyReading.cardNames.map((name, position) => ({
-            id: position,
-            name,
-            position,
-            reversed: false,
-          }))
-        ).cards;
-        const shown = filterHidden(dailyCards, "daily");
-        if (shown.length >= 3) return shown;
+        const system =
+          (currentDailyReading.deckSystem as DeckSystem | undefined) || tripletSystem;
+        const exact = currentDailyReading.cards?.length
+          ? currentDailyReading.cards
+          : currentDailyReading.cardNames.map((name, position) => ({
+              id: position,
+              name,
+              position,
+              reversed: false,
+            }));
+        const dailyCards = reconcileSpreadDeck(system, exact).cards.map((c, i) => ({
+          ...c,
+          reversed: Boolean(exact[i]?.reversed),
+        }));
+        if (isHomeRecapHidden(currentDailyReading.recapKey, homeRecapHiddenKey)) {
+          // fall through — may show a different non-hidden recap
+        } else {
+          const shown = filterHidden(dailyCards, "daily");
+          if (shown.length >= 3) return shown;
+        }
       }
       if (hasServerTripletSpread(savedReadings)) {
         const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
+        const latestRow = [...savedReadings]
+          .filter((r) => r.characterName === "triplet")
+          .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0];
+        if (
+          latestRow?.id &&
+          isHomeRecapHidden(buildHomeRecapKey({ historyId: latestRow.id }), homeRecapHiddenKey)
+        ) {
+          return [];
+        }
         return filterHidden(latest.cards.length >= 3 ? latest.cards : [], "triplet");
       }
       // Guest resume / post-anketa: keep cards visible until server history lands.
@@ -2876,37 +2894,39 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
       let serverOk = false;
       try {
-        const postBody = buildOnboardingPostBody(
-          base,
-          cards,
-          teaser,
-          session?.offline ? undefined : session?.sessionId,
-          tripletSystem,
-          tripletMasterId || localStorage.getItem(PENDING_MASTER_KEY) || undefined
-        );
-
-        const res = await fetch("/api/onboarding", {
+        const masterId =
+          tripletMasterId ||
+          localStorage.getItem(PENDING_MASTER_KEY) ||
+          updated.tripletMasterId ||
+          GUEST_TRIPLET_MASTER_ID;
+        const res = await fetch("/api/tarot/daily", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           credentials: "include",
-          body: JSON.stringify(postBody),
+          body: JSON.stringify({
+            cards: cards.map((c, position) => ({
+              id: c.id,
+              name: c.name,
+              position,
+              reversed: Boolean(c.reversed),
+            })),
+            masterId,
+            deckSystem: tripletSystem,
+            teaser,
+            sessionId: session?.offline ? undefined : session?.sessionId,
+          }),
         });
 
         const data = (await res.json()) as {
-          userId?: string;
+          ok?: boolean;
+          daily?: CurrentDailyCardsResult & { exists: true };
           error?: string;
           code?: string;
-          step?: string;
-          detail?: string;
-          missing?: string[];
           message?: string;
           nextAvailableAt?: string | null;
         };
 
-        if (
-          (res.status === 429 || data.error === "TRIPLET_COOLDOWN") &&
-          data.error === "TRIPLET_COOLDOWN"
-        ) {
+        if (res.status === 429 || data.code === "TRIPLET_COOLDOWN" || data.error === "TRIPLET_COOLDOWN") {
           newTripletInProgressRef.current = false;
           setNewTripletDraft(false);
           const restored: StoredProfile = {
@@ -2939,23 +2959,22 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           return;
         }
 
-        if (res.ok) {
+        if (res.ok && data.daily?.exists) {
           serverOk = true;
           newTripletInProgressRef.current = false;
           tripletDrawnAtRef.current = Date.now();
           setNewTripletDraft(false);
           clearGuestTriplet();
-          if (data.userId) updated.userId = data.userId;
-          const drawAt = new Date().toISOString();
+          setCurrentDailyReading(data.daily);
+          const drawAt = data.daily.createdAt || new Date().toISOString();
           updated.lastTripletDrawAt = drawAt;
           writeLocalTripletDrawAt(drawAt);
           setTripletCooldown(tripletCooldownFromLastDraw(drawAt));
-          const completedKey = tarotCardsKey(cards.map((c) => ({ name: c.name })));
-          if (completedKey && dailyCompletedTrackedRef.current !== completedKey) {
-            dailyCompletedTrackedRef.current = completedKey;
-            trackDailyCardsCompleted("handle_triplet_complete");
+          const artifactId = data.daily.historyId || data.daily.recapKey;
+          if (artifactId && dailyCompletedTrackedRef.current !== artifactId) {
+            dailyCompletedTrackedRef.current = artifactId;
+            trackDailyCardsCompleted("handle_triplet_complete", artifactId);
           }
-          // Refresh server daily artifact for opened-state CTA.
           void syncProfileFromServer();
         } else {
           newTripletInProgressRef.current = false;
@@ -2966,12 +2985,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             teaser: profile?.teaser ?? storedProfile?.teaser,
           };
           persistProfile(restored);
-          setTripletNotice(onboardingErrorMessage(data));
-          if (data.error === "Заполните профиль" || data.code === "MISSING_PROFILE") {
-            setStep("onboarding");
-          } else {
-            setStep(previousCards.length >= 3 ? "masters" : "triplet");
-          }
+          setTripletNotice(data.message || data.error || "Не удалось сохранить карты дня");
+          // Daily Tarot must never force birth onboarding.
+          setStep(previousCards.length >= 3 ? "masters" : "triplet");
           return;
         }
       } catch {
@@ -3022,6 +3038,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     const cardsKey = tarotCardsKey(displayTarotCards.map((c) => ({ name: c.name })));
     if (!cardsKey) return null;
     if (hasServerTripletSpread(savedReadings)) {
+      const latestRow = [...savedReadings]
+        .filter((r) => r.characterName === "triplet")
+        .sort((a, b) => (b.createdAt ?? "").localeCompare(a.createdAt ?? ""))[0];
+      if (latestRow?.id) {
+        return buildHomeRecapKey({ historyId: latestRow.id });
+      }
       const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
       const latestKey = tarotCardsKey(latest.cards.map((c) => ({ name: c.name })));
       if (latestKey === cardsKey) {
@@ -3107,6 +3129,34 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     }
 
     const masterId = daily.masterId || GUEST_TRIPLET_MASTER_ID;
+    const exactCards = daily.cards?.length
+      ? daily.cards
+      : daily.cardNames.map((name, position) => ({
+          id: position,
+          name,
+          position,
+          reversed: false,
+        }));
+    const cardNames = exactCards.map((c) => c.name);
+    const system = (daily.deckSystem as DeckSystem | undefined) || tripletSystem;
+    const spreadSymbols = reconcileSpreadDeck(system, exactCards).cards.map((c, i) => ({
+      ...c,
+      reversed: Boolean(exactCards[i]?.reversed),
+    }));
+    // Keep exact artifact on home/profile while opening chat.
+    setProfile((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        tarotCards: spreadSymbols,
+        deckSystem: system,
+        deckSpreads: { ...prev.deckSpreads, [system]: spreadSymbols },
+        tripletMasterId: masterId,
+      };
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+      return next;
+    });
+
     const deps = chat();
     if (daily.sessionId && deps) {
       deps.setConsultationSessionId(daily.sessionId);
@@ -3123,8 +3173,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       return;
     }
 
-    // No session yet — open chat with exact daily cards via existing bind path.
-    const cardNames = daily.cardNames;
+    // No matching session — bind a new chat to THESE exact cards (no redraw).
     sessionSpreadMetaRef.current = { spreadType: "daily", cardNames };
     setSessionIntention(null);
     persistSessionIntention(masterId, null);
@@ -3147,6 +3196,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     beginNewSpreadSession,
     beginChatAfterIntention,
     setStep,
+    tripletSystem,
+    setProfile,
   ]);
 
   const handleNewReading = async () => {

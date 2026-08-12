@@ -83,9 +83,10 @@ describe("daily cards UI state + analytics gating", () => {
     ).toBe(true);
   });
 
-  it("TEST9: anonymous daily CTA is honest", () => {
-    expect(EDITORIAL_DAILY_CARDS.guestCta).toMatch(/Открыть 3 карты сейчас/i);
+  it("TEST9: anonymous daily CTA describes first free trial", () => {
+    expect(EDITORIAL_DAILY_CARDS.guestCta).toMatch(/Попробовать 3 карты бесплатно/i);
     expect(EDITORIAL_DAILY_CARDS.guestCtaHint).toMatch(/раз в сутки/i);
+    expect(EDITORIAL_DAILY_CARDS.body).not.toMatch(/не путать/i);
   });
 
   it("home hide matches intro/triplet cardsKey but never hides daily via intro key", () => {
@@ -99,5 +100,12 @@ describe("daily cards UI state + analytics gating", () => {
     expect(
       isHomeRecapHidden(buildHomeRecapKey({ source: "triplet", cardsKey: "other" }), hidden)
     ).toBe(false);
+  });
+
+  it("history id hide is stable across legacy prefixes", () => {
+    const id = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const hidden = buildHomeRecapKey({ historyId: id });
+    expect(isHomeRecapHidden(`daily:h:${id}`, hidden)).toBe(true);
+    expect(isHomeRecapHidden(`history:${id}`, hidden)).toBe(true);
   });
 });

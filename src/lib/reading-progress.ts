@@ -2,6 +2,7 @@
 import type { TarotCard } from "@/lib/tarot";
 
 export interface StoredReadingRow {
+  id?: string;
   characterName: string;
   createdAt?: string;
   contextData?: {

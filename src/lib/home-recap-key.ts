@@ -1,15 +1,23 @@
 export type HomeRecapSource = "daily" | "guest_intro" | "triplet" | "unknown";
 
+/**
+ * Stable home-dismissal identity.
+ * Prefer durable DB ids so a reading stays hidden after the 24h window
+ * even if display source label changes (daily → historical triplet).
+ */
 export function buildHomeRecapKey(input: {
-  source: HomeRecapSource;
+  source?: HomeRecapSource;
   historyId?: string | null;
   sessionId?: string | null;
   cardsKey?: string | null;
 }): string {
-  if (input.historyId?.trim()) return `${input.source}:h:${input.historyId.trim()}`;
-  if (input.sessionId?.trim()) return `${input.source}:s:${input.sessionId.trim()}`;
-  if (input.cardsKey?.trim()) return `${input.source}:c:${input.cardsKey.trim()}`;
-  return `${input.source}:unknown`;
+  if (input.historyId?.trim()) return `history:${input.historyId.trim()}`;
+  if (input.sessionId?.trim()) return `session:${input.sessionId.trim()}`;
+  if (input.cardsKey?.trim()) {
+    const source = input.source ?? "unknown";
+    return `${source}:c:${input.cardsKey.trim()}`;
+  }
+  return `${input.source ?? "unknown"}:unknown`;
 }
 
 export function readHomeRecapHiddenKey(
@@ -19,34 +27,43 @@ export function readHomeRecapHiddenKey(
   return typeof raw === "string" && raw.trim() ? raw.trim() : null;
 }
 
-type ParsedHomeRecapKey = {
-  source: string;
-  kind: "h" | "s" | "c";
-  id: string;
-};
+type ArtifactRef =
+  | { kind: "history"; id: string }
+  | { kind: "session"; id: string }
+  | { kind: "cards"; id: string; source: string };
 
-function parseHomeRecapKey(key: string): ParsedHomeRecapKey | null {
-  const m = key.trim().match(/^([a-z_]+):(h|s|c):(.+)$/i);
-  if (!m) return null;
-  return {
-    source: m[1].toLowerCase(),
-    kind: m[2].toLowerCase() as "h" | "s" | "c",
-    id: m[3],
-  };
+function parseArtifactRef(key: string): ArtifactRef | null {
+  const trimmed = key.trim();
+  const modern = trimmed.match(/^(history|session):(.+)$/i);
+  if (modern) {
+    return {
+      kind: modern[1].toLowerCase() as "history" | "session",
+      id: modern[2],
+    };
+  }
+  // Legacy: daily:h:<id> / guest_intro:s:<id> / *:c:<cardsKey>
+  const legacy = trimmed.match(/^([a-z_]+):(h|s|c):(.+)$/i);
+  if (!legacy) return null;
+  const source = legacy[1].toLowerCase();
+  const kind = legacy[2].toLowerCase();
+  const id = legacy[3];
+  if (kind === "h") return { kind: "history", id };
+  if (kind === "s") return { kind: "session", id };
+  return { kind: "cards", id, source };
 }
 
 /** Extract cardsKey segment from a recap key (`source:c:KEY`). */
 export function cardsKeyFromHomeRecapKey(key: string | null | undefined): string | null {
   if (!key?.trim()) return null;
-  const parsed = parseHomeRecapKey(key);
-  if (!parsed || parsed.kind !== "c") return null;
+  const parsed = parseArtifactRef(key);
+  if (!parsed || parsed.kind !== "cards") return null;
   return parsed.id;
 }
 
 /**
  * True when a candidate recap key is the one the user dismissed from home.
- * Exact id match wins. CardsKey match only bridges unknown/guest_intro/triplet
- * identities — never hides a daily artifact via an intro hide key.
+ * History/session ids match across legacy and modern prefixes.
+ * CardsKey match only bridges non-daily intro/triplet identities.
  */
 export function isHomeRecapHidden(
   candidateKey: string | null | undefined,
@@ -54,12 +71,16 @@ export function isHomeRecapHidden(
 ): boolean {
   if (!candidateKey?.trim() || !hiddenKey?.trim()) return false;
   if (candidateKey.trim() === hiddenKey.trim()) return true;
-  const a = parseHomeRecapKey(candidateKey);
-  const b = parseHomeRecapKey(hiddenKey);
+  const a = parseArtifactRef(candidateKey);
+  const b = parseArtifactRef(hiddenKey);
   if (!a || !b) return false;
-  if (a.kind !== "c" || b.kind !== "c" || a.id !== b.id) return false;
-  if (a.source === "daily" || b.source === "daily") {
-    return a.source === "daily" && b.source === "daily";
+  if (a.kind === "history" && b.kind === "history") return a.id === b.id;
+  if (a.kind === "session" && b.kind === "session") return a.id === b.id;
+  if (a.kind === "cards" && b.kind === "cards" && a.id === b.id) {
+    if (a.source === "daily" || b.source === "daily") {
+      return a.source === "daily" && b.source === "daily";
+    }
+    return true;
   }
-  return true;
+  return false;
 }
