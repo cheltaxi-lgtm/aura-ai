@@ -546,6 +546,8 @@ export default function HomePage({
     retryGuestTripletResume,
     tripletCooldown,
     tripletCooldownReady,
+    currentDailyReading,
+    openCurrentDailyCards,
     effectiveTripletCooldown,
     spreadRitual,
     setSpreadRitual,
@@ -3571,10 +3573,13 @@ export default function HomePage({
                 dailyCardsState={resolveDailyCardsUiState({
                   cooldownReady: tripletCooldownReady,
                   allowed: effectiveTripletCooldown.allowed,
+                  currentDaily: currentDailyReading,
                 })}
+                dailyCooldownHint={tripletCooldownHint}
                 onOpenDailyCards={() => void handleNewReading()}
-                onViewTodayDailyCards={() => {
-                  document.getElementById("мой-расклад")?.scrollIntoView({
+                onViewTodayDailyCards={() => void openCurrentDailyCards()}
+                onPickRegularSpread={() => {
+                  document.getElementById("наставники")?.scrollIntoView({
                     behavior: "smooth",
                     block: "start",
                   });
@@ -3943,16 +3948,21 @@ export default function HomePage({
                       ? resolveDailyCardsUiState({
                           cooldownReady: tripletCooldownReady,
                           allowed: effectiveTripletCooldown.allowed,
+                          currentDaily: currentDailyReading,
                         })
                       : undefined
                   }
+                  dailyCooldownHint={isLoggedIn ? tripletCooldownHint : undefined}
                   onOpenDailyCards={
                     isLoggedIn ? () => void handleNewReading() : undefined
                   }
                   onViewTodayDailyCards={
+                    isLoggedIn ? () => void openCurrentDailyCards() : undefined
+                  }
+                  onPickRegularSpread={
                     isLoggedIn
                       ? () => {
-                          document.getElementById("мой-расклад")?.scrollIntoView({
+                          document.getElementById("наставники")?.scrollIntoView({
                             behavior: "smooth",
                             block: "start",
                           });

@@ -229,10 +229,12 @@ export interface AuraSellingLandingProps {
   homeUserName?: string | null;
   /** When false, parent renders LoggedInHomeBanner (e.g. above ReadingRecap). */
   showLoggedInHomeBanner?: boolean;
-  /** Authenticated daily triplet UI state (loading | available | used). */
+  /** Authenticated daily triplet UI state (loading | available | opened | cooldown). */
   dailyCardsState?: DailyCardsUiState;
+  dailyCooldownHint?: string | null;
   onOpenDailyCards?: () => void;
   onViewTodayDailyCards?: () => void;
+  onPickRegularSpread?: () => void;
   /** Classic mystic shell or editorial mockup shell — same blocks and handlers. */
   layout?: "classic" | "editorial";
 }
@@ -266,8 +268,10 @@ export default function AuraSellingLanding({
   homeUserName,
   showLoggedInHomeBanner = true,
   dailyCardsState,
+  dailyCooldownHint,
   onOpenDailyCards,
   onViewTodayDailyCards,
+  onPickRegularSpread,
   layout = "classic",
 }: AuraSellingLandingProps) {
   const isEditorial = layout === "editorial";
@@ -496,8 +500,10 @@ export default function AuraSellingLanding({
           onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
           onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
           dailyCardsState={dailyCardsState}
+          dailyCooldownHint={dailyCooldownHint}
           onOpenDailyCards={onOpenDailyCards}
           onViewTodayDailyCards={onViewTodayDailyCards}
+          onPickRegularSpread={onPickRegularSpread}
         />
       ) : null}
 
@@ -538,9 +544,11 @@ export default function AuraSellingLanding({
         <EditorialDailyCardsSection
           isLoggedIn={isLoggedIn}
           dailyState={isLoggedIn ? dailyCardsState : undefined}
+          dailyCooldownHint={dailyCooldownHint}
           onGuestCta={() => startGuestSpread()}
           onOpenDaily={onOpenDailyCards}
           onViewToday={onViewTodayDailyCards}
+          onPickRegular={onPickRegularSpread}
         />
       ) : null}
 

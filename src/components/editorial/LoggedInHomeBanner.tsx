@@ -17,27 +17,26 @@ type LoggedInHomeBannerProps = {
   onQuestionSubmit?: (question: string) => void;
   onOpenDestinyMatrix?: () => void;
   onOpenDestinyMatrixSession?: () => void;
-  /** Rolling 24h authenticated daily triplet UI state. */
   dailyCardsState?: DailyCardsUiState;
+  dailyCooldownHint?: string | null;
   onOpenDailyCards?: () => void;
   onViewTodayDailyCards?: () => void;
+  onPickRegularSpread?: () => void;
 };
 
 const chipClass =
   "rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold";
 
-/**
- * Same editorial-hero shell as the guest landing (media + dissolve + overlay),
- * so the candle photo and starfield read as one canvas. Only the copy differs.
- */
 export default function LoggedInHomeBanner({
   userName,
   onQuestionSubmit,
   onOpenDestinyMatrix,
   onOpenDestinyMatrixSession,
   dailyCardsState,
+  dailyCooldownHint,
   onOpenDailyCards,
   onViewTodayDailyCards,
+  onPickRegularSpread,
 }: LoggedInHomeBannerProps) {
   const { owned: matrixOwned } = useMatrixOwnership({ enabled: true });
   const greetingName = userName?.trim().replace(/\s+/g, " ").split(/\s+/)[0] || "";
@@ -51,17 +50,26 @@ export default function LoggedInHomeBanner({
     else trackDailyCardsReturnView("logged_in_home");
   }, [dailyCardsState]);
 
-  const showDaily = Boolean(dailyCardsState && (onOpenDailyCards || onViewTodayDailyCards));
+  const showDaily = Boolean(dailyCardsState && (onOpenDailyCards || onViewTodayDailyCards || onPickRegularSpread));
+
   const dailyTitle =
     dailyCardsState === "loading"
       ? EDITORIAL_DAILY_CARDS.authLoadingLabel
       : dailyCardsState === "available"
-        ? "Ваши 3 карты дня готовы"
-        : "Карты дня уже открыты";
-  const dailyCtaLabel =
-    dailyCardsState === "available"
-      ? EDITORIAL_DAILY_CARDS.authAvailableCta
-      : EDITORIAL_DAILY_CARDS.authUsedCta;
+        ? EDITORIAL_DAILY_CARDS.authAvailableTitle
+        : dailyCardsState === "opened"
+          ? EDITORIAL_DAILY_CARDS.authOpenedTitle
+          : EDITORIAL_DAILY_CARDS.authCooldownTitle;
+
+  const dailyHint =
+    dailyCardsState === "loading"
+      ? "Уточняем доступ к бесплатному раскладу."
+      : dailyCardsState === "available"
+        ? "Бесплатно раз в сутки — короткий ориентир на сегодня."
+        : dailyCardsState === "opened"
+          ? "Откройте тот же расклад, который уже сохранён как карты дня."
+          : dailyCooldownHint?.trim() ||
+            "Новый бесплатный расклад будет доступен через сутки.";
 
   return (
     <section
@@ -96,32 +104,43 @@ export default function LoggedInHomeBanner({
         {showDaily ? (
           <div className="editorial-hero__daily mt-5 mx-auto max-w-md rounded-xl border border-aura-gold/25 bg-black/30 px-4 py-3 text-left min-h-[7.5rem]">
             <p className="font-display text-base text-white">{dailyTitle}</p>
-            {dailyCardsState === "loading" ? (
-              <p className="mt-1 text-xs text-white/55">Уточняем доступ к бесплатному раскладу.</p>
-            ) : (
-              <>
-                <p className="mt-1 text-xs text-white/55">
-                  {dailyCardsState === "available"
-                    ? "Бесплатно раз в сутки — короткий ориентир на сегодня."
-                    : "Новый бесплатный расклад будет доступен через сутки."}
-                </p>
-                <button
-                  type="button"
-                  className="editorial-btn editorial-btn--gold mt-3 w-full sm:w-auto"
-                  onClick={() => {
-                    trackDailyCardsCtaClick(
-                      dailyCardsState === "available"
-                        ? "logged_in_home_available"
-                        : "logged_in_home_used"
-                    );
-                    if (dailyCardsState === "available") onOpenDailyCards?.();
-                    else onViewTodayDailyCards?.();
-                  }}
-                >
-                  {dailyCtaLabel}
-                </button>
-              </>
-            )}
+            <p className="mt-1 text-xs text-white/55">{dailyHint}</p>
+            {dailyCardsState === "available" ? (
+              <button
+                type="button"
+                className="editorial-btn editorial-btn--gold mt-3 w-full sm:w-auto"
+                onClick={() => {
+                  trackDailyCardsCtaClick("logged_in_home_available");
+                  onOpenDailyCards?.();
+                }}
+              >
+                {EDITORIAL_DAILY_CARDS.authAvailableCta}
+              </button>
+            ) : null}
+            {dailyCardsState === "opened" ? (
+              <button
+                type="button"
+                className="editorial-btn editorial-btn--gold mt-3 w-full sm:w-auto"
+                onClick={() => {
+                  trackDailyCardsCtaClick("logged_in_home_opened");
+                  onViewTodayDailyCards?.();
+                }}
+              >
+                {EDITORIAL_DAILY_CARDS.authOpenedCta}
+              </button>
+            ) : null}
+            {dailyCardsState === "cooldown" && onPickRegularSpread ? (
+              <button
+                type="button"
+                className="editorial-btn editorial-btn--ghost mt-3 w-full sm:w-auto"
+                onClick={() => {
+                  trackDailyCardsCtaClick("logged_in_home_cooldown");
+                  onPickRegularSpread();
+                }}
+              >
+                {EDITORIAL_DAILY_CARDS.authCooldownCta}
+              </button>
+            ) : null}
           </div>
         ) : null}
 

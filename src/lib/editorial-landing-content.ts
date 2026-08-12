@@ -30,8 +30,14 @@ export const EDITORIAL_DAILY_CARDS = {
   guestCtaHint:
     "После регистрации этот формат будет доступен бесплатно раз в сутки.",
   authAvailableCta: "Открыть карты дня",
+  authOpenedCta: "Посмотреть сегодняшний расклад",
+  /** @deprecated use authOpenedCta — kept for transitional imports */
   authUsedCta: "Посмотреть сегодняшний расклад",
+  authCooldownCta: "Выбрать обычный расклад",
   authLoadingLabel: "Проверяем карты дня…",
+  authOpenedTitle: "Карты дня уже открыты",
+  authAvailableTitle: "Ваши 3 карты дня готовы",
+  authCooldownTitle: "Новый бесплатный расклад пока недоступен",
 } as const;
 
 export const EDITORIAL_FREE_VALUE = {

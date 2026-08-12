@@ -177,8 +177,12 @@ import {
   resolvePostOnboardingDestination,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
+import type { CurrentDailyCardsResult } from "@/lib/current-daily-cards";
 import { shouldEmitDailyCardsStarted } from "@/lib/daily-cards-ui";
+import { buildHomeRecapKey, isHomeRecapHidden } from "@/lib/home-recap-key";
+import { tarotCardsKey } from "@/lib/tarot";
 import {
+  trackDailyCardsCompleted,
   trackDailyCardsStarted,
   trackGuestIntroAlreadyUsed,
   trackProfileCompleted,
@@ -414,9 +418,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [savedReadings, setSavedReadings] = useState<StoredReadingRow[]>([]);
   const [tripletCooldown, setTripletCooldown] = useState<TripletCooldownStatus | null>(null);
   const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
+  const [currentDailyReading, setCurrentDailyReading] =
+    useState<CurrentDailyCardsResult | null>(null);
+  const [homeRecapHiddenKey, setHomeRecapHiddenKey] = useState<string | null>(null);
   const [tripletNotice, setTripletNotice] = useState<string | null>(null);
   const [guestResumeCanRetry, setGuestResumeCanRetry] = useState(false);
   const [guestIntroAlreadyUsed, setGuestIntroAlreadyUsed] = useState(false);
+  const dailyCompletedTrackedRef = useRef<string | null>(null);
 
   /** Leave chat/salon and show birth profile form — never leave selectedCharacter set. */
   const forceProfileOnboarding = useCallback(() => {
@@ -581,30 +589,79 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   const displayTarotCards = useMemo((): SpreadSymbol[] => {
     const draftInProgress = newTripletDraft || step === "triplet";
+    const filterHidden = (cards: SpreadSymbol[], source: "daily" | "guest_intro" | "triplet" | "unknown") => {
+      if (cards.length < 3) return [];
+      const cardsKey = tarotCardsKey(cards.map((c) => ({ name: c.name })));
+      const key = buildHomeRecapKey({ source, cardsKey });
+      // Also match daily artifact key if this is the current daily.
+      if (currentDailyReading?.exists && cardsKey === currentDailyReading.cardsKey) {
+        if (isHomeRecapHidden(currentDailyReading.recapKey, homeRecapHiddenKey)) return [];
+      }
+      if (isHomeRecapHidden(key, homeRecapHiddenKey)) return [];
+      // Cards-key-only hide for non-daily recaps (intro/triplet). Never let an intro
+      // hide key suppress a later daily artifact with the same three names.
+      if (
+        source !== "daily" &&
+        homeRecapHiddenKey &&
+        (homeRecapHiddenKey.endsWith(`:c:${cardsKey}`) ||
+          (/:c:[a-f0-9]+$/i.test(homeRecapHiddenKey) &&
+            homeRecapHiddenKey.includes(`:c:${cardsKey}`)))
+      ) {
+        return [];
+      }
+      return cards;
+    };
+
     if (isLoggedIn || authLoading) {
       if (authLoading && !draftInProgress) return [];
       if (draftInProgress) {
         const local = resolveRecapSpread(profile, tripletSystem);
         return local.cards.length >= 3 ? local.cards : [];
       }
+      // Prefer current daily artifact when present and not hidden.
+      if (currentDailyReading?.exists) {
+        const dailyCards = reconcileSpreadDeck(
+          tripletSystem,
+          currentDailyReading.cardNames.map((name, position) => ({
+            id: position,
+            name,
+            position,
+            reversed: false,
+          }))
+        ).cards;
+        const shown = filterHidden(dailyCards, "daily");
+        if (shown.length >= 3) return shown;
+      }
       if (hasServerTripletSpread(savedReadings)) {
         const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
-        return latest.cards.length >= 3 ? latest.cards : [];
+        return filterHidden(latest.cards.length >= 3 ? latest.cards : [], "triplet");
       }
       // Guest resume / post-anketa: keep cards visible until server history lands.
       const local = resolveRecapSpread(profile, tripletSystem);
-      if (local.cards.length >= 3) return local.cards;
+      if (local.cards.length >= 3) {
+        return filterHidden(local.cards, "guest_intro");
+      }
       const uiCache = loadGuestResumeUiCache();
       if (uiCache?.cards?.length === 3) {
         const system = (uiCache.system as DeckSystem) || tripletSystem;
         const ordered = [...uiCache.cards].sort((a, b) => a.position - b.position);
-        return reconcileSpreadDeck(system, ordered).cards;
+        return filterHidden(reconcileSpreadDeck(system, ordered).cards, "guest_intro");
       }
       return [];
     }
     const latest = resolveTripletDisplaySpread(savedReadings, profile, tripletSystem);
     return latest.cards.length >= 3 ? latest.cards : [];
-  }, [profile, tripletSystem, savedReadings, isLoggedIn, authLoading, newTripletDraft, step]);
+  }, [
+    profile,
+    tripletSystem,
+    savedReadings,
+    isLoggedIn,
+    authLoading,
+    newTripletDraft,
+    step,
+    homeRecapHiddenKey,
+    currentDailyReading,
+  ]);
 
   const displayDeckSystem = useMemo((): DeckSystem => {
     const draftInProgress = newTripletDraft || step === "triplet";
@@ -666,6 +723,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       clearLocalTripletDrawAt();
     }
 
+    const daily =
+      data.currentDailyReading && typeof data.currentDailyReading === "object"
+        ? (data.currentDailyReading as CurrentDailyCardsResult)
+        : ({ exists: false } as CurrentDailyCardsResult);
+    setCurrentDailyReading(daily);
+    const hidden =
+      typeof data.homeRecapHiddenKey === "string" && data.homeRecapHiddenKey.trim()
+        ? data.homeRecapHiddenKey.trim()
+        : null;
+    setHomeRecapHiddenKey(hidden);
+
     const restored = profileFromApiPayload({
       profile: data.profile,
       profileUserId: data.profileUserId,
@@ -674,14 +742,24 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     setProfile((prev) => {
       const localCards = prev?.tarotCards?.length ?? 0;
-      const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current);
+      const prevCardsKey =
+        (prev?.tarotCards?.length ?? 0) >= 3
+          ? tarotCardsKey(prev!.tarotCards!.map((c) => ({ name: c.name })))
+          : null;
+      const prevRecapKey = prevCardsKey
+        ? buildHomeRecapKey({ source: "unknown", cardsKey: prevCardsKey })
+        : null;
+      const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current, {
+        homeRecapHiddenKey: hidden,
+        prevRecapKey,
+      });
       if (next.tarotCards.length < 3 && localCards >= 3) {
         clearSpreadSessionState(setLastMasterId);
       }
       localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
       return next;
     });
-    return { data, cooldown, profile: restored };
+    return { data, cooldown, profile: restored, currentDailyReading: daily, homeRecapHiddenKey: hidden };
   }, [setProfile, setLastMasterId]);
 
   const refreshSavedReadings = useCallback(() => {
@@ -696,6 +774,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         }
 
         setTripletCooldown(tripletCooldownFromProfileData(data));
+        const daily =
+          data.currentDailyReading && typeof data.currentDailyReading === "object"
+            ? (data.currentDailyReading as CurrentDailyCardsResult)
+            : ({ exists: false } as CurrentDailyCardsResult);
+        setCurrentDailyReading(daily);
+        const hidden =
+          typeof data.homeRecapHiddenKey === "string" && data.homeRecapHiddenKey.trim()
+            ? data.homeRecapHiddenKey.trim()
+            : null;
+        setHomeRecapHiddenKey(hidden);
 
         if (data.profile && !newTripletInProgressRef.current) {
           const restored = profileFromApiPayload({
@@ -704,8 +792,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             readings: data.readings,
           });
           setProfile((prev) => {
-            const localCards = prev?.tarotCards?.length ?? 0;
-            const next = mergeProfileWithServer(restored, prev, false);
+            const prevCardsKey =
+              (prev?.tarotCards?.length ?? 0) >= 3
+                ? tarotCardsKey(prev!.tarotCards!.map((c) => ({ name: c.name })))
+                : null;
+            const prevRecapKey = prevCardsKey
+              ? buildHomeRecapKey({ source: "unknown", cardsKey: prevCardsKey })
+              : null;
+            const next = mergeProfileWithServer(restored, prev, false, {
+              homeRecapHiddenKey: hidden,
+              prevRecapKey,
+            });
             localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
             return next;
           });
@@ -751,6 +848,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         }
 
         setTripletCooldown(tripletCooldownFromProfileData(data));
+        setTripletCooldownReady(true);
+        const daily =
+          data.currentDailyReading && typeof data.currentDailyReading === "object"
+            ? (data.currentDailyReading as CurrentDailyCardsResult)
+            : ({ exists: false } as CurrentDailyCardsResult);
+        setCurrentDailyReading(daily);
+        const hidden =
+          typeof data.homeRecapHiddenKey === "string" && data.homeRecapHiddenKey.trim()
+            ? data.homeRecapHiddenKey.trim()
+            : null;
+        setHomeRecapHiddenKey(hidden);
 
         const restored = profileFromApiPayload({
           profile: data.profile,
@@ -760,7 +868,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
         setProfile((prev) => {
           const localCards = prev?.tarotCards?.length ?? 0;
-          const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current);
+          const prevCardsKey =
+            (prev?.tarotCards?.length ?? 0) >= 3
+              ? tarotCardsKey(prev!.tarotCards!.map((c) => ({ name: c.name })))
+              : null;
+          const prevRecapKey = prevCardsKey
+            ? buildHomeRecapKey({ source: "unknown", cardsKey: prevCardsKey })
+            : null;
+          const next = mergeProfileWithServer(restored, prev, newTripletInProgressRef.current, {
+            homeRecapHiddenKey: hidden,
+            prevRecapKey,
+          });
           if (next.tarotCards.length < 3 && localCards >= 3) {
             clearSpreadSessionState(setLastMasterId);
           }
@@ -2832,6 +2950,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           updated.lastTripletDrawAt = drawAt;
           writeLocalTripletDrawAt(drawAt);
           setTripletCooldown(tripletCooldownFromLastDraw(drawAt));
+          const completedKey = tarotCardsKey(cards.map((c) => ({ name: c.name })));
+          if (completedKey && dailyCompletedTrackedRef.current !== completedKey) {
+            dailyCompletedTrackedRef.current = completedKey;
+            trackDailyCardsCompleted("handle_triplet_complete");
+          }
+          // Refresh server daily artifact for opened-state CTA.
+          void syncProfileFromServer();
         } else {
           newTripletInProgressRef.current = false;
           setNewTripletDraft(false);
@@ -2886,37 +3011,143 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setStep("masters");
   }, [profile, tripletSystem, newTripletDraft, setStep]);
 
+  const resolveDisplayedHomeRecapKey = useCallback((): string | null => {
+    if (currentDailyReading?.exists) {
+      const cardsKey = tarotCardsKey(displayTarotCards.map((c) => ({ name: c.name })));
+      if (cardsKey && cardsKey === currentDailyReading.cardsKey) {
+        return currentDailyReading.recapKey;
+      }
+    }
+    if (displayTarotCards.length < 3) return null;
+    const cardsKey = tarotCardsKey(displayTarotCards.map((c) => ({ name: c.name })));
+    if (!cardsKey) return null;
+    if (hasServerTripletSpread(savedReadings)) {
+      const latest = resolveTripletDisplaySpread(savedReadings, null, tripletSystem);
+      const latestKey = tarotCardsKey(latest.cards.map((c) => ({ name: c.name })));
+      if (latestKey === cardsKey) {
+        return buildHomeRecapKey({ source: "triplet", cardsKey });
+      }
+    }
+    return buildHomeRecapKey({ source: "guest_intro", cardsKey });
+  }, [
+    currentDailyReading,
+    displayTarotCards,
+    savedReadings,
+    tripletSystem,
+  ]);
+
   const handleClearTripletFromMain = useCallback(async () => {
+    const hiddenKey = resolveDisplayedHomeRecapKey();
+
+    // Optimistic local clear for immediate UX.
+    const previousProfile = profile;
+    const previousHidden = homeRecapHiddenKey;
+    setProfile((prev) => {
+      if (!prev) return prev;
+      const next = {
+        ...prev,
+        tarotCards: [] as SpreadSymbol[],
+        deckSystem: undefined,
+        deckSpreads: undefined,
+        teaser: undefined,
+        tripletMasterId: undefined,
+      };
+      localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+      return next;
+    });
+    clearGuestTriplet();
+    clearGuestResumeUiCache();
+    clearSpreadSessionState(setLastMasterId);
+    if (hiddenKey) setHomeRecapHiddenKey(hiddenKey);
+
     if (!isLoggedIn) {
-      setProfile((prev) => {
-        if (!prev) return prev;
-        const next = {
-          ...prev,
-          tarotCards: [] as SpreadSymbol[],
-          deckSystem: undefined,
-          deckSpreads: undefined,
-          teaser: undefined,
-          tripletMasterId: undefined,
-        };
-        localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-        return next;
-      });
-      clearSpreadSessionState(setLastMasterId);
+      setTripletNotice(null);
       return;
     }
 
-    const res = await fetch("/api/profile/triplet-spread", {
-      method: "DELETE",
+    if (!hiddenKey) {
+      setTripletNotice("Не удалось определить расклад для скрытия.");
+      return;
+    }
+
+    const res = await fetch("/api/profile/home-recap", {
+      method: "PATCH",
       credentials: "include",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ hiddenKey }),
     });
     if (!res.ok) {
+      if (previousProfile) {
+        setProfile(previousProfile);
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(previousProfile));
+      }
+      setHomeRecapHiddenKey(previousHidden);
       setTripletNotice("Не удалось убрать расклад. Попробуйте обновить страницу.");
       return;
     }
-    clearSpreadSessionState(setLastMasterId);
     await syncProfileFromServer();
     setTripletNotice(null);
-  }, [isLoggedIn, syncProfileFromServer, setProfile, setLastMasterId]);
+  }, [
+    isLoggedIn,
+    resolveDisplayedHomeRecapKey,
+    profile,
+    homeRecapHiddenKey,
+    syncProfileFromServer,
+    setProfile,
+    setLastMasterId,
+  ]);
+
+  const openCurrentDailyCards = useCallback(async () => {
+    const daily = currentDailyReading?.exists
+      ? currentDailyReading
+      : (await syncProfileFromServer())?.currentDailyReading;
+    if (!daily || !daily.exists) {
+      setTripletNotice("Сегодняшние карты дня не найдены. Попробуйте открыть новый расклад позже.");
+      return;
+    }
+
+    const masterId = daily.masterId || GUEST_TRIPLET_MASTER_ID;
+    const deps = chat();
+    if (daily.sessionId && deps) {
+      deps.setConsultationSessionId(daily.sessionId);
+      if (deps.consultationSessionIdRef) {
+        deps.consultationSessionIdRef.current = daily.sessionId;
+      }
+      deps.archiveSessionIdRef.current = daily.sessionId;
+      await deps.restoreChatForCharacter(masterId, {
+        archiveSessionId: daily.sessionId,
+        sessionId: daily.sessionId,
+      });
+      deps.setSelectedCharacter(masterId);
+      setStep("chat");
+      return;
+    }
+
+    // No session yet — open chat with exact daily cards via existing bind path.
+    const cardNames = daily.cardNames;
+    sessionSpreadMetaRef.current = { spreadType: "daily", cardNames };
+    setSessionIntention(null);
+    persistSessionIntention(masterId, null);
+    pendingChatOptsRef.current = { masterId, skipReading: false };
+    const chatSessionId = await beginNewSpreadSession(masterId);
+    await bindSessionToMasterRef.current(masterId, chatSessionId);
+    if (chatSessionId) {
+      await deps?.persistSessionMetaToServer(chatSessionId, {
+        characterKey: masterId,
+        intention: null,
+        spreadType: "daily",
+        cards: cardNames,
+      });
+    }
+    await beginChatAfterIntention(masterId, null, "existing");
+  }, [
+    currentDailyReading,
+    syncProfileFromServer,
+    chat,
+    beginNewSpreadSession,
+    beginChatAfterIntention,
+    setStep,
+  ]);
 
   const handleNewReading = async () => {
     const deps = chat();
@@ -4715,6 +4946,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     retryGuestTripletResume,
     tripletCooldown,
     tripletCooldownReady,
+    currentDailyReading,
+    homeRecapHiddenKey,
+    openCurrentDailyCards,
     spreadRitual,
     setSpreadRitual,
     sessionIntention,

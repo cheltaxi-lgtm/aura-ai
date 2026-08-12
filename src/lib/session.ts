@@ -1,10 +1,13 @@
-import { query, queryClient, type PoolClient } from "./db";
+import { query, queryClient, withTransaction, type PoolClient } from "./db";
 import { LLM_CONTEXT_MESSAGES } from "./chat-limits";
 import { getRuneSettings } from "./rune-settings";
 import { getSetting } from "./settings";
 import { creditRunesToUser } from "./rune-service";
 import { deleteUserTripletForSession } from "./triplet-cleanup";
-import { recordGuestIntroUsed } from "./rate-limit-anchors";
+import {
+  profileHasGuestIntroLifetimeFlag,
+  recordGuestIntroUsed,
+} from "./rate-limit-anchors";
 import type { NumerologToolParams } from "@/lib/numerology/tools";
 
 export interface SessionRow {
@@ -1105,6 +1108,83 @@ export async function deleteConsultationSession(
   const session = await getSession(sessionId);
   if (!session || session.user_id !== userId) return false;
 
+  const paymentBlock = await query<{ exists: boolean }>(
+    `SELECT EXISTS(
+       SELECT 1 FROM payments WHERE session_id = $1 AND status = 'succeeded'
+     ) AS exists`,
+    [sessionId]
+  );
+  const hasSucceededPayment = Boolean(paymentBlock.rows[0]?.exists);
+
+  const guestStatusRes = await query<{ guest_resume_status: string | null }>(
+    `SELECT guest_resume_status FROM sessions WHERE id = $1 AND user_id = $2`,
+    [sessionId, userId]
+  );
+  const guestIntroStatus = guestStatusRes.rows[0]?.guest_resume_status;
+  const isGuestIntro =
+    guestIntroStatus === "claimed" || guestIntroStatus === "reading_consumed";
+
+  if (isGuestIntro) {
+    // Fail-closed: durable guestIntroUsedAt must persist BEFORE any destructive wipe.
+    try {
+      await withTransaction(async (client) => {
+        await recordGuestIntroUsed(userId, new Date(), client);
+        const marked = await profileHasGuestIntroLifetimeFlag(userId, client);
+        if (!marked) {
+          throw new Error("guest_intro_marker_not_persisted");
+        }
+
+        await queryClient(client, `DELETE FROM session_memories WHERE session_id = $1`, [
+          sessionId,
+        ]);
+        await queryClient(client, `DELETE FROM chat_messages WHERE session_id = $1`, [
+          sessionId,
+        ]);
+        await queryClient(
+          client,
+          `DELETE FROM history
+           WHERE user_id = $1
+             AND context_data->>'sessionId' = $2`,
+          [userId, sessionId]
+        );
+
+        if (hasSucceededPayment) {
+          await queryClient(
+            client,
+            `UPDATE sessions
+             SET status = 'completed',
+                 character_key = NULL,
+                 intention = NULL,
+                 spread_type = NULL,
+                 spread_id = NULL,
+                 cards = NULL,
+                 awaiting_context = FALSE,
+                 guest_resume_token_hash = NULL,
+                 guest_resume_fingerprint = NULL,
+                 guest_resume_reading_id = NULL,
+                 guest_resume_expires_at = NULL,
+                 updated_at = NOW()
+             WHERE id = $1 AND user_id = $2`,
+            [sessionId, userId]
+          );
+          return;
+        }
+
+        await queryClient(
+          client,
+          `DELETE FROM sessions WHERE id = $1 AND user_id = $2`,
+          [sessionId, userId]
+        );
+      });
+      // Soft detach after successful wipe (non-critical for entitlement).
+      await detachJointReadingsForSession(sessionId, userId);
+      return true;
+    } catch (err) {
+      console.error("deleteConsultationSession guest-intro fail-closed:", err);
+      return false;
+    }
+  }
+
   await detachJointReadingsForSession(sessionId, userId);
 
   await query(`DELETE FROM session_memories WHERE session_id = $1`, [sessionId]);
@@ -1119,31 +1199,7 @@ export async function deleteConsultationSession(
     [userId, sessionId]
   );
 
-  const paymentBlock = await query<{ exists: boolean }>(
-    `SELECT EXISTS(
-       SELECT 1 FROM payments WHERE session_id = $1 AND status = 'succeeded'
-     ) AS exists`,
-    [sessionId]
-  );
-
-  const guestStatusRes = await query<{ guest_resume_status: string | null }>(
-    `SELECT guest_resume_status FROM sessions WHERE id = $1 AND user_id = $2`,
-    [sessionId, userId]
-  );
-  const guestIntroStatus = guestStatusRes.rows[0]?.guest_resume_status;
-  const isGuestIntro =
-    guestIntroStatus === "claimed" || guestIntroStatus === "reading_consumed";
-
-  if (isGuestIntro) {
-    try {
-      await recordGuestIntroUsed(userId);
-    } catch {
-      /* non-fatal */
-    }
-  }
-
-  if (paymentBlock.rows[0]?.exists) {
-    // Soft-clear payment-linked row; strip personal + guest payload.
+  if (hasSucceededPayment) {
     await query(
       `UPDATE sessions
        SET status = 'completed',
@@ -1164,7 +1220,6 @@ export async function deleteConsultationSession(
     return true;
   }
 
-  // Guest intro lifetime is in astro_meta.guestIntroUsedAt — delete the session row.
   const result = await query(
     `DELETE FROM sessions WHERE id = $1 AND user_id = $2`,
     [sessionId, userId]

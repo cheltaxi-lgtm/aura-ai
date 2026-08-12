@@ -21,6 +21,8 @@ import {
   type TripletCooldownStatus,
 } from "@/lib/triplet-limit";
 import { LAST_MASTER_KEY, PROFILE_KEY } from "@/lib/home-flow-storage";
+import { buildHomeRecapKey, isHomeRecapHidden } from "@/lib/home-recap-key";
+import { tarotCardsKey } from "@/lib/tarot";
 import type { StoredProfile } from "@/types/stored-profile";
 
 export function profileHasSpread(p: StoredProfile): boolean {
@@ -185,13 +187,48 @@ export function profileFromApiPayload(data: {
 export function mergeProfileWithServer(
   restored: StoredProfile,
   prev: StoredProfile | null | undefined,
-  tripletDraftInProgress: boolean
+  tripletDraftInProgress: boolean,
+  opts?: {
+    /** Server-authoritative dismissed home recap key — blocks local resurrection. */
+    homeRecapHiddenKey?: string | null;
+    /** Stable key for the previous local spread being considered for merge. */
+    prevRecapKey?: string | null;
+  }
 ): StoredProfile {
   if (prev?.userId && restored.userId && prev.userId !== restored.userId) {
     return restored;
   }
 
-  if (tripletDraftInProgress && (prev?.tarotCards?.length ?? 0) >= 3) {
+  const hiddenKey = opts?.homeRecapHiddenKey?.trim() || null;
+  const prevKey = opts?.prevRecapKey?.trim() || null;
+  const prevIsHidden = isHomeRecapHidden(prevKey, hiddenKey);
+
+  const stripSpread = (base: StoredProfile): StoredProfile => ({
+    ...base,
+    tarotCards: [],
+    deckSystem: undefined,
+    deckSpreads: undefined,
+    teaser: undefined,
+    tripletMasterId: undefined,
+  });
+
+  const spreadKeyOf = (p: StoredProfile | null | undefined): string | null => {
+    if ((p?.tarotCards?.length ?? 0) < 3) return null;
+    return tarotCardsKey(p!.tarotCards!.map((c) => ({ name: c.name })));
+  };
+
+  const cardsAreHidden = (p: StoredProfile | null | undefined): boolean => {
+    if (!hiddenKey) return false;
+    const cardsKey = spreadKeyOf(p);
+    if (!cardsKey) return false;
+    return (
+      isHomeRecapHidden(buildHomeRecapKey({ source: "unknown", cardsKey }), hiddenKey) ||
+      isHomeRecapHidden(buildHomeRecapKey({ source: "guest_intro", cardsKey }), hiddenKey) ||
+      isHomeRecapHidden(buildHomeRecapKey({ source: "triplet", cardsKey }), hiddenKey)
+    );
+  };
+
+  if (tripletDraftInProgress && (prev?.tarotCards?.length ?? 0) >= 3 && !prevIsHidden) {
     return {
       ...restored,
       tarotCards: prev!.tarotCards!,
@@ -203,9 +240,12 @@ export function mergeProfileWithServer(
   }
 
   const prevHasSpread =
-    (prev?.tarotCards?.length ?? 0) >= 3 ||
-    Object.values(prev?.deckSpreads ?? {}).some((s) => (s?.length ?? 0) >= 3);
+    !prevIsHidden &&
+    !cardsAreHidden(prev) &&
+    ((prev?.tarotCards?.length ?? 0) >= 3 ||
+      Object.values(prev?.deckSpreads ?? {}).some((s) => (s?.length ?? 0) >= 3));
   const serverHasSpread = (restored.tarotCards?.length ?? 0) >= 3;
+  const serverIsHidden = cardsAreHidden(restored);
 
   const astroAnchor =
     typeof restored.astroMeta === "object" &&
@@ -215,9 +255,16 @@ export function mergeProfileWithServer(
       ? ((restored.astroMeta as Record<string, unknown>).lastTripletDrawAt as string)
       : undefined;
 
-  if (serverHasSpread) {
+  if (serverHasSpread && !serverIsHidden) {
     return {
       ...restored,
+      lastTripletDrawAt: prev?.lastTripletDrawAt ?? astroAnchor ?? restored.lastTripletDrawAt,
+    };
+  }
+
+  if (serverHasSpread && serverIsHidden) {
+    return {
+      ...stripSpread(restored),
       lastTripletDrawAt: prev?.lastTripletDrawAt ?? astroAnchor ?? restored.lastTripletDrawAt,
     };
   }

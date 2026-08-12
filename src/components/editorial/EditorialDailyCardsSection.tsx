@@ -8,19 +8,22 @@ import { trackDailyCardsCtaClick, trackDailyCardsOfferView } from "@/lib/seo/met
 
 type EditorialDailyCardsSectionProps = {
   isLoggedIn: boolean;
-  /** Authenticated daily triplet UI state (loading until cooldown ready). */
   dailyState?: DailyCardsUiState;
+  dailyCooldownHint?: string | null;
   onGuestCta: () => void;
   onOpenDaily?: () => void;
   onViewToday?: () => void;
+  onPickRegular?: () => void;
 };
 
 export default function EditorialDailyCardsSection({
   isLoggedIn,
   dailyState = "loading",
+  dailyCooldownHint,
   onGuestCta,
   onOpenDaily,
   onViewToday,
+  onPickRegular,
 }: EditorialDailyCardsSectionProps) {
   const { ref, className } = useScrollReveal<HTMLElement>();
   const viewed = useRef(false);
@@ -36,9 +39,11 @@ export default function EditorialDailyCardsSection({
     ? EDITORIAL_DAILY_CARDS.guestCta
     : dailyState === "available"
       ? EDITORIAL_DAILY_CARDS.authAvailableCta
-      : dailyState === "used"
-        ? EDITORIAL_DAILY_CARDS.authUsedCta
-        : EDITORIAL_DAILY_CARDS.authLoadingLabel;
+      : dailyState === "opened"
+        ? EDITORIAL_DAILY_CARDS.authOpenedCta
+        : dailyState === "cooldown"
+          ? EDITORIAL_DAILY_CARDS.authCooldownCta
+          : EDITORIAL_DAILY_CARDS.authLoadingLabel;
 
   const onClick = () => {
     if (isLoggedIn && dailyState === "loading") return;
@@ -47,15 +52,24 @@ export default function EditorialDailyCardsSection({
         ? "landing_guest"
         : dailyState === "available"
           ? "landing_auth_available"
-          : "landing_auth_used"
+          : dailyState === "opened"
+            ? "landing_auth_opened"
+            : "landing_auth_cooldown"
     );
     if (!isLoggedIn) {
       onGuestCta();
       return;
     }
     if (dailyState === "available") onOpenDaily?.();
-    else if (dailyState === "used") onViewToday?.();
+    else if (dailyState === "opened") onViewToday?.();
+    else if (dailyState === "cooldown") onPickRegular?.();
   };
+
+  const showAuthCta =
+    !isLoggedIn ||
+    dailyState === "available" ||
+    dailyState === "opened" ||
+    (dailyState === "cooldown" && Boolean(onPickRegular));
 
   return (
     <section
@@ -83,18 +97,24 @@ export default function EditorialDailyCardsSection({
           className="mt-3 text-sm text-white/60 salon-reveal__item"
           style={{ ["--salon-i" as string]: 2 }}
         >
-          {EDITORIAL_DAILY_CARDS.body}
+          {isLoggedIn && dailyState === "cooldown" && dailyCooldownHint
+            ? dailyCooldownHint
+            : EDITORIAL_DAILY_CARDS.body}
         </p>
         <div className="mt-6 salon-reveal__item" style={{ ["--salon-i" as string]: 3 }}>
-          <button
-            type="button"
-            className="editorial-btn editorial-btn--gold"
-            onClick={onClick}
-            disabled={isLoggedIn && dailyState === "loading"}
-            aria-busy={isLoggedIn && dailyState === "loading" ? true : undefined}
-          >
-            {ctaLabel}
-          </button>
+          {showAuthCta ? (
+            <button
+              type="button"
+              className="editorial-btn editorial-btn--gold"
+              onClick={onClick}
+              disabled={isLoggedIn && dailyState === "loading"}
+              aria-busy={isLoggedIn && dailyState === "loading" ? true : undefined}
+            >
+              {ctaLabel}
+            </button>
+          ) : (
+            <p className="text-sm text-white/55">{EDITORIAL_DAILY_CARDS.authLoadingLabel}</p>
+          )}
         </div>
         {!isLoggedIn ? (
           <p className="mt-3 text-xs text-white/45 salon-reveal__item" style={{ ["--salon-i" as string]: 4 }}>
@@ -106,5 +126,4 @@ export default function EditorialDailyCardsSection({
   );
 }
 
-// Keep section id registry discoverable for SEO/internal links.
 void EDITORIAL_SECTION_IDS;

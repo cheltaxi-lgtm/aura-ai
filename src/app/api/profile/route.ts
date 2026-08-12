@@ -37,6 +37,8 @@ import {
   inferGenderFromFirstName,
   normalizeUserGender,
 } from "@/lib/russian-name-gender";
+import { resolveCurrentDailyCards } from "@/lib/current-daily-cards";
+import { readHomeRecapHiddenKey } from "@/lib/home-recap";
 
 export async function GET() {
   if (!(await ensureDb())) {
@@ -95,7 +97,14 @@ export async function GET() {
 
   const continueMasterIds = mastersWithReadingForSpread(mappedReadings, spreadCards);
 
-  const tripletCooldown = await checkTripletCooldown(profileUserId);
+  const [tripletCooldown, currentDailyReading] = await Promise.all([
+    checkTripletCooldown(profileUserId),
+    resolveCurrentDailyCards(profileUserId),
+  ]);
+
+  const homeRecapHiddenKey = readHomeRecapHiddenKey(
+    (profile?.astro_meta as Record<string, unknown> | null | undefined) ?? null
+  );
 
   return NextResponse.json({
     profileUserId,
@@ -106,6 +115,8 @@ export async function GET() {
     spreadCardsKey: tarotCardsKey(spreadCards),
     spreadId: spreadCards ? DEFAULT_SPREAD_ID : null,
     tripletCooldown,
+    currentDailyReading,
+    homeRecapHiddenKey,
     hasConsultationActivity,
   });
 }
