@@ -20,6 +20,8 @@ export interface AuthUser {
   oauthGender?: "male" | "female" | null;
   /** Explicit account 18+ consent (`user_accounts.age_confirmed_at`). */
   ageConfirmed?: boolean;
+  /** Server-authoritative account registration ISO (`user_accounts.created_at`). */
+  createdAt?: string | null;
 }
 
 function sleep(ms: number): Promise<void> {

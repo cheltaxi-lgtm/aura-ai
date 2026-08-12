@@ -130,6 +130,21 @@ export function trackCrossProductClick(params: ProductFunnelParams): void {
   reachGoal("cross_product_click", clean);
 }
 
+const RETENTION_STATES = new Set(["d1", "d7", "later"]);
+
+/**
+ * Auth retention return (Personal Zovus). Params: product/source/state only.
+ * Never send createdAt / userId / email.
+ */
+export function trackRetentionReturn(state: "d1" | "d7" | "later"): void {
+  if (!RETENTION_STATES.has(state)) return;
+  reachGoal("retention_return", {
+    product: "home",
+    source: "personal_zovus",
+    state,
+  });
+}
+
 /**
  * Infer product from public path for shared paywall CTAs.
  * No query parsing (may contain PII).

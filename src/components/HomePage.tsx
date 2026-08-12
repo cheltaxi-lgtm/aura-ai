@@ -3609,6 +3609,7 @@ export default function HomePage({
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
               <PersonalZovusHome
                 userName={effectiveProfile.name || authUser?.name}
+                accountCreatedAt={authUser?.createdAt}
                 dailyCardsState={resolveDailyCardsUiState({
                   cooldownReady: tripletCooldownReady,
                   allowed: effectiveTripletCooldown.allowed,

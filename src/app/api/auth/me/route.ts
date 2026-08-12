@@ -1,6 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { clearAuthCookie, getAuth } from "@/lib/auth";
-import { getProfileUserIdForAccount, hasAccountAgeConfirmed } from "@/lib/accounts";
+import {
+  getAccountCreatedAt,
+  getProfileUserIdForAccount,
+  hasAccountAgeConfirmed,
+} from "@/lib/accounts";
 import { getLatestOAuthGenderForAccount } from "@/lib/oauth/accounts";
 import { clearSessionClaimCookie } from "@/lib/session-claim";
 import { getUserById, profileHasBirthData } from "@/lib/users";
@@ -17,12 +21,19 @@ export async function GET() {
   let oauthGender: "male" | "female" | null = null;
   let ageConfirmed = true;
   let needsBirthProfile = false;
+  /** ISO registration instant from user_accounts — for retention math only. */
+  let createdAt: string | null = null;
   if (auth.role === "user") {
-    [profileUserId, oauthGender, ageConfirmed] = await Promise.all([
+    const [profileId, gender, ageOk, accountCreatedAt] = await Promise.all([
       getProfileUserIdForAccount(auth.sub),
       getLatestOAuthGenderForAccount(auth.sub),
       hasAccountAgeConfirmed(auth.sub),
+      getAccountCreatedAt(auth.sub),
     ]);
+    profileUserId = profileId;
+    oauthGender = gender;
+    ageConfirmed = ageOk;
+    createdAt = accountCreatedAt?.toISOString() ?? null;
     if (profileUserId) {
       const row = await getUserById(profileUserId);
       needsBirthProfile = !profileHasBirthData(row);
@@ -38,7 +49,7 @@ export async function GET() {
     authenticated: true,
     needsProfile,
     needsBirthProfile,
-    user: { ...auth, profileUserId, oauthGender, ageConfirmed },
+    user: { ...auth, profileUserId, oauthGender, ageConfirmed, createdAt },
   });
 }
 

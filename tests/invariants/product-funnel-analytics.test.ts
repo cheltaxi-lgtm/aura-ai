@@ -125,6 +125,7 @@ describe("product-funnel-analytics", () => {
     expect(src).toMatch(/trackPersonalZovusEvent\(\s*["']personal_home_view["']/);
     expect(src).toMatch(/trackPersonalZovusEvent\(\s*["']personal_continue_click["']/);
     expect(src).toMatch(/trackPersonalZovusEvent\(\s*["']personal_explore_click["']/);
+    expect(src).toMatch(/trackRetentionReturn/);
     expect(src).not.toMatch(
       /trackPersonalZovusEvent\([\s\S]{0,200}(birthDate|email|userId|claimToken|question)/
     );

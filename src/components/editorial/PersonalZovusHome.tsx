@@ -15,11 +15,15 @@ import {
   trackDailyCardsOfferView,
   trackDailyCardsReturnView,
 } from "@/lib/seo/metrika";
+import { resolveAuthRetentionState } from "@/lib/auth-retention";
 import {
   trackPersonalZovusEvent,
+  trackRetentionReturn,
   type ProductFunnelProduct,
 } from "@/lib/seo/product-funnel";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+
+const RETENTION_SESSION_KEY = "zovus_retention_return_emitted";
 
 function continueKindToProduct(
   kind: PersonalContinueItem["kind"]
@@ -38,6 +42,8 @@ function exploreIdToProduct(
 
 type PersonalZovusHomeProps = {
   userName?: string | null;
+  /** Server-authoritative account createdAt ISO from /api/auth/me. */
+  accountCreatedAt?: string | null;
   dailyCardsState: DailyCardsUiState;
   dailyCooldownHint?: string | null;
   onOpenDailyCards: () => void;
@@ -51,6 +57,7 @@ type PersonalZovusHomeProps = {
 
 export default function PersonalZovusHome({
   userName,
+  accountCreatedAt,
   dailyCardsState,
   dailyCooldownHint,
   onOpenDailyCards,
@@ -68,6 +75,7 @@ export default function PersonalZovusHome({
   const [continueReady, setContinueReady] = useState(false);
   const viewed = useRef(false);
   const homeViewed = useRef(false);
+  const retentionEmitted = useRef(false);
 
   useEffect(() => {
     if (homeViewed.current) return;
@@ -85,6 +93,28 @@ export default function PersonalZovusHome({
     if (dailyCardsState === "available") trackDailyCardsOfferView("personal_zovus");
     else trackDailyCardsReturnView("personal_zovus");
   }, [dailyCardsState]);
+
+  // Retention return: server createdAt only; sessionStorage dedupe is UX-only.
+  useEffect(() => {
+    if (retentionEmitted.current) return;
+    const state = resolveAuthRetentionState({ createdAt: accountCreatedAt });
+    if (!state) return;
+    try {
+      if (typeof sessionStorage !== "undefined" && sessionStorage.getItem(RETENTION_SESSION_KEY)) {
+        retentionEmitted.current = true;
+        return;
+      }
+    } catch {
+      /* private mode */
+    }
+    retentionEmitted.current = true;
+    trackRetentionReturn(state);
+    try {
+      sessionStorage.setItem(RETENTION_SESSION_KEY, state);
+    } catch {
+      /* ignore */
+    }
+  }, [accountCreatedAt]);
 
   useEffect(() => {
     let cancelled = false;

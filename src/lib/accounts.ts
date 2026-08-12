@@ -105,6 +105,15 @@ export interface AccountConsentSnapshot {
   marketingConsentAt: string | null;
 }
 
+/** Server-authoritative registration instant (`user_accounts.created_at`). */
+export async function getAccountCreatedAt(accountId: string): Promise<Date | null> {
+  const { rows } = await query<{ created_at: Date }>(
+    `SELECT created_at FROM user_accounts WHERE id = $1`,
+    [accountId]
+  );
+  return rows[0]?.created_at ?? null;
+}
+
 export async function getAccountConsentSnapshot(
   accountId: string
 ): Promise<AccountConsentSnapshot | null> {
