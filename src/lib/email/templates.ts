@@ -84,7 +84,7 @@ export function dailyReminderEmailHtml(name: string, siteUrl?: string): string {
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
      <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
-     ${cta(`${url}/?daily=1`, "Открыть карты дня бесплатно")}`,
+     ${cta(`${url}/?dailyCards=1`, "Открыть карты дня бесплатно")}`,
     "Напоминание можно отключить в профиле Zovus."
   );
 }

@@ -276,6 +276,7 @@ export default function HomePage({
   const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
+  const [pendingDailyCardsOpen, setPendingDailyCardsOpen] = useState(false);
   const chatSessionDeepLinkParsedRef = useRef(false);
   const numerologDeepLinkParsedRef = useRef(false);
   const masterAutoOpenParsedRef = useRef(false);
@@ -631,6 +632,20 @@ export default function HomePage({
     handleSpreadReadingRitualComplete,
   } = onboarding;
 
+  // Reminder CTA /?dailyCards=1 → authenticated daily 3-cards flow (handleNewReading).
+  // Guests: ignore (no guest triplet / no redraw). Cooldown: handleNewReading no-ops.
+  useEffect(() => {
+    if (!pendingDailyCardsOpen) return;
+    if (authLoading) return;
+    if (!isLoggedIn) {
+      setPendingDailyCardsOpen(false);
+      return;
+    }
+    if (!tripletCooldownReady) return;
+    setPendingDailyCardsOpen(false);
+    void handleNewReading();
+  }, [pendingDailyCardsOpen, authLoading, isLoggedIn, tripletCooldownReady, handleNewReading]);
+
   // Transition banner only while resume is actively claiming/loading — never
   // leave "готовит трактовку" sticky on a normal homepage without that phase.
   const visibleTripletNotice = useMemo(() => {
@@ -931,6 +946,16 @@ export default function HomePage({
 
     const spreadParam = params.get("spread")?.trim();
     const dailyParam = params.get("daily")?.trim();
+    const dailyCardsParam = params.get("dailyCards")?.trim();
+
+    if (dailyCardsParam === "1" || dailyCardsParam === "true") {
+      deepLinkSpreadParsedRef.current = true;
+      setPendingDailyCardsOpen(true);
+      const url = new URL(window.location.href);
+      url.searchParams.delete("dailyCards");
+      window.history.replaceState(null, "", url.pathname + url.search + url.hash);
+      return;
+    }
 
     if (dailyParam === "1" || dailyParam === "true") {
       deepLinkSpreadParsedRef.current = true;

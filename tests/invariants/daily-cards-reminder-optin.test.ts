@@ -70,10 +70,11 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(oauth).not.toMatch(/daily_cards_reminder/);
   });
 
-  it("does not wire email/push delivery to the new opt-in", () => {
+  it("delivery is gated by daily_cards_reminder (not auto-on from channel prefs)", () => {
     const reminder = read("src/lib/daily-reminder-service.ts");
-    expect(reminder).not.toMatch(/daily_cards_reminder/);
-    expect(reminder).not.toMatch(/dailyCardsReminder/);
+    expect(reminder).toMatch(/ua\.daily_cards_reminder = TRUE/);
+    expect(reminder).toMatch(/dailyCardsReminder/);
+    expect(reminder).toMatch(/checkTripletCooldown/);
   });
 
   it("schema default is OFF", () => {

@@ -1,6 +1,10 @@
 import { query } from "@/lib/db";
 import { dispatchNotification } from "@/lib/notify";
 import { dailyReminderEmailHtml, sendEmail } from "@/lib/email/send";
+import { checkTripletCooldown } from "@/lib/triplet-limit-server";
+
+/** Authenticated 3-cards-of-the-day flow (not daily energy, not guest redraw). */
+export const DAILY_CARDS_REMINDER_CTA = "/?dailyCards=1";
 
 export type NotificationPrefs = {
   dailyEmail: boolean;
@@ -68,13 +72,42 @@ export async function updateNotificationPrefs(
   return next;
 }
 
-/** Users who want a daily reminder at the current MSK hour and haven't drawn today. */
+export type DailyCardsReminderDeliveryPlan = {
+  inApp: boolean;
+  email: boolean;
+};
+
+/**
+ * Master gate = user_accounts.daily_cards_reminder.
+ * dailyEmail / dailyInApp are channel prefs only.
+ * cooldownAllowed = P0 checkTripletCooldown (daily_triplet / lastDailyTripletDrawAt).
+ */
+export function resolveDailyCardsReminderDelivery(input: {
+  dailyCardsReminder: boolean;
+  cooldownAllowed: boolean;
+  dailyInApp: boolean;
+  dailyEmail: boolean;
+  hasEmail: boolean;
+  alreadySentInApp: boolean;
+  alreadySentEmail: boolean;
+}): DailyCardsReminderDeliveryPlan {
+  if (!input.dailyCardsReminder || !input.cooldownAllowed) {
+    return { inApp: false, email: false };
+  }
+  return {
+    inApp: input.dailyInApp === true && !input.alreadySentInApp,
+    email: input.dailyEmail === true && input.hasEmail && !input.alreadySentEmail,
+  };
+}
+
+/** Opted-in accounts at this MSK hour with at least one channel pref on. */
 export async function getDailyReminderCandidates(hourMsk: number): Promise<
   Array<{
     userId: string;
     name: string;
     email: string | null;
     prefs: NotificationPrefs;
+    dailyCardsReminder: boolean;
   }>
 > {
   const res = await query<{
@@ -82,11 +115,13 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
     name: string;
     email: string | null;
     notification_prefs: unknown;
+    daily_cards_reminder: boolean;
   }>(
-    `SELECT u.id AS user_id, u.name, ua.email, u.notification_prefs
+    `SELECT u.id AS user_id, u.name, ua.email, u.notification_prefs, ua.daily_cards_reminder
      FROM users u
-     LEFT JOIN user_accounts ua ON ua.profile_user_id = u.id
-     WHERE (
+     INNER JOIN user_accounts ua ON ua.profile_user_id = u.id
+     WHERE ua.daily_cards_reminder = TRUE
+     AND (
        COALESCE((u.notification_prefs->>'dailyEmail')::boolean, true) = true
        OR COALESCE((u.notification_prefs->>'dailyInApp')::boolean, true) = true
      )
@@ -97,11 +132,7 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
          THEN ((u.notification_prefs->>'reminderHourUtc')::int + 3) % 24
          ELSE 9
        END
-     ) = $1
-     AND NOT EXISTS (
-       SELECT 1 FROM daily_readings dr
-       WHERE dr.user_id = u.id AND dr.reading_date = CURRENT_DATE
-     )`,
+     ) = $1`,
     [hourMsk]
   );
 
@@ -110,23 +141,43 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
     name: row.name,
     email: row.email,
     prefs: parseNotificationPrefs(row.notification_prefs),
+    dailyCardsReminder: Boolean(row.daily_cards_reminder),
   }));
 }
 
-async function alreadySentToday(userId: string, channel: "in_app" | "email"): Promise<boolean> {
+/** True if a reminder was already logged in this availability window (since last daily draw). */
+export async function alreadySentThisAvailabilityWindow(
+  userId: string,
+  channel: "in_app" | "email",
+  lastDailyAt: string | null
+): Promise<boolean> {
+  if (lastDailyAt) {
+    const res = await query(
+      `SELECT 1 FROM daily_reminder_log
+       WHERE user_id = $1 AND channel = $2 AND created_at > $3::timestamptz
+       LIMIT 1`,
+      [userId, channel, lastDailyAt]
+    );
+    return res.rows.length > 0;
+  }
   const res = await query(
-    `SELECT 1 FROM daily_reminder_log WHERE user_id = $1 AND sent_date = CURRENT_DATE AND channel = $2 LIMIT 1`,
+    `SELECT 1 FROM daily_reminder_log WHERE user_id = $1 AND channel = $2 LIMIT 1`,
     [userId, channel]
   );
   return res.rows.length > 0;
 }
 
-async function markSent(userId: string, channel: "in_app" | "email"): Promise<void> {
-  await query(
+/** Claim calendar-day slot first so cron retries cannot double-insert. */
+async function claimReminderSlot(
+  userId: string,
+  channel: "in_app" | "email"
+): Promise<boolean> {
+  const { rowCount } = await query(
     `INSERT INTO daily_reminder_log (user_id, channel) VALUES ($1, $2)
      ON CONFLICT (user_id, sent_date, channel) DO NOTHING`,
     [userId, channel]
   );
+  return (rowCount ?? 0) > 0;
 }
 
 export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
@@ -139,34 +190,55 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
   let email = 0;
 
   for (const user of candidates) {
-    if (user.prefs.dailyInApp && !(await alreadySentToday(user.userId, "in_app"))) {
+    const cooldown = await checkTripletCooldown(user.userId);
+    const alreadySentInApp = await alreadySentThisAvailabilityWindow(
+      user.userId,
+      "in_app",
+      cooldown.lastTripletAt
+    );
+    const alreadySentEmail = await alreadySentThisAvailabilityWindow(
+      user.userId,
+      "email",
+      cooldown.lastTripletAt
+    );
+    const plan = resolveDailyCardsReminderDelivery({
+      dailyCardsReminder: user.dailyCardsReminder,
+      cooldownAllowed: cooldown.allowed,
+      dailyInApp: user.prefs.dailyInApp,
+      dailyEmail: user.prefs.dailyEmail,
+      hasEmail: Boolean(user.email),
+      alreadySentInApp,
+      alreadySentEmail,
+    });
+
+    if (plan.inApp && (await claimReminderSlot(user.userId, "in_app"))) {
       await dispatchNotification({
         userId: user.userId,
         type: "daily_reading_reminder",
         title: "Карты дня ждут вас",
         body: "Откройте расклад на сутки — узнайте энергию сегодняшнего дня.",
-        ctaPath: "/?daily=1",
+        ctaPath: DAILY_CARDS_REMINDER_CTA,
         ctaLabel: "Открыть карты дня",
       });
-      await markSent(user.userId, "in_app");
       inApp++;
     }
 
-    if (
-      user.prefs.dailyEmail &&
-      user.email &&
-      !(await alreadySentToday(user.userId, "email"))
-    ) {
+    if (plan.email && user.email && (await claimReminderSlot(user.userId, "email"))) {
       const sent = await sendEmail({
         to: user.email,
         subject: "Zovus — ваш расклад на сегодня",
         html: dailyReminderEmailHtml(user.name, siteUrl),
-        text: `${user.name}, откройте расклад на сутки: ${siteUrl}/?daily=1`,
+        text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}`,
         template: "daily_reminder",
       });
       if (sent) {
-        await markSent(user.userId, "email");
         email++;
+      } else {
+        await query(
+          `DELETE FROM daily_reminder_log
+           WHERE user_id = $1 AND channel = 'email' AND sent_date = CURRENT_DATE`,
+          [user.userId]
+        );
       }
     }
   }
