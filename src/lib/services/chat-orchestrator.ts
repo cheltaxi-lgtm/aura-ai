@@ -95,7 +95,7 @@ import {
   type SessionRow,
 } from "@/lib/session";
 import { ensureDb } from "@/lib/db";
-import { getUserById } from "@/lib/users";
+import { getUserById, profileGenderForPersonalization } from "@/lib/users";
 import { MAX_IMAGE_BYTES, validateImageBase64Payload, validateLastUserMessage } from "@/lib/api-guards";
 import { appendUserMemoryToPrompt, buildPeriodSpreadAnchorBlock } from "@/lib/user-memory";
 import { buildMemoryContext } from "@/lib/memory/build-memory-context";
@@ -279,14 +279,10 @@ export class ChatOrchestrator {
     if (orch.profileUserId) {
       const serverProfile = await getUserById(orch.profileUserId);
       if (serverProfile) {
+        const knownGender = profileGenderForPersonalization(serverProfile);
         orch.userProfile = {
           name: serverProfile.name,
-          gender:
-            serverProfile.gender === "male"
-              ? "male"
-              : serverProfile.gender === "female"
-                ? "female"
-                : "",
+          gender: knownGender ?? "",
           zodiac: serverProfile.zodiac,
           birthDate: serverProfile.birth_date ?? undefined,
           birthTime: serverProfile.birth_time ?? undefined,

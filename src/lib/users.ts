@@ -2,6 +2,7 @@
 import { deleteUserChatForCharacter } from "./accounts";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
 import { buildAstroMeta } from "./astro-profile";
+import { mergeConsentIntoAstroMeta, type AccountConsentSnapshot } from "./registration-consent";
 import { normalizeStoredDisplayName } from "./normalize-person-name";
 import { clearDailyReadingAnchors } from "./rate-limit-anchors";
 import { tarotCardsKey } from "./tarot";
@@ -50,6 +51,44 @@ export function profileHasBirthData(
         ? profile.birthDate
         : null;
   return typeof raw === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw.trim());
+}
+
+/**
+ * Gender for personalization. Schema still requires male|female, but stubs may
+ * store a placeholder with `astro_meta.genderUnspecified` — treat as unknown.
+ */
+export function profileGenderForPersonalization(
+  profile: Pick<UserRow, "gender" | "astro_meta"> | null | undefined
+): "male" | "female" | null {
+  if (!profile) return null;
+  const meta = profile.astro_meta as { genderUnspecified?: boolean } | null | undefined;
+  if (meta?.genderUnspecified === true) return null;
+  if (profile.gender === "male" || profile.gender === "female") return profile.gender;
+  return null;
+}
+
+async function loadAccountConsentForStub(
+  accountId: string
+): Promise<AccountConsentSnapshot | null> {
+  // Inline query avoids accounts↔users import cycle.
+  const { rows } = await query<{
+    terms_accepted_at: Date | null;
+    age_confirmed_at: Date | null;
+    marketing_consent: boolean;
+    marketing_consent_at: Date | null;
+  }>(
+    `SELECT terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at
+     FROM user_accounts WHERE id = $1`,
+    [accountId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    termsAcceptedAt: row.terms_accepted_at?.toISOString() ?? null,
+    ageConfirmedAt: row.age_confirmed_at?.toISOString() ?? null,
+    marketingConsent: Boolean(row.marketing_consent),
+    marketingConsentAt: row.marketing_consent_at?.toISOString() ?? null,
+  };
 }
 
 const USER_COLUMNS = `id, name, gender, birth_date::text, zodiac,
@@ -149,11 +188,19 @@ export async function createUserProfile(data: CreateUserProfileInput): Promise<U
 /**
  * Idempotent: ensure the account has a consumer profile row so Tarot / claim /
  * chat work without birth onboarding. Does nothing if profile already linked.
+ *
+ * Age/18+ is copied only from authoritative `user_accounts` consent columns —
+ * this helper never invents ageConfirmed=true.
+ *
+ * Gender: schema requires male|female. Unknown gender stores a schema filler
+ * plus `astro_meta.genderUnspecified` so personalization does not treat it as fact.
  */
 export async function ensureMinimalConsumerProfile(opts: {
   accountId: string;
   name: string;
   gender?: "male" | "female";
+  /** True only when gender comes from a reliable user/OAuth source (not name heuristic). */
+  genderKnown?: boolean;
 }): Promise<UserRow> {
   const existingId = await query<{ profile_user_id: string | null }>(
     `SELECT profile_user_id FROM user_accounts WHERE id = $1`,
@@ -164,20 +211,28 @@ export async function ensureMinimalConsumerProfile(opts: {
     const row = await getUserById(linked);
     if (row) return row;
   }
-  // Stubs are only created after explicit 18+/terms consent (register/OAuth).
-  // Persist ageConfirmed so chat/reading age gates accept null birth_date.
-  const now = new Date().toISOString();
+
+  const consent = await loadAccountConsentForStub(opts.accountId);
+  if (!consent) {
+    throw new Error("ACCOUNT_MISSING");
+  }
+
+  const genderKnown = Boolean(opts.genderKnown && opts.gender);
+  // Schema CHECK (male|female) — filler only when unknown; never personalize as fact.
+  const gender: "male" | "female" = genderKnown ? opts.gender! : "female";
+
+  const baseMeta: Record<string, unknown> = {
+    stubProfile: true,
+    ...(genderKnown ? {} : { genderUnspecified: true }),
+  };
+
   return createUserProfileForAccount(opts.accountId, {
     name: opts.name,
-    gender: opts.gender ?? "female",
+    gender,
     birthDate: null,
     zodiac: "",
     lifeFocus: "general",
-    astroMeta: {
-      stubProfile: true,
-      ageConfirmed: true,
-      ageConfirmedAt: now,
-    },
+    astroMeta: mergeConsentIntoAstroMeta(baseMeta, consent),
   });
 }
 

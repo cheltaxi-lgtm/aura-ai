@@ -97,10 +97,11 @@ export async function POST(request: NextRequest) {
     // Always create a consumer profile at registration — birth is optional.
     // Stub (null birth_date) unblocks Tarot claim; natal/matrix/HD still require birth.
     const hasAstroProfile = Boolean(gender && birthDate);
-    const stubGender: "male" | "female" =
-      gender === "male" || gender === "female"
-        ? gender
-        : inferGenderFromFirstName(trimmedName) ?? "female";
+    const genderKnown = gender === "male" || gender === "female";
+    // Schema filler when unknown — marked genderUnspecified (not a user-asserted fact).
+    const stubGender: "male" | "female" = genderKnown
+      ? gender
+      : inferGenderFromFirstName(trimmedName) ?? "female";
 
     let profilePayload: {
       gender: "male" | "female";
@@ -129,7 +130,10 @@ export async function POST(request: NextRequest) {
         lifeFocus,
         mainQuestion,
         astroMeta: mergeConsentIntoAstroMeta(
-          baseAstroMeta as unknown as Record<string, unknown>,
+          {
+            ...(baseAstroMeta as unknown as Record<string, unknown>),
+            ...(genderKnown ? {} : { genderUnspecified: true }),
+          },
           accountConsent
         ),
       };
@@ -140,7 +144,10 @@ export async function POST(request: NextRequest) {
         zodiac: "",
         lifeFocus: "general",
         astroMeta: mergeConsentIntoAstroMeta(
-          { stubProfile: true },
+          {
+            stubProfile: true,
+            ...(genderKnown ? {} : { genderUnspecified: true }),
+          },
           accountConsent
         ),
       };

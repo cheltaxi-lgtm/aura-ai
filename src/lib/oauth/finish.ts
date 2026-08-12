@@ -15,7 +15,6 @@ import {
 } from "@/lib/users";
 import { sendWelcomeEmail } from "@/lib/email/send";
 import { readSessionClaimCookie } from "@/lib/session-claim";
-import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
 import type { OAuthFinishResult, OAuthMode, OAuthTransaction } from "./types";
 import {
   linkOAuthIdentityToAccount,
@@ -126,22 +125,24 @@ export async function finishOAuthLogin(opts: {
   // New OAuth accounts get a stub consumer profile immediately so guest Tarot
   // claim is not blocked by birth onboarding (migration 124).
   if (!profileUserId) {
-    const gender =
-      opts.info.gender === "male" || opts.info.gender === "female"
-        ? opts.info.gender
-        : inferGenderFromFirstName(accountResult.name) ?? "female";
+    const genderKnown =
+      opts.info.gender === "male" || opts.info.gender === "female";
+    // Consent must already be on the account (see above) — stub copies it authoritatively.
     const stub = await ensureMinimalConsumerProfile({
       accountId: accountResult.accountId,
       name: accountResult.name || "Гость",
-      gender,
+      gender: genderKnown ? opts.info.gender : undefined,
+      genderKnown,
     });
     profileUserId = stub.id;
-    // Consent may have been recorded before the stub existed — sync age onto profile meta.
-    await recordAccountLegalConsent(accountResult.accountId, {
-      ageConfirmed: true,
-      acceptedTerms: true,
-      marketingConsent: consent?.marketingConsent,
-    });
+    // Heal profile meta if consent was recorded before the stub row existed.
+    if (consent || (await getAccountConsentSnapshot(accountResult.accountId))?.ageConfirmedAt) {
+      await recordAccountLegalConsent(accountResult.accountId, {
+        ageConfirmed: true,
+        acceptedTerms: true,
+        marketingConsent: consent?.marketingConsent,
+      });
+    }
   }
 
   let profile = null;

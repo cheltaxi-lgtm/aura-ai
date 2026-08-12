@@ -1,5 +1,5 @@
 import { query } from "@/lib/db";
-import { createHistoryEntry, getUserById } from "@/lib/users";
+import { createHistoryEntry, getUserById, profileGenderForPersonalization } from "@/lib/users";
 import { type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { stripStageDirections } from "@/lib/chat-reply-sanitize";
@@ -425,7 +425,10 @@ export async function getExistingDailyReading(
         dateRu,
         cards,
         spreadId: storedSpreadId,
-        gender: user.gender === "male" ? "Мужской" : user.gender === "female" ? "Женский" : undefined,
+        gender: (() => {
+          const g = profileGenderForPersonalization(user);
+          return g === "male" ? "Мужской" : g === "female" ? "Женский" : undefined;
+        })(),
         lifeFocus: user.life_focus ?? undefined,
         mainQuestion: user.main_question ?? undefined,
         userId,
@@ -530,12 +533,10 @@ export async function getOrCreateDailyReading(params: {
     dateRu,
     cards,
     spreadId: drawSpreadId,
-    gender:
-      dbUser?.gender === "male"
-        ? "Мужской"
-        : dbUser?.gender === "female"
-          ? "Женский"
-          : undefined,
+    gender: (() => {
+      const g = dbUser ? profileGenderForPersonalization(dbUser) : null;
+      return g === "male" ? "Мужской" : g === "female" ? "Женский" : undefined;
+    })(),
     lifeFocus: dbUser?.life_focus ?? undefined,
     mainQuestion: dbUser?.main_question ?? undefined,
     userId: params.userId,
