@@ -116,6 +116,8 @@ interface MasterSessionFlowProps {
   initialNumerologTool?: NumerologToolId;
   /** Saved person selected by a Matrix deep link. */
   initialMatrixSubjectId?: string | null;
+  /** Guest→auth frozen as-of day (ISO) for period-dependent Matrix zones. */
+  initialMatrixAsOf?: string | null;
   /** Birth date from profile — required for several numerolog calculations. */
   userBirthDate?: string;
   /** Full name from profile — required for chaldean/karma. */
@@ -198,6 +200,7 @@ export default function MasterSessionFlow({
   requiresPartnerInfo = false,
   initialNumerologTool,
   initialMatrixSubjectId,
+  initialMatrixAsOf,
   userBirthDate,
   userFullName,
   initialPartnerInfo,
@@ -279,6 +282,10 @@ export default function MasterSessionFlow({
         selectedNumerologTool === "child_matrix" ||
         selectedNumerologTool === "matrix_year_forecast"),
   });
+  const matrixAsOf =
+    typeof initialMatrixAsOf === "string" && /^\d{4}-\d{2}-\d{2}$/.test(initialMatrixAsOf.trim())
+      ? initialMatrixAsOf.trim()
+      : null;
   const resolveMatrixToolParams = useCallback((): NumerologToolParams => {
     const subject = matrixSubjects.subjects.find((s) => s.id === matrixSubjectId);
     return {
@@ -286,8 +293,9 @@ export default function MasterSessionFlow({
       ...(matrixSubjectId ? { matrixSubjectId } : {}),
       ...(subject?.birthDate ? { matrixBirthDate: subject.birthDate } : {}),
       ...(subject?.displayName ? { subjectName: subject.displayName } : {}),
+      ...(matrixAsOf ? { matrixAsOf } : {}),
     };
-  }, [matrixSubjectId, matrixSubjects.subjects, numerologToolParams]);
+  }, [matrixSubjectId, matrixSubjects.subjects, numerologToolParams, matrixAsOf]);
   const matrixOwned = matrixOwnership.owned;
   const matrixBuyOnceOwned =
     numerologFlow && selectedNumerologTool === "destiny_matrix" && matrixOwned;

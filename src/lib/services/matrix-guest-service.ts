@@ -52,6 +52,9 @@ export type MatrixGuestClaimResult =
       pendingId: string;
       subjectId: string;
       birthDate: string;
+      /** Frozen guest calendar day — do not recompute with "now" on first post-auth open. */
+      asOfDate: string;
+      calculationVersion: string;
     }
   | {
       ok: false;
@@ -67,6 +70,15 @@ export type MatrixGuestClaimResult =
         guestBirthDate: string;
       };
     };
+
+/** Claimed guest freeze for a matrix subject (no recompute). */
+export type ClaimedGuestMatrixFreeze = {
+  pendingId: string;
+  birthDate: string;
+  asOfDate: string;
+  calculationVersion: string;
+  matrixSnapshot: Record<string, unknown>;
+};
 
 function hashMatrixGuestClaimToken(rawToken: string): string {
   return createHash("sha256").update(`matrix-guest-claim:v1:${rawToken}`).digest("hex");
@@ -251,6 +263,8 @@ export async function claimGuestMatrixPending(opts: {
           pendingId: guest.id,
           subjectId: guest.claimed_subject_id,
           birthDate: String(guest.birth_date).slice(0, 10),
+          asOfDate: String(guest.as_of_date).slice(0, 10),
+          calculationVersion: guest.calculation_version,
         };
       }
       return { ok: false, code: "ALREADY_CLAIMED" };
@@ -340,8 +354,44 @@ export async function claimGuestMatrixPending(opts: {
       pendingId: guest.id,
       subjectId,
       birthDate: guestBirth,
+      // Snapshot already frozen at guest persist — never recompute here.
+      asOfDate: String(guest.as_of_date).slice(0, 10),
+      calculationVersion: guest.calculation_version,
     };
   });
+}
+
+/**
+ * Server-authoritative freeze for first post-auth Matrix open.
+ * Looks up claimed pending by subject — does not recompute matrix_snapshot.
+ */
+export async function getClaimedGuestMatrixFreeze(
+  profileUserId: string,
+  subjectId: string
+): Promise<ClaimedGuestMatrixFreeze | null> {
+  const sid = subjectId?.trim();
+  if (!sid || !/^[0-9a-f-]{36}$/i.test(sid)) return null;
+  const { rows } = await query<GuestRow>(
+    `SELECT id, birth_date::text, display_name, as_of_date::text, calculation_version,
+            matrix_snapshot, claim_token_hash,
+            claimed_user_id, claimed_subject_id, claimed_at::text,
+            created_at::text, expires_at::text
+     FROM matrix_guest_pending
+     WHERE claimed_user_id = $1
+       AND claimed_subject_id = $2::uuid
+     ORDER BY claimed_at DESC NULLS LAST
+     LIMIT 1`,
+    [profileUserId, sid]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  return {
+    pendingId: row.id,
+    birthDate: String(row.birth_date).slice(0, 10),
+    asOfDate: String(row.as_of_date).slice(0, 10),
+    calculationVersion: row.calculation_version,
+    matrixSnapshot: row.matrix_snapshot,
+  };
 }
 
 export async function getMatrixGuestPendingMeta(pendingId: string): Promise<{

@@ -40,6 +40,7 @@ import {
 } from "@/lib/services/billing-service";
 import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
 import { generateNumerologSessionReading } from "@/lib/services/numerology-service";
+import { getClaimedGuestMatrixFreeze } from "@/lib/services/matrix-guest-service";
 import { resolveSessionForUser } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
@@ -438,6 +439,23 @@ export async function POST(request: NextRequest) {
       birthCity = resolvedMatrixSubject.birthCity ?? undefined;
       // Keep userName = buyer (address «ты»). Subject name is passed separately
       // so prose does not speak as if the other person ordered their own matrix.
+    }
+  }
+
+  // Guest→auth: reuse frozen asOfDate/snapshot calendar for first post-auth Matrix.
+  let matrixAsOfDate: string | null = null;
+  if (
+    isMatrixBuyOnceTool &&
+    resolvedMatrixSubject &&
+    (requestNumerologToolId === MATRIX_REPORT_TOOL_ID ||
+      requestNumerologToolId === "child_matrix")
+  ) {
+    const freeze = await getClaimedGuestMatrixFreeze(
+      authed.profileUserId,
+      resolvedMatrixSubject.id
+    );
+    if (freeze?.asOfDate) {
+      matrixAsOfDate = freeze.asOfDate;
     }
   }
 
@@ -1034,6 +1052,7 @@ export async function POST(request: NextRequest) {
               (resolvedMatrixSubject?.kind && resolvedMatrixSubject.kind !== "self"
                 ? null
                 : userName),
+            asOfDate: matrixAsOfDate,
             onMatrixProgress:
               workerJobId && toolId === "destiny_matrix"
                 ? async (progress) => {
@@ -1087,7 +1106,12 @@ export async function POST(request: NextRequest) {
               }
               return { kind: "failed" as const };
             }
-            const matrix = birthDate ? destinyMatrix(birthDate) : null;
+            const matrix = birthDate
+              ? destinyMatrix(
+                  birthDate,
+                  matrixAsOfDate ? { asOfDate: matrixAsOfDate } : undefined
+                )
+              : null;
             const {
               isUsableMatrixReading,
               sanitizeReadingForClient,

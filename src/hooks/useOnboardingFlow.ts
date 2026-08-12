@@ -3375,10 +3375,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       }
       const matrixBirthFromParams =
         numerologToolParams?.matrixBirthDate?.trim() || null;
+      const matrixAsOfFromParams =
+        typeof numerologToolParams?.matrixAsOf === "string" &&
+        /^\d{4}-\d{2}-\d{2}$/.test(numerologToolParams.matrixAsOf.trim())
+          ? numerologToolParams.matrixAsOf.trim()
+          : null;
       if (matrixBirthFromParams) {
         setMatrixSessionBirthDate(matrixBirthFromParams);
-        // Fresh session — drop any as-of inherited from a reopened one.
-        setMatrixSessionAsOf(null);
+        // Guest→auth freeze wins; otherwise drop as-of inherited from a reopen.
+        setMatrixSessionAsOf(matrixAsOfFromParams);
+      } else if (matrixAsOfFromParams) {
+        setMatrixSessionAsOf(matrixAsOfFromParams);
       }
       if (numerologToolParams?.subjectName?.trim()) {
         setMatrixSessionSubjectName(numerologToolParams.subjectName.trim());

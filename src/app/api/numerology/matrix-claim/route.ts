@@ -83,13 +83,17 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "claim_denied", code: result.code }, { status: 400 });
   }
 
-  const workspacePath = `${FULL_HREF}&subjectId=${encodeURIComponent(result.subjectId)}`;
+  const workspacePath =
+    `${FULL_HREF}&subjectId=${encodeURIComponent(result.subjectId)}` +
+    `&matrixAsOf=${encodeURIComponent(result.asOfDate)}`;
   const response = NextResponse.json({
     ok: true,
     status: result.status,
     pendingId: result.pendingId,
     subjectId: result.subjectId,
     birthDate: result.birthDate,
+    asOfDate: result.asOfDate,
+    calculationVersion: result.calculationVersion,
     workspacePath,
   });
   clearMatrixGuestClaimCookieOnResponse(response, request);

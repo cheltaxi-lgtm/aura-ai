@@ -11,10 +11,15 @@ import {
   claimGuestMatrixPending,
   createGuestMatrixPending,
   createMatrixGuestClaimToken,
+  getClaimedGuestMatrixFreeze,
   getMatrixGuestPendingMeta,
   hashMatrixGuestClaimToken,
 } from "@/lib/services/matrix-guest-service";
-import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
+import {
+  destinyMatrix,
+  MATRIX_CALCULATION_VERSION,
+  matrixToStructuredData,
+} from "@/lib/numerology/destiny-matrix";
 import {
   ensureMinimalConsumerProfile,
   getUserById,
@@ -88,6 +93,8 @@ describe.skipIf(!hasTestDb)("matrix-guest-continuity (db)", () => {
 
     expect(claim.birthDate).toBe("1991-06-15");
     expect(claim.subjectId).toBeTruthy();
+    expect(claim.asOfDate).toBe(guestMeta!.asOfDate);
+    expect(claim.calculationVersion).toBe(MATRIX_CALCULATION_VERSION);
 
     const refreshed = await getUserById(stub.id);
     expect(profileHasBirthData(refreshed)).toBe(true);
@@ -100,14 +107,31 @@ describe.skipIf(!hasTestDb)("matrix-guest-continuity (db)", () => {
     expect(subjects[0]?.id).toBe(claim.subjectId);
     expect(String(subjects[0]?.birth_date).slice(0, 10)).toBe("1991-06-15");
 
-    // Deterministic continuity vs frozen asOfDate from pending.
-    const recomputed = destinyMatrix(claim.birthDate, { asOfDate: guestMeta!.asOfDate });
+    // Claim must not rewrite snapshot / as_of_date.
+    const metaAfterClaim = await getMatrixGuestPendingMeta(payload.pendingId);
+    expect(metaAfterClaim!.asOfDate).toBe(guestMeta!.asOfDate);
+    expect(JSON.stringify(metaAfterClaim!.matrixSnapshot)).toBe(
+      JSON.stringify(guestMeta!.matrixSnapshot)
+    );
+
+    // Post-auth freeze lookup by claimed subject.
+    const freeze = await getClaimedGuestMatrixFreeze(stub.id, claim.subjectId);
+    expect(freeze).toBeTruthy();
+    expect(freeze!.asOfDate).toBe(guestMeta!.asOfDate);
+    expect(freeze!.pendingId).toBe(payload.pendingId);
+
+    // Personal + period-dependent continuity vs frozen guest snapshot.
+    const recomputed = destinyMatrix(claim.birthDate, { asOfDate: freeze!.asOfDate });
     expect(recomputed).toBeTruthy();
-    const snap = guestMeta!.matrixSnapshot as Record<string, { number?: number }>;
+    const snap = freeze!.matrixSnapshot as Record<string, { number?: number }>;
     expect(recomputed!.body.number).toBe(snap.body?.number);
     expect(recomputed!.energy.number).toBe(snap.energy?.number);
     expect(recomputed!.money.number).toBe(snap.money?.number);
+    expect(recomputed!.yearArcana.number).toBe(snap.yearArcana?.number);
+    expect(recomputed!.monthArcana.number).toBe(snap.monthArcana?.number);
     expect(payload.personalNumbers.body).toBe(recomputed!.body.number);
+    expect(matrixToStructuredData(recomputed!).yearArcana).toEqual(snap.yearArcana);
+    expect(matrixToStructuredData(recomputed!).monthArcana).toEqual(snap.monthArcana);
 
     const spendAfter = await countSpendTransactions(stub.id);
     expect(spendAfter).toBe(spendBefore);
@@ -123,7 +147,11 @@ describe.skipIf(!hasTestDb)("matrix-guest-continuity (db)", () => {
       rawClaimToken,
     });
     expect(replay.ok).toBe(true);
-    if (replay.ok) expect(replay.status).toBe("idempotent");
+    if (replay.ok) {
+      expect(replay.status).toBe("idempotent");
+      expect(replay.asOfDate).toBe(guestMeta!.asOfDate);
+      expect(replay.subjectId).toBe(claim.subjectId);
+    }
   });
 
   it("M4: matching existing profile claims without overwrite conflict", async () => {
@@ -272,7 +300,16 @@ describe.skipIf(!hasTestDb)("matrix-guest-continuity (db)", () => {
       "utf8"
     );
     expect(claimRoute).toMatch(/resolveProfileUserContext/);
+    expect(claimRoute).toMatch(/matrixAsOf/);
+    expect(claimRoute).toMatch(/asOfDate/);
     expect(claimRoute).not.toMatch(/spendRunes|charge|NUMEROLOGY_SESSION/);
+
+    const readingRoute = readFileSync(
+      path.join(ROOT, "src/app/api/reading/route.ts"),
+      "utf8"
+    );
+    expect(readingRoute).toMatch(/getClaimedGuestMatrixFreeze/);
+    expect(readingRoute).toMatch(/asOfDate:\s*matrixAsOfDate/);
 
     const middleware = readFileSync(path.join(ROOT, "src/middleware.ts"), "utf8");
     expect(middleware).toMatch(/\/api\/numerology\/matrix-guest/);

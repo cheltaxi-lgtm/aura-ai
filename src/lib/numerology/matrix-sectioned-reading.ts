@@ -695,6 +695,11 @@ export async function generateFullMatrixSectionedReading(input: {
    */
   contextFacts?: string | null;
   /**
+   * Freeze calendar day for period-dependent zones (guest→auth continuity).
+   * When omitted, destinyMatrix uses "now" (existing behavior).
+   */
+  asOfDate?: string | null;
+  /**
    * LLM coverage:
    * - omitted / true / "all" → every zone (default paid quality)
    * - "hero" → ~9 key zones + engine for the rest (faster fallback mode)
@@ -708,7 +713,11 @@ export async function generateFullMatrixSectionedReading(input: {
   matrix: DestinyMatrixResult;
   document: MatrixReadingDocument;
 }> {
-  const matrix = destinyMatrix(input.birthDate);
+  const asOf =
+    typeof input.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.asOfDate)
+      ? input.asOfDate
+      : undefined;
+  const matrix = destinyMatrix(input.birthDate, asOf ? { asOfDate: asOf } : undefined);
   if (!matrix) {
     throw new Error("matrix_calc_failed");
   }

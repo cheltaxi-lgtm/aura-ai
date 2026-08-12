@@ -68,6 +68,8 @@ export interface NumerologEngineParams {
   subjectKind?: "self" | "child" | "partner" | "other" | null;
   /** Display name of the person whose matrix is calculated (when ≠ buyer). */
   subjectName?: string | null;
+  /** Frozen guest/report as-of day for period-dependent Matrix zones. */
+  asOfDate?: string | null;
 }
 
 /** Keep only matrix-safe memory lines (drop Pythagorean / life-path leaks). */
@@ -208,7 +210,11 @@ export async function generateNumerologStreamReply(
       : "";
     if (safeMem) engineFacts = `${safeMem}\n\n${engineFacts}`;
     if (params.birthDate) {
-      const matrix = destinyMatrix(params.birthDate);
+      const asOf =
+        typeof params.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.asOfDate)
+          ? params.asOfDate
+          : undefined;
+      const matrix = destinyMatrix(params.birthDate, asOf ? { asOfDate: asOf } : undefined);
       if (matrix) {
         let natalInput = natalBridgeInputFromProfile({
           birthDate: params.birthDate,
@@ -254,6 +260,7 @@ export async function generateNumerologStreamReply(
         gender: params.gender,
         subjectKind: params.subjectKind,
         subjectName: params.subjectName,
+        asOfDate: params.asOfDate,
         // Natal bridge + filtered memory — previously built then discarded.
         contextFacts: engineFacts,
         useLlm: "all",
@@ -310,7 +317,12 @@ export async function generateNumerologStreamReply(
 
   const matrixForFinale =
     engineResult.primaryTopic === "destiny_matrix" && params.birthDate
-      ? destinyMatrix(params.birthDate)
+      ? destinyMatrix(
+          params.birthDate,
+          typeof params.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.asOfDate)
+            ? { asOfDate: params.asOfDate }
+            : undefined
+        )
       : null;
 
   const [engineBody, finale] = await Promise.all([
@@ -422,6 +434,8 @@ export async function generateNumerologSessionReading(input: {
   userId?: string | null;
   subjectKind?: "self" | "child" | "partner" | "other" | null;
   subjectName?: string | null;
+  /** Guest→auth freeze; period zones must match guest snapshot on first open. */
+  asOfDate?: string | null;
   onMatrixProgress?: (progress: {
     done: number;
     total: number;
@@ -484,6 +498,7 @@ export async function generateNumerologSessionReading(input: {
       input.subjectKind ??
       (input.toolId === "child_matrix" ? "child" : undefined),
     subjectName: input.subjectName,
+    asOfDate: input.asOfDate,
     // Paid session: AI-only. completeNumerologProse walks paid → fallbackModels.
     allowEngineFallback: false,
   });

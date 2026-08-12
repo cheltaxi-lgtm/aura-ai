@@ -265,6 +265,9 @@ export default function HomePage({
     useState<NumerologToolId | null>(null);
   const [sessionFlowInitialMatrixSubjectId, setSessionFlowInitialMatrixSubjectId] =
     useState<string | null>(null);
+  const [sessionFlowInitialMatrixAsOf, setSessionFlowInitialMatrixAsOf] = useState<string | null>(
+    null
+  );
   const [sessionFlowInitialPartnerInfo, setSessionFlowInitialPartnerInfo] = useState<{
     partnerName?: string;
     partnerDate?: string;
@@ -1007,11 +1010,19 @@ export default function HomePage({
   }, [openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster, isLoggedIn, setStep]);
 
   const openNumerologSessionFlow = useCallback(
-    (tool?: NumerologToolId | null, matrixSubjectId?: string | null) => {
+    (
+      tool?: NumerologToolId | null,
+      matrixSubjectId?: string | null,
+      matrixAsOf?: string | null
+    ) => {
       setSessionFlowPreselectedMaster("numerolog");
       setEnergyFlowMasterId("numerolog");
       setSessionFlowInitialNumerologTool(tool ?? null);
       setSessionFlowInitialMatrixSubjectId(matrixSubjectId?.trim() || null);
+      const asOf = matrixAsOf?.trim() || null;
+      setSessionFlowInitialMatrixAsOf(
+        asOf && /^\d{4}-\d{2}-\d{2}$/.test(asOf) ? asOf : null
+      );
       // Avoid leftover Tarot topic/question from a previous SEO spread flow.
       setSessionFlowInitialTopic(null);
       setSessionFlowInitialQuestion(null);
@@ -1065,12 +1076,17 @@ export default function HomePage({
     const toolRaw = params.get("tool")?.trim();
     const tool =
       toolRaw && isNumerologSessionToolId(toolRaw) ? toolRaw : null;
-    openNumerologSessionFlow(tool, params.get("subjectId")?.trim() || null);
+    openNumerologSessionFlow(
+      tool,
+      params.get("subjectId")?.trim() || null,
+      params.get("matrixAsOf")?.trim() || null
+    );
 
     const url = new URL(window.location.href);
     url.searchParams.delete("numerolog");
     url.searchParams.delete("tool");
     url.searchParams.delete("subjectId");
+    url.searchParams.delete("matrixAsOf");
     // Legacy replace=1 from SEO preview after DELETE — wipe already done; strip leftover.
     url.searchParams.delete("replace");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
@@ -4079,6 +4095,7 @@ export default function HomePage({
           requiresPartnerInfo={sessionFlowRequiresPartnerInfo}
           initialNumerologTool={sessionFlowInitialNumerologTool ?? undefined}
           initialMatrixSubjectId={sessionFlowInitialMatrixSubjectId}
+          initialMatrixAsOf={sessionFlowInitialMatrixAsOf}
           initialPartnerInfo={sessionFlowInitialPartnerInfo ?? undefined}
           spreadIntentSlug={seoFlowIntentSlug}
           masters={masters}
