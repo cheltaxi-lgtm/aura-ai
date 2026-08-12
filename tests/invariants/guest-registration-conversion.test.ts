@@ -3,8 +3,18 @@
  * Pure / unit-level: no live OAuth. Server claim/redraw covered elsewhere.
  */
 import { describe, expect, it } from "vitest";
-import { TEASER_RECEIPT_MIN_AGE_MS } from "@/lib/guest-triplet-teaser-service";
-import { profileHasBirthData } from "@/lib/users";
+import {
+  TEASER_MAX_CHARS,
+  TEASER_MAX_TOKENS,
+  TEASER_MIN_CHARS,
+  TEASER_RECEIPT_MIN_AGE_MS,
+  truncateTeaserText,
+  validateGuestTeaserQuality,
+} from "@/lib/guest-triplet-teaser-service";
+import {
+  profileGenderForPersonalization,
+  profileHasBirthData,
+} from "@/lib/users";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { buildLandingOfferCopy } from "@/lib/landing-offer";
 import {
@@ -20,11 +30,60 @@ describe("guest-registration-conversion", () => {
     expect(TEASER_RECEIPT_MIN_AGE_MS).toBeGreaterThan(0);
   });
 
+  it("teaser limits target conversion length (~250–500 chars)", () => {
+    expect(TEASER_MAX_CHARS).toBeLessThanOrEqual(500);
+    expect(TEASER_MAX_CHARS).toBeGreaterThanOrEqual(400);
+    expect(TEASER_MIN_CHARS).toBeGreaterThanOrEqual(100);
+    expect(TEASER_MAX_TOKENS).toBeLessThanOrEqual(160);
+    const long = `${"Ситуация уже не про вспышку обиды. ".repeat(8)}Луна, Тройка Мечей и Колесница. ${"Хвост полного разбора. ".repeat(20)}`;
+    expect(long.length).toBeGreaterThan(TEASER_MAX_CHARS);
+    const clipped = truncateTeaserText(long);
+    expect(clipped.length).toBeLessThanOrEqual(TEASER_MAX_CHARS);
+    expect(clipped.length).toBeLessThan(long.length);
+    // Quality path truncates first — overlong LLM dumps are clipped, not accepted raw.
+    const quality = validateGuestTeaserQuality(clipped, ["Луна", "Тройка Мечей", "Колесница"]);
+    if (quality.ok) {
+      expect(clipped.length).toBeLessThanOrEqual(TEASER_MAX_CHARS);
+    }
+  });
+
   it("stub profile without birth is not birth-complete; ISO date is", () => {
     expect(profileHasBirthData({ birth_date: null })).toBe(false);
     expect(profileHasBirthData({ birth_date: "" })).toBe(false);
     expect(profileHasBirthData({ birthDate: "1990-05-12" })).toBe(true);
     expect(profileHasBirthData({ birth_date: "1990-05-12T00:00:00.000Z" })).toBe(true);
+  });
+
+  it("genderUnspecified stubs do not personalize as female", () => {
+    expect(
+      profileGenderForPersonalization({
+        gender: "female",
+        astro_meta: { genderUnspecified: true, stubProfile: true },
+      })
+    ).toBeNull();
+    expect(
+      profileGenderForPersonalization({
+        gender: "male",
+        astro_meta: { stubProfile: true },
+      })
+    ).toBe("male");
+  });
+
+  it("ensureMinimalConsumerProfile does not hardcode ageConfirmed true", async () => {
+    const src = await import("node:fs/promises").then((fs) =>
+      fs.readFile("src/lib/users.ts", "utf8")
+    );
+    expect(src).toContain("mergeConsentIntoAstroMeta");
+    expect(src).toContain("never invents ageConfirmed");
+    expect(src).not.toMatch(/ageConfirmed:\s*true,\s*\n\s*ageConfirmedAt:\s*now/);
+  });
+
+  it("migration 124 rollback docs forbid sentinel birth dates", async () => {
+    const src = await import("node:fs/promises").then((fs) =>
+      fs.readFile("scripts/migrations/124_migrate_users_birth_optional.sql", "utf8")
+    );
+    expect(src).toContain("Do NOT backfill NULL with '1900-01-01'");
+    expect(src).not.toMatch(/UPDATE users SET birth_date = '1900-01-01'/);
   });
 
   it("sanitizeReturnTo rejects external open redirects", () => {

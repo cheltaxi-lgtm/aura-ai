@@ -34,6 +34,11 @@ export default defineConfig({
       testMatch: /guest-triplet\.public\.spec\.ts/,
       use: { ...devices["Pixel 7"] },
     },
+    {
+      name: "guest-funnel-golden",
+      testMatch: /guest-funnel-golden\.public\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
     ...(fixtureBaseURL && storageState
       ? [{
           name: "authenticated-natal",
