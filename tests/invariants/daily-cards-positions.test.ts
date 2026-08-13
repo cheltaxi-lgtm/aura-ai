@@ -41,7 +41,7 @@ describe("daily 3-cards vs guest-intro spread", () => {
     expect(guest).toMatch(/Получить полный разбор/);
   });
 
-  it("auth daily draw mounts table pick then daily positions via handleNewReading", () => {
+  it("auth daily draw is three laid cards with daily positions, never MagicalSpreadTable", () => {
     const home = read("src/components/HomePage.tsx");
     expect(home).toMatch(/onOpenDailyCards=\{\(\) => void handleNewReading\(\)\}/);
     expect(home).toMatch(/variant=\{newTripletDraft \? "daily" : "default"\}/);
@@ -50,18 +50,30 @@ describe("daily 3-cards vs guest-intro spread", () => {
     expect(bannerStart).toBeGreaterThan(-1);
     expect(bannerEnd).toBeGreaterThan(bannerStart);
     expect(home.slice(bannerStart, bannerEnd)).not.toMatch(/onQuestionSubmit/);
+    const headerFnStart = home.indexOf("const handleStartReadingFromHeader");
+    expect(headerFnStart).toBeGreaterThan(-1);
+    const headerFn = home.slice(headerFnStart, home.indexOf("const handleNavRitual", headerFnStart));
+    expect(headerFn).toMatch(/if \(!isLoggedIn\)/);
+    expect(headerFn).toMatch(/startPersonalFlow/);
+    expect(headerFn).toMatch(/handleNewReading/);
+    expect(headerFn).toMatch(/openCurrentDailyCards/);
     const triplet = read("src/components/TarotTriplet.tsx");
     expect(triplet).toMatch(/DAILY_TRIPLET_POSITIONS/);
-    expect(triplet).toMatch(/MagicalSpreadTable/);
-    expect(triplet).toMatch(/Выберите три карты дня/);
+    expect(triplet).toMatch(/data-daily-triplet/);
     expect(triplet).toMatch(/Открыть расшифровку дня/);
+    expect(triplet).toMatch(/не стартовый расклад при регистрации/);
+    expect(triplet).not.toMatch(/MagicalSpreadTable/);
+    expect(triplet).not.toMatch(/Выберите три карты/);
     expect(triplet).not.toMatch(/Получить полный разбор/);
-    expect(triplet).not.toMatch(/guest-triplet|GUEST_SPREAD_START_EVENT|startGuestSpread/);
+    expect(triplet).not.toMatch(/GUEST_SPREAD_START_EVENT|startGuestSpread/);
     const banner = read("src/components/editorial/LoggedInHomeBanner.tsx");
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/Разложить карты/);
     expect(banner).toMatch(/onOpenDailyCards/);
     expect(EDITORIAL_DAILY_CARDS.authAvailableCta).toBe("Открыть 3 карты дня");
+    const header = read("src/components/AppTopHeader.tsx");
+    expect(header).toMatch(/isLoggedIn \? "3 карты дня"/);
+    expect(header).not.toMatch(/isLoggedIn \? "Получить расклад"/);
   });
 
   it("guest table title stays registration copy, not daily", () => {

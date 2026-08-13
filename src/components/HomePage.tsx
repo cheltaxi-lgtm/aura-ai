@@ -3192,8 +3192,30 @@ export default function HomePage({
 
   const handleStartReadingFromHeader = useCallback(() => {
     exitToLandingForNav();
-    void startPersonalFlow();
-  }, [exitToLandingForNav, startPersonalFlow]);
+    if (!isLoggedIn) {
+      void startPersonalFlow();
+      return;
+    }
+    const dailyState = resolveDailyCardsUiState({
+      cooldownReady: tripletCooldownReady,
+      allowed: effectiveTripletCooldown.allowed,
+      currentDaily: currentDailyReading,
+    });
+    if (dailyState === "opened") {
+      void openCurrentDailyCards();
+      return;
+    }
+    void handleNewReading();
+  }, [
+    exitToLandingForNav,
+    isLoggedIn,
+    startPersonalFlow,
+    tripletCooldownReady,
+    effectiveTripletCooldown.allowed,
+    currentDailyReading,
+    openCurrentDailyCards,
+    handleNewReading,
+  ]);
 
   const handleNavRitual = useCallback(() => {
     if (!isLoggedIn) {
@@ -3826,9 +3848,7 @@ export default function HomePage({
                       zodiac={effectiveProfile.zodiac}
                       system={tripletSystem}
                       masterName={tripletMasterName}
-                      masterId={tripletMasterId || GUEST_TRIPLET_MASTER_ID}
                       variant={newTripletDraft ? "daily" : "default"}
-                      onCancel={handleTripletBack}
                       initialCards={
                         newTripletDraft
                           ? undefined

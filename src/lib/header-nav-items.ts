@@ -101,7 +101,7 @@ export function buildHeaderNavSections(
         },
         {
           id: "reading",
-          label: "Получить расклад",
+          label: isLoggedIn ? "3 карты дня" : "Получить расклад",
           icon: Sparkles,
           onClick: callbacks.onStartReading,
         },

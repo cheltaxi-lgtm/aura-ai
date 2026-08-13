@@ -1,44 +1,28 @@
 "use client";
 
-import { useMemo, useState, useEffect, useCallback } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { DeckSystem } from "@/lib/decks/types";
 import { drawSpread, getDeckPositionsForUi } from "@/lib/decks";
 import { DAILY_TRIPLET_POSITIONS } from "@/lib/daily-triplet-positions";
-import {
-  buildSeededTableDeck,
-  resolvePickedSpread,
-  resolveTableSize,
-} from "@/lib/spread-draw";
 import { buildSpreadTeaser } from "@/lib/spread-teaser";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
 import SceneImage from "@/components/SceneImage";
 import DeckCard from "@/components/DeckCard";
-import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import ShareButton from "@/components/share/ShareButton";
 import { tripletToSharePayload } from "@/lib/share/payload-builders";
-import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 
 interface TarotTripletProps {
   userName: string;
   zodiac?: string;
   system: DeckSystem;
   masterName?: string;
-  masterId?: string;
   initialCards?: SpreadSymbol[];
   /** Daily 3-cards of the day — not the guest-intro situation triplet. */
   variant?: "daily" | "default";
   onComplete: (cards: SpreadSymbol[], teaser: string) => void | Promise<void>;
   onAllRevealed?: (cards: SpreadSymbol[], teaser: string) => void;
-  onCancel?: () => void;
-}
-
-function newDailyTableSeed(): string {
-  if (typeof crypto !== "undefined" && "randomUUID" in crypto) {
-    return crypto.randomUUID();
-  }
-  return `daily-${Date.now()}`;
 }
 
 export default function TarotTriplet({
@@ -46,12 +30,10 @@ export default function TarotTriplet({
   zodiac,
   system,
   masterName,
-  masterId,
   initialCards,
   variant = "default",
   onComplete,
   onAllRevealed,
-  onCancel,
 }: TarotTripletProps) {
   const isDaily = variant === "daily";
   const positions = useMemo(
@@ -59,21 +41,9 @@ export default function TarotTriplet({
     [isDaily, system]
   );
   const pickCount = positions.length;
-  const tableSize = useMemo(() => resolveTableSize(system), [system]);
-  const [tableSeed] = useState(newDailyTableSeed);
-  const tableDeck = useMemo(
-    () =>
-      isDaily ? buildSeededTableDeck({ system, seed: tableSeed, tableSize }) : [],
-    [isDaily, system, tableSeed, tableSize]
-  );
 
-  const [pickedIndices, setPickedIndices] = useState<number[]>([]);
-  const [deck, setDeck] = useState<SpreadSymbol[]>(() =>
-    initialCards?.length === pickCount
-      ? initialCards
-      : isDaily
-        ? []
-        : drawSpread(system, pickCount)
+  const [deck] = useState(() =>
+    initialCards?.length === pickCount ? initialCards : drawSpread(system, pickCount)
   );
   const [revealed, setRevealed] = useState<boolean[]>(() =>
     initialCards?.length === pickCount
@@ -82,35 +52,15 @@ export default function TarotTriplet({
   );
   const [submitting, setSubmitting] = useState(false);
 
-  const awaitingDailyPick = isDaily && deck.length < pickCount;
   const revealedCount = revealed.filter(Boolean).length;
-  const allRevealed = deck.length >= pickCount && revealedCount === pickCount;
-
-  const handleTablePick = useCallback(
-    (index: number) => {
-      if (!awaitingDailyPick) return;
-      setPickedIndices((prev) => {
-        if (prev.includes(index) || prev.length >= pickCount) return prev;
-        const next = [...prev, index];
-        if (next.length >= pickCount) {
-          const cards = resolvePickedSpread(tableDeck, next);
-          if (cards.length >= pickCount) {
-            setDeck(cards);
-            setRevealed(Array.from({ length: pickCount }, () => false));
-          }
-        }
-        return next;
-      });
-    },
-    [awaitingDailyPick, pickCount, tableDeck]
-  );
+  const allRevealed = revealedCount === pickCount;
 
   const cardNames = useMemo(
     () =>
       allRevealed
-        ? (deck.slice(0, pickCount).map((c) => c.name) as [string, string, string])
+        ? ([deck[0].name, deck[1].name, deck[2].name] as [string, string, string])
         : undefined,
-    [allRevealed, deck, pickCount]
+    [allRevealed, deck]
   );
 
   const { imageUrl: atmosphereUrl, loading: atmosphereLoading, failed: atmosphereFailed } =
@@ -129,7 +79,7 @@ export default function TarotTriplet({
   };
 
   const handleFinish = async () => {
-    if (submitting || deck.length < pickCount) return;
+    if (submitting) return;
     const teaser = buildSpreadTeaser({
       userName,
       cards: deck,
@@ -172,27 +122,13 @@ export default function TarotTriplet({
     });
   }, [allRevealed, deck, userName, positions, masterName, system]);
 
-  if (awaitingDailyPick) {
-    return (
-      <MagicalSpreadTable
-        tableSize={tableSize}
-        cardCount={pickCount}
-        system={system}
-        masterId={masterId || GUEST_TRIPLET_MASTER_ID}
-        pickedIndices={pickedIndices}
-        onPick={handleTablePick}
-        title="Выберите три карты дня"
-        pickHint={`Порядок касаний: ${DAILY_TRIPLET_POSITIONS.join(" · ")}`}
-        personalNote="3 карты дня · бесплатно раз в сутки"
-        underSiteHeader
-        onBack={onCancel}
-        backLabel="На главную"
-      />
-    );
-  }
-
   return (
-    <div className="mx-auto max-w-4xl">
+    <div className="mx-auto max-w-4xl" data-daily-triplet={isDaily ? "1" : undefined}>
+      {isDaily ? (
+        <p className="mb-3 text-center text-[11px] uppercase tracking-[0.18em] text-aura-gold/80">
+          3 карты дня · не стартовый расклад при регистрации
+        </p>
+      ) : null}
       <motion.p
         className="mb-8 text-center font-light text-aura-ivory/70"
         initial={{ opacity: 0 }}
@@ -239,7 +175,7 @@ export default function TarotTriplet({
       <div className="mb-8 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (
           <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
-            <p className="lux-label mb-1">{positions[i]}</p>
+            <p className={`lux-label mb-1 ${isDaily ? "text-aura-gold" : ""}`}>{positions[i]}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
