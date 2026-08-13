@@ -47,6 +47,30 @@ describe("personal-zovus-home", () => {
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/chipClass|editorial-hero__chip/);
     expect(banner).not.toMatch(/onOpenDailyCards/);
+    const css = readFileSync(
+      path.join(ROOT, "src/styles/editorial-landing.css"),
+      "utf8"
+    );
+    expect(css).toMatch(
+      /\.editorial-hero\.editorial-hero--logged-in \{[\s\S]*?min-height:\s*0/
+    );
+    expect(css).toMatch(
+      /@media \(max-width: 767px\) \{[\s\S]*?\.editorial-hero\.editorial-hero--logged-in \{[\s\S]*?padding-top:\s*calc\(var\(--app-header-h/
+    );
+    expect(css).not.toMatch(
+      /\.editorial-hero\.editorial-hero--logged-in \{[\s\S]*?min-height:\s*clamp\(32rem/
+    );
+  });
+
+  it("logged-in mobile header CTA stays short so the bar does not overflow", () => {
+    const header = readFileSync(
+      path.join(ROOT, "src/components/AppTopHeader.tsx"),
+      "utf8"
+    );
+    const [, afterMobile] = header.split("app-top-header__mobile");
+    expect(afterMobile).toMatch(/>\s*Расклад\s*</);
+    expect(afterMobile).not.toMatch(/3 карты дня/);
+    expect(header).toMatch(/\{isLoggedIn \? "3 карты дня" : "Получить расклад"\}/);
   });
 
   it("explore links cover Matrix, Natal, HD, Tarot, matrix compatibility", () => {

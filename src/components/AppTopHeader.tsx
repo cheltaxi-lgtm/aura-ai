@@ -126,7 +126,7 @@ export default function AppTopHeader({
       ref={headerRef}
       className="app-top-header fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md max-md:bg-[#0a0908] max-md:backdrop-blur-none"
     >
-      <div className="mx-auto flex max-w-7xl items-center justify-between gap-2 px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
+      <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between gap-2 px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3">
         <div className="app-top-header__brand flex shrink-0 items-center">
           <BrandLogo {...BRAND_LOGO_HEADER} />
         </div>
@@ -155,14 +155,14 @@ export default function AppTopHeader({
         </div>
 
         {/* Mobile: CTA + login (guests) / runes + menu (logged-in) */}
-        <div className="app-top-header__mobile flex shrink-0 items-center gap-1.5 md:hidden">
+        <div className="app-top-header__mobile flex min-w-0 items-center gap-1 md:hidden">
           {isLoggedIn ? <RuneBalance compact onBuyClick={onOpenPaywall} /> : null}
           <button
             type="button"
             onClick={onStartReading}
             className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
           >
-            {isLoggedIn ? "3 карты дня" : "Расклад"}
+            Расклад
           </button>
           {!isLoggedIn ? (
             <AppTopHeaderAccount

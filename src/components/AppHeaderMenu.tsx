@@ -256,7 +256,7 @@ export default function AppHeaderMenu({
         }}
       >
         {open ? <X className="h-3.5 w-3.5" aria-hidden /> : <Menu className="h-3.5 w-3.5" aria-hidden />}
-        Меню
+        <span className="max-[380px]:hidden">Меню</span>
       </button>
       {panel}
     </>

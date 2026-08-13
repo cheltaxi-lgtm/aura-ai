@@ -551,18 +551,42 @@ html[data-motion-lite="1"] .salon-bg__lines {
   backdrop-filter: blur(8px);
 }
 
-/* Auth photo band: hug greeting. Do not reuse guest 74vh void. */
+/* Auth photo band: hug greeting. Do not reuse guest 74vh void.
+   HomePage wrapper already has header padding; 1× header here plus the
+   inherited negative margin pulls the photo under the bar without tucking
+   the greeting into the opaque mobile chrome. */
 .editorial-hero.editorial-hero--logged-in {
   min-height: 0;
   height: auto;
   justify-content: flex-start;
-  padding-top: calc(var(--app-header-h, 3.25rem) + 0.85rem);
+  padding-top: calc(var(--app-header-h, 3.25rem) + 1.15rem);
   padding-bottom: 1.35rem;
 }
 
 .editorial-hero.editorial-hero--logged-in .editorial-hero__content {
   margin-bottom: 0;
   padding-bottom: 0.5rem;
+}
+
+@media (max-width: 767px) {
+  .editorial-hero.editorial-hero--logged-in {
+    padding-top: calc(var(--app-header-h, 3.25rem) + 1.35rem);
+    padding-bottom: 1rem;
+  }
+
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__content {
+    padding-inline: 1rem;
+    padding-bottom: 0.25rem;
+  }
+
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__title {
+    font-size: clamp(1.35rem, 6vw, 1.75rem);
+  }
+
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__subtitle {
+    margin-top: 0.75rem;
+    font-size: 0.9rem;
+  }
 }
 
 /* Personal Zovus — compact auth home (Today → Continue → Explore) */

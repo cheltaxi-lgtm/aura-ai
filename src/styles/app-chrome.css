@@ -36,8 +36,14 @@
 }
 
 .app-top-header__mobile {
-  flex-shrink: 0;
+  min-width: 0;
   max-width: min(100%, 22rem);
+}
+
+@media (max-width: 767px) {
+  .app-top-header__mobile .app-top-header__pill {
+    padding-inline: 0.65rem;
+  }
 }
 
 /* Public pages under the fixed site header (set by GlobalAppTopHeader). */
