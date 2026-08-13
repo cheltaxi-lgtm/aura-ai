@@ -5,12 +5,13 @@ import Link from "next/link";
 import type { ShowcaseMaster } from "@/lib/showcase-masters";
 import MasterShowcaseCard from "@/components/MasterShowcaseCard";
 import MasterListRow from "@/components/MasterListRow";
+import MasterAvatar from "@/components/MasterAvatar";
 import MasterServiceDisclaimer from "@/components/MasterServiceDisclaimer";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { MASTER_SECTION_SUBTITLE } from "@/lib/master-disclosure";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 
-type ShowcaseLayout = "grid" | "list";
+type ShowcaseLayout = "grid" | "list" | "atelier";
 
 interface MastersShowcaseProps {
   masters: ShowcaseMaster[];
@@ -65,6 +66,88 @@ export default function MastersShowcase({
 }: MastersShowcaseProps) {
   const continueSet = useMemo(() => new Set(continueMasterIds), [continueMasterIds]);
   const { ref: revealRef, className: revealClass } = useScrollReveal<HTMLElement>();
+
+  const selectMaster = (master: ShowcaseMaster) => {
+    const canContinue = continueSet.has(master.id);
+    const requiredCost = canContinue
+      ? (readingCost ?? 0)
+      : (questionCost ?? readingCost ?? 0);
+    const actionBlocked =
+      enforceBalance &&
+      runesEnabled &&
+      !isUnlimited &&
+      !canContinue &&
+      !canAffordRunes({
+        enabled: runesEnabled,
+        unlimited: isUnlimited,
+        balance: runeBalance,
+        cost: requiredCost,
+      });
+    if (actionBlocked) {
+      onInsufficientRunes?.({ balance: runeBalance, required: requiredCost });
+      return;
+    }
+    onSelect(master.id);
+  };
+
+  if (layout === "atelier") {
+    const featured =
+      masters.find((m) => m.id === recommendedId) ?? masters[0] ?? null;
+    const rest = featured ? masters.filter((m) => m.id !== featured.id) : masters;
+    return (
+      <section
+        ref={revealRef}
+        id="наставники"
+        className={`master-showcase-section master-showcase-section--atelier scroll-mt-24 ${revealClass} ${className}`.trim()}
+      >
+        {(title || subtitle) && (
+          <div className="master-showcase-section__head">
+            {title ? (
+              <h2 className="font-display master-showcase-section__title">{title}</h2>
+            ) : null}
+            {subtitle ? (
+              <p className="master-showcase-section__subtitle">{subtitle}</p>
+            ) : null}
+          </div>
+        )}
+        <div className="auth-atelier-masters">
+          {featured ? (
+            <button
+              type="button"
+              className="auth-atelier-masters__featured"
+              onClick={() => selectMaster(featured)}
+            >
+              <span className="auth-atelier-masters__portrait" aria-hidden>
+                <MasterAvatar
+                  masterId={featured.id}
+                  masterName={featured.name}
+                  size="showcase"
+                />
+              </span>
+              <span>
+                <span className="auth-atelier-masters__name">{featured.name}</span>
+                <span className="auth-atelier-masters__meta">{featured.title}</span>
+              </span>
+            </button>
+          ) : null}
+          <ul className="auth-atelier-masters__list">
+            {rest.map((master) => (
+              <li key={master.id}>
+                <button
+                  type="button"
+                  className="auth-atelier-masters__row"
+                  onClick={() => selectMaster(master)}
+                >
+                  <span className="auth-atelier-masters__row-name">{master.name}</span>
+                  <span className="auth-atelier-masters__row-meta">{master.title}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+      </section>
+    );
+  }
 
   const listBody = masters.map((master, index) => {
     const canContinue = continueSet.has(master.id);

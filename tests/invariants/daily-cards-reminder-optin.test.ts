@@ -42,7 +42,7 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(home).toMatch(/<LoggedInHomeBanner/);
     expect(home).toMatch(/showHeroBlocks=\{false\}/);
     const banner = read("src/components/editorial/LoggedInHomeBanner.tsx");
-    expect(banner).not.toMatch(/DailyCardsReminderToggle/);
+    expect(banner).toMatch(/DailyCardsReminderToggle/);
   });
 
   it("guest homepage does not show the reminder toggle", () => {

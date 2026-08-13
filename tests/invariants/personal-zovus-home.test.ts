@@ -13,18 +13,20 @@ import { EDITORIAL_PRODUCT_ENTRIES } from "@/lib/editorial-landing-content";
 const ROOT = path.resolve(__dirname, "../..");
 
 describe("personal-zovus-home", () => {
-  it("guest homepage still mounts multiproduct EditorialProductEntries", () => {
+  it("guest landing still mounts multiproduct EditorialProductEntries", () => {
     const landing = readFileSync(
       path.join(ROOT, "src/components/AuraSellingLanding.tsx"),
       "utf8"
     );
     expect(landing).toMatch(/EditorialProductEntries/);
     expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(4);
+    expect(landing).toMatch(/layout="grid"/);
+    expect(landing).toMatch(/layout=\{isAuthQuietMain \? "atelier" : "grid"\}/);
   });
 
-  it("auth salon home mounts photo hero without the Сегодня daily-cards card", () => {
+  it("auth atelier home mounts photo hero; daily 3-cards live in the hero", () => {
     const home = readFileSync(path.join(ROOT, "src/components/HomePage.tsx"), "utf8");
-    expect(home).toMatch(/auth-salon-home/);
+    expect(home).toMatch(/auth-atelier/);
     expect(home).toMatch(/<LoggedInHomeBanner/);
     expect(home).toMatch(/PersonalZovusHome/);
     expect(home).toMatch(/showHeroBlocks=\{false\}/);
@@ -36,7 +38,8 @@ describe("personal-zovus-home", () => {
     const personalStart = home.indexOf("<PersonalZovusHome", bannerStart);
     expect(bannerStart).toBeGreaterThan(-1);
     expect(personalStart).toBeGreaterThan(bannerStart);
-    expect(home.slice(bannerStart, personalStart)).not.toMatch(/onOpenDailyCards|onViewTodayDailyCards/);
+    expect(home.slice(bannerStart, personalStart)).toMatch(/onOpenDailyCards/);
+    expect(home.slice(bannerStart, personalStart)).toMatch(/onViewTodayDailyCards/);
   });
 
   it("explore links cover Matrix, Natal, HD, Tarot, matrix compatibility", () => {
@@ -83,34 +86,38 @@ describe("personal-zovus-home", () => {
     expect(src).toMatch(/PERSONAL_ZOVUS_EXPLORE/);
   });
 
-  it("LoggedInHomeBanner keeps photographic hero and does not render the daily-cards card", () => {
+  it("LoggedInHomeBanner keeps photographic hero and hosts today's 3-cards action", () => {
     const banner = readFileSync(
       path.join(ROOT, "src/components/editorial/LoggedInHomeBanner.tsx"),
       "utf8"
     );
     expect(banner).toMatch(/\/landing\/hero\.jpg/);
     expect(banner).toMatch(/editorial-hero--logged-in/);
-    expect(banner).not.toMatch(/DailyCardsReminderToggle/);
-    expect(banner).not.toMatch(/editorial-hero__daily/);
-    expect(banner).not.toMatch(/onOpenDailyCards/);
-    expect(banner).not.toMatch(/Посмотреть карты дня/);
+    expect(banner).toMatch(/auth-atelier-today/);
+    expect(banner).toMatch(/DailyCardsReminderToggle/);
+    expect(banner).toMatch(/onOpenDailyCards/);
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/Разложить карты/);
+    expect(banner).not.toMatch(/editorial-hero__chip/);
   });
 
-  it("auth hero is compact; guest editorial hero keeps 74vh min-height", () => {
+  it("auth hero is cinematic; guest editorial hero keeps 74vh min-height", () => {
     const css = readFileSync(
       path.join(ROOT, "src/styles/editorial-landing.css"),
       "utf8"
     );
     expect(css).toMatch(/\.editorial-hero \{[\s\S]*?min-height:\s*clamp\(32rem,\s*74vh,\s*44rem\)/);
-    expect(css).toMatch(/\.editorial-hero--logged-in \{[\s\S]*?min-height:\s*0;/);
-    expect(css).toMatch(/\.personal-zovus--salon/);
+    const loggedIdx = css.indexOf(".editorial-hero--logged-in {");
+    expect(loggedIdx).toBeGreaterThan(-1);
+    expect(css.slice(loggedIdx, loggedIdx + 280)).not.toMatch(/74vh/);
+    expect(css).toMatch(/\.auth-atelier/);
     const personal = readFileSync(
       path.join(ROOT, "src/components/editorial/PersonalZovusHome.tsx"),
       "utf8"
     );
-    expect(personal).toMatch(/personal-zovus--salon/);
+    expect(personal).toMatch(/personal-zovus--atelier/);
+    expect(personal).toMatch(/auth-atelier-explore__featured/);
+    expect(personal).not.toMatch(/personal-zovus__chip/);
   });
 
   it("handleNewReading opens daily triplet, not onboarding or guest intro", () => {

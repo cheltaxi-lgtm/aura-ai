@@ -21,7 +21,6 @@ import MasterSelect from "@/components/MasterSelect";
 import ChatWindow from "@/components/ChatWindow";
 import SessionList, { type SessionListItem } from "@/components/SessionList";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
-import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
@@ -3682,15 +3681,23 @@ export default function HomePage({
         ) : inPersonalFlow ? (
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
-              <div className="auth-salon-home">
+              <div className="auth-atelier">
                 <LoggedInHomeBanner
                   userName={effectiveProfile.name || authUser?.name}
-                  onOpenDestinyMatrix={() => {
-                    window.location.assign("/numerology/destiny-matrix");
+                  dailyCardsState={resolveDailyCardsUiState({
+                    cooldownReady: tripletCooldownReady,
+                    allowed: effectiveTripletCooldown.allowed,
+                    currentDaily: currentDailyReading,
+                  })}
+                  dailyCooldownHint={tripletCooldownHint}
+                  onOpenDailyCards={() => void handleNewReading()}
+                  onViewTodayDailyCards={() => void openCurrentDailyCards()}
+                  onPickRegularSpread={() => {
+                    document.getElementById("наставники")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
                   }}
-                  onOpenDestinyMatrixSession={() =>
-                    openNumerologSessionFlow("destiny_matrix")
-                  }
                 />
                 <PersonalZovusHome
                   showHeroBlocks={false}
@@ -4109,7 +4116,7 @@ export default function HomePage({
                   showSellingSections={!isLoggedIn}
                   showLoggedInHomeBanner={false}
                   showMasters
-                  showTariffs
+                  showTariffs={false}
                   homeUserName={effectiveProfile.name || authUser?.name}
                   dailyCardsState={
                     isLoggedIn
@@ -4137,7 +4144,6 @@ export default function HomePage({
                         }
                       : undefined
                   }
-                  onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
                   onOpenDestinyMatrixSession={
                     isLoggedIn ? () => openNumerologSessionFlow("destiny_matrix") : undefined
                   }
@@ -4162,8 +4168,8 @@ export default function HomePage({
                   photoNavLabel={photoNavLabel}
                   afterQuickQuestions={
                     isLoggedIn ? (
-                      <div className="home-feature-banners">
-                        <CabinetNatalChart />
+                      <div className="auth-atelier-more">
+                        <h2 className="auth-atelier-kicker">Ещё</h2>
                         <PremiumEnergyBlock
                           characterKey={dailyEnergyMasterId}
                           masters={masters}
@@ -4182,6 +4188,13 @@ export default function HomePage({
                             setShowSessionFlow(true);
                           }}
                         />
+                        <button
+                          type="button"
+                          className="auth-atelier-more__link"
+                          onClick={handleNavRitual}
+                        >
+                          Обряд с мастером
+                        </button>
                       </div>
                     ) : undefined
                   }

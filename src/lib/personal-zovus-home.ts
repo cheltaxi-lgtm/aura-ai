@@ -6,33 +6,43 @@
 export const PERSONAL_ZOVUS_EXPLORE = [
   {
     id: "matrix",
-    title: "Матрица",
+    title: "Матрица судьбы",
+    blurb: "Расчёт по дате рождения",
     href: "/numerology/destiny-matrix",
     kind: "link" as const,
+    weight: "featured" as const,
   },
   {
     id: "natal",
     title: "Натальная карта",
+    blurb: "Небо на момент рождения",
     href: "/natalnaya-karta",
     kind: "link" as const,
+    weight: "secondary" as const,
   },
   {
     id: "hd",
     title: "Дизайн человека",
+    blurb: "Тип, стратегия, центры",
     href: "/dizayn-cheloveka/rasschitat",
     kind: "link" as const,
+    weight: "secondary" as const,
   },
   {
     id: "tarot",
     title: "Таро",
+    blurb: "Расклад с мастером",
     href: null,
     kind: "action" as const,
+    weight: "compact" as const,
   },
   {
     id: "matrix_pair",
-    title: "Совместимость матриц",
+    title: "Совместимость",
+    blurb: "Две матрицы рядом",
     href: "/numerology/matrica-sovmestimosti",
     kind: "link" as const,
+    weight: "compact" as const,
   },
 ] as const;
 
