@@ -46,6 +46,7 @@ import {
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
+import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import PersonalZovusHome from "@/components/editorial/PersonalZovusHome";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
@@ -3656,7 +3657,17 @@ export default function HomePage({
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
               <>
+                <LoggedInHomeBanner
+                  userName={effectiveProfile.name || authUser?.name}
+                  onOpenDestinyMatrix={() => {
+                    window.location.assign("/numerology/destiny-matrix");
+                  }}
+                  onOpenDestinyMatrixSession={() =>
+                    openNumerologSessionFlow("destiny_matrix")
+                  }
+                />
                 <PersonalZovusHome
+                  showHeroBlocks={false}
                   userName={effectiveProfile.name || authUser?.name}
                   accountCreatedAt={authUser?.createdAt}
                   dailyCardsState={resolveDailyCardsUiState({

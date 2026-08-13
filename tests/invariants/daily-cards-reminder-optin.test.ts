@@ -38,11 +38,11 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(toggle).not.toMatch(/localStorage/);
     expect(toggle).not.toMatch(/Notification\.requestPermission|requestPermission/);
     expect(toggle).not.toMatch(/serviceWorker|PushManager|Capacitor/);
-    const personal = read("src/components/editorial/PersonalZovusHome.tsx");
-    expect(personal).toMatch(/DailyCardsReminderToggle/);
     const home = read("src/components/HomePage.tsx");
-    expect(home).toMatch(/PersonalZovusHome/);
-    expect(home).not.toMatch(/<LoggedInHomeBanner/);
+    expect(home).toMatch(/<LoggedInHomeBanner/);
+    expect(home).toMatch(/showHeroBlocks=\{false\}/);
+    const banner = read("src/components/editorial/LoggedInHomeBanner.tsx");
+    expect(banner).not.toMatch(/DailyCardsReminderToggle/);
   });
 
   it("guest homepage does not show the reminder toggle", () => {

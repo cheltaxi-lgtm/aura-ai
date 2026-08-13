@@ -55,8 +55,8 @@ type PersonalZovusHomeProps = {
   onContinueTarot?: () => void;
   onOpenOwnedMatrix?: () => void;
   /**
-   * When false, greeting + «Сегодня» are omitted.
-   * Auth home mounts this with the default (true) after the photo hero was removed.
+   * When false, greeting + «Сегодня» daily-cards card are omitted.
+   * Auth home keeps the photo hero and hides this duplicate card.
    */
   showHeroBlocks?: boolean;
 };

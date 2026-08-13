@@ -22,15 +22,20 @@ describe("personal-zovus-home", () => {
     expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(4);
   });
 
-  it("auth salon home does not mount photo hero; Personal Zovus owns daily CTA via handleNewReading", () => {
+  it("auth salon home mounts photo hero without the Сегодня daily-cards card", () => {
     const home = readFileSync(path.join(ROOT, "src/components/HomePage.tsx"), "utf8");
-    expect(home).not.toMatch(/<LoggedInHomeBanner/);
+    expect(home).toMatch(/<LoggedInHomeBanner/);
     expect(home).toMatch(/PersonalZovusHome/);
-    expect(home).not.toMatch(/showHeroBlocks=\{false\}/);
+    expect(home).toMatch(/showHeroBlocks=\{false\}/);
     expect(home).toMatch(/onViewTodayDailyCards=\{\(\) => void openCurrentDailyCards\(\)\}/);
     expect(home).toMatch(/onOpenDailyCards=\{\(\) => void handleNewReading\(\)\}/);
     expect(home).not.toMatch(/onOpenDailyCards=\{\(\) => void startPersonalFlow\(\)\}/);
     expect(home).not.toMatch(/onOpenDailyCards=\{\(\) => startGuestSpread/);
+    const bannerStart = home.indexOf("<LoggedInHomeBanner");
+    const personalStart = home.indexOf("<PersonalZovusHome", bannerStart);
+    expect(bannerStart).toBeGreaterThan(-1);
+    expect(personalStart).toBeGreaterThan(bannerStart);
+    expect(home.slice(bannerStart, personalStart)).not.toMatch(/onOpenDailyCards|onViewTodayDailyCards/);
   });
 
   it("explore links cover Matrix, Natal, HD, Tarot, matrix compatibility", () => {
@@ -77,15 +82,17 @@ describe("personal-zovus-home", () => {
     expect(src).toMatch(/PERSONAL_ZOVUS_EXPLORE/);
   });
 
-  it("LoggedInHomeBanner keeps photographic hero and daily CTAs", () => {
+  it("LoggedInHomeBanner keeps photographic hero and does not render the daily-cards card", () => {
     const banner = readFileSync(
       path.join(ROOT, "src/components/editorial/LoggedInHomeBanner.tsx"),
       "utf8"
     );
     expect(banner).toMatch(/\/landing\/hero\.jpg/);
     expect(banner).toMatch(/editorial-hero--logged-in/);
-    expect(banner).toMatch(/onOpenDailyCards/);
-    expect(banner).toMatch(/DailyCardsReminderToggle/);
+    expect(banner).not.toMatch(/DailyCardsReminderToggle/);
+    expect(banner).not.toMatch(/editorial-hero__daily/);
+    expect(banner).not.toMatch(/onOpenDailyCards/);
+    expect(banner).not.toMatch(/Посмотреть карты дня/);
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/Разложить карты/);
   });

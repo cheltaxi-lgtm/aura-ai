@@ -500,11 +500,6 @@ export default function AuraSellingLanding({
           userName={homeUserName}
           onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
           onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
-          dailyCardsState={dailyCardsState}
-          dailyCooldownHint={dailyCooldownHint}
-          onOpenDailyCards={onOpenDailyCards}
-          onViewTodayDailyCards={onViewTodayDailyCards}
-          onPickRegularSpread={onPickRegularSpread}
         />
       ) : null}
 
