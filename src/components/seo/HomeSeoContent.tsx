@@ -14,9 +14,40 @@ const HOME_INTENT_SLUGS = [
   "chto-meshaet-otnosheniyam",
 ] as const;
 
+const START_LINKS = [
+  { href: "/numerology/destiny-matrix", label: "Матрица судьбы бесплатно" },
+  { href: "/natalnaya-karta", label: "Натальная карта" },
+  { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн человека" },
+  { href: "/taro#besplatno", label: "Бесплатный расклад Таро" },
+] as const;
+
+const DIRECTORY_LINKS = [
+  { href: "/photo-rasklad", label: "Расшифровка Таро по фото" },
+  { href: "/statyi/besplatnyy-rasklad-taro-online", label: "Что входит в бесплатный расклад" },
+  { href: "/statyi/rasshifrovka-taro-po-foto", label: "Как работает расшифровка по фото" },
+  { href: "/gadanie", label: "Гадание онлайн" },
+  { href: "/gadanie/da-net", label: "Гадание да или нет" },
+  { href: "/taro", label: "Таро онлайн" },
+  { href: "/runy", label: "Гадание на рунах" },
+  { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
+  { href: "/numerology", label: "Нумерология" },
+  { href: "/natalnaya-karta", label: "Натальная карта" },
+  { href: "/sovmestimost-znakov-zodiaka", label: "Совместимость знаков зодиака" },
+  { href: "/prognoz", label: "Прогнозы Таро" },
+  { href: "/cards", label: "Значения карт" },
+  { href: "/rasklady/lyubov", label: "Расклады на любовь" },
+  { href: "/rasklady/vernost-i-doverie", label: "Верность и доверие" },
+  { href: "/rasklady/budushchee", label: "На будущее" },
+  { href: "/rasklady", label: "Все расклады" },
+  { href: "/statyi", label: "Статьи" },
+  { href: "/lenormand", label: "Ленорман" },
+  { href: "/faq", label: "FAQ" },
+  { href: "/about", label: "О сервисе" },
+  { href: "/telegram", label: "Telegram-бот" },
+] as const;
+
 /**
  * Server-rendered SEO content for home — crawlable without JS.
- * Visually hidden: a visible SEO wall above the footer looked like a second tall footer.
  */
 export default function HomeSeoContent() {
   const intents = HOME_INTENT_SLUGS.map((slug) => getSpreadIntentBySlug(slug)).filter(Boolean);
@@ -24,213 +55,76 @@ export default function HomeSeoContent() {
 
   return (
     <section className="home-seo-panel" aria-label="Zovus — матрица, натал, дизайн человека и Таро">
-      <h2 className="font-display text-2xl font-medium text-aura-ivory">
-        Zovus — матрица судьбы, натальная карта, дизайн человека и Таро
-      </h2>
-      <p className="mt-4 leading-relaxed">
-        Zovus — платформа персональных AI-разборов и расчётов. На главной можно начать с{" "}
-        <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
-          матрицы судьбы
-        </Link>
-        ,{" "}
-        <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
-          натальной карты
-        </Link>
-        ,{" "}
-        <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
-          дизайна человека
-        </Link>{" "}
-        или открыть три карты Таро бесплатно до регистрации. После входа классический расклад на три
-        карты доступен раз в сутки.
-      </p>
-      <p className="mt-3 leading-relaxed">
-        Можно выбрать готовый вопрос в каталоге, загрузить{" "}
-        <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
-          фото домашнего расклада
-        </Link>{" "}
-        для расшифровки или начать с{" "}
-        <Link href="/gadanie" className="text-aura-gold hover:underline">
-          гадания онлайн
-        </Link>
-        . Есть{" "}
-        <Link href="/lenormand" className="text-aura-gold hover:underline">
-          Ленорман
-        </Link>
-        ,{" "}
-        <Link href="/telegram" className="text-aura-gold hover:underline">
-          Telegram-бот
-        </Link>{" "}
-        и раздел{" "}
-        <Link href="/faq" className="text-aura-gold hover:underline">
-          FAQ
-        </Link>
-        . Полные сессии и углублённые разборы — по тарифу в рунах ᚢ. Это не медицинская и не
-        юридическая услуга:{" "}
-        <Link href="/disclaimer" className="text-aura-gold hover:underline">
-          подробнее об ограничениях
-        </Link>
-        .
-      </p>
+      <div className="home-seo-panel__intro">
+        <p className="home-seo-panel__eyebrow">Каталог</p>
+        <h2 className="home-seo-panel__title">
+          Zovus — матрица судьбы, натальная карта, дизайн человека и Таро
+        </h2>
+        <p>
+          Zovus — платформа персональных AI-разборов и расчётов. На главной можно начать с{" "}
+          <Link href="/numerology/destiny-matrix">матрицы судьбы</Link>
+          ,{" "}
+          <Link href="/natalnaya-karta">натальной карты</Link>
+          ,{" "}
+          <Link href="/dizayn-cheloveka/rasschitat">дизайна человека</Link> или открыть три карты Таро
+          бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки.
+        </p>
+        <p>
+          Можно выбрать готовый вопрос в каталоге, загрузить{" "}
+          <Link href="/photo-rasklad">фото домашнего расклада</Link> для расшифровки или начать с{" "}
+          <Link href="/gadanie">гадания онлайн</Link>. Есть <Link href="/lenormand">Ленорман</Link>,{" "}
+          <Link href="/telegram">Telegram-бот</Link> и раздел <Link href="/faq">FAQ</Link>. Полные сессии
+          и углублённые разборы — по тарифу в рунах ᚢ. Это не медицинская и не юридическая услуга:{" "}
+          <Link href="/disclaimer">подробнее об ограничениях</Link>.
+        </p>
+      </div>
 
-      <h2 className="mt-8 font-display text-lg text-aura-gold">Популярные вопросы</h2>
-      <ul className="mt-3 grid gap-2 sm:grid-cols-2">
-        {intents.map((intent) =>
-          intent ? (
-            <li key={intent.slug}>
-              <Link
-                href={`/rasklady/${intent.slug}`}
-                className="block rounded-lg border border-white/10 bg-white/5 px-3 py-2 text-sm text-white/85 transition hover:border-aura-gold/40 hover:text-aura-gold"
-              >
-                {intent.title}
+      <div className="home-seo-panel__block">
+        <h2 className="home-seo-panel__kicker">Популярные вопросы</h2>
+        <ul className="home-seo-panel__questions">
+          {intents.map((intent) =>
+            intent ? (
+              <li key={intent.slug}>
+                <Link href={`/rasklady/${intent.slug}`} className="home-seo-panel__q">
+                  {intent.title}
+                </Link>
+              </li>
+            ) : null
+          )}
+        </ul>
+      </div>
+
+      <div className="home-seo-panel__block">
+        <h2 className="home-seo-panel__kicker">С чего начать</h2>
+        <ul className="home-seo-panel__starts">
+          {START_LINKS.map((item) => (
+            <li key={item.href}>
+              <Link href={item.href} className="home-seo-panel__start">
+                {item.label}
               </Link>
             </li>
-          ) : null
-        )}
-      </ul>
+          ))}
+        </ul>
+      </div>
 
-      <h2 className="mt-8 font-display text-lg text-aura-gold">С чего начать</h2>
-      <ul className="mt-3 flex flex-wrap gap-2 text-sm">
-        <li>
-          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
-            Матрица судьбы бесплатно
-          </Link>
-        </li>
-        <li>
-          <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
-            Натальная карта
-          </Link>
-        </li>
-        <li>
-          <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
-            Дизайн человека
-          </Link>
-        </li>
-        <li>
-          <Link href="/taro#besplatno" className="text-aura-gold hover:underline">
-            Бесплатный расклад Таро
-          </Link>
-        </li>
-        <li>
-          <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
-            Расшифровка Таро по фото
-          </Link>
-        </li>
-        <li>
-          <Link href="/statyi/besplatnyy-rasklad-taro-online" className="text-aura-gold hover:underline">
-            Что входит в бесплатный расклад
-          </Link>
-        </li>
-        <li>
-          <Link href="/statyi/rasshifrovka-taro-po-foto" className="text-aura-gold hover:underline">
-            Как работает расшифровка по фото
-          </Link>
-        </li>
-        <li>
-          <Link href="/gadanie" className="text-aura-gold hover:underline">
-            Гадание онлайн
-          </Link>
-        </li>
-        <li>
-          <Link href="/gadanie/da-net" className="text-aura-gold hover:underline">
-            Гадание да или нет
-          </Link>
-        </li>
-        <li>
-          <Link href="/taro" className="text-aura-gold hover:underline">
-            Таро онлайн
-          </Link>
-        </li>
-        <li>
-          <Link href="/runy" className="text-aura-gold hover:underline">
-            Гадание на рунах
-          </Link>
-        </li>
-        <li>
-          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
-            Матрица судьбы
-          </Link>
-        </li>
-        <li>
-          <Link href="/numerology" className="text-aura-gold hover:underline">
-            Нумерология
-          </Link>
-        </li>
-        <li>
-          <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
-            Натальная карта
-          </Link>
-        </li>
-        <li>
-          <Link href="/sovmestimost-znakov-zodiaka" className="text-aura-gold hover:underline">
-            Совместимость знаков зодиака
-          </Link>
-        </li>
-        <li>
-          <Link href="/prognoz" className="text-aura-gold hover:underline">
-            Прогнозы Таро
-          </Link>
-        </li>
-        <li>
-          <Link href="/cards" className="text-aura-gold hover:underline">
-            Значения карт
-          </Link>
-        </li>
-        <li>
-          <Link href="/rasklady/lyubov" className="text-aura-gold hover:underline">
-            Расклады на любовь
-          </Link>
-        </li>
-        <li>
-          <Link href="/rasklady/vernost-i-doverie" className="text-aura-gold hover:underline">
-            Верность и доверие
-          </Link>
-        </li>
-        <li>
-          <Link href="/rasklady/budushchee" className="text-aura-gold hover:underline">
-            На будущее
-          </Link>
-        </li>
-        <li>
-          <Link href="/rasklady" className="text-aura-gold hover:underline">
-            Все расклады
-          </Link>
-        </li>
-        <li>
-          <Link href="/statyi" className="text-aura-gold hover:underline">
-            Статьи
-          </Link>
-        </li>
-        <li>
-          <Link href="/lenormand" className="text-aura-gold hover:underline">
-            Ленорман
-          </Link>
-        </li>
-        <li>
-          <Link href="/faq" className="text-aura-gold hover:underline">
-            FAQ
-          </Link>
-        </li>
-        <li>
-          <Link href="/about" className="text-aura-gold hover:underline">
-            О сервисе
-          </Link>
-        </li>
-        <li>
-          <Link href="/telegram" className="text-aura-gold hover:underline">
-            Telegram-бот
-          </Link>
-        </li>
-      </ul>
+      <nav className="home-seo-panel__dir" aria-label="Разделы сервиса">
+        <h2 className="home-seo-panel__kicker">Разделы</h2>
+        <ul className="home-seo-panel__dir-list">
+          {DIRECTORY_LINKS.map((item) => (
+            <li key={`${item.href}:${item.label}`}>
+              <Link href={item.href}>{item.label}</Link>
+            </li>
+          ))}
+        </ul>
+      </nav>
 
       {featured.length > 0 ? (
-        <p className="mt-6 text-sm text-white/50">
+        <p className="home-seo-panel__featured">
           Также популярны:{" "}
           {featured.map((item, i) => (
             <span key={item.slug}>
               {i > 0 ? ", " : ""}
-              <Link href={`/rasklady/${item.slug}`} className="text-aura-gold hover:underline">
-                {item.title}
-              </Link>
+              <Link href={`/rasklady/${item.slug}`}>{item.title}</Link>
             </span>
           ))}
         </p>

@@ -637,14 +637,191 @@
   @apply text-aura-gold/90 hover:text-aura-gold;
 }
 
-/* SSR SEO block on home — crawlable; keep visually hidden so it doesn't inflate the page end */
+/* SSR SEO block on home — crawlable catalog, salon closing chapter */
 .home-seo-panel {
-  @apply mx-auto max-w-3xl px-4 py-12 text-[rgba(237,230,218,0.72)];
-  border-top: 1px solid rgba(201, 162, 74, 0.14);
+  width: 100%;
+  max-width: 72rem;
+  margin: 0 auto;
+  padding: 3.25rem 1.25rem 4.25rem;
+  color: rgba(237, 230, 218, 0.72);
+  border-top: 1px solid rgba(232, 199, 126, 0.12);
 }
 
 .home-seo-panel a {
-  @apply text-aura-gold;
+  color: rgba(232, 199, 126, 0.88);
+  text-decoration: none;
+}
+
+.home-seo-panel a:hover {
+  color: rgba(245, 226, 176, 0.98);
+}
+
+.home-seo-panel__intro {
+  max-width: 38rem;
+  margin-bottom: 2.75rem;
+}
+
+.home-seo-panel__eyebrow {
+  margin: 0 0 0.7rem;
+  font-size: 0.6875rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.7);
+}
+
+.home-seo-panel__title {
+  margin: 0;
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: clamp(1.65rem, 2.5vw, 2.2rem);
+  font-weight: 500;
+  line-height: 1.25;
+  color: rgba(255, 248, 235, 0.94);
+}
+
+.home-seo-panel__intro p {
+  margin: 1.05rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.7;
+}
+
+.home-seo-panel__block {
+  margin-top: 2.35rem;
+}
+
+.home-seo-panel__kicker {
+  margin: 0 0 0.85rem;
+  font-size: 0.75rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.72);
+}
+
+.home-seo-panel__questions {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  border-top: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.home-seo-panel a.home-seo-panel__q {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.9rem 0.1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(237, 230, 218, 0.9);
+  font-size: 0.9375rem;
+  line-height: 1.35;
+}
+
+.home-seo-panel a.home-seo-panel__q:hover {
+  color: rgba(245, 226, 176, 0.98);
+}
+
+.home-seo-panel a.home-seo-panel__start {
+  color: rgba(255, 248, 235, 0.94);
+}
+
+.home-seo-panel a.home-seo-panel__start:hover {
+  color: rgba(255, 248, 235, 0.98);
+}
+
+.home-seo-panel__q::after {
+  content: "→";
+  flex-shrink: 0;
+  color: rgba(232, 199, 126, 0.42);
+  font-size: 0.85rem;
+}
+
+.home-seo-panel__starts {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 0.65rem;
+}
+
+.home-seo-panel__start {
+  display: block;
+  min-height: 4.25rem;
+  padding: 1.05rem 1.1rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(232, 199, 126, 0.2);
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 248, 235, 0.94);
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: 1.02rem;
+  line-height: 1.3;
+}
+
+.home-seo-panel__start:hover {
+  border-color: rgba(232, 199, 126, 0.42);
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.home-seo-panel__dir {
+  margin-top: 2.75rem;
+  padding-top: 1.85rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.home-seo-panel__dir-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.2rem 1.25rem;
+}
+
+.home-seo-panel__dir-list a {
+  display: block;
+  padding: 0.38rem 0;
+  color: rgba(237, 230, 218, 0.46);
+  font-size: 0.8125rem;
+  line-height: 1.35;
+}
+
+.home-seo-panel__dir-list a:hover {
+  color: rgba(232, 199, 126, 0.92);
+}
+
+.home-seo-panel__featured {
+  margin: 1.75rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.38);
+}
+
+@media (min-width: 720px) {
+  .home-seo-panel {
+    padding: 4rem 1.5rem 5rem;
+  }
+
+  .home-seo-panel__questions {
+    grid-template-columns: 1fr 1fr;
+    column-gap: 2.75rem;
+  }
+
+  .home-seo-panel__starts {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
+  }
+}
+
+@media (min-width: 1024px) {
+  .home-seo-panel__starts {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .home-seo-panel__dir-list {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 0.15rem 1.75rem;
+  }
 }
 
 .landing-seo-hub {
