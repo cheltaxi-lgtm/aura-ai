@@ -86,6 +86,8 @@ describe("personal-zovus-home", () => {
     expect(banner).toMatch(/editorial-hero--logged-in/);
     expect(banner).toMatch(/onOpenDailyCards/);
     expect(banner).toMatch(/DailyCardsReminderToggle/);
+    expect(banner).not.toMatch(/HeroQuestionField/);
+    expect(banner).not.toMatch(/Разложить карты/);
   });
 
   it("handleNewReading opens daily triplet, not onboarding or guest intro", () => {

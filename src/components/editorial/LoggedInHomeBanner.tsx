@@ -3,7 +3,6 @@
 import { useEffect, useRef } from "react";
 import DailyCardsReminderToggle from "@/components/editorial/DailyCardsReminderToggle";
 import EditorialImage from "@/components/editorial/EditorialImage";
-import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
 import { EDITORIAL_DAILY_CARDS } from "@/lib/editorial-landing-content";
@@ -15,7 +14,6 @@ import {
 
 type LoggedInHomeBannerProps = {
   userName?: string | null;
-  onQuestionSubmit?: (question: string) => void;
   onOpenDestinyMatrix?: () => void;
   onOpenDestinyMatrixSession?: () => void;
   dailyCardsState?: DailyCardsUiState;
@@ -30,7 +28,6 @@ const chipClass =
 
 export default function LoggedInHomeBanner({
   userName,
-  onQuestionSubmit,
   onOpenDestinyMatrix,
   onOpenDestinyMatrixSession,
   dailyCardsState,
@@ -98,17 +95,17 @@ export default function LoggedInHomeBanner({
           )}
         </h2>
         <p className="editorial-hero__subtitle">
-          Задайте вопрос или продолжите с мастером, с которым уже говорили.
+          Откройте 3 карты дня — главное, ресурс и где сегодня лучше не спешить.
         </p>
 
         {showDaily ? (
-          <div className="editorial-hero__daily mt-5 mx-auto max-w-md rounded-xl border border-aura-gold/25 bg-black/30 px-4 py-3 text-left min-h-[7.5rem]">
+          <div className="editorial-hero__daily mt-5 mx-auto max-w-md rounded-xl border border-aura-gold/25 bg-black/30 px-4 py-4 text-left min-h-[7.5rem]">
             <p className="font-display text-base text-white">{dailyTitle}</p>
             <p className="mt-1 text-xs text-white/55">{dailyHint}</p>
             {dailyCardsState === "available" ? (
               <button
                 type="button"
-                className="editorial-btn editorial-btn--gold mt-3 w-full sm:w-auto"
+                className="editorial-btn editorial-btn--gold mt-4 w-full"
                 onClick={() => {
                   trackDailyCardsCtaClick("logged_in_home_available");
                   onOpenDailyCards?.();
@@ -120,7 +117,7 @@ export default function LoggedInHomeBanner({
             {dailyCardsState === "opened" ? (
               <button
                 type="button"
-                className="editorial-btn editorial-btn--gold mt-3 w-full sm:w-auto"
+                className="editorial-btn editorial-btn--gold mt-4 w-full"
                 onClick={() => {
                   trackDailyCardsCtaClick("logged_in_home_opened");
                   onViewTodayDailyCards?.();
@@ -132,7 +129,7 @@ export default function LoggedInHomeBanner({
             {dailyCardsState === "cooldown" && onPickRegularSpread ? (
               <button
                 type="button"
-                className="editorial-btn editorial-btn--ghost mt-3 w-full sm:w-auto"
+                className="editorial-btn editorial-btn--ghost mt-4 w-full"
                 onClick={() => {
                   trackDailyCardsCtaClick("logged_in_home_cooldown");
                   onPickRegularSpread();
@@ -141,16 +138,20 @@ export default function LoggedInHomeBanner({
                 {EDITORIAL_DAILY_CARDS.authCooldownCta}
               </button>
             ) : null}
+            {dailyCardsState === "loading" ? (
+              <button
+                type="button"
+                className="editorial-btn editorial-btn--gold mt-4 w-full"
+                disabled
+                aria-busy="true"
+              >
+                {EDITORIAL_DAILY_CARDS.authLoadingLabel}
+              </button>
+            ) : null}
             <DailyCardsReminderToggle />
           </div>
         ) : null}
 
-        {onQuestionSubmit ? (
-          <HeroQuestionField
-            className="mt-6 mx-auto max-w-md"
-            onQuestionSubmit={onQuestionSubmit}
-          />
-        ) : null}
         <div className="mt-5 flex flex-wrap justify-center gap-2">
           <button
             type="button"

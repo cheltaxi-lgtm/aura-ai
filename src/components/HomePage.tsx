@@ -3636,7 +3636,6 @@ export default function HomePage({
               <>
                 <LoggedInHomeBanner
                   userName={effectiveProfile.name || authUser?.name}
-                  onQuestionSubmit={handleLandingCustomQuestion}
                   onOpenDestinyMatrix={() => {
                     window.location.assign("/numerology/destiny-matrix");
                   }}
@@ -3827,7 +3826,9 @@ export default function HomePage({
                       zodiac={effectiveProfile.zodiac}
                       system={tripletSystem}
                       masterName={tripletMasterName}
+                      masterId={tripletMasterId || GUEST_TRIPLET_MASTER_ID}
                       variant={newTripletDraft ? "daily" : "default"}
+                      onCancel={handleTripletBack}
                       initialCards={
                         newTripletDraft
                           ? undefined
