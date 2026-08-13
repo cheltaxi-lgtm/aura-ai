@@ -1,4 +1,5 @@
 import Link from "next/link";
+import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import { getFeaturedSpreadIntents, getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 const HOME_INTENT_SLUGS = [
@@ -55,28 +56,40 @@ export default function HomeSeoContent() {
 
   return (
     <section className="home-seo-panel" aria-label="Zovus — матрица, натал, дизайн человека и Таро">
-      <div className="home-seo-panel__intro">
-        <p className="home-seo-panel__eyebrow">Каталог</p>
-        <h2 className="home-seo-panel__title">
-          Zovus — матрица судьбы, натальная карта, дизайн человека и Таро
-        </h2>
-        <p>
-          Zovus — платформа персональных AI-разборов и расчётов. На главной можно начать с{" "}
-          <Link href="/numerology/destiny-matrix">матрицы судьбы</Link>
-          ,{" "}
-          <Link href="/natalnaya-karta">натальной карты</Link>
-          ,{" "}
-          <Link href="/dizayn-cheloveka/rasschitat">дизайна человека</Link> или открыть три карты Таро
-          бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки.
-        </p>
-        <p>
-          Можно выбрать готовый вопрос в каталоге, загрузить{" "}
-          <Link href="/photo-rasklad">фото домашнего расклада</Link> для расшифровки или начать с{" "}
-          <Link href="/gadanie">гадания онлайн</Link>. Есть <Link href="/lenormand">Ленорман</Link>,{" "}
-          <Link href="/telegram">Telegram-бот</Link> и раздел <Link href="/faq">FAQ</Link>. Полные сессии
-          и углублённые разборы — по тарифу в рунах ᚢ. Это не медицинская и не юридическая услуга:{" "}
-          <Link href="/disclaimer">подробнее об ограничениях</Link>.
-        </p>
+      <div className="home-seo-panel__top">
+        <div className="home-seo-panel__intro">
+          <p className="home-seo-panel__eyebrow">Каталог</p>
+          <h2 className="home-seo-panel__title">
+            Zovus — матрица судьбы, натальная карта, дизайн человека и Таро
+          </h2>
+          <p>
+            Zovus — платформа персональных AI-разборов и расчётов. На главной можно начать с{" "}
+            <Link href="/numerology/destiny-matrix">матрицы судьбы</Link>
+            ,{" "}
+            <Link href="/natalnaya-karta">натальной карты</Link>
+            ,{" "}
+            <Link href="/dizayn-cheloveka/rasschitat">дизайна человека</Link> или открыть три карты Таро
+            бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки.
+          </p>
+          <p>
+            Можно выбрать готовый вопрос в каталоге, загрузить{" "}
+            <Link href="/photo-rasklad">фото домашнего расклада</Link> для расшифровки или начать с{" "}
+            <Link href="/gadanie">гадания онлайн</Link>. Есть <Link href="/lenormand">Ленорман</Link>,{" "}
+            <Link href="/telegram">Telegram-бот</Link> и раздел <Link href="/faq">FAQ</Link>. Полные
+            сессии и углублённые разборы — по тарифу в рунах ᚢ. Это не медицинская и не юридическая
+            услуга: <Link href="/disclaimer">подробнее об ограничениях</Link>.
+          </p>
+        </div>
+        <div className="home-seo-panel__ask">
+          <HeroQuestionField
+            inputId="catalog-question"
+            label="Свой вопрос"
+            placeholder="Например: вернётся ли он?"
+            submitLabel="Разобрать"
+            hint="Подберём схему и мастера под ваш вопрос"
+            analyticsSource="catalog"
+          />
+        </div>
       </div>
 
       <div className="home-seo-panel__block">

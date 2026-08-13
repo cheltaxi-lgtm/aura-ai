@@ -116,6 +116,8 @@ describe("multiproduct-seo-discoverability", () => {
     expect(homeSeo).toMatch(/\/natalnaya-karta/);
     expect(homeSeo).toMatch(/\/dizayn-cheloveka\/rasschitat/);
     expect(homeSeo).toMatch(/\/taro/);
+    expect(homeSeo).toMatch(/label="Свой вопрос"/);
+    expect(homeSeo).toMatch(/submitLabel="Разобрать"/);
   });
 
   it("internal product links are present (Matrix↔Pair, Matrix↔Natal, Natal↔HD)", () => {

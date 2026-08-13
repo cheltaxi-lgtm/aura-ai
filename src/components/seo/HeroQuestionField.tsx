@@ -35,6 +35,10 @@ type HeroQuestionFieldProps = {
   hint?: string;
   /** Readable hint over photographic hero backgrounds. */
   hintOnScrim?: boolean;
+  inputId?: string;
+  label?: string;
+  submitLabel?: string;
+  analyticsSource?: string;
 };
 
 export default function HeroQuestionField({
@@ -46,9 +50,16 @@ export default function HeroQuestionField({
   placeholder = "Например: вернётся ли он?",
   hint = "Подберём схему и мастера — или откроем готовый расклад из каталога",
   hintOnScrim = false,
+  inputId,
+  label,
+  submitLabel,
+  analyticsSource,
 }: HeroQuestionFieldProps) {
   const [question, setQuestion] = useState("");
   const inputRef = useNativeInputSync<HTMLInputElement>(setQuestion);
+  const fieldId = inputId ?? (compact ? "hero-question-compact" : "hero-question");
+  const fieldLabel = label ?? (compact ? "Ваш вопрос для расклада" : "Спросите, что хотите узнать");
+  const buttonText = submitLabel ?? (compact ? "Разложить" : "Разложить карты");
 
   useEffect(() => {
     if (!autoFocusDesktop || compact) return;
@@ -71,7 +82,9 @@ export default function HeroQuestionField({
       sessionStorage.setItem(LANDING_QUESTION_KEY, value);
     }
 
-    trackHeroQuestionSubmitted(compact ? "quick_questions" : "hero");
+    trackHeroQuestionSubmitted(
+      analyticsSource ?? (compact ? "quick_questions" : "hero")
+    );
 
     if (onQuestionSubmit) {
       onQuestionSubmit(value);
@@ -105,19 +118,19 @@ export default function HeroQuestionField({
   if (compact) {
     return (
       <form onSubmit={submit} className={`hero-question hero-question--compact ${className}`.trim()}>
-        <label htmlFor="hero-question-compact" className="sr-only">
-          Ваш вопрос для расклада
+        <label htmlFor={fieldId} className="sr-only">
+          {fieldLabel}
         </label>
         <input
           {...inputProps}
-          id="hero-question-compact"
+          id={fieldId}
           placeholder="Спросите, что хотите узнать…"
         />
         <button
           type="submit"
           className="hero-question__submit hero-question__submit--compact btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
         >
-          Разложить
+          {buttonText}
         </button>
       </form>
     );
@@ -133,14 +146,14 @@ export default function HeroQuestionField({
       onSubmit={submit}
       className={`hero-question hero-question--landing ${hintOnScrim ? "hero-question--hint-scrim" : ""} ${className}`.trim()}
     >
-      <label htmlFor="hero-question" className="hero-question__label">
-        Спросите, что хотите узнать
+      <label htmlFor={fieldId} className="hero-question__label">
+        {fieldLabel}
       </label>
       <div className="hero-question__row">
-        <input {...inputProps} id="hero-question" placeholder={placeholder} />
+        <input {...inputProps} id={fieldId} placeholder={placeholder} />
         <button type="submit" className={submitClass}>
           <Sparkles className="h-4 w-4" aria-hidden />
-          Разложить карты
+          {buttonText}
         </button>
       </div>
       <p className="hero-question__hint">{hint}</p>
