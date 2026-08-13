@@ -27,7 +27,6 @@ import {
   resolveClientGender,
 } from "@/lib/russian-name-gender";
 import { hashAiContent } from "@/lib/ai-generation-contract";
-import { productCalendarDate } from "@/lib/product-calendar";
 
 export class DailyReadingLockedError extends Error {
   spreadId: string | null;
@@ -375,12 +374,12 @@ async function repairTruncatedDailyReading(
   return sanitizeDailyReadingText(merged);
 }
 
-/** Validate a YYYY-MM-DD string; fall back to Europe/Moscow civil date. */
+/** Validate a YYYY-MM-DD string; fall back to the server's UTC date. */
 function resolveReadingDate(localDate?: string | null): string {
   if (typeof localDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(localDate)) {
     return localDate;
   }
-  return productCalendarDate();
+  return new Date().toISOString().slice(0, 10);
 }
 
 /** Fetch today's reading without creating one. Returns null if not drawn yet. */

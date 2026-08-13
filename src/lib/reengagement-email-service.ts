@@ -123,7 +123,7 @@ export async function sendInactiveUserEmails(inactiveDays: 7 | 14): Promise<numb
           ? "Zovus — бесплатный расклад на сегодня"
           : "Zovus — мы скучаем, карты ждут вас",
       html: inactiveUserEmailHtml(user.name, inactiveDays, siteUrl),
-      text: `${user.name}, вернитесь на Zovus: ${siteUrl}/?dailyCards=1`,
+      text: `${user.name}, вернитесь на Zovus: ${siteUrl}/?daily=1`,
       template,
     });
     if (ok) {

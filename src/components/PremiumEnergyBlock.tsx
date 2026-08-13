@@ -22,7 +22,6 @@ import {
 } from "@/lib/daily-retention";
 import type { RitualType } from "@/lib/ritual-config";
 import AsyncJobProgressNotice from "@/components/AsyncJobProgressNotice";
-import { productCalendarDate } from "@/lib/product-calendar";
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const GOLD_GRADIENT = "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)";
@@ -63,9 +62,13 @@ export interface PremiumEnergyBlockProps {
   onOpenNumerologForm?: () => void;
 }
 
-/** Europe/Moscow civil date — daily energy resets at 00:00 Moscow, not device TZ. */
+/** User's local calendar date (YYYY-MM-DD) so the daily reset happens at their 00:00. */
 function localDateStr(): string {
-  return productCalendarDate();
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 function parseDailyEnergyText(text: string): { body: string; quote: string | null } {

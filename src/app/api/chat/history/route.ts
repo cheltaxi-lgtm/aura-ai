@@ -148,9 +148,7 @@ export async function GET(request: NextRequest) {
     ) {
       sessionRow = archived;
     }
-  }
-
-  if (!sessionRow && requestedSessionId) {
+  } else if (requestedSessionId) {
     const hinted = await getSession(requestedSessionId);
     if (hinted && hinted.user_id === profileUserId) {
       if (!hinted.character_key || hinted.character_key === characterId) {
@@ -162,9 +160,7 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  // Latest-active fallback only when the client did not ask for a specific session.
-  // Otherwise a daily/archive miss can steal the guest_resume thread (free intro).
-  if (!sessionRow && !archiveSessionId && !requestedSessionId) {
+  if (!sessionRow) {
     const { rows } = await query<SessionRow>(
       `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
               COALESCE(awaiting_context, false) AS awaiting_context,
@@ -181,7 +177,7 @@ export async function GET(request: NextRequest) {
     sessionRow = rows[0] ?? null;
   }
 
-  if (!sessionRow && !archiveSessionId && !requestedSessionId) {
+  if (!sessionRow) {
     const { rows } = await query<SessionRow>(
       `SELECT id, user_id, referrer_slug, free_questions_used, paid_until, has_single_unlock,
               COALESCE(awaiting_context, false) AS awaiting_context,

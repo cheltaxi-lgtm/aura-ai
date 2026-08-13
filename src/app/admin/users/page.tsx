@@ -2,14 +2,15 @@
 
 import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn } from "@/components/admin/AdminShell";
-import { formatTripletCooldownRu, tripletCooldownFromLastDraw } from "@/lib/triplet-limit";
+import { TRIPLET_COOLDOWN_MS, formatTripletCooldownRu } from "@/lib/triplet-limit";
 
 const GRANT_PRESETS = [50, 100, 250, 500, 1000];
 
 function tripletCooldownLabel(lastDrawAt: string | null | undefined): string {
-  const status = tripletCooldownFromLastDraw(lastDrawAt);
-  if (status.allowed || !status.nextAvailableAt) return "доступен";
-  return formatTripletCooldownRu(status.nextAvailableAt);
+  if (!lastDrawAt) return "доступен";
+  const next = new Date(new Date(lastDrawAt).getTime() + TRIPLET_COOLDOWN_MS);
+  if (Date.now() >= next.getTime()) return "доступен";
+  return formatTripletCooldownRu(next.toISOString());
 }
 
 function formatRunes(value: unknown): string {

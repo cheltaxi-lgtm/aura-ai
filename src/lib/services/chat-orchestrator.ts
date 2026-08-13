@@ -52,7 +52,6 @@ import {
   resolveSpreadPositions,
   sliceForSpread,
 } from "@/lib/spreads";
-import { DAILY_TRIPLET_POSITIONS } from "@/lib/daily-triplet-positions";
 import { isSessionTopicId } from "@/lib/session-topics";
 import {
   LIFE_DEATH_TOPIC,
@@ -940,17 +939,14 @@ export class ChatOrchestrator {
 
     if (!this.periodSpreadScope) {
       const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
-      const labels =
-        this.resolvedSpreadType === "daily" || this.spreadType === "daily"
-          ? [...DAILY_TRIPLET_POSITIONS]
-          : this.tarotCards?.length
-            ? resolveSpreadPositions(
-                activeSpreadId,
-                this.resolvedIntention && isSessionTopicId(this.resolvedIntention)
-                  ? this.resolvedIntention
-                  : null
-              ).map((p) => p.label)
-            : undefined;
+      const labels = this.tarotCards?.length
+        ? resolveSpreadPositions(
+            activeSpreadId,
+            this.resolvedIntention && isSessionTopicId(this.resolvedIntention)
+              ? this.resolvedIntention
+              : null
+          ).map((p) => p.label)
+        : undefined;
       systemPrompt += intentionPromptBlock(
         this.resolvedIntention,
         this.customQuestion,
@@ -1074,9 +1070,6 @@ export class ChatOrchestrator {
   private quickSpreadTopicSummary(cardNames: string[]): string {
     if (this.periodSpreadScope) {
       return periodSpreadTaskLabel(this.periodSpreadScope);
-    }
-    if (this.resolvedSpreadType === "daily" || this.spreadType === "daily") {
-      return "3 карты дня";
     }
     const intention = this.resolvedIntention ?? this.intention;
     if (intention === "custom" && this.customQuestion?.trim()) {

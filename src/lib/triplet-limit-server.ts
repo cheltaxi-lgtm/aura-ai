@@ -24,7 +24,7 @@ function dailyAnchorFromMeta(meta: Record<string, unknown> | null | undefined): 
 }
 
 /**
- * Daily 3-cards entitlement: one draw per Europe/Moscow calendar day (00:00 reset).
+ * Rolling 24h daily entitlement cooldown.
  * Evidence = explicit daily_triplet history OR dedicated daily anchor only.
  * Ordinary character_name='triplet' / type='triplet' do NOT consume daily.
  */

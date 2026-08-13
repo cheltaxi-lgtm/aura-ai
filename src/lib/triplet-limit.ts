@@ -1,4 +1,4 @@
-﻿import { addCalendarDays, productCalendarDate, zonedStartOfDay } from "@/lib/product-calendar";
+﻿export const TRIPLET_COOLDOWN_MS = 24 * 60 * 60 * 1000;
 
 export interface TripletCooldownStatus {
   allowed: boolean;
@@ -6,31 +6,19 @@ export interface TripletCooldownStatus {
   lastTripletAt: string | null;
 }
 
-/**
- * Daily 3-cards entitlement: one draw per Europe/Moscow calendar day.
- * Resets at 00:00 Moscow, not a rolling 24h window.
- *
- * Callers: loadDailyTripletCooldown, tripletCooldownFromProfileData,
- * useOnboardingFlow (optimistic save + 429), effectiveTripletCooldown, tests.
- */
 export function tripletCooldownFromLastDraw(
-  lastCreatedAt: Date | string | null | undefined,
-  now: Date = new Date()
+  lastCreatedAt: Date | string | null | undefined
 ): TripletCooldownStatus {
   if (!lastCreatedAt) {
     return { allowed: true, nextAvailableAt: null, lastTripletAt: null };
   }
 
-  const last = lastCreatedAt instanceof Date ? lastCreatedAt : new Date(lastCreatedAt);
-  if (!Number.isFinite(last.getTime())) {
-    return { allowed: true, nextAvailableAt: null, lastTripletAt: null };
-  }
-
+  const last =
+    lastCreatedAt instanceof Date ? lastCreatedAt : new Date(lastCreatedAt);
   const lastIso = last.toISOString();
-  const lastDay = productCalendarDate(last);
-  const next = zonedStartOfDay(addCalendarDays(lastDay, 1));
+  const next = new Date(last.getTime() + TRIPLET_COOLDOWN_MS);
 
-  if (now.getTime() >= next.getTime()) {
+  if (Date.now() >= next.getTime()) {
     return { allowed: true, nextAvailableAt: null, lastTripletAt: lastIso };
   }
 
@@ -64,7 +52,7 @@ export function formatCountdownHMS(msRemaining: number): string {
   return [h, m, s].map((n) => String(n).padStart(2, "0")).join(":");
 }
 
-/** Pick the latest draw time and apply the Moscow calendar-day rule (server + local anchors). */
+/** Pick the latest draw time and apply the 24h rule (server + local anchors). */
 export function effectiveTripletCooldown(
   ...anchors: (Date | string | null | undefined)[]
 ): TripletCooldownStatus {

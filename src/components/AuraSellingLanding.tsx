@@ -498,8 +498,14 @@ export default function AuraSellingLanding({
       {showLoggedInHome ? (
         <LoggedInHomeBanner
           userName={homeUserName}
+          onQuestionSubmit={onCustomQuestionSubmit ?? onQuickQuestionSelect}
           onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
           onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
+          dailyCardsState={dailyCardsState}
+          dailyCooldownHint={dailyCooldownHint}
+          onOpenDailyCards={onOpenDailyCards}
+          onViewTodayDailyCards={onViewTodayDailyCards}
+          onPickRegularSpread={onPickRegularSpread}
         />
       ) : null}
 

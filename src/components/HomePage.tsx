@@ -46,7 +46,6 @@ import {
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
-import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import PersonalZovusHome from "@/components/editorial/PersonalZovusHome";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
@@ -157,8 +156,6 @@ import {
   takeStashedTgReceipt,
 } from "@/lib/telegram/tg-receipt-client";
 import { resolveDailyCardsUiState } from "@/lib/daily-cards-ui";
-import { isDrawnExtendedDailyReading } from "@/lib/daily-reading-peek";
-import { productCalendarDate } from "@/lib/product-calendar";
 import {
   GUEST_RESUME_ALREADY_USED_CABINET_CTA,
   GUEST_RESUME_ALREADY_USED_DAILY_CTA,
@@ -545,7 +542,6 @@ export default function HomePage({
     tripletMasterId,
     setTripletMasterId,
     newTripletDraft,
-    viewingOpenedDaily,
     tripletNotice,
     setTripletNotice,
     guestResumeCanRetry,
@@ -3195,54 +3191,8 @@ export default function HomePage({
 
   const handleStartReadingFromHeader = useCallback(() => {
     exitToLandingForNav();
-    if (!isLoggedIn) {
-      void startPersonalFlow();
-      return;
-    }
-    void (async () => {
-      // Paid 7-card «Расширенный день» is /api/daily-reading, not the free 3-card daily.
-      // If today's extended reading exists, reopen it — do not swap in a different triplet.
-      try {
-        const res = await fetch(`/api/daily-reading?date=${productCalendarDate()}`, {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = (await res.json()) as {
-            drawn?: boolean;
-            text?: string | null;
-            spreadId?: string | null;
-            cards?: unknown[] | null;
-          };
-          if (isDrawnExtendedDailyReading(data)) {
-            setDailyEnergySpreadId("daily-extended");
-            setDailyEnergyAutoOpen(true);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to free 3-card daily.
-      }
-      const dailyState = resolveDailyCardsUiState({
-        cooldownReady: tripletCooldownReady,
-        allowed: effectiveTripletCooldown.allowed,
-        currentDaily: currentDailyReading,
-      });
-      if (dailyState === "opened") {
-        void openCurrentDailyCards();
-        return;
-      }
-      void handleNewReading();
-    })();
-  }, [
-    exitToLandingForNav,
-    isLoggedIn,
-    startPersonalFlow,
-    tripletCooldownReady,
-    effectiveTripletCooldown.allowed,
-    currentDailyReading,
-    openCurrentDailyCards,
-    handleNewReading,
-  ]);
+    void startPersonalFlow();
+  }, [exitToLandingForNav, startPersonalFlow]);
 
   const handleNavRitual = useCallback(() => {
     if (!isLoggedIn) {
@@ -3682,58 +3632,46 @@ export default function HomePage({
         ) : inPersonalFlow ? (
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
-              <div className="auth-salon-home">
-                <LoggedInHomeBanner
-                  userName={effectiveProfile.name || authUser?.name}
-                  onOpenDestinyMatrix={() => {
-                    window.location.assign("/numerology/destiny-matrix");
-                  }}
-                  onOpenDestinyMatrixSession={() =>
-                    openNumerologSessionFlow("destiny_matrix")
-                  }
-                />
-                <PersonalZovusHome
-                  showHeroBlocks={false}
-                  userName={effectiveProfile.name || authUser?.name}
-                  accountCreatedAt={authUser?.createdAt}
-                  dailyCardsState={resolveDailyCardsUiState({
-                    cooldownReady: tripletCooldownReady,
-                    allowed: effectiveTripletCooldown.allowed,
-                    currentDaily: currentDailyReading,
-                  })}
-                  dailyCooldownHint={tripletCooldownHint}
-                  onOpenDailyCards={() => void handleNewReading()}
-                  onViewTodayDailyCards={() => void openCurrentDailyCards()}
-                  onPickRegularSpread={() => {
-                    document.getElementById("наставники")?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    });
-                  }}
-                  tarotContinueMasterName={
-                    hasActiveSpread && recapContinueMasterId
-                      ? findShowcaseMaster(recapContinueMasterId, masters)?.name ??
-                        getCharacterById(recapContinueMasterId)?.name ??
-                        "мастером"
-                      : null
-                  }
-                  onContinueTarot={
-                    hasActiveSpread && recapContinueMasterId
-                      ? () => void handleMasterPick(recapContinueMasterId)
-                      : undefined
-                  }
-                  onOpenOwnedMatrix={() => {
-                    void openChatWithSessionParams({
-                      characterKey: "numerolog",
-                      intention: null,
-                      spreadType: "new",
-                      cards: [],
-                      cardsRevealed: true,
-                      numerologToolId: "destiny_matrix",
-                    });
-                  }}
-                />
-              </div>
+              <PersonalZovusHome
+                userName={effectiveProfile.name || authUser?.name}
+                accountCreatedAt={authUser?.createdAt}
+                dailyCardsState={resolveDailyCardsUiState({
+                  cooldownReady: tripletCooldownReady,
+                  allowed: effectiveTripletCooldown.allowed,
+                  currentDaily: currentDailyReading,
+                })}
+                dailyCooldownHint={tripletCooldownHint}
+                onOpenDailyCards={() => void handleNewReading()}
+                onViewTodayDailyCards={() => void openCurrentDailyCards()}
+                onPickRegularSpread={() => {
+                  document.getElementById("наставники")?.scrollIntoView({
+                    behavior: "smooth",
+                    block: "start",
+                  });
+                }}
+                tarotContinueMasterName={
+                  hasActiveSpread && recapContinueMasterId
+                    ? findShowcaseMaster(recapContinueMasterId, masters)?.name ??
+                      getCharacterById(recapContinueMasterId)?.name ??
+                      "мастером"
+                    : null
+                }
+                onContinueTarot={
+                  hasActiveSpread && recapContinueMasterId
+                    ? () => void handleMasterPick(recapContinueMasterId)
+                    : undefined
+                }
+                onOpenOwnedMatrix={() => {
+                  void openChatWithSessionParams({
+                    characterKey: "numerolog",
+                    intention: null,
+                    spreadType: "new",
+                    cards: [],
+                    cardsRevealed: true,
+                    numerologToolId: "destiny_matrix",
+                  });
+                }}
+              />
             ) : null}
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
@@ -3823,7 +3761,7 @@ export default function HomePage({
                     ) : null}
                   </div>
                 ) : null}
-                {tripletCooldown && !tripletCooldown.allowed && !newTripletDraft && !viewingOpenedDaily ? (
+                {tripletCooldown && !tripletCooldown.allowed ? (
                   <div className="glass-panel mx-auto max-w-xl p-8 text-center">
                     <p className="mb-2 font-display text-lg font-semibold text-white">
                       Новый расклад из 3 карт
@@ -3841,42 +3779,27 @@ export default function HomePage({
                   </div>
                 ) : (
                   <>
-                    {!canChangeTripletMaster && !viewingOpenedDaily ? (
+                    {!canChangeTripletMaster ? (
                       <p className="mb-4 text-center text-[11px] text-gray-500">
                         Расклад уже выпал — сменить мастера можно после нового расклада
                       </p>
                     ) : null}
-                    {newTripletDraft || viewingOpenedDaily ? (
-                      <h1 className="mb-4 text-center font-display text-xl font-semibold text-white">
-                        3 карты дня
-                      </h1>
-                    ) : null}
                     <TarotTriplet
                       key={
-                        viewingOpenedDaily
-                          ? `opened-daily-${currentDailyReading?.exists ? currentDailyReading.cardsKey : tripletMasterId}`
-                          : newTripletDraft
-                            ? `new-triplet-${tripletMasterId}-${tripletSystem}`
-                            : `triplet-${tripletMasterId}-${tripletSystem}`
+                        newTripletDraft
+                          ? `new-triplet-${tripletMasterId}-${tripletSystem}`
+                          : `triplet-${tripletMasterId}-${tripletSystem}`
                       }
                       userName={effectiveProfile.name}
                       zodiac={effectiveProfile.zodiac}
                       system={tripletSystem}
                       masterName={tripletMasterName}
-                      variant={newTripletDraft || viewingOpenedDaily ? "daily" : "default"}
                       initialCards={
                         newTripletDraft
                           ? undefined
                           : getSpreadForSystem(effectiveProfile, tripletSystem).length >= 3
                             ? getSpreadForSystem(effectiveProfile, tripletSystem)
-                            : viewingOpenedDaily && currentDailyReading?.exists
-                              ? currentDailyReading.cards.map((c) => ({
-                                  id: c.id,
-                                  name: c.name,
-                                  meaning: "",
-                                  reversed: Boolean(c.reversed),
-                                }))
-                              : undefined
+                            : undefined
                       }
                       onComplete={handleTripletComplete}
                       onAllRevealed={handleTripletDraft}

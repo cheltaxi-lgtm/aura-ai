@@ -4,7 +4,6 @@ import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { DeckSystem } from "@/lib/decks/types";
 import { drawSpread, getDeckPositionsForUi } from "@/lib/decks";
-import { DAILY_TRIPLET_POSITIONS } from "@/lib/daily-triplet-positions";
 import { buildSpreadTeaser } from "@/lib/spread-teaser";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
@@ -19,8 +18,6 @@ interface TarotTripletProps {
   system: DeckSystem;
   masterName?: string;
   initialCards?: SpreadSymbol[];
-  /** Daily 3-cards of the day — not the guest-intro situation triplet. */
-  variant?: "daily" | "default";
   onComplete: (cards: SpreadSymbol[], teaser: string) => void | Promise<void>;
   onAllRevealed?: (cards: SpreadSymbol[], teaser: string) => void;
 }
@@ -31,29 +28,21 @@ export default function TarotTriplet({
   system,
   masterName,
   initialCards,
-  variant = "default",
   onComplete,
   onAllRevealed,
 }: TarotTripletProps) {
-  const isDaily = variant === "daily";
-  const positions = useMemo(
-    () => (isDaily ? [...DAILY_TRIPLET_POSITIONS] : getDeckPositionsForUi(system)),
-    [isDaily, system]
-  );
-  const pickCount = positions.length;
+  const positions = useMemo(() => getDeckPositionsForUi(system), [system]);
 
   const [deck] = useState(() =>
-    initialCards?.length === pickCount ? initialCards : drawSpread(system, pickCount)
+    initialCards?.length === 3 ? initialCards : drawSpread(system, 3)
   );
   const [revealed, setRevealed] = useState<boolean[]>(() =>
-    initialCards?.length === pickCount
-      ? Array.from({ length: pickCount }, () => true)
-      : Array.from({ length: pickCount }, () => false)
+    initialCards?.length === 3 ? [true, true, true] : [false, false, false]
   );
   const [submitting, setSubmitting] = useState(false);
 
   const revealedCount = revealed.filter(Boolean).length;
-  const allRevealed = revealedCount === pickCount;
+  const allRevealed = revealedCount === 3;
 
   const cardNames = useMemo(
     () =>
@@ -123,12 +112,7 @@ export default function TarotTriplet({
   }, [allRevealed, deck, userName, positions, masterName, system]);
 
   return (
-    <div className="mx-auto max-w-4xl" data-daily-triplet={isDaily ? "1" : undefined}>
-      {isDaily ? (
-        <p className="mb-3 text-center text-[11px] uppercase tracking-[0.18em] text-aura-gold/80">
-          3 карты дня · не стартовый расклад при регистрации
-        </p>
-      ) : null}
+    <div className="mx-auto max-w-4xl">
       <motion.p
         className="mb-8 text-center font-light text-aura-ivory/70"
         initial={{ opacity: 0 }}
@@ -136,21 +120,8 @@ export default function TarotTriplet({
       >
         {masterName ? (
           <>
-            {isDaily ? (
-              <>
-                {userName}, три карты дня от {masterName} — коснитесь каждой:{" "}
-                {positions.join(", ")}
-              </>
-            ) : (
-              <>
-                {userName}, колода {masterName} — коснитесь три раза, символы откроют{" "}
-                {positions.join(", ")}
-              </>
-            )}
-          </>
-        ) : isDaily ? (
-          <>
-            {userName}, коснитесь трёх карт дня: {positions.join(", ")}
+            {userName}, колода {masterName} — коснитесь три раза, символы откроют{" "}
+            {positions.join(", ")}
           </>
         ) : (
           <>
@@ -175,7 +146,7 @@ export default function TarotTriplet({
       <div className="mb-8 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (
           <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
-            <p className={`lux-label mb-1 ${isDaily ? "text-aura-gold" : ""}`}>{positions[i]}</p>
+            <p className="lux-label mb-1">{positions[i]}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
@@ -213,19 +184,9 @@ export default function TarotTriplet({
             animate={{ opacity: 1, y: 0 }}
           >
             <p className="text-sm leading-relaxed text-aura-ivory/75">
-              {isDaily ? (
-                <>
-                  Сегодня:{" "}
-                  <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>
-                  . Короткий ориентир на день — главное, ресурс и где лучше не спешить.
-                </>
-              ) : (
-                <>
-                  Выпало:{" "}
-                  <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
-                  Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
-                </>
-              )}
+              Выпало:{" "}
+              <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
+              Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
               <button
@@ -234,11 +195,7 @@ export default function TarotTriplet({
                 disabled={submitting}
                 className="btn-primary px-8 py-3 text-sm disabled:cursor-wait disabled:opacity-70"
               >
-                {submitting
-                  ? "Настраиваем поле…"
-                  : isDaily
-                    ? "Открыть расшифровку дня"
-                    : "Узнать смысл у мастера"}
+                {submitting ? "Настраиваем поле…" : "Узнать смысл у мастера"}
               </button>
               {sharePayload && (
                 <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />
@@ -250,7 +207,7 @@ export default function TarotTriplet({
 
       {!allRevealed && (
         <p className="text-center text-sm font-light text-aura-champagne/80">
-          Открыто {revealedCount} из {pickCount}
+          Открыто {revealedCount} из 3
         </p>
       )}
     </div>

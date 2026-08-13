@@ -69,10 +69,10 @@ export const EDITORIAL_DAILY_CARDS = {
   /** Anonymous CTA opens first free trial (guest intro), not authenticated daily. */
   guestCta: "Попробовать 3 карты бесплатно",
   guestCtaHint: "После регистрации этот расклад доступен бесплатно раз в сутки.",
-  authAvailableCta: "Открыть 3 карты дня",
+  authAvailableCta: "Открыть карты дня",
   authAvailableTitle: "Ваши 3 карты дня готовы",
   authAvailableSubtitle:
-    "Главное, ресурс и осторожность на сегодня — не стартовый расклад при регистрации.",
+    "Три карты подскажут, что сегодня важно увидеть прежде, чем день наберёт темп.",
   authAvailableHint: "Бесплатно раз в сутки.",
   authOpenedCta: "Посмотреть карты дня",
   /** @deprecated use authOpenedCta — kept for transitional imports */

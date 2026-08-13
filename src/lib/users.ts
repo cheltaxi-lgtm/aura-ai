@@ -478,7 +478,7 @@ export async function deleteHistoryEntry(userId: string, entryId: string): Promi
   if ((result.rowCount ?? 0) > 0 && entry?.created_at) {
     const ctx = entry.context_data as Record<string, unknown> | undefined;
     // Deleting ordinary triplet must not mint a daily cooldown.
-    // Deleting daily history must keep entitlement consumed for the Moscow calendar day.
+    // Deleting daily history must keep entitlement consumed for the rolling window.
     if (ctx?.type === "daily_triplet") {
       await recordTripletDrawAnchor(userId, entry.created_at);
     }
@@ -488,7 +488,7 @@ export async function deleteHistoryEntry(userId: string, entryId: string): Promi
 }
 
 /**
- * Server daily entitlement anchor (Europe/Moscow calendar day).
+ * Server daily entitlement anchor (rolling 24h).
  * Writes lastDailyTripletDrawAt; mirrors lastTripletDrawAt for legacy client readers.
  * Ordinary triplets must never call this.
  */

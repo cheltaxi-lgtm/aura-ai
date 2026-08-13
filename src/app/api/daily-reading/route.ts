@@ -29,7 +29,6 @@ import {
   InsufficientFundsError,
   insufficientFundsResponse,
 } from "@/lib/services/billing-service";
-import { productCalendarDate } from "@/lib/product-calendar";
 
 const EMPTY = {
   text: null,
@@ -43,7 +42,7 @@ const EMPTY = {
 
 function resolveLocalDate(raw: string | null | undefined): string {
   if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  return productCalendarDate();
+  return new Date().toISOString().slice(0, 10);
 }
 
 export async function GET(request: NextRequest) {
@@ -123,10 +122,7 @@ export async function POST(request: NextRequest) {
   const asyncRequested = rawBody.async === true;
   const requested = typeof body.characterKey === "string" ? body.characterKey : "veronika";
   const charKey = isCharacterKey(requested) ? requested : "veronika";
-  const requestedDate = resolveLocalDate(
-    typeof body.localDate === "string" ? body.localDate : null
-  );
-  const localDate = workerUserId ? requestedDate : productCalendarDate();
+  const localDate = resolveLocalDate(typeof body.localDate === "string" ? body.localDate : null);
   const requestedSpreadId =
     typeof body.spreadId === "string" ? normalizeSpreadId(body.spreadId) : DEFAULT_SPREAD_ID;
   let spreadId: typeof requestedSpreadId =
