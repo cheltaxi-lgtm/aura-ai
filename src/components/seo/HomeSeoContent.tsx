@@ -88,6 +88,8 @@ export default function HomeSeoContent() {
             submitLabel="Разобрать"
             hint="Подберём схему и мастера под ваш вопрос"
             analyticsSource="catalog"
+            multiline
+            rows={5}
           />
         </div>
       </div>

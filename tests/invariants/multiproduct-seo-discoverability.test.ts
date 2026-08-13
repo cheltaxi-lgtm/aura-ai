@@ -118,6 +118,7 @@ describe("multiproduct-seo-discoverability", () => {
     expect(homeSeo).toMatch(/\/taro/);
     expect(homeSeo).toMatch(/label="Свой вопрос"/);
     expect(homeSeo).toMatch(/submitLabel="Разобрать"/);
+    expect(homeSeo).toMatch(/multiline/);
   });
 
   it("internal product links are present (Matrix↔Pair, Matrix↔Natal, Natal↔HD)", () => {

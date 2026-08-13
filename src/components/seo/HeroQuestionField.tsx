@@ -39,6 +39,9 @@ type HeroQuestionFieldProps = {
   label?: string;
   submitLabel?: string;
   analyticsSource?: string;
+  /** Multi-line field (catalog ask panel). Hero/compact stay single-line. */
+  multiline?: boolean;
+  rows?: number;
 };
 
 export default function HeroQuestionField({
@@ -54,9 +57,11 @@ export default function HeroQuestionField({
   label,
   submitLabel,
   analyticsSource,
+  multiline = false,
+  rows = 5,
 }: HeroQuestionFieldProps) {
   const [question, setQuestion] = useState("");
-  const inputRef = useNativeInputSync<HTMLInputElement>(setQuestion);
+  const inputRef = useNativeInputSync<HTMLInputElement | HTMLTextAreaElement>(setQuestion);
   const fieldId = inputId ?? (compact ? "hero-question-compact" : "hero-question");
   const fieldLabel = label ?? (compact ? "Ваш вопрос для расклада" : "Спросите, что хотите узнать");
   const buttonText = submitLabel ?? (compact ? "Разложить" : "Разложить карты");
@@ -100,16 +105,14 @@ export default function HeroQuestionField({
     window.location.assign(buildAskUrl(value, "veronika", { spread: true }));
   };
 
-  const inputProps = {
+  const fieldProps = {
     ref: inputRef,
-    type: "text" as const,
     value: question,
-    onChange: (e: React.ChangeEvent<HTMLInputElement>) => setQuestion(e.target.value),
-    inputMode: "text" as const,
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
+      setQuestion(e.target.value),
     autoComplete: "off",
-    autoCorrect: "on",
+    autoCorrect: "on" as const,
     spellCheck: true,
-    enterKeyHint: "go" as const,
     className: "hero-question__input",
     maxLength: 280,
     onFocus: () => trackHeroQuestionStarted(),
@@ -122,7 +125,10 @@ export default function HeroQuestionField({
           {fieldLabel}
         </label>
         <input
-          {...inputProps}
+          {...fieldProps}
+          type="text"
+          inputMode="text"
+          enterKeyHint="go"
           id={fieldId}
           placeholder="Спросите, что хотите узнать…"
         />
@@ -144,13 +150,29 @@ export default function HeroQuestionField({
   return (
     <form
       onSubmit={submit}
-      className={`hero-question hero-question--landing ${hintOnScrim ? "hero-question--hint-scrim" : ""} ${className}`.trim()}
+      className={`hero-question hero-question--landing${multiline ? " hero-question--multiline" : ""}${hintOnScrim ? " hero-question--hint-scrim" : ""} ${className}`.trim()}
     >
       <label htmlFor={fieldId} className="hero-question__label">
         {fieldLabel}
       </label>
       <div className="hero-question__row">
-        <input {...inputProps} id={fieldId} placeholder={placeholder} />
+        {multiline ? (
+          <textarea
+            {...fieldProps}
+            id={fieldId}
+            placeholder={placeholder}
+            rows={rows}
+          />
+        ) : (
+          <input
+            {...fieldProps}
+            type="text"
+            inputMode="text"
+            enterKeyHint="go"
+            id={fieldId}
+            placeholder={placeholder}
+          />
+        )}
         <button type="submit" className={submitClass}>
           <Sparkles className="h-4 w-4" aria-hidden />
           {buttonText}
