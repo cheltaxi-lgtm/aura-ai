@@ -278,8 +278,11 @@ export default function AuraSellingLanding({
   const isEditorial = layout === "editorial";
   const isGuestEditorial = isEditorial && !isLoggedIn;
   const showLoggedInHome = isLoggedIn && !showHero && showLoggedInHomeBanner;
+  const isAuthQuietMain = isLoggedIn && !showHero && !showLoggedInHome;
   const showQuickQuestionsBlock =
-    !isGuestEditorial && (showHero || Boolean(afterQuickQuestions) || showLoggedInHome);
+    !isGuestEditorial &&
+    !isAuthQuietMain &&
+    (showHero || Boolean(afterQuickQuestions) || showLoggedInHome);
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled, proModuleEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
@@ -495,19 +498,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showLoggedInHome ? (
-        <LoggedInHomeBanner
-          userName={homeUserName}
-          onQuestionSubmit={onCustomQuestionSubmit ?? onQuickQuestionSelect}
-          onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
-          onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
-          dailyCardsState={dailyCardsState}
-          dailyCooldownHint={dailyCooldownHint}
-          onOpenDailyCards={onOpenDailyCards}
-          onViewTodayDailyCards={onViewTodayDailyCards}
-          onPickRegularSpread={onPickRegularSpread}
-        />
-      ) : null}
+      {showLoggedInHome ? <LoggedInHomeBanner userName={homeUserName} /> : null}
 
       {showQuickQuestionsBlock ? (
         <QuickQuestions
@@ -560,7 +551,7 @@ export default function AuraSellingLanding({
         <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
       ) : null}
 
-      {showQuickQuestionsBlock || (showSellingSections && isEditorial) ? (
+      {!isAuthQuietMain && (showQuickQuestionsBlock || (showSellingSections && isEditorial)) ? (
         <>
           <HomeDestinyMatrixBanner
             isLoggedIn={isLoggedIn}
@@ -571,7 +562,7 @@ export default function AuraSellingLanding({
         </>
       ) : null}
 
-      {onOpenRitual ? (
+      {onOpenRitual && !isAuthQuietMain ? (
         <section className="ritual-cta-banner" aria-labelledby="ritual-cta-banner-title">
           <div className="ritual-cta-banner__inner">
             <span className="ritual-cta-banner__icon" aria-hidden>

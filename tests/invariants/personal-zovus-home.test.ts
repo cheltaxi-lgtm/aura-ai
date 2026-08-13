@@ -8,6 +8,7 @@ import {
   buildPersonalContinueItems,
   PERSONAL_ZOVUS_EXPLORE,
 } from "@/lib/personal-zovus-home";
+import { isDrawnExtendedDailyReading } from "@/lib/daily-reading-peek";
 import { EDITORIAL_PRODUCT_ENTRIES } from "@/lib/editorial-landing-content";
 
 const ROOT = path.resolve(__dirname, "../..");
@@ -22,14 +23,30 @@ describe("personal-zovus-home", () => {
     expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(4);
   });
 
-  it("auth salon home mounts PersonalZovusHome with server-authoritative daily CTAs", () => {
+  it("auth home mounts photo hero without stacking selling CTAs", () => {
     const home = readFileSync(path.join(ROOT, "src/components/HomePage.tsx"), "utf8");
+    expect(home).toMatch(/<LoggedInHomeBanner/);
     expect(home).toMatch(/PersonalZovusHome/);
+    expect(home).toMatch(/showHeroBlocks=\{false\}/);
+    expect(home).toMatch(/showTariffs=\{false\}/);
     expect(home).toMatch(/onViewTodayDailyCards=\{\(\) => void openCurrentDailyCards\(\)\}/);
     expect(home).toMatch(/onOpenDailyCards=\{\(\) => void handleNewReading\(\)\}/);
-    expect(home).not.toMatch(
-      /step === "masters" && showPersonalSalonContent && isLoggedIn \? \(\s*<LoggedInHomeBanner/
+    expect(home).not.toMatch(/<CabinetNatalChart \/>/);
+    const landing = readFileSync(
+      path.join(ROOT, "src/components/AuraSellingLanding.tsx"),
+      "utf8"
     );
+    expect(landing).toMatch(/isAuthQuietMain/);
+    expect(landing).toMatch(/!isAuthQuietMain &&/);
+    const banner = readFileSync(
+      path.join(ROOT, "src/components/editorial/LoggedInHomeBanner.tsx"),
+      "utf8"
+    );
+    expect(banner).toMatch(/\/landing\/hero\.jpg/);
+    expect(banner).toMatch(/editorial-hero--logged-in/);
+    expect(banner).not.toMatch(/HeroQuestionField/);
+    expect(banner).not.toMatch(/chipClass|editorial-hero__chip/);
+    expect(banner).not.toMatch(/onOpenDailyCards/);
   });
 
   it("explore links cover Matrix, Natal, HD, Tarot, matrix compatibility", () => {
@@ -74,6 +91,25 @@ describe("personal-zovus-home", () => {
     expect(src).not.toMatch(/OnboardingForm|birthDate.*required|Дата рождения/);
     expect(src).toMatch(/buildPersonalContinueItems/);
     expect(src).toMatch(/PERSONAL_ZOVUS_EXPLORE/);
+  });
+
+  it("header peek treats 7-card daily-extended as drawn, not a free triplet", () => {
+    expect(
+      isDrawnExtendedDailyReading({
+        drawn: true,
+        text: "Утро несёт ясность.",
+        spreadId: "daily-extended",
+        cards: new Array(7).fill({ name: "Шут" }),
+      })
+    ).toBe(true);
+    expect(
+      isDrawnExtendedDailyReading({
+        drawn: true,
+        text: "Короткий день.",
+        spreadId: "classic-3",
+        cards: [{ name: "Шут" }, { name: "Маг" }, { name: "Жрица" }],
+      })
+    ).toBe(false);
   });
 
   it("hidden recap path: tarot continue only when HomePage passes master name from active recap", () => {

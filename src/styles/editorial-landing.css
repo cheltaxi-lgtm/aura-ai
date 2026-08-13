@@ -551,6 +551,20 @@ html[data-motion-lite="1"] .salon-bg__lines {
   backdrop-filter: blur(8px);
 }
 
+/* Auth photo band: hug greeting. Do not reuse guest 74vh void. */
+.editorial-hero.editorial-hero--logged-in {
+  min-height: 0;
+  height: auto;
+  justify-content: flex-start;
+  padding-top: calc(var(--app-header-h, 3.25rem) + 0.85rem);
+  padding-bottom: 1.35rem;
+}
+
+.editorial-hero.editorial-hero--logged-in .editorial-hero__content {
+  margin-bottom: 0;
+  padding-bottom: 0.5rem;
+}
+
 /* Personal Zovus — compact auth home (Today → Continue → Explore) */
 .personal-zovus {
   position: relative;

@@ -21,7 +21,6 @@ import MasterSelect from "@/components/MasterSelect";
 import ChatWindow from "@/components/ChatWindow";
 import SessionList, { type SessionListItem } from "@/components/SessionList";
 import { NAVIGATE_CABINET_EVENT } from "@/components/AuthHeader";
-import CabinetNatalChart from "@/components/cabinet/CabinetNatalChart";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
@@ -46,6 +45,7 @@ import {
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
+import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import PersonalZovusHome from "@/components/editorial/PersonalZovusHome";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
@@ -156,6 +156,8 @@ import {
   takeStashedTgReceipt,
 } from "@/lib/telegram/tg-receipt-client";
 import { resolveDailyCardsUiState } from "@/lib/daily-cards-ui";
+import { isDrawnExtendedDailyReading } from "@/lib/daily-reading-peek";
+import { productCalendarDate } from "@/lib/product-calendar";
 import {
   GUEST_RESUME_ALREADY_USED_CABINET_CTA,
   GUEST_RESUME_ALREADY_USED_DAILY_CTA,
@@ -3191,8 +3193,52 @@ export default function HomePage({
 
   const handleStartReadingFromHeader = useCallback(() => {
     exitToLandingForNav();
-    void startPersonalFlow();
-  }, [exitToLandingForNav, startPersonalFlow]);
+    if (!isLoggedIn) {
+      void startPersonalFlow();
+      return;
+    }
+    void (async () => {
+      try {
+        const res = await fetch(`/api/daily-reading?date=${productCalendarDate()}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            drawn?: boolean;
+            text?: string | null;
+            spreadId?: string | null;
+            cards?: unknown[] | null;
+          };
+          if (isDrawnExtendedDailyReading(data)) {
+            setDailyEnergySpreadId("daily-extended");
+            setDailyEnergyAutoOpen(true);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to free 3-card daily.
+      }
+      const dailyState = resolveDailyCardsUiState({
+        cooldownReady: tripletCooldownReady,
+        allowed: effectiveTripletCooldown.allowed,
+        currentDaily: currentDailyReading,
+      });
+      if (dailyState === "opened") {
+        void openCurrentDailyCards();
+        return;
+      }
+      void handleNewReading();
+    })();
+  }, [
+    exitToLandingForNav,
+    isLoggedIn,
+    startPersonalFlow,
+    tripletCooldownReady,
+    effectiveTripletCooldown.allowed,
+    currentDailyReading,
+    openCurrentDailyCards,
+    handleNewReading,
+  ]);
 
   const handleNavRitual = useCallback(() => {
     if (!isLoggedIn) {
@@ -3632,7 +3678,12 @@ export default function HomePage({
         ) : inPersonalFlow ? (
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
-              <PersonalZovusHome
+              <>
+                <LoggedInHomeBanner
+                  userName={effectiveProfile.name || authUser?.name}
+                />
+                <PersonalZovusHome
+                showHeroBlocks={false}
                 userName={effectiveProfile.name || authUser?.name}
                 accountCreatedAt={authUser?.createdAt}
                 dailyCardsState={resolveDailyCardsUiState({
@@ -3672,6 +3723,7 @@ export default function HomePage({
                   });
                 }}
               />
+              </>
             ) : null}
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
@@ -4032,7 +4084,7 @@ export default function HomePage({
                   showSellingSections={!isLoggedIn}
                   showLoggedInHomeBanner={false}
                   showMasters
-                  showTariffs
+                  showTariffs={false}
                   homeUserName={effectiveProfile.name || authUser?.name}
                   dailyCardsState={
                     isLoggedIn
@@ -4060,7 +4112,7 @@ export default function HomePage({
                         }
                       : undefined
                   }
-                  onOpenRitual={isLoggedIn ? handleNavRitual : undefined}
+                  onOpenRitual={undefined}
                   onOpenDestinyMatrixSession={
                     isLoggedIn ? () => openNumerologSessionFlow("destiny_matrix") : undefined
                   }
@@ -4086,7 +4138,6 @@ export default function HomePage({
                   afterQuickQuestions={
                     isLoggedIn ? (
                       <div className="home-feature-banners">
-                        <CabinetNatalChart />
                         <PremiumEnergyBlock
                           characterKey={dailyEnergyMasterId}
                           masters={masters}

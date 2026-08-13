@@ -54,6 +54,8 @@ type PersonalZovusHomeProps = {
   tarotContinueMasterName?: string | null;
   onContinueTarot?: () => void;
   onOpenOwnedMatrix?: () => void;
+  /** Auth photo hero already greets; hide duplicate title + Сегодня card. */
+  showHeroBlocks?: boolean;
 };
 
 export default function PersonalZovusHome({
@@ -67,6 +69,7 @@ export default function PersonalZovusHome({
   tarotContinueMasterName,
   onContinueTarot,
   onOpenOwnedMatrix,
+  showHeroBlocks = true,
 }: PersonalZovusHomeProps) {
   const greetingName = userName?.trim().replace(/\s+/g, " ").split(/\s+/)[0] || "";
   const { owned: matrixOwned, loading: matrixLoading } = useMatrixOwnership({ enabled: true });
@@ -91,12 +94,13 @@ export default function PersonalZovusHome({
   }, []);
 
   useEffect(() => {
+    if (!showHeroBlocks) return;
     if (viewed.current) return;
     if (!dailyCardsState || dailyCardsState === "loading") return;
     viewed.current = true;
     if (dailyCardsState === "available") trackDailyCardsOfferView("personal_zovus");
     else trackDailyCardsReturnView("personal_zovus");
-  }, [dailyCardsState]);
+  }, [dailyCardsState, showHeroBlocks]);
 
   // Retention return: server createdAt only; sessionStorage dedupe is UX-only.
   useEffect(() => {
@@ -278,7 +282,12 @@ export default function PersonalZovusHome({
   };
 
   return (
-    <section className="personal-zovus" aria-labelledby="personal-zovus-title">
+    <section
+      className="personal-zovus"
+      aria-labelledby={showHeroBlocks ? "personal-zovus-title" : "personal-zovus-explore"}
+    >
+      {showHeroBlocks ? (
+        <>
       <header className="personal-zovus__header">
         <p className="personal-zovus__eyebrow">Personal Zovus</p>
         <h1 id="personal-zovus-title" className="personal-zovus__title">
@@ -348,6 +357,8 @@ export default function PersonalZovusHome({
           ) : null}
         </div>
       </div>
+        </>
+      ) : null}
 
       {continueItems.length > 0 ? (
         <div className="personal-zovus__block" aria-labelledby="personal-zovus-continue">
@@ -415,6 +426,17 @@ export default function PersonalZovusHome({
           })}
         </ul>
       </div>
+      {!showHeroBlocks && reminderReady ? (
+        <label className="personal-zovus__reminder">
+          <input
+            type="checkbox"
+            checked={reminderEnabled}
+            disabled={reminderSaving}
+            onChange={(e) => void saveReminder(e.target.checked)}
+          />
+          Напоминать о 3 картах дня
+        </label>
+      ) : null}
     </section>
   );
 }
