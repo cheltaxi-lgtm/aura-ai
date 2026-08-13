@@ -55,8 +55,8 @@ type PersonalZovusHomeProps = {
   onContinueTarot?: () => void;
   onOpenOwnedMatrix?: () => void;
   /**
-   * When false, greeting + «Сегодня» are omitted (LoggedInHomeBanner owns the photo hero
-   * and daily CTAs). Continue / Explore stay.
+   * When false, greeting + «Сегодня» are omitted.
+   * Auth home mounts this with the default (true) after the photo hero was removed.
    */
   showHeroBlocks?: boolean;
 };

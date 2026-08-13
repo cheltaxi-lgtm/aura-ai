@@ -22,11 +22,11 @@ describe("personal-zovus-home", () => {
     expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(4);
   });
 
-  it("auth salon home mounts photo hero + Personal Zovus continue; daily CTA is handleNewReading", () => {
+  it("auth salon home does not mount photo hero; Personal Zovus owns daily CTA via handleNewReading", () => {
     const home = readFileSync(path.join(ROOT, "src/components/HomePage.tsx"), "utf8");
-    expect(home).toMatch(/LoggedInHomeBanner/);
+    expect(home).not.toMatch(/<LoggedInHomeBanner/);
     expect(home).toMatch(/PersonalZovusHome/);
-    expect(home).toMatch(/showHeroBlocks=\{false\}/);
+    expect(home).not.toMatch(/showHeroBlocks=\{false\}/);
     expect(home).toMatch(/onViewTodayDailyCards=\{\(\) => void openCurrentDailyCards\(\)\}/);
     expect(home).toMatch(/onOpenDailyCards=\{\(\) => void handleNewReading\(\)\}/);
     expect(home).not.toMatch(/onOpenDailyCards=\{\(\) => void startPersonalFlow\(\)\}/);

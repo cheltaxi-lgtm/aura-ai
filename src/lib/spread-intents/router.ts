@@ -16,7 +16,7 @@ export function buildSpreadStartUrl(
   customQuestion?: string | null
 ): string {
   if (isDailyOnlySpread(intent.spreadId)) {
-    return "/cabinet#расклады-на-сутки";
+    return "/?daily=extended";
   }
   const params = new URLSearchParams();
   params.set("intent", intent.slug);

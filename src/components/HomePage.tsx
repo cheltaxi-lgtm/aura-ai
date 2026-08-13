@@ -30,6 +30,7 @@ import { usePaywall } from "@/contexts/PaywallContext";
 import { parseInsufficientRunes } from "@/lib/api-errors";
 import { consumeAccountDeletedHomeArrival } from "@/lib/account-deleted";
 import IntentionPicker from "@/components/IntentionPicker";
+import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread, isDailyOnlySpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
@@ -45,7 +46,6 @@ import {
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
-import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import PersonalZovusHome from "@/components/editorial/PersonalZovusHome";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
@@ -252,7 +252,7 @@ export default function HomePage({
     cards: DeckCardInput[];
     system: DeckSystem;
   } | null>(null);
-  /** Overrides MasterSessionFlow preselection when opening from header / ritual CTAs. */
+  /** Overrides MasterSessionFlow preselection when opening from PremiumEnergyBlock CTAs. */
   const [energyFlowMasterId, setEnergyFlowMasterId] = useState<string | null>(null);
   /** Pending deep-link auto-reading (from a notification CTA): open chat + auto-ask. */
   const [autoAsk, setAutoAsk] = useState<{ master: string; question: string } | null>(null);
@@ -272,6 +272,8 @@ export default function HomePage({
     partnerName?: string;
     partnerDate?: string;
   } | null>(null);
+  const [dailyEnergySpreadId, setDailyEnergySpreadId] = useState<SpreadId>(DEFAULT_SPREAD_ID);
+  const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
   const [pendingDailyCardsOpen, setPendingDailyCardsOpen] = useState(false);
@@ -670,9 +672,8 @@ export default function HomePage({
       // server-side spreadId enforced in /api/intention-spread.
       const resolvedSpreadId = options?.spreadIdOverride ?? intent.spreadId;
       if (isDailyOnlySpread(resolvedSpreadId)) {
-        if (typeof window !== "undefined") {
-          window.location.assign("/cabinet#расклады-на-сутки");
-        }
+        setDailyEnergySpreadId(resolvedSpreadId);
+        setDailyEnergyAutoOpen(true);
         return;
       }
       const gender = readStoredProfile()?.gender;
@@ -957,9 +958,10 @@ export default function HomePage({
       return;
     }
 
-    // Legacy /?daily=1 opened the homepage «Расклад на сутки» module — that UI is gone.
     if (dailyParam === "1" || dailyParam === "true") {
       deepLinkSpreadParsedRef.current = true;
+      setDailyEnergySpreadId(DEFAULT_SPREAD_ID);
+      setDailyEnergyAutoOpen(true);
       const url = new URL(window.location.href);
       url.searchParams.delete("daily");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
@@ -968,11 +970,12 @@ export default function HomePage({
 
     if (dailyParam === "extended" || spreadParam === "daily-extended") {
       deepLinkSpreadParsedRef.current = true;
+      setDailyEnergySpreadId("daily-extended");
+      setDailyEnergyAutoOpen(true);
       const url = new URL(window.location.href);
       url.searchParams.delete("daily");
       url.searchParams.delete("spread");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-      window.location.assign("/cabinet#расклады-на-сутки");
       return;
     }
 
@@ -3093,6 +3096,15 @@ export default function HomePage({
     }
   };
 
+  const handleDailyStartRitual = (ritualType: RitualType) => {
+    setRitualFlowMaster(
+      resolveRitualMasterForType(ritualType, dailyEnergyMasterId)
+    );
+    setOpenRitualId(null);
+    setPendingRitualType(ritualType);
+    setShowRitualFlow(true);
+  };
+
   const usesRuneBilling =
     isLoggedIn && !session?.hasAccess && !session?.offline && runeConfig.enabled;
 
@@ -3644,31 +3656,7 @@ export default function HomePage({
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
               <>
-                <LoggedInHomeBanner
-                  userName={effectiveProfile.name || authUser?.name}
-                  onOpenDestinyMatrix={() => {
-                    window.location.assign("/numerology/destiny-matrix");
-                  }}
-                  onOpenDestinyMatrixSession={() =>
-                    openNumerologSessionFlow("destiny_matrix")
-                  }
-                  dailyCardsState={resolveDailyCardsUiState({
-                    cooldownReady: tripletCooldownReady,
-                    allowed: effectiveTripletCooldown.allowed,
-                    currentDaily: currentDailyReading,
-                  })}
-                  dailyCooldownHint={tripletCooldownHint}
-                  onOpenDailyCards={() => void handleNewReading()}
-                  onViewTodayDailyCards={() => void openCurrentDailyCards()}
-                  onPickRegularSpread={() => {
-                    document.getElementById("наставники")?.scrollIntoView({
-                      behavior: "smooth",
-                      block: "start",
-                    });
-                  }}
-                />
                 <PersonalZovusHome
-                  showHeroBlocks={false}
                   userName={effectiveProfile.name || authUser?.name}
                   accountCreatedAt={authUser?.createdAt}
                   dailyCardsState={resolveDailyCardsUiState({
@@ -4139,6 +4127,24 @@ export default function HomePage({
                     isLoggedIn ? (
                       <div className="home-feature-banners">
                         <CabinetNatalChart />
+                        <PremiumEnergyBlock
+                          characterKey={dailyEnergyMasterId}
+                          masters={masters}
+                          initialSpreadId={dailyEnergySpreadId}
+                          autoOpen={dailyEnergyAutoOpen}
+                          onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
+                          onInsufficientRunes={landingInsufficientRunes}
+                          onStartRitual={handleDailyStartRitual}
+                          isUnlimited={Boolean(session?.isUnlimited)}
+                          onTalkToMaster={(masterId) => {
+                            setEnergyFlowMasterId(masterId);
+                            setShowSessionFlow(true);
+                          }}
+                          onOpenNumerologForm={() => {
+                            setEnergyFlowMasterId("numerolog");
+                            setShowSessionFlow(true);
+                          }}
+                        />
                       </div>
                     ) : undefined
                   }

@@ -47,11 +47,10 @@ describe("daily 3-cards vs guest-intro spread", () => {
     expect(home).toMatch(
       /variant=\{newTripletDraft \|\| viewingOpenedDaily \? "daily" : "default"\}/
     );
-    const bannerStart = home.indexOf("<LoggedInHomeBanner");
-    const bannerEnd = home.indexOf("<PersonalZovusHome", bannerStart);
-    expect(bannerStart).toBeGreaterThan(-1);
-    expect(bannerEnd).toBeGreaterThan(bannerStart);
-    expect(home.slice(bannerStart, bannerEnd)).not.toMatch(/onQuestionSubmit/);
+    expect(home).not.toMatch(/<LoggedInHomeBanner/);
+    const personalStart = home.indexOf("<PersonalZovusHome");
+    expect(personalStart).toBeGreaterThan(-1);
+    expect(home.slice(personalStart, personalStart + 1600)).not.toMatch(/onQuestionSubmit/);
     const headerFnStart = home.indexOf("const handleStartReadingFromHeader");
     expect(headerFnStart).toBeGreaterThan(-1);
     const headerFn = home.slice(headerFnStart, home.indexOf("const handleNavRitual", headerFnStart));
@@ -68,10 +67,10 @@ describe("daily 3-cards vs guest-intro spread", () => {
     expect(triplet).not.toMatch(/Выберите три карты/);
     expect(triplet).not.toMatch(/Получить полный разбор/);
     expect(triplet).not.toMatch(/GUEST_SPREAD_START_EVENT|startGuestSpread/);
-    const banner = read("src/components/editorial/LoggedInHomeBanner.tsx");
-    expect(banner).not.toMatch(/HeroQuestionField/);
-    expect(banner).not.toMatch(/Разложить карты/);
-    expect(banner).toMatch(/onOpenDailyCards/);
+    const personal = read("src/components/editorial/PersonalZovusHome.tsx");
+    expect(personal).not.toMatch(/HeroQuestionField/);
+    expect(personal).not.toMatch(/Разложить карты/);
+    expect(personal).toMatch(/onOpenDailyCards/);
     expect(EDITORIAL_DAILY_CARDS.authAvailableCta).toBe("Открыть 3 карты дня");
     const header = read("src/components/AppTopHeader.tsx");
     expect(header).toMatch(/isLoggedIn \? "3 карты дня"/);

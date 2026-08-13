@@ -131,14 +131,12 @@ assert(
   "intention-spread rejects daily-only spreads"
 );
 assert(
-  spreadLanding.includes("/cabinet#расклады-на-сутки"),
-  "daily-extended SEO landing deep-links to cabinet daily archive"
+  spreadLanding.includes("daily=extended"),
+  "daily-extended SEO landing deep-links to daily flow"
 );
 assert(
-  homePage.includes('dailyParam === "extended"') &&
-    homePage.includes("/cabinet#расклады-на-сутки") &&
-    !homePage.includes("PremiumEnergyBlock"),
-  "HomePage does not mount PremiumEnergyBlock; daily-extended goes to cabinet"
+  homePage.includes('dailyParam === "extended"') && homePage.includes("setDailyEnergySpreadId"),
+  "HomePage routes daily-extended deep link to PremiumEnergyBlock"
 );
 
 assert(
