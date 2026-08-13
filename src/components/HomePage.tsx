@@ -543,6 +543,7 @@ export default function HomePage({
     tripletMasterId,
     setTripletMasterId,
     newTripletDraft,
+    viewingOpenedDaily,
     tripletNotice,
     setTripletNotice,
     guestResumeCanRetry,
@@ -3810,7 +3811,7 @@ export default function HomePage({
                     ) : null}
                   </div>
                 ) : null}
-                {tripletCooldown && !tripletCooldown.allowed ? (
+                {tripletCooldown && !tripletCooldown.allowed && !newTripletDraft && !viewingOpenedDaily ? (
                   <div className="glass-panel mx-auto max-w-xl p-8 text-center">
                     <p className="mb-2 font-display text-lg font-semibold text-white">
                       Новый расклад из 3 карт
@@ -3828,33 +3829,42 @@ export default function HomePage({
                   </div>
                 ) : (
                   <>
-                    {!canChangeTripletMaster ? (
+                    {!canChangeTripletMaster && !viewingOpenedDaily ? (
                       <p className="mb-4 text-center text-[11px] text-gray-500">
                         Расклад уже выпал — сменить мастера можно после нового расклада
                       </p>
                     ) : null}
-                    {newTripletDraft ? (
+                    {newTripletDraft || viewingOpenedDaily ? (
                       <h1 className="mb-4 text-center font-display text-xl font-semibold text-white">
                         3 карты дня
                       </h1>
                     ) : null}
                     <TarotTriplet
                       key={
-                        newTripletDraft
-                          ? `new-triplet-${tripletMasterId}-${tripletSystem}`
-                          : `triplet-${tripletMasterId}-${tripletSystem}`
+                        viewingOpenedDaily
+                          ? `opened-daily-${currentDailyReading?.exists ? currentDailyReading.cardsKey : tripletMasterId}`
+                          : newTripletDraft
+                            ? `new-triplet-${tripletMasterId}-${tripletSystem}`
+                            : `triplet-${tripletMasterId}-${tripletSystem}`
                       }
                       userName={effectiveProfile.name}
                       zodiac={effectiveProfile.zodiac}
                       system={tripletSystem}
                       masterName={tripletMasterName}
-                      variant={newTripletDraft ? "daily" : "default"}
+                      variant={newTripletDraft || viewingOpenedDaily ? "daily" : "default"}
                       initialCards={
                         newTripletDraft
                           ? undefined
                           : getSpreadForSystem(effectiveProfile, tripletSystem).length >= 3
                             ? getSpreadForSystem(effectiveProfile, tripletSystem)
-                            : undefined
+                            : viewingOpenedDaily && currentDailyReading?.exists
+                              ? currentDailyReading.cards.map((c) => ({
+                                  id: c.id,
+                                  name: c.name,
+                                  meaning: "",
+                                  reversed: Boolean(c.reversed),
+                                }))
+                              : undefined
                       }
                       onComplete={handleTripletComplete}
                       onAllRevealed={handleTripletDraft}

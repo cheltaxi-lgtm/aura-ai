@@ -195,13 +195,6 @@ test.describe("daily artifact + landing copy", () => {
 
   test("Scenario A: opened state CTA opens exact daily artifact identity", async ({ page }) => {
     await installDailyMocks(page);
-    const touchedSessionUrls: string[] = [];
-    page.on("request", (req) => {
-      const url = req.url();
-      if (url.includes(sessionId) || /\/api\/(sessions|chat|reading)/.test(url)) {
-        touchedSessionUrls.push(url);
-      }
-    });
 
     await page.goto("/?app=1");
     await expect(page.getByText(/Ваш расклад на сегодня уже ждёт/i).first()).toBeVisible({
@@ -212,16 +205,13 @@ test.describe("daily artifact + landing copy", () => {
     await expect(viewBtn).toBeVisible();
     await viewBtn.click();
 
-    // Must open the exact daily session — not a generic recap scroll.
-    await expect
-      .poll(
-        () =>
-          touchedSessionUrls.some(
-            (u) => u.includes(sessionId) || u.includes("/api/sessions") || u.includes("/api/chat")
-          ),
-        { timeout: 15_000 }
-      )
-      .toBeTruthy();
+    await expect(page.locator("[data-daily-triplet='1']")).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText("Главное").first()).toBeVisible();
+    await expect(page.getByText("Ресурс").first()).toBeVisible();
+    await expect(page.getByText("Осторожность").first()).toBeVisible();
+    await expect(page.locator("#guest-spread-picker")).toHaveCount(0);
+    await expect(page.getByText(/Выберите три карты/i)).toHaveCount(0);
+    await expect(page.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
 
     const stored = await page.evaluate(() => {
       const raw = localStorage.getItem("aura_profile");

@@ -452,6 +452,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   const [serverContinueIds, setServerContinueIds] = useState<string[]>([]);
   const [newTripletDraft, setNewTripletDraft] = useState(false);
+  /** «Посмотреть карты дня» — already-drawn daily cards, not a new pick and not chat restore. */
+  const [viewingOpenedDaily, setViewingOpenedDaily] = useState(false);
   const [spreadRitual, setSpreadRitual] = useState<{
     active: boolean;
     cards?: DeckCardInput[];
@@ -1010,10 +1012,11 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   );
 
   const canChangeTripletMaster = useMemo(() => {
+    if (viewingOpenedDaily) return false;
     if (newTripletDraft) return true;
     if (!profile) return true;
     return getSpreadForSystem(profile, tripletSystem).length < 3;
-  }, [newTripletDraft, profile, tripletSystem]);
+  }, [viewingOpenedDaily, newTripletDraft, profile, tripletSystem]);
 
   const handleTripletMasterChange = useCallback(
     (masterId: string) => {
@@ -2815,6 +2818,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         startFreshSession: boolean
       ) => {
         setNewTripletDraft(false);
+        setViewingOpenedDaily(false);
         const masterToBind = resolveTripletChatMasterId(
           masters,
           tripletSystem,
@@ -2829,20 +2833,40 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           setIntentionSpread(null);
           persistIntentionSpreadState(masterToBind, null);
           setSpreadFlipped(spreadFlippedState(cards.length, true));
-          pendingChatOptsRef.current = { masterId: masterToBind, skipReading: false };
+          const openedDailySessionId =
+            viewingOpenedDaily && currentDailyReading?.exists
+              ? currentDailyReading.sessionId
+              : null;
+          pendingChatOptsRef.current = {
+            masterId: masterToBind,
+            skipReading: Boolean(openedDailySessionId),
+          };
           const deps = chat();
           if (deps) {
             deps.chatLoadedForRef.current = null;
+            deps.archiveSessionIdRef.current = null;
+            deps.skipNextReadingRef.current = Boolean(openedDailySessionId);
             if (startFreshSession) deps.setMessages([]);
           }
 
-          let chatSessionId = session?.offline ? undefined : session?.sessionId;
-          if (startFreshSession && !session?.offline) {
+          let chatSessionId: string | undefined;
+          if (openedDailySessionId) {
+            chatSessionId = openedDailySessionId;
+          } else if (startFreshSession && !session?.offline) {
             chatSessionId = await beginNewSpreadSession(masterToBind);
+          } else if (viewingOpenedDaily && !session?.offline) {
+            chatSessionId = await beginNewSpreadSession(masterToBind);
+          } else if (!session?.offline) {
+            chatSessionId = session?.sessionId;
+          }
+
+          if (deps && chatSessionId) {
+            deps.setConsultationSessionId(chatSessionId);
+            deps.consultationSessionIdRef.current = chatSessionId;
           }
 
           await bindSessionToMasterRef.current(masterToBind, chatSessionId);
-          if (chatSessionId && startFreshSession) {
+          if (chatSessionId && (startFreshSession || viewingOpenedDaily) && !openedDailySessionId) {
             await deps?.persistSessionMetaToServer(chatSessionId, {
               characterKey: masterToBind,
               intention: null,
@@ -3007,6 +3031,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   };
 
   const handleTripletBack = useCallback(async () => {
+    if (viewingOpenedDaily) {
+      tripletPendingRef.current = null;
+      newTripletInProgressRef.current = false;
+      setViewingOpenedDaily(false);
+      setNewTripletDraft(false);
+      setTripletNotice(null);
+      setStep("masters");
+      return;
+    }
     const pending = tripletPendingRef.current;
     if (
       pending?.cards.length === 3 &&
@@ -3023,9 +3056,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     tripletPendingRef.current = null;
     newTripletInProgressRef.current = false;
     setNewTripletDraft(false);
+    setViewingOpenedDaily(false);
     setTripletNotice(null);
     setStep("masters");
-  }, [profile, tripletSystem, newTripletDraft, setStep]);
+  }, [profile, tripletSystem, newTripletDraft, viewingOpenedDaily, setStep]);
 
   const resolveDisplayedHomeRecapKey = useCallback((): string | null => {
     if (currentDailyReading?.exists) {
@@ -3120,6 +3154,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   ]);
 
   const openCurrentDailyCards = useCallback(async () => {
+    // Callers: LoggedInHomeBanner / PersonalZovusHome / ZovusEditorialLanding
+    // onViewTodayDailyCards; handleStartReadingFromHeader when daily is opened.
+    // Show today's daily 3 cards. Do not open guest intro, session pick, or chat restore.
     const daily = currentDailyReading?.exists
       ? currentDailyReading
       : (await syncProfileFromServer())?.currentDailyReading;
@@ -3143,61 +3180,54 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       ...c,
       reversed: Boolean(exactCards[i]?.reversed),
     }));
-    // Keep exact artifact on home/profile while opening chat.
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const next = {
-        ...prev,
-        tarotCards: spreadSymbols,
-        deckSystem: system,
-        deckSpreads: { ...prev.deckSpreads, [system]: spreadSymbols },
-        tripletMasterId: masterId,
+    const base =
+      profile ??
+      getActiveProfile() ??
+      readStoredProfile() ?? {
+        name: authUser?.name || "Гость",
+        gender: "female" as const,
+        birthDate: "",
+        zodiac: "",
+        tarotCards: [] as SpreadSymbol[],
       };
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-      return next;
+    persistProfile({
+      ...base,
+      tarotCards: spreadSymbols,
+      deckSystem: system,
+      deckSpreads: { ...base.deckSpreads, [system]: spreadSymbols },
+      tripletMasterId: masterId,
     });
 
-    const deps = chat();
-    if (daily.sessionId && deps) {
-      deps.setConsultationSessionId(daily.sessionId);
-      if (deps.consultationSessionIdRef) {
-        deps.consultationSessionIdRef.current = daily.sessionId;
-      }
-      deps.archiveSessionIdRef.current = daily.sessionId;
-      await deps.restoreChatForCharacter(masterId, {
-        archiveSessionId: daily.sessionId,
-        sessionId: daily.sessionId,
-      });
-      deps.setSelectedCharacter(masterId);
-      setStep("chat");
-      return;
-    }
-
-    // No matching session — bind a new chat to THESE exact cards (no redraw).
+    applyTripletMaster(masterId);
     sessionSpreadMetaRef.current = { spreadType: "daily", cardNames };
     setSessionIntention(null);
     persistSessionIntention(masterId, null);
-    pendingChatOptsRef.current = { masterId, skipReading: false };
-    const chatSessionId = await beginNewSpreadSession(masterId);
-    await bindSessionToMasterRef.current(masterId, chatSessionId);
-    if (chatSessionId) {
-      await deps?.persistSessionMetaToServer(chatSessionId, {
-        characterKey: masterId,
-        intention: null,
-        spreadType: "daily",
-        cards: cardNames,
-      });
+    setShowSessionFlow(false);
+    setGuestIntroAlreadyUsed(false);
+    setTripletNotice(null);
+    newTripletInProgressRef.current = false;
+    setNewTripletDraft(false);
+    setViewingOpenedDaily(true);
+    const deps = chat();
+    if (deps) {
+      deps.setSelectedCharacter(null);
+      deps.archiveSessionIdRef.current = null;
     }
-    await beginChatAfterIntention(masterId, null, "existing");
+    setSelectedCharacter(null);
+    setStep("triplet");
   }, [
     currentDailyReading,
     syncProfileFromServer,
     chat,
-    beginNewSpreadSession,
-    beginChatAfterIntention,
     setStep,
     tripletSystem,
-    setProfile,
+    persistProfile,
+    applyTripletMaster,
+    getActiveProfile,
+    profile,
+    authUser?.name,
+    setSelectedCharacter,
+    setShowSessionFlow,
   ]);
 
   const handleNewReading = async () => {
@@ -3205,6 +3235,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     const deps = chat();
     setTripletNotice(null);
     setGuestIntroAlreadyUsed(false);
+    setViewingOpenedDaily(false);
     if (
       !tripletCooldownReady ||
       !effectiveTripletCooldown.allowed ||
@@ -3292,14 +3323,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   useEffect(() => {
     if (step !== "triplet" || !tripletCooldownReady) return;
-    if (newTripletDraft || newTripletInProgressRef.current) return;
+    if (newTripletDraft || newTripletInProgressRef.current || viewingOpenedDaily) return;
     if (effectiveTripletCooldown.allowed) return;
     const hint = effectiveTripletCooldown.nextAvailableAt
       ? `Новый расклад из 3 карт ${formatTripletCooldownRu(effectiveTripletCooldown.nextAvailableAt)}`
       : "Новый расклад из 3 карт доступен один раз в сутки";
     setTripletNotice(hint);
     setStep("masters");
-  }, [step, tripletCooldownReady, effectiveTripletCooldown, newTripletDraft, setStep]);
+  }, [step, tripletCooldownReady, effectiveTripletCooldown, newTripletDraft, viewingOpenedDaily, setStep]);
 
   const startPersonalFlow = useCallback(async () => {
     if (!isLoggedIn) {
@@ -4994,6 +5025,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setTripletMasterId,
     newTripletDraft,
     setNewTripletDraft,
+    viewingOpenedDaily,
     tripletNotice,
     setTripletNotice,
     guestResumeCanRetry,

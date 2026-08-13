@@ -44,7 +44,9 @@ describe("daily 3-cards vs guest-intro spread", () => {
   it("auth daily draw is three laid cards with daily positions, never MagicalSpreadTable", () => {
     const home = read("src/components/HomePage.tsx");
     expect(home).toMatch(/onOpenDailyCards=\{\(\) => void handleNewReading\(\)\}/);
-    expect(home).toMatch(/variant=\{newTripletDraft \? "daily" : "default"\}/);
+    expect(home).toMatch(
+      /variant=\{newTripletDraft \|\| viewingOpenedDaily \? "daily" : "default"\}/
+    );
     const bannerStart = home.indexOf("<LoggedInHomeBanner");
     const bannerEnd = home.indexOf("<PersonalZovusHome", bannerStart);
     expect(bannerStart).toBeGreaterThan(-1);
