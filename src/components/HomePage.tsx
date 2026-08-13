@@ -157,6 +157,8 @@ import {
   takeStashedTgReceipt,
 } from "@/lib/telegram/tg-receipt-client";
 import { resolveDailyCardsUiState } from "@/lib/daily-cards-ui";
+import { isDrawnExtendedDailyReading } from "@/lib/daily-reading-peek";
+import { productCalendarDate } from "@/lib/product-calendar";
 import {
   GUEST_RESUME_ALREADY_USED_CABINET_CTA,
   GUEST_RESUME_ALREADY_USED_DAILY_CTA,
@@ -3197,16 +3199,40 @@ export default function HomePage({
       void startPersonalFlow();
       return;
     }
-    const dailyState = resolveDailyCardsUiState({
-      cooldownReady: tripletCooldownReady,
-      allowed: effectiveTripletCooldown.allowed,
-      currentDaily: currentDailyReading,
-    });
-    if (dailyState === "opened") {
-      void openCurrentDailyCards();
-      return;
-    }
-    void handleNewReading();
+    void (async () => {
+      // Paid 7-card «Расширенный день» is /api/daily-reading, not the free 3-card daily.
+      // If today's extended reading exists, reopen it — do not swap in a different triplet.
+      try {
+        const res = await fetch(`/api/daily-reading?date=${productCalendarDate()}`, {
+          credentials: "include",
+        });
+        if (res.ok) {
+          const data = (await res.json()) as {
+            drawn?: boolean;
+            text?: string | null;
+            spreadId?: string | null;
+            cards?: unknown[] | null;
+          };
+          if (isDrawnExtendedDailyReading(data)) {
+            setDailyEnergySpreadId("daily-extended");
+            setDailyEnergyAutoOpen(true);
+            return;
+          }
+        }
+      } catch {
+        // Fall through to free 3-card daily.
+      }
+      const dailyState = resolveDailyCardsUiState({
+        cooldownReady: tripletCooldownReady,
+        allowed: effectiveTripletCooldown.allowed,
+        currentDaily: currentDailyReading,
+      });
+      if (dailyState === "opened") {
+        void openCurrentDailyCards();
+        return;
+      }
+      void handleNewReading();
+    })();
   }, [
     exitToLandingForNav,
     isLoggedIn,

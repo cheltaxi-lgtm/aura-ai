@@ -9,6 +9,7 @@ import { DAILY_TRIPLET_POSITIONS } from "@/lib/daily-triplet-positions";
 import { EDITORIAL_DAILY_CARDS } from "@/lib/editorial-landing-content";
 import { TRIPLET_UI_POSITIONS } from "@/lib/decks";
 import { buildSpreadBlock } from "@/lib/spread-block";
+import { isDrawnExtendedDailyReading } from "@/lib/daily-reading-peek";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -60,6 +61,9 @@ describe("daily 3-cards vs guest-intro spread", () => {
     const headerFn = home.slice(headerFnStart, home.indexOf("const handleNavRitual", headerFnStart));
     expect(headerFn).toMatch(/if \(!isLoggedIn\)/);
     expect(headerFn).toMatch(/startPersonalFlow/);
+    expect(headerFn).toMatch(/\/api\/daily-reading/);
+    expect(headerFn).toMatch(/isDrawnExtendedDailyReading/);
+    expect(headerFn).toMatch(/setDailyEnergyAutoOpen\(true\)/);
     expect(headerFn).toMatch(/handleNewReading/);
     expect(headerFn).toMatch(/openCurrentDailyCards/);
     const triplet = read("src/components/TarotTriplet.tsx");
@@ -87,5 +91,25 @@ describe("daily 3-cards vs guest-intro spread", () => {
     expect(guest).toMatch(/title="Выберите три карты"/);
     expect(guest).not.toMatch(/Выберите три карты дня/);
     expect(guest).toMatch(/Получить полный разбор/);
+  });
+
+  it("header prefers today's paid 7-card daily-reading over the free triplet", () => {
+    expect(
+      isDrawnExtendedDailyReading({
+        drawn: true,
+        text: "Утро несёт ясность.",
+        spreadId: "daily-extended",
+        cards: new Array(7).fill({ name: "Шут" }),
+      })
+    ).toBe(true);
+    expect(
+      isDrawnExtendedDailyReading({
+        drawn: true,
+        text: "Короткий день.",
+        spreadId: "triplet",
+        cards: [{ name: "Шут" }, { name: "Маг" }, { name: "Жрица" }],
+      })
+    ).toBe(false);
+    expect(isDrawnExtendedDailyReading({ drawn: false, spreadId: "daily-extended" })).toBe(false);
   });
 });
