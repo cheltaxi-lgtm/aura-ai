@@ -589,6 +589,42 @@ html[data-motion-lite="1"] .salon-bg__lines {
   }
 }
 
+@media (min-width: 900px) {
+  .editorial-hero.editorial-hero--logged-in {
+    min-height: 24rem;
+    padding-top: calc(var(--app-header-h, 3.25rem) + 2.15rem);
+    padding-bottom: 2.75rem;
+  }
+
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__content {
+    max-width: 58rem;
+    margin-inline: auto;
+    text-align: left;
+    padding: 0.35rem 1.5rem 0.85rem;
+  }
+
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__eyebrow {
+    margin-bottom: 0.7rem;
+  }
+
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__title {
+    font-size: clamp(2.05rem, 3.1vw, 2.7rem);
+    max-width: 18ch;
+  }
+
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__subtitle {
+    margin-top: 0.9rem;
+    max-width: 28rem;
+    font-size: 1.05rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .editorial-hero.editorial-hero--logged-in .editorial-hero__content {
+    max-width: 72rem;
+  }
+}
+
 /* Personal Zovus — compact auth home (Today → Continue → Explore) */
 .personal-zovus {
   position: relative;
@@ -774,6 +810,82 @@ html[data-motion-lite="1"] .salon-bg__lines {
   .personal-zovus__row,
   .personal-zovus__chip {
     transition: none;
+  }
+}
+
+@media (min-width: 900px) {
+  .personal-zovus {
+    max-width: 58rem;
+    margin-bottom: 1.75rem;
+    padding: 0.15rem 1.5rem 1.35rem;
+  }
+
+  .personal-zovus__block {
+    margin-top: 1.45rem;
+  }
+
+  .personal-zovus__kicker {
+    margin-bottom: 0.75rem;
+    font-size: 0.75rem;
+    letter-spacing: 0.16em;
+    color: rgba(232, 212, 168, 0.72);
+  }
+
+  .personal-zovus__list {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 0.8rem;
+  }
+
+  .personal-zovus__row {
+    min-height: 7rem;
+    padding: 1.2rem 1.3rem;
+    border-radius: 0.9rem;
+    justify-content: center;
+  }
+
+  .personal-zovus__row-title {
+    font-family: var(--font-mystic-display), Georgia, serif;
+    font-size: 1.15rem;
+    font-weight: 500;
+    line-height: 1.25;
+  }
+
+  .personal-zovus__row-text {
+    margin-top: 0.4rem;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+  }
+
+  .personal-zovus__explore {
+    gap: 0.55rem;
+  }
+
+  .personal-zovus__chip {
+    min-height: 2.45rem;
+    padding: 0.45rem 1.05rem;
+    font-size: 0.875rem;
+  }
+
+  .personal-zovus__reminder {
+    margin-top: 1.15rem;
+    font-size: 0.8125rem;
+  }
+}
+
+@media (min-width: 1200px) {
+  .personal-zovus {
+    max-width: 72rem;
+  }
+
+  .personal-zovus__list {
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+    gap: 0.9rem;
+  }
+
+  .personal-zovus__row {
+    min-height: 9.5rem;
+    padding: 1.45rem 1.3rem 1.35rem;
   }
 }
 

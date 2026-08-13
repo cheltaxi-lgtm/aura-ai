@@ -60,6 +60,9 @@ describe("personal-zovus-home", () => {
     expect(css).not.toMatch(
       /\.editorial-hero\.editorial-hero--logged-in \{[\s\S]*?min-height:\s*clamp\(32rem/
     );
+    expect(css).toMatch(
+      /@media \(min-width: 900px\) \{[\s\S]*?\.personal-zovus__list \{[\s\S]*?grid-template-columns:\s*1fr 1fr/
+    );
   });
 
   it("logged-in mobile header CTA stays short so the bar does not overflow", () => {
