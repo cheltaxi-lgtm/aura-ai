@@ -24,6 +24,7 @@ describe("personal-zovus-home", () => {
 
   it("auth salon home mounts photo hero without the Сегодня daily-cards card", () => {
     const home = readFileSync(path.join(ROOT, "src/components/HomePage.tsx"), "utf8");
+    expect(home).toMatch(/auth-salon-home/);
     expect(home).toMatch(/<LoggedInHomeBanner/);
     expect(home).toMatch(/PersonalZovusHome/);
     expect(home).toMatch(/showHeroBlocks=\{false\}/);
@@ -95,6 +96,21 @@ describe("personal-zovus-home", () => {
     expect(banner).not.toMatch(/Посмотреть карты дня/);
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/Разложить карты/);
+  });
+
+  it("auth hero is compact; guest editorial hero keeps 74vh min-height", () => {
+    const css = readFileSync(
+      path.join(ROOT, "src/styles/editorial-landing.css"),
+      "utf8"
+    );
+    expect(css).toMatch(/\.editorial-hero \{[\s\S]*?min-height:\s*clamp\(32rem,\s*74vh,\s*44rem\)/);
+    expect(css).toMatch(/\.editorial-hero--logged-in \{[\s\S]*?min-height:\s*0;/);
+    expect(css).toMatch(/\.personal-zovus--salon/);
+    const personal = readFileSync(
+      path.join(ROOT, "src/components/editorial/PersonalZovusHome.tsx"),
+      "utf8"
+    );
+    expect(personal).toMatch(/personal-zovus--salon/);
   });
 
   it("handleNewReading opens daily triplet, not onboarding or guest intro", () => {

@@ -9,9 +9,6 @@ type LoggedInHomeBannerProps = {
   onOpenDestinyMatrixSession?: () => void;
 };
 
-const chipClass =
-  "rounded-full border border-white/15 bg-black/25 px-3.5 py-1.5 text-xs text-white/80 transition hover:border-aura-gold/40 hover:text-aura-gold";
-
 export default function LoggedInHomeBanner({
   userName,
   onOpenDestinyMatrix,
@@ -50,10 +47,10 @@ export default function LoggedInHomeBanner({
           Мастера, расклады и личные разборы — в одном пространстве.
         </p>
 
-        <div className="mt-5 flex flex-wrap justify-center gap-2">
+        <div className="editorial-hero__chips">
           <button
             type="button"
-            className={chipClass}
+            className="editorial-hero__chip"
             onClick={() => {
               if (onOpenDestinyMatrix) onOpenDestinyMatrix();
               else window.location.assign("/numerology/destiny-matrix");
@@ -63,7 +60,7 @@ export default function LoggedInHomeBanner({
           </button>
           <button
             type="button"
-            className={chipClass}
+            className="editorial-hero__chip"
             onClick={() => {
               if (onOpenDestinyMatrixSession) onOpenDestinyMatrixSession();
               else window.location.assign("/?numerolog=1&tool=destiny_matrix");
@@ -73,7 +70,7 @@ export default function LoggedInHomeBanner({
           </button>
           <button
             type="button"
-            className={chipClass}
+            className="editorial-hero__chip"
             onClick={() => window.location.assign("/cabinet/astrology")}
           >
             Натальная карта

@@ -234,7 +234,7 @@ export default function PersonalZovusHome({
 
   return (
     <section
-      className="personal-zovus"
+      className={showHeroBlocks ? "personal-zovus" : "personal-zovus personal-zovus--salon"}
       aria-labelledby={showHeroBlocks ? "personal-zovus-title" : "personal-zovus-explore"}
     >
       {showHeroBlocks ? (

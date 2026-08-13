@@ -3656,7 +3656,7 @@ export default function HomePage({
         ) : inPersonalFlow ? (
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
-              <>
+              <div className="auth-salon-home">
                 <LoggedInHomeBanner
                   userName={effectiveProfile.name || authUser?.name}
                   onOpenDestinyMatrix={() => {
@@ -3707,7 +3707,7 @@ export default function HomePage({
                     });
                   }}
                 />
-              </>
+              </div>
             ) : null}
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
