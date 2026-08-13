@@ -3827,6 +3827,7 @@ export default function HomePage({
                       zodiac={effectiveProfile.zodiac}
                       system={tripletSystem}
                       masterName={tripletMasterName}
+                      variant={newTripletDraft ? "daily" : "default"}
                       initialCards={
                         newTripletDraft
                           ? undefined

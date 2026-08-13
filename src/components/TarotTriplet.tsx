@@ -4,6 +4,7 @@ import { useMemo, useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import type { DeckSystem } from "@/lib/decks/types";
 import { drawSpread, getDeckPositionsForUi } from "@/lib/decks";
+import { DAILY_TRIPLET_POSITIONS } from "@/lib/daily-triplet-positions";
 import { buildSpreadTeaser } from "@/lib/spread-teaser";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import { useSceneImage } from "@/hooks/useSceneImage";
@@ -18,6 +19,8 @@ interface TarotTripletProps {
   system: DeckSystem;
   masterName?: string;
   initialCards?: SpreadSymbol[];
+  /** Daily 3-cards of the day — not the guest-intro situation triplet. */
+  variant?: "daily" | "default";
   onComplete: (cards: SpreadSymbol[], teaser: string) => void | Promise<void>;
   onAllRevealed?: (cards: SpreadSymbol[], teaser: string) => void;
 }
@@ -28,10 +31,15 @@ export default function TarotTriplet({
   system,
   masterName,
   initialCards,
+  variant = "default",
   onComplete,
   onAllRevealed,
 }: TarotTripletProps) {
-  const positions = useMemo(() => getDeckPositionsForUi(system), [system]);
+  const isDaily = variant === "daily";
+  const positions = useMemo(
+    () => (isDaily ? [...DAILY_TRIPLET_POSITIONS] : getDeckPositionsForUi(system)),
+    [isDaily, system]
+  );
 
   const [deck] = useState(() =>
     initialCards?.length === 3 ? initialCards : drawSpread(system, 3)
@@ -120,8 +128,21 @@ export default function TarotTriplet({
       >
         {masterName ? (
           <>
-            {userName}, колода {masterName} — коснитесь три раза, символы откроют{" "}
-            {positions.join(", ")}
+            {isDaily ? (
+              <>
+                {userName}, три карты дня от {masterName} — коснитесь каждой:{" "}
+                {positions.join(", ")}
+              </>
+            ) : (
+              <>
+                {userName}, колода {masterName} — коснитесь три раза, символы откроют{" "}
+                {positions.join(", ")}
+              </>
+            )}
+          </>
+        ) : isDaily ? (
+          <>
+            {userName}, коснитесь трёх карт дня: {positions.join(", ")}
           </>
         ) : (
           <>
@@ -184,9 +205,19 @@ export default function TarotTriplet({
             animate={{ opacity: 1, y: 0 }}
           >
             <p className="text-sm leading-relaxed text-aura-ivory/75">
-              Выпало:{" "}
-              <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
-              Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
+              {isDaily ? (
+                <>
+                  Сегодня:{" "}
+                  <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>
+                  . Короткий ориентир на день — главное, ресурс и где лучше не спешить.
+                </>
+              ) : (
+                <>
+                  Выпало:{" "}
+                  <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
+                  Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
+                </>
+              )}
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
               <button
@@ -195,7 +226,11 @@ export default function TarotTriplet({
                 disabled={submitting}
                 className="btn-primary px-8 py-3 text-sm disabled:cursor-wait disabled:opacity-70"
               >
-                {submitting ? "Настраиваем поле…" : "Узнать смысл у мастера"}
+                {submitting
+                  ? "Настраиваем поле…"
+                  : isDaily
+                    ? "Открыть расшифровку дня"
+                    : "Узнать смысл у мастера"}
               </button>
               {sharePayload && (
                 <ShareButton payload={sharePayload} variant="pill" label="Поделиться раскладом" />

@@ -11,6 +11,7 @@ import {
   resolveSpreadPositions,
 } from "@/lib/spreads";
 import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
+import { DAILY_TRIPLET_POSITIONS } from "@/lib/daily-triplet-positions";
 
 export type SpreadCardWithMeaning = {
   name: string;
@@ -99,18 +100,43 @@ export function buildSpreadBlock(
   intention?: string,
   opts?: SpreadBlockOptions
 ): string {
-  if (!cards?.length || !intention?.trim()) return "";
+  if (!cards?.length) return "";
 
   const spreadId = normalizeSpreadId(opts?.spreadId);
   const spread = getSpread(spreadId);
   if (!hasCompleteSpread(cards, spreadId, spreadType)) return "";
 
+  const cardSlice = cards.slice(0, spread.cardCount);
+  const withMeanings = opts?.cardsWithMeanings ?? [];
+
+  if (spreadType === "daily") {
+    const positionLines = cardSlice
+      .map((name, i) =>
+        formatCardLine(
+          i,
+          DAILY_TRIPLET_POSITIONS[i] ?? `позиция ${i + 1}`,
+          withMeanings[i]?.name ?? name,
+          withMeanings[i]?.meaning,
+          opts?.masterId
+        )
+      )
+      .join("\n");
+    return `
+КАРТЫ ДНЯ КЛИЕНТА (ежедневный ориентир, не стартовый расклад при регистрации):
+${positionLines}
+Позиции строго: ${DAILY_TRIPLET_POSITIONS.join(" → ")}.
+Не читай как «прошлое — настоящее — будущее» и не подменяй вопросом с лендинга.
+Начни сеанс с развёрнутого расклада именно по этим трём картам на сегодняшний день.
+Не предлагай новые карты — эти уже выпали сегодня.
+Первое сообщение: приветствие + полное прочтение всех карт дня.`;
+  }
+
+  if (!intention?.trim()) return "";
+
   const theme = topicLabel(intention);
   // Default false for life_death safety: omit opts → ask-first, not full decode.
   const readyToRead = opts?.readyToRead ?? intention !== "life_death";
   const positions = resolveSpreadPositions(spreadId, intention as SessionTopicId);
-  const cardSlice = cards.slice(0, spread.cardCount);
-  const withMeanings = opts?.cardsWithMeanings ?? [];
 
   if (intention === "life_death" && cardSlice.length >= 3) {
     const cardLine = cardSlice.join(" · ");
@@ -147,27 +173,6 @@ export function buildSpreadBlock(
 
 Читай каждую руну/карту как состояние, обстоятельство или вектор —
 НЕ как поэтический образ смерти. Слово «смерть» как метафора ЗАПРЕЩЕНО.`;
-  }
-
-  if (spreadType === "daily") {
-    const positionLines = cardSlice
-      .map((name, i) =>
-        formatCardLine(
-          i,
-          i === 0 ? "состояние сейчас" : i === 1 ? "обстоятельства" : "вектор развития",
-          withMeanings[i]?.name ?? name,
-          withMeanings[i]?.meaning,
-          opts?.masterId
-        )
-      )
-      .join("\n");
-    return `
-КАРТЫ ДНЯ КЛИЕНТА:
-${positionLines}
-ТЕМА СЕАНСА: ${theme}.
-Начни сеанс с развёрнутого расклада именно по этим картам на эту тему.
-Не предлагай новые карты — эти уже выпали сегодня.
-Первое сообщение: приветствие + полное прочтение всех карт на тему.`;
   }
 
   if (spreadType === "new") {

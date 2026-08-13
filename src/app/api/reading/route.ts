@@ -116,6 +116,7 @@ import {
   type PeriodSpreadScope,
 } from "@/lib/master-quick-chips";
 import { normalizeSpreadId, resolveSpreadPositions } from "@/lib/spreads";
+import { DAILY_TRIPLET_POSITIONS } from "@/lib/daily-triplet-positions";
 import type { SessionTopicId } from "@/lib/session-topics";
 
 /**
@@ -666,10 +667,13 @@ export async function POST(request: NextRequest) {
     const storedSpreadId = requestNumerologToolId
       ? encodeNumerologSpreadId(requestNumerologToolId)
       : spreadId;
-    const positionLabels = resolveSpreadPositions(
-      spreadId,
-      (intention || null) as SessionTopicId | null
-    ).map((p) => p.label);
+    let positionLabels =
+      spreadType === "daily"
+        ? [...DAILY_TRIPLET_POSITIONS]
+        : resolveSpreadPositions(
+            spreadId,
+            (intention || null) as SessionTopicId | null
+          ).map((p) => p.label);
 
     const natalChartBlock = await buildNatalPromptContext({
       profileUserId: authed.profileUserId,
@@ -783,6 +787,7 @@ export async function POST(request: NextRequest) {
     if (isDailySpread) {
       spreadType = "daily";
       isPaid = true;
+      positionLabels = [...DAILY_TRIPLET_POSITIONS];
     }
     if (isGuestResumeFree) {
       isPaid = true;
