@@ -1,5 +1,5 @@
 import { query } from "@/lib/db";
-import { TRIPLET_COOLDOWN_MS } from "@/lib/triplet-limit";
+import { isSameProductCalendarDay } from "@/lib/product-calendar";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { buildHomeRecapKey } from "@/lib/home-recap-key";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
@@ -28,16 +28,9 @@ export type CurrentDailyCardsResult =
     }
   | { exists: false };
 
-function withinDailyWindow(iso: string | null | undefined, anchorIso: string | null): boolean {
+function withinDailyWindow(iso: string | null | undefined): boolean {
   if (!iso) return false;
-  const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return false;
-  if (anchorIso) {
-    const a = new Date(anchorIso).getTime();
-    if (Number.isFinite(a) && Math.abs(t - a) <= TRIPLET_COOLDOWN_MS) return true;
-    return false;
-  }
-  return Date.now() - t <= TRIPLET_COOLDOWN_MS;
+  return isSameProductCalendarDay(iso);
 }
 
 function deckFromContext(raw: unknown): DeckSystem {
@@ -87,7 +80,7 @@ export async function resolveCurrentDailyCards(
     const cards = normalizeDailyTripletCards(ctx.tarotCards);
     if (!cards || cards.length < 3) continue;
     const at = row.created_at?.toISOString?.() ?? null;
-    if (!anchor || !withinDailyWindow(at, anchor)) continue;
+    if (!withinDailyWindow(at)) continue;
     history = row;
     historyCards = cards;
     break;
@@ -130,7 +123,7 @@ export async function resolveCurrentDailyCards(
       );
       if (sessionKey !== cardsKey) continue;
       const sessionAt = row.created_at?.toISOString?.() ?? null;
-      if (!withinDailyWindow(sessionAt, anchor)) continue;
+      if (!withinDailyWindow(sessionAt)) continue;
       sessionId = row.id;
       sessionMaster = row.character_key?.trim() || null;
       break;
@@ -173,7 +166,7 @@ export async function resolveCurrentDailyCards(
   const names = parseSessionDailyCardNames(session.cards);
   if (names.length < 3) return { exists: false };
   const sessionAt = session.created_at.toISOString();
-  if (!withinDailyWindow(sessionAt, anchor)) return { exists: false };
+  if (!withinDailyWindow(sessionAt)) return { exists: false };
   const cards = cardsFromNames(names);
   const cardsKey = dailyCardsKey(cards);
   const masterId = session.character_key?.trim() || "veronika";

@@ -2964,13 +2964,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
               ? {
                   allowed: false,
                   nextAvailableAt: data.nextAvailableAt,
-                  lastTripletAt: tripletCooldown?.lastTripletAt ?? null,
+                  lastTripletAt: tripletCooldown?.lastTripletAt ?? new Date().toISOString(),
                 }
               : tripletCooldownFromLastDraw(new Date())
           );
           if (data.nextAvailableAt) {
-            const lastMs = new Date(data.nextAvailableAt).getTime() - 24 * 60 * 60 * 1000;
-            const lastIso = new Date(lastMs).toISOString();
+            const lastIso = tripletCooldown?.lastTripletAt ?? new Date().toISOString();
             writeLocalTripletDrawAt(lastIso);
             persistProfile({ ...restored, lastTripletDrawAt: lastIso });
           }

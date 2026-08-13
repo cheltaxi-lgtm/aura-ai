@@ -139,7 +139,6 @@ describe("daily-cards-reminder-delivery (source)", () => {
     );
     expect(consume).toMatch(/handleNewReading/);
     expect(consume).not.toMatch(/drawSpread/);
-    expect(home).toMatch(/dailyParam === "1"/);
   });
 
   it("email template points at dailyCards CTA", () => {

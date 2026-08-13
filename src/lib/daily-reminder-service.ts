@@ -216,7 +216,7 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
         userId: user.userId,
         type: "daily_reading_reminder",
         title: "Карты дня ждут вас",
-        body: "Откройте расклад на сутки — узнайте энергию сегодняшнего дня.",
+        body: "Откройте 3 карты дня — узнайте энергию сегодняшнего дня.",
         ctaPath: DAILY_CARDS_REMINDER_CTA,
         ctaLabel: "Открыть карты дня",
       });
@@ -228,7 +228,7 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
         to: user.email,
         subject: "Zovus — ваш расклад на сегодня",
         html: dailyReminderEmailHtml(user.name, siteUrl),
-        text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}`,
+        text: `${user.name}, откройте 3 карты дня: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}`,
         template: "daily_reminder",
       });
       if (sent) {

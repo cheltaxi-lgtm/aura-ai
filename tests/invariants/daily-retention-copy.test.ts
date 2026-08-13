@@ -9,7 +9,7 @@ import {
   GUEST_RESUME_ALREADY_USED,
   GUEST_RESUME_ALREADY_USED_DAILY_CTA,
 } from "@/lib/guest-triplet-resume";
-import { TRIPLET_COOLDOWN_MS, tripletCooldownFromLastDraw } from "@/lib/triplet-limit";
+import { tripletCooldownFromLastDraw } from "@/lib/triplet-limit";
 
 describe("daily retention product copy (honest 24h)", () => {
   it("TEST15: anonymous landing sells consumer benefit without internal jargon", () => {
@@ -43,14 +43,19 @@ describe("daily retention product copy (honest 24h)", () => {
     expect(GUEST_RESUME_ALREADY_USED_DAILY_CTA).toMatch(/карты дня/i);
   });
 
-  it("TEST9/10/11: rolling 24h daily rule (not calendar midnight)", () => {
-    expect(TRIPLET_COOLDOWN_MS).toBe(24 * 60 * 60 * 1000);
-    const now = Date.now();
-    const justUsed = tripletCooldownFromLastDraw(new Date(now - 1000).toISOString());
-    expect(justUsed.allowed).toBe(false);
-    const afterWindow = tripletCooldownFromLastDraw(
-      new Date(now - TRIPLET_COOLDOWN_MS - 1000).toISOString()
+  it("TEST9/10/11: daily 3-cards reset at 00:00 Europe/Moscow, not rolling 24h", () => {
+    const lastEvening = new Date("2026-08-13T20:30:00.000Z");
+    const beforeMidnight = tripletCooldownFromLastDraw(
+      lastEvening,
+      new Date("2026-08-13T20:59:00.000Z")
     );
-    expect(afterWindow.allowed).toBe(true);
+    expect(beforeMidnight.allowed).toBe(false);
+    expect(beforeMidnight.nextAvailableAt).toBe("2026-08-13T21:00:00.000Z");
+
+    const afterMidnight = tripletCooldownFromLastDraw(
+      lastEvening,
+      new Date("2026-08-13T21:00:01.000Z")
+    );
+    expect(afterMidnight.allowed).toBe(true);
   });
 });

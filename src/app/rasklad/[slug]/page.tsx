@@ -95,7 +95,7 @@ export default async function SpreadLandingPage({
 
       <div className="mt-8">
         <SeoTrackedCta
-          href={spread.id === "daily-extended" ? "/?daily=extended" : `/?spread=${spread.id}`}
+          href={spread.id === "daily-extended" ? "/cabinet#расклады-на-сутки" : `/?spread=${spread.id}`}
         >
           {spread.id === "daily-extended" ? "Открыть расширенный день" : "Начать расклад с мастером"}
         </SeoTrackedCta>
