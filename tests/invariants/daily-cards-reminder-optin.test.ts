@@ -30,14 +30,18 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(route).toMatch(/getAccountDailyCardsReminder\(auth\.sub/);
   });
 
-  it("Personal Zovus toggle is server-backed, no localStorage/permission", () => {
-    const home = read("src/components/editorial/PersonalZovusHome.tsx");
-    expect(home).toMatch(/Напоминать о 3 картах дня/);
-    expect(home).toMatch(/\/api\/auth\/daily-cards-reminder/);
-    expect(home).toMatch(/trackReminderOpt/);
-    expect(home).not.toMatch(/localStorage/);
-    expect(home).not.toMatch(/Notification\.requestPermission|requestPermission/);
-    expect(home).not.toMatch(/serviceWorker|PushManager|Capacitor/);
+  it("reminder toggle is server-backed, no localStorage/permission", () => {
+    const toggle = read("src/components/editorial/DailyCardsReminderToggle.tsx");
+    expect(toggle).toMatch(/Напоминать о 3 картах дня/);
+    expect(toggle).toMatch(/\/api\/auth\/daily-cards-reminder/);
+    expect(toggle).toMatch(/trackReminderOpt/);
+    expect(toggle).not.toMatch(/localStorage/);
+    expect(toggle).not.toMatch(/Notification\.requestPermission|requestPermission/);
+    expect(toggle).not.toMatch(/serviceWorker|PushManager|Capacitor/);
+    const banner = read("src/components/editorial/LoggedInHomeBanner.tsx");
+    expect(banner).toMatch(/DailyCardsReminderToggle/);
+    const home = read("src/components/HomePage.tsx");
+    expect(home).toMatch(/LoggedInHomeBanner/);
   });
 
   it("guest homepage does not show the reminder toggle", () => {

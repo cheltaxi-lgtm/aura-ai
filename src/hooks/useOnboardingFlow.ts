@@ -3201,6 +3201,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   ]);
 
   const handleNewReading = async () => {
+    if (!isLoggedIn) return;
     const deps = chat();
     setTripletNotice(null);
     setGuestIntroAlreadyUsed(false);
@@ -3228,11 +3229,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setStep("masters");
       return;
     }
-    const base = synced?.profile ?? profile ?? getActiveProfile();
-    if (!base?.name && !authUser?.profileUserId) {
-      setStep("onboarding");
-      return;
-    }
+    // Daily 3-cards is server-authoritative (/api/tarot/daily). Authenticated stub
+    // profiles must not be diverted to onboarding / guest-intro registration.
     readingInFlightRef.current = false;
     localStorage.removeItem(LAST_MASTER_KEY);
     setLastMasterId(null);

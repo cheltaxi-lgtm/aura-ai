@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import DailyCardsReminderToggle from "@/components/editorial/DailyCardsReminderToggle";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
@@ -140,6 +141,7 @@ export default function LoggedInHomeBanner({
                 {EDITORIAL_DAILY_CARDS.authCooldownCta}
               </button>
             ) : null}
+            <DailyCardsReminderToggle />
           </div>
         ) : null}
 

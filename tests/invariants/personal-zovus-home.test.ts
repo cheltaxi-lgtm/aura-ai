@@ -22,14 +22,15 @@ describe("personal-zovus-home", () => {
     expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(4);
   });
 
-  it("auth salon home mounts PersonalZovusHome with server-authoritative daily CTAs", () => {
+  it("auth salon home mounts photo hero + Personal Zovus continue; daily CTA is handleNewReading", () => {
     const home = readFileSync(path.join(ROOT, "src/components/HomePage.tsx"), "utf8");
+    expect(home).toMatch(/LoggedInHomeBanner/);
     expect(home).toMatch(/PersonalZovusHome/);
+    expect(home).toMatch(/showHeroBlocks=\{false\}/);
     expect(home).toMatch(/onViewTodayDailyCards=\{\(\) => void openCurrentDailyCards\(\)\}/);
     expect(home).toMatch(/onOpenDailyCards=\{\(\) => void handleNewReading\(\)\}/);
-    expect(home).not.toMatch(
-      /step === "masters" && showPersonalSalonContent && isLoggedIn \? \(\s*<LoggedInHomeBanner/
-    );
+    expect(home).not.toMatch(/onOpenDailyCards=\{\(\) => void startPersonalFlow\(\)\}/);
+    expect(home).not.toMatch(/onOpenDailyCards=\{\(\) => startGuestSpread/);
   });
 
   it("explore links cover Matrix, Natal, HD, Tarot, matrix compatibility", () => {
@@ -74,6 +75,39 @@ describe("personal-zovus-home", () => {
     expect(src).not.toMatch(/OnboardingForm|birthDate.*required|Дата рождения/);
     expect(src).toMatch(/buildPersonalContinueItems/);
     expect(src).toMatch(/PERSONAL_ZOVUS_EXPLORE/);
+  });
+
+  it("LoggedInHomeBanner keeps photographic hero and daily CTAs", () => {
+    const banner = readFileSync(
+      path.join(ROOT, "src/components/editorial/LoggedInHomeBanner.tsx"),
+      "utf8"
+    );
+    expect(banner).toMatch(/\/landing\/hero\.jpg/);
+    expect(banner).toMatch(/editorial-hero--logged-in/);
+    expect(banner).toMatch(/onOpenDailyCards/);
+    expect(banner).toMatch(/DailyCardsReminderToggle/);
+  });
+
+  it("handleNewReading opens daily triplet, not onboarding or guest intro", () => {
+    const src = readFileSync(path.join(ROOT, "src/hooks/useOnboardingFlow.ts"), "utf8");
+    const start = src.indexOf("const handleNewReading = async");
+    expect(start).toBeGreaterThan(-1);
+    const fn = src.slice(start, src.indexOf("\n  useEffect(", start));
+    expect(fn).toMatch(/if \(!isLoggedIn\) return/);
+    expect(fn).not.toMatch(/setStep\("onboarding"\)/);
+    expect(fn).toMatch(/setNewTripletDraft\(true\)/);
+    expect(fn).toMatch(/setStep\("triplet"\)/);
+    expect(fn).not.toMatch(/startGuestSpread|GUEST_SPREAD_START_EVENT/);
+  });
+
+  it("guest landing daily CTA still starts guest intro spread", () => {
+    const landing = readFileSync(
+      path.join(ROOT, "src/components/AuraSellingLanding.tsx"),
+      "utf8"
+    );
+    expect(landing).toMatch(/EditorialDailyCardsSection/);
+    expect(landing).toMatch(/onGuestCta=\{\(\) => startGuestSpread\(\)\}/);
+    expect(landing).not.toMatch(/handleNewReading/);
   });
 
   it("hidden recap path: tarot continue only when HomePage passes master name from active recap", () => {

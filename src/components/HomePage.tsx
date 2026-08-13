@@ -46,6 +46,7 @@ import {
 } from "@/lib/ritual-config";
 import FlowStepper from "@/components/FlowStepper";
 import ZovusEditorialLanding from "@/components/editorial/ZovusEditorialLanding";
+import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import PersonalZovusHome from "@/components/editorial/PersonalZovusHome";
 import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
@@ -3632,46 +3633,73 @@ export default function HomePage({
         ) : inPersonalFlow ? (
           <>
             {step === "masters" && showPersonalSalonContent && isLoggedIn ? (
-              <PersonalZovusHome
-                userName={effectiveProfile.name || authUser?.name}
-                accountCreatedAt={authUser?.createdAt}
-                dailyCardsState={resolveDailyCardsUiState({
-                  cooldownReady: tripletCooldownReady,
-                  allowed: effectiveTripletCooldown.allowed,
-                  currentDaily: currentDailyReading,
-                })}
-                dailyCooldownHint={tripletCooldownHint}
-                onOpenDailyCards={() => void handleNewReading()}
-                onViewTodayDailyCards={() => void openCurrentDailyCards()}
-                onPickRegularSpread={() => {
-                  document.getElementById("наставники")?.scrollIntoView({
-                    behavior: "smooth",
-                    block: "start",
-                  });
-                }}
-                tarotContinueMasterName={
-                  hasActiveSpread && recapContinueMasterId
-                    ? findShowcaseMaster(recapContinueMasterId, masters)?.name ??
-                      getCharacterById(recapContinueMasterId)?.name ??
-                      "мастером"
-                    : null
-                }
-                onContinueTarot={
-                  hasActiveSpread && recapContinueMasterId
-                    ? () => void handleMasterPick(recapContinueMasterId)
-                    : undefined
-                }
-                onOpenOwnedMatrix={() => {
-                  void openChatWithSessionParams({
-                    characterKey: "numerolog",
-                    intention: null,
-                    spreadType: "new",
-                    cards: [],
-                    cardsRevealed: true,
-                    numerologToolId: "destiny_matrix",
-                  });
-                }}
-              />
+              <>
+                <LoggedInHomeBanner
+                  userName={effectiveProfile.name || authUser?.name}
+                  onQuestionSubmit={handleLandingCustomQuestion}
+                  onOpenDestinyMatrix={() => {
+                    window.location.assign("/numerology/destiny-matrix");
+                  }}
+                  onOpenDestinyMatrixSession={() =>
+                    openNumerologSessionFlow("destiny_matrix")
+                  }
+                  dailyCardsState={resolveDailyCardsUiState({
+                    cooldownReady: tripletCooldownReady,
+                    allowed: effectiveTripletCooldown.allowed,
+                    currentDaily: currentDailyReading,
+                  })}
+                  dailyCooldownHint={tripletCooldownHint}
+                  onOpenDailyCards={() => void handleNewReading()}
+                  onViewTodayDailyCards={() => void openCurrentDailyCards()}
+                  onPickRegularSpread={() => {
+                    document.getElementById("наставники")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }}
+                />
+                <PersonalZovusHome
+                  showHeroBlocks={false}
+                  userName={effectiveProfile.name || authUser?.name}
+                  accountCreatedAt={authUser?.createdAt}
+                  dailyCardsState={resolveDailyCardsUiState({
+                    cooldownReady: tripletCooldownReady,
+                    allowed: effectiveTripletCooldown.allowed,
+                    currentDaily: currentDailyReading,
+                  })}
+                  dailyCooldownHint={tripletCooldownHint}
+                  onOpenDailyCards={() => void handleNewReading()}
+                  onViewTodayDailyCards={() => void openCurrentDailyCards()}
+                  onPickRegularSpread={() => {
+                    document.getElementById("наставники")?.scrollIntoView({
+                      behavior: "smooth",
+                      block: "start",
+                    });
+                  }}
+                  tarotContinueMasterName={
+                    hasActiveSpread && recapContinueMasterId
+                      ? findShowcaseMaster(recapContinueMasterId, masters)?.name ??
+                        getCharacterById(recapContinueMasterId)?.name ??
+                        "мастером"
+                      : null
+                  }
+                  onContinueTarot={
+                    hasActiveSpread && recapContinueMasterId
+                      ? () => void handleMasterPick(recapContinueMasterId)
+                      : undefined
+                  }
+                  onOpenOwnedMatrix={() => {
+                    void openChatWithSessionParams({
+                      characterKey: "numerolog",
+                      intention: null,
+                      spreadType: "new",
+                      cards: [],
+                      cardsRevealed: true,
+                      numerologToolId: "destiny_matrix",
+                    });
+                  }}
+                />
+              </>
             ) : null}
           <div className={step === "masters" ? "mx-auto max-w-7xl" : "mx-auto max-w-4xl"}>
 
@@ -3783,6 +3811,11 @@ export default function HomePage({
                       <p className="mb-4 text-center text-[11px] text-gray-500">
                         Расклад уже выпал — сменить мастера можно после нового расклада
                       </p>
+                    ) : null}
+                    {newTripletDraft ? (
+                      <h1 className="mb-4 text-center font-display text-xl font-semibold text-white">
+                        3 карты дня
+                      </h1>
                     ) : null}
                     <TarotTriplet
                       key={
