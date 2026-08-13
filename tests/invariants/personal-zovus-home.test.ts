@@ -73,7 +73,7 @@ describe("personal-zovus-home", () => {
     const [, afterMobile] = header.split("app-top-header__mobile");
     expect(afterMobile).toMatch(/>\s*Расклад\s*</);
     expect(afterMobile).not.toMatch(/3 карты дня/);
-    expect(header).toMatch(/\{isLoggedIn \? "3 карты дня" : "Получить расклад"\}/);
+    expect(header).toMatch(/\{isLoggedIn \? "Карты дня" : "Получить расклад"\}/);
   });
 
   it("explore links cover Matrix, Natal, HD, Tarot, matrix compatibility", () => {

@@ -139,7 +139,7 @@ export default function AppTopHeader({
             onClick={onStartReading}
             className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
           >
-            {isLoggedIn ? "3 карты дня" : "Получить расклад"}
+            {isLoggedIn ? "Карты дня" : "Получить расклад"}
           </button>
           <AppTopHeaderAccount
             user={authUser}
