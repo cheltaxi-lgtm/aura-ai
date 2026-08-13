@@ -278,11 +278,8 @@ export default function AuraSellingLanding({
   const isEditorial = layout === "editorial";
   const isGuestEditorial = isEditorial && !isLoggedIn;
   const showLoggedInHome = isLoggedIn && !showHero && showLoggedInHomeBanner;
-  const isAuthQuietMain = isLoggedIn && !showHero && !showLoggedInHome;
   const showQuickQuestionsBlock =
-    !isGuestEditorial &&
-    !isAuthQuietMain &&
-    (showHero || Boolean(afterQuickQuestions) || showLoggedInHome);
+    !isGuestEditorial && (showHero || Boolean(afterQuickQuestions) || showLoggedInHome);
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled, proModuleEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
@@ -501,11 +498,8 @@ export default function AuraSellingLanding({
       {showLoggedInHome ? (
         <LoggedInHomeBanner
           userName={homeUserName}
-          dailyCardsState={dailyCardsState}
-          dailyCooldownHint={dailyCooldownHint}
-          onOpenDailyCards={onOpenDailyCards}
-          onViewTodayDailyCards={onViewTodayDailyCards}
-          onPickRegularSpread={onPickRegularSpread}
+          onOpenDestinyMatrix={() => window.location.assign("/numerology/destiny-matrix")}
+          onOpenDestinyMatrixSession={onOpenDestinyMatrixSession}
         />
       ) : null}
 
@@ -560,7 +554,7 @@ export default function AuraSellingLanding({
         <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
       ) : null}
 
-      {showQuickQuestionsBlock || (showSellingSections && isEditorial && !isAuthQuietMain) ? (
+      {showQuickQuestionsBlock || (showSellingSections && isEditorial) ? (
         <>
           <HomeDestinyMatrixBanner
             isLoggedIn={isLoggedIn}
@@ -571,7 +565,7 @@ export default function AuraSellingLanding({
         </>
       ) : null}
 
-      {onOpenRitual && !isAuthQuietMain ? (
+      {onOpenRitual ? (
         <section className="ritual-cta-banner" aria-labelledby="ritual-cta-banner-title">
           <div className="ritual-cta-banner__inner">
             <span className="ritual-cta-banner__icon" aria-hidden>
@@ -597,7 +591,7 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {!isAuthQuietMain && afterQuickQuestions ? (
+      {afterQuickQuestions ? (
         <div className="aura-landing__after-quick">{afterQuickQuestions}</div>
       ) : null}
 
@@ -620,22 +614,14 @@ export default function AuraSellingLanding({
             onInsufficientRunes?.(payload);
             onOpenPaywall?.();
           }}
-          layout={isAuthQuietMain ? "atelier" : "grid"}
+          layout="grid"
           rowVariant="default"
-          title={isAuthQuietMain ? "Мастера" : "Выберите наставника"}
-          subtitle={
-            isAuthQuietMain
-              ? "Кто может вести ваш вопрос."
-              : "Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
-          }
-          showExpertCta={!isAuthQuietMain && expertRegistrationEnabled}
+          title="Выберите наставника"
+          subtitle="Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
+          showExpertCta={expertRegistrationEnabled}
           showDisclaimer={false}
           className="aura-landing-masters"
         />
-      ) : null}
-
-      {isAuthQuietMain && afterQuickQuestions ? (
-        <div className="aura-landing__after-quick">{afterQuickQuestions}</div>
       ) : null}
 
       {showSellingSections && proModuleEnabled ? (

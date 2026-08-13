@@ -211,8 +211,6 @@ export default function PersonalZovusHome({
   const explore = PERSONAL_ZOVUS_EXPLORE.filter(
     (e) => e.id !== "hd" || humanDesignEnabled
   );
-  const featuredContinue = continueItems[0];
-  const restContinue = continueItems.slice(1);
 
   const handleContinue = (item: PersonalContinueItem) => {
     trackPersonalZovusEvent("personal_continue_click", {
@@ -236,7 +234,7 @@ export default function PersonalZovusHome({
 
   return (
     <section
-      className={showHeroBlocks ? "personal-zovus" : "personal-zovus personal-zovus--atelier"}
+      className={showHeroBlocks ? "personal-zovus" : "personal-zovus personal-zovus--salon"}
       aria-labelledby={showHeroBlocks ? "personal-zovus-title" : "personal-zovus-explore"}
     >
       {showHeroBlocks ? (
@@ -303,73 +301,58 @@ export default function PersonalZovusHome({
         </>
       ) : null}
 
-      {featuredContinue ? (
-        <div className="auth-atelier-section" aria-labelledby="personal-zovus-continue">
-          <h2 id="personal-zovus-continue" className="auth-atelier-kicker">
+      {continueItems.length > 0 ? (
+        <div className="personal-zovus__block" aria-labelledby="personal-zovus-continue">
+          <h2 id="personal-zovus-continue" className="personal-zovus__kicker">
             Продолжить
           </h2>
-          <button
-            type="button"
-            className="auth-atelier-continue__featured"
-            onClick={() => handleContinue(featuredContinue)}
-          >
-            <span className="auth-atelier-continue__featured-title">
-              {featuredContinue.title}
-            </span>
-            <span className="auth-atelier-continue__featured-text">
-              {featuredContinue.subtitle}
-            </span>
-          </button>
-          {restContinue.length > 0 ? (
-            <ul className="auth-atelier-continue__list">
-              {restContinue.map((item) => (
-                <li key={item.kind}>
-                  <button
-                    type="button"
-                    className="auth-atelier-continue__item"
-                    onClick={() => handleContinue(item)}
-                  >
-                    <span className="auth-atelier-continue__item-title">{item.title}</span>
-                    <span className="auth-atelier-continue__item-text">{item.subtitle}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          ) : null}
+          <ul className="personal-zovus__list">
+            {continueItems.map((item) => (
+              <li key={item.kind}>
+                <button
+                  type="button"
+                  className="personal-zovus__row"
+                  onClick={() => handleContinue(item)}
+                >
+                  <span className="personal-zovus__row-title">{item.title}</span>
+                  <span className="personal-zovus__row-text">{item.subtitle}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </div>
       ) : null}
 
-      <div className="auth-atelier-section" aria-labelledby="personal-zovus-explore">
-        <h2 id="personal-zovus-explore" className="auth-atelier-kicker">
-          Пространство Zovus
+      <div className="personal-zovus__block" aria-labelledby="personal-zovus-explore">
+        <h2 id="personal-zovus-explore" className="personal-zovus__kicker">
+          Исследовать
         </h2>
-        <div className="auth-atelier-explore">
-          {explore
-            .filter((e) => e.weight === "featured")
-            .map((entry) => (
-              <Link
-                key={entry.id}
-                href={entry.href!}
-                className="auth-atelier-explore__featured"
-                onClick={() => {
-                  trackPersonalZovusEvent("personal_explore_click", {
-                    product: exploreIdToProduct(entry.id),
-                    source: "explore",
-                  });
-                }}
-              >
-                <span className="auth-atelier-explore__featured-title">{entry.title}</span>
-                <span className="auth-atelier-explore__featured-text">{entry.blurb}</span>
-              </Link>
-            ))}
-          <div className="auth-atelier-explore__side">
-            {explore
-              .filter((e) => e.weight === "secondary")
-              .map((entry) => (
+        <ul className="personal-zovus__explore">
+          {explore.map((entry) => {
+            if (entry.kind === "action") {
+              return (
+                <li key={entry.id}>
+                  <button
+                    type="button"
+                    className="personal-zovus__chip"
+                    onClick={() => {
+                      trackPersonalZovusEvent("personal_explore_click", {
+                        product: exploreIdToProduct(entry.id),
+                        source: "explore",
+                      });
+                      onPickRegularSpread();
+                    }}
+                  >
+                    {entry.title}
+                  </button>
+                </li>
+              );
+            }
+            return (
+              <li key={entry.id}>
                 <Link
-                  key={entry.id}
                   href={entry.href!}
-                  className="auth-atelier-explore__link"
+                  className="personal-zovus__chip"
                   onClick={() => {
                     trackPersonalZovusEvent("personal_explore_click", {
                       product: exploreIdToProduct(entry.id),
@@ -377,51 +360,12 @@ export default function PersonalZovusHome({
                     });
                   }}
                 >
-                  <span className="auth-atelier-explore__link-title">{entry.title}</span>
-                  <span className="auth-atelier-explore__link-text">{entry.blurb}</span>
+                  {entry.title}
                 </Link>
-              ))}
-          </div>
-          <div className="auth-atelier-explore__compact">
-            {explore
-              .filter((e) => e.weight === "compact")
-              .map((entry) => {
-                if (entry.kind === "action") {
-                  return (
-                    <button
-                      key={entry.id}
-                      type="button"
-                      className="auth-atelier-explore__compact-link"
-                      onClick={() => {
-                        trackPersonalZovusEvent("personal_explore_click", {
-                          product: exploreIdToProduct(entry.id),
-                          source: "explore",
-                        });
-                        onPickRegularSpread();
-                      }}
-                    >
-                      {entry.title}
-                    </button>
-                  );
-                }
-                return (
-                  <Link
-                    key={entry.id}
-                    href={entry.href!}
-                    className="auth-atelier-explore__compact-link"
-                    onClick={() => {
-                      trackPersonalZovusEvent("personal_explore_click", {
-                        product: exploreIdToProduct(entry.id),
-                        source: "explore",
-                      });
-                    }}
-                  >
-                    {entry.title}
-                  </Link>
-                );
-              })}
-          </div>
-        </div>
+              </li>
+            );
+          })}
+        </ul>
       </div>
     </section>
   );

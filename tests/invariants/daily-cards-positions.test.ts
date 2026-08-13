@@ -54,8 +54,7 @@ describe("daily 3-cards vs guest-intro spread", () => {
     expect(bannerStart).toBeGreaterThan(-1);
     expect(personalStart).toBeGreaterThan(bannerStart);
     expect(home.slice(bannerStart, personalStart)).not.toMatch(/onQuestionSubmit/);
-    expect(home.slice(bannerStart, personalStart)).toMatch(/onOpenDailyCards/);
-    expect(home.slice(bannerStart, personalStart)).toMatch(/onViewTodayDailyCards/);
+    expect(home.slice(bannerStart, personalStart)).not.toMatch(/onOpenDailyCards|onViewTodayDailyCards/);
     expect(home).toMatch(/showHeroBlocks=\{false\}/);
     const headerFnStart = home.indexOf("const handleStartReadingFromHeader");
     expect(headerFnStart).toBeGreaterThan(-1);
@@ -79,8 +78,8 @@ describe("daily 3-cards vs guest-intro spread", () => {
     const banner = read("src/components/editorial/LoggedInHomeBanner.tsx");
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/Разложить карты/);
-    expect(banner).toMatch(/auth-atelier-today/);
-    expect(banner).not.toMatch(/editorial-hero__chip/);
+    expect(banner).not.toMatch(/editorial-hero__daily/);
+    expect(banner).not.toMatch(/Посмотреть карты дня/);
     expect(EDITORIAL_DAILY_CARDS.authAvailableCta).toBe("Открыть 3 карты дня");
     const header = read("src/components/AppTopHeader.tsx");
     expect(header).toMatch(/isLoggedIn \? "3 карты дня"/);
