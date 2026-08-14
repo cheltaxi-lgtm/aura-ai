@@ -92,6 +92,11 @@ const DRAFT_PREDICATE_WHITELIST = new Set([
   "education.current",
 ]);
 
+/** Testability export — same parser the live extractor uses after the LLM returns. */
+export function parseExtractedFactPayload(raw: string): FactInput[] {
+  return parseFacts(raw);
+}
+
 function parseFacts(raw: string): FactInput[] {
   let text = raw.trim();
   const arrMatch = text.match(/\[[\s\S]*\]/);

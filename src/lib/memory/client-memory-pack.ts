@@ -188,17 +188,48 @@ export async function buildClientMemoryPack(params: {
     timelineRaw,
   ]).filter(allowed);
 
+  const relevanceFlags = await isTextRelevantToQueryAsync(
+    queryText,
+    candidates.map((f) => `${f.fact} ${f.predicateKey ?? ""} ${f.entityKey ?? ""}`)
+  );
+
+  return assembleClientMemoryPackSync({
+    queryText,
+    candidates,
+    expansion,
+    depth,
+    included: selection.included,
+    relevanceFlags,
+    startedAt: started,
+  });
+}
+
+/**
+ * Rank and layer already-fetched candidates. Production retrieval stays in
+ * buildClientMemoryPack; this export exists so quality eval can score the
+ * same pack without a live DB/embedding round-trip.
+ */
+export function assembleClientMemoryPackSync(params: {
+  queryText: string;
+  candidates: UserFact[];
+  expansion: ExpandedMemoryQuery;
+  depth: MemoryDepth;
+  included?: UserFact[];
+  relevanceFlags: boolean[];
+  startedAt?: number;
+}): ClientMemoryPack {
+  const started = params.startedAt ?? Date.now();
+  const { candidates, expansion, depth, relevanceFlags } = params;
+  void params.queryText;
+  const included = params.included ?? [];
+  const budget = memoryBudgetFor(depth);
+
   const archivedMatches = candidates.filter((f) => f.archiveTier === "archived");
   const entityMatches = candidates.filter(
     (f) => f.entityKey && expansion.entityKeys.includes(f.entityKey)
   );
   const timelineMatches = candidates.filter(
     (f) => f.status === "superseded" || classifyMemoryLayer(f) === "timeline"
-  );
-
-  const relevanceFlags = await isTextRelevantToQueryAsync(
-    queryText,
-    candidates.map((f) => `${f.fact} ${f.predicateKey ?? ""} ${f.entityKey ?? ""}`)
   );
 
   const injectCore = (fact: UserFact, relevant: boolean): boolean => {
@@ -212,7 +243,7 @@ export async function buildClientMemoryPack(params: {
 
   const scored = candidates
     .map((fact, index) => {
-      const relevant = relevanceFlags[index] || selection.included.some((f) => f.id === fact.id);
+      const relevant = relevanceFlags[index] || included.some((f) => f.id === fact.id);
       const layer = classifyMemoryLayer(fact);
       const entityHit = Boolean(fact.entityKey && expansion.entityKeys.includes(fact.entityKey));
       const predicateHit = Boolean(
