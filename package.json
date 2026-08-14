@@ -9,7 +9,7 @@
     "lint": "eslint . --max-warnings 50",
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "guards": "node scripts/guards.mjs",
-    "test:invariants": "vitest run tests/invariants",
+    "test:invariants": "node scripts/run-invariant-tests.mjs",
     "test:invariants:db": "node scripts/run-invariant-tests.mjs --mode test",
     "preflight:report": "node scripts/preflight-report.mjs",
     "preflight": "npm run typecheck && npm run guards && node scripts/run-invariant-tests.mjs && npm run verify:human-design && npm run verify:hd-connection && node scripts/schema-diff.mjs --if-test-db && npm run build",

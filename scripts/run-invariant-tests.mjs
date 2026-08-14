@@ -10,10 +10,14 @@ import { fileURLToPath } from "node:url";
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const vitestCli = path.join(ROOT, "node_modules/vitest/vitest.mjs");
 
+// pg DATE → JS Date shifts the calendar day under local UTC+ offsets when
+// formatted with getUTC*. Pin UTC so Windows matches CI.
+process.env.TZ = "UTC";
+
 const vitest = spawnSync(
   process.execPath,
   [vitestCli, "run", "tests/invariants", ...process.argv.slice(2)],
-  { cwd: ROOT, stdio: "inherit" }
+  { cwd: ROOT, stdio: "inherit", env: { ...process.env, TZ: "UTC" } }
 );
 
 spawnSync(process.execPath, [path.join(ROOT, "scripts/preflight-report.mjs")], {

@@ -7,6 +7,9 @@ import path from "node:path";
 
 const ROOT = path.resolve(__dirname, "../../..");
 
+// Match CI: DATE columns must not shift under local UTC+ timezones.
+process.env.TZ = "UTC";
+
 function readEnvFile(name: string): Record<string, string> {
   const p = path.join(ROOT, name);
   const out: Record<string, string> = {};
