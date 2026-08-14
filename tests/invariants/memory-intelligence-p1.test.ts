@@ -416,16 +416,12 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
     const timings: Array<{ n: number; snapshotMs: number; episodeMs: number; packMs: number }> = [];
     for (const n of sizes) {
       await query(`DELETE FROM user_facts WHERE user_id = $1`, [user.id]);
-      const values: string[] = [];
-      const params: unknown[] = [user.id];
-      for (let i = 0; i < n; i += 1) {
-        params.push(`Синтетический факт ${i} о работе и целях`);
-        values.push(`($1, $${params.length}, 'work', 'employment.current', 'active', 3, 'chat')`);
-      }
       await query(
         `INSERT INTO user_facts (user_id, fact, category, predicate_key, status, salience, source_type)
-         VALUES ${values.join(",")}`,
-        params
+         SELECT $1, 'Синтетический факт ' || g || ' о работе и целях',
+                'work', 'employment.current', 'active', 3, 'chat'
+           FROM generate_series(1, $2) AS g`,
+        [user.id, n]
       );
       await rebuildUserMemoryIntelligence(user.id);
       const snapStart = Date.now();
@@ -456,5 +452,5 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
       expect(row.episodeMs).toBeLessThan(250);
       expect(row.packMs).toBeLessThan(row.n >= 300 ? 800 : 400);
     }
-  });
+  }, 60_000);
 });

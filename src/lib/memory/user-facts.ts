@@ -667,7 +667,7 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
     });
   }
   if (storedFactId) {
-    void markUserMemoryIntelligenceDirty(userId);
+    await markUserMemoryIntelligenceDirty(userId);
   }
   return true;
 }
@@ -1137,6 +1137,44 @@ export async function listFactTimeline(userId: string, limit = 200): Promise<Use
   return rows.map(mapRow);
 }
 
+const INTELLIGENCE_REBUILD_PAGE_SIZE = 250;
+
+/**
+ * Paginated loader for derived rebuild. Includes archived + historical
+ * active/superseded rows. Drafts and forgotten are excluded.
+ * Does not change listFactTimeline / V3 retrieval.
+ */
+export async function listFactsForIntelligenceRebuild(userId: string): Promise<UserFact[]> {
+  if (!userId) return [];
+  const out: UserFact[] = [];
+  let cursorId: string | null = null;
+  const maxPages = 40;
+  for (let page = 0; page < maxPages; page += 1) {
+    const result = await query<FactRow>(
+      `SELECT ${FACT_COLUMNS}
+         FROM user_facts
+        WHERE user_id = $1
+          AND status IN ('active', 'superseded')
+          AND (
+            $2::uuid IS NULL
+            OR (created_at, id) > (
+              (SELECT created_at FROM user_facts WHERE id = $2::uuid AND user_id = $1),
+              $2::uuid
+            )
+          )
+        ORDER BY created_at ASC, id ASC
+        LIMIT $3`,
+      [userId, cursorId, INTELLIGENCE_REBUILD_PAGE_SIZE]
+    );
+    const rows: FactRow[] = result.rows;
+    if (!rows.length) break;
+    for (const row of rows) out.push(mapRow(row));
+    cursorId = rows[rows.length - 1].id;
+    if (rows.length < INTELLIGENCE_REBUILD_PAGE_SIZE) break;
+  }
+  return out;
+}
+
 export async function confirmFact(
   userId: string,
   factId: string
@@ -1189,7 +1227,7 @@ export async function confirmFact(
       factSourceType: "confirmed",
       sensitivity: confirmed.sensitivity === "sensitive" ? "sensitive" : "normal",
     });
-    void markUserMemoryIntelligenceDirty(userId);
+    await markUserMemoryIntelligenceDirty(userId);
   }
   return confirmed;
 }
@@ -1255,7 +1293,7 @@ export async function changeFact(
     factSourceType: "confirmed",
     sensitivity: next.sensitivity === "sensitive" ? "sensitive" : "normal",
   });
-  void markUserMemoryIntelligenceDirty(userId);
+  await markUserMemoryIntelligenceDirty(userId);
   return next;
 }
 
@@ -1308,7 +1346,7 @@ export async function deleteFact(userId: string, factId: string): Promise<boolea
     factSourceType: removed.source_type === "user" ? "manual" : "extracted",
     sensitivity: removed.sensitivity === "sensitive" ? "sensitive" : "normal",
   });
-  void markUserMemoryIntelligenceDirty(userId);
+  await markUserMemoryIntelligenceDirty(userId);
   return true;
 }
 
@@ -1369,7 +1407,7 @@ export async function updateFact(
     await withTransaction(async (client) => {
       await supersedeReplaceables(client, userId, input, updated.id);
     }).catch(() => undefined);
-    void markUserMemoryIntelligenceDirty(userId);
+    await markUserMemoryIntelligenceDirty(userId);
   }
   return updated;
 }

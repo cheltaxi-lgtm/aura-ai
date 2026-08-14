@@ -2,19 +2,35 @@
  * Lightweight dirty marker for Memory Intelligence rebuild.
  * Isolated from user-facts to avoid circular imports.
  * Fail-safe: missing table / DB errors never throw to the write path.
+ *
+ * Claim/clear is generation-safe: a write during rebuild increments
+ * generation and the finishing rebuild cannot delete that newer marker.
  */
 import { query } from "@/lib/db";
+
+export type MemoryIntelligenceDirtyClaim = {
+  userId: string;
+  claimedDirtyAt: string;
+  generation: number;
+};
+
+function iso(value: Date | string | null | undefined): string | null {
+  if (!value) return null;
+  return value instanceof Date ? value.toISOString() : String(value);
+}
 
 export async function markUserMemoryIntelligenceDirty(userId: string): Promise<void> {
   if (!userId) return;
   try {
     await query(
-      `INSERT INTO user_memory_intelligence_dirty (user_id, dirty_at, attempts, last_error, processing_at)
-       VALUES ($1, NOW(), 0, NULL, NULL)
+      `INSERT INTO user_memory_intelligence_dirty (
+         user_id, dirty_at, attempts, last_error, processing_at, generation
+       ) VALUES ($1, NOW(), 0, NULL, NULL, 1)
        ON CONFLICT (user_id) DO UPDATE SET
          dirty_at = NOW(),
          last_error = NULL,
-         processing_at = NULL`,
+         processing_at = NULL,
+         generation = user_memory_intelligence_dirty.generation + 1`,
       [userId]
     );
   } catch {
@@ -22,10 +38,37 @@ export async function markUserMemoryIntelligenceDirty(userId: string): Promise<v
   }
 }
 
-export async function claimDirtyIntelligenceUsers(limit = 10): Promise<string[]> {
+export async function peekUserMemoryIntelligenceDirty(
+  userId: string
+): Promise<MemoryIntelligenceDirtyClaim | null> {
+  if (!userId) return null;
+  try {
+    const { rows } = await query<{
+      dirty_at: Date | string;
+      generation: number;
+    }>(
+      `SELECT dirty_at, generation FROM user_memory_intelligence_dirty WHERE user_id = $1`,
+      [userId]
+    );
+    const row = rows[0];
+    const claimedDirtyAt = iso(row?.dirty_at);
+    if (!row || !claimedDirtyAt) return null;
+    return { userId, claimedDirtyAt, generation: Number(row.generation) };
+  } catch {
+    return null;
+  }
+}
+
+export async function claimDirtyIntelligenceUsers(
+  limit = 10
+): Promise<MemoryIntelligenceDirtyClaim[]> {
   const cap = Math.min(50, Math.max(1, limit));
   try {
-    const { rows } = await query<{ user_id: string }>(
+    const { rows } = await query<{
+      user_id: string;
+      dirty_at: Date | string;
+      generation: number;
+    }>(
       `UPDATE user_memory_intelligence_dirty
           SET processing_at = NOW(),
               attempts = attempts + 1
@@ -38,27 +81,60 @@ export async function claimDirtyIntelligenceUsers(limit = 10): Promise<string[]>
            LIMIT $1
            FOR UPDATE SKIP LOCKED
         )
-      RETURNING user_id`,
+      RETURNING user_id, dirty_at, generation`,
       [cap]
     );
-    return rows.map((row) => row.user_id);
+    return rows
+      .map((row) => {
+        const claimedDirtyAt = iso(row.dirty_at);
+        if (!claimedDirtyAt) return null;
+        return {
+          userId: row.user_id,
+          claimedDirtyAt,
+          generation: Number(row.generation),
+        };
+      })
+      .filter((row): row is MemoryIntelligenceDirtyClaim => Boolean(row));
   } catch {
     return [];
   }
 }
 
-export async function clearUserMemoryIntelligenceDirty(userId: string): Promise<void> {
-  if (!userId) return;
+export async function clearUserMemoryIntelligenceDirty(
+  userId: string,
+  generation: number
+): Promise<boolean> {
+  if (!userId || !Number.isFinite(generation)) return false;
   try {
-    await query(`DELETE FROM user_memory_intelligence_dirty WHERE user_id = $1`, [userId]);
+    const result = await query(
+      `DELETE FROM user_memory_intelligence_dirty
+        WHERE user_id = $1
+          AND generation = $2`,
+      [userId, generation]
+    );
+    return (result.rowCount ?? 0) > 0;
   } catch {
-    /* ignore */
+    return false;
   }
 }
 
-export async function failUserMemoryIntelligenceDirty(userId: string): Promise<void> {
+export async function failUserMemoryIntelligenceDirty(
+  userId: string,
+  generation?: number
+): Promise<void> {
   if (!userId) return;
   try {
+    if (generation != null) {
+      await query(
+        `UPDATE user_memory_intelligence_dirty
+            SET processing_at = NULL,
+                last_error = 'rebuild_failed'
+          WHERE user_id = $1
+            AND generation = $2`,
+        [userId, generation]
+      );
+      return;
+    }
     await query(
       `UPDATE user_memory_intelligence_dirty
           SET processing_at = NULL,

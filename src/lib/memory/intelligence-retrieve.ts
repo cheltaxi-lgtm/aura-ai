@@ -106,10 +106,22 @@ function factById(facts: UserFact[]): Map<string, UserFact> {
   return new Map(facts.map((fact) => [fact.id, fact]));
 }
 
+const SNAPSHOT_SLOT_FIELDS: Record<string, string[]> = {
+  work: ["current", "searching", "former", "goals"],
+  relationship: ["status", "partner", "former", "divorce"],
+  family: ["children", "parents", "relatives", "spouse"],
+  health: ["conditions", "procedures"],
+  goals: ["current"],
+  residence: ["current", "former"],
+  education: ["current", "former"],
+  money: ["debts"],
+};
+
 export function serializeIntelligenceXml(
   snapshots: CurrentStateSnapshot[],
   episodes: MemoryEpisode[],
-  selectedFacts: UserFact[]
+  selectedFacts: UserFact[],
+  now = new Date()
 ): string {
   const selected = factById(selectedFacts);
   const emitted = new Set<string>();
@@ -119,25 +131,31 @@ export function serializeIntelligenceXml(
     const slots: string[] = [];
     const state = snapshot.state;
     const pushSlot = (name: string, id: unknown) => {
-      if (typeof id !== "string" || !selected.has(id) || emitted.has(`snap:${id}`)) return;
+      if (typeof id !== "string" || !selected.has(id) || emitted.has(id)) return;
       const fact = selected.get(id)!;
-      const fresh = assessFactFreshness(fact);
+      const fresh = assessFactFreshness(fact, now);
       slots.push(
         `  <slot name="${escapeMemoryXml(name)}" fact_id="${escapeMemoryXml(id)}" freshness="${fresh.label}" usage="${fresh.usageMode}"/>`
       );
-      emitted.add(`snap:${id}`);
+      emitted.add(id);
     };
-    pushSlot("current", state.current);
-    pushSlot("searching", state.searching);
-    pushSlot("status", state.status);
-    pushSlot("partner", state.partner);
-    pushSlot("spouse", state.spouse);
-    if (Array.isArray(state.goals)) state.goals.forEach((id) => pushSlot("goal", id));
-    if (Array.isArray(state.children)) state.children.forEach((id) => pushSlot("child", id));
-    if (Array.isArray(state.former)) state.former.forEach((id) => pushSlot("former", id));
-    if (Array.isArray(state.divorce)) state.divorce.forEach((id) => pushSlot("divorce", id));
-    if (Array.isArray(state.debts)) state.debts.forEach((id) => pushSlot("debt", id));
-    if (Array.isArray(state.conditions)) state.conditions.forEach((id) => pushSlot("condition", id));
+    const pushValue = (name: string, value: unknown) => {
+      if (Array.isArray(value)) {
+        value.forEach((id) => pushSlot(name, id));
+        return;
+      }
+      pushSlot(name, value);
+    };
+    const fields = SNAPSHOT_SLOT_FIELDS[snapshot.domain] ?? [
+      "current",
+      "searching",
+      "status",
+      "partner",
+      "spouse",
+    ];
+    for (const field of fields) {
+      pushValue(field, state[field]);
+    }
     if (!slots.length) continue;
     blocks.push(
       `<current_state domain="${escapeMemoryXml(snapshot.domain)}">\n${slots.join("\n")}\n</current_state>`
@@ -146,11 +164,11 @@ export function serializeIntelligenceXml(
 
   for (const episode of episodes) {
     const refs = episode.supportingFactIds
-      .filter((id) => selected.has(id) && !emitted.has(`ep:${id}`))
+      .filter((id) => selected.has(id) && !emitted.has(id))
       .map((id) => {
         const fact = selected.get(id)!;
-        const fresh = assessFactFreshness(fact);
-        emitted.add(`ep:${id}`);
+        const fresh = assessFactFreshness(fact, now);
+        emitted.add(id);
         return `  <fact_ref id="${escapeMemoryXml(id)}" predicate="${escapeMemoryXml(fact.predicateKey ?? "")}" status="${escapeMemoryXml(fact.status ?? "active")}" freshness="${fresh.label}"/>`;
       });
     if (!refs.length) continue;
@@ -165,8 +183,8 @@ export function serializeIntelligenceXml(
   return blocks.join("\n\n");
 }
 
-export function countStaleSelectedFacts(facts: UserFact[]): number {
-  return facts.filter((fact) => assessFactFreshness(fact).isStale).length;
+export function countStaleSelectedFacts(facts: UserFact[], now = new Date()): number {
+  return facts.filter((fact) => assessFactFreshness(fact, now).isStale).length;
 }
 
 export function isKnownSnapshotDomain(value: string): value is MemorySnapshotDomain {

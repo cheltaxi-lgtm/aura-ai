@@ -1,6 +1,7 @@
 /**
  * Deterministic life episodes from raw facts.
- * Grouped by user + domain + entity/subject. No LLM. No graph DB.
+ * Grouped by user + domain + entity/subject, then split by temporal gap
+ * unless a predicate transition keeps the chapter open. No LLM. No graph DB.
  */
 import { query } from "@/lib/db";
 import {
@@ -12,6 +13,12 @@ import {
   type MemoryEpisodeStatus,
 } from "@/lib/memory/intelligence-types";
 import type { UserFact } from "@/lib/memory/user-facts";
+
+export const EPISODE_GAP_DAYS = {
+  event: 90,
+  work: 180,
+  default: 180,
+} as const;
 
 const CURRENTISH_PREDICATES = new Set([
   "employment.current",
@@ -46,9 +53,86 @@ function groupingEntity(fact: UserFact): string {
   return (fact.entityKey || fact.subjectKey || "client").trim() || "client";
 }
 
-function episodeKeyFor(domain: MemoryEpisodeDomain, groupId: string): string {
+function gapDaysFor(domain: MemoryEpisodeDomain): number {
+  if (domain === "event") return EPISODE_GAP_DAYS.event;
+  if (domain === "work") return EPISODE_GAP_DAYS.work;
+  return EPISODE_GAP_DAYS.default;
+}
+
+function isPersonEntityGroup(facts: UserFact[]): boolean {
+  return facts.some((fact) => Boolean(fact.entityKey?.startsWith("person:")));
+}
+
+function isWorkTransition(prev: UserFact, next: UserFact): boolean {
+  const a = prev.predicateKey ?? "";
+  const b = next.predicateKey ?? "";
+  if (a === "employment.searching" && (b === "employment.current" || b === "event.upcoming" || b === "employment.searching")) {
+    return true;
+  }
+  if (a === "event.upcoming" && (b === "employment.current" || b === "event.upcoming" || b === "employment.searching")) {
+    return true;
+  }
+  if (a === "employment.current" && b === "employment.former") return true;
+  return false;
+}
+
+function shouldSplitSegment(
+  domain: MemoryEpisodeDomain,
+  prev: UserFact,
+  next: UserFact
+): boolean {
+  const prevAt = factTime(prev);
+  const nextAt = factTime(next);
+  if (!prevAt || !nextAt) return false;
+  const gapDays = Math.floor((nextAt - prevAt) / 86_400_000);
+  if (gapDays <= gapDaysFor(domain)) return false;
+  if (domain === "work" && isWorkTransition(prev, next)) return false;
+  return true;
+}
+
+function segmentFacts(domain: MemoryEpisodeDomain, facts: UserFact[]): UserFact[][] {
+  const sorted = [...facts].sort((a, b) => {
+    const delta = factTime(a) - factTime(b);
+    if (delta !== 0) return delta;
+    return a.id.localeCompare(b.id);
+  });
+  if (!sorted.length) return [];
+  if (
+    (domain === "relationship" || domain === "family") &&
+    isPersonEntityGroup(sorted)
+  ) {
+    return [sorted];
+  }
+  const segments: UserFact[][] = [];
+  let current: UserFact[] = [sorted[0]];
+  for (let i = 1; i < sorted.length; i += 1) {
+    const prev = current[current.length - 1];
+    const next = sorted[i];
+    if (shouldSplitSegment(domain, prev, next)) {
+      segments.push(current);
+      current = [next];
+    } else {
+      current.push(next);
+    }
+  }
+  segments.push(current);
+  return segments;
+}
+
+function episodeKeyFor(
+  domain: MemoryEpisodeDomain,
+  groupId: string,
+  facts: UserFact[]
+): string {
   const safe = groupId.replace(/[^a-z0-9:_-]+/gi, "_").slice(0, 120);
-  return `p1:${domain}:${safe}:${domain}`;
+  if ((domain === "relationship" || domain === "family") && isPersonEntityGroup(facts)) {
+    return `p1:${domain}:${safe}:${domain}`;
+  }
+  const startMs = Math.min(...facts.map(factTime).filter(Boolean));
+  const bucket = startMs
+    ? new Date(startMs).toISOString().slice(0, 10)
+    : `id:${facts[0].id.replace(/-/g, "").slice(0, 12)}`;
+  return `p1:${domain}:${safe}:${bucket}`;
 }
 
 function episodeStatus(facts: UserFact[]): MemoryEpisodeStatus {
@@ -66,35 +150,37 @@ function sharedEntityKey(facts: UserFact[]): string | null {
 }
 
 export function computeEpisodes(facts: UserFact[], now = new Date()): MemoryEpisode[] {
-  void now;
   const eligible = facts.filter(isIntelligenceEligibleFact);
   const groups = new Map<string, { domain: MemoryEpisodeDomain; facts: UserFact[] }>();
 
   for (const fact of eligible) {
     const domain = domainForFact(fact);
     if (!domain) continue;
-    const key = episodeKeyFor(domain, groupingEntity(fact));
-    const existing = groups.get(key);
+    const groupId = `${domain}:${groupingEntity(fact)}`;
+    const existing = groups.get(groupId);
     if (existing) existing.facts.push(fact);
-    else groups.set(key, { domain, facts: [fact] });
+    else groups.set(groupId, { domain, facts: [fact] });
   }
 
-  const computedAt = new Date().toISOString();
+  const computedAt = now.toISOString();
   const episodes: MemoryEpisode[] = [];
-  for (const [episodeKey, group] of groups) {
-    if (!group.facts.length) continue;
-    const times = group.facts.map(factTime).filter(Boolean);
-    episodes.push({
-      domain: group.domain,
-      entityKey: sharedEntityKey(group.facts),
-      startAt: times.length ? isoOrNull(Math.min(...times)) : null,
-      endAt: times.length ? isoOrNull(Math.max(...times)) : null,
-      status: episodeStatus(group.facts),
-      supportingFactIds: [...new Set(group.facts.map((fact) => fact.id))],
-      episodeKey,
-      computedAt,
-      algorithmVersion: MEMORY_INTELLIGENCE_ALGORITHM_VERSION,
-    });
+  for (const [groupId, group] of groups) {
+    const entityOrClient = groupId.slice(group.domain.length + 1);
+    for (const segment of segmentFacts(group.domain, group.facts)) {
+      if (!segment.length) continue;
+      const times = segment.map(factTime).filter(Boolean);
+      episodes.push({
+        domain: group.domain,
+        entityKey: sharedEntityKey(segment),
+        startAt: times.length ? isoOrNull(Math.min(...times)) : null,
+        endAt: times.length ? isoOrNull(Math.max(...times)) : null,
+        status: episodeStatus(segment),
+        supportingFactIds: [...new Set(segment.map((fact) => fact.id))],
+        episodeKey: episodeKeyFor(group.domain, entityOrClient, segment),
+        computedAt,
+        algorithmVersion: MEMORY_INTELLIGENCE_ALGORITHM_VERSION,
+      });
+    }
   }
   return episodes.sort((a, b) => a.episodeKey.localeCompare(b.episodeKey));
 }

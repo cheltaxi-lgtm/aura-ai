@@ -34,9 +34,19 @@ function idsForPredicate(facts: UserFact[], predicate: string): string[] {
     .map((fact) => fact.id);
 }
 
-function freshnessFor(fact: UserFact | null): string | null {
+function freshnessFor(fact: UserFact | null, now: Date): string | null {
   if (!fact) return null;
-  return assessFactFreshness(fact).label;
+  return assessFactFreshness(fact, now).label;
+}
+
+/** Work snapshot may include only goals that are themselves work-scoped. */
+export function isWorkRelatedGoal(fact: {
+  predicateKey?: string | null;
+  category?: string | null;
+}): boolean {
+  if (fact.predicateKey !== "goal.current") return false;
+  if (fact.category === "work") return true;
+  return domainForFact(fact) === "work";
 }
 
 function entityKeysOf(facts: UserFact[]): string[] {
@@ -47,16 +57,16 @@ export function computeCurrentStateSnapshots(
   facts: UserFact[],
   now = new Date()
 ): CurrentStateSnapshot[] {
-  void now;
   const eligible = facts.filter(
     (fact) => isIntelligenceEligibleFact(fact) && fact.status === "active"
   );
-  const computedAt = new Date().toISOString();
+  const computedAt = now.toISOString();
   const snapshots: CurrentStateSnapshot[] = [];
 
   for (const domain of MEMORY_SNAPSHOT_DOMAINS) {
     const domainFacts = eligible.filter((fact) => domainForFact(fact) === domain);
-    if (!domainFacts.length) continue;
+    const workGoals = domain === "work" ? eligible.filter(isWorkRelatedGoal) : [];
+    if (!domainFacts.length && !workGoals.length) continue;
 
     let state: Record<string, unknown> = {};
     let primaryFactIds: string[] = [];
@@ -64,14 +74,7 @@ export function computeCurrentStateSnapshots(
     if (domain === "work") {
       const current = pickLatest(domainFacts, "employment.current");
       const searching = pickLatest(domainFacts, "employment.searching");
-      const goals = idsForPredicate(
-        eligible.filter(
-          (fact) =>
-            fact.predicateKey === "goal.current" &&
-            (fact.category === "work" || domainForFact(fact) === "work" || domain === "work")
-        ),
-        "goal.current"
-      );
+      const goals = idsForPredicate(workGoals, "goal.current");
       state = {
         current: current?.id ?? null,
         searching: searching?.id ?? null,
@@ -79,8 +82,8 @@ export function computeCurrentStateSnapshots(
         goals,
         relatedEntities: entityKeysOf(domainFacts),
         freshness: {
-          current: freshnessFor(current),
-          searching: freshnessFor(searching),
+          current: freshnessFor(current, now),
+          searching: freshnessFor(searching, now),
         },
       };
       primaryFactIds = unique([current?.id, searching?.id, ...goals]);
@@ -96,8 +99,8 @@ export function computeCurrentStateSnapshots(
         divorce,
         relatedEntities: entityKeysOf(domainFacts),
         freshness: {
-          status: freshnessFor(status),
-          partner: freshnessFor(partner),
+          status: freshnessFor(status, now),
+          partner: freshnessFor(partner, now),
         },
       };
       primaryFactIds = unique([status?.id, partner?.id, ...former, ...divorce]);
@@ -111,7 +114,7 @@ export function computeCurrentStateSnapshots(
         spouse: spouse?.id ?? null,
         relatives: idsForPredicate(domainFacts, "family.relative"),
         relatedEntities: entityKeysOf(domainFacts),
-        freshness: { spouse: freshnessFor(spouse) },
+        freshness: { spouse: freshnessFor(spouse, now) },
       };
       primaryFactIds = unique([...children, ...parents, spouse?.id]);
     } else if (domain === "money") {
@@ -120,7 +123,7 @@ export function computeCurrentStateSnapshots(
         debts,
         relatedEntities: entityKeysOf(domainFacts),
         freshness: debts[0]
-          ? freshnessFor(domainFacts.find((fact) => fact.id === debts[0]) ?? null)
+          ? freshnessFor(domainFacts.find((fact) => fact.id === debts[0]) ?? null, now)
           : null,
       };
       primaryFactIds = debts;
@@ -139,7 +142,7 @@ export function computeCurrentStateSnapshots(
         current: current?.id ?? null,
         former: idsForPredicate(domainFacts, "residence.former"),
         relatedEntities: entityKeysOf(domainFacts),
-        freshness: { current: freshnessFor(current) },
+        freshness: { current: freshnessFor(current, now) },
       };
       primaryFactIds = unique([current?.id]);
     } else if (domain === "education") {
@@ -148,7 +151,7 @@ export function computeCurrentStateSnapshots(
         current: current?.id ?? null,
         former: idsForPredicate(domainFacts, "education.former"),
         relatedEntities: entityKeysOf(domainFacts),
-        freshness: { current: freshnessFor(current) },
+        freshness: { current: freshnessFor(current, now) },
       };
       primaryFactIds = unique([current?.id]);
     } else if (domain === "goals") {
@@ -160,7 +163,9 @@ export function computeCurrentStateSnapshots(
       primaryFactIds = goals;
     }
 
-    const supportingFactIds = unique(domainFacts.map((fact) => fact.id));
+    const extraIds =
+      domain === "work" ? eligible.filter(isWorkRelatedGoal).map((fact) => fact.id) : [];
+    const supportingFactIds = unique([...domainFacts.map((fact) => fact.id), ...extraIds]);
     snapshots.push({
       domain,
       state,

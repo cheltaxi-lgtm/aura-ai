@@ -829,7 +829,8 @@ CREATE TABLE IF NOT EXISTS user_memory_intelligence_dirty (
   dirty_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   attempts INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
-  processing_at TIMESTAMPTZ
+  processing_at TIMESTAMPTZ,
+  generation INTEGER NOT NULL DEFAULT 0
 );
 
 CREATE INDEX IF NOT EXISTS idx_user_memory_intelligence_dirty_due

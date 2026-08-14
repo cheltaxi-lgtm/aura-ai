@@ -3,7 +3,7 @@
  * Raw user_facts remain the source of truth.
  */
 
-export const MEMORY_INTELLIGENCE_ALGORITHM_VERSION = "p1.1";
+export const MEMORY_INTELLIGENCE_ALGORITHM_VERSION = "p1.2";
 
 export const MEMORY_SNAPSHOT_DOMAINS = [
   "relationship",

@@ -9,28 +9,37 @@ import {
   clearUserMemoryIntelligenceDirty,
   failUserMemoryIntelligenceDirty,
   markUserMemoryIntelligenceDirty,
+  peekUserMemoryIntelligenceDirty,
   purgeUserMemoryIntelligence,
 } from "@/lib/memory/intelligence-dirty";
-import { listFactTimeline } from "@/lib/memory/user-facts";
+import { listFactsForIntelligenceRebuild } from "@/lib/memory/user-facts";
 
 export {
   markUserMemoryIntelligenceDirty,
   purgeUserMemoryIntelligence,
 } from "@/lib/memory/intelligence-dirty";
 
-export async function rebuildUserMemoryIntelligence(userId: string): Promise<{
+export async function rebuildUserMemoryIntelligence(
+  userId: string,
+  opts?: { generation?: number; now?: Date }
+): Promise<{
   snapshots: number;
   episodes: number;
   ms: number;
 }> {
   const started = Date.now();
   if (!userId) return { snapshots: 0, episodes: 0, ms: 0 };
-  const facts = await listFactTimeline(userId, 400);
-  const snapshots = computeCurrentStateSnapshots(facts);
-  const episodes = computeEpisodes(facts);
+  const generation =
+    opts?.generation ?? (await peekUserMemoryIntelligenceDirty(userId))?.generation;
+  const now = opts?.now ?? new Date();
+  const facts = await listFactsForIntelligenceRebuild(userId);
+  const snapshots = computeCurrentStateSnapshots(facts, now);
+  const episodes = computeEpisodes(facts, now);
   await persistCurrentStateSnapshots(userId, snapshots);
   await persistEpisodes(userId, episodes);
-  await clearUserMemoryIntelligenceDirty(userId);
+  if (generation != null) {
+    await clearUserMemoryIntelligenceDirty(userId, generation);
+  }
   return {
     snapshots: snapshots.length,
     episodes: episodes.length,
@@ -43,18 +52,20 @@ export async function processMemoryIntelligenceJobs(limit = 10): Promise<{
   failed: number;
   rebuildMs: number;
 }> {
-  const userIds = await claimDirtyIntelligenceUsers(limit);
+  const claims = await claimDirtyIntelligenceUsers(limit);
   let processed = 0;
   let failed = 0;
   let rebuildMs = 0;
-  for (const userId of userIds) {
+  for (const claim of claims) {
     try {
-      const result = await rebuildUserMemoryIntelligence(userId);
+      const result = await rebuildUserMemoryIntelligence(claim.userId, {
+        generation: claim.generation,
+      });
       processed += 1;
       rebuildMs += result.ms;
     } catch {
       failed += 1;
-      await failUserMemoryIntelligenceDirty(userId);
+      await failUserMemoryIntelligenceDirty(claim.userId, claim.generation);
     }
   }
   return { processed, failed, rebuildMs };
