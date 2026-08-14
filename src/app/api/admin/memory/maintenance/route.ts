@@ -3,6 +3,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminAction } from "@/lib/admin";
 import { ensureDb } from "@/lib/db";
 import { processMemoryExtractionJobs } from "@/lib/memory/client-memory";
+import { processMemoryIntelligenceJobs } from "@/lib/memory/intelligence-rebuild";
 import { runMemoryMaintenance } from "@/lib/memory/user-facts";
 
 /**
@@ -23,7 +24,10 @@ export async function POST(request: NextRequest) {
   const extraction = await processMemoryExtractionJobs(
     Math.min(20, Math.max(5, Math.floor(limit / 10)))
   ).catch(() => ({ processed: 0, stored: 0, failed: 0 }));
-  const payload = { ...result, extraction };
+  const intelligence = await processMemoryIntelligenceJobs(
+    Math.min(20, Math.max(5, Math.floor(limit / 10)))
+  ).catch(() => ({ processed: 0, failed: 0, rebuildMs: 0 }));
+  const payload = { ...result, extraction, intelligence };
   await logAdminAction(auth.sub, "memory_maintenance", "system", undefined, payload);
   return NextResponse.json({ ok: true, ...payload });
 }

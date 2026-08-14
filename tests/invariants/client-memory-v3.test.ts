@@ -39,6 +39,8 @@ function emptyPack(over: Partial<ClientMemoryPack> = {}): ClientMemoryPack {
     relevantFacts: [],
     userConfirmed: [],
     contradictions: [],
+    currentSnapshots: [],
+    episodes: [],
     expansion: expandMemoryQuery("тест"),
     metrics: {
       memory_candidates_count: 0,
@@ -49,6 +51,11 @@ function emptyPack(over: Partial<ClientMemoryPack> = {}): ClientMemoryPack {
       memory_archived_matches_count: 0,
       memory_context_chars: 0,
       memory_retrieval_ms: 0,
+      memory_snapshot_matches_count: 0,
+      memory_episode_candidates_count: 0,
+      memory_episode_selected_count: 0,
+      memory_stale_facts_selected_count: 0,
+      memory_intelligence_rebuild_ms: 0,
     },
     ...over,
   };

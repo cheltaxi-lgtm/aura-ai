@@ -56,6 +56,7 @@ import {
   type AsyncWorkerHealth,
 } from "../src/lib/async-worker-health";
 import { processMemoryExtractionJobs } from "../src/lib/memory/client-memory";
+import { processMemoryIntelligenceJobs } from "../src/lib/memory/intelligence-rebuild";
 
 const PROVIDER_PROBE_MS = Math.max(
   60_000,
@@ -597,6 +598,12 @@ function scheduleMemoryDrain(): void {
       if (result.processed || result.failed) {
         console.log(
           `[memory-jobs] processed=${result.processed} stored=${result.stored} failed=${result.failed}`
+        );
+      }
+      const intel = await processMemoryIntelligenceJobs(MEMORY_BATCH_SIZE);
+      if (intel.processed || intel.failed) {
+        console.log(
+          `[memory-intelligence] processed=${intel.processed} failed=${intel.failed} rebuild_ms=${intel.rebuildMs}`
         );
       }
     } catch (error) {

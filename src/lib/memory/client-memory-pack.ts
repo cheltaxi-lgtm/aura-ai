@@ -31,6 +31,13 @@ import {
   searchFacts,
   type UserFact,
 } from "@/lib/memory/user-facts";
+import { assessFactFreshness, isMemoryIntelligenceEnabled } from "@/lib/memory/freshness";
+import {
+  countStaleSelectedFacts,
+  loadMemoryIntelligenceForPack,
+  serializeIntelligenceXml,
+} from "@/lib/memory/intelligence-retrieve";
+import type { CurrentStateSnapshot, MemoryEpisode } from "@/lib/memory/intelligence-types";
 
 export type MemoryRetrievalMetrics = {
   memory_candidates_count: number;
@@ -41,6 +48,11 @@ export type MemoryRetrievalMetrics = {
   memory_archived_matches_count: number;
   memory_context_chars: number;
   memory_retrieval_ms: number;
+  memory_snapshot_matches_count: number;
+  memory_episode_candidates_count: number;
+  memory_episode_selected_count: number;
+  memory_stale_facts_selected_count: number;
+  memory_intelligence_rebuild_ms: number;
 };
 
 export type ClientMemoryPack = {
@@ -53,6 +65,8 @@ export type ClientMemoryPack = {
   relevantFacts: UserFact[];
   userConfirmed: UserFact[];
   contradictions: UserFact[];
+  currentSnapshots: CurrentStateSnapshot[];
+  episodes: MemoryEpisode[];
   expansion: ExpandedMemoryQuery;
   metrics: MemoryRetrievalMetrics;
 };
@@ -79,18 +93,26 @@ function dedupeById(groups: UserFact[][]): UserFact[] {
 
 function serializeFactsXml(facts: UserFact[], tag: string): string {
   if (!facts.length) return "";
+  const withFreshness = isMemoryIntelligenceEnabled();
   const lines = facts.map((f) => {
     const date = formatEventDate(f.eventDate);
+    const fresh = withFreshness ? assessFactFreshness(f) : null;
     const attrs = [
       `category="${escapeMemoryXml(f.category ?? "other")}"`,
       f.predicateKey ? `predicate="${escapeMemoryXml(f.predicateKey)}"` : null,
       f.entityKey ? `entity="${escapeMemoryXml(f.entityKey)}"` : null,
       f.status && f.status !== "active" ? `status="${escapeMemoryXml(f.status)}"` : null,
       date ? `date="${escapeMemoryXml(date)}"` : null,
+      fresh ? `freshness="${fresh.label}"` : null,
+      fresh?.usageMode === "previously_reported" ? `usage="previously_reported"` : null,
     ]
       .filter(Boolean)
       .join(" ");
-    return `  <fact ${attrs}>${escapeMemoryXml(f.fact)}</fact>`;
+    const body =
+      fresh?.usageMode === "previously_reported"
+        ? `Ранее клиент сообщал: «${escapeMemoryXml(f.fact)}»; актуальность не подтверждена.`
+        : escapeMemoryXml(f.fact);
+    return `  <fact ${attrs}>${body}</fact>`;
   });
   return `<${tag}>\n${lines.join("\n")}\n</${tag}>`;
 }
@@ -125,6 +147,8 @@ export async function buildClientMemoryPack(params: {
     relevantFacts: [],
     userConfirmed: [],
     contradictions: [],
+    currentSnapshots: [],
+    episodes: [],
     expansion: emptyExpansion,
     metrics: {
       memory_candidates_count: 0,
@@ -135,6 +159,11 @@ export async function buildClientMemoryPack(params: {
       memory_archived_matches_count: 0,
       memory_context_chars: 0,
       memory_retrieval_ms: Date.now() - started,
+      memory_snapshot_matches_count: 0,
+      memory_episode_candidates_count: 0,
+      memory_episode_selected_count: 0,
+      memory_stale_facts_selected_count: 0,
+      memory_intelligence_rebuild_ms: 0,
     },
   };
   if (!params.userId || !queryText) return empty;
@@ -201,7 +230,7 @@ export async function buildClientMemoryPack(params: {
     candidates.map((f) => `${f.fact} ${f.predicateKey ?? ""} ${f.entityKey ?? ""}`)
   );
 
-  return assembleClientMemoryPackSync({
+  const pack = assembleClientMemoryPackSync({
     queryText,
     candidates,
     expansion,
@@ -210,6 +239,35 @@ export async function buildClientMemoryPack(params: {
     relevanceFlags,
     startedAt: started,
   });
+  if (isMemoryIntelligenceEnabled()) {
+    try {
+      const intel = await loadMemoryIntelligenceForPack(params.userId, expansion);
+      if (intel) {
+        pack.currentSnapshots = intel.snapshots;
+        pack.episodes = intel.episodes;
+        pack.metrics.memory_snapshot_matches_count = intel.snapshots.length;
+        pack.metrics.memory_episode_candidates_count = intel.episodeCandidates;
+        pack.metrics.memory_episode_selected_count = intel.episodes.length;
+        pack.metrics.memory_stale_facts_selected_count = countStaleSelectedFacts(
+          dedupeById([
+            pack.coreFacts,
+            pack.currentState,
+            pack.people,
+            pack.timeline,
+            pack.goals,
+            pack.upcomingEvents,
+            pack.relevantFacts,
+            pack.userConfirmed,
+            pack.contradictions,
+          ])
+        );
+      }
+    } catch {
+      pack.currentSnapshots = [];
+      pack.episodes = [];
+    }
+  }
+  return pack;
 }
 
 /**
@@ -387,6 +445,8 @@ export function assembleClientMemoryPackSync(params: {
     relevantFacts,
     userConfirmed,
     contradictions,
+    currentSnapshots: [],
+    episodes: [],
     expansion,
     metrics: {
       memory_candidates_count: candidates.length,
@@ -397,6 +457,11 @@ export function assembleClientMemoryPackSync(params: {
       memory_archived_matches_count: archivedMatches.length,
       memory_context_chars: 0,
       memory_retrieval_ms: Date.now() - started,
+      memory_snapshot_matches_count: 0,
+      memory_episode_candidates_count: 0,
+      memory_episode_selected_count: 0,
+      memory_stale_facts_selected_count: 0,
+      memory_intelligence_rebuild_ms: 0,
     },
   };
   pack.metrics.memory_selected_count = countPackFacts(pack);
@@ -438,6 +503,25 @@ export function serializeClientMemoryPack(
   push(pack.userConfirmed, "user_confirmed");
   push(pack.relevantFacts, "relevant_facts");
   push(pack.contradictions, "contradictions");
+  if (isMemoryIntelligenceEnabled()) {
+    const selected = dedupeById([
+      pack.coreFacts,
+      pack.currentState,
+      pack.people,
+      pack.timeline,
+      pack.goals,
+      pack.upcomingEvents,
+      pack.relevantFacts,
+      pack.userConfirmed,
+      pack.contradictions,
+    ]);
+    const intelXml = serializeIntelligenceXml(
+      pack.currentSnapshots ?? [],
+      pack.episodes ?? [],
+      selected
+    );
+    if (intelXml) sections.push(intelXml);
+  }
   sections.push("</memory_data>");
   sections.push(MEMORY_USAGE_RULES);
   sections.push(MEMORY_SECURITY_RULES);
@@ -463,7 +547,11 @@ export function serializeClientMemoryPack(
     "people",
     "currentState",
   ];
-  const trimmed = { ...pack };
+  const trimmed = {
+    ...pack,
+    currentSnapshots: [] as ClientMemoryPack["currentSnapshots"],
+    episodes: [] as ClientMemoryPack["episodes"],
+  };
   for (const key of dropOrder) {
     if (block.length <= budget.maxBlockChars) break;
     trimmed[key] = [];
@@ -512,5 +600,10 @@ export function emptyMemoryMetrics(retrievalMs = 0): MemoryRetrievalMetrics {
     memory_archived_matches_count: 0,
     memory_context_chars: 0,
     memory_retrieval_ms: retrievalMs,
+    memory_snapshot_matches_count: 0,
+    memory_episode_candidates_count: 0,
+    memory_episode_selected_count: 0,
+    memory_stale_facts_selected_count: 0,
+    memory_intelligence_rebuild_ms: 0,
   };
 }

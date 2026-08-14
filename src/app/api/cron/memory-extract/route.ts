@@ -3,6 +3,7 @@ import { isCronSecretValid } from "@/lib/cron-auth";
 import { ensureDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { processMemoryExtractionJobs } from "@/lib/memory/client-memory";
+import { processMemoryIntelligenceJobs } from "@/lib/memory/intelligence-rebuild";
 
 /**
  * Drain durable memory extraction outbox.
@@ -22,5 +23,10 @@ export async function GET(request: NextRequest) {
     Number.isFinite(limitRaw) && limitRaw > 0 ? Math.min(limitRaw, 50) : 15;
 
   const result = await processMemoryExtractionJobs(limit);
-  return NextResponse.json({ ok: true, ...result });
+  const intelligence = await processMemoryIntelligenceJobs(limit).catch(() => ({
+    processed: 0,
+    failed: 0,
+    rebuildMs: 0,
+  }));
+  return NextResponse.json({ ok: true, ...result, intelligence });
 }

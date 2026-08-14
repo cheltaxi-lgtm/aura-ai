@@ -32,6 +32,10 @@ import {
 } from "@/lib/memory/authority";
 import { entitiesCompatibleForMerge } from "@/lib/memory/entities";
 import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
+import {
+  markUserMemoryIntelligenceDirty,
+  purgeUserMemoryIntelligence,
+} from "@/lib/memory/intelligence-dirty";
 
 export interface UserFact {
   id: string;
@@ -55,6 +59,8 @@ export interface UserFact {
   confirmationCount?: number;
   captureTier?: "draft" | "durable" | "user_confirmed";
   archiveTier?: "hot" | "warm" | "archived";
+  lastConfirmedAt?: string | null;
+  updatedAt?: string | null;
 }
 
 export interface FactInput {
@@ -104,16 +110,18 @@ type FactRow = {
   confirmation_count?: number;
   capture_tier?: "draft" | "durable" | "user_confirmed";
   archive_tier?: "hot" | "warm" | "archived";
+  last_confirmed_at?: Date | string | null;
+  updated_at?: Date | string | null;
 };
 
 const FACT_COLUMNS = `id, fact, category, event_date::text AS event_date, source_character, salience,
   status, predicate_key, entity_key, subject_key, sensitivity, confidence, source_type,
   source_entity_id, evidence_quote, source_captured_at, valid_from, valid_to, confirmation_count,
-  capture_tier, archive_tier`;
+  capture_tier, archive_tier, last_confirmed_at, updated_at`;
 const FACT_COLUMNS_F = `f.id, f.fact, f.category, f.event_date::text AS event_date, f.source_character, f.salience,
   f.status, f.predicate_key, f.entity_key, f.subject_key, f.sensitivity, f.confidence, f.source_type,
   f.source_entity_id, f.evidence_quote, f.source_captured_at, f.valid_from, f.valid_to, f.confirmation_count,
-  f.capture_tier, f.archive_tier`;
+  f.capture_tier, f.archive_tier, f.last_confirmed_at, f.updated_at`;
 
 function toVectorLiteral(vec: number[]): string {
   return `[${vec.join(",")}]`;
@@ -147,6 +155,8 @@ function mapRow(r: FactRow): UserFact {
     confirmationCount: r.confirmation_count ?? 0,
     captureTier: r.capture_tier ?? "durable",
     archiveTier: r.archive_tier ?? "hot",
+    lastConfirmedAt: r.last_confirmed_at ? new Date(r.last_confirmed_at).toISOString() : null,
+    updatedAt: r.updated_at ? new Date(r.updated_at).toISOString() : null,
   };
 }
 
@@ -655,6 +665,9 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
       factSourceType: input.sourceCharacter === "user" ? "manual" : "extracted",
       sensitivity: isSensitiveFact(input) ? "sensitive" : "normal",
     });
+  }
+  if (storedFactId) {
+    void markUserMemoryIntelligenceDirty(userId);
   }
   return true;
 }
@@ -1176,6 +1189,7 @@ export async function confirmFact(
       factSourceType: "confirmed",
       sensitivity: confirmed.sensitivity === "sensitive" ? "sensitive" : "normal",
     });
+    void markUserMemoryIntelligenceDirty(userId);
   }
   return confirmed;
 }
@@ -1241,6 +1255,7 @@ export async function changeFact(
     factSourceType: "confirmed",
     sensitivity: next.sensitivity === "sensitive" ? "sensitive" : "normal",
   });
+  void markUserMemoryIntelligenceDirty(userId);
   return next;
 }
 
@@ -1293,6 +1308,7 @@ export async function deleteFact(userId: string, factId: string): Promise<boolea
     factSourceType: removed.source_type === "user" ? "manual" : "extracted",
     sensitivity: removed.sensitivity === "sensitive" ? "sensitive" : "normal",
   });
+  void markUserMemoryIntelligenceDirty(userId);
   return true;
 }
 
@@ -1353,6 +1369,7 @@ export async function updateFact(
     await withTransaction(async (client) => {
       await supersedeReplaceables(client, userId, input, updated.id);
     }).catch(() => undefined);
+    void markUserMemoryIntelligenceDirty(userId);
   }
   return updated;
 }
@@ -1372,6 +1389,7 @@ export async function purgeAllUserMemory(userId: string): Promise<{
 }> {
   await cancelPendingMemoryJobs(userId).catch(() => 0);
   const jobsRemoved = await purgeMemoryExtractionJobs(userId).catch(() => 0);
+  await purgeUserMemoryIntelligence(userId).catch(() => undefined);
 
   const { rows: doomed } = await query<{ fact: string; predicate_key: string | null }>(
     `SELECT fact, predicate_key FROM user_facts WHERE user_id = $1`,
