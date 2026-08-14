@@ -16,9 +16,7 @@ export type CrossProductRec = {
   /** Destination product for analytics (never PII). */
   product: ProductFunnelProduct;
   title: string;
-  href?: string;
-  /** Same-page action (e.g. pair full CTA) — not a navigation. */
-  action?: "pair_full";
+  href: string;
 };
 
 const PUBLIC = {
@@ -79,10 +77,10 @@ const CATALOG: Record<CrossProductContext, readonly CrossProductRec[]> = {
       href: PUBLIC.matrix,
     },
     {
-      id: "pair_full",
-      product: "matrix_compatibility",
-      title: "Полный разбор пары",
-      action: "pair_full",
+      id: "natal",
+      product: "natal",
+      title: "Натальная карта",
+      href: PUBLIC.natal,
     },
   ],
 };
@@ -97,7 +95,7 @@ const CONTEXT_PRODUCT: Record<CrossProductContext, ProductFunnelProduct> = {
 
 /**
  * Resolve 1–2 next-step CTAs. Excludes self-product link recs.
- * Same-page `pair_full` is allowed on matrix_compatibility (upgrade, not self-nav).
+ * Paid upgrade for the current product is the primary CTA, not this list.
  */
 export function resolveCrossProductRecommendations(
   context: CrossProductContext,
@@ -106,11 +104,7 @@ export function resolveCrossProductRecommendations(
   const max = Math.min(2, Math.max(1, options?.max ?? 2));
   const self = CONTEXT_PRODUCT[context];
   const list = CATALOG[context] ?? [];
-  const filtered = list.filter((rec) => {
-    if (rec.action === "pair_full") return true;
-    if (rec.product === self) return false;
-    return Boolean(rec.href);
-  });
+  const filtered = list.filter((rec) => rec.product !== self && Boolean(rec.href));
   return filtered.slice(0, max);
 }
 

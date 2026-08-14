@@ -9,8 +9,6 @@ import { trackCrossProductClick } from "@/lib/seo/product-funnel";
 
 type CrossProductNextStepsProps = {
   context: CrossProductContext;
-  /** Same-page handlers (e.g. pair full CTA). */
-  onAction?: (action: "pair_full") => void;
   className?: string;
 };
 
@@ -24,10 +22,10 @@ const ANALYTICS_SOURCE: Record<CrossProductContext, string> = {
 
 /**
  * Compact post-free-result next steps — max 2 public CTAs, no auth gate on free links.
+ * Paid upgrade for the current product is the primary CTA on the result, not here.
  */
 export default function CrossProductNextSteps({
   context,
-  onAction,
   className,
 }: CrossProductNextStepsProps) {
   const items = resolveCrossProductRecommendations(context);
@@ -42,43 +40,23 @@ export default function CrossProductNextSteps({
         Что посмотреть дальше
       </h3>
       <ul className="cross-product-next__list">
-        {items.map((item) => {
-          const track = () =>
-            trackCrossProductClick({
-              product: item.product,
-              source: ANALYTICS_SOURCE[context],
-              state: item.id,
-            });
-
-          if (item.action) {
-            return (
-              <li key={item.id}>
-                <button
-                  type="button"
-                  className="cross-product-next__cta"
-                  onClick={() => {
-                    track();
-                    onAction?.(item.action!);
-                  }}
-                >
-                  {item.title}
-                </button>
-              </li>
-            );
-          }
-
-          return (
-            <li key={item.id}>
-              <Link
-                href={item.href!}
-                className="cross-product-next__cta"
-                onClick={track}
-              >
-                {item.title}
-              </Link>
-            </li>
-          );
-        })}
+        {items.map((item) => (
+          <li key={item.id}>
+            <Link
+              href={item.href}
+              className="cross-product-next__cta"
+              onClick={() =>
+                trackCrossProductClick({
+                  product: item.product,
+                  source: ANALYTICS_SOURCE[context],
+                  state: item.id,
+                })
+              }
+            >
+              {item.title}
+            </Link>
+          </li>
+        ))}
       </ul>
     </aside>
   );

@@ -32,7 +32,9 @@ export async function GET(request: NextRequest) {
   const list = request.nextUrl.searchParams.get("list") === "1";
   const toolIdParam = request.nextUrl.searchParams.get("toolId")?.trim() || null;
   const toolId =
-    toolIdParam === "child_matrix" || toolIdParam === "matrix_year_forecast"
+    toolIdParam === "child_matrix" ||
+    toolIdParam === "matrix_year_forecast" ||
+    toolIdParam === "matrix_compatibility"
       ? toolIdParam
       : undefined;
 

@@ -25,6 +25,12 @@ import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 import MatrixSubjectPicker from "@/components/numerolog/MatrixSubjectPicker";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import {
+  FREE_TO_PAID,
+  freeToPaidCtaLabel,
+  freeToPaidFunnelState,
+  freeToPaidHint,
+} from "@/lib/free-to-paid-conversion";
 
 const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
 const RESUME_RETURN = "/numerology/destiny-matrix?resumeMatrix=1";
@@ -317,7 +323,7 @@ export default function DestinyMatrixPreview() {
     trackProductFunnel("paid_cta", {
       product: "matrix",
       source: "preview",
-      state: ownedFull ? "owned" : "new",
+      state: freeToPaidFunnelState(ownedFull),
     });
 
     if (!isLoggedIn) {
@@ -755,13 +761,9 @@ export default function DestinyMatrixPreview() {
                 onClick={() => void openFullMatrix()}
                 className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex disabled:opacity-60"
               >
-                {ownedFull
-                  ? "Открыть сохранённый разбор"
-                  : isLoggedIn
-                    ? "Открыть полный разбор с Эвелиной"
-                    : claiming || guestPersisting
-                      ? "Сохраняем…"
-                      : "Получить полный разбор"}
+                {claiming || guestPersisting
+                  ? "Сохраняем…"
+                  : freeToPaidCtaLabel(FREE_TO_PAID.matrix, ownedFull)}
               </button>
               {!isLoggedIn ? (
                 <button
@@ -791,11 +793,7 @@ export default function DestinyMatrixPreview() {
               ) : null}
             </div>
             <p className="mt-2 text-xs text-white/40">
-              {ownedFull
-                ? `В комплекте — ${PRICING.MATRIX_INCLUDED_QUESTIONS} вопроса в чате, дальше по тарифу вопроса.`
-                : isLoggedIn
-                  ? `Платите за разбор Эвелины и сохранение, не за цифры — ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз.`
-                  : `После входа откроется та же Матрица. Затем ${PRICING.NUMEROLOGY_SESSION} ᚢ один раз за разбор с сохранением.`}
+              {freeToPaidHint(FREE_TO_PAID.matrix, ownedFull)}
             </p>
           </div>
         </div>

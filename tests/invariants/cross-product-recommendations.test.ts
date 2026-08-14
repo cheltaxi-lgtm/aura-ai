@@ -65,8 +65,8 @@ describe("cross-product-recommendations", () => {
       resolveCrossProductRecommendations("human_design").map((i) => i.product)
     ).toEqual(["natal", "matrix"]);
     const pair = resolveCrossProductRecommendations("matrix_compatibility");
-    expect(pair.map((i) => i.id)).toEqual(["matrix", "pair_full"]);
-    expect(pair[1]?.action).toBe("pair_full");
+    expect(pair.map((i) => i.id)).toEqual(["matrix", "natal"]);
+    expect(pair.every((i) => i.href)).toBe(true);
   });
 
   it("wired after free results; Tarot P0 left untouched", () => {

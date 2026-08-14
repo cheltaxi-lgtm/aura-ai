@@ -21,6 +21,7 @@ import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
 import { useHdReportWait } from "./useHdReportWait";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
+import { FREE_TO_PAID, freeToPaidFunnelState } from "@/lib/free-to-paid-conversion";
 
 interface HdReport {
   id: string;
@@ -238,7 +239,11 @@ export default function HdReportPanel({
       setError("Подтвердите передачу данных карты языковой модели.");
       return;
     }
-    trackProductFunnel("paid_cta", { product: "human_design", source: "hd_report" });
+    trackProductFunnel("paid_cta", {
+      product: "human_design",
+      source: "hd_report",
+      state: freeToPaidFunnelState(Boolean(report?.status === "done" && report.reportText)),
+    });
     setLoading(true);
     setUiGenerating(true);
     setError(null);
@@ -516,10 +521,9 @@ export default function HdReportPanel({
           </div>
         )}
         <div className="hd-panel">
-          <p className="hd-panel__title">Полный разбор от Эвелины</p>
+          <p className="hd-panel__title">{FREE_TO_PAID.human_design.buyLabel}</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
-            Премиальная интерпретация всей карты: с объяснениями, примерами из жизни и практиками.
-            Войдите, чтобы сохранить карту и получить текст.
+            {FREE_TO_PAID.human_design.buyHint}
           </p>
           <p className="mt-2 text-xs leading-relaxed text-white/40">
             Гостевая карта хранится 30 дней — после входа она навсегда останется в вашем архиве.
@@ -536,10 +540,11 @@ export default function HdReportPanel({
               trackProductFunnel("paid_cta", {
                 product: "human_design",
                 source: "hd_report",
+                state: freeToPaidFunnelState(false),
               });
             }}
           >
-            Войти и получить полный разбор ·{" "}
+            {FREE_TO_PAID.human_design.buyLabel} ·{" "}
             {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
           </a>
         </div>
@@ -583,9 +588,9 @@ export default function HdReportPanel({
           </div>
         )}
         <div className="hd-panel">
-          <p className="hd-panel__title">Полный разбор от Эвелины</p>
+          <p className="hd-panel__title">{FREE_TO_PAID.human_design.buyLabel}</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
-            «Опора» выше — бесплатно. Ниже одна полная расшифровка: без доплат и апгрейдов.
+            {FREE_TO_PAID.human_design.buyHint}
           </p>
           {modulesCard}
           {loadError && (
@@ -629,7 +634,7 @@ export default function HdReportPanel({
             >
               {report?.resumeFree
                 ? "Продолжить генерацию · без списания"
-                : `Получить полную расшифровку · ${
+                : `${FREE_TO_PAID.human_design.buyLabel} · ${
                     ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`
                   }`}
             </button>

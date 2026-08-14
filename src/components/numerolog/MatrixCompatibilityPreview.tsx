@@ -14,6 +14,12 @@ import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { PRICING } from "@/lib/config/pricing";
 import type { MatrixCompatFreeSummary } from "@/lib/numerology/matrix-compat-free-summary";
 import { parseBirthDate } from "@/lib/numerology/constants";
+import {
+  FREE_TO_PAID,
+  freeToPaidCtaLabel,
+  freeToPaidFunnelState,
+  freeToPaidHint,
+} from "@/lib/free-to-paid-conversion";
 
 const RESUME_RETURN = "/numerology/matrica-sovmestimosti?resumePair=1";
 const FULL_HREF = "/?numerolog=1&tool=matrix_compatibility&resumePair=1";
@@ -86,6 +92,7 @@ export default function MatrixCompatibilityPreview() {
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
+  const [ownedPair, setOwnedPair] = useState(false);
   const claimStartedRef = useRef(false);
 
   useEffect(() => {
@@ -94,6 +101,30 @@ export default function MatrixCompatibilityPreview() {
       setAgeReady(true);
     }
   }, [authLoading, isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !preview || !dateA) {
+      setOwnedPair(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(
+          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(dateA)}&toolId=matrix_compatibility`,
+          { credentials: "include" }
+        );
+        if (!res.ok) return;
+        const data = (await res.json()) as { owned?: boolean };
+        if (!cancelled) setOwnedPair(Boolean(data.owned));
+      } catch {
+        if (!cancelled) setOwnedPair(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, preview, dateA]);
 
   const runClaim = useCallback(async (confirmReplace = false) => {
     setClaiming(true);
@@ -252,6 +283,7 @@ export default function MatrixCompatibilityPreview() {
     trackProductFunnel("paid_cta", {
       product: "matrix_compatibility",
       source: "pair_full",
+      state: freeToPaidFunnelState(ownedPair),
     });
     if (!isLoggedIn) {
       trackProductFunnel("auth_cta", {
@@ -477,12 +509,7 @@ export default function MatrixCompatibilityPreview() {
             </ul>
           </div>
 
-          <CrossProductNextSteps
-            context="matrix_compatibility"
-            onAction={(action) => {
-              if (action === "pair_full") void openFullReport();
-            }}
-          />
+          <CrossProductNextSteps context="matrix_compatibility" />
 
           <div className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
             <p className="text-sm font-medium text-aura-gold">Полный разбор пары пока скрыт</p>
@@ -499,9 +526,7 @@ export default function MatrixCompatibilityPreview() {
               >
                 {claiming
                   ? "Сохраняем…"
-                  : isLoggedIn
-                    ? "Открыть полный разбор"
-                    : "Получить полный разбор"}
+                  : freeToPaidCtaLabel(FREE_TO_PAID.matrix_pair, ownedPair)}
               </button>
               {!isLoggedIn ? (
                 <button
@@ -530,9 +555,7 @@ export default function MatrixCompatibilityPreview() {
               ) : null}
             </div>
             <p className="mt-2 text-xs text-white/40">
-              {isLoggedIn
-                ? `Платный разбор пары — ${PRICING.MATRIX_PAIR_REPORT} ᚢ. Бесплатный preview не списывает руны.`
-                : `После входа — та же пара. Затем ${PRICING.MATRIX_PAIR_REPORT} ᚢ за полный разбор.`}
+              {freeToPaidHint(FREE_TO_PAID.matrix_pair, ownedPair)}
             </p>
           </div>
 

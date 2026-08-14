@@ -13,6 +13,12 @@ import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import type { NatalGuestSafePayload } from "@/lib/natal/guest-free-summary";
+import {
+  FREE_TO_PAID,
+  freeToPaidCtaLabel,
+  freeToPaidFunnelState,
+  freeToPaidHint,
+} from "@/lib/free-to-paid-conversion";
 
 const NatalChartWheel = dynamic(() => import("@/components/natal/NatalChartWheel"), {
   ssr: false,
@@ -81,6 +87,7 @@ export default function NatalGuestCalculator() {
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
+  const [ownedNatal, setOwnedNatal] = useState(false);
   const claimStartedRef = useRef(false);
   const placeBoxRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -91,6 +98,37 @@ export default function NatalGuestCalculator() {
       setAgeReady(true);
     }
   }, [authLoading, isLoggedIn]);
+
+  useEffect(() => {
+    if (!isLoggedIn || !result) {
+      setOwnedNatal(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch("/api/natal-chart/history?limit=20", {
+          credentials: "include",
+        });
+        if (!res.ok) return;
+        const data = (await res.json()) as {
+          reports?: Array<{ reportType?: string; content?: string }>;
+        };
+        const owned = Boolean(
+          data.reports?.some(
+            (r) =>
+              r.reportType === "interpretation" && Boolean(String(r.content ?? "").trim())
+          )
+        );
+        if (!cancelled) setOwnedNatal(owned);
+      } catch {
+        if (!cancelled) setOwnedNatal(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, result]);
 
   const searchPlaces = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -516,9 +554,8 @@ export default function NatalGuestCalculator() {
           <CrossProductNextSteps context="natal" />
 
           <div className="rounded-2xl border border-aura-gold/25 bg-gradient-to-br from-aura-gold/10 to-transparent p-5">
-            <h4 className="font-display text-xl text-white">Получить полный разбор</h4>
-            <p className="mt-2 text-sm text-white/65">
-              После входа эта же карта сохранится в Вашем пространстве.
+            <p className="text-sm text-white/65">
+              {freeToPaidHint(FREE_TO_PAID.natal, ownedNatal)}
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               {isLoggedIn ? (
@@ -527,12 +564,22 @@ export default function NatalGuestCalculator() {
                   disabled={claiming}
                   onClick={() => {
                     trackSeoEvent("natal_guest_full_cta");
-                    trackProductFunnel("paid_cta", { product: "natal", source: "guest_full" });
+                    trackProductFunnel("paid_cta", {
+                      product: "natal",
+                      source: "guest_full",
+                      state: freeToPaidFunnelState(ownedNatal),
+                    });
+                    if (ownedNatal) {
+                      window.location.assign("/cabinet/astrology");
+                      return;
+                    }
                     void runClaim(false);
                   }}
                   className="inline-flex items-center justify-center rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-60"
                 >
-                  {claiming ? "Сохраняем…" : "Открыть полный разбор"}
+                  {claiming
+                    ? "Сохраняем…"
+                    : freeToPaidCtaLabel(FREE_TO_PAID.natal, ownedNatal)}
                 </button>
               ) : (
                 <>
@@ -542,11 +589,15 @@ export default function NatalGuestCalculator() {
                       markPendingClaimIntent();
                       trackSeoEvent("natal_guest_full_cta");
                       trackProductFunnel("auth_cta", { product: "natal", source: "guest_full" });
-                      trackProductFunnel("paid_cta", { product: "natal", source: "guest_full" });
+                      trackProductFunnel("paid_cta", {
+                        product: "natal",
+                        source: "guest_full",
+                        state: freeToPaidFunnelState(false),
+                      });
                     }}
                     className="inline-flex items-center justify-center rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-black"
                   >
-                    Получить полный разбор
+                    {FREE_TO_PAID.natal.buyLabel}
                   </a>
                   <a
                     href={buildLoginHref(RESUME_RETURN)}
