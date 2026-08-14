@@ -19,6 +19,19 @@ function formatRunes(value: unknown): string {
   return `${n.toLocaleString("ru-RU")} ᚢ`;
 }
 
+function formatDateTime(value: unknown): string {
+  if (value == null || value === "") return "—";
+  const d = new Date(String(value));
+  if (Number.isNaN(d.getTime())) return "—";
+  return d.toLocaleString("ru-RU", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 const OAUTH_PROVIDER_LABELS: Record<string, string> = {
   yandex: "Яндекс",
   vk: "ВКонтакте",
@@ -251,7 +264,7 @@ export default function AdminUsersPage() {
 
       {tab === "accounts" ? (
         <AdminTable
-          headers={["Email", "Имя", "Статус", "Профиль", "Знак", "Сессий", "3 карты", "Безлимит", "Руны", "Создан", ""]}
+          headers={["Email", "Имя", "Статус", "Профиль", "Знак", "Сессий", "3 карты", "Безлимит", "Руны", "Создан", "Последняя активность", ""]}
           rows={items.map((u) => {
             const id = String(u.id);
             const profileUserId = u.profile_user_id ? String(u.profile_user_id) : null;
@@ -307,6 +320,7 @@ export default function AdminUsersPage() {
               </button>,
               renderRunesCell(profileUserId, email, u.rune_balance),
               new Date(String(u.created_at)).toLocaleDateString("ru-RU"),
+              formatDateTime(u.last_activity_at),
               <div key="actions" className="flex gap-1.5">
                 {profileUserId && (
                   <AdminBtn
@@ -326,7 +340,7 @@ export default function AdminUsersPage() {
         />
       ) : (
         <AdminTable
-          headers={["Имя", "Email", "Пол", "ДР", "Знак", "Руны", "Создан"]}
+          headers={["Имя", "Email", "Пол", "ДР", "Знак", "Руны", "Создан", "Последняя активность"]}
           rows={items.map((u) => {
             const profileUserId = String(u.id);
             const label = u.account_email ? String(u.account_email) : String(u.name);
@@ -338,6 +352,7 @@ export default function AdminUsersPage() {
               String(u.zodiac),
               renderRunesCell(profileUserId, label, u.rune_balance),
               new Date(String(u.created_at)).toLocaleDateString("ru-RU"),
+              formatDateTime(u.last_activity_at),
             ];
           })}
         />

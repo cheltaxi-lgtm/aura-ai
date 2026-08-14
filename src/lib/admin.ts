@@ -92,6 +92,7 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
     email: string;
     name: string;
     created_at: Date;
+    last_activity_at: Date | null;
     profile_name: string | null;
     profile_user_id: string | null;
     zodiac: string | null;
@@ -115,7 +116,13 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
             u.name AS profile_name, u.zodiac,
             u.rune_balance,
             u.astro_meta->>'lastTripletDrawAt' AS last_triplet_draw_at,
-            (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count
+            (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count,
+            GREATEST(
+              ua.last_login_at,
+              (SELECT MAX(oi.last_login_at) FROM user_oauth_identities oi WHERE oi.user_account_id = ua.id),
+              (SELECT MAX(ti.last_login_at) FROM user_telegram_identities ti WHERE ti.user_account_id = ua.id),
+              (SELECT MAX(s.updated_at) FROM sessions s WHERE s.user_id = ua.profile_user_id)
+            ) AS last_activity_at
      FROM user_accounts ua
      LEFT JOIN users u ON u.id = ua.profile_user_id
      ${testFilter}
@@ -141,12 +148,29 @@ export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest
     birth_date: string;
     zodiac: string;
     created_at: Date;
+    last_activity_at: Date | null;
     rune_balance: number;
     account_email: string | null;
   }>(
     `SELECT u.id, u.name, u.gender, u.birth_date::text, u.zodiac, u.created_at,
             u.rune_balance,
-            (SELECT ua.email FROM user_accounts ua WHERE ua.profile_user_id = u.id LIMIT 1) AS account_email
+            (SELECT ua.email FROM user_accounts ua WHERE ua.profile_user_id = u.id LIMIT 1) AS account_email,
+            GREATEST(
+              (SELECT MAX(ua.last_login_at) FROM user_accounts ua WHERE ua.profile_user_id = u.id),
+              (
+                SELECT MAX(oi.last_login_at)
+                FROM user_oauth_identities oi
+                JOIN user_accounts ua ON ua.id = oi.user_account_id
+                WHERE ua.profile_user_id = u.id
+              ),
+              (
+                SELECT MAX(ti.last_login_at)
+                FROM user_telegram_identities ti
+                JOIN user_accounts ua ON ua.id = ti.user_account_id
+                WHERE ua.profile_user_id = u.id
+              ),
+              (SELECT MAX(s.updated_at) FROM sessions s WHERE s.user_id = u.id)
+            ) AS last_activity_at
      FROM users u
      ${testFilter}
      ORDER BY u.created_at DESC LIMIT $1 OFFSET $2`,

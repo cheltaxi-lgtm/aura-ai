@@ -74,6 +74,15 @@ export async function setUserAccountUnlimited(accountId: string, unlimited: bool
   ]);
 }
 
+/** Best-effort last visit stamp. Must not fail login if the column/update is unavailable. */
+export async function touchAccountLastLogin(accountId: string): Promise<void> {
+  try {
+    await query("UPDATE user_accounts SET last_login_at = NOW() WHERE id = $1", [accountId]);
+  } catch (err) {
+    console.warn("[auth] touchAccountLastLogin failed", accountId, err);
+  }
+}
+
 /** Returns profile id only when this account exclusively owns the linked profile (UUID link only). */
 /**
  * Resolve onboarding profile id for an account.

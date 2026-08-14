@@ -161,6 +161,10 @@ export async function setAuthCookie(payload: AuthPayload, request?: CookieReques
   const token = await signToken(enriched);
   const jar = await cookies();
   jar.set(COOKIE, token, authCookieOptions(request));
+  if (enriched.role === "user") {
+    const { touchAccountLastLogin } = await import("@/lib/accounts");
+    await touchAccountLastLogin(enriched.sub);
+  }
 }
 
 /** Attach aura_auth on a redirect/JSON response (needed for WebView document navigations). */
@@ -173,6 +177,10 @@ export async function applyAuthCookie(
   if (!enriched) return;
   const token = await signToken(enriched);
   response.cookies.set(COOKIE, token, authCookieOptions(request));
+  if (enriched.role === "user") {
+    const { touchAccountLastLogin } = await import("@/lib/accounts");
+    await touchAccountLastLogin(enriched.sub);
+  }
 }
 
 /**

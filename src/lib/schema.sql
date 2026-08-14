@@ -291,6 +291,7 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
   marketing_consent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  last_login_at TIMESTAMPTZ,
   daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT user_accounts_profile_user_id_unique UNIQUE (profile_user_id)
 );
@@ -299,7 +300,8 @@ CREATE INDEX IF NOT EXISTS idx_user_accounts_unlimited ON user_accounts(is_unlim
   WHERE is_unlimited = TRUE;
 
 ALTER TABLE user_accounts
-  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE;
+  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS user_oauth_identities (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
