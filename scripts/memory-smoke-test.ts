@@ -37,6 +37,8 @@ import { isFactTombstoned } from "@/lib/memory/tombstones";
 import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 
 const U = "00000000-0000-0000-0000-0000000000aa";
+/** Isolated from extraction turns on U so employment lifecycle is not polluted. */
+const EMP = "00000000-0000-0000-0000-0000000000ef";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => {
@@ -68,11 +70,24 @@ async function okRetry(
   ok(passed, message);
 }
 
+async function cleanupUser(id: string) {
+  await purgeAllUserMemory(id).catch(() => {});
+  await purgeFacts(id).catch(() => {});
+  await query(`DELETE FROM sessions WHERE user_id=$1`, [id]).catch(() => {});
+  await query(`DELETE FROM users WHERE id=$1`, [id]).catch(() => {});
+}
+
 async function cleanup() {
-  await purgeAllUserMemory(U).catch(() => {});
-  await purgeFacts(U).catch(() => {});
-  await query(`DELETE FROM sessions WHERE user_id=$1`, [U]).catch(() => {});
-  await query(`DELETE FROM users WHERE id=$1`, [U]).catch(() => {});
+  await cleanupUser(U);
+  await cleanupUser(EMP);
+}
+
+async function ensureSmokeUser(id: string, name: string) {
+  await cleanupUser(id);
+  await query(
+    `INSERT INTO users (id,name,gender,birth_date,zodiac) VALUES ($1,$2,'male','1990-01-01','Козерог')`,
+    [id, name]
+  );
 }
 
 async function main() {
@@ -81,10 +96,8 @@ async function main() {
     return;
   }
   await cleanup();
-  await query(
-    `INSERT INTO users (id,name,gender,birth_date,zodiac) VALUES ($1,'__smoke_temp','male','1990-01-01','Козерог')`,
-    [U]
-  );
+  await ensureSmokeUser(U, "__smoke_temp");
+  await ensureSmokeUser(EMP, "__smoke_emp");
 
   const eventDate = new Date(Date.now() + 2 * 86_400_000).toISOString().slice(0, 10);
 
@@ -275,10 +288,12 @@ async function main() {
     await updateMemoryPreferences(U, { momentsMode: "active" });
 
     // Employment lifecycle: searching → current must supersede the old row.
+    // Isolated user: extraction on U already stored employment.current.
+    await recordInitialMemoryChoice(EMP, "enabled");
     const searchingFact = "Клиент ищет работу программистом";
     const currentFact = "Клиент устроился программистом в банк";
     ok(
-      await upsertFact(U, {
+      await upsertFact(EMP, {
         fact: searchingFact,
         category: "work",
         salience: 4,
@@ -289,7 +304,7 @@ async function main() {
       "seeded employment.searching fact"
     );
     ok(
-      await upsertFact(U, {
+      await upsertFact(EMP, {
         fact: currentFact,
         category: "work",
         salience: 4,
@@ -307,7 +322,7 @@ async function main() {
     }>(
       `SELECT id, status, predicate_key, fact FROM user_facts
         WHERE user_id=$1 AND predicate_key IN ('employment.searching','employment.current')`,
-      [U]
+      [EMP]
     );
     const searchingRow = empStatus.find(
       (r) => r.predicate_key === "employment.searching" && r.status === "superseded"
@@ -327,9 +342,9 @@ async function main() {
 
     // Tombstone blocks re-ingest of deleted text.
     if (currentRow?.id) {
-      await deleteFact(U, currentRow.id);
-      ok(await isFactTombstoned(U, currentFact), "deleteFact adds tombstone");
-      const blocked = await upsertFact(U, {
+      await deleteFact(EMP, currentRow.id);
+      ok(await isFactTombstoned(EMP, currentFact), "deleteFact adds tombstone");
+      const blocked = await upsertFact(EMP, {
         fact: currentFact,
         category: "work",
         salience: 4,

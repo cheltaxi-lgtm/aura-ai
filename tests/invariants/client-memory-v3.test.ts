@@ -21,7 +21,7 @@ import { classifyMemoryLayer, isCoreIdentityFact } from "@/lib/memory/memory-lay
 import { memoryBudgetFor, resolveMemoryDepth } from "@/lib/memory/memory-budget";
 import { expandMemoryQuery } from "@/lib/memory/query-expansion";
 import { serializeClientMemoryPack, type ClientMemoryPack } from "@/lib/memory/client-memory-pack";
-import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
+import { composeMemoryQueryText, isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
 
 const ROOT = path.resolve(__dirname, "../..");
 function readSrc(rel: string): string {
@@ -371,5 +371,20 @@ describe("client-memory-v3 quality regressions", () => {
   it("J: Казани / Аэрофлот are not person entities", () => {
     expect(extractPersonMentions("В месяце 30 я ездила в Казани по делам Аэрофлот")).toEqual([]);
     expect(extractPersonMentions("Живу в Москве уже год")).toEqual([]);
+  });
+
+  it("work query is lexically relevant to a natural work fact", () => {
+    expect(
+      isTextRelevantToQuery(
+        "стоит ли мне менять работу?",
+        "Клиент работает программистом и думает сменить работу"
+      )
+    ).toBe(true);
+  });
+
+  it("supersede SQL treats NULL source_character as unprotected", () => {
+    const src = readSrc("src/lib/memory/user-facts.ts");
+    expect(src).toMatch(/COALESCE\(source_character, ''\) IS DISTINCT FROM 'user'/);
+    expect(src).toMatch(/COALESCE\(capture_tier, ''\) IS DISTINCT FROM 'user_confirmed'/);
   });
 });

@@ -31,6 +31,7 @@ import {
   isUserAuthored,
 } from "@/lib/memory/authority";
 import { entitiesCompatibleForMerge } from "@/lib/memory/entities";
+import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
 
 export interface UserFact {
   id: string;
@@ -152,6 +153,7 @@ function mapRow(r: FactRow): UserFact {
 async function embedOne(text: string, timeoutMs?: number): Promise<number[] | null> {
   const trimmed = text.trim();
   if (!trimmed) return null;
+  if (timeoutMs === 0) return null;
   const vectors = await embedTexts(trimmed.slice(0, 4000), timeoutMs);
   return vectors?.[0] ?? null;
 }
@@ -213,10 +215,10 @@ async function supersedeReplaceables(
         AND COALESCE(subject_key, 'client') = COALESCE($3, 'client')
         AND (
           $5
-          OR NOT (
-            source_type IN ('user', 'profile')
-            OR source_character = 'user'
-            OR capture_tier = 'user_confirmed'
+          OR (
+            COALESCE(source_type, '') NOT IN ('user', 'profile')
+            AND COALESCE(source_character, '') IS DISTINCT FROM 'user'
+            AND COALESCE(capture_tier, '') IS DISTINCT FROM 'user_confirmed'
           )
         )`,
     [userId, group, input.subjectKey ?? "client", newId, incomingUser]
@@ -669,17 +671,39 @@ export async function upsertFacts(userId: string, inputs: FactInput[]): Promise<
   return stored;
 }
 
+async function searchFactsLexicalFallback(
+  userId: string,
+  queryText: string,
+  topK: number,
+  archiveFilter: string
+): Promise<UserFact[]> {
+  const { rows } = await query<FactRow>(
+    `SELECT ${FACT_COLUMNS}
+       FROM user_facts
+      WHERE user_id = $1
+        AND status = 'active'
+        AND ${archiveFilter}
+      ORDER BY salience DESC, updated_at DESC
+      LIMIT 40`,
+    [userId]
+  );
+  return rows
+    .map(mapRow)
+    .filter((fact) => isTextRelevantToQuery(queryText, fact.fact))
+    .slice(0, topK);
+}
+
 export async function searchFacts(
   userId: string,
   queryText: string,
-  opts: { topK?: number; includeArchived?: boolean } = {}
+  opts: { topK?: number; includeArchived?: boolean; embedTimeoutMs?: number } = {}
 ): Promise<UserFact[]> {
   if (!userId) return [];
   const topK = opts.topK ?? 8;
   const trimmed = queryText.trim();
   if (!trimmed) return [];
 
-  const embedding = await embedOne(trimmed, SEARCH_EMBED_TIMEOUT_MS);
+  const embedding = await embedOne(trimmed, opts.embedTimeoutMs ?? SEARCH_EMBED_TIMEOUT_MS);
   const vec = embedding ? toVectorLiteral(embedding) : null;
   const model = embedModel();
   const archiveFilter = opts.includeArchived
@@ -728,7 +752,8 @@ export async function searchFacts(
        LIMIT $4`,
     [userId, vec, trimmed, topK, model]
   );
-  return rows.map(mapRow);
+  if (rows.length) return rows.map(mapRow);
+  return searchFactsLexicalFallback(userId, trimmed, topK, archiveFilter);
 }
 
 export async function getKnownEntityKeys(userId: string): Promise<string[]> {
