@@ -1,4 +1,10 @@
-import { extractPersonMentions, personEntityKey, slugPersonName } from "@/lib/memory/entities";
+import {
+  detectPersonRoleHints,
+  entityKeyMatchesMentions,
+  entityKeyMatchesRoleHints,
+  extractPersonMentions,
+  personEntityKey,
+} from "@/lib/memory/entities";
 
 export type MemoryQueryTopic =
   | "work"
@@ -9,6 +15,7 @@ export type MemoryQueryTopic =
   | "residence"
   | "education"
   | "goals"
+  | "preferences"
   | "general";
 
 export type ExpandedMemoryQuery = {
@@ -92,6 +99,12 @@ const TOPIC_RULES: Array<{
     predicates: ["goal.current"],
     extra: "цели планы",
   },
+  {
+    topic: "preferences",
+    re: /предпочит|удобн|связыв|почт|мессенджер|созвон|звонк|переписк/i,
+    predicates: ["preference.stated"],
+    extra: "предпочтения связь почта",
+  },
 ];
 
 export function detectMemoryTopic(query: string): MemoryQueryTopic {
@@ -101,31 +114,42 @@ export function detectMemoryTopic(query: string): MemoryQueryTopic {
   return "general";
 }
 
+export function matchedMemoryTopics(query: string) {
+  return TOPIC_RULES.filter((rule) => rule.re.test(query));
+}
+
 export function expandMemoryQuery(
   query: string,
   knownEntityKeys: string[] = []
 ): ExpandedMemoryQuery {
   const original = query.trim();
-  const mentions = extractPersonMentions(original);
+  const mentions = extractPersonMentions(original, knownEntityKeys);
   const mentionKeys = mentions
     .map((name) => personEntityKey(name))
     .filter((key): key is string => Boolean(key));
+  const roleHints = detectPersonRoleHints(original);
 
   const matchedKnown = knownEntityKeys.filter((key) => {
-    const slug = key.replace(/^person:/, "").split(":")[0];
-    return mentions.some((name) => slugPersonName(name) === slug);
+    if (!entityKeyMatchesMentions(key, mentions)) return false;
+    if (roleHints.length) return entityKeyMatchesRoleHints(key, roleHints);
+    return true;
   });
 
-  const entityKeys = [...new Set([...matchedKnown, ...mentionKeys])];
+  const entityKeys = [
+    ...new Set(roleHints.length ? matchedKnown : [...matchedKnown, ...mentionKeys]),
+  ];
+  const matched = matchedMemoryTopics(original);
   const detected = detectMemoryTopic(original);
-  const rule =
-    TOPIC_RULES.find((item) => item.topic === detected) ??
-    (mentions.length
+  const fallback =
+    !matched.length && mentions.length
       ? TOPIC_RULES.find((item) => item.topic === "relationship")
-      : undefined);
-  const topic = rule?.topic ?? (mentions.length ? "relationship" : "general");
-  const predicateHints = rule?.predicates ?? [];
-  const extra = [rule?.extra, mentions.join(" ")].filter(Boolean).join(" ");
+      : undefined;
+  const rules = matched.length ? matched : fallback ? [fallback] : [];
+  const topic = (rules[0]?.topic ?? detected) as MemoryQueryTopic;
+  const predicateHints = [...new Set(rules.flatMap((rule) => rule.predicates))];
+  const extra = [...rules.map((rule) => rule.extra), mentions.join(" ")]
+    .filter(Boolean)
+    .join(" ");
   const expandedText = extra ? `${original} ${extra}`.trim() : original;
 
   return {
@@ -135,6 +159,6 @@ export function expandMemoryQuery(
     personMentions: mentions,
     predicateHints,
     topic,
-    wantsTimeline: Boolean(rule?.timeline || entityKeys.length),
+    wantsTimeline: Boolean(rules.some((rule) => rule.timeline) || entityKeys.length),
   };
 }

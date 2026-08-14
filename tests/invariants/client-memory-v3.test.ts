@@ -13,8 +13,10 @@ import {
   extractPersonMentions,
   mentionMatchesEntity,
   personEntityKey,
+  stemRussianGivenName,
 } from "@/lib/memory/entities";
 import { filterGroundedFacts } from "@/lib/memory/grounding";
+import { isQualityMemoryFact } from "@/lib/memory/user-fact-input";
 import { classifyMemoryLayer, isCoreIdentityFact } from "@/lib/memory/memory-layers";
 import { memoryBudgetFor, resolveMemoryDepth } from "@/lib/memory/memory-budget";
 import { expandMemoryQuery } from "@/lib/memory/query-expansion";
@@ -297,5 +299,77 @@ describe("client-memory-v3 archive and write path", () => {
     const src = readSrc("src/lib/memory/user-facts.ts");
     expect(src).toMatch(/capture_tier = 'user_confirmed'/);
     expect(src).toMatch(/source_type IN \('user', 'profile'\)/);
+  });
+});
+
+describe("client-memory-v3 quality regressions", () => {
+  it("A: мастерская is a life fact, not meta", () => {
+    expect(isQualityMemoryFact("Клиент хочет открыть мастерскую в Москве")).toBe(true);
+    expect(isQualityMemoryFact("Клиент ведёт студию керамики в мастерской")).toBe(true);
+  });
+
+  it("B: master prediction is not a life fact", () => {
+    expect(isQualityMemoryFact("Мастер предсказал скорую свадьбу")).toBe(false);
+    const kept = filterGroundedFacts("Я думаю о работе", [
+      { fact: "Клиент скоро выйдет замуж", evidenceQuote: "карты обещают свадьбу" },
+    ]);
+    expect(kept).toHaveLength(0);
+  });
+
+  it("C: role-distinct Сергеи stay separate in expansion", () => {
+    const known = [
+      personEntityKey("Сергей", "former_spouse")!,
+      personEntityKey("Сергей", "коллега")!,
+      personEntityKey("Сергей Петров", "врач")!,
+    ];
+    const ex = expandMemoryQuery("Что сейчас между мной и бывшим мужем Сергеем?", known);
+    expect(ex.entityKeys).toEqual([personEntityKey("Сергей", "former_spouse")]);
+    const col = expandMemoryQuery("Как строить работу с коллегой Сергеем из продаж?", known);
+    expect(col.entityKeys).toEqual([personEntityKey("Сергей", "коллега")]);
+    const doc = expandMemoryQuery("Стоит ли доверять врачу Сергею Петрову?", known);
+    expect(doc.entityKeys).toEqual([personEntityKey("Сергей Петров", "врач")]);
+  });
+
+  it("D: Сергею and Андрею share the nominative stem", () => {
+    expect(stemRussianGivenName("Сергею")).toBe(stemRussianGivenName("Сергей"));
+    expect(stemRussianGivenName("Сергея")).toBe(stemRussianGivenName("Сергеем"));
+    expect(personEntityKey("Сергею")).toBe(personEntityKey("Сергей"));
+    expect(stemRussianGivenName("Андрею")).toBe(stemRussianGivenName("Андрей"));
+    expect(personEntityKey("Андреем")).toBe(personEntityKey("Андрея"));
+    expect(stemRussianGivenName("Ольгой")).toBe(stemRussianGivenName("Ольга"));
+    expect(personEntityKey("Ольгой")).toBe(personEntityKey("Ольга"));
+    expect(stemRussianGivenName("Ниной")).toBe(stemRussianGivenName("Нина"));
+    expect(personEntityKey("Ниной")).toBe(personEntityKey("Нина"));
+  });
+
+  it("E: relationship + son + mother unions family predicates", () => {
+    const expanded = expandMemoryQuery("Как сейчас мои отношения с сыном и мамой?");
+    expect(expanded.predicateHints).toEqual(
+      expect.arrayContaining([
+        "relationship.status",
+        "family.child",
+        "family.parent",
+        "family.relative",
+        "family.spouse",
+      ])
+    );
+  });
+
+  it("F: work topic does not include family.child", () => {
+    const expanded = expandMemoryQuery("Стоит ли менять работу?");
+    expect(expanded.predicateHints).not.toContain("family.child");
+    expect(expanded.topic).toBe("work");
+  });
+
+  it("I: contact preference expands to preference.stated", () => {
+    expect(expandMemoryQuery("Как лучше со мной связываться по почте?").predicateHints).toContain(
+      "preference.stated"
+    );
+    expect(expandMemoryQuery("Что я предпочитаю?").predicateHints).toContain("preference.stated");
+  });
+
+  it("J: Казани / Аэрофлот are not person entities", () => {
+    expect(extractPersonMentions("В месяце 30 я ездила в Казани по делам Аэрофлот")).toEqual([]);
+    expect(extractPersonMentions("Живу в Москве уже год")).toEqual([]);
   });
 });

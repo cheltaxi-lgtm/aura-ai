@@ -119,6 +119,20 @@ export function isTextRelevantToQuery(query: string, memoryText: string): boolea
   return false;
 }
 
+/** Rank lexical candidates so rare anchors (month 30, city, company) beat store order. */
+export function lexicalAnchorScore(query: string, memoryText: string): number {
+  const qTokens = tokenizeForRelevance(query);
+  const mTokens = tokenizeForRelevance(memoryText);
+  if (!qTokens.length || !mTokens.length) return 0;
+  let score = countTokenOverlap(qTokens, mTokens);
+  for (const token of query.toLowerCase().split(/[^\p{L}\p{N}]+/u)) {
+    if (!token) continue;
+    if (/^\d+$/.test(token) && memoryText.toLowerCase().includes(token)) score += 8;
+    if (token.length >= 6 && memoryText.toLowerCase().includes(token)) score += 2;
+  }
+  return score;
+}
+
 /** Map session topic slug to Russian label for token overlap with stored facts. */
 export function expandIntentionForQuery(intention: string): string {
   const trimmed = intention.trim();

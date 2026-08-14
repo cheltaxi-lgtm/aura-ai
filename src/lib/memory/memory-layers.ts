@@ -76,6 +76,41 @@ export function classifyMemoryLayer(fact: {
   return "other";
 }
 
+export function factMatchesQueryTheme(
+  fact: { predicateKey?: string | null },
+  expansion: { topic?: string; predicateHints?: string[] }
+): boolean {
+  const pred = fact.predicateKey ?? "";
+  if (pred && expansion.predicateHints?.includes(pred)) return true;
+  const hints = expansion.predicateHints ?? [];
+  const topic = expansion.topic ?? "general";
+  if (topic === "work" || hints.some((h) => h.startsWith("employment") || h.startsWith("finance"))) {
+    return pred.startsWith("employment") || pred.startsWith("finance") || pred === "goal.current";
+  }
+  if (topic === "family" || hints.some((h) => h.startsWith("family."))) {
+    return pred.startsWith("family") || pred.startsWith("relationship");
+  }
+  if (topic === "relationship") {
+    return pred.startsWith("relationship") || pred === "family.spouse";
+  }
+  if (topic === "preferences" || hints.includes("preference.stated")) {
+    return pred === "preference.stated";
+  }
+  if (topic === "health" || hints.some((h) => h.startsWith("health"))) {
+    return pred.startsWith("health");
+  }
+  if (topic === "residence" || hints.some((h) => h.startsWith("residence"))) {
+    return pred.startsWith("residence");
+  }
+  if (topic === "education" || hints.some((h) => h.startsWith("education"))) {
+    return pred.startsWith("education");
+  }
+  if (topic === "goals" || hints.includes("goal.current")) {
+    return pred === "goal.current";
+  }
+  return false;
+}
+
 export function isCoreIdentityFact(fact: UserFact | {
   predicateKey?: string | null;
   captureTier?: string | null;

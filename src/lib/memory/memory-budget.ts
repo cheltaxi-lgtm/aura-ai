@@ -60,3 +60,13 @@ export function resolveMemoryDepth(params: {
 export function memoryBudgetFor(depth: MemoryDepth): MemoryBudget {
   return { depth, ...BUDGETS[depth] };
 }
+
+/** Candidate-pool size. Final prompt budgets stay bounded separately. */
+export function memoryCandidateLimit(opts: {
+  depth?: MemoryDepth | null;
+  includeArchived?: boolean;
+  wantsTimeline?: boolean;
+}): number {
+  if (opts.includeArchived || opts.wantsTimeline || opts.depth === "deep") return 40;
+  return 16;
+}

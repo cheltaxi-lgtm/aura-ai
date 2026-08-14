@@ -1,5 +1,6 @@
 import { personEntityKey } from "@/lib/memory/entities";
-import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
+import { isTextRelevantToQuery, lexicalAnchorScore } from "@/lib/memory/memory-relevance";
+import { memoryCandidateLimit } from "@/lib/memory/memory-budget";
 import { expandMemoryQuery } from "@/lib/memory/query-expansion";
 import { isCoreIdentityFact } from "@/lib/memory/memory-layers";
 import { CORE_PREDICATES, isSensitiveFact } from "@/lib/memory/predicates";
@@ -136,13 +137,19 @@ function take<T>(rows: T[], n: number): T[] {
 /** Mirror production candidate fetch without DB/embeddings (lexical stand-in for searchFacts). */
 export function selectCandidates(
   store: MemoryStore,
-  queryText: string
+  queryText: string,
+  depth: "compact" | "standard" | "deep" = "standard"
 ): { candidates: UserFact[]; expansion: ReturnType<typeof expandMemoryQuery> } {
   const known = [
     ...new Set(store.map((f) => f.entityKey).filter((k): k is string => Boolean(k))),
   ];
   const expansion = expandMemoryQuery(queryText, known);
   const includeArchived = expansion.entityKeys.length > 0 || expansion.wantsTimeline;
+  const limit = memoryCandidateLimit({
+    depth,
+    includeArchived,
+    wantsTimeline: expansion.wantsTimeline,
+  });
 
   const core = take(
     store
@@ -178,16 +185,21 @@ export function selectCandidates(
   );
 
   const searched = take(
-    store.filter(
-      (f) =>
-        f.status === "active" &&
-        archiveOk(f, includeArchived) &&
-        isTextRelevantToQuery(
-          expansion.expandedText,
-          `${f.fact} ${f.predicateKey ?? ""} ${f.entityKey ?? ""}`
-        )
-    ),
-    16
+    store
+      .filter(
+        (f) =>
+          f.status === "active" &&
+          archiveOk(f, includeArchived) &&
+          isTextRelevantToQuery(
+            expansion.expandedText,
+            `${f.fact} ${f.predicateKey ?? ""} ${f.entityKey ?? ""}`
+          )
+      )
+      .sort(
+        (a, b) =>
+          lexicalAnchorScore(queryText, b.fact) - lexicalAnchorScore(queryText, a.fact)
+      ),
+    limit
   );
 
   const byEntity = expansion.entityKeys.length
@@ -198,7 +210,7 @@ export function selectCandidates(
             statusOk(f, true) &&
             archiveOk(f, true)
         ),
-        16
+        limit
       )
     : [];
 
@@ -210,7 +222,7 @@ export function selectCandidates(
             statusOk(f, expansion.wantsTimeline) &&
             archiveOk(f, includeArchived)
         ),
-        16
+        limit
       )
     : [];
 
@@ -248,7 +260,7 @@ export function retrievePack(
     product: query.product,
     queryText: query.query,
   });
-  const { candidates, expansion } = selectCandidates(store, query.query);
+  const { candidates, expansion } = selectCandidates(store, query.query, depth);
   const relevanceFlags = candidates.map((f) =>
     isTextRelevantToQuery(query.query, `${f.fact} ${f.predicateKey ?? ""} ${f.entityKey ?? ""}`)
   );

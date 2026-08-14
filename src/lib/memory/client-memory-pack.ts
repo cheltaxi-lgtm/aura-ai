@@ -9,15 +9,18 @@ import { isTextRelevantToQueryAsync } from "@/lib/memory/session-memory-semantic
 import { expandMemoryQuery, type ExpandedMemoryQuery } from "@/lib/memory/query-expansion";
 import {
   classifyMemoryLayer,
+  factMatchesQueryTheme,
   isCoreIdentityFact,
 } from "@/lib/memory/memory-layers";
 import {
   memoryBudgetFor,
+  memoryCandidateLimit,
   resolveMemoryDepth,
   type MemoryBudget,
   type MemoryDepth,
 } from "@/lib/memory/memory-budget";
 import { isProtectedFact } from "@/lib/memory/authority";
+import { entityRoleFromKey, personSlugFromEntityKey } from "@/lib/memory/entities";
 import {
   getCoreFacts,
   getFactsByEntityKeys,
@@ -147,33 +150,38 @@ export async function buildClientMemoryPack(params: {
   const allowed = (fact: UserFact) => !selection.excludedIds.has(fact.id);
 
   const includeArchived = expansion.entityKeys.length > 0 || expansion.wantsTimeline;
+  const candidateLimit = memoryCandidateLimit({
+    depth,
+    includeArchived,
+    wantsTimeline: expansion.wantsTimeline,
+  });
   const [coreRaw, upcomingRaw, relevantRaw, entityRaw, predicateRaw, timelineRaw] =
     await Promise.all([
       getCoreFacts(params.userId, 12).catch(() => [] as UserFact[]),
       getUpcomingEvents(params.userId).catch(() => [] as UserFact[]),
       searchFacts(params.userId, expansion.expandedText, {
-        topK: 16,
+        topK: candidateLimit,
         includeArchived,
       }).catch(() => [] as UserFact[]),
       expansion.entityKeys.length
         ? getFactsByEntityKeys(params.userId, expansion.entityKeys, {
             includeArchived: true,
             includeSuperseded: true,
-            limit: 16,
+            limit: candidateLimit,
           }).catch(() => [] as UserFact[])
         : Promise.resolve([] as UserFact[]),
       expansion.predicateHints.length
         ? getFactsByPredicates(params.userId, expansion.predicateHints, {
             includeArchived,
             includeSuperseded: expansion.wantsTimeline,
-            limit: 16,
+            limit: candidateLimit,
           }).catch(() => [] as UserFact[])
         : Promise.resolve([] as UserFact[]),
       expansion.wantsTimeline
         ? getFactsByPredicates(params.userId, expansion.predicateHints, {
             includeArchived: true,
             includeSuperseded: true,
-            limit: 12,
+            limit: Math.min(24, candidateLimit),
           }).catch(() => [] as UserFact[])
         : Promise.resolve([] as UserFact[]),
     ]);
@@ -232,35 +240,63 @@ export function assembleClientMemoryPackSync(params: {
     (f) => f.status === "superseded" || classifyMemoryLayer(f) === "timeline"
   );
 
+  const roleConstrained = expansion.entityKeys.some((key) => entityRoleFromKey(key));
+  const conflictingPerson = (fact: UserFact): boolean => {
+    const key = fact.entityKey;
+    if (!roleConstrained || !key?.startsWith("person:")) return false;
+    if (expansion.entityKeys.includes(key)) return false;
+    const factSlug = personSlugFromEntityKey(key);
+    return expansion.entityKeys.some((known) => {
+      const knownSlug = personSlugFromEntityKey(known);
+      if (!factSlug || !knownSlug) return false;
+      return (
+        knownSlug === factSlug ||
+        knownSlug.startsWith(factSlug) ||
+        factSlug.startsWith(knownSlug)
+      );
+    });
+  };
+
   const injectCore = (fact: UserFact, relevant: boolean): boolean => {
     if (relevant) return true;
-    if (depth === "deep" && isCoreIdentityFact(fact)) return true;
-    if (isProtectedFact(fact) && isCoreIdentityFact(fact) && depth !== "compact") {
-      return expansion.topic !== "general" || expansion.entityKeys.length > 0;
-    }
-    return false;
+    if (conflictingPerson(fact)) return false;
+    return factMatchesQueryTheme(fact, expansion);
   };
 
   const scored = candidates
     .map((fact, index) => {
-      const relevant = relevanceFlags[index] || included.some((f) => f.id === fact.id);
+      const sessionHit = included.some((f) => f.id === fact.id);
+      const relevant = relevanceFlags[index] || sessionHit;
       const layer = classifyMemoryLayer(fact);
       const entityHit = Boolean(fact.entityKey && expansion.entityKeys.includes(fact.entityKey));
       const predicateHit = Boolean(
         fact.predicateKey && expansion.predicateHints.includes(fact.predicateKey)
       );
+      const conflict = conflictingPerson(fact);
+      const mentionedSlugs = new Set(
+        expansion.entityKeys.map((key) => personSlugFromEntityKey(key)).filter(Boolean)
+      );
+      const factSlug = personSlugFromEntityKey(fact.entityKey);
+      const otherPerson = Boolean(factSlug) && mentionedSlugs.size > 0 && !mentionedSlugs.has(factSlug);
       const keep =
-        injectCore(fact, relevant) ||
-        relevant ||
-        entityHit ||
-        (predicateHit && fact.status === "active") ||
-        (fact.status === "superseded" && (entityHit || expansion.wantsTimeline && relevant));
+        sessionHit ||
+        (!conflict &&
+          !otherPerson &&
+          (injectCore(fact, relevant) ||
+            relevant ||
+            entityHit ||
+            (predicateHit && fact.status === "active") ||
+            (fact.status === "superseded" &&
+              (entityHit || (expansion.wantsTimeline && relevant)))));
       const rank =
-        (isProtectedFact(fact) ? 40 : 0) +
-        (isCoreIdentityFact(fact) ? 24 : 0) +
-        (entityHit ? 28 : 0) +
+        (sessionHit ? 80 : 0) +
+        (entityHit ? 50 : 0) +
+        (predicateHit ? 28 : 0) +
+        (isProtectedFact(fact) && relevant ? 24 : 0) +
         (relevant ? 18 : 0) +
-        (predicateHit ? 12 : 0) +
+        (fact.status === "superseded" && (entityHit || relevant) ? 10 : 0) +
+        (isProtectedFact(fact) ? 4 : 0) +
+        (isCoreIdentityFact(fact) ? 4 : 0) +
         (fact.status === "active" ? 8 : 0) +
         (fact.archiveTier === "archived" ? -4 : 0) +
         fact.salience;
