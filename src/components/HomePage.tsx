@@ -174,6 +174,7 @@ import {
   GUEST_SPREAD_PICKER_ID,
   GUEST_SPREAD_START_EVENT,
   GUEST_TRIPLET_MASTER_ID,
+  HOME_CUSTOM_QUESTION_EVENT,
   LANDING_QUESTION_KEY,
   type GuestSpreadStartDetail,
 } from "@/lib/landing-offer";
@@ -755,6 +756,34 @@ export default function HomePage({
     [isLoggedIn, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
 
+  useEffect(() => {
+    const onHomeQuestion = (event: Event) => {
+      const question = (event as CustomEvent<{ question?: string }>).detail?.question?.trim();
+      if (!question || authLoading) return;
+      if (isLoggedIn) {
+        handleLandingCustomQuestion(question);
+        return;
+      }
+      try {
+        sessionStorage.setItem(LANDING_QUESTION_KEY, question);
+      } catch {
+        /* private mode */
+      }
+      const detail: GuestSpreadStartDetail = {
+        question,
+        masterId: GUEST_TRIPLET_MASTER_ID,
+      };
+      window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+      requestAnimationFrame(() => {
+        document
+          .getElementById(GUEST_SPREAD_PICKER_ID)
+          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+      });
+    };
+    window.addEventListener(HOME_CUSTOM_QUESTION_EVENT, onHomeQuestion);
+    return () => window.removeEventListener(HOME_CUSTOM_QUESTION_EVENT, onHomeQuestion);
+  }, [authLoading, isLoggedIn, handleLandingCustomQuestion]);
+
   // Telegram bot CTA: ?tg_receipt=zg_… — stash for login, claim when authenticated.
   useEffect(() => {
     if (typeof window === "undefined" || authLoading) return;
@@ -790,6 +819,7 @@ export default function HomePage({
 
   useEffect(() => {
     if (typeof window === "undefined" || deepLinkSpreadParsedRef.current) return;
+    if (authLoading) return;
     const params = new URLSearchParams(window.location.search);
     const jointParam = params.get("joint")?.trim();
     const jointRole = params.get("jointRole")?.trim();
@@ -1034,7 +1064,7 @@ export default function HomePage({
     const url = new URL(window.location.href);
     url.searchParams.delete("spread");
     window.history.replaceState(null, "", url.pathname + url.search + url.hash);
-  }, [openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster, isLoggedIn, setStep]);
+  }, [authLoading, openSpreadIntentFlow, setShowSessionFlow, setSessionFlowPreselectedMaster, isLoggedIn, setStep]);
 
   const openNumerologSessionFlow = useCallback(
     (

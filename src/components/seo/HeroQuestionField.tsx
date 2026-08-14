@@ -5,12 +5,24 @@ import { Sparkles } from "lucide-react";
 import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
 import { buildAskUrl, buildSpreadStartUrl } from "@/lib/spread-intents/router";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
-import { LANDING_QUESTION_KEY } from "@/lib/landing-offer";
+import { HOME_CUSTOM_QUESTION_EVENT, LANDING_QUESTION_KEY } from "@/lib/landing-offer";
 import { trackHeroQuestionStarted, trackHeroQuestionSubmitted } from "@/lib/seo/metrika";
+
+function dispatchHomeCustomQuestion(question: string, master = "veronika"): boolean {
+  if (typeof window === "undefined") return false;
+  const path = window.location.pathname;
+  if (path !== "/" && path !== "") return false;
+  window.dispatchEvent(
+    new CustomEvent(HOME_CUSTOM_QUESTION_EVENT, { detail: { question, master } })
+  );
+  return true;
+}
 
 export function navigateFromQuestion(question: string, master = "veronika"): void {
   const q = question.trim();
   if (!q) return;
+
+  if (dispatchHomeCustomQuestion(q, master)) return;
 
   const matched = matchSpreadIntentFromQuestion(q);
   if (matched) {
@@ -95,6 +107,8 @@ export default function HeroQuestionField({
       onQuestionSubmit(value);
       return;
     }
+
+    if (dispatchHomeCustomQuestion(value)) return;
 
     const matched = matchSpreadIntentFromQuestion(value);
     if (matched) {

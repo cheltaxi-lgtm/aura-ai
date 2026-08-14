@@ -114,6 +114,8 @@ export const GUEST_SPREAD_SECTION_ID = "guest-spread";
 /** The interactive age gate/card picker, separate from the promotional CTA section. */
 export const GUEST_SPREAD_PICKER_ID = "guest-spread-picker";
 export const GUEST_SPREAD_START_EVENT = "zovus:start-guest-spread";
+/** Catalog / SEO «Свой вопрос» on `/` — stay in-page, do not reload `/?ask=`. */
+export const HOME_CUSTOM_QUESTION_EVENT = "zovus:home-custom-question";
 export const GUEST_SPREAD_RESET_EVENT = "zovus:reset-guest-spread";
 export const GUEST_SPREAD_DRAFT_KEY = "zovus_guest_spread_draft";
 export const LANDING_QUESTION_KEY = "zovus_landing_question";

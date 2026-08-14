@@ -119,6 +119,12 @@ describe("multiproduct-seo-discoverability", () => {
     expect(homeSeo).toMatch(/label="Свой вопрос"/);
     expect(homeSeo).toMatch(/submitLabel="Разобрать"/);
     expect(homeSeo).toMatch(/multiline/);
+    const heroField = read("src/components/seo/HeroQuestionField.tsx");
+    expect(heroField).toMatch(/HOME_CUSTOM_QUESTION_EVENT/);
+    expect(heroField).toMatch(/dispatchHomeCustomQuestion/);
+    const homePage = read("src/components/HomePage.tsx");
+    expect(homePage).toMatch(/HOME_CUSTOM_QUESTION_EVENT/);
+    expect(homePage).toMatch(/if \(authLoading\) return/);
   });
 
   it("internal product links are present (Matrix↔Pair, Matrix↔Natal, Natal↔HD)", () => {
