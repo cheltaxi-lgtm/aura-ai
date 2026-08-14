@@ -79,6 +79,8 @@ export async function runRitualGenerationForUser(params: {
     const memoryContext = await buildMemoryContext({
       userId: params.userId,
       characterId: ritual.character_key,
+      product: "ritual",
+      depth: "deep",
       profile: {
         name: userProfile.name,
         gender: userProfile.gender ?? undefined,

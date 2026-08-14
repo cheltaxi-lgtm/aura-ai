@@ -14,10 +14,21 @@ export const REPLACE_PREDICATES = new Set([
 export const MULTI_PREDICATES = new Set([
   "family.child",
   "family.spouse",
+  "family.parent",
+  "family.relative",
+  "family.friend",
+  "family.colleague",
+  "relationship.former_partner",
+  "relationship.divorce",
+  "employment.former",
+  "residence.former",
+  "education.former",
   "health.condition",
   "health.procedure",
   "finance.debt",
   "event.upcoming",
+  "preference.stated",
+  "product.discussed",
 ]);
 
 export const SENSITIVE_PREDICATES = new Set([
@@ -27,6 +38,20 @@ export const SENSITIVE_PREDICATES = new Set([
 ]);
 
 export const SENSITIVE_CATEGORIES = new Set(["health", "money"]);
+
+export const CORE_PREDICATES = new Set([
+  "relationship.status",
+  "relationship.partner",
+  "relationship.former_partner",
+  "family.spouse",
+  "family.child",
+  "family.parent",
+  "employment.current",
+  "employment.searching",
+  "residence.current",
+  "health.condition",
+  "goal.current",
+]);
 
 export function isReplacePredicate(predicateKey: string | null | undefined): boolean {
   return Boolean(predicateKey && REPLACE_PREDICATES.has(predicateKey));

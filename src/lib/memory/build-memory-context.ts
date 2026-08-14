@@ -24,6 +24,9 @@ import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import { canReadMemory } from "@/lib/memory/preferences";
 import { canSessionReadLongTermMemory } from "@/lib/session";
 import { recordMemoryProductEvent } from "@/lib/memory/product-analytics";
+import type { MemoryDepth } from "@/lib/memory/memory-budget";
+import type { MemoryRetrievalMetrics } from "@/lib/memory/client-memory-pack";
+import { emptyMemoryMetrics } from "@/lib/memory/client-memory-pack";
 
 export interface MemoryContextParams {
   userId?: string | null;
@@ -43,6 +46,10 @@ export interface MemoryContextParams {
   includeSessionAnchor?: boolean;
   /** Default true — chat's period-spread mode turns this off. */
   includePastSessions?: boolean;
+  /** compact | standard | deep — adaptive memory budget. */
+  depth?: MemoryDepth;
+  /** Product hint for budget (reading, natal, hd, matrix, daily, chat). */
+  product?: string | null;
 }
 
 export interface MemoryContext {
@@ -56,6 +63,7 @@ export interface MemoryContext {
   sessionAnchorBlock: string;
   /** Long-term semantic facts from user_facts (upcoming events + critical + search). */
   factsBlock: string;
+  retrievalMetrics: MemoryRetrievalMetrics;
 }
 
 export async function buildMemoryContext(params: MemoryContextParams): Promise<MemoryContext> {
@@ -76,10 +84,16 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
       : false);
   const memoryOn = consentOn && sessionAllowsLongTerm;
 
-  const [factsBlock, pastSessionsBlock, sessionAnchorBlock] = await Promise.all([
+  const [factsLoaded, pastSessionsBlock, sessionAnchorBlock] = await Promise.all([
     memoryOn
-      ? loadClientMemoryBlock({ userId, queryText, sessionId: params.sessionId })
-      : Promise.resolve(""),
+      ? loadClientMemoryBlock({
+          userId,
+          queryText,
+          sessionId: params.sessionId,
+          depth: params.depth,
+          product: params.product,
+        })
+      : Promise.resolve({ block: "", metrics: emptyMemoryMetrics() }),
     memoryOn && includePastSessions
       ? buildMemoryBlock(userId, params.characterId, params.sessionId ?? null, queryText)
       : Promise.resolve(""),
@@ -94,6 +108,8 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
         )
       : Promise.resolve(""),
   ]);
+  const factsBlock = factsLoaded.block;
+  const retrievalMetrics = factsLoaded.metrics;
 
   // Profile identity fields stay available; thematic fields remain relevance-gated.
   const clientBlock = params.profile ? buildClientBlock(params.profile, queryText) : "";
@@ -105,10 +121,28 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
       sessionId: params.sessionId ?? null,
       sourceType: "chat",
       memoryEnabled: true,
+      numericValue: retrievalMetrics.memory_retrieval_ms,
+      metrics: {
+        memory_candidates_count: retrievalMetrics.memory_candidates_count,
+        memory_selected_count: retrievalMetrics.memory_selected_count,
+        memory_core_count: retrievalMetrics.memory_core_count,
+        memory_entity_matches_count: retrievalMetrics.memory_entity_matches_count,
+        memory_timeline_matches_count: retrievalMetrics.memory_timeline_matches_count,
+        memory_archived_matches_count: retrievalMetrics.memory_archived_matches_count,
+        memory_context_chars: retrievalMetrics.memory_context_chars,
+        memory_retrieval_ms: retrievalMetrics.memory_retrieval_ms,
+      },
     });
   }
 
-  return { queryText, clientBlock, pastSessionsBlock, sessionAnchorBlock, factsBlock };
+  return {
+    queryText,
+    clientBlock,
+    pastSessionsBlock,
+    sessionAnchorBlock,
+    factsBlock,
+    retrievalMetrics,
+  };
 }
 
 /**

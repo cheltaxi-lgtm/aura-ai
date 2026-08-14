@@ -542,6 +542,8 @@ export async function botMatrixRun(
     const numerologMemoryCtx = await buildMemoryContext({
       userId: profileUserId,
       characterId: "numerolog",
+      product: "matrix",
+      depth: "deep",
       sessionId: session.id,
       profile: {
         name: readerName,

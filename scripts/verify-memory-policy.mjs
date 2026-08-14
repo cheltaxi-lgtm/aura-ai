@@ -114,13 +114,23 @@ assert(
 const clientMemory = read("src/lib/memory/client-memory.ts");
 assert(
   "loadClientMemoryBlock fail-closes on empty query (no unconditional event leak)",
-  clientMemory.includes("if (!queryTrimmed)") && clientMemory.includes('return "";')
+  clientMemory.includes("if (!queryTrimmed)") &&
+    clientMemory.includes("emptyMemoryMetrics") &&
+    clientMemory.includes('block: ""')
 );
 assert(
-  "facts and events use semantic relevance fallback (no unconditional bypass)",
-  clientMemory.includes("isTextRelevantToQueryAsync") &&
-    clientMemory.includes("upcomingMatches") &&
-    clientMemory.includes("criticalMatches")
+  "facts retrieval uses ClientMemoryPack layers instead of raw topK only",
+  clientMemory.includes("buildClientMemoryPack") &&
+    clientMemory.includes("serializeClientMemoryPack")
+);
+const memoryPack = read("src/lib/memory/client-memory-pack.ts");
+assert(
+  "ClientMemoryPack fuses semantic, entity, predicate and core paths",
+  memoryPack.includes("getCoreFacts") &&
+    memoryPack.includes("getFactsByEntityKeys") &&
+    memoryPack.includes("getFactsByPredicates") &&
+    memoryPack.includes("searchFacts") &&
+    memoryPack.includes("includeArchived")
 );
 {
   const recordTurnSrc = clientMemory.slice(
@@ -135,10 +145,10 @@ assert(
 }
 assert(
   "client memory serializes facts as untrusted XML",
-  clientMemory.includes("memory_data") &&
-    clientMemory.includes("false") &&
-    clientMemory.includes("MEMORY_SECURITY_RULES") &&
-    clientMemory.includes("escapeMemoryXml")
+  memoryPack.includes("memory_data") &&
+    memoryPack.includes("false") &&
+    memoryPack.includes("MEMORY_SECURITY_RULES") &&
+    memoryPack.includes("escapeMemoryXml")
 );
 
 const preferences = read("src/lib/memory/preferences.ts");
@@ -452,6 +462,29 @@ assert(
   "employment predicates mutually supersede",
   read("src/lib/memory/predicates.ts").includes("supersedeGroupForPredicate") &&
     read("src/lib/memory/user-facts.ts").includes("supersedeGroupForPredicate")
+);
+assert(
+  "memory v3 archive tier exists and prune no longer deletes biography",
+  read("src/lib/memory/user-facts.ts").includes("archive_tier") &&
+    read("src/lib/memory/user-facts.ts").includes("archive_tier = 'archived'") &&
+    !/async function pruneUser[\s\S]{0,500}DELETE FROM user_facts/.test(
+      read("src/lib/memory/user-facts.ts")
+    )
+);
+assert(
+  "protected facts cannot be auto-rewritten",
+  read("src/lib/memory/user-facts.ts").includes("isProtectedFact") &&
+    read("src/lib/memory/authority.ts").includes("canMutateExistingFact")
+);
+assert(
+  "HD interpretation uses shared memory context",
+  read("src/lib/human-design/personalization-lens.ts").includes("buildMemoryContext") &&
+    read("src/app/api/human-design/report/route.ts").includes("appendHdPersonalizationLens")
+);
+assert(
+  "adaptive memory budget is used by the pack serializer",
+  read("src/lib/memory/memory-budget.ts").includes("maxFactLines") &&
+    read("src/lib/memory/client-memory.ts").includes("memoryBudgetFor")
 );
 assert(
   "semantic dedup does not merge contradictory supersede-group predicates",

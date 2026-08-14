@@ -6,6 +6,7 @@ import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { EMBED_DIM, embedModel, embedTexts } from "@/lib/memory/embeddings";
 import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
 import {
+  CORE_PREDICATES,
   isSensitiveFact,
   supersedeGroupForPredicate,
 } from "@/lib/memory/predicates";
@@ -23,6 +24,13 @@ import {
   recordMemoryProductEvent,
   toAnalyticsFactCategory,
 } from "@/lib/memory/product-analytics";
+import {
+  canAutoSupersede,
+  canMutateExistingFact,
+  isProtectedFact,
+  isUserAuthored,
+} from "@/lib/memory/authority";
+import { entitiesCompatibleForMerge } from "@/lib/memory/entities";
 
 export interface UserFact {
   id: string;
@@ -45,6 +53,7 @@ export interface UserFact {
   validTo?: string | null;
   confirmationCount?: number;
   captureTier?: "draft" | "durable" | "user_confirmed";
+  archiveTier?: "hot" | "warm" | "archived";
 }
 
 export interface FactInput {
@@ -93,16 +102,17 @@ type FactRow = {
   valid_to?: Date | string | null;
   confirmation_count?: number;
   capture_tier?: "draft" | "durable" | "user_confirmed";
+  archive_tier?: "hot" | "warm" | "archived";
 };
 
 const FACT_COLUMNS = `id, fact, category, event_date::text AS event_date, source_character, salience,
   status, predicate_key, entity_key, subject_key, sensitivity, confidence, source_type,
   source_entity_id, evidence_quote, source_captured_at, valid_from, valid_to, confirmation_count,
-  capture_tier`;
+  capture_tier, archive_tier`;
 const FACT_COLUMNS_F = `f.id, f.fact, f.category, f.event_date::text AS event_date, f.source_character, f.salience,
   f.status, f.predicate_key, f.entity_key, f.subject_key, f.sensitivity, f.confidence, f.source_type,
   f.source_entity_id, f.evidence_quote, f.source_captured_at, f.valid_from, f.valid_to, f.confirmation_count,
-  f.capture_tier`;
+  f.capture_tier, f.archive_tier`;
 
 function toVectorLiteral(vec: number[]): string {
   return `[${vec.join(",")}]`;
@@ -135,6 +145,7 @@ function mapRow(r: FactRow): UserFact {
     validTo: r.valid_to ? new Date(r.valid_to).toISOString() : null,
     confirmationCount: r.confirmation_count ?? 0,
     captureTier: r.capture_tier ?? "durable",
+    archiveTier: r.archive_tier ?? "hot",
   };
 }
 
@@ -151,13 +162,27 @@ const FACT_WRITE_LOCK_CLASS = 823_401;
 async function pruneUser(client: PoolClient, userId: string): Promise<void> {
   await queryClient(
     client,
-    `DELETE FROM user_facts
+    `UPDATE user_facts
+        SET archive_tier = 'archived', updated_at = NOW()
       WHERE user_id = $1
         AND status = 'active'
+        AND archive_tier <> 'archived'
+        AND NOT (
+          source_type IN ('user', 'profile')
+          OR source_character = 'user'
+          OR capture_tier = 'user_confirmed'
+        )
         AND id NOT IN (
           SELECT id FROM user_facts
-           WHERE user_id = $1 AND status = 'active'
-           ORDER BY salience DESC, updated_at DESC
+           WHERE user_id = $1
+             AND status = 'active'
+             AND archive_tier <> 'archived'
+           ORDER BY
+             CASE WHEN source_type IN ('user', 'profile')
+                       OR source_character = 'user'
+                       OR capture_tier = 'user_confirmed'
+                  THEN 0 ELSE 1 END,
+             salience DESC, updated_at DESC
            LIMIT $2
         )`,
     [userId, MAX_FACTS_PER_USER]
@@ -173,6 +198,7 @@ async function supersedeReplaceables(
   // Singleton / mutually exclusive predicates supersede prior active rows.
   const group = supersedeGroupForPredicate(input.predicateKey);
   if (!group.length) return;
+  const incomingUser = isUserAuthored(input);
   await queryClient(
     client,
     `UPDATE user_facts
@@ -184,8 +210,16 @@ async function supersedeReplaceables(
         AND status = 'active'
         AND id <> $4
         AND predicate_key = ANY($2::text[])
-        AND COALESCE(subject_key, 'client') = COALESCE($3, 'client')`,
-    [userId, group, input.subjectKey ?? "client", newId]
+        AND COALESCE(subject_key, 'client') = COALESCE($3, 'client')
+        AND (
+          $5
+          OR NOT (
+            source_type IN ('user', 'profile')
+            OR source_character = 'user'
+            OR capture_tier = 'user_confirmed'
+          )
+        )`,
+    [userId, group, input.subjectKey ?? "client", newId, incomingUser]
   );
 }
 
@@ -211,10 +245,16 @@ async function upsertFactLocked(
       id: string;
       distance: number;
       source_character: string | null;
+      source_type: string | null;
       predicate_key: string | null;
+      entity_key: string | null;
+      subject_key: string | null;
+      capture_tier: string | null;
+      confidence: number | null;
     }>(
       client,
-      `SELECT id, (embedding <=> $2::vector) AS distance, source_character, predicate_key
+      `SELECT id, (embedding <=> $2::vector) AS distance, source_character, source_type,
+              predicate_key, entity_key, subject_key, capture_tier, confidence
          FROM user_facts
         WHERE user_id = $1 AND embedding IS NOT NULL AND status = $4
           AND COALESCE(embedding_model, $3) = $3
@@ -231,13 +271,66 @@ async function upsertFactLocked(
       Boolean(input.predicateKey) &&
       nearest!.predicate_key !== input.predicateKey &&
       incomingGroup.includes(nearest!.predicate_key!);
+    const entityCompatible = nearest
+      ? entitiesCompatibleForMerge(
+          {
+            entityKey: nearest.entity_key,
+            subjectKey: nearest.subject_key,
+            predicateKey: nearest.predicate_key,
+          },
+          {
+            entityKey: input.entityKey,
+            subjectKey: input.subjectKey,
+            predicateKey: input.predicateKey,
+          }
+        )
+      : true;
+    const nearestProtected = nearest
+      ? isProtectedFact({
+          sourceType: nearest.source_type,
+          sourceCharacter: nearest.source_character,
+          captureTier: nearest.capture_tier,
+        })
+      : false;
+    const mayRewrite = nearest
+      ? canMutateExistingFact(
+          {
+            sourceType: nearest.source_type,
+            sourceCharacter: nearest.source_character,
+            captureTier: nearest.capture_tier,
+            confidence: nearest.confidence,
+          },
+          {
+            sourceType,
+            sourceCharacter: input.sourceCharacter,
+            captureTier,
+            confidence: input.confidence,
+          }
+        )
+      : true;
     if (
       nearest &&
       Number(nearest.distance) <= DEDUP_MAX_DISTANCE &&
       !conflictingPredicate &&
+      entityCompatible &&
       !input.forceNewVersion
     ) {
       const incomingUser = userAuthored;
+      if (nearestProtected && !incomingUser) {
+        await queryClient(
+          client,
+          `UPDATE user_facts
+              SET salience = GREATEST(salience, $2),
+                  confidence = GREATEST(confidence, $3),
+                  last_confirmed_at = NOW(),
+                  confirmation_count = confirmation_count + 1,
+                  updated_at = NOW()
+            WHERE id = $1`,
+          [nearest.id, salience, input.confidence ?? 1]
+        );
+        return nearest.id;
+      }
+      if (!mayRewrite) return nearest.id;
       await queryClient(
         client,
         `UPDATE user_facts
@@ -288,7 +381,16 @@ async function upsertFactLocked(
           MEMORY_CONSENT_VERSION,
         ]
       );
-      if (!draft) await supersedeReplaceables(client, userId, input, nearest.id);
+      if (!draft && canAutoSupersede(
+        {
+          sourceType: nearest.source_type,
+          sourceCharacter: nearest.source_character,
+          captureTier: nearest.capture_tier,
+        },
+        { sourceType, sourceCharacter: input.sourceCharacter, captureTier }
+      )) {
+        await supersedeReplaceables(client, userId, input, nearest.id);
+      }
       return nearest.id;
     }
 
@@ -330,9 +432,18 @@ async function upsertFactLocked(
     return inserted[0]?.id ?? null;
   }
 
-  const { rows: textDup } = await queryClient<{ id: string; source_character: string | null }>(
+  const { rows: textDup } = await queryClient<{
+    id: string;
+    source_character: string | null;
+    source_type: string | null;
+    capture_tier: string | null;
+    entity_key: string | null;
+    subject_key: string | null;
+    predicate_key: string | null;
+  }>(
     client,
-    `SELECT id, source_character FROM user_facts
+    `SELECT id, source_character, source_type, capture_tier, entity_key, subject_key, predicate_key
+       FROM user_facts
       WHERE user_id = $1
         AND status = $3
         AND lower(regexp_replace(fact, '\\s+', ' ', 'g')) =
@@ -342,6 +453,40 @@ async function upsertFactLocked(
   );
   if (textDup[0] && !input.forceNewVersion) {
     const incomingUser = userAuthored;
+    const textProtected = isProtectedFact({
+      sourceType: textDup[0].source_type,
+      sourceCharacter: textDup[0].source_character,
+      captureTier: textDup[0].capture_tier,
+    });
+    if (textProtected && !incomingUser) {
+      await queryClient(
+        client,
+        `UPDATE user_facts
+            SET salience = GREATEST(salience, $2),
+                last_confirmed_at = NOW(),
+                confirmation_count = confirmation_count + 1,
+                updated_at = NOW()
+          WHERE id = $1`,
+        [textDup[0].id, salience]
+      );
+      return textDup[0].id;
+    }
+    if (
+      !entitiesCompatibleForMerge(
+        {
+          entityKey: textDup[0].entity_key,
+          subjectKey: textDup[0].subject_key,
+          predicateKey: textDup[0].predicate_key,
+        },
+        {
+          entityKey: input.entityKey,
+          subjectKey: input.subjectKey,
+          predicateKey: input.predicateKey,
+        }
+      )
+    ) {
+      // Same text, different people — insert a new row below.
+    } else {
     await queryClient(
       client,
       `UPDATE user_facts
@@ -382,6 +527,7 @@ async function upsertFactLocked(
     );
     if (!draft) await supersedeReplaceables(client, userId, input, textDup[0].id);
     return textDup[0].id;
+    }
   }
 
   const { rows: inserted } = await queryClient<{ id: string }>(
@@ -526,7 +672,7 @@ export async function upsertFacts(userId: string, inputs: FactInput[]): Promise<
 export async function searchFacts(
   userId: string,
   queryText: string,
-  opts: { topK?: number } = {}
+  opts: { topK?: number; includeArchived?: boolean } = {}
 ): Promise<UserFact[]> {
   if (!userId) return [];
   const topK = opts.topK ?? 8;
@@ -536,6 +682,9 @@ export async function searchFacts(
   const embedding = await embedOne(trimmed, SEARCH_EMBED_TIMEOUT_MS);
   const vec = embedding ? toVectorLiteral(embedding) : null;
   const model = embedModel();
+  const archiveFilter = opts.includeArchived
+    ? "TRUE"
+    : "archive_tier IN ('hot', 'warm')";
 
   const { rows } = await query<FactRow>(
     `WITH       vec_ranked AS (
@@ -543,6 +692,7 @@ export async function searchFacts(
           FROM user_facts
          WHERE user_id = $1
            AND status = 'active'
+           AND ${archiveFilter}
            AND $2::vector IS NOT NULL
            AND embedding IS NOT NULL
            AND COALESCE(embedding_model, $5) = $5
@@ -558,6 +708,7 @@ export async function searchFacts(
           FROM user_facts
          WHERE user_id = $1
            AND status = 'active'
+           AND ${archiveFilter}
            AND to_tsvector('russian', fact) @@ plainto_tsquery('russian', $3)
          LIMIT 20
       ),
@@ -580,6 +731,90 @@ export async function searchFacts(
   return rows.map(mapRow);
 }
 
+export async function getKnownEntityKeys(userId: string): Promise<string[]> {
+  if (!userId) return [];
+  const { rows } = await query<{ entity_key: string }>(
+    `SELECT DISTINCT entity_key
+       FROM user_facts
+      WHERE user_id = $1
+        AND entity_key IS NOT NULL
+        AND entity_key LIKE 'person:%'`,
+    [userId]
+  );
+  return rows.map((r) => r.entity_key);
+}
+
+export async function getCoreFacts(userId: string, limit = 12): Promise<UserFact[]> {
+  if (!userId) return [];
+  const predicates = [...CORE_PREDICATES];
+  const { rows } = await query<FactRow>(
+    `SELECT ${FACT_COLUMNS}
+       FROM user_facts
+      WHERE user_id = $1
+        AND status = 'active'
+        AND archive_tier IN ('hot', 'warm')
+        AND (
+          predicate_key = ANY($2::text[])
+          OR capture_tier = 'user_confirmed'
+          OR source_type = 'user'
+          OR source_character = 'user'
+        )
+      ORDER BY
+        CASE WHEN capture_tier = 'user_confirmed' OR source_type = 'user' OR source_character = 'user'
+             THEN 0 ELSE 1 END,
+        salience DESC, updated_at DESC
+      LIMIT $3`,
+    [userId, predicates, limit]
+  );
+  return rows.map(mapRow);
+}
+
+export async function getFactsByEntityKeys(
+  userId: string,
+  entityKeys: string[],
+  opts: { includeArchived?: boolean; includeSuperseded?: boolean; limit?: number } = {}
+): Promise<UserFact[]> {
+  if (!userId || !entityKeys.length) return [];
+  const statuses = opts.includeSuperseded ? ["active", "superseded"] : ["active"];
+  const { rows } = await query<FactRow>(
+    `SELECT ${FACT_COLUMNS}
+       FROM user_facts
+      WHERE user_id = $1
+        AND status = ANY($2::text[])
+        AND entity_key = ANY($3::text[])
+        AND ($4 OR archive_tier IN ('hot', 'warm'))
+      ORDER BY
+        CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+        salience DESC, updated_at DESC
+      LIMIT $5`,
+    [userId, statuses, entityKeys, Boolean(opts.includeArchived), opts.limit ?? 16]
+  );
+  return rows.map(mapRow);
+}
+
+export async function getFactsByPredicates(
+  userId: string,
+  predicateKeys: string[],
+  opts: { includeArchived?: boolean; includeSuperseded?: boolean; limit?: number } = {}
+): Promise<UserFact[]> {
+  if (!userId || !predicateKeys.length) return [];
+  const statuses = opts.includeSuperseded ? ["active", "superseded"] : ["active"];
+  const { rows } = await query<FactRow>(
+    `SELECT ${FACT_COLUMNS}
+       FROM user_facts
+      WHERE user_id = $1
+        AND status = ANY($2::text[])
+        AND predicate_key = ANY($3::text[])
+        AND ($4 OR archive_tier IN ('hot', 'warm'))
+      ORDER BY
+        CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+        salience DESC, updated_at DESC
+      LIMIT $5`,
+    [userId, statuses, predicateKeys, Boolean(opts.includeArchived), opts.limit ?? 16]
+  );
+  return rows.map(mapRow);
+}
+
 export async function getUpcomingEvents(
   userId: string,
   withinDays = 45,
@@ -591,6 +826,7 @@ export async function getUpcomingEvents(
        FROM user_facts
       WHERE user_id = $1
         AND status = 'active'
+        AND archive_tier IN ('hot', 'warm')
         AND event_date IS NOT NULL
         AND event_date >= CURRENT_DATE
         AND event_date <= CURRENT_DATE + ($2 || ' days')::interval
@@ -653,7 +889,7 @@ export async function getCriticalFacts(userId: string, limit = 3): Promise<UserF
   const { rows } = await query<FactRow>(
     `SELECT ${FACT_COLUMNS}
        FROM user_facts
-      WHERE user_id = $1 AND status = 'active' AND salience >= 5
+      WHERE user_id = $1 AND status = 'active' AND archive_tier IN ('hot', 'warm') AND salience >= 5
       ORDER BY updated_at DESC
       LIMIT $2`,
     [userId, limit]
@@ -726,40 +962,41 @@ export async function decayStaleCriticalFacts(limit = 500): Promise<number> {
   return rows.length;
 }
 
-/** TTL: delete expired / past / superseded facts (tombstone first). */
+/** TTL: archive stale non-protected facts. Never hard-deletes biography. */
 export async function expireStaleFacts(limit = 500): Promise<number> {
-  const { rows } = await query<{
-    id: string;
-    user_id: string;
-    fact: string;
-    predicate_key: string | null;
-  }>(
-    `SELECT id, user_id, fact, predicate_key FROM user_facts
-      WHERE (
-           (status = 'superseded' AND updated_at < NOW() - INTERVAL '90 days')
-        OR (event_date IS NOT NULL AND event_date < CURRENT_DATE - INTERVAL '30 days')
-        OR (source_type NOT IN ('user', 'profile')
-            AND status = 'active'
-            AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '365 days'
-            AND sensitivity = 'normal')
-        OR (sensitivity = 'sensitive'
-            AND source_type NOT IN ('user', 'profile')
-            AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '180 days')
+  const { rows } = await query<{ id: string }>(
+    `UPDATE user_facts
+        SET archive_tier = 'archived', updated_at = NOW()
+      WHERE id IN (
+        SELECT id FROM user_facts
+         WHERE archive_tier <> 'archived'
+           AND NOT (
+             source_type IN ('user', 'profile')
+             OR source_character = 'user'
+             OR capture_tier = 'user_confirmed'
+           )
+           AND (
+                (status = 'superseded' AND updated_at < NOW() - INTERVAL '180 days')
+             OR (predicate_key = 'event.upcoming'
+                 AND event_date IS NOT NULL
+                 AND event_date < CURRENT_DATE - INTERVAL '30 days')
+             OR (source_type NOT IN ('user', 'profile')
+                 AND status = 'active'
+                 AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '365 days'
+                 AND sensitivity = 'normal'
+                 AND salience < 5)
+             OR (sensitivity = 'sensitive'
+                 AND source_type NOT IN ('user', 'profile')
+                 AND COALESCE(last_confirmed_at, updated_at) < NOW() - INTERVAL '180 days'
+                 AND salience < 5)
+           )
+         ORDER BY updated_at ASC
+         LIMIT $1
       )
-      ORDER BY updated_at ASC
-      LIMIT $1`,
+      RETURNING id`,
     [limit]
   );
-  if (!rows.length) return 0;
-  for (const row of rows) {
-    await addTombstone(row.user_id, row.fact, row.predicate_key).catch(() => undefined);
-  }
-  const ids = rows.map((r) => r.id);
-  const deleted = await query(
-    `DELETE FROM user_facts WHERE id = ANY($1::uuid[])`,
-    [ids]
-  );
-  return deleted.rowCount ?? 0;
+  return rows.length;
 }
 
 export const SESSION_MEMORIES_MAINTENANCE_CAP = 200;
@@ -830,7 +1067,7 @@ export async function runMemoryMaintenance(
 export async function countFacts(userId: string): Promise<number> {
   const { rows } = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count FROM user_facts
-      WHERE user_id = $1 AND status = 'active'`,
+      WHERE user_id = $1 AND status = 'active' AND archive_tier IN ('hot', 'warm')`,
     [userId]
   );
   return Number.parseInt(rows[0]?.count ?? "0", 10);
@@ -840,7 +1077,7 @@ export async function listFacts(userId: string, limit = 100): Promise<UserFact[]
   const { rows } = await query<FactRow>(
     `SELECT ${FACT_COLUMNS}
        FROM user_facts
-      WHERE user_id = $1 AND status = 'active'
+      WHERE user_id = $1 AND status = 'active' AND archive_tier IN ('hot', 'warm')
       ORDER BY salience DESC, updated_at DESC
       LIMIT $2`,
     [userId, limit]
@@ -853,7 +1090,9 @@ export async function listFactTimeline(userId: string, limit = 200): Promise<Use
     `SELECT ${FACT_COLUMNS}
        FROM user_facts
       WHERE user_id = $1 AND status IN ('draft', 'active', 'superseded')
-      ORDER BY COALESCE(valid_from, source_captured_at, created_at) DESC
+      ORDER BY
+        CASE WHEN archive_tier = 'archived' THEN 1 ELSE 0 END,
+        COALESCE(valid_from, source_captured_at, created_at) DESC
       LIMIT $2`,
     [userId, limit]
   );

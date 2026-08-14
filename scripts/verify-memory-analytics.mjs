@@ -30,7 +30,13 @@ for (const key of forbiddenKeys) {
 
 assert("event enum is closed", server.includes("MEMORY_PRODUCT_EVENTS") && server.includes("as const"));
 assert("arbitrary properties are impossible", !client.includes("properties?:") && !route.includes("value.properties"));
-assert("database properties are always empty", server.includes("'{}'::jsonb"));
+assert(
+  "database properties are numeric metrics only",
+  server.includes("safeMetricsJson") &&
+    server.includes("SAFE_METRIC_KEYS") &&
+    server.includes("memory_candidates_count") &&
+    !server.includes("factText")
+);
 assert("API requires authentication", route.includes("requireUserAuth()"));
 assert("API validates session ownership", route.includes("sessions WHERE id = $1 AND user_id = $2"));
 assert("API rate limits writes", route.includes("memory_product_analytics"));

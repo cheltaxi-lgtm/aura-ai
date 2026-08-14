@@ -13,6 +13,13 @@ import {
 } from "../src/lib/memory/grounding.ts";
 import { buildRitualAnswersMessage } from "../src/lib/memory/capture-helpers.ts";
 import { composeMemoryQueryText } from "../src/lib/memory/memory-relevance.ts";
+import {
+  canMutateExistingFact,
+  isProtectedFact,
+} from "../src/lib/memory/authority.ts";
+import { entitiesCompatibleForMerge, personEntityKey } from "../src/lib/memory/entities.ts";
+import { expandMemoryQuery } from "../src/lib/memory/query-expansion.ts";
+import { classifyFactConflict } from "../src/lib/memory/contradictions.ts";
 
 let failed = 0;
 function assert(name, cond) {
@@ -89,6 +96,36 @@ assert(
     intention: null,
     customQuestion: null,
   }) === ""
+);
+
+assert(
+  "manual fact is protected from auto overwrite",
+  isProtectedFact({ sourceType: "user", captureTier: "user_confirmed" }) &&
+    !canMutateExistingFact(
+      { sourceType: "user", captureTier: "user_confirmed" },
+      { sourceType: "chat", captureTier: "durable" }
+    )
+);
+
+assert(
+  "same first name with different roles does not merge",
+  entitiesCompatibleForMerge(
+    { entityKey: personEntityKey("Сергей", "former_spouse") },
+    { entityKey: personEntityKey("Сергей", "colleague") }
+  ) === false
+);
+
+assert(
+  "work question expands to employment predicates",
+  expandMemoryQuery("Стоит ли менять работу?").predicateHints.includes("employment.current")
+);
+
+assert(
+  "employment change is a temporal update",
+  classifyFactConflict(
+    { fact: "Клиент ищет работу", predicateKey: "employment.searching" },
+    { fact: "Клиент устроился", predicateKey: "employment.current", operation: "replace" }
+  ) === "temporal_update"
 );
 
 console.log(`\n--- ${failed} failed ---`);

@@ -112,7 +112,7 @@ async function main() {
       userId: U,
       queryText: "Артём выпускной и смена работы",
     });
-    ok(!denied.trim(), "without consent, memory block is empty");
+    ok(!denied.block.trim(), "without consent, memory block is empty");
 
     await recordInitialMemoryChoice(U, "enabled");
     await updateMemoryPreferences(U, { autoCaptureEnabled: false });
@@ -141,17 +141,18 @@ async function main() {
     const crit = await getCriticalFacts(U);
     ok(crit.some((f) => /развод/i.test(f.fact)), "critical (salience>=5) fact surfaced");
 
-    const block = await loadClientMemoryBlock({
+    const loaded = await loadClientMemoryBlock({
       userId: U,
       queryText: "Артём выпускной и смена работы",
     });
+    const block = loaded.block;
     ok(/ДОЛГОСРОЧНАЯ ПАМЯТЬ/.test(block), "assembled block has memory header");
     ok(/upcoming_events|<fact /.test(block), "assembled block serializes facts");
     ok(/trusted="false"/.test(block), "assembled block marks memory untrusted");
 
     // Empty query must not inject events/critical/facts.
     const emptyBlock = await loadClientMemoryBlock({ userId: U, queryText: "" });
-    ok(!emptyBlock.trim(), "empty query injects nothing");
+    ok(!emptyBlock.block.trim(), "empty query injects nothing");
 
     // Auto-capture off ⇒ recordTurn must not enqueue.
     await recordTurn({
@@ -442,7 +443,7 @@ async function main() {
       userId: U,
       queryText: "работа Артём",
     });
-    ok(!afterRevoke.trim(), "revoked consent stops memory injection");
+    ok(!afterRevoke.block.trim(), "revoked consent stops memory injection");
   } finally {
     await cleanup();
   }

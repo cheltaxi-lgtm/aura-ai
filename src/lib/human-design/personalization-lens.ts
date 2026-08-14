@@ -1,38 +1,31 @@
 /**
- * Memory + profile lens for natal reports — does not include birth coords/dates
- * (those stay in chart evidence only).
+ * Memory + profile lens for HD reports — does not change chart calculations.
  */
 import {
   appendMemoryContextToPrompt,
   buildMemoryContext,
 } from "@/lib/memory/build-memory-context";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
-import {
-  buildClientGenderInstruction,
-  resolveClientGender,
-} from "@/lib/russian-name-gender";
 
-export async function appendNatalPersonalizationLens(
-  systemPrompt: string,
+export async function appendHdPersonalizationLens(
+  extraSystem: string,
   params: {
     profileUserId: string;
     user?: {
       name?: string | null;
       gender?: string | null;
-      zodiac?: string | null;
       life_focus?: string | null;
       main_question?: string | null;
     } | null;
+    focusQuestion?: string | null;
   }
 ): Promise<string> {
   try {
     const displayName = normalizePersonDisplayName(params.user?.name) || params.user?.name || undefined;
-    const firstName = (displayName ?? "").trim().split(/\s+/)[0] || "друг";
-    const gender = resolveClientGender(params.user?.gender, firstName);
     const memoryCtx = await buildMemoryContext({
       userId: params.profileUserId,
-      characterId: "shri-raj",
-      product: "natal",
+      characterId: "evelina",
+      product: "hd",
       depth: "deep",
       profile: params.user
         ? {
@@ -43,29 +36,25 @@ export async function appendNatalPersonalizationLens(
                 : params.user.gender === "female"
                   ? "Женский"
                 : undefined,
-            zodiac: params.user.zodiac,
             lifeFocus: params.user.life_focus ?? undefined,
             mainQuestion: params.user.main_question ?? undefined,
           }
         : null,
-      lastUserMessage: params.user?.main_question || "натальная трактовка",
+      lastUserMessage:
+        params.focusQuestion || params.user?.main_question || "разбор дизайна человека",
       mainQuestion: params.user?.main_question ?? undefined,
     });
-
-    const withMemory = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
+    const withMemory = appendMemoryContextToPrompt(extraSystem, memoryCtx);
     return `${withMemory}
-
-${buildClientGenderInstruction({ gender, firstName })}
 
 ЛИНЗА ПРОФИЛЯ (не источник фактов карты):
 - lifeFocus / mainQuestion / факты памяти — только линза тона и акцентов.
-- Связывай трактовку максимум с 1–2 активными релевантными фактами: явно покажи, какое
-  наблюдение карты они помогают применить к текущей жизненной траектории.
+- Связывай трактовку максимум с 1–2 активными релевантными фактами.
 - Черновики не используй. Не упоминай память или статус факта в готовом тексте.
-- Положения планет, дома, даты и evidence ID — ТОЛЬКО из блока EVIDENCE ниже.
-- Не повторяй координаты или дату рождения из памяти — их нет в этом промпте намеренно.`;
+- Тип, стратегия, авторитет, центры, каналы и ворота — ТОЛЬКО из locked contract / evidence.
+- Память не имеет права менять расчёт карты.`;
   } catch (err) {
-    console.warn("Natal personalization lens failed:", err);
-    return systemPrompt;
+    console.warn("HD personalization lens failed:", err);
+    return extraSystem;
   }
 }

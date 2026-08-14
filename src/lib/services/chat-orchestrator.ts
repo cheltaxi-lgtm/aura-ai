@@ -601,6 +601,8 @@ export class ChatOrchestrator {
     const ctx = await buildMemoryContext({
       userId: this.profileUserId,
       characterId: this.characterId,
+      product: "chat",
+      depth: "standard",
       sessionId: this.dbOk && this.session ? this.session.id : null,
       profile: this.userProfile
         ? {

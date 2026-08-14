@@ -645,6 +645,8 @@ CREATE TABLE IF NOT EXISTS user_facts (
   confirmation_count INTEGER NOT NULL DEFAULT 0,
   capture_tier TEXT NOT NULL DEFAULT 'durable'
     CHECK (capture_tier IN ('draft', 'durable', 'user_confirmed')),
+  archive_tier TEXT NOT NULL DEFAULT 'hot'
+    CHECK (archive_tier IN ('hot', 'warm', 'archived')),
   created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
   updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
 );
@@ -665,6 +667,17 @@ CREATE INDEX IF NOT EXISTS idx_user_facts_fts
 CREATE INDEX IF NOT EXISTS idx_user_facts_active
   ON user_facts (user_id, updated_at DESC)
   WHERE status = 'active';
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_entity
+  ON user_facts (user_id, entity_key)
+  WHERE entity_key IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_archive
+  ON user_facts (user_id, archive_tier, status);
+
+CREATE INDEX IF NOT EXISTS idx_user_facts_core
+  ON user_facts (user_id, predicate_key)
+  WHERE status = 'active' AND archive_tier IN ('hot', 'warm');
 
 CREATE TABLE IF NOT EXISTS user_memory_preferences (
   user_id UUID PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,

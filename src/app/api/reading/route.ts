@@ -1020,6 +1020,8 @@ export async function POST(request: NextRequest) {
           const numerologMemoryCtx = await buildMemoryContext({
             userId: authed.profileUserId,
             characterId: "numerolog",
+            product: "matrix",
+            depth: "deep",
             sessionId: sessionId ?? undefined,
             profile: {
               name: userName,
@@ -1354,6 +1356,8 @@ export async function POST(request: NextRequest) {
       const memoryCtx = await buildMemoryContext({
         userId: authed.profileUserId,
         characterId,
+        product: "reading",
+        depth: "deep",
         sessionId,
         profile: { name: userName, gender, zodiac, birthDate, mainQuestion, lifeFocus },
         lastUserMessage: lastChatUserMessage,

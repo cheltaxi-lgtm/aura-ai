@@ -981,6 +981,8 @@ export async function POST(request: NextRequest) {
   const memoryCtx = await buildMemoryContext({
     userId: authed.profileUserId,
     characterId,
+    product: "intention",
+    depth: "deep",
     sessionId,
     profile: {
       name: userName,

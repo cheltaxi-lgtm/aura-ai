@@ -543,6 +543,8 @@ export async function botPhotoInterpret(input: {
       const memoryCtx = await buildMemoryContext({
         userId: profileUserId,
         characterId,
+        product: "photo",
+        depth: "standard",
         sessionId: resolvedSessionId,
         profile: {
           name: ctx.userName,

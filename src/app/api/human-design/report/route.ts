@@ -60,6 +60,7 @@ import { buildHdReportSystemPrompt, formatHdEvidence } from "@/lib/human-design/
 import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { rememberHdChartFact } from "@/lib/human-design/memory";
+import { appendHdPersonalizationLens } from "@/lib/human-design/personalization-lens";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 
 /** Sectional HD report: one call per section + editor. */
@@ -389,6 +390,13 @@ export async function POST(request: NextRequest) {
       charge = created.charge;
     }
 
+    const memoryLens = aboutOther
+      ? ""
+      : await appendHdPersonalizationLens("", {
+          profileUserId: userId,
+          user: profileRow,
+        });
+
     // Rollback flag: HD_SECTIONAL_REPORT=0 → legacy multi-pass path.
     const generated = useSectional
       ? await generateHdReportSectional({
@@ -396,6 +404,7 @@ export async function POST(request: NextRequest) {
           clientName,
           aboutOther,
           placeLabel: chart.placeName,
+          extraSystem: memoryLens || null,
           maxSectionRetries: 2,
           onProgress: makeWorkerProgressReporter(request),
         })

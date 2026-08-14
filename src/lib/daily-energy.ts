@@ -255,6 +255,8 @@ async function loadDailyMemoryPrompt(
     const memoryCtx = await buildMemoryContext({
       userId,
       characterId: charKey,
+      product: "daily",
+      depth: "compact",
       profile,
       lastUserMessage: "энергия дня прогноз на сегодня",
       mainQuestion: profile.mainQuestion,

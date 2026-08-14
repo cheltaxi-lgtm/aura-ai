@@ -91,10 +91,14 @@ function inferManualPredicate(fact: string, cat: UserFactCategory): string {
   }
   if (cat === "family") {
     if (/муж|жена|супруг|партн[её]р/i.test(f)) return "family.spouse";
+    if (/мама|папа|матер|отец|родител/i.test(f)) return "family.parent";
     if (/сын|доч|реб[её]н|дети|внук/i.test(f)) return "family.child";
-    return "family.child";
+    return "family.relative";
   }
-  if (cat === "relationship") return "relationship.status";
+  if (cat === "relationship") {
+    if (/бывш|развод|расстал/i.test(f)) return "relationship.former_partner";
+    return "relationship.status";
+  }
   if (cat === "goal") return "goal.current";
   if (cat === "event") return "event.upcoming";
   if (cat === "health") return "health.condition";

@@ -18,6 +18,7 @@ export const MEMORY_PRODUCT_EVENTS = [
   "memory_anchor_included",
   "memory_anchor_excluded",
   "memory_injected",
+  "memory_retrieved",
   "memory_purged",
 ] as const;
 
@@ -55,6 +56,8 @@ export interface MemoryProductEventInput {
   factSourceType?: Member<typeof MEMORY_FACT_SOURCE_TYPES> | null;
   sensitivity?: Member<typeof MEMORY_SENSITIVITIES> | null;
   numericValue?: number | null;
+  /** Counts only — never fact text, names, or quotes. */
+  metrics?: Record<string, number> | null;
 }
 
 const SAFE_TOKEN = /^[a-z0-9][a-z0-9._-]{0,63}$/i;
@@ -80,6 +83,28 @@ export function toAnalyticsFactCategory(
  * Best-effort recorder. Callers must never send memory text, evidence, prompts,
  * messages, names, email addresses, URLs, or arbitrary properties.
  */
+const SAFE_METRIC_KEYS = new Set([
+  "memory_candidates_count",
+  "memory_selected_count",
+  "memory_core_count",
+  "memory_entity_matches_count",
+  "memory_timeline_matches_count",
+  "memory_archived_matches_count",
+  "memory_context_chars",
+  "memory_retrieval_ms",
+]);
+
+function safeMetricsJson(metrics?: Record<string, number> | null): string {
+  if (!metrics) return "{}";
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(metrics)) {
+    if (!SAFE_METRIC_KEYS.has(key)) continue;
+    if (!Number.isFinite(value)) continue;
+    out[key] = Math.round(value);
+  }
+  return JSON.stringify(out);
+}
+
 export async function recordMemoryProductEvent(input: MemoryProductEventInput): Promise<boolean> {
   try {
     await query(
@@ -90,7 +115,7 @@ export async function recordMemoryProductEvent(input: MemoryProductEventInput): 
          sensitivity, numeric_value, properties
        ) VALUES (
          $1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15, $16,
-         '{}'::jsonb
+         $17::jsonb
        )
        ON CONFLICT DO NOTHING`,
       [
@@ -110,6 +135,7 @@ export async function recordMemoryProductEvent(input: MemoryProductEventInput): 
         input.factSourceType ?? null,
         input.sensitivity ?? null,
         input.numericValue ?? null,
+        safeMetricsJson(input.metrics),
       ]
     );
     return true;

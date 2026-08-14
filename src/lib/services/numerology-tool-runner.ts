@@ -62,6 +62,8 @@ export async function runNumerologTool(
   const memoryCtx = await buildMemoryContext({
     userId: input.profileUserId,
     characterId: "numerolog",
+    product: "matrix",
+    depth: "deep",
     sessionId: input.sessionId,
     profile: profile
       ? {
