@@ -176,12 +176,6 @@ export default function SiteFooter({
                 );
               }
             )}
-            <Link href="/telegram" className="editorial-footer__link">
-              Telegram-бот
-            </Link>
-            <Link href="/statyi" className="editorial-footer__link">
-              Журнал
-            </Link>
             <Link href="/partners" className="editorial-footer__link">
               Партнёрам
             </Link>
@@ -195,17 +189,19 @@ export default function SiteFooter({
             ) : null}
           </nav>
 
-          <nav className="editorial-footer__col" aria-label="Сервисы">
+          <nav className="editorial-footer__col editorial-footer__col--services" aria-label="Сервисы">
             <p className="editorial-footer__col-title">Сервисы</p>
-            {EDITORIAL_NAV.flatMap((item) => {
-              if ("hash" in item || item.href === "/cabinet") return [];
-              const href = !isLoggedIn && item.guestHref ? item.guestHref : item.href;
-              return [
-                <Link key={item.label} href={href} className="editorial-footer__link">
-                  {item.label}
-                </Link>,
-              ];
-            })}
+            <div className="editorial-footer__service-grid">
+              {EDITORIAL_NAV.flatMap((item) => {
+                if ("hash" in item || item.href === "/cabinet") return [];
+                const href = !isLoggedIn && item.guestHref ? item.guestHref : item.href;
+                return [
+                  <Link key={item.label} href={href} className="editorial-footer__link">
+                    {item.label}
+                  </Link>,
+                ];
+              })}
+            </div>
           </nav>
 
           <nav className="editorial-footer__col" aria-label="Документы">

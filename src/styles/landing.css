@@ -807,40 +807,6 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
-.home-seo-panel__dir {
-  margin-top: 2.75rem;
-  padding-top: 1.85rem;
-  border-top: 1px solid rgba(255, 255, 255, 0.06);
-}
-
-.home-seo-panel__dir-list {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  gap: 0.2rem 1.25rem;
-}
-
-.home-seo-panel__dir-list a {
-  display: block;
-  padding: 0.38rem 0;
-  color: rgba(237, 230, 218, 0.46);
-  font-size: 0.8125rem;
-  line-height: 1.35;
-}
-
-.home-seo-panel__dir-list a:hover {
-  color: rgba(232, 199, 126, 0.92);
-}
-
-.home-seo-panel__featured {
-  margin: 1.75rem 0 0;
-  font-size: 0.8125rem;
-  line-height: 1.5;
-  color: rgba(255, 255, 255, 0.38);
-}
-
 @media (min-width: 720px) {
   .home-seo-panel {
     padding: 4rem 1.5rem 5rem;
@@ -869,11 +835,6 @@
 @media (min-width: 1024px) {
   .home-seo-panel__starts {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
-  .home-seo-panel__dir-list {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 0.15rem 1.75rem;
   }
 }
 

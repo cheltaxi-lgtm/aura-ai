@@ -1,6 +1,6 @@
 import Link from "next/link";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
-import { getFeaturedSpreadIntents, getSpreadIntentBySlug } from "@/lib/spread-intents";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 
 const HOME_INTENT_SLUGS = [
   "chto-mezhdu-nami",
@@ -22,37 +22,11 @@ const START_LINKS = [
   { href: "/taro#besplatno", label: "Бесплатный расклад Таро" },
 ] as const;
 
-const DIRECTORY_LINKS = [
-  { href: "/photo-rasklad", label: "Расшифровка Таро по фото" },
-  { href: "/statyi/besplatnyy-rasklad-taro-online", label: "Что входит в бесплатный расклад" },
-  { href: "/statyi/rasshifrovka-taro-po-foto", label: "Как работает расшифровка по фото" },
-  { href: "/gadanie", label: "Гадание онлайн" },
-  { href: "/gadanie/da-net", label: "Гадание да или нет" },
-  { href: "/taro", label: "Таро онлайн" },
-  { href: "/runy", label: "Гадание на рунах" },
-  { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
-  { href: "/numerology", label: "Нумерология" },
-  { href: "/natalnaya-karta", label: "Натальная карта" },
-  { href: "/sovmestimost-znakov-zodiaka", label: "Совместимость знаков зодиака" },
-  { href: "/prognoz", label: "Прогнозы Таро" },
-  { href: "/cards", label: "Значения карт" },
-  { href: "/rasklady/lyubov", label: "Расклады на любовь" },
-  { href: "/rasklady/vernost-i-doverie", label: "Верность и доверие" },
-  { href: "/rasklady/budushchee", label: "На будущее" },
-  { href: "/rasklady", label: "Все расклады" },
-  { href: "/statyi", label: "Статьи" },
-  { href: "/lenormand", label: "Ленорман" },
-  { href: "/faq", label: "FAQ" },
-  { href: "/about", label: "О сервисе" },
-  { href: "/telegram", label: "Telegram-бот" },
-] as const;
-
 /**
  * Server-rendered SEO content for home — crawlable without JS.
  */
 export default function HomeSeoContent() {
   const intents = HOME_INTENT_SLUGS.map((slug) => getSpreadIntentBySlug(slug)).filter(Boolean);
-  const featured = getFeaturedSpreadIntents(4);
 
   return (
     <section className="home-seo-panel" aria-label="Zovus — матрица, натал, дизайн человека и Таро">
@@ -122,28 +96,6 @@ export default function HomeSeoContent() {
         </ul>
       </div>
 
-      <nav className="home-seo-panel__dir" aria-label="Разделы сервиса">
-        <h2 className="home-seo-panel__kicker">Разделы</h2>
-        <ul className="home-seo-panel__dir-list">
-          {DIRECTORY_LINKS.map((item) => (
-            <li key={`${item.href}:${item.label}`}>
-              <Link href={item.href}>{item.label}</Link>
-            </li>
-          ))}
-        </ul>
-      </nav>
-
-      {featured.length > 0 ? (
-        <p className="home-seo-panel__featured">
-          Также популярны:{" "}
-          {featured.map((item, i) => (
-            <span key={item.slug}>
-              {i > 0 ? ", " : ""}
-              <Link href={`/rasklady/${item.slug}`}>{item.title}</Link>
-            </span>
-          ))}
-        </p>
-      ) : null}
     </section>
   );
 }
