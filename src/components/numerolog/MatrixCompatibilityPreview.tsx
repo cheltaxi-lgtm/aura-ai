@@ -88,6 +88,7 @@ export default function MatrixCompatibilityPreview() {
   const [pendingBirths, setPendingBirths] = useState<{ dateA: string; dateB: string } | null>(
     null
   );
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   const [claiming, setClaiming] = useState(false);
   const [claimError, setClaimError] = useState<string | null>(null);
@@ -103,7 +104,7 @@ export default function MatrixCompatibilityPreview() {
   }, [authLoading, isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn || !preview || !dateA) {
+    if (!isLoggedIn || !preview || !pendingId) {
       setOwnedPair(false);
       return;
     }
@@ -111,12 +112,15 @@ export default function MatrixCompatibilityPreview() {
     void (async () => {
       try {
         const res = await fetch(
-          `/api/numerology/matrix-report?birthDate=${encodeURIComponent(dateA)}&toolId=matrix_compatibility`,
+          `/api/numerology/matrix-pair-owned?pendingId=${encodeURIComponent(pendingId)}`,
           { credentials: "include" }
         );
-        if (!res.ok) return;
-        const data = (await res.json()) as { owned?: boolean };
-        if (!cancelled) setOwnedPair(Boolean(data.owned));
+        if (!res.ok) {
+          if (!cancelled) setOwnedPair(false);
+          return;
+        }
+        const data = (await res.json()) as { owned?: unknown };
+        if (!cancelled) setOwnedPair(data.owned === true);
       } catch {
         if (!cancelled) setOwnedPair(false);
       }
@@ -124,7 +128,7 @@ export default function MatrixCompatibilityPreview() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, preview, dateA]);
+  }, [isLoggedIn, preview, pendingId]);
 
   const runClaim = useCallback(async (confirmReplace = false) => {
     setClaiming(true);
@@ -219,6 +223,7 @@ export default function MatrixCompatibilityPreview() {
     });
     const data = (await res.json().catch(() => ({}))) as {
       pending?: {
+        pendingId?: string;
         dateA: string;
         dateB: string;
         preview: MatrixCompatFreeSummary;
@@ -234,6 +239,7 @@ export default function MatrixCompatibilityPreview() {
     }
     setPreview(data.pending.preview);
     setPendingBirths({ dateA: data.pending.dateA, dateB: data.pending.dateB });
+    setPendingId(data.pending.pendingId ?? null);
     markPendingClaimIntent();
     return true;
   }
@@ -565,6 +571,7 @@ export default function MatrixCompatibilityPreview() {
             onClick={() => {
               setPreview(null);
               setPendingBirths(null);
+              setPendingId(null);
               clearPendingClaimIntent();
             }}
           >

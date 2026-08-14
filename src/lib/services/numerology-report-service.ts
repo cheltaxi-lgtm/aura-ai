@@ -555,6 +555,24 @@ export async function listUserMatrixReports(
   return rows.map(mapRow);
 }
 
+export async function listUserMatrixCompatibilityReports(
+  userId: string,
+  limit = 50
+): Promise<NumerologyReportHistoryItem[]> {
+  const safeLimit = Math.min(50, Math.max(1, Math.floor(limit)));
+  const { rows } = await query<NumerologyReportHistoryRow>(
+    `SELECT ${SELECT_COLS}
+     FROM numerology_report_history
+     WHERE user_id = $1
+       AND tool_id = 'matrix_compatibility'
+       AND length(trim(content)) > 0
+     ORDER BY created_at DESC
+     LIMIT $2`,
+    [userId, safeLimit]
+  );
+  return rows.map(mapRow);
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function getUserMatrixReportById(

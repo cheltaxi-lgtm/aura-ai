@@ -94,12 +94,14 @@ describe("free-to-paid-conversion", () => {
 
   it("MATRIX_PAIR_REPORT stays a paid rune action; pair CTA uses server ownership", () => {
     expect(PRICING.MATRIX_PAIR_REPORT).toBe(DEFAULT_RUNE_COSTS.MATRIX_PAIR_REPORT);
+    expect(PRICING.MATRIX_PAIR_REPORT).toBe(30);
     const pair = read("src/components/numerolog/MatrixCompatibilityPreview.tsx");
-    expect(pair).toMatch(/toolId=matrix_compatibility/);
-    expect(pair).toMatch(/\/api\/numerology\/matrix-report/);
-    const route = read("src/app/api/numerology/matrix-report/route.ts");
-    expect(route).toMatch(/matrix_compatibility/);
+    expect(pair).toMatch(/matrix-pair-owned\?pendingId=/);
+    expect(pair).not.toMatch(/\/api\/numerology\/matrix-report\?birthDate=/);
+    const route = read("src/app/api/numerology/matrix-pair-owned/route.ts");
     expect(route).toMatch(/requireProfileUserId/);
+    expect(route).toMatch(/hasOwnedMatrixPairForPending/);
+    expect(route).toMatch(/return NextResponse\.json\(\{ owned \}\)/);
   });
 
   it("cross-product list does not duplicate the pair paid CTA", () => {
