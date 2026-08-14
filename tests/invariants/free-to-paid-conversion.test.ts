@@ -88,6 +88,8 @@ describe("free-to-paid-conversion", () => {
     expect(matrix).toMatch(/matrix-claim|persistGuestMatrix/);
     expect(pair).toMatch(/matrix-pair-claim|persistPair/);
     expect(natal).toMatch(/natal-chart\/claim/);
+    expect(natal).toMatch(/natal-chart\/interpretation-owned\?artifactId=/);
+    expect(natal).not.toMatch(/\/api\/natal-chart\/history\?limit=/);
   });
 
   it("MATRIX_PAIR_REPORT stays a paid rune action; pair CTA uses server ownership", () => {

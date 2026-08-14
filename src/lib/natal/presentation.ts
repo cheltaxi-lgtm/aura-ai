@@ -32,6 +32,27 @@ export function matchesCurrentChart(
   );
 }
 
+export type NatalInterpretationOwnershipReport = VersionedPresentation & {
+  reportType: string;
+  content: string;
+};
+
+/**
+ * Exact current-chart ownership: a full interpretation for this
+ * birthFingerprint + engineVersion. Any other chart's report does not count.
+ */
+export function natalInterpretationOwnsCurrentChart(
+  reports: NatalInterpretationOwnershipReport[],
+  chart: Pick<NatalChartPayload, "birthFingerprint" | "engineVersion">
+): boolean {
+  return reports.some(
+    (report) =>
+      report.reportType === "interpretation" &&
+      Boolean(String(report.content ?? "").trim()) &&
+      matchesCurrentChart(report, chart)
+  );
+}
+
 export type BodyPosition = {
   key: string;
   name: string;

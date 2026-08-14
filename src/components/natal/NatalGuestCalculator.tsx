@@ -100,27 +100,24 @@ export default function NatalGuestCalculator() {
   }, [authLoading, isLoggedIn]);
 
   useEffect(() => {
-    if (!isLoggedIn || !result) {
+    if (!isLoggedIn || !result?.artifactId) {
       setOwnedNatal(false);
       return;
     }
+    const artifactId = result.artifactId;
     let cancelled = false;
     void (async () => {
       try {
-        const res = await fetch("/api/natal-chart/history?limit=20", {
-          credentials: "include",
-        });
-        if (!res.ok) return;
-        const data = (await res.json()) as {
-          reports?: Array<{ reportType?: string; content?: string }>;
-        };
-        const owned = Boolean(
-          data.reports?.some(
-            (r) =>
-              r.reportType === "interpretation" && Boolean(String(r.content ?? "").trim())
-          )
+        const res = await fetch(
+          `/api/natal-chart/interpretation-owned?artifactId=${encodeURIComponent(artifactId)}`,
+          { credentials: "include" }
         );
-        if (!cancelled) setOwnedNatal(owned);
+        if (!res.ok) {
+          if (!cancelled) setOwnedNatal(false);
+          return;
+        }
+        const data = (await res.json()) as { owned?: unknown };
+        if (!cancelled) setOwnedNatal(data.owned === true);
       } catch {
         if (!cancelled) setOwnedNatal(false);
       }
@@ -128,7 +125,7 @@ export default function NatalGuestCalculator() {
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, result]);
+  }, [isLoggedIn, result?.artifactId]);
 
   const searchPlaces = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
@@ -569,10 +566,6 @@ export default function NatalGuestCalculator() {
                       source: "guest_full",
                       state: freeToPaidFunnelState(ownedNatal),
                     });
-                    if (ownedNatal) {
-                      window.location.assign("/cabinet/astrology");
-                      return;
-                    }
                     void runClaim(false);
                   }}
                   className="inline-flex items-center justify-center rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-black disabled:opacity-60"

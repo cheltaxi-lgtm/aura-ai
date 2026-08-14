@@ -253,6 +253,29 @@ export async function listCurrentUserNatalReportHistory(
   return rows.map(mapNatalReportHistoryRow);
 }
 
+export async function userHasNatalInterpretationForChart(
+  userId: string,
+  chart: { birthFingerprint: string; engineVersion: string }
+): Promise<boolean> {
+  const birthFingerprint = chart.birthFingerprint.trim();
+  const engineVersion = chart.engineVersion.trim();
+  if (!userId || !birthFingerprint || !engineVersion) return false;
+
+  const { rows } = await query<{ owned: boolean }>(
+    `SELECT EXISTS (
+       SELECT 1
+       FROM natal_report_history
+       WHERE user_id = $1
+         AND birth_fingerprint = $2
+         AND engine_version = $3
+         AND report_type = 'interpretation'
+         AND NULLIF(BTRIM(content), '') IS NOT NULL
+     ) AS owned`,
+    [userId, birthFingerprint, engineVersion]
+  );
+  return rows[0]?.owned === true;
+}
+
 export async function deleteCurrentUserNatalReport(
   userId: string,
   reportId: string
