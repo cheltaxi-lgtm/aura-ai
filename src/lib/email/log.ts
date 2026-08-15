@@ -228,6 +228,51 @@ export async function deleteEmailLog(params: {
   return res.rowCount ?? 0;
 }
 
+/** Privacy-safe win-back return rates from existing log + last_login_at. No PII. */
+export async function getInactiveWinbackAttribution(sinceDays = 30): Promise<
+  Array<{
+    template: "inactive_7d" | "inactive_14d";
+    sent: number;
+    returned24h: number;
+    returned72h: number;
+  }>
+> {
+  try {
+    const res = await query<{
+      template: "inactive_7d" | "inactive_14d";
+      sent: string;
+      returned_24h: string;
+      returned_72h: string;
+    }>(
+      `SELECT l.template,
+              COUNT(*)::text AS sent,
+              COUNT(*) FILTER (
+                WHERE ua.last_login_at > l.created_at
+                  AND ua.last_login_at <= l.created_at + INTERVAL '24 hours'
+              )::text AS returned_24h,
+              COUNT(*) FILTER (
+                WHERE ua.last_login_at > l.created_at
+                  AND ua.last_login_at <= l.created_at + INTERVAL '72 hours'
+              )::text AS returned_72h
+         FROM reengagement_email_log l
+         JOIN user_accounts ua ON ua.profile_user_id = l.user_id
+        WHERE l.template IN ('inactive_7d', 'inactive_14d')
+          AND l.created_at >= NOW() - ($1::int || ' days')::interval
+        GROUP BY l.template
+        ORDER BY l.template`,
+      [sinceDays]
+    );
+    return res.rows.map((r) => ({
+      template: r.template,
+      sent: parseInt(r.sent, 10) || 0,
+      returned24h: parseInt(r.returned_24h, 10) || 0,
+      returned72h: parseInt(r.returned_72h, 10) || 0,
+    }));
+  } catch {
+    return [];
+  }
+}
+
 export async function getReengagementEmailStats(sinceDays = 30): Promise<
   Array<{ template: string; count: number }>
 > {

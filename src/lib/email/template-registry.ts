@@ -76,9 +76,9 @@ export const EMAIL_TEMPLATE_REGISTRY: EmailTemplateDef[] = [
     id: "inactive_7d",
     label: "Win-back 7 дней",
     category: "marketing",
-    description: "Пользователь не заходил 7+ дней, marketing_consent=true.",
+    description: "Пользователь не заходил 7–14 дней, marketing_consent=true.",
     previewHtml: () => inactiveUserEmailHtml("Анна", 7),
-    previewSubject: "Zovus — бесплатный расклад на сегодня",
+    previewSubject: "Zovus — давно не виделись",
   },
   {
     id: "inactive_14d",
@@ -86,7 +86,7 @@ export const EMAIL_TEMPLATE_REGISTRY: EmailTemplateDef[] = [
     category: "marketing",
     description: "Пользователь не заходил 14+ дней, marketing_consent=true.",
     previewHtml: () => inactiveUserEmailHtml("Анна", 14),
-    previewSubject: "Zovus — мы скучаем, карты ждут вас",
+    previewSubject: "Zovus — ваш Zovus остаётся с Вами",
   },
   {
     id: "joint_reading_partner",

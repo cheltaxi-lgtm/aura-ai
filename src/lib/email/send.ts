@@ -14,6 +14,8 @@ export {
   dailyReminderEmailHtml,
   dailyBonusReminderEmailHtml,
   inactiveUserEmailHtml,
+  inactiveUserEmailText,
+  inactiveWinbackCtaUrl,
   welcomeEmailHtml,
   passwordResetEmailHtml,
   passwordChangedEmailHtml,

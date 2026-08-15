@@ -105,6 +105,14 @@ export function dailyBonusReminderEmailHtml(
   );
 }
 
+/** Canonical home for generic inactive win-back — not Daily Cards, not daily-energy. */
+export const INACTIVE_WINBACK_HOME_PATH = "/";
+
+export function inactiveWinbackCtaUrl(siteUrl?: string): string {
+  const url = (siteUrl || getSiteUrl()).replace(/\/$/, "");
+  return `${url}${INACTIVE_WINBACK_HOME_PATH === "/" ? "/" : INACTIVE_WINBACK_HOME_PATH}`;
+}
+
 export function inactiveUserEmailHtml(
   name: string,
   inactiveDays: number,
@@ -112,18 +120,33 @@ export function inactiveUserEmailHtml(
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
+  const ctaUrl = inactiveWinbackCtaUrl(url);
   const body =
     inactiveDays <= 7
-      ? `<p>Вы давно не заходили — а карты уже готовы к <strong>бесплатному</strong> раскладу на сегодня.</p>
-         <p style="font-size:14px;color:#555">Один клик — и вы снова в потоке: суточный расклад, бонусные руны и ваши сохранённые сессии.</p>`
-      : `<p>Мы скучаем! Прошло уже две недели — за это время накопилось много нового: расклады, бонусы и персональные разборы.</p>
-         <p style="font-size:14px;color:#555">Вернитесь на минуту: бесплатный расклад на сутки и ежедневные руны ждут вас.</p>`;
+      ? `<p>Давно не виделись.</p>
+         <p>Можно вернуться к своим вопросам, поговорить с мастером или открыть персональный Zovus — и посмотреть, что вам сейчас доступно.</p>`
+      : `<p>Ваш Zovus остаётся с Вами.</p>
+         <p>Можно продолжить с того места, где остановились. Личный контекст сохраняется там, где вы это разрешили — начинать всё заново не нужно.</p>`;
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
      ${body}
-     ${cta(`${url}/?daily=1`, "Вернуться на Zovus")}`,
+     ${cta(ctaUrl, "Вернуться в Zovus")}`,
     `Вы согласились на рассылку Zovus. Отписаться можно в профиле или написав на ${getSupportEmail()}.`
   );
+}
+
+export function inactiveUserEmailText(
+  name: string,
+  inactiveDays: number,
+  siteUrl?: string
+): string {
+  const safeName = name.trim() || "друг";
+  const ctaUrl = inactiveWinbackCtaUrl(siteUrl);
+  const lead =
+    inactiveDays <= 7
+      ? "Давно не виделись. Можно вернуться к своим вопросам, поговорить с мастером или открыть персональный Zovus."
+      : "Ваш Zovus остаётся с Вами. Можно продолжить с того места, где остановились — начинать всё заново не нужно.";
+  return `${safeName}, ${lead} ${ctaUrl}`;
 }
 
 function jointReadingEmailShell(name: string, bodyHtml: string, ctaUrl: string, ctaLabel: string): string {

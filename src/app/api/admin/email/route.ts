@@ -7,6 +7,7 @@ import {
   deleteEmailLog,
   getEmailLogStats,
   getEmailLogStatsByTemplate,
+  getInactiveWinbackAttribution,
   getReengagementEmailStats,
   listEmailLog,
   purgeReengagementLog,
@@ -111,11 +112,12 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ count });
   }
 
-  const [stats24h, stats7d, byTemplate, reengagementStats, logPage] = await Promise.all([
+  const [stats24h, stats7d, byTemplate, reengagementStats, winbackAttribution, logPage] = await Promise.all([
     getEmailLogStats(24),
     getEmailLogStats(168),
     getEmailLogStatsByTemplate(168),
     getReengagementEmailStats(30),
+    getInactiveWinbackAttribution(30),
     listEmailLog({
       status: status && ["sent", "failed", "skipped"].includes(status) ? status : undefined,
       template,
@@ -148,6 +150,7 @@ export async function GET(request: NextRequest) {
     stats7d,
     byTemplate,
     reengagementStats,
+    winbackAttribution,
     log: logPage,
   }, { headers: { "Cache-Control": "no-store" } });
 }
