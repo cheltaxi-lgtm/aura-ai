@@ -601,9 +601,14 @@ function scheduleMemoryDrain(): void {
         );
       }
       const intel = await processMemoryIntelligenceJobs(MEMORY_BATCH_SIZE);
-      if (intel.processed || intel.failed) {
+      if (
+        intel.processed ||
+        intel.failed ||
+        intel.memory_intelligence_dirty_count ||
+        intel.memory_intelligence_rebuild_truncated_count
+      ) {
         console.log(
-          `[memory-intelligence] processed=${intel.processed} failed=${intel.failed} rebuild_ms=${intel.rebuildMs}`
+          `[memory-intelligence] processed=${intel.processed} failed=${intel.failed} rebuild_ms=${intel.rebuildMs} dirty=${intel.memory_intelligence_dirty_count} processing=${intel.memory_intelligence_processing_count} failed_queue=${intel.memory_intelligence_failed_count} truncated=${intel.memory_intelligence_rebuild_truncated_count}`
         );
       }
     } catch (error) {

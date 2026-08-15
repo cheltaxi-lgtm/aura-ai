@@ -1137,18 +1137,32 @@ export async function listFactTimeline(userId: string, limit = 200): Promise<Use
   return rows.map(mapRow);
 }
 
-const INTELLIGENCE_REBUILD_PAGE_SIZE = 250;
+export const INTELLIGENCE_REBUILD_PAGE_SIZE = 250;
+export const INTELLIGENCE_REBUILD_MAX_PAGES = 40;
+
+export type IntelligenceRebuildFacts = {
+  facts: UserFact[];
+  truncated: boolean;
+};
 
 /**
  * Paginated loader for derived rebuild. Includes archived + historical
  * active/superseded rows. Drafts and forgotten are excluded.
  * Does not change listFactTimeline / V3 retrieval.
  */
-export async function listFactsForIntelligenceRebuild(userId: string): Promise<UserFact[]> {
-  if (!userId) return [];
+export async function listFactsForIntelligenceRebuild(
+  userId: string,
+  opts?: { pageSize?: number; maxPages?: number }
+): Promise<IntelligenceRebuildFacts> {
+  if (!userId) return { facts: [], truncated: false };
+  const pageSize = Math.max(
+    1,
+    Math.min(opts?.pageSize ?? INTELLIGENCE_REBUILD_PAGE_SIZE, 500)
+  );
+  const maxPages = Math.max(1, opts?.maxPages ?? INTELLIGENCE_REBUILD_MAX_PAGES);
   const out: UserFact[] = [];
   let cursorId: string | null = null;
-  const maxPages = 40;
+  let truncated = false;
   for (let page = 0; page < maxPages; page += 1) {
     const result = await query<FactRow>(
       `SELECT ${FACT_COLUMNS}
@@ -1164,15 +1178,30 @@ export async function listFactsForIntelligenceRebuild(userId: string): Promise<U
           )
         ORDER BY created_at ASC, id ASC
         LIMIT $3`,
-      [userId, cursorId, INTELLIGENCE_REBUILD_PAGE_SIZE]
+      [userId, cursorId, pageSize]
     );
     const rows: FactRow[] = result.rows;
     if (!rows.length) break;
     for (const row of rows) out.push(mapRow(row));
     cursorId = rows[rows.length - 1].id;
-    if (rows.length < INTELLIGENCE_REBUILD_PAGE_SIZE) break;
+    if (rows.length < pageSize) break;
+    if (page === maxPages - 1) {
+      const peek = await query<{ id: string }>(
+        `SELECT id
+           FROM user_facts
+          WHERE user_id = $1
+            AND status IN ('active', 'superseded')
+            AND (created_at, id) > (
+              (SELECT created_at FROM user_facts WHERE id = $2::uuid AND user_id = $1),
+              $2::uuid
+            )
+          LIMIT 1`,
+        [userId, cursorId]
+      );
+      truncated = peek.rows.length > 0;
+    }
   }
-  return out;
+  return { facts: out, truncated };
 }
 
 export async function confirmFact(

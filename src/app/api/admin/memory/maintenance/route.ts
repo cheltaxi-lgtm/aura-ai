@@ -26,7 +26,16 @@ export async function POST(request: NextRequest) {
   ).catch(() => ({ processed: 0, stored: 0, failed: 0 }));
   const intelligence = await processMemoryIntelligenceJobs(
     Math.min(20, Math.max(5, Math.floor(limit / 10)))
-  ).catch(() => ({ processed: 0, failed: 0, rebuildMs: 0 }));
+  ).catch(() => ({
+    processed: 0,
+    failed: 0,
+    rebuildMs: 0,
+    truncated: 0,
+    memory_intelligence_dirty_count: 0,
+    memory_intelligence_processing_count: 0,
+    memory_intelligence_failed_count: 0,
+    memory_intelligence_rebuild_truncated_count: 0,
+  }));
   const payload = { ...result, extraction, intelligence };
   await logAdminAction(auth.sub, "memory_maintenance", "system", undefined, payload);
   return NextResponse.json({ ok: true, ...payload });

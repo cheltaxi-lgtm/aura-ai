@@ -173,6 +173,97 @@ export async function purgeUserMemoryIntelligence(userId: string): Promise<{
   }
 }
 
+export type MemoryIntelligenceOpsCounts = {
+  memory_intelligence_dirty_count: number;
+  memory_intelligence_processing_count: number;
+  memory_intelligence_failed_count: number;
+  memory_intelligence_rebuild_truncated_count: number;
+};
+
+const EMPTY_OPS: MemoryIntelligenceOpsCounts = {
+  memory_intelligence_dirty_count: 0,
+  memory_intelligence_processing_count: 0,
+  memory_intelligence_failed_count: 0,
+  memory_intelligence_rebuild_truncated_count: 0,
+};
+
+/** Privacy-safe queue + truncation counters. Numbers only. */
+export async function countMemoryIntelligenceOps(): Promise<MemoryIntelligenceOpsCounts> {
+  try {
+    const [queue, truncated] = await Promise.all([
+      query<{ dirty: string; processing: string; failed: string }>(
+        `SELECT
+           COUNT(*)::text AS dirty,
+           COUNT(*) FILTER (WHERE processing_at IS NOT NULL)::text AS processing,
+           COUNT(*) FILTER (WHERE last_error IS NOT NULL)::text AS failed
+           FROM user_memory_intelligence_dirty`
+      ),
+      query<{ value: string }>(
+        `SELECT value::text AS value
+           FROM user_memory_intelligence_metrics
+          WHERE metric = 'rebuild_truncated'`
+      ),
+    ]);
+    return {
+      memory_intelligence_dirty_count: Number(queue.rows[0]?.dirty ?? 0),
+      memory_intelligence_processing_count: Number(queue.rows[0]?.processing ?? 0),
+      memory_intelligence_failed_count: Number(queue.rows[0]?.failed ?? 0),
+      memory_intelligence_rebuild_truncated_count: Number(truncated.rows[0]?.value ?? 0),
+    };
+  } catch {
+    return { ...EMPTY_OPS };
+  }
+}
+
+export async function incrementIntelligenceRebuildTruncated(): Promise<void> {
+  try {
+    await query(
+      `INSERT INTO user_memory_intelligence_metrics (metric, value)
+       VALUES ('rebuild_truncated', 1)
+       ON CONFLICT (metric) DO UPDATE SET
+         value = user_memory_intelligence_metrics.value + 1`
+    );
+  } catch {
+    /* never log content or user ids */
+  }
+}
+
+/**
+ * Controlled dirty-marker seed for existing users with eligible raw facts.
+ * Does not rebuild. Concurrent markers keep newer generation semantics.
+ */
+export async function seedMemoryIntelligenceBackfill(opts?: {
+  userIds?: string[];
+}): Promise<number> {
+  try {
+    const userIds = opts?.userIds?.filter(Boolean) ?? [];
+    const result = await query(
+      `INSERT INTO user_memory_intelligence_dirty (
+         user_id, dirty_at, attempts, last_error, processing_at, generation
+       )
+       SELECT DISTINCT
+         user_id,
+         NOW(),
+         0,
+         NULL::text,
+         NULL::timestamptz,
+         1
+         FROM user_facts
+        WHERE status IN ('active', 'superseded')
+          AND ($1::uuid[] IS NULL OR user_id = ANY($1::uuid[]))
+       ON CONFLICT (user_id) DO UPDATE SET
+         dirty_at = NOW(),
+         last_error = NULL,
+         processing_at = NULL,
+         generation = user_memory_intelligence_dirty.generation + 1`,
+      [userIds.length ? userIds : null]
+    );
+    return result.rowCount ?? 0;
+  } catch {
+    return 0;
+  }
+}
+
 export async function countUserMemoryIntelligence(userId: string): Promise<{
   snapshots: number;
   episodes: number;

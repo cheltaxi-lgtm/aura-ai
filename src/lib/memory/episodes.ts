@@ -6,6 +6,7 @@
 import { query } from "@/lib/db";
 import {
   domainForFact,
+  INTELLIGENCE_CLEAN_USER_SQL,
   isIntelligenceEligibleFact,
   MEMORY_INTELLIGENCE_ALGORITHM_VERSION,
   type MemoryEpisode,
@@ -272,6 +273,7 @@ export async function loadEpisodes(
                 supporting_fact_ids, episode_key, computed_at, algorithm_version
            FROM user_memory_episodes
           WHERE user_id = $1 AND domain = ANY($2::text[])
+            AND ${INTELLIGENCE_CLEAN_USER_SQL}
           ORDER BY status ASC, computed_at DESC`,
         [userId, domains]
       )
@@ -280,6 +282,7 @@ export async function loadEpisodes(
                 supporting_fact_ids, episode_key, computed_at, algorithm_version
            FROM user_memory_episodes
           WHERE user_id = $1
+            AND ${INTELLIGENCE_CLEAN_USER_SQL}
           ORDER BY status ASC, computed_at DESC`,
         [userId]
       );

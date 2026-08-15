@@ -8,6 +8,18 @@
  */
 import { query } from "@/lib/db";
 import {
+  buildClientMemoryPack,
+  serializeClientMemoryPack,
+} from "@/lib/memory/client-memory-pack";
+import { personEntityKey } from "@/lib/memory/entities";
+import { isMemoryIntelligenceEnabled } from "@/lib/memory/freshness";
+import {
+  countUserMemoryIntelligence,
+  markUserMemoryIntelligenceDirty,
+} from "@/lib/memory/intelligence-dirty";
+import { rebuildUserMemoryIntelligence } from "@/lib/memory/intelligence-rebuild";
+import { memoryBudgetFor } from "@/lib/memory/memory-budget";
+import {
   upsertFact,
   upsertFacts,
   searchFacts,
@@ -39,6 +51,7 @@ import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 const U = "00000000-0000-0000-0000-0000000000aa";
 /** Isolated from extraction turns on U so employment lifecycle is not polluted. */
 const EMP = "00000000-0000-0000-0000-0000000000ef";
+const INTEL = "00000000-0000-0000-0000-0000000000b1";
 
 let fails = 0;
 const ok = (c: boolean, m: string) => {
@@ -80,6 +93,7 @@ async function cleanupUser(id: string) {
 async function cleanup() {
   await cleanupUser(U);
   await cleanupUser(EMP);
+  await cleanupUser(INTEL);
 }
 
 async function ensureSmokeUser(id: string, name: string) {
@@ -87,6 +101,135 @@ async function ensureSmokeUser(id: string, name: string) {
   await query(
     `INSERT INTO users (id,name,gender,birth_date,zodiac) VALUES ($1,$2,'male','1990-01-01','Козерог')`,
     [id, name]
+  );
+}
+
+async function runIntelligenceFlagOnSmoke() {
+  if (!isMemoryIntelligenceEnabled()) {
+    console.log("memory-smoke-test: intelligence flag off — skipping flag-ON scenarios");
+    return;
+  }
+  await ensureSmokeUser(INTEL, "__smoke_intel");
+  await recordInitialMemoryChoice(INTEL, "enabled");
+  const sergey = personEntityKey("Сергей");
+  await upsertFact(INTEL, {
+    fact: "Клиент работает аналитиком",
+    category: "work",
+    predicateKey: "employment.current",
+    sourceType: "chat",
+    salience: 4,
+  });
+  await upsertFact(INTEL, {
+    fact: "Раньше клиент работал кассиром",
+    category: "work",
+    predicateKey: "employment.former",
+    sourceType: "chat",
+    salience: 3,
+  });
+  await upsertFact(INTEL, {
+    fact: "Мама клиента живёт в Казани",
+    category: "family",
+    predicateKey: "family.parent",
+    sourceType: "user",
+    sourceCharacter: "user",
+    salience: 4,
+  });
+  await upsertFact(INTEL, {
+    fact: "Сергей бывший муж клиента",
+    category: "relationship",
+    predicateKey: "relationship.former_partner",
+    entityKey: sergey,
+    sourceType: "user",
+    sourceCharacter: "user",
+    salience: 4,
+  });
+  await query(
+    `INSERT INTO user_facts (
+       user_id, fact, category, predicate_key, status, salience, source_type,
+       last_confirmed_at, valid_from, source_captured_at, updated_at
+     ) VALUES (
+       $1, 'Клиент ищет подработку', 'work', 'employment.searching', 'active', 3, 'chat',
+       NOW() - INTERVAL '50 days', NOW() - INTERVAL '50 days',
+       NOW() - INTERVAL '50 days', NOW() - INTERVAL '50 days'
+     )`,
+    [INTEL]
+  );
+  await rebuildUserMemoryIntelligence(INTEL);
+
+  const workPack = await buildClientMemoryPack({
+    userId: INTEL,
+    queryText: "Стоит ли менять работу?",
+  });
+  const workXml = serializeClientMemoryPack(workPack, memoryBudgetFor("standard"));
+  ok(workPack.currentSnapshots.some((s) => s.domain === "work"), "1. work current state");
+  ok(
+    workPack.episodes.some((e) => e.domain === "work") || workXml.includes("employment.former"),
+    "2. work historical episode"
+  );
+  const family = await buildClientMemoryPack({
+    userId: INTEL,
+    queryText: "Как дела у родителей?",
+  });
+  ok(
+    /name="parents"|family\.parent/.test(
+      serializeClientMemoryPack(family, memoryBudgetFor("standard"))
+    ),
+    "3. family parent"
+  );
+  const named = await buildClientMemoryPack({
+    userId: INTEL,
+    queryText: "Что сейчас с Сергеем?",
+  });
+  ok(
+    named.episodes.every((e) => !e.entityKey || e.entityKey === sergey),
+    "4. named relationship entity"
+  );
+  ok(
+    /актуальность не подтверждена|freshness="stale"/.test(workXml),
+    "5. stale employment.searching"
+  );
+  ok(
+    workPack.episodes.every((e) => e.domain !== "relationship"),
+    "6. unrelated domain excluded"
+  );
+
+  await upsertFact(INTEL, {
+    fact: "Клиент работает инженером",
+    category: "work",
+    predicateKey: "employment.current",
+    sourceType: "chat",
+    salience: 4,
+  });
+  const dirtyPack = await buildClientMemoryPack({
+    userId: INTEL,
+    queryText: "Стоит ли менять работу?",
+  });
+  ok(
+    dirtyPack.currentSnapshots.length === 0 && dirtyPack.episodes.length === 0,
+    "7. dirty state → NO derived injection"
+  );
+  await rebuildUserMemoryIntelligence(INTEL);
+  const cleanPack = await buildClientMemoryPack({
+    userId: INTEL,
+    queryText: "Стоит ли менять работу?",
+  });
+  ok(
+    cleanPack.currentSnapshots.some((s) => s.domain === "work"),
+    "8. rebuild → derived appears"
+  );
+  await markUserMemoryIntelligenceDirty(INTEL);
+  await purgeAllUserMemory(INTEL);
+  const after = await countUserMemoryIntelligence(INTEL);
+  const leftover = await query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM user_facts WHERE user_id = $1`,
+    [INTEL]
+  );
+  ok(
+    after.snapshots === 0 &&
+      after.episodes === 0 &&
+      after.dirty === 0 &&
+      Number(leftover.rows[0]?.n ?? 1) === 0,
+    "9. purge → raw + derived + dirty all zero"
   );
 }
 
@@ -459,6 +602,8 @@ async function main() {
       queryText: "работа Артём",
     });
     ok(!afterRevoke.block.trim(), "revoked consent stops memory injection");
+
+    await runIntelligenceFlagOnSmoke();
   } finally {
     await cleanup();
   }

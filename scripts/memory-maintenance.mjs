@@ -121,6 +121,25 @@ async function main() {
         )`
     );
     console.log(`memory-maintenance: pruned ${sessionsPruned.rowCount} excess session memorie(s)`);
+    try {
+      const queue = await c.query(
+        `SELECT
+           COUNT(*)::text AS dirty,
+           COUNT(*) FILTER (WHERE processing_at IS NOT NULL)::text AS processing,
+           COUNT(*) FILTER (WHERE last_error IS NOT NULL)::text AS failed
+           FROM user_memory_intelligence_dirty`
+      );
+      const truncated = await c.query(
+        `SELECT value::text AS value
+           FROM user_memory_intelligence_metrics
+          WHERE metric = 'rebuild_truncated'`
+      );
+      console.log(
+        `memory-maintenance: intelligence dirty=${queue.rows[0]?.dirty ?? 0} processing=${queue.rows[0]?.processing ?? 0} failed=${queue.rows[0]?.failed ?? 0} truncated=${truncated.rows[0]?.value ?? 0}`
+      );
+    } catch {
+      /* intelligence tables may be absent on older DBs */
+    }
   } finally {
     await c.end();
   }

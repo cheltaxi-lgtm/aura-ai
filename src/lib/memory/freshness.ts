@@ -189,6 +189,15 @@ export function assessFactFreshness(fact: UserFact, now = new Date()): Freshness
   );
 }
 
+/**
+ * Default OFF. Release order after merge/deploy:
+ * 1) ship code + migrations 132/133/134 with this flag off;
+ * 2) worker drains dirty backfill asynchronously (dirty users stay on V3);
+ * 3) confirm queue drain / failed_count / health / V3 smoke;
+ * 4) set MEMORY_INTELLIGENCE_ENABLED=1 and restart;
+ * 5) flag-ON smoke on a disposable synthetic user.
+ * Do not enable the flag in the same step as the first intelligence migration.
+ */
 export function isMemoryIntelligenceEnabled(): boolean {
   const raw = process.env.MEMORY_INTELLIGENCE_ENABLED?.trim().toLowerCase();
   return raw === "1" || raw === "true" || raw === "yes" || raw === "on";

@@ -6,6 +6,7 @@ import { query } from "@/lib/db";
 import { assessFactFreshness } from "@/lib/memory/freshness";
 import {
   domainForFact,
+  INTELLIGENCE_CLEAN_USER_SQL,
   isIntelligenceEligibleFact,
   MEMORY_INTELLIGENCE_ALGORITHM_VERSION,
   MEMORY_SNAPSHOT_DOMAINS,
@@ -267,13 +268,15 @@ export async function loadCurrentStateSnapshots(
     ? await query<SnapshotRow>(
         `SELECT domain, state_json, supporting_fact_ids, computed_at, algorithm_version
            FROM user_memory_state_snapshots
-          WHERE user_id = $1 AND domain = ANY($2::text[])`,
+          WHERE user_id = $1 AND domain = ANY($2::text[])
+            AND ${INTELLIGENCE_CLEAN_USER_SQL}`,
         [userId, domains]
       )
     : await query<SnapshotRow>(
         `SELECT domain, state_json, supporting_fact_ids, computed_at, algorithm_version
            FROM user_memory_state_snapshots
-          WHERE user_id = $1`,
+          WHERE user_id = $1
+            AND ${INTELLIGENCE_CLEAN_USER_SQL}`,
         [userId]
       );
   return rows.map(mapSnapshotRow);

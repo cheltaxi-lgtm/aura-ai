@@ -593,6 +593,19 @@ assert(
   read("src/lib/memory/tombstones.ts").includes('NODE_ENV === "production"') &&
     read("src/lib/memory/tombstones.ts").includes("is required in production")
 );
+assert(
+  "derived snapshot/episode reads require a clean intelligence marker",
+  read("src/lib/memory/intelligence-types.ts").includes("INTELLIGENCE_CLEAN_USER_SQL") &&
+    read("src/lib/memory/current-state.ts").includes("INTELLIGENCE_CLEAN_USER_SQL") &&
+    read("src/lib/memory/episodes.ts").includes("INTELLIGENCE_CLEAN_USER_SQL") &&
+    read("src/lib/memory/intelligence-types.ts").includes("user_memory_intelligence_dirty")
+);
+assert(
+  "worker drains intelligence dirty queue with numeric aggregates only",
+  read("scripts/run-async-jobs.ts").includes("processMemoryIntelligenceJobs") &&
+    read("scripts/run-async-jobs.ts").includes("memory_intelligence_dirty_count") &&
+    !read("scripts/run-async-jobs.ts").includes("intel.userId")
+);
 
 console.log(`\n--- ${failed} failed ---`);
 process.exit(failed > 0 ? 1 : 0);

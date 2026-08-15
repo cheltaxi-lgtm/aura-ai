@@ -5,6 +5,11 @@
 
 export const MEMORY_INTELLIGENCE_ALGORITHM_VERSION = "p1.2";
 
+/** Shared clean-state predicate: $1 = user_id. Dirty/processing/failed → no derived rows. */
+export const INTELLIGENCE_CLEAN_USER_SQL = `NOT EXISTS (
+  SELECT 1 FROM user_memory_intelligence_dirty d WHERE d.user_id = $1
+)`;
+
 export const MEMORY_SNAPSHOT_DOMAINS = [
   "relationship",
   "family",

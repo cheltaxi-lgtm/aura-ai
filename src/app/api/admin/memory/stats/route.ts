@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { ensureDb, query } from "@/lib/db";
+import { countMemoryIntelligenceOps } from "@/lib/memory/intelligence-dirty";
 
 /** Aggregated global-memory health snapshot for the admin dashboard. */
 export async function GET() {
@@ -10,7 +11,7 @@ export async function GET() {
     return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
-  const [facts, sessions, jobs, product, retention, cohorts] = await Promise.all([
+  const [facts, sessions, jobs, product, retention, cohorts, intelligenceOps] = await Promise.all([
     query<{
       total: string;
       manual: string;
@@ -207,6 +208,7 @@ export async function GET() {
         ORDER BY cohort_month DESC, variant
         LIMIT 60`
     ),
+    countMemoryIntelligenceOps(),
   ]);
 
   const f = facts.rows[0];
@@ -296,5 +298,6 @@ export async function GET() {
       interpretation:
         "Observational correlation only. Variant comparisons are not causal uplift estimates.",
     },
+    intelligence: intelligenceOps,
   });
 }

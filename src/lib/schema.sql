@@ -837,6 +837,15 @@ CREATE INDEX IF NOT EXISTS idx_user_memory_intelligence_dirty_due
   ON user_memory_intelligence_dirty (dirty_at ASC)
   WHERE processing_at IS NULL;
 
+CREATE TABLE IF NOT EXISTS user_memory_intelligence_metrics (
+  metric TEXT PRIMARY KEY,
+  value BIGINT NOT NULL DEFAULT 0
+);
+
+INSERT INTO user_memory_intelligence_metrics (metric, value)
+VALUES ('rebuild_truncated', 0)
+ON CONFLICT (metric) DO NOTHING;
+
 CREATE TABLE IF NOT EXISTS diary_entries (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id       UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,

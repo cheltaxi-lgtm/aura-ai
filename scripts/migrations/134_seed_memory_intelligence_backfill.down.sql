@@ -1,0 +1,5 @@
+-- Seed rollback is a no-op.
+-- Do not DELETE from user_memory_intelligence_dirty: rows may include
+-- live write-path markers, not only this seed.
+-- Do not drop derived snapshots/episodes.
+-- Metrics table is additive operational state and is left in place.

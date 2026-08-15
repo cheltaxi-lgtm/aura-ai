@@ -27,6 +27,11 @@ export async function GET(request: NextRequest) {
     processed: 0,
     failed: 0,
     rebuildMs: 0,
+    truncated: 0,
+    memory_intelligence_dirty_count: 0,
+    memory_intelligence_processing_count: 0,
+    memory_intelligence_failed_count: 0,
+    memory_intelligence_rebuild_truncated_count: 0,
   }));
   return NextResponse.json({ ok: true, ...result, intelligence });
 }
