@@ -881,6 +881,9 @@ export interface GlobalUpcomingEvent {
   fact: string;
   eventDate: string;
   sourceCharacter: string | null;
+  category: string | null;
+  predicateKey: string | null;
+  sensitivity: string | null;
 }
 
 export async function getGlobalUpcomingEvents(
@@ -893,8 +896,12 @@ export async function getGlobalUpcomingEvents(
     fact: string;
     event_date: string;
     source_character: string | null;
+    category: string | null;
+    predicate_key: string | null;
+    sensitivity: string | null;
   }>(
-    `SELECT f.id, f.user_id, f.fact, f.event_date::text AS event_date, f.source_character
+    `SELECT f.id, f.user_id, f.fact, f.event_date::text AS event_date, f.source_character,
+            f.category, f.predicate_key, f.sensitivity
        FROM user_facts f
        JOIN user_memory_preferences p ON p.user_id = f.user_id
       WHERE f.status = 'active'
@@ -919,6 +926,9 @@ export async function getGlobalUpcomingEvents(
     fact: r.fact,
     eventDate: r.event_date,
     sourceCharacter: r.source_character,
+    category: r.category,
+    predicateKey: r.predicate_key,
+    sensitivity: r.sensitivity,
   }));
 }
 

@@ -943,10 +943,14 @@ CREATE TABLE IF NOT EXISTS notifications (
   body       TEXT NOT NULL,
   data       JSONB DEFAULT '{}',
   read       BOOLEAN DEFAULT FALSE,
-  created_at TIMESTAMPTZ DEFAULT NOW()
+  created_at TIMESTAMPTZ DEFAULT NOW(),
+  idempotency_key TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_notifications_user_unread ON notifications (user_id, created_at DESC) WHERE read = FALSE;
+CREATE UNIQUE INDEX IF NOT EXISTS idx_notifications_user_idempotency
+  ON notifications (user_id, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 -- === РўРµС…РїРѕРґРґРµСЂР¶РєР° (РѕР±СЂР°С‰РµРЅРёСЏ РїРѕР»СЊР·РѕРІР°С‚РµР»РµР№) ===
 CREATE TABLE IF NOT EXISTS support_tickets (

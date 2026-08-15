@@ -47,6 +47,7 @@ export default function NotificationBell({
   hiddenTrigger = false,
 }: NotificationBellProps) {
   const [items, setItems] = useState<NotificationItem[]>([]);
+  const [unreadCount, setUnreadCount] = useState(0);
   const [open, setOpen] = useState(false);
   const [loaded, setLoaded] = useState(false);
   const [mounted, setMounted] = useState(false);
@@ -58,12 +59,25 @@ export default function NotificationBell({
     try {
       const res = await fetch("/api/notifications", { credentials: "include" });
       if (!res.ok) return;
-      const json = (await res.json()) as { notifications?: NotificationItem[] };
-      const next = Array.isArray(json.notifications) ? json.notifications : [];
+      const json = (await res.json()) as {
+        notifications?: NotificationItem[];
+        items?: NotificationItem[];
+        unreadCount?: number;
+      };
+      const next = Array.isArray(json.items)
+        ? json.items
+        : Array.isArray(json.notifications)
+          ? json.notifications
+          : [];
+      const nextUnread =
+        typeof json.unreadCount === "number" && Number.isFinite(json.unreadCount)
+          ? Math.max(0, Math.floor(json.unreadCount))
+          : next.length;
       setItems(next);
+      setUnreadCount(nextUnread);
       if (typeof window !== "undefined") {
         window.dispatchEvent(
-          new CustomEvent(NOTIFICATION_COUNT_EVENT, { detail: next.length })
+          new CustomEvent(NOTIFICATION_COUNT_EVENT, { detail: nextUnread })
         );
       }
     } catch {
@@ -146,6 +160,7 @@ export default function NotificationBell({
 
   const markAllRead = useCallback(async () => {
     setItems([]);
+    setUnreadCount(0);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent(NOTIFICATION_COUNT_EVENT, { detail: 0 }));
     }
@@ -156,7 +171,7 @@ export default function NotificationBell({
     }
   }, []);
 
-  const count = items.length;
+  const count = unreadCount;
 
   if (!loaded && count === 0 && !hiddenTrigger) {
     // Avoid layout flash before first load resolves.

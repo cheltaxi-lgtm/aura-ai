@@ -33,6 +33,7 @@ export async function GET(request: NextRequest) {
       },
       ctaPath: "/cabinet",
       ctaLabel: "Рассказать мастеру",
+      idempotencyKey: `ritual_reminder:${item.id}`,
     });
     await markRitualReminded(item.id);
     processed++;

@@ -15,6 +15,8 @@ export interface DispatchNotificationParams {
   /** Optional in-app path a notification CTA should link to (defaults to home). */
   ctaPath?: string;
   ctaLabel?: string;
+  /** Logical dedupe key. Duplicate (userId, key) is a no-op, not a 500. */
+  idempotencyKey?: string | null;
 }
 
 export async function dispatchNotification(params: DispatchNotificationParams): Promise<void> {
@@ -23,6 +25,7 @@ export async function dispatchNotification(params: DispatchNotificationParams): 
     type: params.type,
     title: params.title,
     body: params.body,
+    idempotencyKey: params.idempotencyKey,
     // Persist the CTA so the in-app notification panel can render a link.
     data: {
       ...(params.data ?? {}),

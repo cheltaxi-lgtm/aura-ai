@@ -152,6 +152,7 @@ async function deliverInApp(row: DeliveryRow): Promise<void> {
       ctaPath: row.cta_path ?? "/cabinet",
       ctaLabel: "Открыть отчёт",
       data: { reportJobId: row.job_id },
+      idempotencyKey: `report_ready:${row.job_id}`,
     });
   }
 }

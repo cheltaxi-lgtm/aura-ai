@@ -124,6 +124,7 @@ export async function GET(request: NextRequest) {
           ctaPath: "/cabinet/astrology",
           ctaLabel: "Открыть периоды",
           data: { eventIds: highlights.map((event) => event.id) },
+          idempotencyKey: `natal_transit:${row.user_id}:${deliveryKey}`,
         });
         await query(
           `UPDATE natal_event_preferences SET last_notified_at = NOW(), updated_at = NOW()

@@ -18,7 +18,7 @@ import {
 import { saveAuthenticatedDailyTriplet } from "@/lib/daily-triplet-save";
 import { query } from "@/lib/db";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
-import { createHistoryEntry, createUserProfileForAccount } from "@/lib/users";
+import { createHistoryEntry, createUserProfileForAccount, recordTripletDrawAnchor } from "@/lib/users";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
 import { SAMPLE_SYMBOLS } from "./db/fixtures";
 
@@ -118,6 +118,10 @@ describe("daily-cards-reminder-delivery (source)", () => {
     expect(src).toMatch(/checkTripletCooldown/);
     expect(src).not.toMatch(/daily_readings/);
     expect(src).toMatch(/DAILY_CARDS_REMINDER_CTA/);
+    expect(src).toMatch(/claimReminderSlot/);
+    expect(src).toMatch(/ON CONFLICT \(user_id, sent_date, channel\) DO NOTHING/);
+    expect(src).not.toMatch(/idempotencyKey/);
+    expect(src).not.toMatch(/toLocaleDateString/);
     expect(DAILY_CARDS_REMINDER_CTA).toBe("/?dailyCards=1");
   });
 
@@ -288,5 +292,47 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     const second = await sendDailyRemindersForHour(9);
     expect(second).toEqual({ inApp: 0, email: 0 });
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("two authoritative reminder slots are not collapsed by generic notification dedup", async () => {
+    const { profile } = await seedReminderUser({
+      optIn: true,
+      dailyEmail: false,
+      dailyInApp: true,
+    });
+    const first = await sendDailyRemindersForHour(9);
+    expect(first.inApp).toBe(1);
+
+    await query(
+      `UPDATE daily_reminder_log
+          SET sent_date = CURRENT_DATE - 3,
+              created_at = NOW() - interval '3 days'
+        WHERE user_id = $1 AND channel = 'in_app'`,
+      [profile.id]
+    );
+    await recordTripletDrawAnchor(
+      profile.id,
+      new Date(Date.now() - 2 * 24 * 60 * 60 * 1000)
+    );
+
+    const second = await sendDailyRemindersForHour(9);
+    expect(second.inApp).toBe(1);
+
+    const notes = await query(
+      `SELECT id FROM notifications
+        WHERE user_id = $1 AND type = 'daily_reading_reminder'`,
+      [profile.id]
+    );
+    expect(notes.rows).toHaveLength(2);
+
+    const slots = await query<{ sent_date: string }>(
+      `SELECT sent_date::text AS sent_date
+         FROM daily_reminder_log
+        WHERE user_id = $1 AND channel = 'in_app'
+        ORDER BY sent_date`,
+      [profile.id]
+    );
+    expect(slots.rows).toHaveLength(2);
+    expect(slots.rows[0]?.sent_date).not.toBe(slots.rows[1]?.sent_date);
   });
 });

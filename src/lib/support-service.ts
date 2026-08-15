@@ -351,6 +351,7 @@ export async function addAdminSupportMessage(params: {
         ctaPath: "/cabinet/support",
         ctaLabel: "Открыть чат",
       },
+      idempotencyKey: `support_reply:${ticket.id}:${message.id}`,
     });
   }
 

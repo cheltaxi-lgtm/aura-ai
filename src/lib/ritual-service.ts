@@ -641,18 +641,25 @@ export async function createNotification(params: {
   title: string;
   body: string;
   data?: Record<string, unknown>;
-}): Promise<void> {
-  await query(
-    `INSERT INTO notifications (user_id, type, title, body, data)
-     VALUES ($1, $2, $3, $4, $5::jsonb)`,
+  idempotencyKey?: string | null;
+}): Promise<{ created: boolean }> {
+  if (!params.userId) return { created: false };
+  const key = params.idempotencyKey?.trim() || null;
+  const result = await query(
+    `INSERT INTO notifications (user_id, type, title, body, data, idempotency_key)
+     VALUES ($1, $2, $3, $4, $5::jsonb, $6)
+     ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL
+     DO NOTHING`,
     [
       params.userId,
       params.type,
       params.title,
       params.body,
       JSON.stringify(params.data ?? {}),
+      key,
     ]
   );
+  return { created: (result.rowCount ?? 0) > 0 };
 }
 
 export async function getUnreadNotifications(userId: string) {
@@ -672,6 +679,17 @@ export async function getUnreadNotifications(userId: string) {
     [userId]
   );
   return rows;
+}
+
+export async function countUnreadNotifications(userId: string): Promise<number> {
+  if (!userId) return 0;
+  const { rows } = await query<{ n: string }>(
+    `SELECT COUNT(*)::text AS n
+       FROM notifications
+      WHERE user_id = $1 AND read = FALSE`,
+    [userId]
+  );
+  return Number(rows[0]?.n ?? 0);
 }
 
 export async function markNotificationsRead(userId: string): Promise<void> {

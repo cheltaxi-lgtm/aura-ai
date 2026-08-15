@@ -139,6 +139,7 @@ export async function notifyJointReadingEvent(params: {
       ctaPath,
       ctaLabel,
       data: { token: params.token },
+      idempotencyKey: `${params.type}:${params.token}`,
     });
   }
 
@@ -979,6 +980,7 @@ export async function sendExpiringJointReadingReminders(withinDays = 3): Promise
         ctaPath: `/joint-reading/${row.token}`,
         ctaLabel: "Открыть приглашение",
         data: { token: row.token },
+        idempotencyKey: `joint_reading_expiring:${row.token}`,
       });
       sent += 1;
     } catch (err) {
