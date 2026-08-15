@@ -31,5 +31,4 @@ WHERE status IN ('active', 'superseded')
 ON CONFLICT (user_id) DO UPDATE SET
   dirty_at = NOW(),
   last_error = NULL,
-  processing_at = NULL,
   generation = user_memory_intelligence_dirty.generation + 1;

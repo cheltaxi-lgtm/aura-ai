@@ -273,7 +273,10 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
     const claims = await claimDirtyIntelligenceUsers(1);
     expect(claims).toHaveLength(1);
     await markUserMemoryIntelligenceDirty(user.id);
-    await rebuildUserMemoryIntelligence(user.id, { generation: claims[0].generation });
+    await rebuildUserMemoryIntelligence(user.id, {
+      generation: claims[0].generation,
+      processingAt: claims[0].processingAt,
+    });
     const counts = await countUserMemoryIntelligence(user.id);
     expect(counts.dirty).toBe(1);
   });
@@ -290,7 +293,10 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
     await markUserMemoryIntelligenceDirty(user.id);
     const claims = await claimDirtyIntelligenceUsers(1);
     expect(claims).toHaveLength(1);
-    await rebuildUserMemoryIntelligence(user.id, { generation: claims[0].generation });
+    await rebuildUserMemoryIntelligence(user.id, {
+      generation: claims[0].generation,
+      processingAt: claims[0].processingAt,
+    });
     const counts = await countUserMemoryIntelligence(user.id);
     expect(counts.dirty).toBe(0);
     expect(counts.snapshots).toBeGreaterThan(0);
@@ -301,7 +307,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
     await markUserMemoryIntelligenceDirty(user.id);
     const claims = await claimDirtyIntelligenceUsers(1);
     expect(claims).toHaveLength(1);
-    await failUserMemoryIntelligenceDirty(user.id, claims[0].generation);
+    await failUserMemoryIntelligenceDirty(user.id, claims[0].generation, claims[0].processingAt);
     const again = await claimDirtyIntelligenceUsers(1);
     expect(again.some((row) => row.userId === user.id)).toBe(true);
   });

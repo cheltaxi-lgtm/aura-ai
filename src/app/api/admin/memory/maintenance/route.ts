@@ -29,6 +29,7 @@ export async function POST(request: NextRequest) {
   ).catch(() => ({
     processed: 0,
     failed: 0,
+    skipped: 0,
     rebuildMs: 0,
     truncated: 0,
     memory_intelligence_dirty_count: 0,

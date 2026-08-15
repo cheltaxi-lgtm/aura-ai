@@ -594,6 +594,15 @@ assert(
     read("src/lib/memory/tombstones.ts").includes("is required in production")
 );
 assert(
+  "write-path mark/seed do not steal an active intelligence claim",
+  !/ON CONFLICT \(user_id\) DO UPDATE SET[\s\S]{0,180}processing_at = NULL/.test(
+    read("src/lib/memory/intelligence-dirty.ts")
+  ) &&
+    !/ON CONFLICT \(user_id\) DO UPDATE SET[\s\S]{0,180}processing_at = NULL/.test(
+      read("scripts/migrations/134_seed_memory_intelligence_backfill.sql")
+    )
+);
+assert(
   "derived snapshot/episode reads require a clean intelligence marker",
   read("src/lib/memory/intelligence-types.ts").includes("INTELLIGENCE_CLEAN_USER_SQL") &&
     read("src/lib/memory/current-state.ts").includes("INTELLIGENCE_CLEAN_USER_SQL") &&

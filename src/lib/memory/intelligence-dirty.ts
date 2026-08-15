@@ -3,15 +3,23 @@
  * Isolated from user-facts to avoid circular imports.
  * Fail-safe: missing table / DB errors never throw to the write path.
  *
- * Claim/clear is generation-safe: a write during rebuild increments
- * generation and the finishing rebuild cannot delete that newer marker.
+ * Claim ownership is (user_id, generation, processing_at).
+ * A write during rebuild bumps generation but does not steal the lease.
  */
 import { query } from "@/lib/db";
 
 export type MemoryIntelligenceDirtyClaim = {
   userId: string;
-  claimedDirtyAt: string;
   generation: number;
+  claimedDirtyAt: string;
+  processingAt: string;
+};
+
+export type MemoryIntelligenceDirtyPeek = {
+  userId: string;
+  generation: number;
+  claimedDirtyAt: string;
+  processingAt: string | null;
 };
 
 function iso(value: Date | string | null | undefined): string | null {
@@ -29,7 +37,6 @@ export async function markUserMemoryIntelligenceDirty(userId: string): Promise<v
        ON CONFLICT (user_id) DO UPDATE SET
          dirty_at = NOW(),
          last_error = NULL,
-         processing_at = NULL,
          generation = user_memory_intelligence_dirty.generation + 1`,
       [userId]
     );
@@ -40,20 +47,30 @@ export async function markUserMemoryIntelligenceDirty(userId: string): Promise<v
 
 export async function peekUserMemoryIntelligenceDirty(
   userId: string
-): Promise<MemoryIntelligenceDirtyClaim | null> {
+): Promise<MemoryIntelligenceDirtyPeek | null> {
   if (!userId) return null;
   try {
     const { rows } = await query<{
-      dirty_at: Date | string;
+      dirty_at: string;
       generation: number;
+      processing_at: string | null;
     }>(
-      `SELECT dirty_at, generation FROM user_memory_intelligence_dirty WHERE user_id = $1`,
+      `SELECT dirty_at::text AS dirty_at,
+              generation,
+              processing_at::text AS processing_at
+         FROM user_memory_intelligence_dirty
+        WHERE user_id = $1`,
       [userId]
     );
     const row = rows[0];
     const claimedDirtyAt = iso(row?.dirty_at);
     if (!row || !claimedDirtyAt) return null;
-    return { userId, claimedDirtyAt, generation: Number(row.generation) };
+    return {
+      userId,
+      claimedDirtyAt,
+      generation: Number(row.generation),
+      processingAt: row.processing_at,
+    };
   } catch {
     return null;
   }
@@ -66,8 +83,9 @@ export async function claimDirtyIntelligenceUsers(
   try {
     const { rows } = await query<{
       user_id: string;
-      dirty_at: Date | string;
+      dirty_at: string;
       generation: number;
+      processing_at: string;
     }>(
       `UPDATE user_memory_intelligence_dirty
           SET processing_at = NOW(),
@@ -81,17 +99,22 @@ export async function claimDirtyIntelligenceUsers(
            LIMIT $1
            FOR UPDATE SKIP LOCKED
         )
-      RETURNING user_id, dirty_at, generation`,
+      RETURNING user_id,
+                dirty_at::text AS dirty_at,
+                generation,
+                processing_at::text AS processing_at`,
       [cap]
     );
     return rows
       .map((row) => {
         const claimedDirtyAt = iso(row.dirty_at);
-        if (!claimedDirtyAt) return null;
+        const processingAt = row.processing_at;
+        if (!claimedDirtyAt || !processingAt) return null;
         return {
           userId: row.user_id,
           claimedDirtyAt,
           generation: Number(row.generation),
+          processingAt,
         };
       })
       .filter((row): row is MemoryIntelligenceDirtyClaim => Boolean(row));
@@ -100,18 +123,69 @@ export async function claimDirtyIntelligenceUsers(
   }
 }
 
+export async function isMemoryIntelligenceClaimCurrent(
+  userId: string,
+  generation: number,
+  processingAt: string
+): Promise<boolean> {
+  if (!userId || !processingAt || !Number.isFinite(generation)) return false;
+  try {
+    const { rows } = await query<{ ok: number }>(
+      `SELECT 1 AS ok
+         FROM user_memory_intelligence_dirty
+        WHERE user_id = $1
+          AND generation = $2
+          AND processing_at = $3::timestamptz`,
+      [userId, generation, processingAt]
+    );
+    return rows.length > 0;
+  } catch {
+    return false;
+  }
+}
+
+/** Release only this worker's lease. A newer processing_at is left untouched. */
+export async function releaseMemoryIntelligenceClaim(
+  userId: string,
+  processingAt: string
+): Promise<boolean> {
+  if (!userId || !processingAt) return false;
+  try {
+    const result = await query(
+      `UPDATE user_memory_intelligence_dirty
+          SET processing_at = NULL
+        WHERE user_id = $1
+          AND processing_at = $2::timestamptz`,
+      [userId, processingAt]
+    );
+    return (result.rowCount ?? 0) > 0;
+  } catch {
+    return false;
+  }
+}
+
 export async function clearUserMemoryIntelligenceDirty(
   userId: string,
-  generation: number
+  generation: number,
+  processingAt?: string | null
 ): Promise<boolean> {
   if (!userId || !Number.isFinite(generation)) return false;
   try {
-    const result = await query(
-      `DELETE FROM user_memory_intelligence_dirty
-        WHERE user_id = $1
-          AND generation = $2`,
-      [userId, generation]
-    );
+    const result = processingAt
+      ? await query(
+          `DELETE FROM user_memory_intelligence_dirty
+            WHERE user_id = $1
+              AND generation = $2
+              AND processing_at = $3::timestamptz`,
+          [userId, generation, processingAt]
+        )
+      : await query(
+          `DELETE FROM user_memory_intelligence_dirty
+            WHERE user_id = $1
+              AND generation = $2
+              AND processing_at IS NULL`,
+          [userId, generation]
+        );
     return (result.rowCount ?? 0) > 0;
   } catch {
     return false;
@@ -120,28 +194,37 @@ export async function clearUserMemoryIntelligenceDirty(
 
 export async function failUserMemoryIntelligenceDirty(
   userId: string,
-  generation?: number
+  generation?: number,
+  processingAt?: string | null
 ): Promise<void> {
   if (!userId) return;
   try {
+    if (processingAt && generation != null) {
+      const owned = await query(
+        `UPDATE user_memory_intelligence_dirty
+            SET processing_at = NULL,
+                last_error = 'rebuild_failed'
+          WHERE user_id = $1
+            AND generation = $2
+            AND processing_at = $3::timestamptz`,
+        [userId, generation, processingAt]
+      );
+      if ((owned.rowCount ?? 0) > 0) return;
+      await releaseMemoryIntelligenceClaim(userId, processingAt);
+      return;
+    }
     if (generation != null) {
       await query(
         `UPDATE user_memory_intelligence_dirty
             SET processing_at = NULL,
                 last_error = 'rebuild_failed'
           WHERE user_id = $1
-            AND generation = $2`,
+            AND generation = $2
+            AND processing_at IS NULL`,
         [userId, generation]
       );
       return;
     }
-    await query(
-      `UPDATE user_memory_intelligence_dirty
-          SET processing_at = NULL,
-              last_error = 'rebuild_failed'
-        WHERE user_id = $1`,
-      [userId]
-    );
   } catch {
     /* ignore — never log derived content */
   }
@@ -254,7 +337,6 @@ export async function seedMemoryIntelligenceBackfill(opts?: {
        ON CONFLICT (user_id) DO UPDATE SET
          dirty_at = NOW(),
          last_error = NULL,
-         processing_at = NULL,
          generation = user_memory_intelligence_dirty.generation + 1`,
       [userIds.length ? userIds : null]
     );
