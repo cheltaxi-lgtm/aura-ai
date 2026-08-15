@@ -16,6 +16,8 @@ import { isMemoryIntelligenceEnabled } from "@/lib/memory/freshness";
 import {
   countUserMemoryIntelligence,
   markUserMemoryIntelligenceDirty,
+  peekUserMemoryIntelligenceDirty,
+  releaseMemoryIntelligenceClaim,
 } from "@/lib/memory/intelligence-dirty";
 import { rebuildUserMemoryIntelligence } from "@/lib/memory/intelligence-rebuild";
 import { memoryBudgetFor } from "@/lib/memory/memory-budget";
@@ -86,8 +88,81 @@ async function okRetry(
 async function cleanupUser(id: string) {
   await purgeAllUserMemory(id).catch(() => {});
   await purgeFacts(id).catch(() => {});
+  await query(`DELETE FROM user_memory_state_snapshots WHERE user_id=$1`, [id]).catch(() => {});
+  await query(`DELETE FROM user_memory_episodes WHERE user_id=$1`, [id]).catch(() => {});
+  await query(`DELETE FROM user_memory_intelligence_dirty WHERE user_id=$1`, [id]).catch(() => {});
   await query(`DELETE FROM sessions WHERE user_id=$1`, [id]).catch(() => {});
   await query(`DELETE FROM users WHERE id=$1`, [id]).catch(() => {});
+}
+
+async function countSyntheticLeftovers(id: string): Promise<number> {
+  const [facts, snapshots, episodes, dirty, sessions, users] = await Promise.all([
+    query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM user_facts WHERE user_id=$1`, [id]),
+    query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM user_memory_state_snapshots WHERE user_id=$1`,
+      [id]
+    ),
+    query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM user_memory_episodes WHERE user_id=$1`,
+      [id]
+    ),
+    query<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM user_memory_intelligence_dirty WHERE user_id=$1`,
+      [id]
+    ),
+    query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM sessions WHERE user_id=$1`, [id]),
+    query<{ n: string }>(`SELECT COUNT(*)::text AS n FROM users WHERE id=$1`, [id]),
+  ]);
+  return (
+    Number(facts.rows[0]?.n ?? 0) +
+    Number(snapshots.rows[0]?.n ?? 0) +
+    Number(episodes.rows[0]?.n ?? 0) +
+    Number(dirty.rows[0]?.n ?? 0) +
+    Number(sessions.rows[0]?.n ?? 0) +
+    Number(users.rows[0]?.n ?? 0)
+  );
+}
+
+/** Smoke-owned lease for the disposable INTEL user only. Worker cannot claim it. */
+async function reserveSmokeIntelligenceLease(userId: string): Promise<{
+  generation: number;
+  processingAt: string;
+} | null> {
+  if (userId !== INTEL) return null;
+  const { rows } = await query<{ generation: string; processing_at: string }>(
+    `INSERT INTO user_memory_intelligence_dirty (
+       user_id, dirty_at, attempts, last_error, processing_at, generation
+     ) VALUES ($1, NOW(), 0, NULL, NOW(), 1)
+     ON CONFLICT (user_id) DO UPDATE SET
+       dirty_at = NOW(),
+       last_error = NULL,
+       generation = user_memory_intelligence_dirty.generation + 1,
+       processing_at = NOW()
+     RETURNING generation::text AS generation,
+               processing_at::text AS processing_at`,
+    [userId]
+  );
+  const row = rows[0];
+  if (!row?.processing_at) return null;
+  return { generation: Number(row.generation), processingAt: row.processing_at };
+}
+
+async function smokeLeaseStillOwned(
+  userId: string,
+  processingAt: string
+): Promise<{ generation: number; processingAt: string } | null> {
+  if (userId !== INTEL || !processingAt) return null;
+  const { rows } = await query<{ generation: string; processing_at: string }>(
+    `SELECT generation::text AS generation,
+            processing_at::text AS processing_at
+       FROM user_memory_intelligence_dirty
+      WHERE user_id = $1
+        AND processing_at = $2::timestamptz`,
+    [userId, processingAt]
+  );
+  const row = rows[0];
+  if (!row?.processing_at) return null;
+  return { generation: Number(row.generation), processingAt: row.processing_at };
 }
 
 async function cleanup() {
@@ -193,6 +268,8 @@ async function runIntelligenceFlagOnSmoke() {
     "6. unrelated domain excluded"
   );
 
+  const smokeLease = await reserveSmokeIntelligenceLease(INTEL);
+  ok(Boolean(smokeLease?.processingAt), "7. smoke lease reserved for disposable INTEL");
   await upsertFact(INTEL, {
     fact: "Клиент работает инженером",
     category: "work",
@@ -200,6 +277,21 @@ async function runIntelligenceFlagOnSmoke() {
     sourceType: "chat",
     salience: 4,
   });
+  const { rows: engineerRows } = await query<{ id: string }>(
+    `SELECT id FROM user_facts
+      WHERE user_id=$1 AND predicate_key='employment.current' AND status='active'`,
+    [INTEL]
+  );
+  const engineerId = engineerRows[0]?.id ?? "";
+  const held = smokeLease
+    ? await smokeLeaseStillOwned(INTEL, smokeLease.processingAt)
+    : null;
+  ok(
+    Boolean(smokeLease?.processingAt) &&
+      Boolean(held?.processingAt) &&
+      (held?.generation ?? 0) > (smokeLease?.generation ?? 0),
+    "7. dirty row still owned by smoke lease (worker did not claim)"
+  );
   const dirtyPack = await buildClientMemoryPack({
     userId: INTEL,
     queryText: "Стоит ли менять работу?",
@@ -208,13 +300,25 @@ async function runIntelligenceFlagOnSmoke() {
     dirtyPack.currentSnapshots.length === 0 && dirtyPack.episodes.length === 0,
     "7. dirty state → NO derived injection"
   );
+  if (smokeLease?.processingAt) {
+    await releaseMemoryIntelligenceClaim(INTEL, smokeLease.processingAt);
+  }
+  const afterRelease = await peekUserMemoryIntelligenceDirty(INTEL);
+  ok(
+    Boolean(afterRelease) && afterRelease?.processingAt == null,
+    "7. smoke lease released; dirty marker remains"
+  );
   await rebuildUserMemoryIntelligence(INTEL);
+  const afterRebuild = await countUserMemoryIntelligence(INTEL);
   const cleanPack = await buildClientMemoryPack({
     userId: INTEL,
     queryText: "Стоит ли менять работу?",
   });
   ok(
-    cleanPack.currentSnapshots.some((s) => s.domain === "work"),
+    afterRebuild.dirty === 0 &&
+      cleanPack.currentSnapshots.some((s) => s.domain === "work") &&
+      Boolean(engineerId) &&
+      cleanPack.currentSnapshots.some((s) => s.state.current === engineerId),
     "8. rebuild → derived appears"
   );
   await markUserMemoryIntelligenceDirty(INTEL);
@@ -608,6 +712,12 @@ async function main() {
     await cleanup();
   }
 
+  const leftover =
+    (await countSyntheticLeftovers(U)) +
+    (await countSyntheticLeftovers(EMP)) +
+    (await countSyntheticLeftovers(INTEL));
+  ok(leftover === 0, "cleanup leaves no synthetic raw/derived/dirty leftovers");
+
   if (fails > 0) {
     console.error(`\nmemory-smoke-test: ${fails} check(s) FAILED`);
     process.exit(1);
@@ -619,5 +729,12 @@ async function main() {
 main().catch(async (e) => {
   console.error("memory-smoke-test: fatal:", e instanceof Error ? e.stack : e);
   await cleanup().catch(() => {});
+  const leftover =
+    (await countSyntheticLeftovers(U).catch(() => 1)) +
+    (await countSyntheticLeftovers(EMP).catch(() => 1)) +
+    (await countSyntheticLeftovers(INTEL).catch(() => 1));
+  if (leftover > 0) {
+    console.error("memory-smoke-test: synthetic leftovers remain after fatal cleanup");
+  }
   process.exit(1);
 });

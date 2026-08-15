@@ -615,6 +615,19 @@ assert(
     read("scripts/run-async-jobs.ts").includes("memory_intelligence_dirty_count") &&
     !read("scripts/run-async-jobs.ts").includes("intel.userId")
 );
+const smoke = read("scripts/memory-smoke-test.ts");
+assert(
+  "flag-ON smoke reserves a disposable INTEL lease so the live worker cannot claim it",
+  smoke.includes("reserveSmokeIntelligenceLease") &&
+    smoke.includes("processing_at = NOW()") &&
+    smoke.includes("releaseMemoryIntelligenceClaim") &&
+    smoke.includes("00000000-0000-0000-0000-0000000000b1")
+);
+assert(
+  "async worker env sync persists MEMORY_INTELLIGENCE_ENABLED",
+  read("hosting/async-jobs-shared.env.keys").includes("MEMORY_INTELLIGENCE_ENABLED") &&
+    read("hosting/sync-async-jobs-env.sh").includes("async-jobs-shared.env.keys")
+);
 
 console.log(`\n--- ${failed} failed ---`);
 process.exit(failed > 0 ? 1 : 0);

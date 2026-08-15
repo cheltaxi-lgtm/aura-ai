@@ -129,6 +129,7 @@ assert.match(sharedEnvKeys, /ASYNC_JOB_KINDS/);
 assert.match(sharedEnvKeys, /OPENROUTER_HTTPS_PROXY/);
 assert.match(sharedEnvKeys, /ASYNC_REPORT_INPROCESS/);
 assert.match(sharedEnvKeys, /AUTH_SECRET/);
+assert.match(sharedEnvKeys, /MEMORY_INTELLIGENCE_ENABLED/);
 
 const photo = read("src/app/api/photo-reading/stream/route.ts");
 assert.match(photo, /enqueuePaidAsyncJob/);
