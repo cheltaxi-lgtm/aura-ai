@@ -15,7 +15,7 @@ import {
   getBrandTelegramUrl,
   getBrandTelegramUsername,
 } from "@/lib/brand";
-import { LEGAL_OPERATOR, operatorShortLabel } from "@/lib/legal-operator";
+import { LEGAL_OPERATOR } from "@/lib/legal-operator";
 import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
 import { EDITORIAL_FOOTER_TAGLINE, EDITORIAL_NAV } from "@/lib/editorial-landing-content";
 import { useAuth } from "@/lib/useAuth";
@@ -54,7 +54,6 @@ function LegalMeta({ year }: { year: number }) {
         <span className="site-legal-footer__brand">
           © {year} {BRAND_NAME}
         </span>
-        <span className="site-legal-footer__operator">{operatorShortLabel()}</span>
         <LegalDocLink
           href={`mailto:${LEGAL_OPERATOR.contactEmail}`}
           className="site-legal-footer__email"
@@ -232,7 +231,6 @@ export default function SiteFooter({
             <span className="site-legal-footer__brand">
               © {year} {BRAND_NAME}
             </span>
-            <span className="site-legal-footer__operator">{operatorShortLabel()}</span>
             <LegalDocLink
               href={`mailto:${LEGAL_OPERATOR.contactEmail}`}
               className="site-legal-footer__email"
