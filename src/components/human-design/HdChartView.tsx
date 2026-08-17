@@ -21,6 +21,7 @@ import {
 import Bodygraph from "./Bodygraph";
 import HdGenerating from "./HdGenerating";
 import HdShareCard from "./HdShareCard";
+import HdStaticBodygraph from "./HdStaticBodygraph";
 import { hdApiErrorMessage } from "./hd-errors";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 
@@ -236,13 +237,29 @@ export default function HdChartView({
         </p>
       )}
 
-      <Bodygraph
-        chart={chart}
-        transits={transits}
-        onCenterInsight={
-          isPublicShare ? undefined : (center) => void askCenterInsight(center)
-        }
-      />
+      <div className="print:hidden">
+        <Bodygraph
+          chart={chart}
+          transits={transits}
+          onCenterInsight={
+            isPublicShare ? undefined : (center) => void askCenterInsight(center)
+          }
+          subjectName={payload.subjectName}
+        />
+      </div>
+
+      {/* Print gets a light static bodygraph — the dark interactive stage
+          loses its background on paper and pale channels turn invisible. */}
+      <div className="hidden print:block">
+        <div className="mx-auto max-w-md">
+          <HdStaticBodygraph
+            chart={chart}
+            theme="light"
+            idPrefix={`hd-print-${payload.id}`}
+            className="w-full"
+          />
+        </div>
+      </div>
 
       {/* Print still gets the classic fact grid; hidden on screen */}
       <div className="hd-facts hidden print:grid">

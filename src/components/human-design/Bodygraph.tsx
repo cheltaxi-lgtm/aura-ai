@@ -4,9 +4,11 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from "react"
 import { motion, useMotionTemplate, useMotionValue, useReducedMotion } from "framer-motion";
 import type { HdBodyKey, HdCenterKey, HdChart, HdPublicChart } from "@/lib/human-design";
 import {
+  AUTHORITY_NAMES_RU,
   CENTER_NAMES_RU,
   CHANNELS,
   GATE_NAMES_RU,
+  TYPE_META,
 } from "@/lib/human-design";
 import {
   HD_CENTER_SHAPES,
@@ -14,6 +16,24 @@ import {
   HD_GATE_ANCHORS,
   gateAnchor,
 } from "./bodygraph-geometry";
+import {
+  GATE_WHEEL,
+  MANDALA_CX,
+  MANDALA_CY,
+  MANDALA_R_DESIGN,
+  MANDALA_R_GATE_NUM,
+  MANDALA_R_INNER,
+  MANDALA_R_OUTER,
+  MANDALA_R_PERSONALITY,
+  MANDALA_R_SIGN,
+  VIEWBOX_CHART,
+  VIEWBOX_MANDALA,
+  ZODIAC_SIGNS,
+  activationLongitude,
+  ringSectorPath,
+  wheelPoint,
+  wheelTick,
+} from "./bodygraph-mandala";
 import HdCosmos from "./HdCosmos";
 
 const COLOR_P = "#f2e7c9";
@@ -101,6 +121,14 @@ function formatDesignDate(utcIso: string): string {
   return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long", year: "numeric" });
 }
 
+function escapeXml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;");
+}
+
 export interface BodygraphProps {
   /** Owner views pass the full chart; public share payloads omit `design`. */
   chart: HdChart | HdPublicChart;
@@ -114,6 +142,8 @@ export interface BodygraphProps {
   focusChannels?: Set<string> | null;
   /** Ask Evelina about a center (paid). */
   onCenterInsight?: (center: HdCenterKey) => void;
+  /** Printed into the PNG export header. */
+  subjectName?: string | null;
 }
 
 interface ZoomState {
@@ -132,6 +162,7 @@ export default function Bodygraph({
   partnerGates,
   focusChannels = null,
   onCenterInsight,
+  subjectName,
 }: BodygraphProps) {
   const reduceMotion = useReducedMotion();
   // Unique per mount — two bodygraphs on one page must not share gradient ids
@@ -146,6 +177,34 @@ export default function Bodygraph({
   const [tooltip, setTooltip] = useState<TooltipState | null>(null);
   const [layer, setLayer] = useState<LayerFilter>("all");
   const [highlightCenter, setHighlightCenter] = useState<HdCenterKey | null>(null);
+  /** Gate lit from the activation columns / chart hover (two-way sync). */
+  const [gateHot, setGateHot] = useState<number | null>(null);
+  // SSR-consistent default (the chart page is server-rendered): always start
+  // with the ring on, then the effect applies the saved choice / media query.
+  // A lazy initializer reading matchMedia would disagree with the server HTML
+  // and React would leave the stale SSR viewBox attribute unpatched.
+  const [mandala, setMandala] = useState(true);
+  const mandalaUserSet = useRef(false);
+  useEffect(() => {
+    let saved: string | null = null;
+    try {
+      saved = window.localStorage.getItem("hd-mandala");
+    } catch {
+      /* private mode */
+    }
+    if (saved === "0" || saved === "1") {
+      mandalaUserSet.current = true;
+      setMandala(saved === "1");
+      return;
+    }
+    const mq = window.matchMedia("(min-width: 640px)");
+    const apply = () => {
+      if (!mandalaUserSet.current) setMandala(mq.matches);
+    };
+    apply();
+    mq.addEventListener("change", apply);
+    return () => mq.removeEventListener("change", apply);
+  }, []);
   // Tilt as motion values: mousemove updates the transform without a React
   // rerender of the whole SVG tree.
   const tiltRx = useMotionValue(0);
@@ -157,6 +216,15 @@ export default function Bodygraph({
     zoomRef.current = zoom;
   }, [zoom]);
   const dragRef = useRef<{ px: number; py: number; zx: number; zy: number } | null>(null);
+  const pointersRef = useRef(new Map<number, { x: number; y: number }>());
+  const pinchRef = useRef<{
+    d0: number;
+    k0: number;
+    mx0: number;
+    my0: number;
+    x0: number;
+    y0: number;
+  } | null>(null);
 
   // Chart switch (same component instance / composite remount): drop overlay state.
   const chartEpoch = `${chart.type}:${chart.profile}:${chart.activeGates.join(",")}`;
@@ -164,6 +232,7 @@ export default function Bodygraph({
     setTooltip(null);
     setLayer("all");
     setHighlightCenter(null);
+    setGateHot(null);
     setFullscreen(false);
     setZoom({ k: 1, x: 0, y: 0 });
     tiltRx.set(0);
@@ -229,16 +298,49 @@ export default function Bodygraph({
 
   const onPanStart = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
+      if (pointersRef.current.size === 2) {
+        const [p1, p2] = [...pointersRef.current.values()];
+        pinchRef.current = {
+          d0: Math.max(1, Math.hypot(p1.x - p2.x, p1.y - p2.y)),
+          k0: zoomRef.current.k,
+          mx0: (p1.x + p2.x) / 2,
+          my0: (p1.y + p2.y) / 2,
+          x0: zoomRef.current.x,
+          y0: zoomRef.current.y,
+        };
+        dragRef.current = null;
+        setTooltip(null);
+        return;
+      }
       if (zoom.k <= 1) return;
       setTooltip(null); // anchor rect moves under pan — drop the stale tooltip
       dragRef.current = { px: e.clientX, py: e.clientY, zx: zoom.x, zy: zoom.y };
-      (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     },
     [zoom]
   );
 
   const onPanMove = useCallback(
     (e: React.PointerEvent<HTMLDivElement>) => {
+      if (!pointersRef.current.has(e.pointerId)) return;
+      pointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
+      const pinch = pinchRef.current;
+      if (pinch && pointersRef.current.size === 2) {
+        const [p1, p2] = [...pointersRef.current.values()];
+        const d = Math.hypot(p1.x - p2.x, p1.y - p2.y);
+        const mx = (p1.x + p2.x) / 2;
+        const my = (p1.y + p2.y) / 2;
+        setZoom((z) =>
+          clampZoom({
+            ...z,
+            k: pinch.k0 * (d / pinch.d0),
+            x: pinch.x0 + (mx - pinch.mx0),
+            y: pinch.y0 + (my - pinch.my0),
+          })
+        );
+        return;
+      }
       const drag = dragRef.current;
       if (!drag) return;
       setZoom((z) =>
@@ -248,8 +350,15 @@ export default function Bodygraph({
     [clampZoom]
   );
 
-  const onPanEnd = useCallback(() => {
+  const onPanEnd = useCallback((e: React.PointerEvent<HTMLDivElement>) => {
+    pointersRef.current.delete(e.pointerId);
+    pinchRef.current = null;
     dragRef.current = null;
+    // One finger left after a pinch — keep panning from it seamlessly.
+    const rest = [...pointersRef.current.values()][0];
+    if (rest && pointersRef.current.size === 1 && zoomRef.current.k > 1) {
+      dragRef.current = { px: rest.x, py: rest.y, zx: zoomRef.current.x, zy: zoomRef.current.y };
+    }
   }, []);
 
   const gateActivity = useMemo(() => buildGateActivity(chart), [chart]);
@@ -373,24 +482,70 @@ export default function Bodygraph({
     tiltRy.set(0);
   }, [tiltRx, tiltRy]);
 
+  const toggleMandala = useCallback(() => {
+    mandalaUserSet.current = true;
+    setMandala((v) => {
+      const next = !v;
+      try {
+        window.localStorage.setItem("hd-mandala", next ? "1" : "0");
+      } catch {
+        /* private mode */
+      }
+      return next;
+    });
+  }, []);
+
+  /**
+   * Share-grade PNG: mandala composition + activation columns + identity
+   * header. Built as a standalone SVG (nested svg re-frames the live tree
+   * into the wide mandala viewBox), then rasterized at 2x.
+   */
   const exportPng = useCallback(() => {
     const svg = svgRef.current;
     if (!svg) return;
-    const serializer = new XMLSerializer();
-    const source = serializer.serializeToString(svg);
-    const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
+    const inner = svg.innerHTML;
+    const name = subjectName?.trim() || "Моя карта";
+    const facts = `${TYPE_META[chart.type].nameRu} · Профиль ${chart.profile} · ${AUTHORITY_NAMES_RU[chart.authority]}`;
+
+    const column = (side: "p" | "d", x: number): string => {
+      const byBody = side === "p" ? personalityByBody : designByBody;
+      const title = side === "p" ? "ЛИЧНОСТЬ" : "ДИЗАЙН";
+      const color = side === "p" ? COLOR_P : COLOR_D;
+      const rows = BODY_ORDER.map((body, i) => {
+        const act = byBody.get(body);
+        const y = 210 + i * 24;
+        return `<text x="${x}" y="${y}" font-size="15" fill="${color}">${BODY_GLYPH[body]}</text>`
+          + `<text x="${x + 26}" y="${y}" font-size="14" fill="${act ? color : "rgba(255,255,255,0.25)"}">`
+          + (act ? `${act.gate}<tspan fill="rgba(255,255,255,0.45)">.${act.line}</tspan>` : "—")
+          + `</text>`;
+      }).join("");
+      return `<text x="${x}" y="182" font-size="11" letter-spacing="3" fill="${color}">${title}</text>${rows}`;
+    };
+
+    const W = 1240;
+    const H = 920;
+    const doc = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${W} ${H}" font-family="system-ui, sans-serif">`
+      + `<rect width="${W}" height="${H}" fill="#0a0908"/>`
+      + `<text x="48" y="62" font-size="14" letter-spacing="5" fill="#c9a24a">ZOVUS · ДИЗАЙН ЧЕЛОВЕКА</text>`
+      + `<text x="48" y="102" font-size="30" font-weight="600" fill="#f2e7c9">${escapeXml(name)}</text>`
+      + `<text x="48" y="130" font-size="14" fill="rgba(242,231,201,0.6)">${escapeXml(facts)}</text>`
+      + `<svg x="8" y="146" width="756" height="756" viewBox="${VIEWBOX_MANDALA}">${inner}</svg>`
+      + column("p", 820)
+      + column("d", 1010)
+      + `<text x="48" y="${H - 26}" font-size="12" fill="rgba(242,231,201,0.35)">zovus.ru</text>`
+      + `</svg>`;
+
+    const blob = new Blob([doc], { type: "image/svg+xml;charset=utf-8" });
     const url = URL.createObjectURL(blob);
     const img = new Image();
     img.onerror = () => URL.revokeObjectURL(url);
     img.onload = () => {
-      const scale = 3;
+      const scale = 2;
       const canvas = document.createElement("canvas");
-      canvas.width = 400 * scale;
-      canvas.height = 700 * scale;
+      canvas.width = W * scale;
+      canvas.height = H * scale;
       const ctx = canvas.getContext("2d");
       if (!ctx) return;
-      ctx.fillStyle = "#0a0908";
-      ctx.fillRect(0, 0, canvas.width, canvas.height);
       ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
       URL.revokeObjectURL(url);
       canvas.toBlob((png) => {
@@ -403,7 +558,7 @@ export default function Bodygraph({
       }, "image/png");
     };
     img.src = url;
-  }, []);
+  }, [chart, subjectName, personalityByBody, designByBody]);
 
   const centerOrder: HdCenterKey[] = [
     "head", "ajna", "throat", "g", "heart", "spleen", "solar", "sacral", "root",
@@ -414,10 +569,31 @@ export default function Bodygraph({
     "design" in chart && chart.design ? formatDesignDate(chart.design.utcIso) : "";
   const channelDrawDelay = 0.15;
   const centerIgniteDelay = channelDrawDelay + HD_CHANNEL_SEGMENTS.length * 0.03;
+  const gatesDelay = centerIgniteDelay + centerOrder.length * 0.07 + 0.15;
 
   // Tilt (motion values, no rerender) + zoom (state) on the layout only —
   // the toolbar and tooltip stay flat and readable.
   const layoutTransform = useMotionTemplate`perspective(1200px) rotateX(${tiltRx}deg) rotateY(${tiltRy}deg) scale(${zoom.k}) translate(${zoom.x / zoom.k}px, ${zoom.y / zoom.k}px)`;
+
+  /** Planet markers on the mandala rings, angularly de-collided. */
+  const planetMarkers = useCallback(
+    (side: "p" | "d") => {
+      const acts = side === "p" ? chart.personality : chart.designActivations;
+      const sorted = acts
+        .map((a) => ({ a, L: activationLongitude(a) }))
+        .sort((x, y) => x.L - y.L);
+      let prev = -999;
+      const r = side === "p" ? MANDALA_R_PERSONALITY : MANDALA_R_DESIGN;
+      return sorted.map(({ a, L }) => {
+        let LL = L;
+        if (LL - prev < 4) LL = prev + 4;
+        prev = LL;
+        const pt = wheelPoint(LL, r);
+        return { body: a.body, gate: a.gate, line: a.line, x: pt.x, y: pt.y };
+      });
+    },
+    [chart]
+  );
 
   const renderActivationColumn = (side: "p" | "d") => {
     const map = side === "p" ? personalityByBody : designByBody;
@@ -433,7 +609,12 @@ export default function Bodygraph({
           {BODY_ORDER.map((body) => {
             const act = map.get(body);
             return (
-              <li key={body} className={act ? "is-active" : ""}>
+              <li
+                key={body}
+                className={`${act ? "is-active" : ""}${act && gateHot === act.gate ? " is-hot" : ""}`}
+                onMouseEnter={act ? () => setGateHot(act.gate) : undefined}
+                onMouseLeave={act ? () => setGateHot(null) : undefined}
+              >
                 <span className="hd-bodygraph__glyph" title={BODY_NAMES_RU[body]}>
                   {BODY_GLYPH[body]}
                 </span>
@@ -463,6 +644,7 @@ export default function Bodygraph({
         className={`hd-bodygraph__stage${zoom.k > 1 ? " is-pannable" : ""}`}
         onMouseLeave={() => {
           setTooltip(null);
+          setGateHot(null);
           resetTilt();
         }}
         onMouseMove={onTiltMove}
@@ -498,7 +680,7 @@ export default function Bodygraph({
 
           <svg
             ref={svgRef}
-            viewBox="0 0 400 700"
+            viewBox={mandala ? VIEWBOX_MANDALA : VIEWBOX_CHART}
             role="group"
             aria-label={`Бодиграф: ${chart.activeGates.length} активных ворот, ${chart.definedCenters.length} определённых центров`}
             className="hd-bodygraph__svg"
@@ -521,9 +703,114 @@ export default function Bodygraph({
               </filter>
             </defs>
 
-            <g aria-hidden="true" opacity={0.5}>
-              <circle cx={200} cy={348} r={172} fill="none" stroke="rgba(232,199,126,0.10)" strokeWidth={1} strokeDasharray="2 7" />
-              <circle cx={200} cy={348} r={232} fill="none" stroke="rgba(232,199,126,0.07)" strokeWidth={1} strokeDasharray="1 9" />
+            {/* Rave Mandala ring: 64 gates in zodiac order + planet markers */}
+            <g>
+              <circle cx={MANDALA_CX} cy={MANDALA_CY} r={MANDALA_R_INNER} fill="none" stroke="rgba(232,199,126,0.16)" strokeWidth={1} />
+              <circle cx={MANDALA_CX} cy={MANDALA_CY} r={MANDALA_R_OUTER} fill="none" stroke="rgba(232,199,126,0.22)" strokeWidth={1} />
+              {ZODIAC_SIGNS.map((s) => {
+                const tick = wheelTick(s.start, MANDALA_R_INNER - 3, MANDALA_R_OUTER + 3);
+                const gp = wheelPoint(s.mid, MANDALA_R_SIGN);
+                return (
+                  <g key={s.nameRu} aria-hidden="true">
+                    <line x1={tick.x1} y1={tick.y1} x2={tick.x2} y2={tick.y2} stroke="rgba(232,199,126,0.35)" strokeWidth={1.2} />
+                    <text x={gp.x} y={gp.y + 3.5} textAnchor="middle" fontSize={11} fill="rgba(232,199,126,0.55)">
+                      {s.glyph}
+                    </text>
+                  </g>
+                );
+              })}
+              {GATE_WHEEL.map((seg) => {
+                const a = gateActivity.get(seg.gate);
+                const active = Boolean(a);
+                const source = a?.pLine ? "p" : a?.dLine ? "d" : undefined;
+                const visible = layerVisible(source, layer);
+                const hot = gateHot === seg.gate;
+                const np = wheelPoint(seg.mid, MANDALA_R_GATE_NUM);
+                return (
+                  <g
+                    key={seg.gate}
+                    opacity={visible ? 1 : 0.25}
+                    className="hd-bodygraph__gate"
+                    onMouseEnter={(e) => {
+                      showTooltipFor(e.currentTarget, gateTooltipData(seg.gate));
+                      setGateHot(seg.gate);
+                    }}
+                    onMouseLeave={() => setGateHot(null)}
+                    onClick={(e) => showTooltipFor(e.currentTarget, gateTooltipData(seg.gate))}
+                    onKeyDown={(e) => {
+                      if (active && (e.key === "Enter" || e.key === " ")) {
+                        e.preventDefault();
+                        showTooltipFor(e.currentTarget, gateTooltipData(seg.gate));
+                      }
+                    }}
+                    onFocus={(e) => {
+                      showTooltipFor(e.currentTarget, gateTooltipData(seg.gate));
+                      setGateHot(seg.gate);
+                    }}
+                    onBlur={(e) => {
+                      setGateHot(null);
+                      hideTooltip(e);
+                    }}
+                    tabIndex={active ? 0 : undefined}
+                    role={active ? "button" : undefined}
+                    aria-label={
+                      active
+                        ? `Ворота ${seg.gate} — ${GATE_NAMES_RU[seg.gate] ?? ""}, активированы`
+                        : undefined
+                    }
+                  >
+                    <path
+                      d={ringSectorPath(seg.mid - 2.7125, seg.mid + 2.7125, MANDALA_R_INNER, MANDALA_R_OUTER)}
+                      fill={active ? "rgba(232,199,126,0.16)" : "rgba(232,199,126,0.035)"}
+                      stroke={hot ? "rgba(255,232,168,0.9)" : "transparent"}
+                      strokeWidth={hot ? 1.2 : 0}
+                    />
+                    <text
+                      x={np.x}
+                      y={np.y + 2.5}
+                      textAnchor="middle"
+                      fontSize={8}
+                      fontWeight={active ? 700 : 400}
+                      fill={active ? COLOR_P : "rgba(232,199,126,0.42)"}
+                      stroke="#0f0d0b"
+                      strokeWidth={active ? 0 : 2}
+                      style={{ paintOrder: "stroke" }}
+                    >
+                      {seg.gate}
+                    </text>
+                  </g>
+                );
+              })}
+              {(["d", "p"] as const).map((side) =>
+                planetMarkers(side).map((m) => (
+                  <text
+                    key={`${side}-${m.body}`}
+                    x={m.x}
+                    y={m.y + 3}
+                    textAnchor="middle"
+                    fontSize={10}
+                    fill={side === "p" ? COLOR_P : COLOR_D}
+                    opacity={layer === "all" || layer === side ? 0.95 : 0.15}
+                    stroke="#0a0908"
+                    strokeWidth={3}
+                    style={{ paintOrder: "stroke", cursor: "pointer" }}
+                    onMouseEnter={(e) =>
+                      showTooltipFor(e.currentTarget, {
+                        title: `${BODY_NAMES_RU[m.body]} — ${side === "p" ? "Личность" : "Дизайн"}`,
+                        lines: [`Ворота ${m.gate}.${m.line} — ${GATE_NAMES_RU[m.gate] ?? ""}`],
+                      })
+                    }
+                    onClick={(e) =>
+                      showTooltipFor(e.currentTarget, {
+                        title: `${BODY_NAMES_RU[m.body]} — ${side === "p" ? "Личность" : "Дизайн"}`,
+                        lines: [`Ворота ${m.gate}.${m.line} — ${GATE_NAMES_RU[m.gate] ?? ""}`],
+                      })
+                    }
+                  >
+                    {BODY_GLYPH[m.body]}
+                  </text>
+                ))
+              )}
             </g>
 
             {/* Channels — path-drawing birth animation */}
@@ -531,6 +818,8 @@ export default function Bodygraph({
               {HD_CHANNEL_SEGMENTS.map((seg, i) => {
                 const aAct = gateActivity.get(seg.gates[0]);
                 const bAct = gateActivity.get(seg.gates[1]);
+                const aBoth = Boolean(aAct?.pLine && aAct?.dLine);
+                const bBoth = Boolean(bAct?.pLine && bAct?.dLine);
                 const aSource = aAct?.pLine ? "p" : aAct?.dLine ? "d" : undefined;
                 const bSource = bAct?.pLine ? "p" : bAct?.dLine ? "d" : undefined;
                 const defined = definedChannels.has(seg.key);
@@ -540,6 +829,35 @@ export default function Bodygraph({
                 const highlighted = highlightChannels?.has(seg.key) ?? false;
                 const dimmed = highlightChannels !== null && !highlighted;
                 const delay = reduceMotion ? 0 : channelDrawDelay + i * 0.03;
+                // Perpendicular offsets for P+D striped halves.
+                const adx = seg.mx - seg.ax;
+                const ady = seg.my - seg.ay;
+                const aLen = Math.hypot(adx, ady) || 1;
+                const anx = (-ady / aLen) * 1.7;
+                const any = (adx / aLen) * 1.7;
+                const bdx = seg.bx - seg.mx;
+                const bdy = seg.by - seg.my;
+                const bLen = Math.hypot(bdx, bdy) || 1;
+                const bnx = (-bdy / bLen) * 1.7;
+                const bny = (bdx / bLen) * 1.7;
+                const halfWidth = defined ? 5 : 3;
+                const stripeWidth = defined ? 2.4 : 2;
+                const draw = (
+                  x1: number, y1: number, x2: number, y2: number,
+                  stroke: string, width: number, opacity: number, cls: string
+                ) => (
+                  <motion.line
+                    key={`${x1.toFixed(1)}-${y1.toFixed(1)}-${stroke}`}
+                    x1={x1} y1={y1} x2={x2} y2={y2}
+                    stroke={stroke}
+                    strokeWidth={width}
+                    opacity={opacity}
+                    className={cls}
+                    initial={reduceMotion ? false : { pathLength: 0 }}
+                    animate={{ pathLength: 1 }}
+                    transition={{ duration: 0.5, delay, ease: "easeOut" }}
+                  />
+                );
                 return (
                   <g key={seg.key} opacity={dimmed ? 0.15 : 1} style={{ transition: "opacity 0.25s" }}>
                     {electro && (
@@ -559,26 +877,28 @@ export default function Bodygraph({
                         opacity={aVisible && bVisible ? 0.8 : 0.15}
                       />
                     )}
-                    <motion.line
-                      x1={seg.ax} y1={seg.ay} x2={seg.mx} y2={seg.my}
-                      stroke={aVisible ? halfColor(Boolean(aAct), aSource) : COLOR_BASE}
-                      strokeWidth={defined ? 5 : 3}
-                      opacity={aVisible ? 1 : 0.25}
-                      className={aSource === "d" ? "hd-ch-d" : aSource === "p" ? "hd-ch-p" : "hd-ch-base"}
-                      initial={reduceMotion ? false : { pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 0.5, delay, ease: "easeOut" }}
-                    />
-                    <motion.line
-                      x1={seg.mx} y1={seg.my} x2={seg.bx} y2={seg.by}
-                      stroke={bVisible ? halfColor(Boolean(bAct), bSource) : COLOR_BASE}
-                      strokeWidth={defined ? 5 : 3}
-                      opacity={bVisible ? 1 : 0.25}
-                      className={bSource === "d" ? "hd-ch-d" : bSource === "p" ? "hd-ch-p" : "hd-ch-base"}
-                      initial={reduceMotion ? false : { pathLength: 0 }}
-                      animate={{ pathLength: 1 }}
-                      transition={{ duration: 0.5, delay, ease: "easeOut" }}
-                    />
+                    {aBoth
+                      ? [
+                          draw(seg.ax - anx, seg.ay - any, seg.mx - anx, seg.my - any,
+                            COLOR_P, stripeWidth, layerVisible("p", layer) ? 1 : 0.25, "hd-ch-p"),
+                          draw(seg.ax + anx, seg.ay + any, seg.mx + anx, seg.my + any,
+                            COLOR_D, stripeWidth, layerVisible("d", layer) ? 1 : 0.25, "hd-ch-d"),
+                        ]
+                      : draw(seg.ax, seg.ay, seg.mx, seg.my,
+                          aVisible ? halfColor(Boolean(aAct), aSource) : COLOR_BASE,
+                          halfWidth, aVisible ? 1 : 0.25,
+                          aSource === "d" ? "hd-ch-d" : aSource === "p" ? "hd-ch-p" : "hd-ch-base")}
+                    {bBoth
+                      ? [
+                          draw(seg.mx - bnx, seg.my - bny, seg.bx - bnx, seg.by - bny,
+                            COLOR_P, stripeWidth, layerVisible("p", layer) ? 1 : 0.25, "hd-ch-p"),
+                          draw(seg.mx + bnx, seg.my + bny, seg.bx + bnx, seg.by + bny,
+                            COLOR_D, stripeWidth, layerVisible("d", layer) ? 1 : 0.25, "hd-ch-d"),
+                        ]
+                      : draw(seg.mx, seg.my, seg.bx, seg.by,
+                          bVisible ? halfColor(Boolean(bAct), bSource) : COLOR_BASE,
+                          halfWidth, bVisible ? 1 : 0.25,
+                          bSource === "d" ? "hd-ch-d" : bSource === "p" ? "hd-ch-p" : "hd-ch-base")}
                     <line
                       x1={seg.ax} y1={seg.ay} x2={seg.bx} y2={seg.by}
                       stroke="transparent"
@@ -630,16 +950,16 @@ export default function Bodygraph({
                       <motion.circle
                         cx={shape.cx}
                         cy={shape.cy}
-                        r={52}
+                        r={46}
                         fill={`url(#${gradGlow})`}
                         aria-hidden="true"
-                        animate={reduceMotion ? undefined : { opacity: [0.6, 1, 0.6] }}
+                        animate={reduceMotion ? undefined : { opacity: [0.5, 0.85, 0.5] }}
                         transition={reduceMotion ? undefined : { duration: 4, repeat: Infinity, ease: "easeInOut", delay: i * 0.5 }}
                       />
                     )}
                     <path
                       d={shape.path}
-                      fill={defined ? `url(#${gradDefined})` : "rgba(255,255,255,0.03)"}
+                      fill={defined ? `url(#${gradDefined})` : "#141210"}
                       stroke={defined ? "rgba(255, 232, 168, 0.9)" : "rgba(232, 199, 126, 0.35)"}
                       strokeWidth={defined ? 2 : 1.5}
                       filter={defined ? `url(#${filterGlow})` : undefined}
@@ -668,37 +988,32 @@ export default function Bodygraph({
                         hideTooltip(e);
                       }}
                     />
-                    <text
-                      x={shape.cx}
-                      y={shape.cy + 3}
-                      textAnchor="middle"
-                      fontSize={8}
-                      fontWeight={600}
-                      fill={defined ? "#17131f" : "rgba(232,199,126,0.55)"}
-                      style={{ pointerEvents: "none", letterSpacing: "0.04em" }}
-                    >
-                      {CENTER_NAMES_RU[shape.key]}
-                    </text>
                   </motion.g>
                 );
               })}
             </g>
 
-            {/* Gate labels with planet glyphs */}
-            <g fontFamily="system-ui, sans-serif" fontSize={9} textAnchor="middle">
-              {HD_GATE_ANCHORS.map((anchor) => {
+            {/* Gates: medallions for active, quiet numbers for the rest */}
+            <g fontFamily="system-ui, sans-serif" textAnchor="middle">
+              {HD_GATE_ANCHORS.map((anchor, gi) => {
                 const a = gateActivity.get(anchor.gate);
                 const active = Boolean(a);
+                const both = Boolean(a?.pLine && a?.dLine);
                 const source = a?.pLine ? "p" : a?.dLine ? "d" : undefined;
                 const visible = layerVisible(source, layer);
-                const glyph = a?.pBody ? BODY_GLYPH[a.pBody] : a?.dBody ? BODY_GLYPH[a.dBody] : null;
                 const transitBody = transits?.get(anchor.gate);
                 const partnerOnly = !active && (partnerGates?.has(anchor.gate) ?? false);
                 const focusable = active || Boolean(transitBody) || partnerOnly;
+                const hot = gateHot === anchor.gate;
+                const medallion = active || partnerOnly;
                 return (
                   <g
                     key={anchor.gate}
-                    onMouseEnter={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
+                    onMouseEnter={(e) => {
+                      showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate));
+                      setGateHot(anchor.gate);
+                    }}
+                    onMouseLeave={() => setGateHot(null)}
                     onClick={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
                     onKeyDown={(e) => {
                       if (focusable && (e.key === "Enter" || e.key === " ")) {
@@ -706,8 +1021,14 @@ export default function Bodygraph({
                         showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate));
                       }
                     }}
-                    onFocus={(e) => showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate))}
-                    onBlur={hideTooltip}
+                    onFocus={(e) => {
+                      showTooltipFor(e.currentTarget, gateTooltipData(anchor.gate));
+                      setGateHot(anchor.gate);
+                    }}
+                    onBlur={(e) => {
+                      setGateHot(null);
+                      hideTooltip(e);
+                    }}
                     tabIndex={focusable ? 0 : undefined}
                     role={focusable ? "button" : undefined}
                     aria-label={
@@ -718,51 +1039,91 @@ export default function Bodygraph({
                     className="hd-bodygraph__gate"
                     opacity={visible ? 1 : 0.2}
                   >
-                    {transitBody && (
-                      <motion.circle
-                        cx={anchor.lx}
-                        cy={anchor.ly}
-                        r={11}
-                        fill="none"
-                        stroke="rgba(106,168,160,0.95)"
-                        strokeWidth={1.5}
-                        animate={reduceMotion ? undefined : { r: [10, 13, 10], opacity: [0.9, 0.4, 0.9] }}
-                        transition={reduceMotion ? undefined : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
-                      />
-                    )}
-                    <circle
-                      cx={anchor.lx}
-                      cy={anchor.ly}
-                      r={8}
-                      fill={
-                        active
-                          ? (a?.dLine && !a?.pLine ? COLOR_D : COLOR_P)
-                          : partnerOnly
-                            ? "#6aa8a0"
-                            : "#17131f"
-                      }
-                      stroke={active || partnerOnly ? "rgba(255,255,255,0.5)" : "rgba(232,199,126,0.3)"}
-                      strokeWidth={1}
-                    />
-                    <text
-                      x={anchor.lx}
-                      y={anchor.ly + 3}
-                      fill={active ? "#17131f" : "rgba(232,199,126,0.75)"}
-                      fontWeight={active ? 700 : 400}
+                    <motion.g
+                      initial={reduceMotion ? false : { opacity: 0, scale: 0.5 }}
+                      animate={{ opacity: 1, scale: 1 }}
+                      transition={{
+                        duration: 0.35,
+                        delay: reduceMotion ? 0 : gatesDelay + gi * 0.012,
+                        ease: "backOut",
+                      }}
+                      style={{ transformOrigin: `${anchor.lx}px ${anchor.ly}px` }}
                     >
-                      {anchor.gate}
-                    </text>
-                    {glyph && (
+                      {transitBody && (
+                        <motion.circle
+                          cx={anchor.lx}
+                          cy={anchor.ly}
+                          r={11}
+                          fill="none"
+                          stroke="rgba(106,168,160,0.95)"
+                          strokeWidth={1.5}
+                          animate={reduceMotion ? undefined : { r: [10, 13, 10], opacity: [0.9, 0.4, 0.9] }}
+                          transition={reduceMotion ? undefined : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
+                        />
+                      )}
+                      {hot && (
+                        <circle
+                          cx={anchor.lx}
+                          cy={anchor.ly}
+                          r={13}
+                          fill="none"
+                          stroke="rgba(255,232,168,0.95)"
+                          strokeWidth={1.6}
+                        />
+                      )}
+                      {medallion ? (
+                        both ? (
+                          <>
+                            <path
+                              d={`M${anchor.lx} ${anchor.ly - 9} A9 9 0 0 1 ${anchor.lx} ${anchor.ly + 9} Z`}
+                              fill={COLOR_P}
+                            />
+                            <path
+                              d={`M${anchor.lx} ${anchor.ly - 9} A9 9 0 0 0 ${anchor.lx} ${anchor.ly + 9} Z`}
+                              fill={COLOR_D}
+                            />
+                            <circle
+                              cx={anchor.lx}
+                              cy={anchor.ly}
+                              r={9}
+                              fill="none"
+                              stroke="rgba(255,255,255,0.5)"
+                              strokeWidth={1}
+                            />
+                          </>
+                        ) : (
+                          <circle
+                            cx={anchor.lx}
+                            cy={anchor.ly}
+                            r={9}
+                            fill={
+                              active
+                                ? (a?.dLine && !a?.pLine ? COLOR_D : COLOR_P)
+                                : "#6aa8a0"
+                            }
+                            stroke="rgba(255,255,255,0.5)"
+                            strokeWidth={1}
+                          />
+                        )
+                      ) : null}
                       <text
                         x={anchor.lx}
-                        y={anchor.ly - 11}
-                        fontSize={8}
-                        fill={a?.pBody ? COLOR_P : COLOR_D}
-                        opacity={0.9}
+                        y={anchor.ly + (medallion ? 3 : 2.5)}
+                        fontSize={medallion ? 9 : 7.5}
+                        fontWeight={medallion ? 700 : 400}
+                        fill={
+                          medallion
+                            ? "#17131f"
+                            : "rgba(232,199,126,0.45)"
+                        }
+                        stroke={medallion ? "none" : "#100e0c"}
+                        strokeWidth={medallion ? 0 : 2}
+                        style={{ paintOrder: "stroke", pointerEvents: "none" }}
                       >
-                        {glyph}
+                        {anchor.gate}
                       </text>
-                    )}
+                    </motion.g>
+                    <circle cx={anchor.lx} cy={anchor.ly} r={10} fill="transparent" />
                   </g>
                 );
               })}
@@ -837,6 +1198,15 @@ export default function Bodygraph({
               {label}
             </button>
           ))}
+          <button
+            type="button"
+            onClick={toggleMandala}
+            aria-pressed={mandala}
+            className={`hd-bodygraph__layer-btn${mandala ? " is-active" : ""}`}
+            title="Кольцо мандалы: 64 ворота в зодиакальном порядке и планеты карты"
+          >
+            Мандала
+          </button>
           <button type="button" onClick={exportPng} className="hd-bodygraph__export">
             PNG
           </button>

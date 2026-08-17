@@ -108,6 +108,9 @@
   @apply relative overflow-hidden rounded-3xl border border-amber-500/15 p-3;
   transition: transform 0.18s ease-out;
   will-change: transform;
+  /* Vertical page scroll stays native; two-finger pinch reaches our pointer
+     handlers (pinch-zoom is not in the allowed set). */
+  touch-action: pan-y;
   background:
     radial-gradient(ellipse 70% 45% at 50% 30%, rgba(232, 199, 126, 0.08), transparent 70%),
     linear-gradient(165deg, rgba(26, 24, 22, 0.9), rgba(10, 9, 8, 0.94));
@@ -231,6 +234,13 @@
 
 .hd-bodygraph__stage.is-pannable {
   cursor: grab;
+  /* Zoomed in: capture all touches for pan + pinch. */
+  touch-action: none;
+}
+
+/* Activation column row lit from a gate hover on the chart (two-way sync). */
+.hd-bodygraph__activations li.is-hot {
+  text-shadow: 0 0 14px rgba(232, 199, 126, 0.9);
 }
 
 .hd-bodygraph__stage.is-pannable:active {

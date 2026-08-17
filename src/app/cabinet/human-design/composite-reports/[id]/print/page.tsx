@@ -1,6 +1,7 @@
 import { notFound, redirect } from "next/navigation";
 import { requireProfileUserId } from "@/lib/require-auth";
 import PrintableReport from "@/components/natal/PrintableReport";
+import HdStaticBodygraph from "@/components/human-design/HdStaticBodygraph";
 import { buildAuthHref } from "@/lib/post-auth-return";
 import {
   getHdChartById,
@@ -63,6 +64,19 @@ export default async function HdCompositeReportPrintPage({
   return (
     <PrintableReport
       title={`Zovus · Карта связи · ${labelA} × ${labelB}`}
+      visual={
+        <div className="w-full max-w-sm">
+          <HdStaticBodygraph
+            chart={conn.mergedChart}
+            theme="light"
+            idPrefix={`hd-composite-print-${id}`}
+            className="w-full"
+          />
+          <p className="mt-2 text-center text-xs text-black/60">
+            Общая карта связи (композит): {labelA} × {labelB}
+          </p>
+        </div>
+      }
       meta={[
         {
           label: labelA,

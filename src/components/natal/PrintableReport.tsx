@@ -1,4 +1,5 @@
 import Link from "next/link";
+import type { ReactNode } from "react";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
 import PrintButton from "./PrintButton";
@@ -7,7 +8,7 @@ type Section = { key: string; title: string; claims: Array<{ text: string; evide
 type Evidence = { id: string; label: string; value?: string; confidence?: string; uncertainty?: string };
 
 export default function PrintableReport({
-  title, meta, sections, legacyContent, methodology, disclaimer, evidence = [], returnHref,
+  title, meta, sections, legacyContent, methodology, disclaimer, evidence = [], returnHref, visual,
 }: {
   title: string;
   meta: Array<{ label: string; value: string }>;
@@ -17,6 +18,8 @@ export default function PrintableReport({
   disclaimer?: string | null;
   evidence?: Evidence[];
   returnHref?: string;
+  /** Optional chart visual rendered between header and content (e.g. bodygraph). */
+  visual?: ReactNode;
 }) {
   return <main data-print-report="static" className="mx-auto min-h-screen max-w-4xl [overflow-wrap:anywhere] bg-white px-4 py-6 text-black sm:px-6 sm:py-8 print:max-w-none print:px-0">
     <style>{`@media print {
@@ -30,6 +33,7 @@ export default function PrintableReport({
       <dl className="mt-4 grid grid-cols-1 gap-2 text-xs sm:grid-cols-2">{meta.map((item) =>
         <div key={item.label}><dt className="font-semibold">{item.label}</dt><dd>{item.value}</dd></div>)}</dl>
     </header>
+    {visual ? <div data-print-visual="true" className="my-6 flex justify-center">{visual}</div> : null}
     <nav aria-label="Содержание" data-print-toc="true" className="my-7 rounded-lg border border-black/15 p-4">
       <h2 className="font-semibold">Содержание</h2>
       <ol className="mt-2 list-decimal pl-5 text-sm">
