@@ -16,23 +16,11 @@ import {
   getBrandTelegramUsername,
 } from "@/lib/brand";
 import { LEGAL_OPERATOR } from "@/lib/legal-operator";
-import { SITE_FOOTER_LEGAL_LINE } from "@/lib/master-disclosure";
 import { EDITORIAL_FOOTER_TAGLINE, EDITORIAL_NAV } from "@/lib/editorial-landing-content";
 import { useAuth } from "@/lib/useAuth";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 export type SiteFooterVariant = "minimal" | "marketing";
-
-function FooterDisclaimer() {
-  return (
-    <p className="site-legal-footer__tagline" role="note">
-      {SITE_FOOTER_LEGAL_LINE}{" "}
-      <LegalDocLink href="/disclaimer" className="site-legal-footer__more">
-        Подробнее
-      </LegalDocLink>
-    </p>
-  );
-}
 
 function LegalDocsNav() {
   return (
@@ -82,7 +70,6 @@ export default function SiteFooter({
     return (
       <footer className="site-legal-footer site-legal-footer--minimal relative mt-auto">
         <LegalMeta year={year} />
-        <FooterDisclaimer />
       </footer>
     );
   }
@@ -238,7 +225,6 @@ export default function SiteFooter({
               {LEGAL_OPERATOR.contactEmail}
             </LegalDocLink>
           </div>
-          <FooterDisclaimer />
         </div>
       </div>
     </footer>
