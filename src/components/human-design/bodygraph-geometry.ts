@@ -62,10 +62,11 @@ export const HD_CENTER_LABELS: readonly HdCenterLabel[] = [
 export interface HdGateAnchor {
   gate: number;
   center: HdCenterKey;
-  /** Channel attachment point on the center edge. */
+  /** Point where the channel axis meets the center edge (geometric ref). */
   x: number;
   y: number;
-  /** Label position (pushed outward from the shape). */
+  /** Gate medallion position — channels are drawn ring-to-ring between
+      these points, so a line always terminates at a visible node. */
   lx: number;
   ly: number;
 }
@@ -178,7 +179,10 @@ export interface HdChannelSegment {
   my: number;
 }
 
-/** All 36 channels as two half-segments (gate→mid, mid→gate) for P/D coloring. */
+/** All 36 channels as two half-segments (gate→mid, mid→gate) for P/D coloring.
+ *  Endpoints are the gate medallion positions (lx/ly): the line terminates at
+ *  the visible ring, not at a bare edge point 8-12px away from it. Rings are
+ *  opaque and drawn last, so the line cleanly disappears under each node. */
 export const HD_CHANNEL_SEGMENTS: readonly HdChannelSegment[] = [
   [1, 8], [2, 14], [3, 60], [4, 63], [5, 15], [6, 59], [7, 31], [9, 52],
   [10, 20], [10, 34], [10, 57], [11, 56], [12, 22], [13, 33], [16, 48],
@@ -191,11 +195,11 @@ export const HD_CHANNEL_SEGMENTS: readonly HdChannelSegment[] = [
   return {
     key: `${a}-${b}`,
     gates: [a!, b!] as [number, number],
-    ax: ga.x,
-    ay: ga.y,
-    bx: gb.x,
-    by: gb.y,
-    mx: (ga.x + gb.x) / 2,
-    my: (ga.y + gb.y) / 2,
+    ax: ga.lx,
+    ay: ga.ly,
+    bx: gb.lx,
+    by: gb.ly,
+    mx: (ga.lx + gb.lx) / 2,
+    my: (ga.ly + gb.ly) / 2,
   };
 });

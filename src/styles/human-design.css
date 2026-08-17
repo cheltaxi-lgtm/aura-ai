@@ -255,7 +255,19 @@
 }
 
 .hd-bodygraph.is-fullscreen .hd-bodygraph__stage {
-  @apply mx-auto max-w-3xl;
+  @apply mx-auto flex h-full w-full max-w-none flex-col;
+}
+
+.hd-bodygraph.is-fullscreen .hd-bodygraph__layout {
+  @apply flex-1 items-center justify-center;
+}
+
+/* Height-driven in fullscreen: the chart must actually grow. Width follows
+   via the viewBox aspect ratio; max-width guards narrow windows. */
+.hd-bodygraph.is-fullscreen .hd-bodygraph__svg {
+  @apply w-auto flex-none;
+  height: calc(100dvh - 10rem);
+  max-width: 100%;
 }
 
 .hd-bodygraph__tooltip.has-action {
