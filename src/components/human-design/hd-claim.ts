@@ -6,6 +6,9 @@
 
 const CLAIM_PREFIX = "hd:claim-token:";
 
+/** Last computed chart fingerprint — HdCalculator restores it on mount. */
+export const HD_LAST_FINGERPRINT_KEY = "hd:last-fingerprint";
+
 export function hdClaimTokenKey(fingerprint: string): string {
   return `${CLAIM_PREFIX}${fingerprint}`;
 }
@@ -33,6 +36,35 @@ export function clearHdClaimToken(fingerprint: string): void {
   } catch {
     /* ignore */
   }
+}
+
+/** Remove every claim token (logout/activity purge — no per-fingerprint list needed). */
+export function clearAllHdClaimTokens(): void {
+  try {
+    const doomed: string[] = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key?.startsWith(CLAIM_PREFIX)) doomed.push(key);
+    }
+    for (const key of doomed) localStorage.removeItem(key);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
+/**
+ * Wipe every HD guest trace this browser holds: the auto-restored last chart
+ * and all claim tokens. Must run on logout — otherwise the next visitor (or
+ * a different account on the same device) sees/inherits the previous person's
+ * charts.
+ */
+export function clearHdGuestBrowserState(): void {
+  try {
+    localStorage.removeItem(HD_LAST_FINGERPRINT_KEY);
+  } catch {
+    /* ignore */
+  }
+  clearAllHdClaimTokens();
 }
 
 /**

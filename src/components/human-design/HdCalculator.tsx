@@ -17,6 +17,7 @@ import { hdChartChipLabel } from "./hd-labels";
 import {
   claimAllPendingHdCharts,
   clearHdClaimToken,
+  HD_LAST_FINGERPRINT_KEY,
   readHdClaimToken,
   storeHdClaimToken,
 } from "./hd-claim";
@@ -31,7 +32,7 @@ interface PlaceSuggestion {
   timezone: string;
 }
 
-const STORAGE_KEY = "hd:last-fingerprint";
+const STORAGE_KEY = HD_LAST_FINGERPRINT_KEY;
 
 /** Local (not UTC) date for the date-input max — UTC would allow "tomorrow" west of Greenwich. */
 function localTodayIso(): string {

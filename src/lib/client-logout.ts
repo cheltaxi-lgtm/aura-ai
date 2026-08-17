@@ -11,6 +11,7 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 import { waitUntilLoggedOut } from "@/lib/client-auth-session";
 import { clearAuthPending } from "@/lib/auth-pending";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
+import { clearHdGuestBrowserState } from "@/components/human-design/hd-claim";
 
 export const AUTH_LOGOUT_EVENT = "aura:logout";
 
@@ -29,6 +30,10 @@ const STORAGE_KEYS = [
   "aura_last_triplet_at",
   "aura_runes_before_purchase",
   RUNE_PENDING_PAYMENT_KEY,
+  // Pending natal report job — otherwise the previous person's report
+  // reattaches for whoever opens the workspace next on this browser.
+  "aura:natal-active-job",
+  "aura:natal-active-job-started",
 ] as const;
 
 /** Drop all client-side session/profile data for the current browser tab. */
@@ -40,6 +45,10 @@ export function clearClientAuthState(): void {
   clearChatCache();
   clearGuestTriplet();
   clearGuestResumeUiCache();
+  // HD guest traces: last-chart auto-restore + claim tokens. Leaving them
+  // after logout shows the previous person's chart to the next visitor and
+  // lets a DIFFERENT account inherit those charts on its first login.
+  clearHdGuestBrowserState();
   try {
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   } catch {
@@ -52,10 +61,13 @@ export function clearClientActivityState(): void {
   if (typeof window === "undefined") return;
   clearChatCache();
   clearGuestTriplet();
+  clearHdGuestBrowserState();
   localStorage.removeItem("aura_last_master");
   localStorage.removeItem("aura_pending_master");
   localStorage.removeItem("aura_pending_reading");
   localStorage.removeItem("aura_flow_step");
+  localStorage.removeItem("aura:natal-active-job");
+  localStorage.removeItem("aura:natal-active-job-started");
   try {
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
   } catch {
