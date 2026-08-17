@@ -22,8 +22,10 @@ export const HD_CENTER_SHAPES: Record<HdCenterKey, HdCenterShape> = {
   throat: { key: "throat", path: "M168 196 H232 V256 H168 Z", cx: 200, cy: 226 },
   g: { key: "g", path: "M200 300 L248 348 L200 396 L152 348 Z", cx: 200, cy: 348 },
   heart: { key: "heart", path: "M262 322 L262 364 L306 343 Z", cx: 274, cy: 343 },
-  spleen: { key: "spleen", path: "M128 432 L128 520 L52 476 Z", cx: 100, cy: 476 },
-  solar: { key: "solar", path: "M272 432 L272 520 L348 476 Z", cx: 300, cy: 476 },
+  // Side triangles point INWARD (apex toward the spine) per the classic
+  // Rave BodyGraph; the flat edge faces outward.
+  spleen: { key: "spleen", path: "M52 432 L52 520 L128 476 Z", cx: 77, cy: 476 },
+  solar: { key: "solar", path: "M348 432 L348 520 L272 476 Z", cx: 323, cy: 476 },
   sacral: { key: "sacral", path: "M162 424 H238 V500 H162 Z", cx: 200, cy: 462 },
   root: { key: "root", path: "M162 556 H238 V632 H162 Z", cx: 200, cy: 594 },
 };
@@ -90,22 +92,22 @@ export const HD_GATE_ANCHORS: readonly HdGateAnchor[] = [
   anchor(21, "heart", 272, 324, 272, 314),
   anchor(40, "heart", 296, 352, 304, 360),
   anchor(26, "heart", 266, 358, 258, 366),
-  // Spleen (right edge toward spine, bottom toward root)
-  anchor(48, "spleen", 128, 444, 138, 440),
-  anchor(57, "spleen", 128, 464, 138, 462),
-  anchor(44, "spleen", 128, 484, 138, 486),
-  anchor(50, "spleen", 128, 504, 138, 508),
-  anchor(32, "spleen", 110, 514, 106, 526),
-  anchor(28, "spleen", 88, 508, 84, 520),
-  anchor(18, "spleen", 66, 500, 60, 512),
-  // Solar (left edge toward spine, bottom toward root)
-  anchor(36, "solar", 272, 444, 262, 440),
-  anchor(22, "solar", 272, 464, 262, 462),
-  anchor(37, "solar", 272, 484, 262, 486),
-  anchor(6, "solar", 272, 504, 262, 508),
-  anchor(49, "solar", 290, 514, 292, 526),
-  anchor(55, "solar", 312, 508, 314, 520),
-  anchor(30, "solar", 334, 500, 340, 512),
+  // Spleen (apex toward spine): 48/57 top edge, 44/50 at apex, 32/28/18 bottom edge
+  anchor(48, "spleen", 76, 446, 71, 435),
+  anchor(57, "spleen", 105, 463, 108, 452),
+  anchor(44, "spleen", 120, 467, 132, 461),
+  anchor(50, "spleen", 120, 485, 132, 491),
+  anchor(32, "spleen", 109, 487, 113, 500),
+  anchor(28, "spleen", 90, 498, 88, 511),
+  anchor(18, "spleen", 71, 509, 65, 521),
+  // Solar (apex toward spine): 36/22 top edge, 37/6 at apex, 49/55/30 bottom edge
+  anchor(36, "solar", 324, 446, 329, 435),
+  anchor(22, "solar", 295, 463, 292, 452),
+  anchor(37, "solar", 280, 467, 268, 461),
+  anchor(6, "solar", 280, 485, 268, 491),
+  anchor(49, "solar", 291, 487, 287, 500),
+  anchor(55, "solar", 310, 498, 312, 511),
+  anchor(30, "solar", 329, 509, 335, 521),
   // Sacral
   anchor(5, "sacral", 176, 424, 170, 416),
   anchor(14, "sacral", 200, 424, 200, 416),
