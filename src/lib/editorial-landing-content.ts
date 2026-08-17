@@ -271,8 +271,6 @@ export const EDITORIAL_PRACTICES = [
   },
 ] as const;
 
-export const EDITORIAL_ADDITIONAL_FORMAT_IDS = ["photo", "numerology"] as const;
-
 export const EDITORIAL_FOOTER_TAGLINE =
   "Таро · матрица · астрология · нумерология";
 

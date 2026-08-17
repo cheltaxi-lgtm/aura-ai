@@ -6,11 +6,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { GUEST_HERO_PAIN_CHIPS } from "@/lib/landing-offer";
-import {
-  EDITORIAL_ADDITIONAL_FORMAT_IDS,
-  EDITORIAL_HERO,
-  EDITORIAL_PRACTICES,
-} from "@/lib/editorial-landing-content";
+import { EDITORIAL_HERO, EDITORIAL_PRACTICES } from "@/lib/editorial-landing-content";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -68,7 +64,6 @@ describe("guest landing conversion cleanup", () => {
     }
     expect(guest).not.toContain("<EditorialFreeValueSection");
     expect(guest).not.toContain("<EditorialStarterPackSection");
-    expect(guest).toContain("additionalFormats");
   });
 
   it("SeoHub comes before FAQ/final CTA, not after", () => {
@@ -85,12 +80,18 @@ describe("guest landing conversion cleanup", () => {
     expect(src).toContain("humanDesignEnabled");
   });
 
-  it("guest practices are additional formats, not a second core catalog", () => {
-    expect(EDITORIAL_ADDITIONAL_FORMAT_IDS).toEqual(["photo", "numerology"]);
-    expect(EDITORIAL_PRACTICES.some((p) => p.id === "tarot")).toBe(true);
+  it("guest practices keep the full existing card set", () => {
+    expect(EDITORIAL_PRACTICES.map((p) => p.id)).toEqual([
+      "photo",
+      "numerology",
+      "matrix",
+      "tarot",
+      "natal",
+    ]);
     const practices = readSrc("src/components/editorial/EditorialPracticesSection.tsx");
     expect(practices).toContain("Другие форматы Zovus");
-    expect(practices).toContain("EDITORIAL_ADDITIONAL_FORMAT_IDS");
+    expect(practices).toContain("EDITORIAL_PRACTICES.map");
+    expect(practices).not.toContain("additionalFormats");
   });
 
   it("starter wording stays eligibility-safe and server-config driven", () => {

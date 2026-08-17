@@ -431,7 +431,6 @@ export default function AuraSellingLanding({
         <EditorialPracticesSection
           isLoggedIn={false}
           onGuestTarot={() => startGuestSpread()}
-          additionalFormats
         />
         {showTariffs ? (
           <LandingSeoHub
