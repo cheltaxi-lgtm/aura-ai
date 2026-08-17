@@ -36,7 +36,14 @@ export default async function HdCompatibilityCalcPage() {
   });
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka/sovmestimost" backLabel="Совместимость">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Совместимость", path: "/dizayn-cheloveka/sovmestimost" },
+        { name: "Рассчитать", path: "/dizayn-cheloveka/sovmestimost/rasschitat" },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

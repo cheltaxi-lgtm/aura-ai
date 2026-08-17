@@ -56,7 +56,14 @@ export default async function HdProfilePage({
   });
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka/profili" backLabel="Профили">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Профили", path: "/dizayn-cheloveka/profili" },
+        { name: `Профиль ${seo.profile}`, path: `/dizayn-cheloveka/profili/${seo.slug}` },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

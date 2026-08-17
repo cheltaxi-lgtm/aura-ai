@@ -9,9 +9,24 @@ export function isThinDaNetIntentSlug(slug: string): boolean {
   return slug.startsWith("da-net-");
 }
 
+/**
+ * Thin mass-generated slugs whose intent is fully covered by a stronger
+ * hand-curated page. Keeping them indexable splits signals and risks a
+ * "thin/duplicate" verdict on the whole family — keep the URLs live for UX,
+ * but out of search.
+ *
+ * lyubov-kak-otpustit-ego/ee — gender-swapped clones ("Путь освобождения.")
+ * of /rasklady/kak-otpustit-cheloveka (hand-written override, active in search).
+ */
+const SEMANTIC_DUPLICATE_INTENT_SLUGS = new Set([
+  "lyubov-kak-otpustit-ego",
+  "lyubov-kak-otpustit-ee",
+]);
+
 /** Whether `/rasklady/{slug}` should be offered to search engines. */
 export function isSearchIndexableIntentSlug(slug: string): boolean {
   if (isThinDaNetIntentSlug(slug)) return false;
+  if (SEMANTIC_DUPLICATE_INTENT_SLUGS.has(slug)) return false;
   return true;
 }
 

@@ -6,7 +6,7 @@ import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import { ALL_CHANNEL_SLUGS, channelSeo } from "@/lib/human-design/seo-entities";
+import { ALL_CHANNEL_SLUGS, centerSeoSlug, channelSeo } from "@/lib/human-design/seo-entities";
 import { CENTER_NAMES_RU, GATE_NAMES_RU } from "@/lib/human-design";
 
 export function generateStaticParams() {
@@ -45,7 +45,14 @@ export default async function HdChannelPage({
   });
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka/kanaly" backLabel="Каналы">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Каналы", path: "/dizayn-cheloveka/kanaly" },
+        { name: `Канал ${seo.key}`, path: `/dizayn-cheloveka/kanaly/${seo.slug}` },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
@@ -72,7 +79,19 @@ export default async function HdChannelPage({
         <div className="rounded-2xl border border-white/10 bg-white/[0.03] px-3.5 py-3">
           <dt className="text-[0.625rem] uppercase tracking-wider text-amber-100/50">Центры</dt>
           <dd className="mt-1 font-semibold text-amber-50">
-            {CENTER_NAMES_RU[seo.centers[0]]} — {CENTER_NAMES_RU[seo.centers[1]]}
+            <Link
+              href={`/dizayn-cheloveka/centry/${centerSeoSlug(seo.centers[0])}`}
+              className="hover:text-amber-200"
+            >
+              {CENTER_NAMES_RU[seo.centers[0]]}
+            </Link>
+            {" — "}
+            <Link
+              href={`/dizayn-cheloveka/centry/${centerSeoSlug(seo.centers[1])}`}
+              className="hover:text-amber-200"
+            >
+              {CENTER_NAMES_RU[seo.centers[1]]}
+            </Link>
           </dd>
         </div>
       </dl>

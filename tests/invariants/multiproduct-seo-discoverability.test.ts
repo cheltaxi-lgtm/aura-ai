@@ -156,6 +156,8 @@ describe("multiproduct-seo-discoverability", () => {
 
     const hd = read("src/app/dizayn-cheloveka/rasschitat/page.tsx");
     expect(hd).toMatch(/buildForecastStructuredData/);
-    expect(hd).toMatch(/SeoBreadcrumbs/);
+    // Breadcrumbs moved into SeoPageShell's `breadcrumbs` prop (same visible
+    // chain + BreadcrumbList JSON-LD via SeoBreadcrumbs inside the shell).
+    expect(hd).toMatch(/breadcrumbs=\{/);
   });
 });

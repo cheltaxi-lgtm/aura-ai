@@ -1,21 +1,34 @@
 import Link from "next/link";
+import type { BreadcrumbItem } from "@/lib/seo/breadcrumbs";
+import SeoBreadcrumbs from "./SeoBreadcrumbs";
 
 export function SeoPageShell({
   children,
   backHref = "/",
   backLabel = "На главную",
+  breadcrumbs,
 }: {
   children: React.ReactNode;
   backHref?: string;
   backLabel?: string;
+  /**
+   * Full breadcrumb chain (visible nav + BreadcrumbList JSON-LD). When given,
+   * replaces the single back link — preferred for programmatic SEO families so
+   * Yandex sees the real hierarchy (Главная → Раздел → Сущность).
+   */
+  breadcrumbs?: BreadcrumbItem[];
 }) {
   return (
     <main className="page-with-site-header mx-auto max-w-2xl px-4 py-10 pb-16 text-white sm:py-12">
-      <nav className="mb-8 flex flex-wrap items-center gap-2 text-sm text-white/50">
-        <Link href={backHref} className="transition hover:text-aura-gold">
-          ← {backLabel}
-        </Link>
-      </nav>
+      {breadcrumbs ? (
+        <SeoBreadcrumbs items={breadcrumbs} />
+      ) : (
+        <nav className="mb-8 flex flex-wrap items-center gap-2 text-sm text-white/50">
+          <Link href={backHref} className="transition hover:text-aura-gold">
+            ← {backLabel}
+          </Link>
+        </nav>
+      )}
       {children}
     </main>
   );

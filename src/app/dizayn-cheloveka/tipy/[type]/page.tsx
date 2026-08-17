@@ -45,7 +45,14 @@ export default async function HdTypePage({
   });
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka/tipy" backLabel="Типы">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Типы", path: "/dizayn-cheloveka/tipy" },
+        { name: seo.title, path: `/dizayn-cheloveka/tipy/${seo.slug}` },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

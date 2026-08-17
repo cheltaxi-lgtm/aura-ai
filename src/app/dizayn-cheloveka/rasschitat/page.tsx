@@ -3,7 +3,6 @@ import { notFound } from "next/navigation";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import HdCalculator from "@/components/human-design/HdCalculator";
@@ -17,6 +16,10 @@ export const metadata: Metadata = buildSeoMetadata({
 });
 
 const FAQ = [
+  {
+    q: "Можно ли рассчитать карту только по дате рождения?",
+    a: "Да: дата определяет основные активации, но без времени и места точность ниже. Калькулятор построит карту на 12:00 и отдельно покажет, какие параметры стабильны в течение дня, а какие зависят от времени рождения.",
+  },
   {
     q: "Нужна ли регистрация для расчёта?",
     a: "Нет. Тип, стратегия, авторитет, профиль и бодиграф доступны бесплатно без аккаунта. Войти понадобится только для полного письменного разбора.",
@@ -42,7 +45,13 @@ export default async function HumanDesignCalculatePage() {
   });
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka" backLabel="Дизайн Человека">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Рассчитать карту", path: "/dizayn-cheloveka/rasschitat" },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
@@ -53,13 +62,6 @@ export default async function HumanDesignCalculatePage() {
         funnelProduct="human_design"
         funnelSource="hd_calc"
       />
-      <SeoBreadcrumbs
-        items={[
-          { name: "Zovus", path: "/" },
-          { name: "Дизайн человека", path: "/dizayn-cheloveka" },
-          { name: "Рассчитать", path: "/dizayn-cheloveka/rasschitat" },
-        ]}
-      />
       <p className="text-sm text-aura-gold/80">Дизайн Человека · Калькулятор</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
         Рассчитать карту Дизайна Человека
@@ -68,6 +70,12 @@ export default async function HumanDesignCalculatePage() {
         Укажите данные рождения — расчёт выполняется по точным эфемеридам с истинным
         лунным узлом и моментом Дизайна ровно за 88° солярной дуги до рождения.
       </p>
+      <ul className="mt-4 space-y-1.5 text-sm text-white/55">
+        <li>тип, стратегия и внутренний авторитет;</li>
+        <li>профиль, определённость и инкарнационный крест;</li>
+        <li>интерактивный бодиграф с воротами, каналами и центрами;</li>
+        <li>бесплатно и без регистрации — разбор с Эвелиной после входа.</li>
+      </ul>
 
       <div className="mt-8">
         <HdCalculator returnTo="/dizayn-cheloveka/rasschitat" />
@@ -87,9 +95,12 @@ export default async function HumanDesignCalculatePage() {
       <SeoRelatedTools
         title="Смотрите также"
         links={[
+          { href: "/dizayn-cheloveka", label: "Что такое Дизайн Человека" },
+          { href: "/dizayn-cheloveka/sovmestimost", label: "Совместимость пары" },
+          { href: "/dizayn-cheloveka/vorota", label: "64 ворота — справочник" },
+          { href: "/dizayn-cheloveka/kanaly", label: "36 каналов — справочник" },
           { href: "/natalnaya-karta", label: "Натальная карта" },
           { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
-          { href: "/taro", label: "Таро онлайн" },
         ]}
       />
 

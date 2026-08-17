@@ -54,7 +54,17 @@ export default async function HdPairPage({
   const others = HD_PAIR_SEO.filter((p) => p.slug !== seo.slug).slice(0, 6);
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka/sovmestimost" backLabel="Совместимость">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Совместимость", path: "/dizayn-cheloveka/sovmestimost" },
+        {
+          name: `${seo.nameA} + ${seo.nameB}`,
+          path: `/dizayn-cheloveka/sovmestimost/${seo.slug}`,
+        },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

@@ -18,9 +18,9 @@ import HdTransitToday from "@/components/human-design/HdTransitToday";
 import HdTransitWeek from "@/components/human-design/HdTransitWeek";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: "Дизайн Человека — рассчитать карту (бодиграф) бесплатно онлайн",
+  title: "Дизайн Человека — что это: типы, ворота, каналы, расчёт карты",
   description:
-    "Дизайн Человека онлайн: бесплатный расчёт бодиграфа по дате, времени и месту рождения. Тип, стратегия, авторитет, профиль, каналы и инкарнационный крест. Точные эфемериды, разбор с Эвелиной.",
+    "Дизайн Человека простыми словами: тип энергии, стратегия, внутренний авторитет, профиль, 64 ворота и 36 каналов. Бесплатный расчёт бодиграфа по дате, времени и месту рождения — без регистрации, на точных эфемеридах.",
   path: "/dizayn-cheloveka",
 });
 
@@ -49,15 +49,20 @@ const HUB_FAQ = [
 
 export default function HumanDesignHubPage() {
   const structuredData = buildForecastStructuredData({
-    title: "Дизайн Человека — рассчитать карту бесплатно",
+    title: "Дизайн Человека — что это и как работает",
     description:
-      "Бесплатный расчёт бодиграфа: тип, стратегия, авторитет, профиль, каналы и инкарнационный крест по точным эфемеридам.",
+      "Типы, профили, ворота, каналы и центры Дизайна Человека простыми словами + бесплатный расчёт бодиграфа по точным эфемеридам.",
     path: "/dizayn-cheloveka",
     faq: HUB_FAQ.map((item) => ({ q: item.q, a: item.a })),
   });
 
   return (
-    <SeoPageShell backHref="/" backLabel="На главную">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
@@ -66,7 +71,7 @@ export default function HumanDesignHubPage() {
 
       <p className="text-sm text-aura-gold/80">Дизайн Человека</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
-        Дизайн Человека: рассчитать карту бесплатно
+        Дизайн Человека: что это и как работает
       </h1>
       <p className="mt-4 text-white/70">
         Бодиграф — карта вашей механики: тип энергии, стратегия движения по жизни, внутренний

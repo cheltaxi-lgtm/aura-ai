@@ -48,7 +48,14 @@ export default async function HdCenterPage({
     .map(([g]) => Number(g));
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka/centry" backLabel="Центры">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Центры", path: "/dizayn-cheloveka/centry" },
+        { name: `${seo.name} центр`, path: `/dizayn-cheloveka/centry/${seo.slug}` },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

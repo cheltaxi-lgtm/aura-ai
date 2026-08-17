@@ -12,7 +12,7 @@ import {
   centerSeo,
   gateSeo,
 } from "@/lib/human-design/seo-entities";
-import { CENTER_NAMES_RU } from "@/lib/human-design";
+import { CENTER_NAMES_RU, GATE_NAMES_RU } from "@/lib/human-design";
 
 export function generateStaticParams() {
   return ALL_GATE_SLUGS.map((gate) => ({ gate }));
@@ -52,7 +52,14 @@ export default async function HdGatePage({
   const centerSlug = CENTER_SEO_SLUGS.find((s) => centerSeo(s)?.center === seo.center);
 
   return (
-    <SeoPageShell backHref="/dizayn-cheloveka/vorota" backLabel="Ворота">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
+        { name: "Ворота", path: "/dizayn-cheloveka/vorota" },
+        { name: `Ворота ${seo.gate}`, path: `/dizayn-cheloveka/vorota/${seo.slug}` },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
@@ -92,6 +99,31 @@ export default async function HdGatePage({
           <p>{section.body}</p>
         </SeoSection>
       ))}
+
+      <SeoSection title="Каналы и парные ворота">
+        <ul className="space-y-2">
+          {seo.channelLinks.map((channel, i) => (
+            <li key={channel.key}>
+              <Link
+                href={`/dizayn-cheloveka/kanaly/${channel.key}`}
+                className="text-aura-gold underline-offset-4 transition hover:underline"
+              >
+                Канал {channel.key} «{channel.name}»
+              </Link>
+              <span className="text-white/50">
+                {" "}
+                — с воротами{" "}
+                <Link
+                  href={`/dizayn-cheloveka/vorota/${seo.partnerGates[i]}`}
+                  className="text-white/70 underline-offset-4 transition hover:text-amber-200 hover:underline"
+                >
+                  {seo.partnerGates[i]} «{GATE_NAMES_RU[seo.partnerGates[i]!]}»
+                </Link>
+              </span>
+            </li>
+          ))}
+        </ul>
+      </SeoSection>
 
       <SeoSection title="Частые вопросы">
         <dl className="space-y-4">
