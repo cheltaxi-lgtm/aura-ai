@@ -1,4 +1,4 @@
-import type { HdChart, HdPublicChart } from "@/lib/human-design";
+import type { HdCenterKey, HdChart, HdPublicChart } from "@/lib/human-design";
 import {
   HD_CENTER_SHAPES,
   HD_CHANNEL_SEGMENTS,
@@ -36,6 +36,7 @@ interface Palette {
   centerOpenFill: string;
   centerOpenStroke: string;
   centerDefinedStroke: string;
+  centerLabel: string;
   gateNumber: string;
   medallionText: string;
 }
@@ -48,6 +49,7 @@ const PALETTES: Record<"dark" | "light", Palette> = {
     centerOpenFill: "#141210",
     centerOpenStroke: "rgba(232, 199, 126, 0.35)",
     centerDefinedStroke: "rgba(255, 232, 168, 0.9)",
+    centerLabel: "rgba(232, 199, 126, 0.55)",
     gateNumber: "rgba(232, 199, 126, 0.45)",
     medallionText: "#17131f",
   },
@@ -58,9 +60,32 @@ const PALETTES: Record<"dark" | "light", Palette> = {
     centerOpenFill: "#ffffff",
     centerOpenStroke: "rgba(43, 36, 24, 0.30)",
     centerDefinedStroke: "#8a6a2a",
+    centerLabel: "rgba(43, 36, 24, 0.55)",
     gateNumber: "rgba(43, 36, 24, 0.40)",
     medallionText: "#ffffff",
   },
+};
+
+/**
+ * Center captions for static artifacts (print/PDF, share cards) where there is
+ * no hover tooltip. Placed in collision-free spots: inside empty squares and
+ * the diamond, in the head/ajna gap, beside the heart, and rotated along the
+ * side triangles' flat outer edges. Short forms where the full CENTER_NAMES_RU
+ * string would not fit ("Эго" for heart).
+ */
+const CENTER_LABELS: Record<
+  HdCenterKey,
+  { text: string; x: number; y: number; rotate?: number }
+> = {
+  head: { text: "Головной", x: 200, y: 13 },
+  ajna: { text: "Аджна", x: 200, y: 102 },
+  throat: { text: "Горловой", x: 200, y: 230 },
+  g: { text: "G-центр", x: 200, y: 352 },
+  heart: { text: "Эго", x: 322, y: 343 },
+  spleen: { text: "Селезёночный", x: 40, y: 476, rotate: -90 },
+  solar: { text: "Эмоциональный", x: 360, y: 476, rotate: 90 },
+  sacral: { text: "Сакральный", x: 200, y: 466 },
+  root: { text: "Корневой", x: 200, y: 598 },
 };
 
 export default function HdStaticBodygraph({
@@ -68,11 +93,14 @@ export default function HdStaticBodygraph({
   theme = "dark",
   idPrefix,
   className,
+  showLabels = true,
 }: {
   chart: HdChart | HdPublicChart;
   theme?: "dark" | "light";
   idPrefix: string;
   className?: string;
+  /** Center name captions; off only if a caller embeds the graph at tiny size. */
+  showLabels?: boolean;
 }) {
   const pal = PALETTES[theme];
   const gradDefined = `${idPrefix}-center`;
@@ -161,6 +189,28 @@ export default function HdStaticBodygraph({
           );
         })}
       </g>
+
+      {showLabels && (
+        <g
+          fontFamily="system-ui, sans-serif"
+          textAnchor="middle"
+          fontSize={9}
+          fontWeight={600}
+          letterSpacing="0.1em"
+          fill={pal.centerLabel}
+        >
+          {Object.values(CENTER_LABELS).map((l) => (
+            <text
+              key={l.text}
+              x={l.x}
+              y={l.y}
+              transform={l.rotate ? `rotate(${l.rotate} ${l.x} ${l.y})` : undefined}
+            >
+              {l.text.toUpperCase()}
+            </text>
+          ))}
+        </g>
+      )}
 
       <g fontFamily="system-ui, sans-serif" textAnchor="middle">
         {HD_GATE_ANCHORS.map((anchor) => {
