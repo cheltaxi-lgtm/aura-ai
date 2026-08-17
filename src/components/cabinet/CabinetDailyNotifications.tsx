@@ -8,6 +8,7 @@ import { trackRetentionOptIn } from "@/lib/seo/product-funnel";
 type Prefs = {
   dailyEmail: boolean;
   dailyInApp: boolean;
+  dailyTelegram: boolean;
   reminderHourMsk: number;
   bonusEmail: boolean;
   marketingEmail: boolean;
@@ -102,6 +103,17 @@ export default function CabinetDailyNotifications() {
             />
             <Mail className="h-4 w-4 text-white/40" />
             Письмо о картах дня
+          </label>
+          <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
+            <input
+              type="checkbox"
+              checked={prefs.dailyTelegram ?? true}
+              disabled={saving}
+              onChange={(e) => void save({ dailyTelegram: e.target.checked })}
+              className="rounded border-white/20"
+            />
+            <Bell className="h-4 w-4 text-white/40" />
+            Сообщение в Telegram о картах дня
           </label>
           <label className="block text-xs text-white/45">
             Час напоминания (МСК)

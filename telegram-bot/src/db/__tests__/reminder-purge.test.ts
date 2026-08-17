@@ -15,7 +15,9 @@ import {
   purgeExpiredGuestSessions,
   purgeProcessedUpdates,
   reminderSentWithinDays,
+  setZovusUserId,
   upsertUser,
+  usersForReactivation,
 } from "../repos.js";
 import { SPREAD_QUESTION_STEPS } from "../../flows/spread-steps.js";
 import { createSessionToken, hashSessionToken } from "../../domain/session/token.js";
@@ -152,7 +154,27 @@ function main(): void {
     deleteUserData(uid);
   }
 
-  console.log("ok: spread-steps / reminder-dedupe / purges");
+  // (5) usersForReactivation: site-linked accounts excluded (site win-back owns them)
+  {
+    const uidFree = 920_005;
+    const uidLinked = 920_006;
+    deleteUserData(uidFree);
+    deleteUserData(uidLinked);
+    seedUser(uidFree);
+    seedUser(uidLinked);
+    const sevenDaysAgo = new Date(Date.now() - 7.5 * 86_400_000).toISOString();
+    getDb()
+      .prepare(`UPDATE bot_users SET last_active_at = ? WHERE telegram_user_id IN (?, ?)`)
+      .run(sevenDaysAgo, uidFree, uidLinked);
+    setZovusUserId(uidLinked, "site-user-linked-1");
+    const picked = usersForReactivation(7).map((u) => u.telegram_user_id);
+    assert(picked.includes(uidFree), "reactivation: unlinked inactive user picked");
+    assert(!picked.includes(uidLinked), "reactivation: site-linked user excluded");
+    deleteUserData(uidFree);
+    deleteUserData(uidLinked);
+  }
+
+  console.log("ok: spread-steps / reminder-dedupe / purges / reactivation-scope");
 }
 
 main();

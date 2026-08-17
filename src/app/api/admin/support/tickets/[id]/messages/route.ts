@@ -4,6 +4,7 @@ import { requireAdmin } from "@/lib/admin-auth";
 import { logAdminAction } from "@/lib/admin";
 import { addAdminSupportMessage, getAdminSupportTicket } from "@/lib/support-service";
 import { emailSupportReplyToUser } from "@/lib/email/support-notify";
+import { getAccountDeliverableEmail } from "@/lib/reminder-contacts";
 import { getTelegramStatusForAccount } from "@/lib/telegram/accounts";
 import { notifyBotSupportReply } from "@/lib/telegram/notify-bot-support";
 
@@ -29,14 +30,20 @@ export async function POST(request: NextRequest, context: RouteContext) {
     await logAdminAction(auth.sub, "reply", "support_ticket", id);
 
     const ticket = await getAdminSupportTicket(id);
-    if (ticket?.user_email) {
-      void emailSupportReplyToUser({
-        userEmail: ticket.user_email,
-        userName: ticket.user_name ?? ticket.user_email,
-        ticketId: id,
-        subject: ticket.subject,
-        replyPreview: message.content,
-      });
+    if (ticket?.user_account_id) {
+      const deliverable = await getAccountDeliverableEmail(ticket.user_account_id).catch(
+        () => null
+      );
+      const replyEmail = deliverable ?? ticket.user_email;
+      if (replyEmail) {
+        void emailSupportReplyToUser({
+          userEmail: replyEmail,
+          userName: ticket.user_name ?? replyEmail,
+          ticketId: id,
+          subject: ticket.subject,
+          replyPreview: message.content,
+        });
+      }
     }
 
     if (ticket?.user_account_id) {

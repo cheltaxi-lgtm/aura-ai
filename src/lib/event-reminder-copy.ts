@@ -24,9 +24,11 @@ export function buildEventReminderPayload(ev: GlobalUpcomingEvent): {
       : when
         ? `Важный день — ${when}`
         : "Важный день впереди",
+    // Body never quotes the fact: the bell preview can be seen on a shared
+    // screen. The topic travels only in the click-through CTA the user opens.
     body: sensitive
       ? "В кабинете есть напоминание о предстоящей дате. Откройте Zovus, чтобы посмотреть детали."
-      : `Вы упоминали: «${topic}». ${whenSentence(when)}Загляните к мастеру — посмотрим, что вас ждёт.`,
+      : `${whenSentence(when)}Есть напоминание о предстоящей дате. Загляните к мастеру — посмотрим, что вас ждёт.`,
     data: sensitive
       ? { factId: ev.factId, eventDate: ev.eventDate, sensitive: true }
       : {

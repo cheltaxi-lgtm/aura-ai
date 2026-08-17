@@ -25,6 +25,7 @@ import {
   getUserSupportTicket,
 } from "@/lib/support-service";
 import { emailSupportTicketCreated } from "@/lib/email/support-notify";
+import { getAccountDeliverableEmail } from "@/lib/reminder-contacts";
 import { getUserById } from "@/lib/users";
 import { getRuneBalance } from "@/lib/rune-service";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
@@ -273,15 +274,18 @@ export async function botSupportCreate(input: {
       message: rawMessage,
     });
 
-    const { rows } = await query<{ email: string; name: string | null }>(
-      `SELECT email, name FROM user_accounts WHERE id = $1 LIMIT 1`,
+    const { rows } = await query<{ name: string | null }>(
+      `SELECT name FROM user_accounts WHERE id = $1 LIMIT 1`,
       [gate.resolved.accountId!]
     );
     const account = rows[0];
-    if (account?.email) {
+    const deliverable = await getAccountDeliverableEmail(gate.resolved.accountId!).catch(
+      () => null
+    );
+    if (deliverable) {
       void emailSupportTicketCreated({
-        userEmail: account.email,
-        userName: account.name?.trim() || account.email,
+        userEmail: deliverable,
+        userName: account?.name?.trim() || deliverable,
         ticketId: created.ticket.id,
         subject: created.ticket.subject,
         category: created.ticket.category,

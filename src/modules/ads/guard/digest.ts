@@ -69,8 +69,12 @@ export async function runWeeklyDigest(): Promise<{ notified: number }> {
   const body = await buildWeeklyDigestText();
   let admins: { id: string }[] = [];
   try {
+    // notifications.user_id references profile users.id, not user_accounts.id.
     const r = await adsReadOnlyPublic<{ id: string }>(
-      `SELECT id::text AS id FROM user_accounts WHERE role = 'admin' LIMIT 20`
+      `SELECT profile_user_id::text AS id
+       FROM user_accounts
+       WHERE role = 'admin' AND profile_user_id IS NOT NULL
+       LIMIT 20`
     );
     admins = r.rows;
   } catch {

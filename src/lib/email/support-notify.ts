@@ -5,7 +5,7 @@ import {
   supportNewTicketAdminEmailHtml,
   supportReplyEmailHtml,
 } from "@/lib/email/send";
-import { getSiteUrl, getSupportEmail } from "@/lib/email/mail-config";
+import { getSiteUrl, getSupportEmail, isDeliverableUserEmail } from "@/lib/email/mail-config";
 import { SUPPORT_CATEGORY_LABELS, type SupportCategory } from "@/lib/support-service";
 
 export async function emailSupportTicketCreated(params: {
@@ -20,14 +20,16 @@ export async function emailSupportTicketCreated(params: {
   const ticketUrl = `${siteUrl}/cabinet/support`;
   const adminUrl = `${siteUrl}/admin/support`;
 
-  void sendEmail({
-    to: params.userEmail,
-    subject: `Zovus — обращение принято: ${params.subject.slice(0, 80)}`,
-    html: supportAutoReplyEmailHtml(params.userName, params.subject, ticketUrl),
-    text: `Обращение принято: ${ticketUrl}`,
-    template: "support_auto_reply",
-    replyTo: getSupportEmail(),
-  });
+  if (isDeliverableUserEmail(params.userEmail)) {
+    void sendEmail({
+      to: params.userEmail,
+      subject: `Zovus — обращение принято: ${params.subject.slice(0, 80)}`,
+      html: supportAutoReplyEmailHtml(params.userName, params.subject, ticketUrl),
+      text: `Обращение принято: ${ticketUrl}`,
+      template: "support_auto_reply",
+      replyTo: getSupportEmail(),
+    });
+  }
 
   void sendAdminNotification({
     subject: `[Zovus] Новое обращение: ${params.subject.slice(0, 80)}`,
@@ -52,6 +54,7 @@ export async function emailSupportReplyToUser(params: {
   replyPreview: string;
 }): Promise<void> {
   const ticketUrl = `${getSiteUrl()}/cabinet/support`;
+  if (!isDeliverableUserEmail(params.userEmail)) return;
   void sendEmail({
     to: params.userEmail,
     subject: `Zovus — ответ поддержки: ${params.subject.slice(0, 80)}`,

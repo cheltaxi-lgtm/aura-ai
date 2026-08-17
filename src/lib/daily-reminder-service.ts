@@ -13,6 +13,8 @@ export const DAILY_CARDS_REMINDER_CTA = "/?dailyCards=1";
 export type NotificationPrefs = {
   dailyEmail: boolean;
   dailyInApp: boolean;
+  /** Daily-cards reminder via linked Telegram bot. Default on. */
+  dailyTelegram: boolean;
   /** Hour in Europe/Moscow (0–23). Default 9:00. */
   reminderHourMsk: number;
   /** Evening email when daily rune bonus is claimable. */
@@ -35,6 +37,7 @@ export type NotificationPrefs = {
 const DEFAULT_PREFS: NotificationPrefs = {
   dailyEmail: true,
   dailyInApp: true,
+  dailyTelegram: true,
   reminderHourMsk: 9,
   bonusEmail: true,
   marketingEmail: true,
@@ -63,6 +66,7 @@ export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
   return {
     dailyEmail: o.dailyEmail !== false,
     dailyInApp: o.dailyInApp !== false,
+    dailyTelegram: o.dailyTelegram !== false,
     reminderHourMsk,
     bonusEmail: o.bonusEmail !== false,
     marketingEmail: o.marketingEmail !== false,
@@ -110,6 +114,7 @@ export function resolveDailyCardsReminderDelivery(input: {
   cooldownAllowed: boolean;
   dailyInApp: boolean;
   dailyEmail: boolean;
+  dailyTelegram: boolean;
   hasEmail: boolean;
   hasTelegram: boolean;
   alreadySentInApp: boolean;
@@ -122,7 +127,8 @@ export function resolveDailyCardsReminderDelivery(input: {
   return {
     inApp: input.dailyInApp === true && !input.alreadySentInApp,
     email: input.dailyEmail === true && input.hasEmail && !input.alreadySentEmail,
-    telegram: input.hasTelegram === true && !input.alreadySentTelegram,
+    telegram:
+      input.dailyTelegram === true && input.hasTelegram === true && !input.alreadySentTelegram,
   };
 }
 
@@ -253,6 +259,7 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
       cooldownAllowed: cooldown.allowed,
       dailyInApp: user.prefs.dailyInApp,
       dailyEmail: user.prefs.dailyEmail,
+      dailyTelegram: user.prefs.dailyTelegram,
       hasEmail: Boolean(user.email),
       hasTelegram: user.telegramUserId != null,
       alreadySentInApp,

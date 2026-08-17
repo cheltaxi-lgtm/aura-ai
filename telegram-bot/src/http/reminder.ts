@@ -85,13 +85,18 @@ export async function handleReminderNotify(
       : copy.reminderOpen;
   const unsubUrl = safeHttpsZovus(body.unsubscribe_url, `${botConfig.siteUrl}/cabinet`);
 
-  const user = getDb()
-    .prepare(`SELECT chat_id FROM bot_users WHERE telegram_user_id = ?`)
-    .get(tgId) as { chat_id: number } | undefined;
-  if (!user?.chat_id) {
-    json(res, 200, { ok: true, delivered: false, reason: "no_chat" });
-    return true;
-  }
+    const user = getDb()
+      .prepare(`SELECT chat_id, unsubscribed_at FROM bot_users WHERE telegram_user_id = ?`)
+      .get(tgId) as { chat_id: number; unsubscribed_at?: string | null } | undefined;
+    if (!user?.chat_id) {
+      json(res, 200, { ok: true, delivered: false, reason: "no_chat" });
+      return true;
+    }
+    // Bot-side unsubscribe (/stop) must also silence site-originated reminders.
+    if (user.unsubscribed_at) {
+      json(res, 200, { ok: true, delivered: false, reason: "unsubscribed" });
+      return true;
+    }
 
   try {
     const tgRes = await fetch(`https://api.telegram.org/bot${botConfig.token}/sendMessage`, {

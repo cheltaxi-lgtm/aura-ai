@@ -151,7 +151,7 @@ describe("event-reminder privacy copy", () => {
     expect(payload.body).not.toMatch(/упоминали/);
   });
 
-  it("normal event keeps personalized topic and ask CTA", () => {
+  it("normal event keeps ask CTA but body never quotes the fact", () => {
     const date = "2030-06-15";
     const payload = buildEventReminderPayload({
       factId: "00000000-0000-0000-0000-0000000000cc",
@@ -164,7 +164,8 @@ describe("event-reminder privacy copy", () => {
       sensitivity: "normal",
     });
     expect(payload.title).toMatch(/Важный день/);
-    expect(payload.body).toMatch(/Артём|выпускн/i);
+    expect(payload.body).not.toMatch(/Артём|выпускн/i);
+    expect(payload.body).not.toMatch(/упоминали/);
     expect(payload.ctaPath).toMatch(/\?ask=/);
     expect(payload.ctaLabel).toBe("Получить расклад");
     expect(payload.data.sourceCharacter).toBe("tarolog");

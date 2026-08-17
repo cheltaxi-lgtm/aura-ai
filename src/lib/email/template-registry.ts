@@ -7,8 +7,12 @@ import {
   jointReadingCompletedEmailHtml,
   jointReadingExpiringEmailHtml,
   jointReadingPartnerDoneEmailHtml,
+  memoryChoiceDisabledEmailHtml,
+  memoryChoiceEnabledEmailHtml,
+  partnerLeadAdminEmailHtml,
   passwordChangedEmailHtml,
   passwordResetEmailHtml,
+  reportReadyEmailHtml,
   supportAutoReplyEmailHtml,
   supportNewTicketAdminEmailHtml,
   supportReplyEmailHtml,
@@ -17,6 +21,7 @@ import {
   proApplyUserEmailHtml,
   proApprovedEmailHtml,
 } from "@/lib/email/templates";
+import { proEventEmailHtml } from "@/lib/email/pro-notify";
 
 export type EmailTemplateCategory = "transactional" | "reminder" | "marketing" | "support" | "admin";
 
@@ -55,6 +60,31 @@ export const EMAIL_TEMPLATE_REGISTRY: EmailTemplateDef[] = [
     description: "Подтверждение успешной смены пароля.",
     previewHtml: () => passwordChangedEmailHtml("Анна"),
     previewSubject: "Zovus — пароль изменён",
+  },
+  {
+    id: "report_ready",
+    label: "Отчёт готов",
+    category: "transactional",
+    description: "Платный async-отчёт готов (HD, натал, Pro). Дедуп по job_id.",
+    previewHtml: () =>
+      reportReadyEmailHtml("Анна", "Натальный разбор готов", `${siteUrl()}/cabinet`),
+    previewSubject: "Zovus — Натальный разбор готов",
+  },
+  {
+    id: "memory_choice_enabled",
+    label: "Память включена",
+    category: "transactional",
+    description: "Подтверждение включения персональной памяти.",
+    previewHtml: () => memoryChoiceEnabledEmailHtml("Анна"),
+    previewSubject: "Zovus — персональная память включена",
+  },
+  {
+    id: "memory_choice_disabled",
+    label: "Память отключена",
+    category: "transactional",
+    description: "Подтверждение отключения персональной памяти.",
+    previewHtml: () => memoryChoiceDisabledEmailHtml("Анна"),
+    previewSubject: "Zovus — персональная память отключена",
   },
   {
     id: "daily_reminder",
@@ -192,6 +222,65 @@ export const EMAIL_TEMPLATE_REGISTRY: EmailTemplateDef[] = [
     description: "Одобрение доступа к кабинету практика.",
     previewHtml: () => proApprovedEmailHtml("Анна", `${siteUrl()}/pro`),
     previewSubject: "Zovus Pro — доступ открыт",
+  },
+  {
+    id: "pro_intake_submitted",
+    label: "Pro — новая анкета",
+    category: "transactional",
+    description: "Клиент заполнил бриф — кейс создан у практика.",
+    previewHtml: () =>
+      proEventEmailHtml({
+        title: "Новая анкета клиента",
+        lead: "Ирина заполнил(а) бриф — кейс уже создан и ждёт ваших данных.",
+        ctaUrl: `${siteUrl()}/pro/case/preview`,
+        ctaLabel: "Открыть кейс",
+      }),
+    previewSubject: "[Zovus Pro] Новая анкета: Ирина",
+  },
+  {
+    id: "pro_client_question",
+    label: "Pro — вопрос клиента",
+    category: "transactional",
+    description: "Клиент задал вопрос по доставленному отчёту.",
+    previewHtml: () =>
+      proEventEmailHtml({
+        title: "Вопрос по отчёту",
+        lead: "«Подскажите, что значит второй блок?» — черновик ответа ждёт утверждения во входящих.",
+        ctaUrl: `${siteUrl()}/pro/inbox`,
+        ctaLabel: "Открыть входящие",
+      }),
+    previewSubject: "[Zovus Pro] Вопрос клиента по отчёту",
+  },
+  {
+    id: "pro_crisis_escalation",
+    label: "Pro — эскалация",
+    category: "transactional",
+    description: "Тревожное сообщение клиента — ручной режим, ответить лично.",
+    previewHtml: () =>
+      proEventEmailHtml({
+        title: "Эскалация безопасности",
+        lead: "Клиент прислал тревожное сообщение — диалог переведён в ручной режим. Ответьте лично как можно скорее.",
+        ctaUrl: `${siteUrl()}/pro/inbox`,
+        ctaLabel: "Открыть входящие",
+      }),
+    previewSubject: "[Zovus Pro] СРОЧНО: эскалация от клиента",
+  },
+  {
+    id: "partner_lead_admin",
+    label: "Партнёрская заявка — админу",
+    category: "admin",
+    description: "Новая заявка на партнёрство с лендинга.",
+    previewHtml: () =>
+      partnerLeadAdminEmailHtml({
+        contactName: "Ирина",
+        phone: "+7 900 000-00-00",
+        email: "irina@example.com",
+        company: "Салон «Луна»",
+        website: null,
+        preview: "Хотим подключить расклады для клиентов салона.",
+        adminUrl: `${siteUrl()}/admin/partners`,
+      }),
+    previewSubject: "Zovus — заявка на партнёрство",
   },
 ];
 

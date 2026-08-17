@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 
 import { ensureDb, query } from "@/lib/db";
 import { getNotificationPrefs } from "@/lib/daily-reminder-service";
+import { pickDeliverableEmail } from "@/lib/email/mail-config";
+import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 import { getTelegramStatusForProfileUser } from "@/lib/telegram/accounts";
 import { profileAuthFailureResponse, resolveProfileUserContext } from "@/lib/require-auth";
 
@@ -30,8 +32,9 @@ export async function GET() {
 
   const [prefs, contact, telegram] = await Promise.all([
     getNotificationPrefs(resolved.profileUserId),
-    query<{ email: string | null }>(
-      `SELECT email FROM user_accounts WHERE profile_user_id = $1 LIMIT 1`,
+    query<{ deliverable_email: string | null }>(
+      `SELECT (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email
+       FROM user_accounts ua WHERE ua.profile_user_id = $1 LIMIT 1`,
       [resolved.profileUserId]
     ).then((r) => r.rows[0] ?? null),
     getTelegramStatusForProfileUser(resolved.profileUserId).catch(() => ({
@@ -39,7 +42,7 @@ export async function GET() {
     })),
   ]);
 
-  const email = typeof contact?.email === "string" ? contact.email : null;
+  const email = pickDeliverableEmail(contact?.deliverable_email);
 
   return NextResponse.json({
     inApp: { available: true },

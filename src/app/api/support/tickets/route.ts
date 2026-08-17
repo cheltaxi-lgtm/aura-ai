@@ -10,6 +10,7 @@ import {
   SUPPORT_STATUS_LABELS,
 } from "@/lib/support-service";
 import { emailSupportTicketCreated } from "@/lib/email/support-notify";
+import { getAccountDeliverableEmail } from "@/lib/reminder-contacts";
 
 export async function GET() {
   await ensureDb();
@@ -47,9 +48,10 @@ export async function POST(request: NextRequest) {
       category,
       message,
     });
+    const deliverable = await getAccountDeliverableEmail(auth.sub).catch(() => null);
     void emailSupportTicketCreated({
-      userEmail: auth.email,
-      userName: auth.name ?? auth.email,
+      userEmail: deliverable ?? auth.email,
+      userName: auth.name ?? deliverable ?? auth.email,
       ticketId: ticket.id,
       subject: ticket.subject,
       category,

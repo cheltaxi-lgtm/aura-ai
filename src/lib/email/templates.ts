@@ -185,6 +185,21 @@ function jointReadingEmailShell(name: string, bodyHtml: string, ctaUrl: string, 
   );
 }
 
+export function reportReadyEmailHtml(
+  name: string | null,
+  title: string,
+  ctaUrl: string
+): string {
+  const greeting = name?.trim() ? `${name.trim()}, ` : "";
+  return shell(
+    `<p>${greeting}ваш отчёт готов.</p>
+     <p><strong>${title}</strong></p>
+     ${cta(ctaUrl, "Открыть отчёт")}
+     <p style="font-size:14px;color:#555">Можно открыть постоянную ссылку — повторного списания рун не будет.</p>`,
+    "Служебное письмо о готовности оплаченного отчёта."
+  );
+}
+
 export function jointReadingPartnerDoneEmailHtml(name: string, ctaUrl: string): string {
   return jointReadingEmailShell(
     name,

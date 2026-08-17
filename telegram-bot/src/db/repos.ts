@@ -730,7 +730,12 @@ export function listUsers(limit = 100): BotUser[] {
     .all(limit) as BotUser[];
 }
 
-/** Users inactive for exactly `days` calendar days (reactivation window). */
+/**
+ * Users inactive for exactly `days` calendar days (reactivation window).
+ * Accounts linked to the site (zovus_user_id) are excluded — the site's own
+ * win-back (7/14d email + in-app + Telegram via /internal/reminder) owns them,
+ * otherwise a linked user gets two parallel "come back" tracks.
+ */
 export function usersForReactivation(days: number, limit = 200): BotUser[] {
   const now = Date.now();
   const start = new Date(now - (days + 1) * 86_400_000).toISOString();
@@ -741,6 +746,7 @@ export function usersForReactivation(days: number, limit = 200): BotUser[] {
        WHERE blocked_at IS NULL
          AND banned_at IS NULL
          AND (unsubscribed_at IS NULL OR unsubscribed_at = '')
+         AND (zovus_user_id IS NULL OR zovus_user_id = '')
          AND last_active_at IS NOT NULL
          AND last_active_at > ?
          AND last_active_at <= ?

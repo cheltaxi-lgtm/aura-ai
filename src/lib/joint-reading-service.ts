@@ -18,7 +18,8 @@ import { stripEnglishLeakageFromRussianText } from "@/lib/reading-text-polish";
 import { isNatalChartEnabled } from "@/lib/settings";
 import { getOrComputeNatalChart } from "@/lib/services/natal-chart-service";
 import { computeSynastry } from "@/lib/natal/synastry";
-import { getNotificationPrefs } from "@/lib/daily-reminder-service";
+import { pickDeliverableEmail } from "@/lib/email/mail-config";
+import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 import {
   captureJointCombinedMemory,
   captureJointInviteMemory,
@@ -104,18 +105,25 @@ function mapRow(row: Record<string, unknown>): JointReadingRow {
 }
 
 async function getProfileContact(userId: string): Promise<{ name: string; email: string | null }> {
-  const res = await query<{ name: string | null; email: string | null }>(
-    `SELECT u.name, ua.email
+  const res = await query<{ name: string | null; deliverable_email: string | null }>(
+    `SELECT u.name, (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email
      FROM users u
      LEFT JOIN user_accounts ua ON ua.profile_user_id = u.id
      WHERE u.id = $1
      LIMIT 1`,
     [userId]
   );
-  return { name: res.rows[0]?.name?.trim() || "друг", email: res.rows[0]?.email ?? null };
+  return {
+    name: res.rows[0]?.name?.trim() || "друг",
+    email: pickDeliverableEmail(res.rows[0]?.deliverable_email),
+  };
 }
 
-/** In-app notification + best-effort transactional email for a joint-reading milestone. */
+/**
+ * In-app notification + best-effort transactional email for a joint-reading
+ * milestone. Transactional: the user started this flow, so delivery is NOT
+ * gated by daily-cards prefs (same class as support replies / report-ready).
+ */
 export async function notifyJointReadingEvent(params: {
   userId: string;
   type: "joint_reading_partner_done" | "joint_reading_completed";
@@ -128,23 +136,19 @@ export async function notifyJointReadingEvent(params: {
     : "Ваш партнёр прошёл свою часть совместного расклада. Откройте результат.";
   const ctaLabel = isCompleted ? "Читать результат" : "Открыть результат";
   const ctaPath = `/joint-reading/${params.token}`;
-  const prefs = await getNotificationPrefs(params.userId);
 
-  if (prefs.dailyInApp) {
-    await dispatchNotification({
-      userId: params.userId,
-      type: params.type,
-      title,
-      body,
-      ctaPath,
-      ctaLabel,
-      data: { token: params.token },
-      idempotencyKey: `${params.type}:${params.token}`,
-    });
-  }
+  await dispatchNotification({
+    userId: params.userId,
+    type: params.type,
+    title,
+    body,
+    ctaPath,
+    ctaLabel,
+    data: { token: params.token },
+    idempotencyKey: `${params.type}:${params.token}`,
+  });
 
   try {
-    if (!prefs.dailyEmail) return;
     const { name, email } = await getProfileContact(params.userId);
     if (!email) return;
     const ctaUrl = buildJointReadingUrl(params.token);

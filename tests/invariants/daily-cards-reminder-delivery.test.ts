@@ -47,6 +47,7 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         cooldownAllowed: true,
         dailyInApp: true,
         dailyEmail: true,
+        dailyTelegram: true,
         hasEmail: true,
         hasTelegram: false,
         alreadySentInApp: false,
@@ -63,6 +64,7 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         cooldownAllowed: true,
         dailyInApp: true,
         dailyEmail: true,
+        dailyTelegram: true,
         hasEmail: true,
         hasTelegram: false,
         alreadySentInApp: false,
@@ -72,6 +74,40 @@ describe("daily-cards-reminder-delivery (unit)", () => {
     ).toEqual({ inApp: true, email: true, telegram: false });
   });
 
+  it("telegram linked but dailyTelegram pref off → no telegram channel", () => {
+    expect(
+      resolveDailyCardsReminderDelivery({
+        dailyCardsReminder: true,
+        cooldownAllowed: true,
+        dailyInApp: true,
+        dailyEmail: true,
+        dailyTelegram: false,
+        hasEmail: true,
+        hasTelegram: true,
+        alreadySentInApp: false,
+        alreadySentEmail: false,
+        alreadySentTelegram: false,
+      })
+    ).toEqual({ inApp: true, email: true, telegram: false });
+  });
+
+  it("telegram linked + dailyTelegram on → telegram allowed", () => {
+    expect(
+      resolveDailyCardsReminderDelivery({
+        dailyCardsReminder: true,
+        cooldownAllowed: true,
+        dailyInApp: false,
+        dailyEmail: false,
+        dailyTelegram: true,
+        hasEmail: false,
+        hasTelegram: true,
+        alreadySentInApp: false,
+        alreadySentEmail: false,
+        alreadySentTelegram: false,
+      })
+    ).toEqual({ inApp: false, email: false, telegram: true });
+  });
+
   it("channel pref false is respected", () => {
     expect(
       resolveDailyCardsReminderDelivery({
@@ -79,6 +115,7 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         cooldownAllowed: true,
         dailyInApp: false,
         dailyEmail: false,
+        dailyTelegram: false,
         hasEmail: true,
         hasTelegram: false,
         alreadySentInApp: false,
@@ -95,6 +132,7 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         cooldownAllowed: false,
         dailyInApp: true,
         dailyEmail: true,
+        dailyTelegram: true,
         hasEmail: true,
         hasTelegram: false,
         alreadySentInApp: false,
@@ -111,6 +149,7 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         cooldownAllowed: true,
         dailyInApp: true,
         dailyEmail: true,
+        dailyTelegram: true,
         hasEmail: true,
         hasTelegram: false,
         alreadySentInApp: true,

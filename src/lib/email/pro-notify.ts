@@ -5,14 +5,19 @@ import {
   proApplyUserEmailHtml,
   proApprovedEmailHtml,
 } from "@/lib/email/send";
-import { getSiteUrl, isDeliverableUserEmail } from "@/lib/email/mail-config";
+import {
+  getSiteUrl,
+  isDeliverableUserEmail,
+  pickDeliverableEmail,
+} from "@/lib/email/mail-config";
+import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 import { query } from "@/lib/db";
 
 async function getProfileContact(
   profileUserId: string
 ): Promise<{ name: string; email: string | null }> {
-  const res = await query<{ name: string | null; email: string | null }>(
-    `SELECT u.name, ua.email
+  const res = await query<{ name: string | null; deliverable_email: string | null }>(
+    `SELECT u.name, (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email
      FROM users u
      LEFT JOIN user_accounts ua ON ua.profile_user_id = u.id
      WHERE u.id = $1
@@ -21,7 +26,7 @@ async function getProfileContact(
   );
   return {
     name: res.rows[0]?.name?.trim() || "друг",
-    email: res.rows[0]?.email ?? null,
+    email: pickDeliverableEmail(res.rows[0]?.deliverable_email),
   };
 }
 
@@ -88,7 +93,7 @@ export async function notifyProAccountApproved(params: {
   });
 }
 
-function proEventEmailHtml(params: {
+export function proEventEmailHtml(params: {
   title: string;
   lead: string;
   ctaUrl: string;

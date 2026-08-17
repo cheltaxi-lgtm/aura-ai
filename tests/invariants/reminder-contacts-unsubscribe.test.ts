@@ -111,6 +111,39 @@ describe("reminder-contacts-unsubscribe (unit)", () => {
     expect(read("src/lib/oauth/providers/vk.ts")).toMatch(/scope:\s*["']email["']/);
     expect(read("src/lib/oauth/providers/yandex.ts")).toMatch(/login:email/);
   });
+
+  it("transactional senders route through deliverable email, not raw ua.email", () => {
+    for (const rel of [
+      "src/lib/async-report-notify.ts",
+      "src/lib/joint-reading-service.ts",
+      "src/lib/email/pro-notify.ts",
+    ]) {
+      const src = read(rel);
+      expect(src).toMatch(/ACCOUNT_DELIVERABLE_EMAIL_SQL/);
+      expect(src).toMatch(/pickDeliverableEmail/);
+      expect(src).not.toMatch(/SELECT u\.name, ua\.email/);
+    }
+  });
+
+  it("joint-reading milestones are transactional (not gated by daily prefs)", () => {
+    const src = read("src/lib/joint-reading-service.ts");
+    expect(src).not.toMatch(/getNotificationPrefs/);
+    expect(src).not.toMatch(/prefs\.dailyInApp|prefs\.dailyEmail/);
+  });
+
+  it("daily telegram channel has its own pref, cabinet toggle and PATCH field", () => {
+    const svc = read("src/lib/daily-reminder-service.ts");
+    expect(svc).toMatch(/dailyTelegram: o\.dailyTelegram !== false/);
+    expect(svc).toMatch(/input\.dailyTelegram === true && input\.hasTelegram/);
+    const route = read("src/app/api/profile/notifications/route.ts");
+    expect(route).toMatch(/patch\.dailyTelegram = body\.dailyTelegram/);
+    const cabinet = read("src/components/cabinet/CabinetDailyNotifications.tsx");
+    expect(cabinet).toMatch(/dailyTelegram/);
+    const botReminder = read("telegram-bot/src/http/reminder.ts");
+    expect(botReminder).toMatch(/unsubscribed_at/);
+    const botRepos = read("telegram-bot/src/db/repos.ts");
+    expect(botRepos).toMatch(/zovus_user_id IS NULL OR zovus_user_id = ''/);
+  });
 });
 
 describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {

@@ -1,3 +1,4 @@
+import { query } from "@/lib/db";
 import { pickDeliverableEmail } from "@/lib/email/mail-config";
 
 /** Account mailbox, else Yandex / VK / other OAuth provider_email. */
@@ -29,4 +30,14 @@ export function resolveRowDeliverableEmail(
   providerEmail: string | null | undefined
 ): string | null {
   return pickDeliverableEmail(accountEmail, providerEmail);
+}
+
+/** Deliverable mailbox for one account: real account email, else Yandex/VK OAuth email. */
+export async function getAccountDeliverableEmail(accountId: string): Promise<string | null> {
+  const { rows } = await query<{ deliverable_email: string | null }>(
+    `SELECT (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email
+     FROM user_accounts ua WHERE ua.id = $1 LIMIT 1`,
+    [accountId]
+  );
+  return pickDeliverableEmail(rows[0]?.deliverable_email);
 }

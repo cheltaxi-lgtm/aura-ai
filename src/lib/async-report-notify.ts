@@ -1,5 +1,8 @@
 import { getNotificationPrefs } from "@/lib/daily-reminder-service";
 import { sendEmail } from "@/lib/email/send";
+import { reportReadyEmailHtml } from "@/lib/email/templates";
+import { pickDeliverableEmail } from "@/lib/email/mail-config";
+import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 import { dispatchNotification } from "@/lib/notify";
 import { resolveAsyncReportDestination } from "@/lib/async-report-destination";
 import { isReportReadyTelegramEnabled } from "@/lib/async-report-flags";
@@ -53,15 +56,18 @@ type DeliveryRow = {
 async function getProfileContact(
   userId: string
 ): Promise<{ name: string | null; email: string | null }> {
-  const { rows } = await query<{ name: string | null; email: string | null }>(
-    `SELECT u.name, ua.email
+  const { rows } = await query<{ name: string | null; deliverable_email: string | null }>(
+    `SELECT u.name, (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email
      FROM users u
      LEFT JOIN user_accounts ua ON ua.profile_user_id = u.id
      WHERE u.id = $1
      LIMIT 1`,
     [userId]
   );
-  return rows[0] ?? { name: null, email: null };
+  return {
+    name: rows[0]?.name ?? null,
+    email: pickDeliverableEmail(rows[0]?.deliverable_email),
+  };
 }
 
 async function insertDelivery(
@@ -169,7 +175,7 @@ async function deliverEmail(row: DeliveryRow): Promise<void> {
   await sendEmail({
     to: email,
     subject: `Zovus — ${row.title}`,
-    html: `<p>${name ? `${name}, ` : ""}ваш отчёт готов.</p><p><a href="${ctaUrl}">Открыть</a></p><p>${BODY}</p>`,
+    html: reportReadyEmailHtml(name, row.title, ctaUrl),
     text: `${row.title}. ${BODY} ${ctaUrl}`,
     template: "report_ready",
   });
