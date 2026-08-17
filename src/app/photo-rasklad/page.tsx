@@ -10,6 +10,7 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Расшифровка Таро по фото онлайн — загрузить расклад | ${BRAND_NAME}`,
@@ -77,6 +78,12 @@ export default function PhotoRaskladPage() {
         <SeoTrackedCta href={buildPhotoMarkUrl()} variant="ghost" trackGoal="photo_landing_cta_click">
           Отметить карты вручную
         </SeoTrackedCta>
+      </div>
+
+      {/* Conversion value, client island: renders only with server-confirmed rune
+          config. min-h reserves space so the late paint causes no layout shift. */}
+      <div className="mt-4 min-h-[2.25rem]">
+        <StarterRunesValue variant="badge" />
       </div>
 
       <SeoSection title="Кому подходит расшифровка по фото">

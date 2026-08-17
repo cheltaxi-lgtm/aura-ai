@@ -153,6 +153,7 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await hashPassword(String(password));
+    let starterGranted = 0;
     const { account, profile } = await withTransaction(async (client) => {
       const accountResult = await queryClient<{ id: string; email: string; name: string }>(
         client,
@@ -206,7 +207,9 @@ export async function POST(request: NextRequest) {
       return { account: createdAccount, profile: createdProfile };
     });
 
-    await grantStarterRunesIfNeeded(profile.id);
+    await grantStarterRunesIfNeeded(profile.id).then((grant) => {
+      starterGranted = grant?.granted ?? 0;
+    });
 
     let sessionLinked = false;
     if (sessionId && profile) {
@@ -241,6 +244,8 @@ export async function POST(request: NextRequest) {
       user: { id: account.id, email: account.email, name: account.name },
       profile: serializeUserProfile(profile),
       sessionLinked,
+      // Server-confirmed starter grant (0 when already granted earlier) — analytics hint only.
+      starterRunes: starterGranted,
       // Account+profile row exist — registration complete for Tarot.
       needsProfile: false,
       needsBirthProfile,

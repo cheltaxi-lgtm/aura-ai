@@ -66,6 +66,7 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
 export const PHOTO_READING_RETURN = "/?photo=1";
 const PHOTO_STREAM_URL = "/api/photo-reading/stream";
@@ -402,8 +403,8 @@ export default function PhotoReadingFlow({
   useEffect(() => {
     if (!open) return;
     sessionStorage.setItem("zovus_photo_rev", PHOTO_UPLOAD_REV);
-    trackPhotoReadingPhase("open", { mode: initialMode });
-  }, [open, initialMode]);
+    trackPhotoReadingPhase("open", { mode: initialMode, authed: isLoggedIn });
+  }, [open, initialMode, isLoggedIn]);
 
   useEffect(() => {
     if (!open || !isLoggedIn) return;
@@ -1595,7 +1596,7 @@ export default function PhotoReadingFlow({
 
                   {runeConfig.enabled && (
                     <p className="text-center text-xs text-gray-500">
-                      Стоимость фото-расклада {formatRunes(photoCost)}
+                      Стоимость — {formatRunes(photoCost)} (руны Zovus)
                       {photoPricing?.firstPhotoDiscount && photoCost < photoBaseCost ? (
                         <>
                           {" "}
@@ -1604,7 +1605,8 @@ export default function PhotoReadingFlow({
                           </span>
                         </>
                       ) : null}
-                      : сначала распознаём карты, затем вы подтверждаете расклад и получаете расшифровку.
+                      . Сначала распознаём карты, вы проверяете позиции, затем получаете
+                      расшифровку мастера.
                     </p>
                   )}
                 </>
@@ -1832,14 +1834,24 @@ export default function PhotoReadingFlow({
 
               {/* Not logged in */}
               {!isLoggedIn && step === "upload" && (
-                <div className="flex flex-col items-center gap-3 rounded-2xl border border-white/8 bg-white/[0.03] px-4 py-5 text-center">
-                  <p className="text-sm text-gray-400">Войдите чтобы получить расшифровку</p>
+                <div className="flex flex-col items-center gap-3 rounded-2xl border border-aura-gold/20 bg-aura-gold/[0.05] px-4 py-5 text-center">
+                  <StarterRunesValue variant="badge" />
+                  <p className="text-sm text-gray-300">
+                    Создайте аккаунт, чтобы получить расшифровку — расклад и диалог с мастером
+                    сохранятся в кабинете.
+                  </p>
                   <Link
                     href={buildRegisterHref(resolveRegistrationReturnTo({ photo: true }))}
                     onClick={() => trackRegistrationCtaClick("photo_reading")}
                     className="btn-luxe btn-luxe--sm btn-luxe--gold"
                   >
-                    Зарегистрироваться
+                    Создать аккаунт и продолжить
+                  </Link>
+                  <Link
+                    href={buildLoginHref(resolveRegistrationReturnTo({ photo: true }))}
+                    className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
+                  >
+                    Уже есть аккаунт? Войти
                   </Link>
                 </div>
               )}

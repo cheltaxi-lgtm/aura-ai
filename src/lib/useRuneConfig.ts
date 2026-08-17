@@ -26,6 +26,8 @@ const FALLBACK: RuneConfig = {
 };
 
 let cached: RuneConfig | null = null;
+/** True only when the cached config came from /api/runes/config — never for FALLBACK. */
+let cachedFromServer = false;
 let inflight: Promise<RuneConfig> | null = null;
 
 export function fetchRuneConfig(): Promise<RuneConfig> {
@@ -44,6 +46,7 @@ export function fetchRuneConfig(): Promise<RuneConfig> {
         labels: { ...FALLBACK.labels, ...(d.labels ?? {}) },
       };
       cached = config;
+      cachedFromServer = d !== FALLBACK;
       return config;
     })
     .catch(() => FALLBACK)
@@ -56,14 +59,19 @@ export function fetchRuneConfig(): Promise<RuneConfig> {
 
 export function invalidateRuneConfigCache() {
   cached = null;
+  cachedFromServer = false;
 }
 
 export function useRuneConfig() {
   const [config, setConfig] = useState<RuneConfig | null>(cached);
+  const [fromServer, setFromServer] = useState(cachedFromServer);
   const ready = config !== null;
 
   useEffect(() => {
-    void fetchRuneConfig().then(setConfig);
+    void fetchRuneConfig().then((c) => {
+      setConfig(c);
+      setFromServer(cachedFromServer);
+    });
   }, []);
 
   const effective = config ?? FALLBACK;
@@ -77,5 +85,5 @@ export function useRuneConfig() {
     return `${amount} ᚢ · ~${rub} ₽`;
   };
 
-  return { config: effective, cost, formatRunes, formatRunesWithRub, ready };
+  return { config: effective, cost, formatRunes, formatRunesWithRub, ready, fromServer };
 }

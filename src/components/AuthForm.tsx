@@ -54,6 +54,7 @@ import {
   trackRegistrationCompleted,
   trackRegistrationError,
   trackRegistrationStarted,
+  trackSeoEvent,
 } from "@/lib/seo/metrika";
 import SocialAuthButtons, { OAuthErrorBanner } from "@/components/auth/SocialAuthButtons";
 import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
@@ -105,6 +106,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     const safe = sanitizeReturnTo(raw, fallback);
     setReturnTo(safe);
     captureReturnToFromUrl(window.location.search, fallback);
+    if (isUserRegister && safe.includes("photo=1")) {
+      trackSeoEvent("photo_auth_view");
+    }
     if (role === "user" && isAgeGateConfirmed()) {
       setAgeConfirmed(true);
     }
@@ -292,6 +296,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
         if (data.profile) {
           trackRegistrationCompleted(regSource);
+          if (typeof data.starterRunes === "number" && data.starterRunes > 0) {
+            trackSeoEvent("starter_runes_granted", { source: "email", amount: data.starterRunes });
+          }
           clearShareRegistrationAttribution();
           clearNeedsServerProfile();
           const mergedProfile = {
