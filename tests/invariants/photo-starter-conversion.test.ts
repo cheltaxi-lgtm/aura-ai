@@ -57,7 +57,8 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
   it("StarterRunesValue renders only server-loaded config — never fallback numbers", () => {
     const src = readSrc("src/components/auth/StarterRunesValue.tsx");
     expect(src).toContain("fromServer");
-    expect(src).toMatch(/if \(!fromServer \|\| config\.starterRunes <= 0\) return null/);
+    expect(src).toMatch(/fromServer && config\.starterRunes > 0/);
+    expect(src).toMatch(/if \(!shown\) return null/);
     // Display-only: no entitlement writes, no storage, no balance mutation.
     expect(src).not.toMatch(/localStorage|sessionStorage/);
     expect(src).not.toMatch(/rune_balance|grantStarter/);

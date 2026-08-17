@@ -22,6 +22,7 @@ import { hdApiErrorMessage } from "./hd-errors";
 import { useHdReportWait } from "./useHdReportWait";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { FREE_TO_PAID, freeToPaidFunnelState } from "@/lib/free-to-paid-conversion";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
 interface HdReport {
   id: string;
@@ -529,6 +530,14 @@ export default function HdReportPanel({
             Гостевая карта хранится 30 дней — после входа она навсегда останется в вашем архиве.
           </p>
           {modulesCard}
+          <StarterRunesValue
+            variant="badge"
+            costKey="HD_REPORT"
+            unit={["полный разбор", "полных разбора", "полных разборов"]}
+            coversOneText="этот полный разбор"
+            product="hd_report"
+            className="mt-4"
+          />
           <a
             href={`/auth/user/login?returnTo=${encodeURIComponent(loginReturnTo)}`}
             className="btn-luxe btn-luxe--gold mt-5 inline-flex"

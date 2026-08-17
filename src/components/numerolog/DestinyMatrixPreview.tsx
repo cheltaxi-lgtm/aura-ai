@@ -25,6 +25,7 @@ import { useMatrixOwnership } from "@/hooks/useMatrixOwnership";
 import { useMatrixSubjects } from "@/hooks/useMatrixSubjects";
 import MatrixSubjectPicker from "@/components/numerolog/MatrixSubjectPicker";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import {
   FREE_TO_PAID,
   freeToPaidCtaLabel,
@@ -795,6 +796,16 @@ export default function DestinyMatrixPreview() {
             <p className="mt-2 text-xs text-white/40">
               {freeToPaidHint(FREE_TO_PAID.matrix, ownedFull)}
             </p>
+            {!isLoggedIn ? (
+              <StarterRunesValue
+                variant="badge"
+                costKey="NUMEROLOGY_SESSION"
+                unit={["полный разбор", "полных разбора", "полных разборов"]}
+                coversOneText="полный разбор Матрицы"
+                product="matrix"
+                className="mt-3"
+              />
+            ) : null}
           </div>
         </div>
       ) : null}

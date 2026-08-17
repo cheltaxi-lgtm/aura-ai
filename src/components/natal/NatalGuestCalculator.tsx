@@ -9,6 +9,7 @@ import {
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
@@ -554,6 +555,16 @@ export default function NatalGuestCalculator() {
             <p className="text-sm text-white/65">
               {freeToPaidHint(FREE_TO_PAID.natal, ownedNatal)}
             </p>
+            {!isLoggedIn ? (
+              <StarterRunesValue
+                variant="badge"
+                costKey="NATAL_READING"
+                unit={["полную трактовку", "полных трактовки", "полных трактовок"]}
+                coversOneText="полную натальную трактовку"
+                product="natal"
+                className="mt-3"
+              />
+            ) : null}
             <div className="mt-4 flex flex-wrap gap-3">
               {isLoggedIn ? (
                 <button

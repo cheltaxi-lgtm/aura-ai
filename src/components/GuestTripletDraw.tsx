@@ -48,6 +48,7 @@ import DeckCard from "@/components/DeckCard";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
 const GUEST_ID_KEY = "zovus_guest_id";
 const CARD_COUNT = 3;
@@ -774,6 +775,7 @@ export default function GuestTripletDraw({
                     Войдите одним способом — эти карты сохранятся, а после регистрации Вы сможете
                     открывать 3 карты дня бесплатно раз в сутки.
                   </p>
+                  <StarterRunesValue variant="badge" generic product="tarot_guest" className="mt-3" />
                 </div>
 
                 <div id="guest-oauth-consent">

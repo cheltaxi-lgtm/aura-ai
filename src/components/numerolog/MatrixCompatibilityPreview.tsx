@@ -8,6 +8,7 @@ import {
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
@@ -523,6 +524,15 @@ export default function MatrixCompatibilityPreview() {
               В полном разборе — практика по ключам, общий совет на 30 дней и диалог с Эвелиной.
               После входа откроется та же пара дат.
             </p>
+            {!isLoggedIn ? (
+              <StarterRunesValue
+                variant="badge"
+                costKey="MATRIX_PAIR_REPORT"
+                unit={["парный разбор", "парных разбора", "парных разборов"]}
+                product="matrix_pair"
+                className="mt-3"
+              />
+            ) : null}
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button
                 type="button"

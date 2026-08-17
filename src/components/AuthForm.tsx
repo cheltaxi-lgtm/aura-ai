@@ -106,8 +106,22 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     const safe = sanitizeReturnTo(raw, fallback);
     setReturnTo(safe);
     captureReturnToFromUrl(window.location.search, fallback);
-    if (isUserRegister && safe.includes("photo=1")) {
-      trackSeoEvent("photo_auth_view");
+    if (isUserRegister) {
+      const authProduct = safe.includes("photo=1")
+        ? "photo"
+        : safe.includes("dizayn-cheloveka")
+          ? "hd"
+          : safe.includes("natalnaya-karta")
+            ? "natal"
+            : safe.includes("numerology")
+              ? "matrix"
+              : null;
+      if (authProduct === "photo") {
+        trackSeoEvent("photo_auth_view");
+      }
+      if (authProduct) {
+        trackSeoEvent("starter_auth_view", { product: authProduct });
+      }
     }
     if (role === "user" && isAgeGateConfirmed()) {
       setAgeConfirmed(true);

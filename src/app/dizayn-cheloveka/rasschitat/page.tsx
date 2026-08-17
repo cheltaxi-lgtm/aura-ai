@@ -7,6 +7,7 @@ import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import HdCalculator from "@/components/human-design/HdCalculator";
 import { isHumanDesignEnabled } from "@/lib/settings";
+import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Рассчитать карту Дизайна Человека бесплатно — бодиграф онлайн",
@@ -74,7 +75,8 @@ export default async function HumanDesignCalculatePage() {
         <li>тип, стратегия и внутренний авторитет;</li>
         <li>профиль, определённость и инкарнационный крест;</li>
         <li>интерактивный бодиграф с воротами, каналами и центрами;</li>
-        <li>бесплатно и без регистрации — разбор с Эвелиной после входа.</li>
+        <li>карта и основные параметры — бесплатно и без регистрации;</li>
+        <li>полный разбор с Эвелиной — после входа, {DEFAULT_RUNE_COSTS.HD_REPORT} ᚢ.</li>
       </ul>
 
       <div className="mt-8">

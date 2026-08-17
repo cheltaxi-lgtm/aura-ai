@@ -14,6 +14,7 @@ import {
 } from "@/lib/human-design";
 import PaywallModal from "@/components/PaywallModal";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
 import HdGenerating from "./HdGenerating";
@@ -685,6 +686,16 @@ export default function HdComposite({ base, partner }: Props) {
                 </ul>
               </div>
             </div>
+            {!resumeFree ? (
+              <StarterRunesValue
+                variant="badge"
+                costKey="HD_COMPOSITE_REPORT"
+                unit={["разбор связи", "разбора связи", "разборов связи"]}
+                coversOneText="этот разбор связи"
+                product="hd_composite"
+                className="mt-3"
+              />
+            ) : null}
             <label className="mt-4 flex items-start gap-2.5 text-xs leading-relaxed text-white/60">
               <input
                 type="checkbox"
