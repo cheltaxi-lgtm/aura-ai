@@ -12,8 +12,8 @@ type Unit = [one: string, few: string, many: string];
 type HeroContext = "photo" | "hd" | "natal" | "matrix" | "generic";
 
 type StarterRunesValueProps = {
-  /** badge — compact pill for landings/paid blocks; hero — dominant block for the auth screen. */
-  variant?: "badge" | "hero";
+  /** badge — compact pill; line — quiet hero accent; hero — dominant auth-screen block. */
+  variant?: "badge" | "hero" | "line";
   className?: string;
   /**
    * Rune cost key of the promoted product. Enables contextual «хватит на N …»
@@ -92,6 +92,14 @@ export default function StarterRunesValue({
 
   const starter = config.starterRunes;
 
+  if (variant === "line") {
+    return (
+      <p className={`editorial-hero__starter-line ${className}`.trim()}>
+        При первой регистрации — стартовые {starter} ᚢ
+      </p>
+    );
+  }
+
   if (variant === "hero") {
     const photoCost = config.costs.VISION_ANALYSIS || 30;
     const readingCost = config.costs.READING || 15;
@@ -130,11 +138,11 @@ export default function StarterRunesValue({
         className={`rounded-2xl border border-aura-gold/30 bg-aura-gold/[0.07] px-5 py-4 text-center ${className}`.trim()}
       >
         <p className="font-display text-lg font-semibold text-aura-champagne">
-          Новым пользователям — стартовые {starter} ᚢ
+          При первой регистрации — стартовые {starter} ᚢ
         </p>
         <p className="mt-1.5 text-sm leading-relaxed text-aura-ivory/70">{line}</p>
         <p className="mt-2 text-[11px] leading-relaxed text-aura-ivory/40">
-          ᚢ — руны, внутренняя валюта Zovus. Начисляются один раз при создании аккаунта.
+          ᚢ — руны, внутренняя валюта Zovus. Начисляются один раз при первой регистрации.
         </p>
       </div>
     );
@@ -166,9 +174,8 @@ export default function StarterRunesValue({
     >
       <span aria-hidden>✦</span>
       <span>
-        Новым пользователям — {starter} ᚢ
+        При первой регистрации — стартовые {starter} ᚢ
         {valueLine ? ` · ${valueLine}` : ""}
-        {!valueLine && generic ? " · в подарок после регистрации" : ""}
       </span>
     </p>
   );

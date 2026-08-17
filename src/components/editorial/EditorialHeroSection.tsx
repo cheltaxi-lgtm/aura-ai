@@ -32,6 +32,7 @@ export default function EditorialHeroSection({
   conversionHero = false,
 }: EditorialHeroSectionProps) {
   const { ref, className } = useScrollReveal<HTMLElement>({ immediate: true });
+  const guestConversion = conversionHero && !isLoggedIn;
 
   return (
     <section
@@ -52,13 +53,14 @@ export default function EditorialHeroSection({
         <HeroQuestionField
           className="editorial-hero__question"
           onQuestionSubmit={onQuestionSubmit}
-          autoFocusDesktop={conversionHero && !isLoggedIn}
-          submitVariant="secondary"
+          autoFocusDesktop={guestConversion}
+          submitVariant={guestConversion ? "gold" : "secondary"}
+          submitLabel={guestConversion ? "Начать разбор" : undefined}
           placeholder="Например: вернётся ли он?"
-          hint="Подберём схему и мастера под ваш вопрос"
-          hintOnScrim
+          hint={guestConversion ? "" : "Подберём схему и мастера под ваш вопрос"}
+          hintOnScrim={!guestConversion}
         />
-        {conversionHero && !isLoggedIn ? (
+        {guestConversion ? (
           <div className="editorial-hero__pain-chips" role="list" aria-label="Частые вопросы">
             {GUEST_HERO_PAIN_CHIPS.map((chip) => {
               const intent = getSpreadIntentBySlug(chip.intentSlug);
@@ -84,33 +86,42 @@ export default function EditorialHeroSection({
             })}
           </div>
         ) : null}
-        <div className="editorial-hero__actions">
-          <button type="button" className="editorial-btn editorial-btn--gold" onClick={onPrimaryCta}>
-            {isLoggedIn ? "Продолжить практику" : EDITORIAL_HERO.primaryCta}
-          </button>
-          <button type="button" className="editorial-btn editorial-btn--ghost" onClick={onSecondaryCta}>
-            {EDITORIAL_HERO.secondaryCta}
-            <span aria-hidden> →</span>
-          </button>
-        </div>
-        {!isLoggedIn ? (
-          <div className="editorial-hero__gift mt-3">
-            <StarterRunesValue variant="badge" generic product="home_hero" />
+        {guestConversion ? (
+          <div className="editorial-hero__actions editorial-hero__actions--secondary">
+            <button type="button" className="editorial-btn editorial-btn--ghost" onClick={onPrimaryCta}>
+              Открыть 3 карты
+            </button>
+          </div>
+        ) : (
+          <div className="editorial-hero__actions">
+            <button type="button" className="editorial-btn editorial-btn--gold" onClick={onPrimaryCta}>
+              {isLoggedIn ? "Продолжить практику" : EDITORIAL_HERO.primaryCta}
+            </button>
+            <button type="button" className="editorial-btn editorial-btn--ghost" onClick={onSecondaryCta}>
+              {EDITORIAL_HERO.secondaryCta}
+              <span aria-hidden> →</span>
+            </button>
+          </div>
+        )}
+        {guestConversion ? (
+          <div className="editorial-hero__gift">
+            <StarterRunesValue variant="line" generic product="home_hero" />
           </div>
         ) : null}
-        <p className="editorial-hero__micro">{EDITORIAL_HERO.microcopy}</p>
         {!isLoggedIn ? (
-          <p className="editorial-hero__retention-hook">{EDITORIAL_HERO.retentionHook}</p>
-        ) : null}
-        {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}
-        {conversionHero && !isLoggedIn ? (
-          <p className="editorial-hero__legal-note">
-            18+ ·{" "}
-            <Link href="/disclaimer" className="editorial-hero__legal-link">
-              развлекательный сервис
-            </Link>
+          <p className="editorial-hero__micro">
+            {EDITORIAL_HERO.microcopy}
+            {guestConversion ? (
+              <>
+                {" · "}
+                <Link href="/disclaimer" className="editorial-hero__legal-link">
+                  развлекательный сервис
+                </Link>
+              </>
+            ) : null}
           </p>
         ) : null}
+        {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}
       </div>
     </section>
   );

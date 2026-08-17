@@ -398,19 +398,11 @@ export default function AuraSellingLanding({
           }}
         />
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
-        <EditorialStarterGiftSection />
         {/* Same guest-receipt flow; mounted under hero (no full navigation). Idle = null. */}
         <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
         <LandingDemoSection onOpenCards={() => handlePrimaryCta("final")} />
+        <EditorialStarterGiftSection />
         <EditorialSessionStepsSection />
-        <EditorialDailyCardsSection
-          isLoggedIn={false}
-          onGuestCta={() => startGuestSpread()}
-        />
-        <EditorialBirthToolsSection />
-        <EditorialFreeValueSection />
-        <LandingHonestSection />
-        <EditorialStarterPackSection onOpenFreeSpread={() => startGuestSpread()} />
         {showMasters ? (
           <MastersShowcase
             masters={masters}
@@ -430,11 +422,17 @@ export default function AuraSellingLanding({
             className="aura-landing-masters"
           />
         ) : null}
+        <EditorialBirthToolsSection />
+        <EditorialDailyCardsSection
+          isLoggedIn={false}
+          onGuestCta={() => startGuestSpread()}
+        />
+        <LandingHonestSection />
         <EditorialPracticesSection
           isLoggedIn={false}
           onGuestTarot={() => startGuestSpread()}
+          additionalFormats
         />
-        <LandingClosingBand onOpenCards={() => handlePrimaryCta("final")} />
         {showTariffs ? (
           <LandingSeoHub
             rubPerRune={config.rubPerRune}
@@ -443,6 +441,7 @@ export default function AuraSellingLanding({
             hideFaq
           />
         ) : null}
+        <LandingClosingBand onOpenCards={() => handlePrimaryCta("final")} />
         <LandingStickyCta label="Открыть 3 карты" onClick={() => handlePrimaryCta("sticky")} />
       </div>
     );

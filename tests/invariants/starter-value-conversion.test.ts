@@ -146,25 +146,31 @@ describe("starter gift on the public homepage", () => {
   it("gift CTA leads to the existing register flow", () => {
     const src = readSrc("src/components/editorial/EditorialStarterGiftSection.tsx");
     expect(src).toContain("buildRegisterHref");
-    expect(src).toContain("Получить {starter} ᚢ бесплатно");
+    expect(src).toContain("Создать аккаунт и получить {starter} ᚢ");
     expect(src).toContain('trackSeoEvent("starter_gift_cta_click"');
     expect(src).toContain('trackSeoEvent("starter_gift_view"');
   });
 
-  it("gift section is mounted below the product entries on the guest homepage", () => {
+  it("gift section is the unified acquisition block after the demo on the guest homepage", () => {
     const src = readSrc("src/components/AuraSellingLanding.tsx");
-    const entriesIdx = src.indexOf("<EditorialProductEntries");
-    const giftIdx = src.indexOf("<EditorialStarterGiftSection");
-    const spreadIdx = src.indexOf("<GuestTripletDraw", entriesIdx);
-    expect(entriesIdx).toBeGreaterThan(-1);
-    expect(giftIdx).toBeGreaterThan(entriesIdx);
-    expect(giftIdx).toBeLessThan(spreadIdx);
+    const start = src.indexOf("if (isGuestEditorial)");
+    const guestReturn = src.indexOf("return (", start);
+    const nextReturn = src.indexOf("return (", guestReturn + 1);
+    const guestBranch = src.slice(guestReturn, nextReturn);
+    const demoIdx = guestBranch.indexOf("<LandingDemoSection");
+    const giftIdx = guestBranch.indexOf("<EditorialStarterGiftSection");
+    const stepsIdx = guestBranch.indexOf("<EditorialSessionStepsSection");
+    expect(demoIdx).toBeGreaterThan(-1);
+    expect(giftIdx).toBeGreaterThan(demoIdx);
+    expect(giftIdx).toBeLessThan(stepsIdx);
+    expect(guestBranch).not.toContain("<EditorialFreeValueSection");
+    expect(guestBranch).not.toContain("<EditorialStarterPackSection");
   });
 
   it("hero shows the compact starter accent to guests near the main CTA", () => {
     const src = readSrc("src/components/editorial/EditorialHeroSection.tsx");
-    expect(src).toContain('StarterRunesValue variant="badge" generic product="home_hero"');
-    expect(src).toMatch(/!isLoggedIn[\s\S]{0,200}StarterRunesValue/);
+    expect(src).toContain('StarterRunesValue variant="line" generic product="home_hero"');
+    expect(src).toContain("guestConversion");
   });
 
   it("no second starter-grant mechanism was created", () => {

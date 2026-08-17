@@ -192,7 +192,7 @@ export default function HeroQuestionField({
           {buttonText}
         </button>
       </div>
-      <p className="hero-question__hint">{hint}</p>
+      {hint ? <p className="hero-question__hint">{hint}</p> : null}
     </form>
   );
 }

@@ -13,10 +13,8 @@ describe("multiproduct-homepage", () => {
     expect(EDITORIAL_HERO.title).toBe(
       "Понять себя. Увидеть ситуацию. Выбрать следующий шаг."
     );
-    expect(EDITORIAL_HERO.subtitle.toLowerCase()).toMatch(/матриц/);
-    expect(EDITORIAL_HERO.subtitle.toLowerCase()).toMatch(/натал|натальн/);
-    expect(EDITORIAL_HERO.subtitle.toLowerCase()).toMatch(/дизайн/);
-    expect(EDITORIAL_HERO.subtitle.toLowerCase()).toMatch(/таро/);
+    // Product map lives in EDITORIAL_PRODUCT_ENTRIES — hero no longer lists all four.
+    expect(EDITORIAL_PRODUCT_ENTRIES.map((e) => e.id)).toEqual(["matrix", "natal", "hd", "tarot"]);
     // Quick Tarot path kept.
     expect(EDITORIAL_HERO.primaryCta.toLowerCase()).toMatch(/3 карты|три карты/);
   });

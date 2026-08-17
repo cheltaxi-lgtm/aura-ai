@@ -128,11 +128,9 @@ export type GuestSpreadStartDetail = {
   masterId?: string;
 };
 
-/** Pain-language chips for guest hero — reuse intent slugs, change only labels. */
+/** Pain-language chips for guest hero — reuse intent slugs, change only labels. Max 3. */
 export const GUEST_HERO_PAIN_CHIPS = [
   { label: "Он не пишет третий день", intentSlug: "chto-mezhdu-nami" },
   { label: "Уволиться или терпеть", intentSlug: "stoit-li-menyat-rabotu" },
-  { label: "Мы вообще вместе?", intentSlug: "chto-mezhdu-nami" },
-  { label: "Куда уходят деньги", intentSlug: "stoit-li-idti-dalshe" },
   { label: "Что меня ждёт", intentSlug: "chto-so-mnoy-proiskhodit" },
 ] as const;

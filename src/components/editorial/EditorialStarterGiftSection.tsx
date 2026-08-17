@@ -20,20 +20,8 @@ const GIFT_EXAMPLES: GiftExample[] = [
   { costKey: "VISION_ANALYSIS", unit: ["фото-расклад", "фото-расклада", "фото-раскладов"] },
   { costKey: "READING", unit: ["расшифровка расклада", "расшифровки расклада", "расшифровок расклада"] },
   {
-    costKey: "INTENTION_SPREAD",
-    unit: ["расклад на вашу тему", "расклада на вашу тему", "раскладов на вашу тему"],
-  },
-  {
     costKey: "NUMEROLOGY_SESSION",
     unit: ["разбор Матрицы судьбы", "разбора Матрицы судьбы", "разборов Матрицы судьбы"],
-  },
-  {
-    costKey: "HD_REPORT",
-    unit: ["полный разбор Дизайна человека", "полных разбора Дизайна человека", "полных разборов Дизайна человека"],
-  },
-  {
-    costKey: "NATAL_READING",
-    unit: ["полная натальная трактовка", "полных натальных трактовки", "полных натальных трактовок"],
   },
 ];
 
@@ -74,7 +62,6 @@ export default function EditorialStarterGiftSection() {
   if (!shown) return null;
 
   const starter = config.starterRunes;
-  const runesWord = pluralRu(starter, "руна", "руны", "рун");
 
   const chips = GIFT_EXAMPLES.map((example) => {
     const price = config.costs[example.costKey] ?? 0;
@@ -100,26 +87,30 @@ export default function EditorialStarterGiftSection() {
       title: capitalize(config.labels[example.costKey] ?? example.unit[0]),
       note: `${starter} ᚢ — вклад в стоимость ${price} ᚢ`,
     };
-  }).filter((chip): chip is NonNullable<typeof chip> => chip !== null);
+  })
+    .filter((chip): chip is NonNullable<typeof chip> => chip !== null)
+    .slice(0, 3);
 
   return (
     <section
       ref={ref}
-      className={`editorial-starter-gift ${className}`}
+      className={`editorial-section editorial-starter-gift ${className}`}
       aria-labelledby="editorial-starter-gift-title"
     >
       <div className="editorial-landing__inner">
         <div className="editorial-starter-pack__card editorial-starter-gift__card salon-reveal__item">
           <div className="editorial-starter-pack__glow" aria-hidden />
           <div className="editorial-starter-pack__copy">
-            <p className="editorial-starter-pack__eyebrow">Подарок новым пользователям</p>
+            <p className="editorial-starter-pack__eyebrow">Начните бесплатно</p>
             <h2 id="editorial-starter-gift-title" className="editorial-starter-pack__title">
-              {starter} ᚢ на знакомство с Zovus
+              Попробуйте Zovus и получите стартовые руны
             </h2>
-            <p className="editorial-starter-pack__subtitle">
-              Создайте аккаунт — и получите {starter} {runesWord} в подарок. Используйте их, чтобы
-              попробовать возможности Zovus и получить первый персональный разбор.
-            </p>
+            <p className="editorial-starter-gift__amount">При первой регистрации — {starter} ᚢ</p>
+            <ul className="editorial-starter-gift__points">
+              <li>3 карты по своему вопросу — без регистрации</li>
+              <li>{starter} ᚢ для первых персональных разборов</li>
+              <li>После регистрации — 3 карты дня бесплатно раз в сутки</li>
+            </ul>
             <ul className="editorial-starter-gift__chips" aria-label={`На что хватит ${starter} ᚢ`}>
               {chips.map((chip) => (
                 <li key={chip.id} className="editorial-starter-gift__chip">
@@ -134,11 +125,11 @@ export default function EditorialStarterGiftSection() {
                 className="editorial-btn editorial-btn--gold"
                 onClick={() => trackSeoEvent("starter_gift_cta_click", { placement: "home" })}
               >
-                Получить {starter} ᚢ бесплатно
+                Создать аккаунт и получить {starter} ᚢ
               </Link>
             </div>
             <p className="editorial-starter-pack__fine">
-              ᚢ — руны, внутренняя валюта Zovus. Начисляются один раз при создании аккаунта.
+              ᚢ — внутренняя валюта Zovus. Начисляются один раз при первой регистрации.
             </p>
           </div>
         </div>

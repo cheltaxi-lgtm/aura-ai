@@ -3,20 +3,32 @@
 import Link from "next/link";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
-import { EDITORIAL_PRACTICES, EDITORIAL_SECTION_IDS } from "@/lib/editorial-landing-content";
+import {
+  EDITORIAL_ADDITIONAL_FORMAT_IDS,
+  EDITORIAL_PRACTICES,
+  EDITORIAL_SECTION_IDS,
+} from "@/lib/editorial-landing-content";
 import { buildRegisterHref, resolveRegistrationReturnTo } from "@/lib/post-auth-return";
 
 type EditorialPracticesSectionProps = {
   isLoggedIn: boolean;
   /** Prefer same-page guest triplet over /?ask&spread=1 when landing already mounts GuestTripletDraw. */
   onGuestTarot?: () => void;
+  /** Guest landing: additional formats only — not a second catalog of the core four. */
+  additionalFormats?: boolean;
 };
 
 export default function EditorialPracticesSection({
   isLoggedIn,
   onGuestTarot,
+  additionalFormats = false,
 }: EditorialPracticesSectionProps) {
   const { ref, className } = useScrollReveal<HTMLElement>();
+  const practices = additionalFormats
+    ? EDITORIAL_PRACTICES.filter((practice) =>
+        (EDITORIAL_ADDITIONAL_FORMAT_IDS as readonly string[]).includes(practice.id)
+      )
+    : EDITORIAL_PRACTICES;
 
   return (
     <section
@@ -29,16 +41,18 @@ export default function EditorialPracticesSection({
           className="editorial-section__title salon-reveal__item"
           style={{ ["--salon-i" as string]: 0 }}
         >
-          Практики
+          {additionalFormats ? "Другие форматы Zovus" : "Практики"}
         </h2>
         <p
           className="editorial-section__subtitle salon-reveal__item"
           style={{ ["--salon-i" as string]: 1 }}
         >
-          Выберите формат под задачу — карты, числа или карта рождения.
+          {additionalFormats
+            ? "ФотоТаро, нумерология и другие форматы — рядом с основными направлениями."
+            : "Выберите формат под задачу — карты, числа или карта рождения."}
         </p>
         <div className="editorial-practices__grid">
-          {EDITORIAL_PRACTICES.map((practice, index) => {
+          {practices.map((practice, index) => {
             const guestDirect =
               "guestHref" in practice && typeof practice.guestHref === "string"
                 ? practice.guestHref

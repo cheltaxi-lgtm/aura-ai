@@ -10,12 +10,11 @@ export const EDITORIAL_SECTION_IDS = {
 
 export const EDITORIAL_HERO = {
   title: "Понять себя. Увидеть ситуацию. Выбрать следующий шаг.",
-  subtitle:
-    "Zovus — персональные AI-разборы и расчёты: матрица судьбы, натальная карта, дизайн человека и Таро. Начните с бесплатного расчёта или откройте три карты по своему вопросу.",
+  subtitle: "Задайте вопрос — три карты покажут, что происходит и какой шаг выбрать дальше.",
   primaryCta: "Открыть 3 карты бесплатно",
   secondaryCta: "Как проходит сеанс",
-  microcopy: "Без регистрации · без банковской карты · 18+",
-  /** Rolling 24h — consumer benefit, not funnel jargon. */
+  microcopy: "3 карты без регистрации · без банковской карты · 18+",
+  /** Daily benefit lives in EditorialDailyCardsSection — not in the guest hero. */
   retentionHook: "Каждый день — 3 карты с подсказкой на текущий день",
 } as const;
 
@@ -217,7 +216,27 @@ export const EDITORIAL_SESSION_STEPS = [
   },
 ] as const;
 
+/** Additional formats first; core four stay in the array for logged-in / SEO routes. */
 export const EDITORIAL_PRACTICES = [
+  {
+    id: "photo",
+    title: "ФотоТаро",
+    subtitle: "Сфотографируйте свой расклад — мастер разберёт каждую позицию.",
+    image: "/landing/practices/photo-tarot.jpg",
+    cta: "Загрузить фото расклада",
+    guestReturn: { photo: true },
+    loggedInHref: "/photo-rasklad",
+  },
+  {
+    id: "numerology",
+    title: "Нумерология",
+    subtitle: "Числа пути, квадрат Пифагора и циклы — с Эвелиной.",
+    image: "/landing/practices/numerology.jpg",
+    cta: "Перейти к числам",
+    guestHref: "/numerology",
+    guestReturn: { custom: "/numerology" },
+    loggedInHref: "/numerology",
+  },
   {
     id: "matrix",
     title: "Матрица судьбы",
@@ -241,25 +260,6 @@ export const EDITORIAL_PRACTICES = [
     loggedInHref: "/rasklad",
   },
   {
-    id: "photo",
-    title: "ФотоТаро",
-    subtitle: "Сфотографируйте свой расклад — мастер разберёт каждую позицию.",
-    image: "/landing/practices/photo-tarot.jpg",
-    cta: "Загрузить фото расклада",
-    guestReturn: { photo: true },
-    loggedInHref: "/photo-rasklad",
-  },
-  {
-    id: "numerology",
-    title: "Нумерология",
-    subtitle: "Числа пути, квадрат Пифагора и циклы — с Эвелиной.",
-    image: "/landing/practices/numerology.jpg",
-    cta: "Перейти к числам",
-    guestHref: "/numerology",
-    guestReturn: { custom: "/numerology" },
-    loggedInHref: "/numerology",
-  },
-  {
     id: "natal",
     title: "Натальная карта",
     subtitle: "Карта рождения и личные периоды — сначала публичный разбор, затем кабинет.",
@@ -270,6 +270,8 @@ export const EDITORIAL_PRACTICES = [
     loggedInHref: "/cabinet/astrology",
   },
 ] as const;
+
+export const EDITORIAL_ADDITIONAL_FORMAT_IDS = ["photo", "numerology"] as const;
 
 export const EDITORIAL_FOOTER_TAGLINE =
   "Таро · матрица · астрология · нумерология";
