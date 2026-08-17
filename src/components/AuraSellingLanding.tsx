@@ -28,7 +28,6 @@ import AndroidDownloadBlock from "@/components/seo/AndroidDownloadBlock";
 import LandingSeoHub from "@/components/seo/LandingSeoHub";
 import LandingPartnersSection from "@/components/seo/LandingPartnersSection";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
-import LandingHonestSection from "@/components/seo/LandingHonestSection";
 import LandingClosingBand from "@/components/seo/LandingClosingBand";
 import {
   buildLandingOfferCopy,
@@ -425,7 +424,6 @@ export default function AuraSellingLanding({
           isLoggedIn={false}
           onGuestCta={() => startGuestSpread()}
         />
-        <LandingHonestSection />
         <EditorialPracticesSection
           isLoggedIn={false}
           onGuestTarot={() => startGuestSpread()}

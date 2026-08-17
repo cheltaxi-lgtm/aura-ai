@@ -30,17 +30,17 @@ describe("guest landing conversion cleanup", () => {
 
   it("hero copy is short and eligibility-safe", () => {
     expect(EDITORIAL_HERO.subtitle.length).toBeLessThan(140);
-    expect(EDITORIAL_HERO.microcopy.toLowerCase()).toContain("без регистрации");
-    expect(EDITORIAL_HERO.microcopy).toContain("18+");
     const hero = readSrc("src/components/editorial/EditorialHeroSection.tsx");
     expect(hero).not.toContain("EDITORIAL_HERO.retentionHook");
+    expect(hero).not.toContain("EDITORIAL_HERO.microcopy");
     expect(hero).toContain('StarterRunesValue variant="line"');
     expect(hero).not.toContain("Как проходит сеанс");
   });
 
-  it("guest landing order is hero → products → starter → masters → birth → daily → honest → practices → seo → faq/cta", () => {
+  it("guest landing order is hero → products → starter → masters → birth → daily → practices → seo → final CTA", () => {
     const guest = guestLandingBranch();
     expect(guest).not.toContain("<LandingDemoSection");
+    expect(guest).not.toContain("<LandingHonestSection");
     const markers = [
       "<EditorialHeroSection",
       "<EditorialProductEntries",
@@ -50,7 +50,6 @@ describe("guest landing conversion cleanup", () => {
       "<MastersShowcase",
       "<EditorialBirthToolsSection",
       "<EditorialDailyCardsSection",
-      "<LandingHonestSection",
       "<EditorialPracticesSection",
       "<LandingSeoHub",
       "<LandingClosingBand",
@@ -66,9 +65,11 @@ describe("guest landing conversion cleanup", () => {
     expect(guest).not.toContain("<EditorialStarterPackSection");
   });
 
-  it("SeoHub comes before FAQ/final CTA, not after", () => {
+  it("SeoHub comes before the final CTA, not after", () => {
     const guest = guestLandingBranch();
     expect(guest.indexOf("<LandingSeoHub")).toBeLessThan(guest.indexOf("<LandingClosingBand"));
+    const closing = readSrc("src/components/seo/LandingClosingBand.tsx");
+    expect(closing).not.toContain("LandingFaqSection");
   });
 
   it("BirthTools helps choose Matrix + Natal + HD on canonical routes", () => {

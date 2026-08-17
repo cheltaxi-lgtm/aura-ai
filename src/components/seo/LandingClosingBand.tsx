@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import LandingFaqSection from "@/components/seo/LandingFaqSection";
 import LandingFinalCtaSection from "@/components/seo/LandingFinalCtaSection";
 
 type LandingClosingBandProps = {
@@ -9,8 +8,8 @@ type LandingClosingBandProps = {
 };
 
 /**
- * FAQ + final CTA share one editorial column and a local constellation
- * overlay (same drawing language as SalonBackground; motion scoped here).
+ * Final CTA in one editorial column with a local constellation overlay
+ * (same drawing language as SalonBackground; motion scoped here).
  */
 export default function LandingClosingBand({ onOpenCards }: LandingClosingBandProps) {
   const bandRef = useRef<HTMLDivElement | null>(null);
@@ -113,7 +112,6 @@ export default function LandingClosingBand({ onOpenCards }: LandingClosingBandPr
       </div>
 
       <div className="editorial-landing__inner landing-closing-band__inner">
-        <LandingFaqSection />
         <LandingFinalCtaSection onOpenCards={onOpenCards} />
       </div>
     </div>

@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
@@ -107,19 +106,6 @@ export default function EditorialHeroSection({
           <div className="editorial-hero__gift">
             <StarterRunesValue variant="line" generic product="home_hero" />
           </div>
-        ) : null}
-        {!isLoggedIn ? (
-          <p className="editorial-hero__micro">
-            {EDITORIAL_HERO.microcopy}
-            {guestConversion ? (
-              <>
-                {" · "}
-                <Link href="/disclaimer" className="editorial-hero__legal-link">
-                  развлекательный сервис
-                </Link>
-              </>
-            ) : null}
-          </p>
         ) : null}
         {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}
       </div>
