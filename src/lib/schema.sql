@@ -288,11 +288,11 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   token_version INTEGER NOT NULL DEFAULT 0,
   terms_accepted_at TIMESTAMPTZ,
   age_confirmed_at TIMESTAMPTZ,
-  marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
+  marketing_consent BOOLEAN NOT NULL DEFAULT TRUE,
   marketing_consent_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_login_at TIMESTAMPTZ,
-  daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
+  daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE,
   CONSTRAINT user_accounts_profile_user_id_unique UNIQUE (profile_user_id)
 );
 
@@ -300,7 +300,7 @@ CREATE INDEX IF NOT EXISTS idx_user_accounts_unlimited ON user_accounts(is_unlim
   WHERE is_unlimited = TRUE;
 
 ALTER TABLE user_accounts
-  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS user_oauth_identities (
@@ -1058,7 +1058,7 @@ CREATE TABLE IF NOT EXISTS daily_reminder_log (
   id         UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   user_id    UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
   sent_date  DATE NOT NULL DEFAULT CURRENT_DATE,
-  channel    TEXT NOT NULL CHECK (channel IN ('in_app', 'email')),
+  channel    TEXT NOT NULL CHECK (channel IN ('in_app', 'email', 'telegram')),
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   UNIQUE(user_id, sent_date, channel)
 );

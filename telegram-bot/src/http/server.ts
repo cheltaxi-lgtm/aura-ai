@@ -12,6 +12,7 @@ import { pruneRateMap } from "../ops/rate-maps.js";
 import { handleAccountLinked } from "./account-linked.js";
 import { handleAdminApi } from "./admin-api.js";
 import { handleInternalReceipt } from "./internal-receipt.js";
+import { handleReminderNotify } from "./reminder.js";
 import { handleReportReadyNotify } from "./report-ready.js";
 import { handleSupportReplyNotify } from "./support-reply.js";
 
@@ -105,6 +106,10 @@ export function startHttpServer(bot?: Bot): void {
     }
 
     if (await handleReportReadyNotify(req, res, path)) {
+      return;
+    }
+
+    if (await handleReminderNotify(req, res, path)) {
       return;
     }
 

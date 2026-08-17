@@ -4,7 +4,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { createUser, recordAccountLegalConsent } from "@/lib/accounts";
+import { createUser, recordAccountLegalConsent, setAccountMarketingConsent } from "@/lib/accounts";
 import { updateNotificationPrefs } from "@/lib/daily-reminder-service";
 import { query } from "@/lib/db";
 import { inactiveUserEmailHtml, inactiveUserEmailText } from "@/lib/email/templates";
@@ -54,7 +54,9 @@ async function seedWinbackUser(opts: {
     birthDate: "1990-01-15",
     zodiac: "Козерог",
   });
-  if (opts.marketingConsent !== false) {
+  if (opts.marketingConsent === false) {
+    await setAccountMarketingConsent(account.id, false);
+  } else {
     await recordAccountLegalConsent(account.id, { marketingConsent: true });
   }
   await updateNotificationPrefs(profile.id, {
@@ -113,6 +115,9 @@ describe("reengagement-winback (unit)", () => {
     const route = read("src/app/api/cron/reengagement-emails/route.ts");
     expect(route).toMatch(/hourMsk === 10/);
     expect(route).toMatch(/hourMsk === 19/);
+    const svc = read("src/lib/reengagement-email-service.ts");
+    expect(svc).toMatch(/ACCOUNT_DELIVERABLE_EMAIL_SQL/);
+    expect(svc).toMatch(/reminderUnsubscribeUrl/);
   });
 });
 
@@ -220,10 +225,10 @@ describe.skipIf(!hasTestDb)("reengagement-winback (db)", () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it("synthetic / undeliverable email is not sent", async () => {
+  it("synthetic / undeliverable email is not emailed (in-app still allowed)", async () => {
     await seedWinbackUser({ inactiveDays: 8, email: null });
     const result = await runReengagementEmailBatch({ dailyBonus: false, inactive: true });
-    expect(result.inactive7d).toBe(0);
+    expect(result.inactive7d).toBe(1);
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });

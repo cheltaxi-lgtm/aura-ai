@@ -78,30 +78,47 @@ export function passwordChangedEmailHtml(name: string): string {
   );
 }
 
-export function dailyReminderEmailHtml(name: string, siteUrl?: string): string {
+export function dailyReminderEmailHtml(
+  name: string,
+  siteUrl?: string,
+  unsubscribeUrl?: string
+): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
+  const unsub = unsubscribeUrl
+    ? `<p style="font-size:12px;color:#888;margin-top:20px"><a href="${unsubscribeUrl}" style="color:#888">Отключить это напоминание</a></p>`
+    : "";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
      <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
-     ${cta(`${url}/?dailyCards=1`, "Открыть карты дня бесплатно")}`,
-    "Напоминание можно отключить в профиле Zovus."
+     ${cta(`${url}/?dailyCards=1`, "Открыть карты дня бесплатно")}
+     ${unsub}`,
+    unsubscribeUrl
+      ? "Если письмо пришло по ошибке, отключите напоминание ссылкой выше."
+      : "Напоминание можно отключить в профиле Zovus."
   );
 }
 
 export function dailyBonusReminderEmailHtml(
   name: string,
   bonusAmount: number,
-  siteUrl?: string
+  siteUrl?: string,
+  unsubscribeUrl?: string
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
+  const unsub = unsubscribeUrl
+    ? `<p style="font-size:12px;color:#888;margin-top:20px"><a href="${unsubscribeUrl}" style="color:#888">Отключить это напоминание</a></p>`
+    : "";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
      <p>Ваш ежедневный бонус готов: <strong>${bonusAmount} рун</strong> можно забрать бесплатно в личном кабинете.</p>
      <p style="font-size:14px;color:#555">Руны — валюта для раскладов с мастерами. Не пропустите сегодняшний подарок.</p>
-     ${cta(`${url}/cabinet`, `Забрать ${bonusAmount} рун`)}`,
-    "Напоминание о бонусе можно отключить в профиле Zovus."
+     ${cta(`${url}/cabinet`, `Забрать ${bonusAmount} рун`)}
+     ${unsub}`,
+    unsubscribeUrl
+      ? "Если письмо пришло по ошибке, отключите напоминание ссылкой выше."
+      : "Напоминание о бонусе можно отключить в профиле Zovus."
   );
 }
 
@@ -116,7 +133,8 @@ export function inactiveWinbackCtaUrl(siteUrl?: string): string {
 export function inactiveUserEmailHtml(
   name: string,
   inactiveDays: number,
-  siteUrl?: string
+  siteUrl?: string,
+  unsubscribeUrl?: string
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
@@ -127,18 +145,25 @@ export function inactiveUserEmailHtml(
          <p>Можно вернуться к своим вопросам, поговорить с мастером или открыть персональный Zovus — и посмотреть, что вам сейчас доступно.</p>`
       : `<p>Ваш Zovus остаётся с Вами.</p>
          <p>Можно продолжить с того места, где остановились. Личный контекст сохраняется там, где вы это разрешили — начинать всё заново не нужно.</p>`;
+  const unsub = unsubscribeUrl
+    ? `<p style="font-size:12px;color:#888;margin-top:20px"><a href="${unsubscribeUrl}" style="color:#888">Отключить это напоминание</a></p>`
+    : "";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
      ${body}
-     ${cta(ctaUrl, "Вернуться в Zovus")}`,
-    `Вы согласились на рассылку Zovus. Отписаться можно в профиле или написав на ${getSupportEmail()}.`
+     ${cta(ctaUrl, "Вернуться в Zovus")}
+     ${unsub}`,
+    unsubscribeUrl
+      ? "Отключить такие письма можно ссылкой выше."
+      : `Вы согласились на рассылку Zovus. Отписаться можно в профиле или написав на ${getSupportEmail()}.`
   );
 }
 
 export function inactiveUserEmailText(
   name: string,
   inactiveDays: number,
-  siteUrl?: string
+  siteUrl?: string,
+  unsubscribeUrl?: string
 ): string {
   const safeName = name.trim() || "друг";
   const ctaUrl = inactiveWinbackCtaUrl(siteUrl);
@@ -146,7 +171,8 @@ export function inactiveUserEmailText(
     inactiveDays <= 7
       ? "Давно не виделись. Можно вернуться к своим вопросам, поговорить с мастером или открыть персональный Zovus."
       : "Ваш Zovus остаётся с Вами. Можно продолжить с того места, где остановились — начинать всё заново не нужно.";
-  return `${safeName}, ${lead} ${ctaUrl}`;
+  const unsub = unsubscribeUrl ? ` Отключить: ${unsubscribeUrl}` : "";
+  return `${safeName}, ${lead} ${ctaUrl}${unsub}`;
 }
 
 function jointReadingEmailShell(name: string, bodyHtml: string, ctaUrl: string, ctaLabel: string): string {

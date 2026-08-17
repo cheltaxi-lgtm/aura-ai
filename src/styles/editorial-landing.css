@@ -733,6 +733,61 @@ html[data-motion-lite="1"] .salon-bg__lines {
   flex-shrink: 0;
 }
 
+.retention-optin {
+  margin: 0 0 0.85rem;
+  padding: 0.85rem 0.95rem;
+  border-radius: 0.85rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.retention-optin__title {
+  margin: 0;
+  font-size: 0.9rem;
+  font-weight: 500;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.92);
+}
+
+.retention-optin__text,
+.retention-optin__hint {
+  margin: 0.35rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.retention-optin__actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+  margin-top: 0.7rem;
+}
+
+.retention-optin__accept,
+.retention-optin__decline {
+  min-height: 2.25rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 999px;
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  touch-action: manipulation;
+}
+
+.retention-optin__accept {
+  border: 1px solid rgba(232, 199, 126, 0.45);
+  background: linear-gradient(180deg, rgba(232, 199, 126, 0.22), rgba(232, 199, 126, 0.1));
+  color: rgba(255, 244, 214, 0.95);
+}
+
+.retention-optin__decline {
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  background: transparent;
+  color: rgba(255, 255, 255, 0.7);
+}
+
 .personal-zovus__list {
   list-style: none;
   margin: 0;

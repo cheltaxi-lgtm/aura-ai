@@ -1,6 +1,10 @@
 import { query } from "@/lib/db";
 import { dispatchNotification } from "@/lib/notify";
 import { dailyReminderEmailHtml, sendEmail } from "@/lib/email/send";
+import { getSiteUrl, pickDeliverableEmail } from "@/lib/email/mail-config";
+import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
+import { reminderUnsubscribeUrl } from "@/lib/reminder-unsubscribe";
+import { notifyBotReminder } from "@/lib/telegram/notify-bot-reminder";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 
 /** Authenticated 3-cards-of-the-day flow (not daily energy, not guest redraw). */
@@ -19,6 +23,13 @@ export type NotificationPrefs = {
   reportReadyEmail: boolean;
   /** Transactional "paid report is ready" Telegram DM. Default on. */
   reportReadyTelegram: boolean;
+  /**
+   * Permission only — no sender in this change.
+   * Missing / false = not granted. Never infer true.
+   */
+  weeklyDigestEmail: boolean;
+  /** Server-authoritative quiet window after opt-in shown/declined. */
+  retentionOptInQuietUntil: string | null;
 };
 
 const DEFAULT_PREFS: NotificationPrefs = {
@@ -29,7 +40,16 @@ const DEFAULT_PREFS: NotificationPrefs = {
   marketingEmail: true,
   reportReadyEmail: true,
   reportReadyTelegram: true,
+  weeklyDigestEmail: false,
+  retentionOptInQuietUntil: null,
 };
+
+function parseIsoOrNull(raw: unknown): string | null {
+  if (typeof raw !== "string" || !raw.trim()) return null;
+  const ms = Date.parse(raw);
+  if (!Number.isFinite(ms)) return null;
+  return new Date(ms).toISOString();
+}
 
 export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_PREFS };
@@ -48,6 +68,8 @@ export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
     marketingEmail: o.marketingEmail !== false,
     reportReadyEmail: o.reportReadyEmail !== false,
     reportReadyTelegram: o.reportReadyTelegram !== false,
+    weeklyDigestEmail: o.weeklyDigestEmail === true,
+    retentionOptInQuietUntil: parseIsoOrNull(o.retentionOptInQuietUntil),
   };
 }
 
@@ -75,6 +97,7 @@ export async function updateNotificationPrefs(
 export type DailyCardsReminderDeliveryPlan = {
   inApp: boolean;
   email: boolean;
+  telegram: boolean;
 };
 
 /**
@@ -88,15 +111,18 @@ export function resolveDailyCardsReminderDelivery(input: {
   dailyInApp: boolean;
   dailyEmail: boolean;
   hasEmail: boolean;
+  hasTelegram: boolean;
   alreadySentInApp: boolean;
   alreadySentEmail: boolean;
+  alreadySentTelegram: boolean;
 }): DailyCardsReminderDeliveryPlan {
   if (!input.dailyCardsReminder || !input.cooldownAllowed) {
-    return { inApp: false, email: false };
+    return { inApp: false, email: false, telegram: false };
   }
   return {
     inApp: input.dailyInApp === true && !input.alreadySentInApp,
     email: input.dailyEmail === true && input.hasEmail && !input.alreadySentEmail,
+    telegram: input.hasTelegram === true && !input.alreadySentTelegram,
   };
 }
 
@@ -104,26 +130,35 @@ export function resolveDailyCardsReminderDelivery(input: {
 export async function getDailyReminderCandidates(hourMsk: number): Promise<
   Array<{
     userId: string;
+    accountId: string;
     name: string;
     email: string | null;
+    telegramUserId: number | null;
     prefs: NotificationPrefs;
     dailyCardsReminder: boolean;
   }>
 > {
   const res = await query<{
     user_id: string;
+    account_id: string;
     name: string;
-    email: string | null;
+    deliverable_email: string | null;
+    telegram_user_id: string | null;
     notification_prefs: unknown;
     daily_cards_reminder: boolean;
   }>(
-    `SELECT u.id AS user_id, u.name, ua.email, u.notification_prefs, ua.daily_cards_reminder
+    `SELECT u.id AS user_id, ua.id AS account_id, u.name,
+            (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email,
+            ti.telegram_user_id::text,
+            u.notification_prefs, ua.daily_cards_reminder
      FROM users u
      INNER JOIN user_accounts ua ON ua.profile_user_id = u.id
+     LEFT JOIN user_telegram_identities ti ON ti.user_account_id = ua.id
      WHERE ua.daily_cards_reminder = TRUE
      AND (
        COALESCE((u.notification_prefs->>'dailyEmail')::boolean, true) = true
        OR COALESCE((u.notification_prefs->>'dailyInApp')::boolean, true) = true
+       OR ti.telegram_user_id IS NOT NULL
      )
      AND COALESCE(
        (u.notification_prefs->>'reminderHourMsk')::int,
@@ -136,19 +171,24 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
     [hourMsk]
   );
 
-  return res.rows.map((row) => ({
-    userId: row.user_id,
-    name: row.name,
-    email: row.email,
-    prefs: parseNotificationPrefs(row.notification_prefs),
-    dailyCardsReminder: Boolean(row.daily_cards_reminder),
-  }));
+  return res.rows.map((row) => {
+    const tg = row.telegram_user_id ? Number(row.telegram_user_id) : NaN;
+    return {
+      userId: row.user_id,
+      accountId: row.account_id,
+      name: row.name,
+      email: pickDeliverableEmail(row.deliverable_email),
+      telegramUserId: Number.isInteger(tg) && tg > 0 ? tg : null,
+      prefs: parseNotificationPrefs(row.notification_prefs),
+      dailyCardsReminder: Boolean(row.daily_cards_reminder),
+    };
+  });
 }
 
 /** True if a reminder was already logged in this availability window (since last daily draw). */
 export async function alreadySentThisAvailabilityWindow(
   userId: string,
-  channel: "in_app" | "email",
+  channel: "in_app" | "email" | "telegram",
   lastDailyAt: string | null
 ): Promise<boolean> {
   if (lastDailyAt) {
@@ -170,7 +210,7 @@ export async function alreadySentThisAvailabilityWindow(
 /** Claim calendar-day slot first so cron retries cannot double-insert. */
 async function claimReminderSlot(
   userId: string,
-  channel: "in_app" | "email"
+  channel: "in_app" | "email" | "telegram"
 ): Promise<boolean> {
   const { rowCount } = await query(
     `INSERT INTO daily_reminder_log (user_id, channel) VALUES ($1, $2)
@@ -183,11 +223,13 @@ async function claimReminderSlot(
 export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
   inApp: number;
   email: number;
+  telegram: number;
 }> {
-  const siteUrl = process.env.NEXT_PUBLIC_SITE_URL?.replace(/\/$/, "") || "https://zovus.ru";
+  const siteUrl = getSiteUrl();
   const candidates = await getDailyReminderCandidates(hourMsk);
   let inApp = 0;
   let email = 0;
+  let telegram = 0;
 
   for (const user of candidates) {
     const cooldown = await checkTripletCooldown(user.userId);
@@ -201,14 +243,21 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
       "email",
       cooldown.lastTripletAt
     );
+    const alreadySentTelegram = await alreadySentThisAvailabilityWindow(
+      user.userId,
+      "telegram",
+      cooldown.lastTripletAt
+    );
     const plan = resolveDailyCardsReminderDelivery({
       dailyCardsReminder: user.dailyCardsReminder,
       cooldownAllowed: cooldown.allowed,
       dailyInApp: user.prefs.dailyInApp,
       dailyEmail: user.prefs.dailyEmail,
       hasEmail: Boolean(user.email),
+      hasTelegram: user.telegramUserId != null,
       alreadySentInApp,
       alreadySentEmail,
+      alreadySentTelegram,
     });
 
     if (plan.inApp && (await claimReminderSlot(user.userId, "in_app"))) {
@@ -224,12 +273,14 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
     }
 
     if (plan.email && user.email && (await claimReminderSlot(user.userId, "email"))) {
+      const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
       const sent = await sendEmail({
         to: user.email,
         subject: "Zovus — ваш расклад на сегодня",
-        html: dailyReminderEmailHtml(user.name, siteUrl),
-        text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}`,
+        html: dailyReminderEmailHtml(user.name, siteUrl, unsub),
+        text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}\nОтключить: ${unsub}`,
         template: "daily_reminder",
+        listUnsubscribeUrl: unsub,
       });
       if (sent) {
         email++;
@@ -241,7 +292,33 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
         );
       }
     }
+
+    if (
+      plan.telegram &&
+      user.telegramUserId != null &&
+      (await claimReminderSlot(user.userId, "telegram"))
+    ) {
+      const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
+      const sent = await notifyBotReminder({
+        telegramUserId: user.telegramUserId,
+        kind: "daily_cards",
+        title: "Карты дня ждут вас",
+        body: "Бесплатный расклад на сутки готов. Откройте, когда будет минута.",
+        ctaUrl: `${siteUrl}${DAILY_CARDS_REMINDER_CTA}`,
+        ctaLabel: "Открыть карты дня",
+        unsubscribeUrl: unsub,
+      });
+      if (sent.delivered) {
+        telegram++;
+      } else {
+        await query(
+          `DELETE FROM daily_reminder_log
+           WHERE user_id = $1 AND channel = 'telegram' AND sent_date = CURRENT_DATE`,
+          [user.userId]
+        );
+      }
+    }
   }
 
-  return { inApp, email };
+  return { inApp, email, telegram };
 }

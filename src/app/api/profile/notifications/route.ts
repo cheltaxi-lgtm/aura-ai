@@ -32,12 +32,16 @@ export async function PATCH(request: NextRequest) {
   }
 
   try {
-    const body = (await request.json()) as Partial<NotificationPrefs>;
+    const body = (await request.json()) as Partial<NotificationPrefs> & {
+      marketingConsent?: unknown;
+    };
     const patch: Partial<NotificationPrefs> = {};
+    // marketing_consent and retentionOptInQuietUntil are not writable here.
     if (typeof body.dailyEmail === "boolean") patch.dailyEmail = body.dailyEmail;
     if (typeof body.dailyInApp === "boolean") patch.dailyInApp = body.dailyInApp;
     if (typeof body.bonusEmail === "boolean") patch.bonusEmail = body.bonusEmail;
     if (typeof body.marketingEmail === "boolean") patch.marketingEmail = body.marketingEmail;
+    if (typeof body.weeklyDigestEmail === "boolean") patch.weeklyDigestEmail = body.weeklyDigestEmail;
     if (typeof body.reportReadyEmail === "boolean") patch.reportReadyEmail = body.reportReadyEmail;
     if (typeof body.reportReadyTelegram === "boolean")
       patch.reportReadyTelegram = body.reportReadyTelegram;

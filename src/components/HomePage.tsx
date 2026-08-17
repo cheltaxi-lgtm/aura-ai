@@ -3667,6 +3667,11 @@ export default function HomePage({
             sessionId={consultationSessionId ?? session?.sessionId ?? undefined}
             suggestedReplies={guestResumeChatAssist.replies}
             showContinueInChat={guestResumeChatAssist.showContinue}
+            retentionOptInSurface={
+              isLoggedIn && (spreadReadingDone || guestResumeChatAssist.showContinue)
+                ? "post_value"
+                : undefined
+            }
             onContinueInChat={() => trackGuestChatContinue("prompt")}
             onSuggestedReplySend={() => trackGuestChatContinue("suggested_reply")}
           />

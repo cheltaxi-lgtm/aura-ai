@@ -40,7 +40,6 @@ export async function POST(request: NextRequest) {
       mainQuestion,
       sessionId,
       recaptchaToken,
-      marketingConsent,
       ageConfirmed,
       acceptedTerms,
       attribution: rawAttribution,
@@ -90,8 +89,8 @@ export async function POST(request: NextRequest) {
     const accountConsent = {
       termsAcceptedAt: consentNow,
       ageConfirmedAt: consentNow,
-      marketingConsent: Boolean(marketingConsent),
-      marketingConsentAt: marketingConsent ? consentNow : null,
+      marketingConsent: true,
+      marketingConsentAt: consentNow,
     };
 
     // Always create a consumer profile at registration — birth is optional.

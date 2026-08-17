@@ -3,4 +3,5 @@ export interface SendEmailParams {
   subject: string;
   html: string;
   text?: string;
+  listUnsubscribeUrl?: string;
 }

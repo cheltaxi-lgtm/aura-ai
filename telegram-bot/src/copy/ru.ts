@@ -339,6 +339,13 @@ export const copy = {
     ].join("\n");
   },
   reportReadyOpen: "Открыть отчёт",
+  reminder: (title: string, body: string) => {
+    const t = (title || "Напоминание Zovus").trim().slice(0, 160);
+    const b = (body || "").trim().slice(0, 400);
+    return b ? [t, "", b].join("\n") : t;
+  },
+  reminderOpen: "Открыть",
+  reminderDisable: "Отключить напоминание",
   chatAskPrompt: "Напишите вопрос по этому раскладу. Чтобы выйти — кнопка «Закончить диалог».",
   chatStopped: "Диалог по раскладу закрыт. Можно открыть новый из истории или меню.",
   chatThinking: "Смотрю в карты…",
@@ -539,6 +546,9 @@ export function collectBodyCopySamples(): string[] {
     copy.supportAdminReply("Тема", "Текст ответа"),
     copy.reportReady("Натальный разбор готов"),
     copy.reportReadyOpen,
+    copy.reminder("Карты дня ждут вас", "Бесплатный расклад на сутки готов."),
+    copy.reminderOpen,
+    copy.reminderDisable,
     copy.chatAskPrompt,
     copy.chatStopped,
     copy.chatThinking,

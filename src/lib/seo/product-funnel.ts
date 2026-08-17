@@ -220,3 +220,38 @@ export const PRODUCT_FUNNEL_LEGACY_GOALS: Record<
     paid_cta: ["matrix_pair_cta_full"],
   },
 };
+
+export const RETENTION_OPTIN_EVENTS = [
+  "retention_optin_shown",
+  "retention_optin_accepted",
+  "retention_optin_declined",
+  "retention_optin_settings_opened",
+] as const;
+
+export type RetentionOptInEvent = (typeof RETENTION_OPTIN_EVENTS)[number];
+
+const RETENTION_OPTIN_SURFACES = new Set([
+  "post_value",
+  "authenticated_home",
+  "cabinet",
+]);
+
+const RETENTION_OPTIN_TOPICS = new Set([
+  "personal_reminders",
+  "daily_cards",
+  "weekly_digest",
+]);
+
+/** Retention opt-in. Payload allowlist: surface + topic. */
+export function trackRetentionOptIn(
+  event: RetentionOptInEvent,
+  params: { surface: string; topic?: string }
+): void {
+  if (!(RETENTION_OPTIN_EVENTS as readonly string[]).includes(event)) return;
+  if (!RETENTION_OPTIN_SURFACES.has(params.surface)) return;
+  const payload: Record<string, string> = { surface: params.surface };
+  if (params.topic && RETENTION_OPTIN_TOPICS.has(params.topic)) {
+    payload.topic = params.topic;
+  }
+  reachGoal(event, payload);
+}

@@ -48,10 +48,12 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         dailyInApp: true,
         dailyEmail: true,
         hasEmail: true,
+        hasTelegram: false,
         alreadySentInApp: false,
         alreadySentEmail: false,
+        alreadySentTelegram: false,
       })
-    ).toEqual({ inApp: false, email: false });
+    ).toEqual({ inApp: false, email: false, telegram: false });
   });
 
   it("opt-in true + email/in-app true → both allowed", () => {
@@ -62,10 +64,12 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         dailyInApp: true,
         dailyEmail: true,
         hasEmail: true,
+        hasTelegram: false,
         alreadySentInApp: false,
         alreadySentEmail: false,
+        alreadySentTelegram: false,
       })
-    ).toEqual({ inApp: true, email: true });
+    ).toEqual({ inApp: true, email: true, telegram: false });
   });
 
   it("channel pref false is respected", () => {
@@ -76,10 +80,12 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         dailyInApp: false,
         dailyEmail: false,
         hasEmail: true,
+        hasTelegram: false,
         alreadySentInApp: false,
         alreadySentEmail: false,
+        alreadySentTelegram: false,
       })
-    ).toEqual({ inApp: false, email: false });
+    ).toEqual({ inApp: false, email: false, telegram: false });
   });
 
   it("daily cooldown → no reminder", () => {
@@ -90,10 +96,12 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         dailyInApp: true,
         dailyEmail: true,
         hasEmail: true,
+        hasTelegram: false,
         alreadySentInApp: false,
         alreadySentEmail: false,
+        alreadySentTelegram: false,
       })
-    ).toEqual({ inApp: false, email: false });
+    ).toEqual({ inApp: false, email: false, telegram: false });
   });
 
   it("already sent this window → no duplicate", () => {
@@ -104,10 +112,12 @@ describe("daily-cards-reminder-delivery (unit)", () => {
         dailyInApp: true,
         dailyEmail: true,
         hasEmail: true,
+        hasTelegram: false,
         alreadySentInApp: true,
         alreadySentEmail: true,
+        alreadySentTelegram: true,
       })
-    ).toEqual({ inApp: false, email: false });
+    ).toEqual({ inApp: false, email: false, telegram: false });
   });
 });
 
@@ -119,6 +129,8 @@ describe("daily-cards-reminder-delivery (source)", () => {
     expect(src).not.toMatch(/daily_readings/);
     expect(src).toMatch(/DAILY_CARDS_REMINDER_CTA/);
     expect(src).toMatch(/claimReminderSlot/);
+    expect(src).toMatch(/ACCOUNT_DELIVERABLE_EMAIL_SQL/);
+    expect(src).toMatch(/reminderUnsubscribeUrl/);
     expect(src).toMatch(/ON CONFLICT \(user_id, sent_date, channel\) DO NOTHING/);
     expect(src).not.toMatch(/idempotencyKey/);
     expect(src).not.toMatch(/toLocaleDateString/);
@@ -196,7 +208,7 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     const candidates = await getDailyReminderCandidates(9);
     expect(candidates.some((c) => c.userId === profile.id)).toBe(false);
     const result = await sendDailyRemindersForHour(9);
-    expect(result).toEqual({ inApp: 0, email: 0 });
+    expect(result).toEqual({ inApp: 0, email: 0, telegram: 0 });
     expect(sendEmailMock).not.toHaveBeenCalled();
     const notes = await query(`SELECT 1 FROM notifications WHERE user_id = $1`, [profile.id]);
     expect(notes.rows.length).toBe(0);
@@ -231,7 +243,7 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     const candidates = await getDailyReminderCandidates(9);
     expect(candidates.some((c) => c.userId === profile.id)).toBe(false);
     const result = await sendDailyRemindersForHour(9);
-    expect(result).toEqual({ inApp: 0, email: 0 });
+    expect(result).toEqual({ inApp: 0, email: 0, telegram: 0 });
   });
 
   it("daily cooldown → no reminder", async () => {
@@ -255,7 +267,7 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     const cooldown = await checkTripletCooldown(profile.id);
     expect(cooldown.allowed).toBe(false);
     const result = await sendDailyRemindersForHour(9);
-    expect(result).toEqual({ inApp: 0, email: 0 });
+    expect(result).toEqual({ inApp: 0, email: 0, telegram: 0 });
   });
 
   it("ordinary triplet does not block reminder eligibility", async () => {
@@ -288,9 +300,9 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
       dailyInApp: true,
     });
     const first = await sendDailyRemindersForHour(9);
-    expect(first).toEqual({ inApp: 1, email: 1 });
+    expect(first).toEqual({ inApp: 1, email: 1, telegram: 0 });
     const second = await sendDailyRemindersForHour(9);
-    expect(second).toEqual({ inApp: 0, email: 0 });
+    expect(second).toEqual({ inApp: 0, email: 0, telegram: 0 });
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 

@@ -11,6 +11,7 @@ export interface RawEmailPayload {
   html: string;
   text?: string;
   replyTo?: string;
+  listUnsubscribeUrl?: string;
 }
 
 async function sendViaResend(payload: RawEmailPayload, from: string): Promise<{ ok: boolean; error?: string }> {
@@ -26,6 +27,12 @@ async function sendViaResend(payload: RawEmailPayload, from: string): Promise<{ 
       text: payload.text,
     };
     if (payload.replyTo) body.reply_to = payload.replyTo;
+    if (payload.listUnsubscribeUrl) {
+      body.headers = {
+        "List-Unsubscribe": `<${payload.listUnsubscribeUrl}>`,
+        "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+      };
+    }
 
     const res = await fetch("https://api.resend.com/emails", {
       method: "POST",
@@ -64,6 +71,12 @@ async function sendViaSmtp(payload: RawEmailPayload, from: string): Promise<{ ok
       html: payload.html,
       text: payload.text,
       replyTo: payload.replyTo,
+      headers: payload.listUnsubscribeUrl
+        ? {
+            "List-Unsubscribe": `<${payload.listUnsubscribeUrl}>`,
+            "List-Unsubscribe-Post": "List-Unsubscribe=One-Click",
+          }
+        : undefined,
     });
     return { ok: true };
   } catch (err) {

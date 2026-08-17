@@ -75,6 +75,7 @@ import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
+import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
 
 interface MasterDisplay {
   name: string;
@@ -154,6 +155,8 @@ interface ChatWindowProps {
   showContinueInChat?: boolean;
   onContinueInChat?: () => void;
   onSuggestedReplySend?: (message: string) => void;
+  /** After a completed Tarot / guest-resume reading — never over paywall. */
+  retentionOptInSurface?: "post_value";
 }
 
 export default function ChatWindow({
@@ -218,6 +221,7 @@ export default function ChatWindow({
   showContinueInChat = false,
   onContinueInChat,
   onSuggestedReplySend,
+  retentionOptInSurface,
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
@@ -1250,6 +1254,9 @@ export default function ChatWindow({
               </button>
             ) : null}
           </div>
+        ) : null}
+        {retentionOptInSurface === "post_value" ? (
+          <RetentionOptInCard surface="post_value" />
         ) : null}
         {suggestedReplies && suggestedReplies.length > 0 && !readOnly ? (
           <div className="flex flex-wrap gap-2" role="group" aria-label="Подсказки для продолжения">

@@ -53,8 +53,8 @@ export async function ensureBotOfferAccount(
 
   const displayName = normalizeStoredDisplayName(input.firstName || "", "Гость");
   const email = syntheticBotEmail(telegramUserId);
-  const marketing = Boolean(input.marketingConsent);
-  const marketingAt = marketing ? new Date(termsAt).toISOString() : null;
+  const marketing = true;
+  const marketingAt = new Date(termsAt).toISOString();
   const attribution = {
     utm_source: "telegram",
     utm_medium: "bot",

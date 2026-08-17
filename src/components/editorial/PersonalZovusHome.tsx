@@ -23,6 +23,7 @@ import {
   type ProductFunnelProduct,
 } from "@/lib/seo/product-funnel";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
 
 const RETENTION_SESSION_KEY = "zovus_retention_return_emitted";
 
@@ -286,6 +287,8 @@ export default function PersonalZovusHome({
       className="personal-zovus"
       aria-labelledby={showHeroBlocks ? "personal-zovus-title" : "personal-zovus-explore"}
     >
+      <RetentionOptInCard surface="authenticated_home" />
+
       {showHeroBlocks ? (
         <>
       <header className="personal-zovus__header">

@@ -51,6 +51,7 @@ export async function sendEmail(
     html: params.html,
     text: params.text,
     replyTo: params.replyTo ?? SUPPORT_REPLY(),
+    listUnsubscribeUrl: params.listUnsubscribeUrl,
   });
 
   await logEmailAttempt({

@@ -64,6 +64,18 @@ export function isDeliverableUserEmail(email: string): boolean {
   );
 }
 
+/** First real mailbox: account email, then Yandex / VK / other OAuth provider emails. */
+export function pickDeliverableEmail(
+  ...candidates: Array<string | null | undefined>
+): string | null {
+  for (const raw of candidates) {
+    if (typeof raw !== "string") continue;
+    const normalized = raw.trim().toLowerCase();
+    if (isDeliverableUserEmail(normalized)) return normalized;
+  }
+  return null;
+}
+
 /** Bot-offer / OAuth placeholder emails that are not real logins. */
 export function isSyntheticAccountEmail(email: string): boolean {
   const normalized = email.trim().toLowerCase();

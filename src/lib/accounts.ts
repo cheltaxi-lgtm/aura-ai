@@ -123,7 +123,7 @@ export async function getAccountCreatedAt(accountId: string): Promise<Date | nul
   return rows[0]?.created_at ?? null;
 }
 
-/** Explicit daily-cards reminder opt-in. Default OFF. Not delivery. */
+/** Daily-cards reminder. Default ON; unsubscribe turns it off. */
 export async function getAccountDailyCardsReminder(accountId: string): Promise<boolean> {
   const { rows } = await query<{ daily_cards_reminder: boolean }>(
     `SELECT daily_cards_reminder FROM user_accounts WHERE id = $1`,
@@ -143,6 +143,25 @@ export async function setAccountDailyCardsReminder(
     [accountId, enabled]
   );
   return Boolean(rows[0]?.daily_cards_reminder);
+}
+
+/** Explicit marketing / win-back gate. Unsubscribe may turn this OFF. */
+export async function setAccountMarketingConsent(
+  accountId: string,
+  enabled: boolean
+): Promise<boolean> {
+  const { rows } = await query<{ marketing_consent: boolean }>(
+    `UPDATE user_accounts SET
+       marketing_consent = $2,
+       marketing_consent_at = CASE
+         WHEN $2 THEN COALESCE(marketing_consent_at, NOW())
+         ELSE marketing_consent_at
+       END
+     WHERE id = $1
+     RETURNING marketing_consent`,
+    [accountId, enabled]
+  );
+  return Boolean(rows[0]?.marketing_consent);
 }
 
 export async function getAccountConsentSnapshot(

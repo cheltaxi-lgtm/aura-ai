@@ -59,10 +59,10 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(fn).not.toMatch(/userId|email|createdAt|birthDate|sessionId|artifact/i);
   });
 
-  it("registration and daily draw do not auto-enable the preference", () => {
+  it("registration and daily draw do not write the reminder flag (DB default ON)", () => {
     const register = read("src/app/api/auth/user/register/route.ts");
-    expect(register).not.toMatch(/daily_cards_reminder\s*=\s*TRUE/i);
-    expect(register).not.toMatch(/setAccountDailyCardsReminder\([^)]*true/i);
+    expect(register).not.toMatch(/daily_cards_reminder\s*=/i);
+    expect(register).not.toMatch(/setAccountDailyCardsReminder\(/);
     const daily = read("src/lib/daily-triplet-save.ts");
     expect(daily).not.toMatch(/daily_cards_reminder/);
     expect(daily).not.toMatch(/setAccountDailyCardsReminder/);
@@ -77,31 +77,32 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(reminder).toMatch(/checkTripletCooldown/);
   });
 
-  it("schema default is OFF", () => {
+  it("schema default is ON after migration 136", () => {
     const schema = read("src/lib/schema.sql");
     expect(schema).toMatch(
-      /daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE/
+      /daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE/
     );
-    const mig = read("scripts/migrations/129_migrate_daily_cards_reminder.sql");
-    expect(mig).toMatch(/DEFAULT FALSE/);
+    const mig = read("scripts/migrations/136_migrate_reminder_defaults_on.sql");
+    expect(mig).toMatch(/daily_cards_reminder SET DEFAULT TRUE/);
+    expect(mig).toMatch(/SET daily_cards_reminder = TRUE/);
   });
 });
 
 describe.skipIf(!hasTestDb)("daily-cards-reminder-optin (db)", () => {
   installDbLifecycle();
 
-  it("default OFF; owner can enable/disable; refresh preserves server-side", async () => {
+  it("default ON; owner can disable; refresh preserves server-side", async () => {
     const account = await createUser(
       `reminder-optin-${Date.now()}@example.com`,
       "hash",
       "Тест"
     );
-    expect(await getAccountDailyCardsReminder(account.id)).toBe(false);
-
-    expect(await setAccountDailyCardsReminder(account.id, true)).toBe(true);
     expect(await getAccountDailyCardsReminder(account.id)).toBe(true);
 
     expect(await setAccountDailyCardsReminder(account.id, false)).toBe(false);
     expect(await getAccountDailyCardsReminder(account.id)).toBe(false);
+
+    expect(await setAccountDailyCardsReminder(account.id, true)).toBe(true);
+    expect(await getAccountDailyCardsReminder(account.id)).toBe(true);
   });
 });
