@@ -1561,6 +1561,63 @@ html[data-motion-lite="1"] .salon-bg__lines {
   color: var(--color-text-faint);
 }
 
+/* Starter gift (300ᚢ) — compact premium block under product entries */
+.editorial-starter-gift {
+  margin-bottom: 2rem;
+}
+
+.editorial-starter-gift__card {
+  padding: 1.75rem;
+}
+
+@media (min-width: 640px) {
+  .editorial-starter-gift__card {
+    padding: 2.25rem 2.5rem;
+  }
+}
+
+.editorial-starter-gift__chips {
+  list-style: none;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.65rem;
+  grid-template-columns: 1fr;
+}
+
+@media (min-width: 480px) {
+  .editorial-starter-gift__chips {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 900px) {
+  .editorial-starter-gift__chips {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+.editorial-starter-gift__chip {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  border-radius: 0.9rem;
+  border: 1px solid rgba(232, 199, 126, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.75rem 0.9rem;
+}
+
+.editorial-starter-gift__chip-title {
+  font-family: var(--font-display, inherit);
+  font-size: 0.95rem;
+  color: var(--color-champagne, #e8c77e);
+}
+
+.editorial-starter-gift__chip-note {
+  font-size: 0.72rem;
+  color: var(--color-text-faint);
+}
+
 @media (max-width: 639px) {
   .editorial-starter-pack__actions {
     flex-direction: column;

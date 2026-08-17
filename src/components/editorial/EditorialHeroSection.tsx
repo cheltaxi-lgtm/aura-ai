@@ -9,6 +9,7 @@ import { EDITORIAL_HERO } from "@/lib/editorial-landing-content";
 import { GUEST_HERO_PAIN_CHIPS } from "@/lib/landing-offer";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
 import { trackQuickQuestionClick } from "@/lib/seo/metrika";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
 type EditorialHeroSectionProps = {
   isLoggedIn: boolean;
@@ -92,6 +93,11 @@ export default function EditorialHeroSection({
             <span aria-hidden> →</span>
           </button>
         </div>
+        {!isLoggedIn ? (
+          <div className="editorial-hero__gift mt-3">
+            <StarterRunesValue variant="badge" generic product="home_hero" />
+          </div>
+        ) : null}
         <p className="editorial-hero__micro">{EDITORIAL_HERO.microcopy}</p>
         {!isLoggedIn ? (
           <p className="editorial-hero__retention-hook">{EDITORIAL_HERO.retentionHook}</p>

@@ -168,7 +168,7 @@ export default function StarterRunesValue({
       <span>
         Новым пользователям — {starter} ᚢ
         {valueLine ? ` · ${valueLine}` : ""}
-        {!valueLine && generic ? " · начисляются при регистрации" : ""}
+        {!valueLine && generic ? " · в подарок после регистрации" : ""}
       </span>
     </p>
   );

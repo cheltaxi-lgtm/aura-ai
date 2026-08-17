@@ -120,3 +120,60 @@ describe("starter 300ᚢ conversion pass — product placements", () => {
     expect(src).toContain('returnTo.includes("photo=1")');
   });
 });
+
+describe("starter gift on the public homepage", () => {
+  it("gift section renders real server prices only — no hardcoded amounts", () => {
+    const src = readSrc("src/components/editorial/EditorialStarterGiftSection.tsx");
+    // Prices and starter amount come from the live server config.
+    expect(src).toContain("config.costs[example.costKey]");
+    expect(src).toContain("config.starterRunes");
+    expect(src).not.toMatch(/starterRunes\s*=\s*\d{2,}/);
+    // No ruble conversion in the gift copy.
+    expect(src).not.toContain("₽");
+    // Products costing more than the starter package get partial-coverage framing.
+    expect(src).toContain("вклад в стоимость");
+  });
+
+  it("gift section is display-only and hidden from authenticated users", () => {
+    const src = readSrc("src/components/editorial/EditorialStarterGiftSection.tsx");
+    expect(src).toContain('from "@/lib/useAuth"');
+    expect(src).toMatch(/fromServer && config\.starterRunes > 0 && !authLoading && !isLoggedIn/);
+    // No entitlement authority: no storage, no balance writes, no grant calls.
+    expect(src).not.toMatch(/localStorage|sessionStorage/);
+    expect(src).not.toMatch(/rune_balance|grantStarter|chargeRune|spendRune/);
+  });
+
+  it("gift CTA leads to the existing register flow", () => {
+    const src = readSrc("src/components/editorial/EditorialStarterGiftSection.tsx");
+    expect(src).toContain("buildRegisterHref");
+    expect(src).toContain("Получить {starter} ᚢ бесплатно");
+    expect(src).toContain('trackSeoEvent("starter_gift_cta_click"');
+    expect(src).toContain('trackSeoEvent("starter_gift_view"');
+  });
+
+  it("gift section is mounted below the product entries on the guest homepage", () => {
+    const src = readSrc("src/components/AuraSellingLanding.tsx");
+    const entriesIdx = src.indexOf("<EditorialProductEntries");
+    const giftIdx = src.indexOf("<EditorialStarterGiftSection");
+    const spreadIdx = src.indexOf("<GuestTripletDraw", entriesIdx);
+    expect(entriesIdx).toBeGreaterThan(-1);
+    expect(giftIdx).toBeGreaterThan(entriesIdx);
+    expect(giftIdx).toBeLessThan(spreadIdx);
+  });
+
+  it("hero shows the compact starter accent to guests near the main CTA", () => {
+    const src = readSrc("src/components/editorial/EditorialHeroSection.tsx");
+    expect(src).toContain('StarterRunesValue variant="badge" generic product="home_hero"');
+    expect(src).toMatch(/!isLoggedIn[\s\S]{0,200}StarterRunesValue/);
+  });
+
+  it("no second starter-grant mechanism was created", () => {
+    // The only grant call sites remain the pre-existing server-side ones.
+    const gift = readSrc("src/components/editorial/EditorialStarterGiftSection.tsx");
+    const hero = readSrc("src/components/editorial/EditorialHeroSection.tsx");
+    const landing = readSrc("src/components/AuraSellingLanding.tsx");
+    for (const src of [gift, hero, landing]) {
+      expect(src).not.toContain("grantStarterRunesIfNeeded");
+    }
+  });
+});
