@@ -7,12 +7,12 @@ export async function GET() {
   const llm = getLlmConcurrencyStats();
   const healthy = dbOk && llm.active <= llm.max;
 
+  // Public payload stays opaque on purpose (guardrail): internals like db/llm
+  // state must not leak — the status code alone conveys healthy/degraded.
   return NextResponse.json(
     {
       ok: healthy,
       status: healthy ? "ok" : "degraded",
-      db: dbOk,
-      llm: { active: llm.active, max: llm.max },
     },
     { status: healthy ? 200 : 503 }
   );
