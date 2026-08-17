@@ -1,5 +1,6 @@
-import type { HdCenterKey, HdChart, HdPublicChart } from "@/lib/human-design";
+import type { HdChart, HdPublicChart } from "@/lib/human-design";
 import {
+  HD_CENTER_LABELS,
   HD_CENTER_SHAPES,
   HD_CHANNEL_SEGMENTS,
   HD_GATE_ANCHORS,
@@ -37,7 +38,9 @@ interface Palette {
   centerOpenStroke: string;
   centerDefinedStroke: string;
   centerLabel: string;
+  centerLabelOnDefined: string;
   gateNumber: string;
+  gateRingStroke: string;
   medallionText: string;
 }
 
@@ -45,47 +48,29 @@ const PALETTES: Record<"dark" | "light", Palette> = {
   dark: {
     p: "#f2e7c9",
     d: "#e05555",
-    channelBase: "rgba(232, 199, 126, 0.10)",
+    channelBase: "rgba(232, 199, 126, 0.14)",
     centerOpenFill: "#141210",
     centerOpenStroke: "rgba(232, 199, 126, 0.35)",
     centerDefinedStroke: "rgba(255, 232, 168, 0.9)",
     centerLabel: "rgba(232, 199, 126, 0.55)",
+    centerLabelOnDefined: "rgba(23, 19, 31, 0.75)",
     gateNumber: "rgba(232, 199, 126, 0.45)",
+    gateRingStroke: "rgba(232, 199, 126, 0.38)",
     medallionText: "#17131f",
   },
   light: {
     p: "#2b2418",
     d: "#b03030",
-    channelBase: "rgba(43, 36, 24, 0.10)",
+    channelBase: "rgba(43, 36, 24, 0.14)",
     centerOpenFill: "#ffffff",
     centerOpenStroke: "rgba(43, 36, 24, 0.30)",
     centerDefinedStroke: "#8a6a2a",
     centerLabel: "rgba(43, 36, 24, 0.55)",
+    centerLabelOnDefined: "rgba(43, 36, 24, 0.72)",
     gateNumber: "rgba(43, 36, 24, 0.40)",
+    gateRingStroke: "rgba(43, 36, 24, 0.35)",
     medallionText: "#ffffff",
   },
-};
-
-/**
- * Center captions for static artifacts (print/PDF, share cards) where there is
- * no hover tooltip. Placed in collision-free spots: inside empty squares and
- * the diamond, in the head/ajna gap, beside the heart, and rotated along the
- * side triangles' flat outer edges. Short forms where the full CENTER_NAMES_RU
- * string would not fit ("Эго" for heart).
- */
-const CENTER_LABELS: Record<
-  HdCenterKey,
-  { text: string; x: number; y: number; rotate?: number }
-> = {
-  head: { text: "Головной", x: 200, y: 13 },
-  ajna: { text: "Аджна", x: 200, y: 102 },
-  throat: { text: "Горловой", x: 200, y: 230 },
-  g: { text: "G-центр", x: 200, y: 352 },
-  heart: { text: "Эго", x: 322, y: 343 },
-  spleen: { text: "Селезёночный", x: 40, y: 476, rotate: -90 },
-  solar: { text: "Эмоциональный", x: 360, y: 476, rotate: 90 },
-  sacral: { text: "Сакральный", x: 200, y: 466 },
-  root: { text: "Корневой", x: 200, y: 598 },
 };
 
 export default function HdStaticBodygraph({
@@ -197,14 +182,18 @@ export default function HdStaticBodygraph({
           fontSize={9}
           fontWeight={600}
           letterSpacing="0.1em"
-          fill={pal.centerLabel}
         >
-          {Object.values(CENTER_LABELS).map((l) => (
+          {HD_CENTER_LABELS.map((l) => (
             <text
-              key={l.text}
+              key={l.key}
               x={l.x}
               y={l.y}
               transform={l.rotate ? `rotate(${l.rotate} ${l.x} ${l.y})` : undefined}
+              fill={
+                l.inside && definedCenters.has(l.key)
+                  ? pal.centerLabelOnDefined
+                  : pal.centerLabel
+              }
             >
               {l.text.toUpperCase()}
             </text>
@@ -239,7 +228,16 @@ export default function HdStaticBodygraph({
                     fill={a?.dLine && !a?.pLine ? pal.d : pal.p}
                   />
                 )
-              ) : null}
+              ) : (
+                <circle
+                  cx={anchor.lx}
+                  cy={anchor.ly}
+                  r={9}
+                  fill={pal.centerOpenFill}
+                  stroke={pal.gateRingStroke}
+                  strokeWidth={1.2}
+                />
+              )}
               <text
                 x={anchor.lx}
                 y={anchor.ly + (active ? 3 : 2.5)}

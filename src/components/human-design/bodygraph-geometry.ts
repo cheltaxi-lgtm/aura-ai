@@ -30,6 +30,35 @@ export const HD_CENTER_SHAPES: Record<HdCenterKey, HdCenterShape> = {
   root: { key: "root", path: "M162 556 H238 V632 H162 Z", cx: 200, cy: 594 },
 };
 
+export interface HdCenterLabel {
+  key: HdCenterKey;
+  text: string;
+  x: number;
+  y: number;
+  rotate?: number;
+  /** Label sits inside the shape — must contrast with the defined fill. */
+  inside?: boolean;
+}
+
+/**
+ * Center captions in collision-free spots: inside empty squares and the
+ * diamond, in the head/ajna gap, beside the heart, and rotated along the
+ * side triangles' flat outer edges. Short forms where the full
+ * CENTER_NAMES_RU string would not fit ("Эго" for heart). Shared by the
+ * interactive Bodygraph and the static/print variant.
+ */
+export const HD_CENTER_LABELS: readonly HdCenterLabel[] = [
+  { key: "head", text: "Головной", x: 200, y: 13 },
+  { key: "ajna", text: "Аджна", x: 200, y: 102 },
+  { key: "throat", text: "Горловой", x: 200, y: 230, inside: true },
+  { key: "g", text: "G-центр", x: 200, y: 352, inside: true },
+  { key: "heart", text: "Эго", x: 322, y: 343 },
+  { key: "spleen", text: "Селезёночный", x: 40, y: 476, rotate: -90 },
+  { key: "solar", text: "Эмоциональный", x: 360, y: 476, rotate: 90 },
+  { key: "sacral", text: "Сакральный", x: 200, y: 466, inside: true },
+  { key: "root", text: "Корневой", x: 200, y: 598, inside: true },
+];
+
 export interface HdGateAnchor {
   gate: number;
   center: HdCenterKey;

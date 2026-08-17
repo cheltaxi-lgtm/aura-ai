@@ -11,6 +11,7 @@ import {
   TYPE_META,
 } from "@/lib/human-design";
 import {
+  HD_CENTER_LABELS,
   HD_CENTER_SHAPES,
   HD_CHANNEL_SEGMENTS,
   HD_GATE_ANCHORS,
@@ -38,7 +39,10 @@ import HdCosmos from "./HdCosmos";
 
 const COLOR_P = "#f2e7c9";
 const COLOR_D = "#e05555";
-const COLOR_BASE = "rgba(232, 199, 126, 0.10)";
+const COLOR_BASE = "rgba(232, 199, 126, 0.14)";
+const COLOR_LABEL = "rgba(232, 199, 126, 0.55)";
+const COLOR_LABEL_DEFINED = "rgba(23, 19, 31, 0.75)";
+const COLOR_GATE_RING = "rgba(232, 199, 126, 0.38)";
 
 const BODY_GLYPH: Record<HdBodyKey, string> = {
   sun: "☉", earth: "⊕", moon: "☽", northNode: "☊", southNode: "☋",
@@ -993,7 +997,40 @@ export default function Bodygraph({
               })}
             </g>
 
-            {/* Gates: medallions for active, quiet numbers for the rest */}
+            {/* Center captions — static charts have no tooltips, and on screen
+                they orient the eye before any hover. pointer-events none so
+                center paths keep their hover/click handlers. */}
+            <motion.g
+              fontFamily="system-ui, sans-serif"
+              textAnchor="middle"
+              fontSize={9}
+              fontWeight={600}
+              letterSpacing="0.1em"
+              style={{ pointerEvents: "none" }}
+              initial={reduceMotion ? false : { opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ duration: 0.6, delay: reduceMotion ? 0 : gatesDelay }}
+              aria-hidden="true"
+            >
+              {HD_CENTER_LABELS.map((l) => (
+                <text
+                  key={l.key}
+                  x={l.x}
+                  y={l.y}
+                  transform={l.rotate ? `rotate(${l.rotate} ${l.x} ${l.y})` : undefined}
+                  fill={
+                    l.inside && definedCenters.has(l.key)
+                      ? COLOR_LABEL_DEFINED
+                      : COLOR_LABEL
+                  }
+                >
+                  {l.text.toUpperCase()}
+                </text>
+              ))}
+            </motion.g>
+
+            {/* Gates: medallions for active, ring anchors for the rest so
+                channel lines always terminate at a visible node */}
             <g fontFamily="system-ui, sans-serif" textAnchor="middle">
               {HD_GATE_ANCHORS.map((anchor, gi) => {
                 const a = gateActivity.get(anchor.gate);
@@ -1105,7 +1142,16 @@ export default function Bodygraph({
                             strokeWidth={1}
                           />
                         )
-                      ) : null}
+                      ) : (
+                        <circle
+                          cx={anchor.lx}
+                          cy={anchor.ly}
+                          r={9}
+                          fill="#141210"
+                          stroke={COLOR_GATE_RING}
+                          strokeWidth={1.2}
+                        />
+                      )}
                       <text
                         x={anchor.lx}
                         y={anchor.ly + (medallion ? 3 : 2.5)}
