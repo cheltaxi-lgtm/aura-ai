@@ -151,18 +151,19 @@ describe("starter gift on the public homepage", () => {
     expect(src).toContain('trackSeoEvent("starter_gift_view"');
   });
 
-  it("gift section is the unified acquisition block after the demo on the guest homepage", () => {
+  it("gift section is the unified acquisition block after the guest spread mount", () => {
     const src = readSrc("src/components/AuraSellingLanding.tsx");
     const start = src.indexOf("if (isGuestEditorial)");
     const guestReturn = src.indexOf("return (", start);
     const nextReturn = src.indexOf("return (", guestReturn + 1);
     const guestBranch = src.slice(guestReturn, nextReturn);
-    const demoIdx = guestBranch.indexOf("<LandingDemoSection");
+    const spreadIdx = guestBranch.indexOf("<GuestTripletDraw");
     const giftIdx = guestBranch.indexOf("<EditorialStarterGiftSection");
     const stepsIdx = guestBranch.indexOf("<EditorialSessionStepsSection");
-    expect(demoIdx).toBeGreaterThan(-1);
-    expect(giftIdx).toBeGreaterThan(demoIdx);
+    expect(spreadIdx).toBeGreaterThan(-1);
+    expect(giftIdx).toBeGreaterThan(spreadIdx);
     expect(giftIdx).toBeLessThan(stepsIdx);
+    expect(guestBranch).not.toContain("<LandingDemoSection");
     expect(guestBranch).not.toContain("<EditorialFreeValueSection");
     expect(guestBranch).not.toContain("<EditorialStarterPackSection");
   });

@@ -28,7 +28,6 @@ import AndroidDownloadBlock from "@/components/seo/AndroidDownloadBlock";
 import LandingSeoHub from "@/components/seo/LandingSeoHub";
 import LandingPartnersSection from "@/components/seo/LandingPartnersSection";
 import LandingStickyCta from "@/components/seo/LandingStickyCta";
-import LandingDemoSection from "@/components/seo/LandingDemoSection";
 import LandingHonestSection from "@/components/seo/LandingHonestSection";
 import LandingClosingBand from "@/components/seo/LandingClosingBand";
 import {
@@ -400,7 +399,6 @@ export default function AuraSellingLanding({
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
         {/* Same guest-receipt flow; mounted under hero (no full navigation). Idle = null. */}
         <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
-        <LandingDemoSection onOpenCards={() => handlePrimaryCta("final")} />
         <EditorialStarterGiftSection />
         <EditorialSessionStepsSection />
         {showMasters ? (

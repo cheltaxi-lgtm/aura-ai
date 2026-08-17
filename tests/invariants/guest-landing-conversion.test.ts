@@ -38,13 +38,13 @@ describe("guest landing conversion cleanup", () => {
     expect(hero).not.toContain("Как проходит сеанс");
   });
 
-  it("guest landing order is hero → products → demo → starter → masters → birth → daily → honest → practices → seo → faq/cta", () => {
+  it("guest landing order is hero → products → starter → masters → birth → daily → honest → practices → seo → faq/cta", () => {
     const guest = guestLandingBranch();
+    expect(guest).not.toContain("<LandingDemoSection");
     const markers = [
       "<EditorialHeroSection",
       "<EditorialProductEntries",
       "<GuestTripletDraw",
-      "<LandingDemoSection",
       "<EditorialStarterGiftSection",
       "<EditorialSessionStepsSection",
       "<MastersShowcase",
