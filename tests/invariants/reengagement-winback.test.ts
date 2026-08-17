@@ -192,17 +192,23 @@ describe.skipIf(!hasTestDb)("reengagement-winback (db)", () => {
   it("return resets episode so a later 7d window can send again", async () => {
     const { account, profile } = await seedWinbackUser({ inactiveDays: 8 });
     expect(await sendInactiveUserEmails(7)).toBe(1);
-    await query(`UPDATE user_accounts SET last_login_at = NOW() WHERE id = $1`, [account.id]);
-    await query(
+    // Episode semantics with explicit day-level margins (no reliance on
+    // microsecond ordering of sequential NOW() statements): the previous
+    // send belongs to an older episode (9d ago), the user returned and went
+    // inactive again 8d ago.
+    const backdate = await query(
       `UPDATE reengagement_email_log
-          SET created_at = NOW() - INTERVAL '8 days',
-              sent_date = (CURRENT_DATE - 8)
+          SET created_at = NOW() - INTERVAL '9 days',
+              sent_date = (CURRENT_DATE - 9)
         WHERE user_id = $1 AND template = 'inactive_7d'`,
       [profile.id]
     );
-    await query(`UPDATE user_accounts SET last_login_at = NOW() - INTERVAL '8 days' WHERE id = $1`, [
-      account.id,
-    ]);
+    expect(backdate.rowCount).toBe(1);
+    const relogin = await query(
+      `UPDATE user_accounts SET last_login_at = NOW() - INTERVAL '8 days' WHERE id = $1`,
+      [account.id]
+    );
+    expect(relogin.rowCount).toBe(1);
     sendEmailMock.mockClear();
     expect(await sendInactiveUserEmails(7)).toBe(1);
   });
