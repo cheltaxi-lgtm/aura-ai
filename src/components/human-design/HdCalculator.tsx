@@ -527,6 +527,8 @@ export default function HdCalculator({
                   setShowConnection(false);
                   setResult(null);
                   setSubjectKind("self");
+                  // Deliberate reset — stop resurrecting this chart on revisit.
+                  clearStoredFingerprint();
                 }}
                 className="hd-bodygraph__export"
               >
@@ -538,6 +540,8 @@ export default function HdCalculator({
               onClick={() => {
                 setShowConnection(false);
                 setResult(null);
+                // Deliberate reset — stop resurrecting this chart on revisit.
+                clearStoredFingerprint();
               }}
               className="hd-bodygraph__export"
             >
