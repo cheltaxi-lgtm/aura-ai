@@ -13,6 +13,9 @@ export default defineConfig({
     testTimeout: 60_000,
     hookTimeout: 180_000,
     // DB suites share one pool + migrate mutex; avoid parallel bootstrap races.
+    // NOTE: isolate:false is NOT an option — unit files vi.mock("@/lib/db")
+    // while integration files need the real module; a shared registry breaks
+    // the mocks (session-fk-guard hits the real DB).
     fileParallelism: false,
   },
   resolve: {

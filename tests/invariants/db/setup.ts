@@ -124,6 +124,7 @@ export function installDbLifecycle() {
   });
 
   afterAll(async () => {
-    // Do not pool.end() here — vitest runs files in parallel and shares getPool().
+    // isolate:true (default) => each file runs in its own short-lived worker
+    // process; the pool dies with the worker, so no explicit end() is needed.
   });
 }
