@@ -87,13 +87,17 @@ const compactSvg = buildMatrixDiagramSvgFromResult(
 const singles = [
   ["result-desktop", { width: 1280, height: 1400 }, "62rem", pages[0].dark],
   ["result-375", { width: 375, height: 700 }, "100%", compactSvg],
+  ["result-390", { width: 390, height: 720 }, "100%", compactSvg],
   ["result-430", { width: 430, height: 760 }, "100%", compactSvg],
 ];
 for (const [name, viewport, maxW, svg] of singles) {
   const page = await browser.newPage({ viewport });
   await page.setContent(
     `<html><body style="margin:0;background:#100e0c;display:flex;justify-content:center">
-      <div id="frame" style="width:100%;max-width:${maxW}">${svg}</div>
+      <div id="frame" style="width:100%;max-width:${maxW}">
+        ${svg}
+        ${name.startsWith("result-") && name !== "result-desktop" ? `<ul style="display:flex;flex-wrap:wrap;justify-content:center;gap:6px 12px;margin:10px 0 0;padding:0;list-style:none;font:14px Georgia,serif;color:rgba(236,226,208,.72)"><li>♥ Отношения</li><li>$ Деньги</li><li>Мужская линия рода</li><li>Женская линия рода</li><li>Кармический хвост</li></ul>` : ""}
+      </div>
     </body></html>`,
     { waitUntil: "load" }
   );

@@ -13,7 +13,9 @@ import {
   PERSONAL_DIAMOND_IDS,
   ageMarkPosition,
   ageRingRadius,
+  ageSector,
   layoutPoint,
+  polar,
   matrixViewBoxAttr,
   polylineFor,
   type MatrixLayoutId,
@@ -78,11 +80,11 @@ const FONT = "Georgia, 'Times New Roman', serif";
 const DARK: ThemeTokens = {
   bg: "#12100e",
   tint: "rgba(196, 168, 112, 0.04)",
-  diamond: "rgba(226, 208, 176, 0.55)",
-  square: "rgba(168, 150, 186, 0.42)",
-  axis: "rgba(226, 208, 176, 0.2)",
-  innerRing: "rgba(226, 208, 176, 0.12)",
-  bezel: "rgba(186, 168, 132, 0.34)",
+  diamond: "rgba(226, 208, 176, 0.52)",
+  square: "rgba(168, 150, 186, 0.36)",
+  axis: "rgba(226, 208, 176, 0.16)",
+  innerRing: "rgba(226, 208, 176, 0.1)",
+  bezel: "rgba(186, 168, 132, 0.28)",
   beadFill: "#1c1915",
   beadStroke: "rgba(226, 208, 176, 0.32)",
   love: "#b88990",
@@ -149,8 +151,8 @@ type TypeScale = {
 
 function typeScale(compact: boolean): TypeScale {
   return compact
-    ? { center: 54, major: 38, secondary: 30, inner: 28, zone: 0, ageMajor: 15, helper: 14 }
-    : { center: 48, major: 32, secondary: 26, inner: 24, zone: 15, ageMajor: 13, helper: 13 };
+    ? { center: 54, major: 38, secondary: 30, inner: 28, zone: 16, ageMajor: 15, helper: 15 }
+    : { center: 48, major: 32, secondary: 26, inner: 23, zone: 16, ageMajor: 13, helper: 14 };
 }
 
 function esc(s: string): string {
@@ -174,10 +176,10 @@ function pts(points: ReadonlyArray<{ x: number; y: number }>): string {
 function outerGeometry(t: ThemeTokens): string {
   const oct = OUTER_LAYOUT_IDS.map((id) => MATRIX_NODE_LAYOUT[id]);
   return [
-    `<polygon fill="none" stroke="${t.diamond}" stroke-width="2.35" stroke-linejoin="round" points="${polylineFor(PERSONAL_DIAMOND_IDS)}"/>`,
-    `<polygon fill="none" stroke="${t.square}" stroke-width="2.15" stroke-linejoin="round" points="${polylineFor(ANCESTRAL_SQUARE_IDS)}"/>`,
-    `<polygon fill="none" stroke="${t.diamond}" stroke-width="1.1" stroke-linejoin="round" opacity="0.35" points="${pts(oct)}"/>`,
-    `<circle cx="${MATRIX_ORIGIN.x}" cy="${MATRIX_ORIGIN.y}" r="${INNER_RADIUS}" fill="none" stroke="${t.innerRing}" stroke-width="1.15"/>`,
+    `<polygon fill="none" stroke="${t.diamond}" stroke-width="2.2" stroke-linejoin="round" points="${polylineFor(PERSONAL_DIAMOND_IDS)}"/>`,
+    `<polygon fill="none" stroke="${t.square}" stroke-width="1.85" stroke-linejoin="round" points="${polylineFor(ANCESTRAL_SQUARE_IDS)}"/>`,
+    `<polygon fill="none" stroke="${t.diamond}" stroke-width="0.9" stroke-linejoin="round" opacity="0.28" points="${pts(oct)}"/>`,
+    `<circle cx="${MATRIX_ORIGIN.x}" cy="${MATRIX_ORIGIN.y}" r="${INNER_RADIUS}" fill="none" stroke="${t.innerRing}" stroke-width="1"/>`,
   ].join("");
 }
 
@@ -186,27 +188,22 @@ function ageScale(t: ThemeTokens, compact: boolean, type: TypeScale): string {
   const beadR = compact ? 18 : 14;
   const majors = compact ? [0, 20, 40, 60] : [0, 10, 20, 30, 40, 50, 60, 70];
   const minors = compact ? [10, 30, 50, 70] : [5, 15, 25, 35, 45, 55, 65, 75];
-  const ringPath = `<circle cx="${MATRIX_ORIGIN.x}" cy="${MATRIX_ORIGIN.y}" r="${ring}" fill="none" stroke="${t.bezel}" stroke-width="1.35"/>`;
+  const ringPath = `<circle cx="${MATRIX_ORIGIN.x}" cy="${MATRIX_ORIGIN.y}" r="${ring}" fill="none" stroke="${t.bezel}" stroke-width="1.2"/>`;
   const ticks = minors
     .map((age) => {
-      const p = ageMarkPosition(age);
-      const outer = {
-        x: p.x + (p.x - MATRIX_ORIGIN.x) * 0.028,
-        y: p.y + (p.y - MATRIX_ORIGIN.y) * 0.028,
-      };
-      const inner = {
-        x: p.x - (p.x - MATRIX_ORIGIN.x) * 0.028,
-        y: p.y - (p.y - MATRIX_ORIGIN.y) * 0.028,
-      };
-      return `<line data-age-tick="${age}" x1="${inner.x}" y1="${inner.y}" x2="${outer.x}" y2="${outer.y}" stroke="${t.bezel}" stroke-width="1.4" stroke-linecap="round"/>`;
+      const { angle } = ageSector(age);
+      const a = age === 60 ? -112 : angle;
+      const inner = polar(ring - 6, a);
+      const outer = polar(ring + 6, a);
+      return `<line data-age-tick="${age}" x1="${inner.x}" y1="${inner.y}" x2="${outer.x}" y2="${outer.y}" stroke="${t.bezel}" stroke-width="1.05" stroke-linecap="round"/>`;
     })
     .join("");
   const beads = majors
     .map((age) => {
       const p = ageMarkPosition(age);
       return `<g data-age="${age}">
-        <circle cx="${p.x}" cy="${p.y}" r="${beadR}" fill="${t.beadFill}" stroke="${t.beadStroke}" stroke-width="1.4"/>
-        <text x="${p.x}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="central" font-size="${type.ageMajor}" fill="${t.ageMajor}" font-family="${FONT}">${age}</text>
+        <circle cx="${p.x}" cy="${p.y}" r="${beadR}" fill="${t.beadFill}" stroke="${t.beadStroke}" stroke-width="1.15"/>
+        <text x="${p.x}" y="${p.y}" text-anchor="middle" dominant-baseline="central" font-size="${type.ageMajor}" fill="${t.ageMajor}" font-family="${FONT}">${age}</text>
       </g>`;
     })
     .join("");
@@ -219,29 +216,29 @@ function axes(t: ThemeTokens): string {
   const T = MATRIX_NODE_LAYOUT["outer.top"];
   const B = MATRIX_NODE_LAYOUT["outer.bottom"];
   return [
-    `<line x1="${L.x}" y1="${L.y}" x2="${R.x}" y2="${R.y}" stroke="${t.axis}" stroke-width="1.35"/>`,
-    `<line x1="${T.x}" y1="${T.y}" x2="${B.x}" y2="${B.y}" stroke="${t.axis}" stroke-width="1.35"/>`,
+    `<line x1="${L.x}" y1="${L.y}" x2="${R.x}" y2="${R.y}" stroke="${t.axis}" stroke-width="1.15"/>`,
+    `<line x1="${T.x}" y1="${T.y}" x2="${B.x}" y2="${B.y}" stroke="${t.axis}" stroke-width="1.15"/>`,
   ].join("");
 }
 
 function channels(t: ThemeTokens): string {
   return [
-    `<polyline fill="none" stroke="${t.love}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.love)}"/>`,
-    `<polyline fill="none" stroke="${t.money}" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.money)}"/>`,
+    `<polyline fill="none" stroke="${t.love}" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.love)}"/>`,
+    `<polyline fill="none" stroke="${t.money}" stroke-width="2.85" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.money)}"/>`,
   ].join("");
 }
 
 function generation(t: ThemeTokens): string {
   return [
-    `<polyline fill="none" stroke="${t.male}" stroke-width="2.8" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.left", "maleLine.head", "outer.bottomRight"])}"/>`,
-    `<polyline fill="none" stroke="${t.male}" stroke-width="2.2" stroke-linecap="round" points="${polylineFor(["maleLine.head", "outer.right"])}"/>`,
-    `<polyline fill="none" stroke="${t.female}" stroke-width="2.8" stroke-linecap="round" points="${polylineFor(["outer.topRight", "outer.bottomLeft"])}"/>`,
-    `<polyline fill="none" stroke="${t.female}" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.topLeft", "outer.top", "outer.topRight"])}"/>`,
+    `<polyline fill="none" stroke="${t.male}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.left", "maleLine.head", "outer.bottomRight"])}"/>`,
+    `<polyline fill="none" stroke="${t.male}" stroke-width="1.85" stroke-linecap="round" points="${polylineFor(["maleLine.head", "outer.right"])}"/>`,
+    `<polyline fill="none" stroke="${t.female}" stroke-width="2.45" stroke-linecap="round" points="${polylineFor(["outer.topRight", "outer.bottomLeft"])}"/>`,
+    `<polyline fill="none" stroke="${t.female}" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.topLeft", "outer.top", "outer.topRight"])}"/>`,
   ].join("");
 }
 
 function tailSpine(t: ThemeTokens): string {
-  return `<polyline fill="none" stroke="${t.tail}" stroke-width="3.1" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.karmicTail)}"/>`;
+  return `<polyline fill="none" stroke="${t.tail}" stroke-width="2.65" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.karmicTail)}"/>`;
 }
 
 function nodeLook(
@@ -371,7 +368,7 @@ function nodesLayer(
       const look = nodeLook(n, focused, t, type);
       const halo =
         n.role === "center"
-          ? `<circle cx="${p.x}" cy="${p.y}" r="${CENTER_HALO_RADIUS}" fill="none" stroke="${t.halo}" stroke-width="4"/>`
+          ? `<circle cx="${p.x}" cy="${p.y}" r="${CENTER_HALO_RADIUS}" fill="none" stroke="${t.halo}" stroke-width="3.2"/>`
           : "";
       return `<g data-node="${n.id}" opacity="${visible(n, revealed) ? 1 : 0}">
         ${halo}
@@ -395,7 +392,7 @@ function valuesLayer(
       const p = layoutPoint(n.id);
       const focused = isNodeFocused(n, focusKey);
       const look = nodeLook(n, focused, t, type);
-      return `<text data-value="${n.id}" x="${p.x}" y="${p.y + 1}" text-anchor="middle" dominant-baseline="central" font-size="${look.numSize}" font-weight="700" fill="${look.num}" font-family="${FONT}" opacity="${visible(n, revealed) ? 1 : 0}">${n.number}</text>`;
+      return `<text data-value="${n.id}" x="${p.x}" y="${p.y}" text-anchor="middle" dominant-baseline="central" font-size="${look.numSize}" font-weight="600" fill="${look.num}" font-family="${FONT}" opacity="${visible(n, revealed) ? 1 : 0}">${n.number}</text>`;
     })
     .join("");
 }
@@ -404,13 +401,12 @@ function markers(t: ThemeTokens): string {
   const love = MATRIX_NODE_LAYOUT["horizontal.left"];
   const money = MATRIX_NODE_LAYOUT["horizontal.right"];
   return [
-    `<text x="${love.x}" y="${love.y - 38}" text-anchor="middle" font-size="13" fill="${t.love}" font-family="${FONT}">♥</text>`,
-    `<text x="${money.x}" y="${money.y - 38}" text-anchor="middle" font-size="13" fill="${t.money}" font-family="${FONT}">$</text>`,
+    `<text x="${love.x}" y="${love.y - 36}" text-anchor="middle" font-size="12" fill="${t.love}" font-family="${FONT}">♥</text>`,
+    `<text x="${money.x}" y="${money.y - 36}" text-anchor="middle" font-size="12" fill="${t.money}" font-family="${FONT}">$</text>`,
   ].join("");
 }
 
 function zoneLabels(t: ThemeTokens, compact: boolean, type: TypeScale): string {
-  if (compact) return "";
   const left = MATRIX_NODE_LAYOUT["outer.left"];
   const top = MATRIX_NODE_LAYOUT["outer.top"];
   const right = MATRIX_NODE_LAYOUT["outer.right"];
@@ -419,15 +415,22 @@ function zoneLabels(t: ThemeTokens, compact: boolean, type: TypeScale): string {
   const paternal = MATRIX_NODE_LAYOUT["maleLine.head"];
   const mother = MATRIX_NODE_LAYOUT["outer.topRight"];
   const tip = MATRIX_NODE_LAYOUT["karmicTail.tip"];
+  const zone = [
+    `<text x="${left.x}" y="${left.y - 62}" text-anchor="middle" font-size="${type.zone}" letter-spacing="0.4" fill="${t.label}" font-family="${FONT}">Характер</text>`,
+    `<text x="${top.x + 64}" y="${top.y + 4}" text-anchor="start" font-size="${type.zone}" letter-spacing="0.4" fill="${t.label}" font-family="${FONT}">Небо</text>`,
+    `<text x="${right.x}" y="${right.y - 62}" text-anchor="middle" font-size="${type.zone}" letter-spacing="0.4" fill="${t.label}" font-family="${FONT}">Материя</text>`,
+  ];
+  const lineage = [
+    `<text x="${paternal.x - 34}" y="${paternal.y + 42}" text-anchor="end" font-size="${type.helper}" letter-spacing="0.45" fill="${t.male}" font-family="${FONT}">Мужская линия</text>`,
+    `<text x="${mother.x - 84}" y="${mother.y + 20}" text-anchor="end" font-size="${type.helper}" letter-spacing="0.45" fill="${t.female}" font-family="${FONT}">Женская линия</text>`,
+    `<text x="${tip.x + 46}" y="${tip.y + 24}" text-anchor="start" font-size="${type.helper}" letter-spacing="0.35" fill="${t.tail}" font-family="${FONT}">Кармический хвост</text>`,
+  ];
+  if (compact) return [...zone, ...lineage].join("");
   return [
-    `<text x="${left.x}" y="${left.y - 54}" text-anchor="middle" font-size="${type.zone}" fill="${t.label}" font-family="${FONT}">Характер</text>`,
-    `<text x="${top.x + 58}" y="${top.y + 6}" text-anchor="start" font-size="${type.zone}" fill="${t.label}" font-family="${FONT}">Небо</text>`,
-    `<text x="${right.x}" y="${right.y - 54}" text-anchor="middle" font-size="${type.zone}" fill="${t.label}" font-family="${FONT}">Материя</text>`,
-    `<text x="${(left.x + love.x) / 2}" y="${love.y - 42}" text-anchor="middle" font-size="${type.helper}" fill="${t.love}" font-family="${FONT}">Отношения</text>`,
-    `<text x="${money.x + 48}" y="${money.y + 6}" text-anchor="start" font-size="${type.helper}" fill="${t.money}" font-family="${FONT}">Деньги</text>`,
-    `<text x="${paternal.x - 16}" y="${paternal.y + 32}" text-anchor="end" font-size="${type.helper}" fill="${t.male}" font-family="${FONT}">Мужская линия</text>`,
-    `<text x="${mother.x - 8}" y="${mother.y + 48}" text-anchor="end" font-size="${type.helper}" fill="${t.female}" font-family="${FONT}">Женская линия</text>`,
-    `<text x="${tip.x + 52}" y="${tip.y + 5}" text-anchor="start" font-size="${type.helper}" fill="${t.tail}" font-family="${FONT}">Кармический хвост</text>`,
+    ...zone,
+    `<text x="${(left.x + love.x) / 2}" y="${love.y - 48}" text-anchor="middle" font-size="${type.helper}" letter-spacing="0.35" fill="${t.love}" font-family="${FONT}">Отношения</text>`,
+    `<text x="${money.x + 42}" y="${money.y - 40}" text-anchor="start" font-size="${type.helper}" letter-spacing="0.35" fill="${t.money}" font-family="${FONT}">Деньги</text>`,
+    ...lineage,
   ].join("");
 }
 
@@ -442,12 +445,12 @@ function periodLayer(
   if (!year || !month) return "";
   const shown = visible(year, revealed) && visible(month, revealed);
   return `<g data-node="period" opacity="${shown ? 1 : 0}">
-    <line x1="210" y1="1004" x2="790" y2="1004" stroke="${t.bezel}" stroke-width="0.8"/>
-    <text x="340" y="1024" text-anchor="middle" font-size="12" fill="${t.muted}" font-family="${FONT}">Аркан года</text>
-    <text x="340" y="1048" text-anchor="middle" font-size="18" font-weight="700" fill="${t.number}" font-family="${FONT}">${year.number} · ${esc(year.arcanaName)}</text>
-    <line x1="500" y1="1014" x2="500" y2="1054" stroke="${t.bezel}" stroke-width="0.8"/>
-    <text x="660" y="1024" text-anchor="middle" font-size="12" fill="${t.muted}" font-family="${FONT}">Аркан месяца</text>
-    <text x="660" y="1048" text-anchor="middle" font-size="18" font-weight="700" fill="${t.number}" font-family="${FONT}">${month.number} · ${esc(month.arcanaName)}</text>
+    <rect x="196" y="994" width="608" height="58" rx="12" fill="${t.core}" stroke="${t.bezel}" stroke-width="0.8"/>
+    <text x="330" y="1018" text-anchor="middle" font-size="11" letter-spacing="0.8" fill="${t.muted}" font-family="${FONT}">Аркан года</text>
+    <text x="330" y="1040" text-anchor="middle" font-size="17" font-weight="600" fill="${t.number}" font-family="${FONT}">${year.number} · ${esc(year.arcanaName)}</text>
+    <line x1="500" y1="1008" x2="500" y2="1038" stroke="${t.bezel}" stroke-width="0.8"/>
+    <text x="670" y="1018" text-anchor="middle" font-size="11" letter-spacing="0.8" fill="${t.muted}" font-family="${FONT}">Аркан месяца</text>
+    <text x="670" y="1040" text-anchor="middle" font-size="17" font-weight="600" fill="${t.number}" font-family="${FONT}">${month.number} · ${esc(month.arcanaName)}</text>
   </g>`;
 }
 
@@ -466,7 +469,7 @@ export function buildMatrixDiagramSvg(
   const revealed = options.revealed ?? 99;
   const focusKey = options.focusKey ?? model.focusKey;
   const uid = options.uid ?? "mx";
-  const showPeriod = options.showPeriod !== false && !compact;
+  const showPeriod = options.showPeriod !== false;
   const showAge = options.showAgeMarks !== false;
   const title = options.title ?? "Матрица судьбы — 22 аркана";
 
@@ -490,7 +493,7 @@ export function buildMatrixDiagramSvg(
     return `<g class="destiny-matrix-svg">${body}</g>`;
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${matrixViewBoxAttr(compact)}" role="img" aria-labelledby="${uid}-title" class="destiny-matrix-svg">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${matrixViewBoxAttr(compact && !showPeriod)}" role="img" aria-labelledby="${uid}-title" class="destiny-matrix-svg">
   ${body}
 </svg>`;
 }

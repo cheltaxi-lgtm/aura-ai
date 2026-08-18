@@ -133,17 +133,17 @@ export const MATRIX_NODE_RADIUS: Record<MatrixLayoutId, number> = {
   "outer.bottom": 40,
   "outer.bottomLeft": 32,
   center: 64,
-  "vertical.top": 29,
-  "vertical.bottom": 29,
-  "horizontal.left": 29,
-  "horizontal.right": 29,
-  "maleLine.head": 26,
+  "vertical.top": 26,
+  "vertical.bottom": 26,
+  "horizontal.left": 26,
+  "horizontal.right": 26,
+  "maleLine.head": 24,
   "karmicTail.tip": 28,
   "period.year": 0,
   "period.month": 0,
 };
 
-export const CENTER_HALO_RADIUS = 72;
+export const CENTER_HALO_RADIUS = 68;
 export const CENTER_CORE_RADIUS = 50;
 
 function intersectVertical(a: MatrixPoint2d, b: MatrixPoint2d, x: number): MatrixPoint2d {

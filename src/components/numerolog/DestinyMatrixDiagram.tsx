@@ -54,7 +54,7 @@ export default function DestinyMatrixDiagram({
         density,
         revealed: reduceMotion ? 99 : revealed,
         focusKey: focusKey ?? matrix.focusKey,
-        showPeriod: showPeriod ?? density === "full",
+        showPeriod: showPeriod ?? true,
         showAgeMarks: showAgeMarks ?? true,
         uid,
       }),
