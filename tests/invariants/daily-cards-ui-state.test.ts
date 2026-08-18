@@ -83,8 +83,9 @@ describe("daily cards UI state + analytics gating", () => {
     ).toBe(true);
   });
 
-  it("TEST9: anonymous daily CTA describes first free trial", () => {
-    expect(EDITORIAL_DAILY_CARDS.guestCta).toMatch(/Попробовать 3 карты бесплатно/i);
+  it("TEST9: anonymous daily CTA opens the first guest cards, not a free daily claim", () => {
+    expect(EDITORIAL_DAILY_CARDS.guestCta).toBe("Открыть первые 3 карты");
+    expect(EDITORIAL_DAILY_CARDS.guestCta).not.toMatch(/Попробовать 3 карты бесплатно/i);
     expect(EDITORIAL_DAILY_CARDS.guestCtaHint).toMatch(/раз в сутки/i);
     expect(EDITORIAL_DAILY_CARDS.body).not.toMatch(/не путать/i);
   });

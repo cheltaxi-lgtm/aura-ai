@@ -2022,6 +2022,115 @@ button.editorial-practice-card {
   color: var(--color-accent-light);
 }
 
+/* ── Extra features (guest: PhotoTarot + Numerology, not a product grid) ── */
+.editorial-extra-features {
+  overflow-x: hidden;
+}
+
+.editorial-extra-features .editorial-landing__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 2.5rem;
+}
+
+.editorial-extra-feature {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  gap: 1.25rem;
+  min-width: 0;
+  align-items: center;
+}
+
+.editorial-extra-feature__media,
+.editorial-extra-feature__copy {
+  min-width: 0;
+}
+
+.editorial-extra-feature__img {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  height: auto;
+  aspect-ratio: 16 / 10;
+  object-fit: cover;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--color-border);
+}
+
+.editorial-extra-feature__copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.editorial-extra-feature__eyebrow {
+  margin: 0;
+  font-size: 0.6875rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--color-accent-light);
+  opacity: 0.9;
+}
+
+.editorial-extra-feature__title {
+  margin: 0.65rem 0 0;
+  font-family: var(--font-mystic-display), Georgia, serif;
+  font-size: clamp(1.375rem, 2.6vw, 1.85rem);
+  font-weight: 500;
+  line-height: 1.2;
+  color: var(--color-text);
+  overflow-wrap: break-word;
+}
+
+.editorial-extra-feature__text {
+  margin: 0.75rem 0 0;
+  font-size: 0.9375rem;
+  line-height: 1.6;
+  color: var(--color-text-muted);
+  overflow-wrap: break-word;
+}
+
+.editorial-extra-feature__offer {
+  margin: 1rem 0 0;
+}
+
+.editorial-extra-feature__offer-lead {
+  margin: 0;
+  font-size: 0.9375rem;
+  line-height: 1.45;
+  color: var(--color-champagne, #e8c77e);
+}
+
+.editorial-extra-feature__offer-note {
+  margin: 0.35rem 0 0;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: var(--color-text-faint);
+}
+
+.editorial-extra-feature__copy .editorial-btn {
+  margin-top: 1.15rem;
+}
+
+@media (min-width: 768px) {
+  .editorial-extra-features .editorial-landing__inner {
+    gap: 3.25rem;
+  }
+
+  .editorial-extra-feature {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 2rem 2.5rem;
+  }
+
+  .editorial-extra-feature--reverse .editorial-extra-feature__media {
+    order: 2;
+  }
+
+  .editorial-extra-feature--reverse .editorial-extra-feature__copy {
+    order: 1;
+  }
+}
+
 /* ── Footer ── */
 .editorial-footer {
   margin-top: auto;
@@ -3166,6 +3275,10 @@ html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__
   /* Clickable from first paint — never gated by entrance opacity */
   opacity: 1;
   pointer-events: auto;
+}
+
+.landing-final-cta .editorial-hero__starter-line {
+  margin-top: 0.85rem;
 }
 
 .landing-final-cta--in .landing-final-cta__title,

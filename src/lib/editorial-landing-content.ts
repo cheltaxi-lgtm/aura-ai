@@ -66,8 +66,8 @@ export const EDITORIAL_DAILY_CARDS = {
     { title: "Осторожность", text: "Где не стоит спешить" },
   ] as const,
   /** Anonymous CTA opens first free trial (guest intro), not authenticated daily. */
-  guestCta: "Попробовать 3 карты бесплатно",
-  guestCtaHint: "После регистрации этот расклад доступен бесплатно раз в сутки.",
+  guestCta: "Открыть первые 3 карты",
+  guestCtaHint: "После регистрации карты дня доступны бесплатно раз в сутки.",
   authAvailableCta: "Открыть карты дня",
   authAvailableTitle: "Ваши 3 карты дня готовы",
   authAvailableSubtitle:

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
 type LandingFinalCtaSectionProps = {
   onOpenCards: () => void;
@@ -43,10 +44,14 @@ export default function LandingFinalCtaSection({ onOpenCards }: LandingFinalCtaS
         Вопрос уже сформулирован —{" "}
         <span className="landing-final-cta__title-keep">осталось открыть карты</span>
       </h2>
-      <p className="landing-final-cta__sub">Три карты бесплатно. Дальше решаете вы.</p>
+      <p className="landing-final-cta__sub">
+        Откройте три карты и получите короткий ориентир. Полный разбор сохранится за этими же картами
+        после регистрации.
+      </p>
       <button type="button" className="editorial-btn editorial-btn--gold" onClick={onOpenCards}>
         Открыть 3 карты
       </button>
+      <StarterRunesValue variant="line" generic product="home_final" />
     </section>
   );
 }

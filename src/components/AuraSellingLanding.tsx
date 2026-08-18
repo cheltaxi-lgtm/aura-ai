@@ -58,6 +58,7 @@ import EditorialBirthToolsSection from "@/components/editorial/EditorialBirthToo
 import EditorialSessionStepsSection from "@/components/editorial/EditorialSessionStepsSection";
 import EditorialStarterPackSection from "@/components/editorial/EditorialStarterPackSection";
 import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
+import EditorialExtraFeaturesSection from "@/components/editorial/EditorialExtraFeaturesSection";
 import EditorialDailyCardsSection from "@/components/editorial/EditorialDailyCardsSection";
 import EditorialFreeValueSection from "@/components/editorial/EditorialFreeValueSection";
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
@@ -424,10 +425,7 @@ export default function AuraSellingLanding({
           isLoggedIn={false}
           onGuestCta={() => startGuestSpread()}
         />
-        <EditorialPracticesSection
-          isLoggedIn={false}
-          onGuestTarot={() => startGuestSpread()}
-        />
+        <EditorialExtraFeaturesSection />
         {showTariffs ? (
           <LandingSeoHub
             rubPerRune={config.rubPerRune}
