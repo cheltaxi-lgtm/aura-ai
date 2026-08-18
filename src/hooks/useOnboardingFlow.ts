@@ -113,6 +113,7 @@ import { destinyMatrix, matrixOptionsForTimestamp } from "@/lib/numerology/desti
 import { mergeGuestTripletIntoProfile, clearGuestTriplet, loadGuestTriplet } from "@/lib/guest-triplet";
 import {
   clearGuestResumeUiCache,
+  hasActiveGuestResumeIntent,
   loadGuestResumeUiCache,
   patchGuestResumeUiCache,
   saveGuestResumeUiCache,
@@ -545,6 +546,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const guestResumeBootRef = useRef(false);
   /** Prevents stampeding /api/guest-triplet/status when effect deps churn. */
   const guestResumeHydrateAttemptedRef = useRef(false);
+  /** User left the restored chat for home — do not show the resume banner again. */
+  const guestResumeHomeDismissedRef = useRef(false);
   const sessionListBackMasterRef = useRef<string | null>(null);
   const pendingChatOptsRef = useRef<{ masterId: string; skipReading: boolean } | null>(null);
   const openChatWithSessionParamsRef = useRef<
@@ -4810,9 +4813,27 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     []
   );
 
+  const clearResumeTransitionNotice = useCallback(() => {
+    setTripletNotice((prev) =>
+      prev &&
+      (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
+        prev === GUEST_RESUME_RETRY_TITLE)
+        ? null
+        : prev
+    );
+  }, []);
+
+  const dismissGuestResumeHome = useCallback(() => {
+    guestResumeHomeDismissedRef.current = true;
+    guestResumeHydrateAttemptedRef.current = true;
+    clearGuestResumeUiCache();
+    clearResumeTransitionNotice();
+  }, [clearResumeTransitionNotice]);
+
   const retryGuestTripletResume = useCallback(() => {
     const cache = loadGuestResumeUiCache();
     if (!cache || !isLoggedIn) return;
+    guestResumeHomeDismissedRef.current = false;
     setGuestResumeCanRetry(false);
     setTripletNotice(`${GUEST_RESUME_TRANSITION_TITLE}. ${GUEST_RESUME_TRANSITION_SUBTITLE}`);
     guestResumeBootRef.current = true;
@@ -4836,11 +4857,16 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   useEffect(() => {
     if (!isLoggedIn) {
       guestResumeHydrateAttemptedRef.current = false;
+      guestResumeHomeDismissedRef.current = false;
       return;
     }
     if (guestResumeBootRef.current) return;
     if (step === "intro") return;
     if (authLoading) return;
+    if (guestResumeHomeDismissedRef.current) {
+      clearResumeTransitionNotice();
+      return;
+    }
 
     const savedProfileAuthority = profileSaveAuthorityRef.current;
     const hasServerProfile = Boolean(
@@ -4848,15 +4874,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         (savedProfileAuthority && savedProfileAuthority.expiresAt > Date.now())
     );
 
-    let cache = loadGuestResumeUiCache();
+    let cache = hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null;
     if (!cache && !hasServerProfile) {
-      setTripletNotice((prev) =>
-        prev &&
-        (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
-          prev === GUEST_RESUME_RETRY_TITLE)
-          ? null
-          : prev
-      );
+      clearResumeTransitionNotice();
       return;
     }
 
@@ -4929,14 +4949,40 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return;
       }
 
+      // Leftover UI cache after a delivered reading must not flash the banner.
+      if (cache?.claimedSessionId) {
+        try {
+          const res = await fetch(
+            `/api/guest-triplet/status?sessionId=${encodeURIComponent(cache.claimedSessionId)}`,
+            { method: "GET", credentials: "include", cache: "no-store" }
+          );
+          const owned = (await res.json().catch(() => null)) as {
+            ok?: boolean;
+            status?: string;
+          } | null;
+          if (
+            !owned?.ok ||
+            owned.status !== "claimed"
+          ) {
+            clearGuestResumeUiCache();
+            cache = null;
+          }
+        } catch {
+          /* keep cache and try resume */
+        }
+      }
+
+      if (cancelled || guestResumeHomeDismissedRef.current) {
+        guestResumeBootRef.current = false;
+        if (guestResumeHomeDismissedRef.current) {
+          clearGuestResumeUiCache();
+          clearResumeTransitionNotice();
+        }
+        return;
+      }
+
       if (!cache) {
-        setTripletNotice((prev) =>
-          prev &&
-          (prev.includes(GUEST_RESUME_TRANSITION_SUBTITLE) ||
-            prev === GUEST_RESUME_RETRY_TITLE)
-            ? null
-            : prev
-        );
+        clearResumeTransitionNotice();
         guestResumeBootRef.current = false;
         return;
       }
@@ -4967,8 +5013,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             deckSystem: cache!.system as StoredProfile["deckSystem"],
           }),
       });
-      if (cancelled) {
+      if (cancelled || guestResumeHomeDismissedRef.current) {
         guestResumeBootRef.current = false;
+        if (guestResumeHomeDismissedRef.current) {
+          clearGuestResumeUiCache();
+          clearResumeTransitionNotice();
+        }
         return;
       }
       applyGuestResumeResultNotice(result);
@@ -4987,7 +5037,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     authUser?.profileUserId,
     step,
     applyGuestResumeResultNotice,
-    selectedCharacter,
+    clearResumeTransitionNotice,
     getActiveProfile,
   ]);
 
@@ -5002,6 +5052,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     tripletNotice,
     setTripletNotice,
     guestResumeCanRetry,
+    dismissGuestResumeHome,
     guestIntroAlreadyUsed,
     setGuestIntroAlreadyUsed,
     retryGuestTripletResume,

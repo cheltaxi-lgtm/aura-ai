@@ -548,6 +548,7 @@ export default function HomePage({
     tripletNotice,
     setTripletNotice,
     guestResumeCanRetry,
+    dismissGuestResumeHome,
     guestIntroAlreadyUsed,
     setGuestIntroAlreadyUsed,
     retryGuestTripletResume,
@@ -2657,6 +2658,7 @@ export default function HomePage({
   };
 
   const handleCloseChat = () => {
+    dismissGuestResumeHome();
     resetChatSessionState();
     const backToSessionList = sessionListBackMasterRef.current;
     sessionListBackMasterRef.current = null;
@@ -2679,6 +2681,7 @@ export default function HomePage({
   }, [sessionListMaster]);
 
   const exitToLandingForNav = useCallback(() => {
+    dismissGuestResumeHome();
     if (selectedCharacter) {
       resetChatSessionState();
       refreshSavedReadings();
@@ -2709,6 +2712,7 @@ export default function HomePage({
     setSessionListMaster,
     authUser?.profileUserId,
     isLoggedIn,
+    dismissGuestResumeHome,
   ]);
 
   useEffect(() => {

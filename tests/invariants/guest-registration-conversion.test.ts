@@ -142,6 +142,8 @@ describe("guest-registration-conversion", () => {
       /owned\.status === "reading_consumed"\s*&&\s*owned\.readingId/
     );
     expect(src).toContain("do not reopen a finished guest reading");
+    expect(src).toContain("dismissGuestResumeHome");
+    expect(src).toContain("Leftover UI cache after a delivered reading");
   });
 
   it("topic cards start guest spread without auth gate", async () => {
