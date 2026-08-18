@@ -169,20 +169,28 @@ describe("matrix layout geometry", () => {
     expect(age0.y).toBeCloseTo(MATRIX_ORIGIN.y, 0);
     expect(age40.y).toBeCloseTo(MATRIX_ORIGIN.y, 0);
   });
+
+  it("offsets age 60 off the karmic tail ray", () => {
+    const bottom = MATRIX_NODE_LAYOUT["outer.bottom"];
+    expect(ageMarkPosition(60).x).toBeLessThan(bottom.x - 20);
+  });
 });
 
 describe("canonical matrix SVG", () => {
   it("emits one layered octagram with semantic channels", () => {
     const m = computeMatrix("2001-01-11", AS_OF)!;
     const svg = buildMatrixDiagramSvg(buildMatrixSemanticModel(m), { uid: "t" });
-    expect(svg).toContain('data-layer="geometry"');
-    expect(svg).toContain('data-layer="channels"');
+    expect(svg).toContain('data-layer="outer-geometry"');
+    expect(svg).toContain('data-layer="age-scale"');
+    expect(svg).toContain('data-layer="semantic-channels"');
+    expect(svg).toContain('data-layer="generation-lines"');
     expect(svg).toContain('data-layer="nodes"');
-    expect(svg).toContain('data-layer="ages"');
     expect(svg).toContain('data-node="center"');
     expect(svg).toContain('data-node="karmicTail.tip"');
-    expect(svg).toContain("Мужская линия");
-    expect(svg).toContain("Женская линия");
+    expect(svg).toContain("Кармический хвост");
+    expect(svg).toContain("♂ род");
+    expect(svg).toContain("♀ род");
+    expect(svg).not.toContain(">Центр<");
     expect(svg).not.toContain("destiny-matrix--v2");
   });
 

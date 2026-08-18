@@ -50,8 +50,8 @@ function formatBirthDate(raw: string): string {
 
 /** Must stay equal to site `matrix-layout.ts` (verify-matrix-layout-drift). */
 const CX = 500;
-const CY = 428;
-const R = 248;
+const CY = 498;
+const R = 338;
 const INNER = R * 0.5;
 const DEG = Math.PI / 180;
 
@@ -76,11 +76,11 @@ const SLOT_POS: Record<string, { x: number; y: number; r: number }> = {
   relationships: { ...polar(INNER, 180), r: 20 },
   money: { ...polar(INNER, 0), r: 20 },
   paternal: {
-    x: Math.round(((polar(R, 180).x + polar(R, 0).x + polar(R, -45).x) / 3) * 100) / 100,
-    y: Math.round(((polar(R, 180).y + polar(R, 0).y + polar(R, -45).y) / 3) * 100) / 100,
-    r: 18,
+    x: Math.round((polar(R, 180).x + (polar(R, -45).x - polar(R, 180).x) * 0.34) * 100) / 100,
+    y: Math.round((polar(R, 180).y + (polar(R, -45).y - polar(R, 180).y) * 0.34) * 100) / 100,
+    r: 24,
   },
-  karmicTip: { x: CX, y: Math.round((polar(R, -90).y + 92) * 100) / 100, r: 20 },
+  karmicTip: { x: CX, y: Math.round((polar(R, -90).y + 108) * 100) / 100, r: 26 },
 };
 
 function fallbackOctagram(slots: MatrixDiagramSlot[], focusKey: string): string {

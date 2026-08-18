@@ -87,7 +87,7 @@ export function buildMatrixSemanticModel(
 
   const nodes: MatrixSemanticNode[] = [
     node("outer.left", "outer", "Характер", "Характер", matrix.body, "body", ["body"]),
-    node("outer.topLeft", "outer", "Таланты", "Таланты", matrix.talents, "talents", ["talents"]),
+    node("outer.topLeft", "outer", "Таланты", "", matrix.talents, "talents", ["talents"]),
     node("outer.top", "outer", "Небо / энергия", "Небо", matrix.energy, "energy", ["energy"]),
     node(
       "outer.topRight",
@@ -102,25 +102,25 @@ export function buildMatrixSemanticModel(
     node(
       "outer.bottomRight",
       "outer",
-      "Род · низ справа",
-      "Род",
+      "Родовая точка · 50 лет",
+      "",
       bottomRight,
       null,
       []
     ),
-    node("outer.bottom", "outer", "Кармический хвост · корень", "Земля", matrix.karma, "karma", [
+    node("outer.bottom", "outer", "Кармический хвост · корень", "", matrix.karma, "karma", [
       "karma",
     ]),
     node(
       "outer.bottomLeft",
       "outer",
-      "Род · низ слева",
-      "Род",
+      "Родовая точка · 70 лет",
+      "",
       bottomLeft,
       null,
       []
     ),
-    node("center", "center", "Зона комфорта", "Центр", matrix.comfort, "purpose", [
+    node("center", "center", "Зона комфорта", "", matrix.comfort, "purpose", [
       "purpose",
     ]),
     node("vertical.top", "axis", "Духовный полюс", "Дух", matrix.skySpirit, "skySpirit", [
@@ -158,7 +158,7 @@ export function buildMatrixSemanticModel(
       "karmicTail.tip",
       "tail",
       "Кармический хвост · остриё",
-      "Хвост",
+      "",
       matrix.karmicTail[2],
       "karmicTip",
       ["karmicTip"]

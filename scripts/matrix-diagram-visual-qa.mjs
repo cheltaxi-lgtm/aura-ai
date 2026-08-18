@@ -39,7 +39,7 @@ const html = `<!doctype html>
   body { margin:0; background:#0a0908; color:#ede6da; font-family: Georgia, serif; }
   section { padding: 16px; }
   h1 { font-size: 18px; font-weight: 600; }
-  .frame { width: 100%; max-width: 36rem; margin: 0 auto; }
+  .frame { width: 100%; max-width: 52rem; margin: 0 auto; }
   .frame svg { width: 100%; height: auto; display: block; }
 </style></head><body>
 ${pages
@@ -80,11 +80,25 @@ for (const [name, viewport] of viewports) {
   await page.close();
 }
 
-const page = await browser.newPage({ viewport: { width: 1080, height: 1350 } });
-await page.setContent(
-  `<html><body style="margin:0">${pages[0].dark}</body></html>`,
-  { waitUntil: "load" }
+const compactSvg = buildMatrixDiagramSvgFromResult(
+  destinyMatrix("1979-09-18", { asOfDate: "2026-08-18" }),
+  { theme: "dark", density: "compact", uid: "compact" }
 );
-await page.screenshot({ path: path.join(OUT, "result-1979.png") });
+const singles = [
+  ["result-desktop", { width: 1280, height: 1100 }, "52rem", pages[0].dark],
+  ["result-375", { width: 375, height: 900 }, "100%", compactSvg],
+  ["result-430", { width: 430, height: 960 }, "100%", compactSvg],
+];
+for (const [name, viewport, maxW, svg] of singles) {
+  const page = await browser.newPage({ viewport });
+  await page.setContent(
+    `<html><body style="margin:0;background:#100e0c;display:flex;justify-content:center">
+      <div style="width:100%;max-width:${maxW}">${svg}</div>
+    </body></html>`,
+    { waitUntil: "load" }
+  );
+  await page.screenshot({ path: path.join(OUT, `${name}.png`) });
+  await page.close();
+}
 await browser.close();
 console.log(`OK matrix visual QA → ${OUT}`);
