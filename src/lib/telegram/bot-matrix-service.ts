@@ -11,6 +11,7 @@ import {
   MATRIX_CALCULATION_VERSION,
   matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
+import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
 import { diffMatrixStructured, formatMatrixDiffTeaser } from "@/lib/numerology/matrix-diff";
 import {
   buildMatrixFreeSummary,
@@ -81,6 +82,7 @@ export type BotMatrixDiagram = {
   birthDate: string;
   slots: BotMatrixDiagramSlot[];
   focusKey?: string | null;
+  svg?: string | null;
 };
 
 function buildMatrixDiagram(
@@ -93,6 +95,12 @@ function buildMatrixDiagram(
     name: name?.trim() || null,
     birthDate,
     focusKey: matrix.focusKey,
+    svg: buildMatrixDiagramSvgFromResult(matrix, {
+      theme: "dark",
+      density: "full",
+      showPeriod: false,
+      uid: "tg",
+    }),
     slots: DESTINY_MATRIX_DIAGRAM_SLOTS.map((slot) => {
       const point = slot.pick(matrix);
       return {

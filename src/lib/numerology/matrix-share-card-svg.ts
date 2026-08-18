@@ -2,6 +2,7 @@
  * Browser-safe SVG share card for destiny matrix (no sharp).
  */
 import type { DestinyMatrixResult } from "./destiny-matrix";
+import { buildMatrixDiagramSvgFromResult } from "./matrix-diagram-svg";
 
 function escapeXml(s: string): string {
   return s
@@ -23,60 +24,39 @@ export type MatrixShareCardSvgInput = {
 export function buildMatrixShareCardSvg(input: MatrixShareCardSvgInput): string {
   const width = 1080;
   const height = 1350;
-  const m = input.matrix;
   const name = input.name?.trim() || "";
   const date =
     input.includeBirthDate === true && input.birthDate?.trim()
       ? input.birthDate.trim()
       : "";
-  const slots: Array<{ label: string; n: number; title: string }> = [
-    { label: "Характер", n: m.body.number, title: m.body.arcanaName },
-    { label: "Энергия", n: m.energy.number, title: m.energy.arcanaName },
-    { label: "Комфорт", n: m.comfort.number, title: m.comfort.arcanaName },
-    { label: "Таланты", n: m.talents.number, title: m.talents.arcanaName },
-    { label: "Деньги", n: m.money.number, title: m.money.arcanaName },
-    { label: "Отношения", n: m.relationships.number, title: m.relationships.arcanaName },
-    { label: "Хвост", n: m.karmicTail[2].number, title: m.karmicTail[2].arcanaName },
-    { label: "Год", n: m.yearArcana.number, title: m.yearArcana.arcanaName },
-  ];
-
-  const rows = slots
-    .map((s, i) => {
-      const y = 430 + i * 78;
-      return [
-        `<text x="120" y="${y}" font-family="Georgia, 'Times New Roman', serif" font-size="26" fill="rgba(232,196,120,0.85)">${escapeXml(s.label)}</text>`,
-        `<text x="420" y="${y}" font-family="Georgia, 'Times New Roman', serif" font-size="36" font-weight="700" fill="#FFF6E0">${s.n}</text>`,
-        `<text x="520" y="${y}" font-family="Georgia, 'Times New Roman', serif" font-size="28" fill="#F8F2FF">${escapeXml(s.title)}</text>`,
-      ].join("");
-    })
-    .join("");
 
   const nameLine = name
-    ? `<text x="50%" y="210" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="28" fill="rgba(232,196,120,0.9)">${escapeXml(name)}</text>`
+    ? `<text x="50%" y="168" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="26" fill="rgba(232,196,120,0.9)">${escapeXml(name)}</text>`
     : "";
   const dateLine = date
-    ? `<text x="50%" y="255" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="22" fill="rgba(255,255,255,0.45)">${escapeXml(date)}</text>`
+    ? `<text x="50%" y="202" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="20" fill="rgba(237,230,218,0.45)">${escapeXml(date)}</text>`
     : "";
+
+  const diagram = buildMatrixDiagramSvgFromResult(input.matrix, {
+    theme: "dark",
+    density: "full",
+    showPeriod: false,
+    uid: "share",
+    fragment: true,
+  });
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="28%" r="80%">
-      <stop offset="0%" stop-color="#2C1A4A"/>
-      <stop offset="55%" stop-color="#151028"/>
-      <stop offset="100%" stop-color="#080612"/>
-    </radialGradient>
-  </defs>
-  <rect width="100%" height="100%" fill="url(#bg)"/>
-  <rect x="40" y="40" width="${width - 80}" height="${height - 80}" rx="28" fill="none" stroke="rgba(201,162,74,0.28)" stroke-width="1.5"/>
-  <text x="50%" y="110" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="18" letter-spacing="5" fill="#C9A24A">ZOVUS</text>
-  <text x="50%" y="170" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="40" fill="#F8F2FF">Матрица судьбы</text>
+  <rect width="100%" height="100%" fill="#0a0908"/>
+  <rect x="36" y="36" width="${width - 72}" height="${height - 72}" rx="28" fill="none" stroke="rgba(201,162,74,0.28)" stroke-width="1.5"/>
+  <text x="50%" y="88" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" letter-spacing="6" fill="#C9A24A">ZOVUS</text>
+  <text x="50%" y="132" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="36" fill="#EDE6DA">Матрица судьбы</text>
   ${nameLine}
   ${dateLine}
-  <line x1="160" y1="300" x2="${width - 160}" y2="300" stroke="rgba(196,160,255,0.22)" stroke-width="1"/>
-  <text x="50%" y="360" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="18" letter-spacing="3" fill="rgba(232,196,120,0.75)">КЛЮЧЕВЫЕ ТОЧКИ</text>
-  ${rows}
-  <text x="50%" y="${height - 70}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" fill="rgba(255,255,255,0.35)">полная матрица · zovus.ru</text>
+  <svg x="40" y="214" width="1000" height="1060" viewBox="0 0 1000 1200">
+    ${diagram}
+  </svg>
+  <text x="50%" y="${height - 56}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" fill="rgba(237,230,218,0.35)">22 аркана · zovus.ru</text>
 </svg>`;
 }
 

@@ -176,7 +176,7 @@ function MatrixSessionPreview({ item }: { item: SessionListItem }) {
   if (!matrix) return null;
   return (
     <div className="destiny-matrix--session-list mt-3 origin-top-left">
-      <DestinyMatrixGrid matrix={matrix} revealed={99} hint="" />
+      <DestinyMatrixGrid matrix={matrix} revealed={99} hint="" compact showPeriod={false} />
     </div>
   );
 }

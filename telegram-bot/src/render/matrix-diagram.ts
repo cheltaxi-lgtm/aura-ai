@@ -16,6 +16,8 @@ export type MatrixDiagramInput = {
   slots: MatrixDiagramSlot[];
   /** Slot key to highlight as period focus (matrix-v2). */
   focusKey?: string | null;
+  /** Canonical site SVG — preferred over the local octagram fallback. */
+  svg?: string | null;
 };
 
 const FONT = "DejaVu Serif, Georgia, 'Times New Roman', serif";
@@ -26,28 +28,6 @@ function escapeXml(s: string): string {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
-}
-
-function wrapWords(text: string, maxChars: number, maxLines: number): string[] {
-  const words = text.replace(/\s+/g, " ").trim().split(" ").filter(Boolean);
-  const lines: string[] = [];
-  let cur = "";
-  for (const w of words) {
-    const next = cur ? `${cur} ${w}` : w;
-    if (next.length <= maxChars) {
-      cur = next;
-      continue;
-    }
-    if (cur) lines.push(cur);
-    cur = w;
-    if (lines.length >= maxLines - 1) break;
-  }
-  if (cur && lines.length < maxLines) lines.push(cur);
-  if (lines.length === maxLines) {
-    const last = lines[maxLines - 1]!;
-    if (last.length > maxChars) lines[maxLines - 1] = `${last.slice(0, maxChars - 1)}…`;
-  }
-  return lines;
 }
 
 function titleCaseName(raw: string): string {
@@ -68,140 +48,110 @@ function formatBirthDate(raw: string): string {
   return raw.trim();
 }
 
-/** Grid areas matching site DestinyMatrixGrid matrix-v2 (4×5). */
-const AREA_POS: Record<string, { col: number; row: number }> = {
-  energy: { col: 1, row: 0 },
-  sky: { col: 2, row: 0 },
-  body: { col: 0, row: 1 },
-  purpose: { col: 1, row: 1 },
-  roots: { col: 2, row: 1 },
-  money: { col: 3, row: 1 },
-  talents: { col: 0, row: 2 },
-  rel: { col: 1, row: 2 },
-  paternal: { col: 2, row: 2 },
-  maternal: { col: 3, row: 2 },
-  karma: { col: 0, row: 3 },
-  tailMid: { col: 1, row: 3 },
-  tailTip: { col: 2, row: 3 },
-  age: { col: 3, row: 3 },
-  year: { col: 1, row: 4 },
-  month: { col: 2, row: 4 },
+/** Must stay equal to site `matrix-layout.ts` (verify-matrix-layout-drift). */
+const CX = 500;
+const CY = 428;
+const R = 248;
+const INNER = R * 0.5;
+const DEG = Math.PI / 180;
+
+function polar(radius: number, angleDeg: number): { x: number; y: number } {
+  const a = angleDeg * DEG;
+  return {
+    x: Math.round((CX + radius * Math.cos(a)) * 100) / 100,
+    y: Math.round((CY - radius * Math.sin(a)) * 100) / 100,
+  };
+}
+
+const SLOT_POS: Record<string, { x: number; y: number; r: number }> = {
+  body: { ...polar(R, 180), r: 28 },
+  talents: { ...polar(R, 135), r: 24 },
+  energy: { ...polar(R, 90), r: 28 },
+  maternal: { ...polar(R, 45), r: 24 },
+  roots: { ...polar(R, 0), r: 28 },
+  karma: { ...polar(R, -90), r: 28 },
+  purpose: { x: CX, y: CY, r: 40 },
+  skySpirit: { ...polar(INNER, 90), r: 20 },
+  karmicMid: { ...polar(INNER, -90), r: 20 },
+  relationships: { ...polar(INNER, 180), r: 20 },
+  money: { ...polar(INNER, 0), r: 20 },
+  paternal: {
+    x: Math.round(((polar(R, 180).x + polar(R, 0).x + polar(R, -45).x) / 3) * 100) / 100,
+    y: Math.round(((polar(R, 180).y + polar(R, 0).y + polar(R, -45).y) / 3) * 100) / 100,
+    r: 18,
+  },
+  karmicTip: { x: CX, y: Math.round((polar(R, -90).y + 92) * 100) / 100, r: 20 },
 };
 
+function fallbackOctagram(slots: MatrixDiagramSlot[], focusKey: string): string {
+  const byKey = new Map(slots.map((s) => [s.key, s]));
+  const diamond = [180, 90, 0, -90].map((a) => polar(R, a));
+  const square = [135, 45, -45, -135].map((a) => polar(R, a));
+  const poly = (pts: Array<{ x: number; y: number }>) =>
+    pts.map((p) => `${p.x},${p.y}`).join(" ");
+
+  const nodes = Object.entries(SLOT_POS)
+    .map(([key, pos]) => {
+      const slot = byKey.get(key);
+      if (!slot) return "";
+      const focus = focusKey && slot.key === focusKey;
+      const featured = slot.featured || key === "purpose" || focus;
+      const stroke = focus ? "#e8c77e" : featured ? "rgba(201,162,74,0.78)" : "rgba(237,230,218,0.38)";
+      const fill = focus ? "#241c12" : featured ? "#1c1914" : "#141210";
+      const num = slot.number > 9 ? 22 : 24;
+      return `<g>
+        <circle cx="${pos.x}" cy="${pos.y}" r="${pos.r}" fill="${fill}" stroke="${stroke}" stroke-width="${featured ? 2.2 : 1.35}"/>
+        <text x="${pos.x}" y="${pos.y + 1}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${key === "purpose" ? 34 : num}" font-weight="700" fill="#ede6da">${slot.number}</text>
+      </g>`;
+    })
+    .join("");
+
+  return `<svg viewBox="0 0 1000 1000" xmlns="http://www.w3.org/2000/svg">
+    <rect width="1000" height="1000" fill="#0a0908"/>
+    <polygon fill="none" stroke="rgba(237,230,218,0.42)" stroke-width="1.7" points="${poly(diamond)}"/>
+    <polygon fill="none" stroke="rgba(201,162,74,0.34)" stroke-width="1.5" points="${poly(square)}"/>
+    <line x1="${polar(R, 180).x}" y1="${polar(R, 180).y}" x2="${polar(R, 0).x}" y2="${polar(R, 0).y}" stroke="rgba(237,230,218,0.22)" stroke-width="1.15"/>
+    <line x1="${polar(R, 90).x}" y1="${polar(R, 90).y}" x2="${polar(R, -90).x}" y2="${polar(R, -90).y}" stroke="rgba(237,230,218,0.22)" stroke-width="1.15"/>
+    ${nodes}
+  </svg>`;
+}
+
+function embedDiagram(svg: string): string {
+  const trimmed = svg.trim();
+  if (trimmed.startsWith("<svg")) return trimmed;
+  return `<svg viewBox="0 0 1000 1200" xmlns="http://www.w3.org/2000/svg">${trimmed}</svg>`;
+}
+
 /**
- * Destiny-matrix diagram — native 1080×1350 (no letterbox), header clear of cells.
+ * Destiny-matrix diagram — native 1080×1350, canonical octagram.
  */
 export async function renderMatrixDiagramImage(input: MatrixDiagramInput): Promise<Buffer> {
   const width = BOT_CANVAS_WIDTH;
   const height = BOT_CANVAS_HEIGHT;
-
-  const padX = 52;
-  const headerBottom = 210; // grid starts below brand + title + subtitle
-  const footerTop = height - 64;
-  const gap = 16;
-  const cols = 4;
-  const rows = 5;
-  const cellW = Math.floor((width - padX * 2 - gap * (cols - 1)) / cols);
-  const cellH = Math.floor((footerTop - headerBottom - gap * (rows - 1)) / rows);
-
   const name = input.name?.trim() ? titleCaseName(input.name) : "";
   const birth = input.birthDate?.trim() ? formatBirthDate(input.birthDate) : "";
   const subtitle = [name || null, birth || null].filter(Boolean).join("  ·  ");
-
   const focusKey = input.focusKey?.trim() || "";
-  const cells = input.slots
-    .map((slot) => {
-      const pos = AREA_POS[slot.area];
-      if (!pos) return "";
-      const x = padX + pos.col * (cellW + gap);
-      const y = headerBottom + pos.row * (cellH + gap);
-      const isFocus = Boolean(focusKey) && slot.key === focusKey;
-      const featured = slot.featured || isFocus;
-      const fill = isFocus
-        ? "url(#cellFocus)"
-        : featured
-          ? "url(#cellGold)"
-          : "url(#cellViolet)";
-      const stroke = isFocus
-        ? "rgba(255,214,120,0.95)"
-        : featured
-          ? "rgba(212,175,90,0.62)"
-          : "rgba(196,160,255,0.28)";
-      const strokeW = isFocus ? 3 : 1.5;
-      const labelFill = featured || isFocus ? "rgba(232,196,120,0.95)" : "rgba(196,160,255,0.75)";
-      const numFill = featured || isFocus ? "#FFF6E0" : "#F8F2FF";
-      const numSize = featured || isFocus ? 52 : 46;
-      const labelY = y + Math.round(cellH * 0.2);
-      const numY = y + Math.round(cellH * 0.52);
-      const nameStartY = y + Math.round(cellH * 0.72);
-      const nameLines = wrapWords(slot.arcanaName || `Аркан ${slot.number}`, 15, 2);
-      const nameSvg = nameLines
-        .map(
-          (line, i) =>
-            `<text x="${x + cellW / 2}" y="${nameStartY + i * 20}" text-anchor="middle" font-family="${FONT}" font-size="16" fill="rgba(255,255,255,0.78)">${escapeXml(line)}</text>`
-        )
-        .join("");
-      const focusBadge = isFocus
-        ? `<text x="${x + cellW / 2}" y="${y + 14}" text-anchor="middle" font-family="${FONT}" font-size="11" letter-spacing="1.2" fill="rgba(255,214,120,0.95)">УЗЕЛ</text>`
-        : "";
-
-      return `
-        <rect x="${x}" y="${y}" width="${cellW}" height="${cellH}" rx="20" ry="20" fill="${fill}" stroke="${stroke}" stroke-width="${strokeW}"/>
-        ${focusBadge}
-        <text x="${x + cellW / 2}" y="${labelY}" text-anchor="middle" font-family="${FONT}" font-size="13" letter-spacing="1.6" fill="${labelFill}">${escapeXml(slot.label.toUpperCase())}</text>
-        <text x="${x + cellW / 2}" y="${numY}" text-anchor="middle" font-family="${FONT}" font-size="${numSize}" font-weight="700" fill="${numFill}">${slot.number}</text>
-        ${nameSvg}
-      `;
-    })
-    .join("");
+  const inner = input.svg?.trim()
+    ? embedDiagram(input.svg)
+    : fallbackOctagram(input.slots, focusKey);
 
   const svg = Buffer.from(`<?xml version="1.0" encoding="UTF-8"?>
 <svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-  <defs>
-    <radialGradient id="bg" cx="50%" cy="22%" r="82%">
-      <stop offset="0%" stop-color="#2C1A4A"/>
-      <stop offset="48%" stop-color="#151028"/>
-      <stop offset="100%" stop-color="#080612"/>
-    </radialGradient>
-    <linearGradient id="cellViolet" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgba(62,38,96,0.95)"/>
-      <stop offset="100%" stop-color="rgba(16,12,30,0.92)"/>
-    </linearGradient>
-    <linearGradient id="cellGold" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgba(82,54,24,0.95)"/>
-      <stop offset="100%" stop-color="rgba(40,24,58,0.92)"/>
-    </linearGradient>
-    <linearGradient id="cellFocus" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="rgba(110,72,18,0.98)"/>
-      <stop offset="100%" stop-color="rgba(48,28,70,0.95)"/>
-    </linearGradient>
-    <filter id="softGlow" x="-30%" y="-30%" width="160%" height="160%">
-      <feGaussianBlur stdDeviation="18" result="b"/>
-      <feMerge>
-        <feMergeNode in="b"/>
-        <feMergeNode in="SourceGraphic"/>
-      </feMerge>
-    </filter>
-  </defs>
-  <rect width="100%" height="100%" fill="url(#bg)"/>
-  <circle cx="${width / 2}" cy="280" r="260" fill="rgba(196,160,255,0.05)" filter="url(#softGlow)"/>
-  <rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="26" ry="26" fill="none" stroke="rgba(196,160,255,0.18)" stroke-width="1"/>
-  <rect x="40" y="40" width="${width - 80}" height="${height - 80}" rx="20" ry="20" fill="none" stroke="rgba(201,162,74,0.14)" stroke-width="1"/>
-
+  <rect width="100%" height="100%" fill="#0a0908"/>
+  <rect x="28" y="28" width="${width - 56}" height="${height - 56}" rx="26" fill="none" stroke="rgba(201,162,74,0.22)" stroke-width="1"/>
   <text x="50%" y="72" text-anchor="middle" font-family="${FONT}" font-size="18" letter-spacing="5" fill="#C9A24A">ZOVUS</text>
-  <text x="50%" y="122" text-anchor="middle" font-family="${FONT}" font-size="40" fill="#F8F2FF">Матрица судьбы</text>
+  <text x="50%" y="118" text-anchor="middle" font-family="${FONT}" font-size="36" fill="#EDE6DA">Матрица судьбы</text>
   ${
     subtitle
-      ? `<text x="50%" y="168" text-anchor="middle" font-family="${FONT}" font-size="20" fill="rgba(232,196,120,0.9)">${escapeXml(subtitle)}</text>`
+      ? `<text x="50%" y="156" text-anchor="middle" font-family="${FONT}" font-size="20" fill="rgba(232,196,120,0.9)">${escapeXml(subtitle)}</text>`
       : ""
   }
-  <line x1="${padX}" y1="188" x2="${width - padX}" y2="188" stroke="rgba(196,160,255,0.16)" stroke-width="1"/>
-
-  ${cells}
-
-  <text x="50%" y="${height - 38}" text-anchor="middle" font-family="${FONT}" font-size="15" fill="rgba(255,255,255,0.36)">22 аркана · схема по дате рождения · zovus.ru</text>
+  <svg x="40" y="176" width="1000" height="1100" viewBox="0 0 1000 1200">
+    ${inner}
+  </svg>
+  <text x="50%" y="${height - 38}" text-anchor="middle" font-family="${FONT}" font-size="15" fill="rgba(237,230,218,0.36)">22 аркана · схема по дате рождения · zovus.ru</text>
 </svg>`);
 
-  // Already native 1080×1350 — encode directly, no contain/letterbox.
   return encodeBotJpeg(sharp(svg));
 }

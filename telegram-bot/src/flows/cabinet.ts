@@ -302,6 +302,7 @@ async function sendMatrixDiagram(
       birthDate: diagram.birthDate ?? opts.birthDate ?? undefined,
       slots: diagram.slots,
       focusKey: opts.focusKey ?? diagram.focusKey ?? null,
+      svg: diagram.svg,
     });
     // No caption — birth date is already on the diagram; captions render as a narrow strip.
     return replyPhotoBudget(ctx, buf, "matrix.jpg");

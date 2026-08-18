@@ -513,6 +513,7 @@ export type SiteMatrixDiagram = {
   name?: string | null;
   birthDate?: string;
   focusKey?: string | null;
+  svg?: string | null;
   slots: Array<{
     key: string;
     label: string;
