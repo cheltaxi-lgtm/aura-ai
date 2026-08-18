@@ -432,6 +432,20 @@ export async function POST(request: NextRequest) {
         { status: 400 }
       );
     }
+    if (
+      requestNumerologToolId === MATRIX_REPORT_TOOL_ID &&
+      resolvedMatrixSubject &&
+      resolvedMatrixSubject.kind === "child"
+    ) {
+      return NextResponse.json(
+        {
+          error:
+            "Полная матрица считается для взрослого профиля. Для ребёнка выберите детскую матрицу.",
+          code: "matrix_subject_kind_mismatch",
+        },
+        { status: 400 }
+      );
+    }
 
     if (resolvedMatrixSubject) {
       birthDate = resolvedMatrixSubject.birthDate;

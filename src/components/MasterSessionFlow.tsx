@@ -302,6 +302,14 @@ export default function MasterSessionFlow({
   const selectedMatrixSubject = matrixSubjectId
     ? matrixSubjects.subjects.find((s) => s.id === matrixSubjectId) ?? null
     : null;
+  useEffect(() => {
+    if (
+      selectedNumerologTool === "destiny_matrix" &&
+      selectedMatrixSubject?.kind === "child"
+    ) {
+      setSelectedNumerologTool("child_matrix");
+    }
+  }, [selectedNumerologTool, selectedMatrixSubject?.kind]);
   const childMatrixSubjectReady =
     selectedNumerologTool !== "child_matrix" ||
     Boolean(selectedMatrixSubject && selectedMatrixSubject.kind === "child");
@@ -1683,7 +1691,17 @@ export default function MasterSessionFlow({
                         if (!current || current.kind !== "child") {
                           setMatrixSubjectId(null);
                         }
-                      } else if (id !== "destiny_matrix") {
+                      } else if (id === "destiny_matrix") {
+                        const current = matrixSubjects.subjects.find(
+                          (s) => s.id === matrixSubjectId
+                        );
+                        if (current?.kind === "child") {
+                          const self = matrixSubjects.subjects.find(
+                            (s) => s.kind === "self"
+                          );
+                          setMatrixSubjectId(self?.id ?? null);
+                        }
+                      } else {
                         setMatrixSubjectId(null);
                       }
                     }}

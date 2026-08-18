@@ -75,8 +75,8 @@ export default function NumerologCalculationPicker({
       selectedId={matrixSubjectId}
       disabled={matrixSubjects.loading}
       costs={matrixSubjects.costs}
-      allowKinds={isChildMatrix ? ["child"] : ["child", "partner", "other"]}
-      visibleKinds={isChildMatrix ? ["child"] : undefined}
+      allowKinds={isChildMatrix ? ["child"] : ["partner", "other"]}
+      visibleKinds={isChildMatrix ? ["child"] : ["self", "partner", "other"]}
       defaultSelectSelf={!isChildMatrix}
       forceCreateForm={isChildMatrix}
       title={isChildMatrix ? "Данные ребёнка" : "Чья матрица"}

@@ -396,7 +396,7 @@ export async function getCabinetSessions(
            AND NOT EXISTS (
              SELECT 1 FROM numerology_report_history n
              WHERE n.user_id = s.user_id
-               AND n.tool_id = 'destiny_matrix'
+               AND n.tool_id IN ('destiny_matrix', 'child_matrix')
                AND length(trim(n.content)) > 0
                AND n.session_id = s.id
            )
@@ -472,7 +472,7 @@ export async function getCabinetSessions(
            AND NOT EXISTS (
              SELECT 1 FROM numerology_report_history n
              WHERE n.user_id = s.user_id
-               AND n.tool_id = 'destiny_matrix'
+               AND n.tool_id IN ('destiny_matrix', 'child_matrix')
                AND length(trim(n.content)) > 0
                AND n.session_id = s.id
            )

@@ -358,7 +358,7 @@ export async function listUserMatrixReportSummaries(
             s.kind AS subject_kind, s.display_name AS subject_name
      FROM numerology_report_history n
      LEFT JOIN matrix_subjects s ON s.id = n.subject_id
-     WHERE n.user_id = $1 AND n.tool_id = $2
+     WHERE n.user_id = $1 AND n.tool_id IN ($2, 'child_matrix')
      ORDER BY n.created_at DESC
      LIMIT $3`,
     [userId, MATRIX_REPORT_TOOL_ID, safeLimit]
@@ -553,7 +553,7 @@ export async function listUserMatrixReports(
     `SELECT ${SELECT_COLS}
      FROM numerology_report_history
      WHERE user_id = $1
-       AND tool_id = $2
+       AND tool_id IN ($2, 'child_matrix')
      ORDER BY created_at DESC
      LIMIT $3`,
     [userId, MATRIX_REPORT_TOOL_ID, safeLimit]

@@ -13,6 +13,7 @@ import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { useAuth } from "@/lib/useAuth";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { PRICING } from "@/lib/config/pricing";
+import { fullMatrixSessionHref } from "@/lib/numerology/matrix-subject-routing";
 import {
   confirmAgeGateOnServer,
   isAgeGateConfirmed,
@@ -33,7 +34,7 @@ import {
   freeToPaidHint,
 } from "@/lib/free-to-paid-conversion";
 
-const FULL_HREF = "/?numerolog=1&tool=destiny_matrix";
+const FULL_HREF = fullMatrixSessionHref();
 const RESUME_RETURN = "/numerology/destiny-matrix?resumeMatrix=1";
 /** UI navigation intent only — NOT a claim secret (cookie is authoritative). */
 const PENDING_INTENT_KEY = "matrix:resume-intent";
@@ -105,6 +106,13 @@ export default function DestinyMatrixPreview() {
     subjectId: selectedSubjectId,
   });
   const ownedFull = matrixOwnership.owned;
+  const sessionHrefFor = (subjectId: string) => {
+    const subject = matrixSubjects.subjects.find((item) => item.id === subjectId);
+    return fullMatrixSessionHref({
+      subjectId,
+      subjectKind: subject?.kind,
+    });
+  };
   const [pending, startTransition] = useTransition();
   const [ageReady, setAgeReady] = useState(false);
   const [ageConfirming, setAgeConfirming] = useState(false);
@@ -346,9 +354,7 @@ export default function DestinyMatrixPreview() {
     }
 
     if (selectedSubjectId) {
-      window.location.assign(
-        `${FULL_HREF}&subjectId=${encodeURIComponent(selectedSubjectId)}`
-      );
+      window.location.assign(sessionHrefFor(selectedSubjectId));
       return;
     }
     const self = matrixSubjects.subjects.find((subject) => subject.kind === "self");
@@ -359,7 +365,9 @@ export default function DestinyMatrixPreview() {
           displayName: name.trim() || undefined,
           birthDate,
         });
-        window.location.assign(`${FULL_HREF}&subjectId=${encodeURIComponent(subject.id)}`);
+        window.location.assign(
+          fullMatrixSessionHref({ subjectId: subject.id, subjectKind: subject.kind })
+        );
         return;
       } catch {
         window.alert("Не удалось сохранить профиль для матрицы. Попробуйте ещё раз.");
@@ -367,7 +375,9 @@ export default function DestinyMatrixPreview() {
       }
     }
     window.location.assign(
-      self ? `${FULL_HREF}&subjectId=${encodeURIComponent(self.id)}` : FULL_HREF
+      self
+        ? fullMatrixSessionHref({ subjectId: self.id, subjectKind: self.kind })
+        : FULL_HREF
     );
   };
 
@@ -682,9 +692,7 @@ export default function DestinyMatrixPreview() {
                           }
                           trackSeoEvent("matrix_report_replaced");
                           // DELETE wiped only this subject; reopen paid flow for the same person.
-                          window.location.assign(
-                            `${FULL_HREF}&subjectId=${encodeURIComponent(subjectId)}`
-                          );
+                          window.location.assign(sessionHrefFor(subjectId));
                         } catch {
                           window.alert("Не удалось подготовить новую матрицу. Проверьте соединение.");
                         }
