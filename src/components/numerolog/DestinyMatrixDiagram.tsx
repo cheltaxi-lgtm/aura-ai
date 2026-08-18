@@ -79,6 +79,15 @@ export default function DestinyMatrixDiagram({
           </div>
         ))}
       </dl>
+      {density === "compact" ? (
+        <ul className="destiny-matrix-legend">
+          <li>♥ Отношения</li>
+          <li>$ Деньги</li>
+          <li>♂ Мужская линия</li>
+          <li>♀ Женская линия</li>
+          <li>↓ Кармический хвост</li>
+        </ul>
+      ) : null}
       {hint ? <figcaption className="destiny-matrix__hint">{hint}</figcaption> : null}
     </figure>
   );

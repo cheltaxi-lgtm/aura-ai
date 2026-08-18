@@ -50,8 +50,8 @@ function formatBirthDate(raw: string): string {
 
 /** Must stay equal to site `matrix-layout.ts` (verify-matrix-layout-drift). */
 const CX = 500;
-const CY = 498;
-const R = 338;
+const CY = 478;
+const R = 376;
 const INNER = R * 0.5;
 const DEG = Math.PI / 180;
 
@@ -75,12 +75,8 @@ const SLOT_POS: Record<string, { x: number; y: number; r: number }> = {
   karmicMid: { ...polar(INNER, -90), r: 20 },
   relationships: { ...polar(INNER, 180), r: 20 },
   money: { ...polar(INNER, 0), r: 20 },
-  paternal: {
-    x: Math.round((polar(R, 180).x + (polar(R, -45).x - polar(R, 180).x) * 0.34) * 100) / 100,
-    y: Math.round((polar(R, 180).y + (polar(R, -45).y - polar(R, 180).y) * 0.34) * 100) / 100,
-    r: 24,
-  },
-  karmicTip: { x: CX, y: Math.round((polar(R, -90).y + 108) * 100) / 100, r: 26 },
+  paternal: { ...polar(R + 22, 208), r: 26 },
+  karmicTip: { x: CX, y: Math.round((polar(R, -90).y + 96) * 100) / 100, r: 28 },
 };
 
 function fallbackOctagram(slots: MatrixDiagramSlot[], focusKey: string): string {
@@ -119,7 +115,7 @@ function fallbackOctagram(slots: MatrixDiagramSlot[], focusKey: string): string 
 function embedDiagram(svg: string): string {
   const trimmed = svg.trim();
   if (trimmed.startsWith("<svg")) return trimmed;
-  return `<svg viewBox="0 0 1000 1200" xmlns="http://www.w3.org/2000/svg">${trimmed}</svg>`;
+  return `<svg viewBox="0 0 1000 1064" xmlns="http://www.w3.org/2000/svg">${trimmed}</svg>`;
 }
 
 /**
@@ -147,7 +143,7 @@ export async function renderMatrixDiagramImage(input: MatrixDiagramInput): Promi
       ? `<text x="50%" y="156" text-anchor="middle" font-family="${FONT}" font-size="20" fill="rgba(232,196,120,0.9)">${escapeXml(subtitle)}</text>`
       : ""
   }
-  <svg x="40" y="176" width="1000" height="1100" viewBox="0 0 1000 1200">
+  <svg x="40" y="176" width="1000" height="1100" viewBox="0 0 1000 1064">
     ${inner}
   </svg>
   <text x="50%" y="${height - 38}" text-anchor="middle" font-family="${FONT}" font-size="15" fill="rgba(237,230,218,0.36)">22 аркана · схема по дате рождения · zovus.ru</text>

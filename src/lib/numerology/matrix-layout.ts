@@ -1,22 +1,24 @@
 /**
- * Destiny Matrix v2 layout. Dates change arcana values, never coordinates.
- *
- * Regular octagon: 8 outer vertices + inner axis crosses + tail stack.
- * Age lives on a dedicated bezel outside the nodes.
+ * Destiny Matrix layout — filled octagram + circular age bezel.
+ * Dates change arcana values, never coordinates.
  */
 
-export const MATRIX_VIEWBOX = { width: 1000, height: 1120, minX: 36, minY: 28 } as const;
+export const MATRIX_VIEWBOX = {
+  minX: 0,
+  minY: 0,
+  width: 1000,
+  height: 1064,
+} as const;
 
-export const MATRIX_ORIGIN = { x: 500, y: 498 } as const;
-/** ~1.36× previous radius; CSS frame is also wider → ~1.7× perceived size. */
-export const MATRIX_RADIUS = 338;
+export const MATRIX_ORIGIN = { x: 500, y: 478 } as const;
+export const MATRIX_RADIUS = 376;
 
-export const AGE_BEZEL_GAP = 54;
-export const AGE_NUMBER_GAP_MAJOR = 82;
-export const AGE_NUMBER_GAP_MINOR = 74;
+export const AGE_RING_GAP = 72;
+export const AGE_BEAD_RADIUS = 17;
 export const INNER_RATIO = 0.5;
-export const PATERNAL_T = 0.34;
-export const TAIL_GAP = 108;
+export const PATERNAL_ANGLE = 208;
+export const TAIL_GAP = 96;
+export const GEN_RIBBON_GAP = 22;
 
 export type MatrixLayoutId =
   | "outer.left"
@@ -41,7 +43,6 @@ export type MatrixPoint2d = { x: number; y: number };
 
 const DEG = Math.PI / 180;
 
-/** Clockwise from LEFT so age 0 sits on the character vertex. */
 export const OUTER_ANGLE_DEG = {
   "outer.left": 180,
   "outer.topLeft": 135,
@@ -76,13 +77,6 @@ export function polar(radius: number, angleDeg: number): MatrixPoint2d {
   };
 }
 
-export function along(a: MatrixPoint2d, b: MatrixPoint2d, t: number): MatrixPoint2d {
-  return {
-    x: round2(a.x + (b.x - a.x) * t),
-    y: round2(a.y + (b.y - a.y) * t),
-  };
-}
-
 function lerpAngle(a0: number, a1: number, t: number): number {
   let delta = a1 - a0;
   if (delta > 180) delta -= 360;
@@ -99,8 +93,8 @@ const TOP_RIGHT = polar(MATRIX_RADIUS, OUTER_ANGLE_DEG["outer.topRight"]);
 const BOTTOM_RIGHT = polar(MATRIX_RADIUS, OUTER_ANGLE_DEG["outer.bottomRight"]);
 const BOTTOM_LEFT = polar(MATRIX_RADIUS, OUTER_ANGLE_DEG["outer.bottomLeft"]);
 
-const INNER_R = MATRIX_RADIUS * INNER_RATIO;
-const PATERNAL = along(LEFT, BOTTOM_RIGHT, PATERNAL_T);
+export const INNER_RADIUS = MATRIX_RADIUS * INNER_RATIO;
+export const GENERATION_RIBBON_RADIUS = MATRIX_RADIUS + GEN_RIBBON_GAP;
 
 export const MATRIX_NODE_LAYOUT: Record<MatrixLayoutId, MatrixPoint2d> = {
   "outer.left": LEFT,
@@ -112,37 +106,71 @@ export const MATRIX_NODE_LAYOUT: Record<MatrixLayoutId, MatrixPoint2d> = {
   "outer.bottom": BOTTOM,
   "outer.bottomLeft": BOTTOM_LEFT,
   center: { x: MATRIX_ORIGIN.x, y: MATRIX_ORIGIN.y },
-  "vertical.top": polar(INNER_R, 90),
-  "vertical.bottom": polar(INNER_R, -90),
-  "horizontal.left": polar(INNER_R, 180),
-  "horizontal.right": polar(INNER_R, 0),
-  "maleLine.head": PATERNAL,
+  "vertical.top": polar(INNER_RADIUS, 90),
+  "vertical.bottom": polar(INNER_RADIUS, -90),
+  "horizontal.left": polar(INNER_RADIUS, 180),
+  "horizontal.right": polar(INNER_RADIUS, 0),
+  "maleLine.head": polar(GENERATION_RIBBON_RADIUS, PATERNAL_ANGLE),
   "karmicTail.tip": { x: MATRIX_ORIGIN.x, y: round2(BOTTOM.y + TAIL_GAP) },
-  "period.year": { x: 312, y: 1064 },
-  "period.month": { x: 688, y: 1064 },
+  "period.year": { x: 280, y: 1028 },
+  "period.month": { x: 720, y: 1028 },
 };
 
 export const MATRIX_NODE_RADIUS: Record<MatrixLayoutId, number> = {
-  "outer.left": 34,
-  "outer.topLeft": 28,
-  "outer.top": 34,
-  "outer.topRight": 28,
-  "outer.right": 34,
-  "outer.bottomRight": 28,
-  "outer.bottom": 34,
-  "outer.bottomLeft": 28,
-  center: 52,
-  "vertical.top": 26,
-  "vertical.bottom": 26,
-  "horizontal.left": 26,
-  "horizontal.right": 26,
-  "maleLine.head": 24,
-  "karmicTail.tip": 26,
+  "outer.left": 40,
+  "outer.topLeft": 32,
+  "outer.top": 40,
+  "outer.topRight": 32,
+  "outer.right": 40,
+  "outer.bottomRight": 32,
+  "outer.bottom": 40,
+  "outer.bottomLeft": 32,
+  center: 64,
+  "vertical.top": 29,
+  "vertical.bottom": 29,
+  "horizontal.left": 29,
+  "horizontal.right": 29,
+  "maleLine.head": 26,
+  "karmicTail.tip": 28,
   "period.year": 0,
   "period.month": 0,
 };
 
-export const CENTER_HALO_RADIUS = 66;
+export const CENTER_HALO_RADIUS = 84;
+export const CENTER_CORE_RADIUS = 50;
+
+function intersectVertical(a: MatrixPoint2d, b: MatrixPoint2d, x: number): MatrixPoint2d {
+  const t = (x - a.x) / (b.x - a.x);
+  return { x: round2(x), y: round2(a.y + (b.y - a.y) * t) };
+}
+
+function intersectHorizontal(a: MatrixPoint2d, b: MatrixPoint2d, y: number): MatrixPoint2d {
+  const t = (y - a.y) / (b.y - a.y);
+  return { x: round2(a.x + (b.x - a.x) * t), y: round2(y) };
+}
+
+/**
+ * 16-vertex Star-of-Lakshmi outline (union of personal diamond + ancestral square).
+ * Order is clockwise from the west point.
+ */
+export const STAR_OUTLINE: readonly MatrixPoint2d[] = [
+  LEFT,
+  intersectVertical(LEFT, TOP, TOP_LEFT.x),
+  TOP_LEFT,
+  intersectHorizontal(LEFT, TOP, TOP_LEFT.y),
+  TOP,
+  intersectHorizontal(TOP, RIGHT, TOP_RIGHT.y),
+  TOP_RIGHT,
+  intersectVertical(TOP, RIGHT, TOP_RIGHT.x),
+  RIGHT,
+  intersectVertical(RIGHT, BOTTOM, BOTTOM_RIGHT.x),
+  BOTTOM_RIGHT,
+  intersectHorizontal(RIGHT, BOTTOM, BOTTOM_RIGHT.y),
+  BOTTOM,
+  intersectHorizontal(BOTTOM, LEFT, BOTTOM_LEFT.y),
+  BOTTOM_LEFT,
+  intersectVertical(BOTTOM, LEFT, BOTTOM_LEFT.x),
+];
 
 export const PERSONAL_DIAMOND_IDS = [
   "outer.left",
@@ -171,7 +199,7 @@ export const MATRIX_CHANNEL_PATHS: Record<MatrixChannelLayoutId, readonly Matrix
   love: ["outer.left", "horizontal.left", "center"],
   money: ["center", "horizontal.right", "outer.right"],
   male: ["outer.left", "maleLine.head", "outer.bottomRight"],
-  female: ["outer.topRight", "outer.bottomLeft"],
+  female: ["outer.topRight", "outer.top", "outer.topLeft"],
   karmicTail: ["vertical.bottom", "outer.bottom", "karmicTail.tip"],
 };
 
@@ -185,27 +213,19 @@ export function ageSector(age: number): { index: number; t: number; angle: numbe
   return { index, t, angle: lerpAngle(a0, a1, t) };
 }
 
-/** Tick sits on the age bezel. */
-export function ageTickPosition(age: number): MatrixPoint2d {
-  return polar(MATRIX_RADIUS + AGE_BEZEL_GAP, ageSector(age).angle);
+export function ageRingRadius(): number {
+  return MATRIX_RADIUS + AGE_RING_GAP;
 }
 
-/**
- * Age numerals sit on the bezel. Age 60 is shifted off the tail ray
- * so the karmic stack can hang straight down.
- */
+/** Bead / tick on the circular age ring. Age 60 is rotated off the tail. */
 export function ageMarkPosition(age: number): MatrixPoint2d {
-  const { t, angle } = ageSector(age);
-  const gap = t === 0 ? AGE_NUMBER_GAP_MAJOR : AGE_NUMBER_GAP_MINOR;
-  const point = polar(MATRIX_RADIUS + gap, angle);
-  if (age === 60) {
-    return { x: round2(point.x - 38), y: round2(point.y + 6) };
-  }
-  return point;
+  const { angle } = ageSector(age);
+  const a = age === 60 ? -112 : angle;
+  return polar(ageRingRadius(), a);
 }
 
-export function ageBezelPoints(): MatrixPoint2d[] {
-  return OUTER_LAYOUT_IDS.map((id) => polar(MATRIX_RADIUS + AGE_BEZEL_GAP, OUTER_ANGLE_DEG[id]));
+export function ageTickPosition(age: number): MatrixPoint2d {
+  return ageMarkPosition(age);
 }
 
 export function layoutPoint(id: MatrixLayoutId): MatrixPoint2d {
@@ -216,6 +236,20 @@ export function polylineFor(ids: readonly MatrixLayoutId[]): string {
   return ids.map((id) => `${MATRIX_NODE_LAYOUT[id].x},${MATRIX_NODE_LAYOUT[id].y}`).join(" ");
 }
 
-export function polygonFor(ids: readonly MatrixLayoutId[]): string {
-  return polylineFor(ids);
+export function sampleArc(
+  fromDeg: number,
+  toDeg: number,
+  radius: number,
+  steps = 16
+): MatrixPoint2d[] {
+  const out: MatrixPoint2d[] = [];
+  for (let i = 0; i <= steps; i += 1) {
+    out.push(polar(radius, fromDeg + ((toDeg - fromDeg) * i) / steps));
+  }
+  return out;
+}
+
+export function matrixViewBoxAttr(compact = false): string {
+  const height = compact ? 980 : MATRIX_VIEWBOX.height;
+  return `${MATRIX_VIEWBOX.minX} ${MATRIX_VIEWBOX.minY} ${MATRIX_VIEWBOX.width} ${height}`;
 }

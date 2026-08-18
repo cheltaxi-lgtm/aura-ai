@@ -3,6 +3,7 @@
  */
 import type { DestinyMatrixResult } from "./destiny-matrix";
 import { buildMatrixDiagramSvgFromResult } from "./matrix-diagram-svg";
+import { matrixViewBoxAttr } from "./matrix-layout";
 
 function escapeXml(s: string): string {
   return s
@@ -53,7 +54,7 @@ export function buildMatrixShareCardSvg(input: MatrixShareCardSvgInput): string 
   <text x="50%" y="132" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="36" fill="#EDE6DA">Матрица судьбы</text>
   ${nameLine}
   ${dateLine}
-  <svg x="40" y="200" width="1000" height="1080" viewBox="0 0 1000 1120">
+  <svg x="40" y="200" width="1000" height="1080" viewBox="${matrixViewBoxAttr()}">
     ${diagram}
   </svg>
   <text x="50%" y="${height - 56}" text-anchor="middle" font-family="Georgia, 'Times New Roman', serif" font-size="16" fill="rgba(237,230,218,0.35)">22 аркана · zovus.ru</text>
