@@ -1122,7 +1122,7 @@ export async function POST(request: NextRequest) {
               "@/lib/numerology/matrix-reading-document"
             );
             let matrixContent = sanitizeReadingForClient(reading) || reading;
-            if (matrix && !isUsableMatrixReading(matrixContent)) {
+            if (matrix && !isUsableMatrixReading(matrixContent, toolId)) {
               const { forceFillMissingSections } = await import(
                 "@/lib/numerology/matrix-sectioned-reading"
               );
@@ -1146,7 +1146,15 @@ export async function POST(request: NextRequest) {
               );
               matrixContent = sanitizeReadingForClient(matrixContent) || matrixContent;
             }
-            if (!isUsableMatrixReading(matrixContent)) {
+            if (!isUsableMatrixReading(matrixContent, toolId)) {
+              const { matrixMissingSections } = await import(
+                "@/lib/numerology/matrix-completeness"
+              );
+              console.error("[matrix-save] incomplete after fill", {
+                toolId,
+                missing: matrixMissingSections(matrixContent, toolId),
+                len: matrixContent.length,
+              });
               throw new Error("matrix_incomplete_after_fill");
             }
             if (matrix) {

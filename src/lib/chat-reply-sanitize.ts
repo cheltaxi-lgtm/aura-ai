@@ -336,17 +336,17 @@ export function missingCardMentions(text: string, cardNames: string[]): string[]
 }
 
 /** Matrix report must be full client-safe prose with required zones (not a short cutoff). */
-export function isUsableMatrixReading(text: string): boolean {
+export function isUsableMatrixReading(text: string, toolId?: string): boolean {
   const trimmed = (text || "").trim();
   if (!trimmed || trimmed.length < 400) return false;
   // Completeness is the product gate. Full sanitize can false-positive on
   // engine zone scaffolding (same practice sentence across many zones).
-  if (isCompleteMatrixReading(trimmed) && !isPromptLeakInReading(trimmed)) {
+  if (isCompleteMatrixReading(trimmed, toolId) && !isPromptLeakInReading(trimmed)) {
     return true;
   }
   const cleaned = sanitizeReadingForClient(trimmed);
   if (!cleaned || cleaned.length < 400) return false;
-  return isCompleteMatrixReading(cleaned);
+  return isCompleteMatrixReading(cleaned, toolId);
 }
 
 /** Client-safe reading text — strips leaks; returns empty if unusable. */

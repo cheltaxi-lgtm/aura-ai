@@ -678,6 +678,13 @@ export function forceFillMissingSections(
     }
   }
 
+  if (!/Простыми\s+словами/i.test(out)) {
+    out = appendNumerologFinale(
+      out,
+      "Матрица собрана по дате рождения. Держите внимание на шагах на ближайшие 30 дней."
+    );
+  }
+
   return out.replace(/\n{3,}/g, "\n\n").trim();
 }
 

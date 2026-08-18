@@ -264,7 +264,10 @@ export async function lookupOwnedMatrixReport(
     return { report: null, usable: false, unusable: false, legacyVersion: false };
   }
   const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
-  return classifyOwnedReport(report, isUsableMatrixReading(report.content));
+  return classifyOwnedReport(
+    report,
+    isUsableMatrixReading(report.content, options?.toolId ?? report.toolId)
+  );
 }
 
 export async function lookupOwnedMatrixReportBySubject(
@@ -277,7 +280,10 @@ export async function lookupOwnedMatrixReportBySubject(
     return { report: null, usable: false, unusable: false, legacyVersion: false };
   }
   const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
-  return classifyOwnedReport(report, isUsableMatrixReading(report.content));
+  return classifyOwnedReport(
+    report,
+    isUsableMatrixReading(report.content, options?.toolId ?? report.toolId)
+  );
 }
 
 export async function findUsableOwnedMatrixReport(

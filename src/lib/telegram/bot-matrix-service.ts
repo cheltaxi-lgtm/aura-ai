@@ -176,7 +176,7 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
   const summaryOwnedUsable = Boolean(
     owned?.content?.trim() &&
       !isLegacyMatrixCalculationVersion(owned.calculationVersion) &&
-      isUsableMatrixReading(owned.content)
+      isUsableMatrixReading(owned.content, toolId)
   );
   const currentStructured = summary.matrix
     ? matrixToStructuredData(summary.matrix)
@@ -280,7 +280,7 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
         "Метод расчёта матрицы обновлён до канонического. Нажмите «Получить матрицу» — пересоберём бесплатно.",
     };
   }
-  if (!isUsableMatrixReading(report.content)) {
+  if (!isUsableMatrixReading(report.content, report.toolId)) {
     return {
       ok: false as const,
       error: "not_found" as const,
@@ -367,7 +367,7 @@ export async function botMatrixRun(
     owned?.content?.trim() && isLegacyMatrixCalculationVersion(owned.calculationVersion)
   );
   const ownedUsable = Boolean(
-    owned?.content?.trim() && !ownedLegacy && isUsableMatrixReading(owned.content)
+    owned?.content?.trim() && !ownedLegacy && isUsableMatrixReading(owned.content, toolId)
   );
 
   // Open existing only when not explicitly ordering a replacement and content is client-safe.
@@ -489,7 +489,7 @@ export async function botMatrixRun(
     const ownedAgain = subject?.id
       ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
       : await findOwnedMatrixReport(profileUserId, isoBirth, { toolId });
-    if (ownedAgain?.content?.trim() && isUsableMatrixReading(ownedAgain.content)) {
+    if (ownedAgain?.content?.trim() && isUsableMatrixReading(ownedAgain.content, toolId)) {
       let sessionId = ownedAgain.sessionId?.trim() || "";
       if (!sessionId) {
         const session = await createSession(undefined, profileUserId);
@@ -574,7 +574,7 @@ export async function botMatrixRun(
     const rawReading = sessionResult.reply?.trim() || "";
     let reading = sanitizeReadingForClient(rawReading) || rawReading;
     const matrix = destinyMatrix(birthDate);
-    if (matrix && (!isUsableMatrixReading(reading) || !reading.trim())) {
+    if (matrix && (!isUsableMatrixReading(reading, toolId) || !reading.trim())) {
       const { buildMatrixAudience } = await import("@/lib/numerology/matrix-audience");
       reading = forceFillMissingSections(
         reading || "",
@@ -590,7 +590,7 @@ export async function botMatrixRun(
       );
       reading = sanitizeReadingForClient(reading) || reading;
     }
-    if (!isUsableMatrixReading(reading) || !reading.trim()) {
+    if (!isUsableMatrixReading(reading, toolId) || !reading.trim()) {
       throw new Error("matrix_prompt_leak_or_empty");
     }
     const { matrixReadingToStructuredPayload } = await import(
