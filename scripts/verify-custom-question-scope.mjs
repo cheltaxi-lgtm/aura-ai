@@ -23,8 +23,28 @@ assert.equal(
   "self career question"
 );
 
+assert.equal(
+  isThirdPartyCustomQuestion("жив ли он"),
+  true,
+  "is-he-alive without trailing space after он"
+);
+assert.equal(
+  isThirdPartyCustomQuestion("жив ли он?"),
+  true,
+  "is-he-alive with question mark"
+);
+assert.equal(
+  isThirdPartyCustomQuestion("жив ли я"),
+  false,
+  "is-he-alive about self"
+);
+
 const rules = customQuestionSpreadRules("что с братом жены на СВО");
 assert.ok(rules.includes("СУБЪЕКТ РАСКЛАДА"), "third-party rules present");
 assert.ok(rules.includes("что с братом жены на СВО"), "question echoed");
+assert.ok(rules.includes("ИМЯ КЛИЕНТА ≠ СУБЪЕКТ ВОПРОСА"), "client name is not subject");
+
+const aliveRules = customQuestionSpreadRules("жив ли он");
+assert.ok(aliveRules.includes("ИМЯ КЛИЕНТА ≠ СУБЪЕКТ ВОПРОСА"), "alive question keeps client name out");
 
 console.log("OK: custom-question-scope");

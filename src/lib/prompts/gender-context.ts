@@ -3,6 +3,7 @@ import {
   buildClientGenderInstruction,
   resolveClientGender,
 } from "@/lib/russian-name-gender";
+import { CLIENT_VS_SUBJECT_NAME_RULE } from "@/lib/custom-question-scope";
 
 /** Правила местоимений: клиент vs люди из вопроса. */
 export function buildGenderPronounBlock(
@@ -27,10 +28,14 @@ export function buildGenderPronounBlock(
       "- В вопросе речь о муже клиента — «он», «муж», мужской род. Клиента не называй «он» в смысле супруга."
     );
   }
-  if (/\bона\b|\bон\b|\bпартнёр|\bпартнёрш|\bлюбовниц|\bлюбовник/.test(msg)) {
+  if (
+    /\bона\b|\bон\b|\bпартнёр|\bпартнёрш|\bлюбовниц|\bлюбовник/.test(msg) ||
+    /жив(?:а|о)?\s+ли|пропал|без вести/.test(msg)
+  ) {
     lines.push(
       "- Различай: «ты» = клиент, «он/она» = тот о ком спрашивают. Никогда не путай их пол и роли."
     );
+    lines.push(`- ${CLIENT_VS_SUBJECT_NAME_RULE}`);
   }
 
   return lines.join("\n");

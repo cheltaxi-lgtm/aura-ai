@@ -5,7 +5,10 @@ import {
   getDeckPositions,
   type DeckSystem,
 } from "@/lib/decks";
-import { isThirdPartyCustomQuestion } from "@/lib/custom-question-scope";
+import {
+  CLIENT_VS_SUBJECT_NAME_RULE,
+  isThirdPartyCustomQuestion,
+} from "@/lib/custom-question-scope";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { getSessionTopic } from "@/lib/session-topics";
 
@@ -126,6 +129,7 @@ export function buildSpreadUserMessage(params: {
     ? [
         `Дай подробный расклад по вопросу: «${intention}».`,
         `Обращайся к ${displayName} по имени как к спрашивающему.`,
+        CLIENT_VS_SUBJECT_NAME_RULE,
         "Каждая карта описывает субъект из вопроса (другого человека или ситуацию), не внутренний путь клиента.",
         "Не выводи клиенту служебные требования, чеклисты и структуру промпта.",
       ]

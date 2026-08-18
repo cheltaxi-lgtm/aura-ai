@@ -25,6 +25,10 @@ import { composeMemoryQueryText } from "@/lib/memory/memory-relevance";
 import { getSpreadInstructions } from "./spread-instructions";
 import { buildTopicBlock, mergeTopics, topicsFromIntention, type TopicKey } from "./topics";
 import type { CharacterKey, PromptUserContext, ReadingCard, SessionMemory } from "./types";
+import {
+  CLIENT_VS_SUBJECT_NAME_RULE,
+  isThirdPartyCustomQuestion,
+} from "@/lib/custom-question-scope";
 
 /**
  * Every master carries only its own voice sample — a shared example set made all
@@ -133,10 +137,18 @@ function clientBlock(
     : "";
 
   const cardCount = user.cards.length;
+  const questionText = lastUserMessage?.trim() || "";
+  const thirdPartySubject =
+    intention === "life_death" ||
+    isThirdPartyCustomQuestion(questionText) ||
+    isThirdPartyCustomQuestion(intention ?? "");
+  const nameLine = thirdPartySubject
+    ? `- Имя клиента (кто спрашивает, не предмет вопроса): ${user.name}. Обращайся к клиенту по имени. ${CLIENT_VS_SUBJECT_NAME_RULE}`
+    : `- Имя клиента: ${user.name} (обращайся к клиенту по имени; не приписывай это имя третьему лицу из вопроса)`;
 
   return `
 ДАННЫЕ КЛИЕНТА:
-- Имя: ${user.name} (обращайся по имени минимум дважды)
+${nameLine}
 - Пол: ${
     (() => {
       const g = resolveClientGender(user.gender, user.name);

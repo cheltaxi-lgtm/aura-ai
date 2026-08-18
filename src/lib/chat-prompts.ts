@@ -204,7 +204,9 @@ export function buildHumanChatPrompt(
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
 
   if (ctx.userName) {
-    parts.push(`Клиента зовут ${ctx.userName}. Всегда обращайся по имени в начале ответа.`);
+    parts.push(
+      `Клиента зовут ${ctx.userName}. Обращайся к клиенту по имени. Это имя спрашивающего — не подставляй его вместо «он/она», если клиент спрашивает о другом человеке и сам это имя не назвал.`
+    );
   }
   if (ctx.zodiac) parts.push(`Знак зодиака клиента: ${ctx.zodiac}.`);
   {
