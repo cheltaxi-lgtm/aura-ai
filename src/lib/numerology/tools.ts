@@ -37,6 +37,8 @@ export type NumerologToolParams = {
   subjectName?: string;
   /** Frozen calendar day for period-dependent Matrix zones (guest→auth). */
   matrixAsOf?: string;
+  /** Frozen engine that produced the saved Matrix — never recompute with live. */
+  calculationVersion?: string;
 };
 
 export type NumerologToolGroup = "period" | "session" | "form";
@@ -493,6 +495,7 @@ export function parseNumerologToolParams(raw: {
   matrixBirthDate?: string | null;
   subjectName?: string | null;
   matrixAsOf?: string | null;
+  calculationVersion?: string | null;
 }): NumerologToolParams {
   const partnerName = raw.partnerName?.trim();
   const partnerDate = raw.partnerDate?.trim();
@@ -503,6 +506,7 @@ export function parseNumerologToolParams(raw: {
   const matrixAsOfRaw = raw.matrixAsOf?.trim();
   const matrixAsOf =
     matrixAsOfRaw && /^\d{4}-\d{2}-\d{2}$/.test(matrixAsOfRaw) ? matrixAsOfRaw : undefined;
+  const calculationVersion = raw.calculationVersion?.trim();
   return {
     ...(partnerName ? { partnerName } : {}),
     ...(partnerDate ? { partnerDate } : {}),
@@ -511,6 +515,7 @@ export function parseNumerologToolParams(raw: {
     ...(matrixBirthDate ? { matrixBirthDate } : {}),
     ...(subjectName ? { subjectName } : {}),
     ...(matrixAsOf ? { matrixAsOf } : {}),
+    ...(calculationVersion ? { calculationVersion } : {}),
   };
 }
 

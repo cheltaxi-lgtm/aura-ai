@@ -10,8 +10,10 @@ import {
   isLegacyMatrixCalculationVersion,
   MATRIX_CALCULATION_VERSION,
   matrixToStructuredData,
+  type DestinyMatrixResult,
 } from "@/lib/numerology/destiny-matrix";
 import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
+import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
 import { diffMatrixStructured, formatMatrixDiffTeaser } from "@/lib/numerology/matrix-diff";
 import {
   buildMatrixFreeSummary,
@@ -85,11 +87,11 @@ export type BotMatrixDiagram = {
   svg?: string | null;
 };
 
-function buildMatrixDiagram(
+function buildMatrixDiagramFromResult(
+  matrix: DestinyMatrixResult | null,
   birthDate: string,
   name?: string | null
 ): BotMatrixDiagram | null {
-  const matrix = destinyMatrix(birthDate);
   if (!matrix) return null;
   return {
     name: name?.trim() || null,
@@ -113,6 +115,31 @@ function buildMatrixDiagram(
       };
     }),
   };
+}
+
+function buildLiveMatrixDiagram(birthDate: string, name?: string | null): BotMatrixDiagram | null {
+  return buildMatrixDiagramFromResult(destinyMatrix(birthDate), birthDate, name);
+}
+
+function diagramForSavedReport(
+  report: {
+    birthDate: string;
+    structuredData: Record<string, unknown> | null;
+    calculationVersion: string;
+    createdAt: string;
+  },
+  name?: string | null
+): BotMatrixDiagram | null {
+  return buildMatrixDiagramFromResult(
+    resolveMatrixForDisplay({
+      birthDate: report.birthDate,
+      structuredData: report.structuredData,
+      calculationVersion: report.calculationVersion,
+      createdAt: report.createdAt,
+    }),
+    report.birthDate,
+    name
+  );
 }
 
 type GateFail = {
@@ -176,10 +203,9 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
   const reports = await listUserMatrixReports(gate.resolved.profileUserId!, 20);
   const cost = getNumerologTool(toolId).cost || PRICING.NUMEROLOGY_SESSION;
   const runeBalance = await getRuneBalance(gate.resolved.profileUserId!);
-  const diagram = buildMatrixDiagram(
-    subjectBirthDate,
-    subjectName || gate.resolved.name
-  );
+  const diagram = owned
+    ? diagramForSavedReport(owned, subjectName || gate.resolved.name)
+    : buildLiveMatrixDiagram(subjectBirthDate, subjectName || gate.resolved.name);
   const summaryOwnedUsable = Boolean(
     owned?.content?.trim() && isUsableMatrixReading(owned.content, toolId)
   );
@@ -277,19 +303,11 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
       message: "Отчёт не найден.",
     };
   }
-  if (isLegacyMatrixCalculationVersion(report.calculationVersion)) {
-    return {
-      ok: false as const,
-      error: "not_found" as const,
-      message:
-        "Метод расчёта матрицы обновлён до канонического. Нажмите «Получить матрицу» — пересоберём бесплатно.",
-    };
-  }
   if (!isUsableMatrixReading(report.content, report.toolId)) {
     return {
       ok: false as const,
       error: "not_found" as const,
-      message: "Отчёт повреждён. Нажмите «Получить матрицу» — пересоберём бесплатно.",
+      message: "Отчёт повреждён. Откройте сохранённый текст в кабинете или закажите новый расчёт.",
     };
   }
 
@@ -300,10 +318,7 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
     birthDate: report.birthDate,
     content: sanitizeReadingForClient(report.content) || report.content,
     sessionId: report.sessionId,
-    diagram: buildMatrixDiagram(
-      report.birthDate,
-      gate.user.name || gate.resolved.name
-    ),
+    diagram: diagramForSavedReport(report, gate.user.name || gate.resolved.name),
     url: report.sessionId
       ? `${siteBase()}/?chat_session=${encodeURIComponent(report.sessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`
       : `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=numerology`,
@@ -361,19 +376,17 @@ export async function botMatrixRun(
     normalizePersonDisplayName(subject?.displayName || "") ||
     subject?.displayName?.trim() ||
     readerName;
-  const diagram = buildMatrixDiagram(isoBirth, subjectName);
   const replace = Boolean(opts?.replace);
 
   const owned = subject?.id
     ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
     : await findOwnedMatrixReport(profileUserId, isoBirth, { toolId });
-  // Pre-v3 reports hold digit-sum numbers the engine can't reproduce — rebuild free.
-  const ownedLegacy = Boolean(
-    owned?.content?.trim() && isLegacyMatrixCalculationVersion(owned.calculationVersion)
-  );
   const ownedUsable = Boolean(
-    owned?.content?.trim() && !ownedLegacy && isUsableMatrixReading(owned.content, toolId)
+    owned?.content?.trim() && isUsableMatrixReading(owned.content, toolId)
   );
+  const diagram = owned
+    ? diagramForSavedReport(owned, subjectName)
+    : buildLiveMatrixDiagram(isoBirth, subjectName);
 
   // Open existing only when not explicitly ordering a replacement and content is client-safe.
   if (ownedUsable && owned && !replace) {
@@ -429,24 +442,19 @@ export async function botMatrixRun(
     };
   }
 
-  // Bad/leaked/legacy owned report (or explicit replace): wipe before regenerating.
-  // Rebuild is free — the client already paid for text we can no longer serve.
-  // Always subject-scoped — never wipe every report sharing a birth date.
+  // Unusable text: drop only that calculation version, then regenerate.
+  // Explicit replace writes a new version row and must not delete older purchases.
   const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
-  const keepLegacyArtifact = Boolean(ownedLegacy && !replace && owned);
-  if (ownedLegacy && !replace && owned) {
-    // Site parity: keep the readable paid artifact, drop only its stale chat.
-    const staleSession = owned.sessionId?.trim();
-    if (staleSession) {
-      await purgeMatrixConsultationSessions(profileUserId, [staleSession]);
-    }
-  } else if ((replace || regenerateAfterLeak) && owned) {
+  if (regenerateAfterLeak && owned) {
     const subjectForWipe = subject ?? (await ensureSelfSubject(profileUserId));
     const wiped = subjectForWipe?.id
       ? await deleteOwnedMatrixReportsForSubject(profileUserId, subjectForWipe.id, {
           toolId,
+          calculationVersion: owned.calculationVersion,
         })
-      : await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth);
+      : await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth, {
+          calculationVersion: owned.calculationVersion,
+        });
     await purgeMatrixConsultationSessions(profileUserId, wiped.sessionIds);
   }
 
@@ -512,7 +520,7 @@ export async function botMatrixRun(
         charged: 0,
         reused: true,
         replaced: false,
-        diagram,
+        diagram: diagramForSavedReport(ownedAgain, subjectName),
         url: `${siteBase()}/?chat_session=${encodeURIComponent(sessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
       };
     }
@@ -528,7 +536,9 @@ export async function botMatrixRun(
       charged: 0,
       reused: true,
       replaced: false,
-      diagram,
+      diagram: ownedAgain
+        ? diagramForSavedReport(ownedAgain, subjectName)
+        : buildLiveMatrixDiagram(isoBirth, subjectName),
       message: "Разбор уже выполняется — откройте кабинет.",
       url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
@@ -618,10 +628,8 @@ export async function botMatrixRun(
           : {}),
       },
       subjectId: subject?.id,
-      // New paid order always replaces any prior report for this birth date. A free
-      // pre-v3 rebuild must not: overwrite deletes every calculation version for the
-      // subject, which would destroy the paid artifact the site deliberately keeps.
-      overwrite: !keepLegacyArtifact,
+      // Overwrite is scoped to this calculation_version — older purchased rows stay.
+      overwrite: true,
     });
 
     if (saved.status === "already_saved") {
@@ -684,7 +692,7 @@ export async function botMatrixRun(
       charged,
       reused: saved.status === "already_saved",
       replaced: replace || saved.status === "updated",
-      diagram,
+      diagram: buildLiveMatrixDiagram(isoBirth, subjectName),
       url: `${siteBase()}/?chat_session=${encodeURIComponent(session.id)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
   } catch (err) {

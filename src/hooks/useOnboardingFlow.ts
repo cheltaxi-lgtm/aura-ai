@@ -109,7 +109,8 @@ import {
   resolveNumerologToolId,
 } from "@/lib/numerology/tools";
 import { pythagorasSquare } from "@/lib/numerology/pythagoras-square";
-import { destinyMatrix, matrixOptionsForTimestamp } from "@/lib/numerology/destiny-matrix";
+import { MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
+import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
 import { mergeGuestTripletIntoProfile, clearGuestTriplet, loadGuestTriplet } from "@/lib/guest-triplet";
 import {
   clearGuestResumeUiCache,
@@ -525,6 +526,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [matrixSessionSubjectName, setMatrixSessionSubjectName] = useState<string | null>(null);
   /** Reopened session's start day — keeps year/month/age points matching the saved text. */
   const [matrixSessionAsOf, setMatrixSessionAsOf] = useState<string | null>(null);
+  const [matrixSessionCalculationVersion, setMatrixSessionCalculationVersion] = useState<
+    string | null
+  >(null);
+  const [matrixSessionStructuredData, setMatrixSessionStructuredData] = useState<Record<
+    string,
+    unknown
+  > | null>(null);
   const tripletPendingRef = useRef<{ cards: SpreadSymbol[]; teaser: string } | null>(null);
   const tripletDrawnAtRef = useRef(0);
   const bindSessionToMasterRef = useRef<(masterId: string, overrideSessionId?: string) => Promise<void>>(
@@ -1260,8 +1268,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           birthDate
             ? {
                 destinyMatrix:
-                  destinyMatrix(birthDate, matrixOptionsForTimestamp(matrixSessionAsOf)) ??
-                  undefined,
+                  resolveMatrixForDisplay({
+                    birthDate,
+                    structuredData: matrixSessionStructuredData,
+                    calculationVersion:
+                      matrixSessionCalculationVersion ??
+                      sessionSpreadMetaRef.current?.numerologToolParams?.calculationVersion,
+                    createdAt: matrixSessionAsOf,
+                  }) ?? undefined,
               }
             : {}),
         };
@@ -1617,6 +1631,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     cachedChatSpread,
     matrixSessionBirthDate,
     matrixSessionAsOf,
+    matrixSessionCalculationVersion,
+    matrixSessionStructuredData,
   ]);
 
   const displaySpreadComplete = (() => {
@@ -2568,6 +2584,12 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setMatrixSessionBirthDate(restoredBirth);
         setMatrixSessionSubjectName(restoredSubject);
         setMatrixSessionAsOf(restored?.sessionCreatedAt ?? null);
+        setMatrixSessionCalculationVersion(
+          restored?.matrixCalculationVersion ??
+            restored?.numerologToolParams?.calculationVersion ??
+            null
+        );
+        setMatrixSessionStructuredData(restored?.matrixStructuredData ?? null);
 
         const persistedForMaster = readIntentionSpreadForMaster(masterId);
         if (persistedForMaster) {
@@ -3387,6 +3409,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         setMatrixSessionBirthDate(matrixBirthFromParams);
         // Guest→auth freeze wins; otherwise drop as-of inherited from a reopen.
         setMatrixSessionAsOf(matrixAsOfFromParams);
+        setMatrixSessionCalculationVersion(
+          numerologToolParams?.calculationVersion?.trim() || MATRIX_CALCULATION_VERSION
+        );
+        setMatrixSessionStructuredData(null);
       } else if (matrixAsOfFromParams) {
         setMatrixSessionAsOf(matrixAsOfFromParams);
       }
@@ -3400,7 +3426,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           : spreadId,
         cardNames: cards,
         numerologToolId,
-        numerologToolParams,
+        numerologToolParams: {
+          ...numerologToolParams,
+          ...((numerologTool === "destiny_matrix" ||
+            numerologTool === "child_matrix" ||
+            numerologTool === "matrix_year_forecast") &&
+          !numerologToolParams?.calculationVersion
+            ? { calculationVersion: MATRIX_CALCULATION_VERSION }
+            : {}),
+        },
         matrixSubjectId,
         matrixBirthDate: matrixBirthFromParams,
         subjectName: numerologToolParams?.subjectName?.trim() || null,
@@ -4755,6 +4789,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setMatrixSessionBirthDate(null);
     setMatrixSessionSubjectName(null);
     setMatrixSessionAsOf(null);
+    setMatrixSessionCalculationVersion(null);
+    setMatrixSessionStructuredData(null);
     if (deps) {
       deps.setSessionListMaster(null);
       deps.setSelectedCharacter(null);

@@ -1,6 +1,9 @@
 import { createHash, randomBytes } from "crypto";
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
-import { MATRIX_CALCULATION_VERSION } from "@/lib/numerology/destiny-matrix";
+import {
+  MATRIX_CALCULATION_VERSION,
+  MATRIX_METHODOLOGY_ID,
+} from "@/lib/numerology/destiny-matrix";
 import {
   buildMatrixCompatFreeSummary,
   matrixCompatSnapshotForPending,
@@ -133,11 +136,11 @@ export async function createGuestMatrixPairPending(input: {
 
   const { rows } = await query<{ id: string; expires_at: string }>(
     `INSERT INTO matrix_pair_guest_pending (
-       date_a, date_b, name_a, name_b, calculation_version,
+       date_a, date_b, name_a, name_b, calculation_version, methodology_id,
        compat_snapshot, claim_token_hash, expires_at
      ) VALUES (
-       $1::date, $2::date, $3, $4, $5,
-       $6::jsonb, $7, $8::timestamptz
+       $1::date, $2::date, $3, $4, $5, $6,
+       $7::jsonb, $8, $9::timestamptz
      )
      RETURNING id, expires_at::text`,
     [
@@ -146,6 +149,7 @@ export async function createGuestMatrixPairPending(input: {
       nameA,
       nameB,
       MATRIX_CALCULATION_VERSION,
+      MATRIX_METHODOLOGY_ID,
       JSON.stringify(snapshot),
       claimHash,
       expiresAt,

@@ -6,7 +6,7 @@ import { getSessionTopic, topicLabel, type SessionTopicId } from "@/lib/session-
 import { formatCabinetPredictionPreview, stripMarkdownText, truncate } from "@/lib/cabinet-utils";
 import { getSpread, normalizeSpreadId } from "@/lib/spreads";
 import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
-import { destinyMatrix, matrixOptionsForTimestamp } from "@/lib/numerology/destiny-matrix";
+import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
 import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
 import MasterAvatar from "@/components/MasterAvatar";
 import { getCharacterById } from "@/lib/characters";
@@ -36,6 +36,7 @@ export type SessionListItem = {
   prediction: string | null;
   matrixSubjectId?: string | null;
   matrixBirthDate?: string | null;
+  matrixCalculationVersion?: string | null;
   matrixSubjectName?: string | null;
   matrixSubjectKind?: string | null;
   readingPreview?: string | null;
@@ -171,8 +172,12 @@ function MatrixSessionPreview({ item }: { item: SessionListItem }) {
   const matrix = useMemo(() => {
     const birth = item.matrixBirthDate?.trim();
     if (!birth) return null;
-    return destinyMatrix(birth, matrixOptionsForTimestamp(item.createdAt));
-  }, [item.matrixBirthDate, item.createdAt]);
+    return resolveMatrixForDisplay({
+      birthDate: birth,
+      calculationVersion: item.matrixCalculationVersion,
+      createdAt: item.createdAt,
+    });
+  }, [item.matrixBirthDate, item.matrixCalculationVersion, item.createdAt]);
   if (!matrix) return null;
   return (
     <div className="destiny-matrix--session-list mt-3 origin-top-left">

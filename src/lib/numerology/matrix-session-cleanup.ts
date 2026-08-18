@@ -128,19 +128,10 @@ export async function wipeUserMatrixReports(input: {
       const isoFromReport = formatRowBirth(row.birth_date);
       if (isoFromReport) birthDates.add(isoFromReport);
       if (row.session_id) sessionIds.push(row.session_id);
-      if (row.subject_id) {
-        subjectIds.add(row.subject_id);
-        const many = await deleteOwnedMatrixReportsForSubject(
-          input.userId,
-          row.subject_id
-        );
-        deletedReports += many.deleted;
-        sessionIds.push(...many.sessionIds);
-      } else {
-        const one = await deleteUserMatrixReport(input.userId, input.reportId);
-        if (one.deleted) deletedReports += 1;
-        sessionIds.push(...one.sessionIds);
-      }
+      if (row.subject_id) subjectIds.add(row.subject_id);
+      const one = await deleteUserMatrixReport(input.userId, input.reportId);
+      if (one.deleted) deletedReports += 1;
+      sessionIds.push(...one.sessionIds);
     }
   } else {
     // Birth-date path: self-subject only (never other people with the same date).
@@ -224,19 +215,10 @@ export async function wipeMatrixOwnershipForSession(input: {
   for (const row of rows) {
     const iso = formatRowBirth(row.birth_date);
     if (iso) birthDates.add(iso);
-    if (row.subject_id) {
-      subjectIds.add(row.subject_id);
-      const many = await deleteOwnedMatrixReportsForSubject(
-        input.userId,
-        row.subject_id
-      );
-      deletedReports += many.deleted;
-      sessionIds.push(...many.sessionIds);
-    } else {
-      const one = await deleteUserMatrixReport(input.userId, row.id);
-      if (one.deleted) deletedReports += 1;
-      sessionIds.push(...one.sessionIds);
-    }
+    if (row.subject_id) subjectIds.add(row.subject_id);
+    const one = await deleteUserMatrixReport(input.userId, row.id);
+    if (one.deleted) deletedReports += 1;
+    sessionIds.push(...one.sessionIds);
   }
 
   // Clear any rows still pointing at this session (no cross-subject birth wipe).

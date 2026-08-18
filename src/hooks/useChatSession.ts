@@ -40,6 +40,8 @@ export interface RestoreChatResult {
   numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
   matrixSubjectId?: string | null;
   matrixBirthDate?: string | null;
+  matrixCalculationVersion?: string | null;
+  matrixStructuredData?: Record<string, unknown> | null;
   subjectName?: string | null;
   subjectKind?: string | null;
   /** Session start day — anchors the matrix diagram to the reading it belongs to. */
@@ -283,6 +285,17 @@ export function useChatSession(options: UseChatSessionOptions) {
                   ?.matrixSubjectId ||
                 null,
               matrixBirthDate,
+              matrixCalculationVersion:
+                (typeof data.matrixCalculationVersion === "string" &&
+                  data.matrixCalculationVersion) ||
+                (data.numerologToolParams as { calculationVersion?: string } | null)
+                  ?.calculationVersion ||
+                null,
+              matrixStructuredData:
+                data.matrixStructuredData &&
+                typeof data.matrixStructuredData === "object"
+                  ? (data.matrixStructuredData as Record<string, unknown>)
+                  : null,
               subjectName:
                 (typeof data.subjectName === "string" && data.subjectName) ||
                 (data.numerologToolParams as { subjectName?: string } | null)?.subjectName ||

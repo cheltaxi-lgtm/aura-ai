@@ -36,10 +36,7 @@ import DestinyMatrixGrid, {
 } from "@/components/numerolog/DestinyMatrixGrid";
 import MatrixReportUpsell from "@/components/numerolog/MatrixReportUpsell";
 import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square";
-import {
-  destinyMatrix,
-  type DestinyMatrixResult,
-} from "@/lib/numerology/destiny-matrix";
+import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
 import type { NumerologToolId } from "@/lib/numerology/tools";
 import NumerologQuickChips from "@/components/NumerologQuickChips";
 import MasterQuickChips from "@/components/MasterQuickChips";
@@ -282,20 +279,10 @@ export default function ChatWindow({
     }
   }, [memoryFresh, memoryModeBusy, sessionId]);
   const isNumerologChat = characterId === "numerolog" && !readOnly;
-  /** Matrix diagram from props, or recompute from birth date when reopen skipped UI payload. */
+  /** Matrix diagram only from the resolved session payload — never recompute live. */
   const resolvedDestinyMatrix = useMemo((): DestinyMatrixResult | null => {
-    if (spreadDestinyMatrix) return spreadDestinyMatrix;
-    if (
-      numerologSessionToolId !== "destiny_matrix" &&
-      numerologSessionToolId !== "child_matrix" &&
-      numerologSessionToolId !== "matrix_year_forecast"
-    ) {
-      return null;
-    }
-    const birth = userBirthDate?.trim();
-    if (!birth) return null;
-    return destinyMatrix(birth);
-  }, [spreadDestinyMatrix, numerologSessionToolId, userBirthDate]);
+    return spreadDestinyMatrix ?? null;
+  }, [spreadDestinyMatrix]);
   const hideDestinyCardArt =
     isNumerologMaster(characterId) &&
     (numerologSessionToolId === "destiny_matrix" ||

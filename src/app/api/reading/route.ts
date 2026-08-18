@@ -980,12 +980,12 @@ export async function POST(request: NextRequest) {
               ? await deleteOwnedMatrixReportsForSubject(
                   authed.profileUserId,
                   subjectForWipe.id,
-                  { toolId }
+                  { toolId, calculationVersion: lookup.report.calculationVersion }
                 )
               : await deleteOwnedMatrixReportsForBirth(
                   authed.profileUserId,
                   isoBirth ?? birthDate,
-                  { toolId }
+                  { toolId, calculationVersion: lookup.report.calculationVersion }
                 );
             await purgeMatrixConsultationSessions(
               authed.profileUserId,

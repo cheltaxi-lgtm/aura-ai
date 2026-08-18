@@ -292,6 +292,11 @@ export async function GET(request: NextRequest) {
       ? numerologToolParams.subjectName
       : null;
   let subjectKind: string | null = null;
+  let matrixCalculationVersion: string | null =
+    typeof numerologToolParams?.calculationVersion === "string"
+      ? numerologToolParams.calculationVersion
+      : null;
+  let matrixStructuredData: Record<string, unknown> | null = null;
 
   // Reopen must use the report's subject birth — profile DOB would show "my" grid for everyone.
   if (
@@ -305,8 +310,11 @@ export async function GET(request: NextRequest) {
         birth_date: Date | string;
         display_name: string | null;
         kind: string | null;
+        calculation_version: string | null;
+        structured_data: Record<string, unknown> | null;
       }>(
-        `SELECT n.subject_id, n.birth_date, s.display_name, s.kind
+        `SELECT n.subject_id, n.birth_date, s.display_name, s.kind,
+                n.calculation_version, n.structured_data
          FROM numerology_report_history n
          LEFT JOIN matrix_subjects s ON s.id = n.subject_id
          WHERE n.user_id = $1
@@ -327,11 +335,17 @@ export async function GET(request: NextRequest) {
         matrixBirthDate = birth || matrixBirthDate;
         subjectName = report.display_name ?? subjectName;
         subjectKind = report.kind;
+        matrixCalculationVersion = report.calculation_version ?? matrixCalculationVersion;
+        matrixStructuredData =
+          report.structured_data && typeof report.structured_data === "object"
+            ? report.structured_data
+            : null;
         numerologToolParams = {
           ...(numerologToolParams ?? {}),
           ...(matrixSubjectId ? { matrixSubjectId } : {}),
           ...(matrixBirthDate ? { matrixBirthDate } : {}),
           ...(subjectName ? { subjectName } : {}),
+          ...(matrixCalculationVersion ? { calculationVersion: matrixCalculationVersion } : {}),
         };
         // Backfill legacy sessions that never stored subject params.
         if (!sessionRow.numerolog_tool_params?.matrixBirthDate && matrixBirthDate) {
@@ -355,6 +369,8 @@ export async function GET(request: NextRequest) {
     numerologToolParams,
     matrixSubjectId,
     matrixBirthDate,
+    matrixCalculationVersion,
+    matrixStructuredData,
     subjectName,
     subjectKind,
     // Anchors the matrix diagram to the day the reading was made.

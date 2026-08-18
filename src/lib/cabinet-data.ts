@@ -59,6 +59,7 @@ export interface CabinetSessionRow {
   mood: string | null;
   outcomeRating: number | null;
   matrixBirthDate?: string | null;
+  matrixCalculationVersion?: string | null;
   matrixSubjectName?: string | null;
   matrixSubjectKind?: string | null;
   /** Human Design rows: chart id for the delete action (row id is the report id). */
@@ -320,6 +321,7 @@ export async function getCabinetSessions(
       created_at: Date;
       status: string;
       matrix_birth_date: Date | string | null;
+      matrix_calculation_version: string | null;
       matrix_subject_name: string | null;
       matrix_subject_kind: string | null;
       hd_chart_id: string | null;
@@ -361,6 +363,7 @@ export async function getCabinetSessions(
          COALESCE(sm.created_at, s.created_at) AS created_at,
          COALESCE(s.status, 'active') AS status,
          n.birth_date AS matrix_birth_date,
+         n.calculation_version AS matrix_calculation_version,
          ms.display_name AS matrix_subject_name,
          ms.kind AS matrix_subject_kind,
          NULL::uuid AS hd_chart_id
@@ -368,7 +371,7 @@ export async function getCabinetSessions(
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id
        LEFT JOIN last_assistant la ON la.session_id = s.id
        LEFT JOIN LATERAL (
-         SELECT nr.subject_id, nr.birth_date
+         SELECT nr.subject_id, nr.birth_date, nr.calculation_version
          FROM numerology_report_history nr
          WHERE nr.session_id = s.id
            AND nr.user_id = s.user_id
@@ -435,6 +438,7 @@ export async function getCabinetSessions(
          r.created_at,
          'done' AS status,
          NULL AS matrix_birth_date,
+         NULL AS matrix_calculation_version,
          NULL AS matrix_subject_name,
          NULL AS matrix_subject_kind,
          r.chart_id AS hd_chart_id
@@ -552,6 +556,7 @@ export async function getCabinetSessions(
       mood: r.mood,
       outcomeRating: r.outcome_rating,
       matrixBirthDate: matrixBirth,
+      matrixCalculationVersion: r.matrix_calculation_version ?? null,
       matrixSubjectName: r.matrix_subject_name?.trim() || null,
       matrixSubjectKind: r.matrix_subject_kind ?? null,
       hdChartId: r.hd_chart_id ?? null,

@@ -1047,6 +1047,7 @@ export type ConsultationListItem = {
   /** Destiny-matrix subject (list preview / title). */
   matrix_subject_id?: string | null;
   matrix_birth_date?: string | null;
+  matrix_calculation_version?: string | null;
   matrix_subject_name?: string | null;
   matrix_subject_kind?: string | null;
   /** First assistant reading snippet when session_memories.prediction is a stub. */
@@ -1076,6 +1077,7 @@ export async function listConsultationSessions(
            sm.topic_summary, sm.key_cards, sm.prediction,
            n.subject_id AS matrix_subject_id,
            n.birth_date AS matrix_birth_date_raw,
+           n.calculation_version AS matrix_calculation_version,
            ms.display_name AS matrix_subject_name,
            ms.kind AS matrix_subject_kind,
            COALESCE(
@@ -1107,7 +1109,7 @@ export async function listConsultationSessions(
      FROM sessions s
      LEFT JOIN session_memories sm ON sm.session_id = s.id
      LEFT JOIN LATERAL (
-       SELECT nr.subject_id, nr.birth_date
+       SELECT nr.subject_id, nr.birth_date, nr.calculation_version
        FROM numerology_report_history nr
        WHERE nr.session_id = s.id
          AND nr.user_id = s.user_id
@@ -1169,6 +1171,7 @@ export async function listConsultationSessions(
       prediction: r.prediction,
       matrix_subject_id: r.matrix_subject_id ?? null,
       matrix_birth_date: birth,
+      matrix_calculation_version: r.matrix_calculation_version ?? null,
       matrix_subject_name: subjectName,
       matrix_subject_kind: r.matrix_subject_kind ?? null,
       reading_preview: r.reading_preview ?? null,

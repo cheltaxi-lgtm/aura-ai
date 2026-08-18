@@ -9,7 +9,7 @@ import ShareButton from "@/components/share/ShareButton";
 import { sessionToSharePayload } from "@/lib/share/payload-builders";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
 import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
-import { destinyMatrix, matrixOptionsForTimestamp } from "@/lib/numerology/destiny-matrix";
+import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
 import { decodeNumerologSpreadId } from "@/lib/numerology/tools";
 import {
   formatCabinetDate,
@@ -109,13 +109,20 @@ function isHumanDesignSession(session: CabinetSessionRow): boolean {
 function CabinetMatrixPreview({
   birthDate,
   generatedAt,
+  calculationVersion,
 }: {
   birthDate: string;
   generatedAt: string | null;
+  calculationVersion?: string | null;
 }) {
   const matrix = useMemo(
-    () => destinyMatrix(birthDate, matrixOptionsForTimestamp(generatedAt)),
-    [birthDate, generatedAt]
+    () =>
+      resolveMatrixForDisplay({
+        birthDate,
+        calculationVersion,
+        createdAt: generatedAt,
+      }),
+    [birthDate, calculationVersion, generatedAt]
   );
   if (!matrix) return null;
   return (
@@ -199,6 +206,7 @@ function SessionCard({
         <CabinetMatrixPreview
           birthDate={session.matrixBirthDate}
           generatedAt={session.createdAt || session.sessionDate}
+          calculationVersion={session.matrixCalculationVersion}
         />
       ) : null}
 

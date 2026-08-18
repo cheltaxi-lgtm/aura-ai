@@ -9,7 +9,10 @@ import {
   reduceToArcanaSubtract22,
 } from "@/lib/numerology/destiny-matrix";
 import { getMatrixArcanaEntry } from "@/lib/numerology/matrix-arcana-map";
-import { hydrateDestinyMatrixFromSnapshot } from "@/lib/numerology/matrix-snapshot";
+import {
+  hydrateDestinyMatrixFromSnapshot,
+  resolveMatrixForDisplay,
+} from "@/lib/numerology/matrix-snapshot";
 import { MAJOR_ARCANA } from "@/lib/tarot";
 import { MATRIX_GOLDEN_VECTORS } from "./matrix-golden-vectors";
 
@@ -129,6 +132,31 @@ describe("invariants", () => {
   it("refuses to live-recompute v1/v2", () => {
     expect(destinyMatrix("1990-08-15", { calculationVersion: "matrix-v1" })).toBeNull();
     expect(destinyMatrix("1990-08-15", { calculationVersion: "matrix-v2" })).toBeNull();
+  });
+
+  it("reopen prefers snapshot over the live engine", () => {
+    const v3 = destinyMatrix("1990-08-15", { ...AS_OF, calculationVersion: "matrix-v3" })!;
+    const live = destinyMatrix("1990-08-15", AS_OF)!;
+    expect(live.comfort.number).not.toBe(v3.comfort.number);
+    const reopened = resolveMatrixForDisplay({
+      birthDate: "1990-08-15",
+      structuredData: matrixToStructuredData(v3),
+      calculationVersion: "matrix-v4",
+      createdAt: "2026-08-18",
+    })!;
+    expect(reopened.comfort.number).toBe(v3.comfort.number);
+    expect(reopened.paternal.number).toBe(v3.paternal.number);
+  });
+
+  it("reopen without snapshot uses the stored calculation version", () => {
+    const v3 = destinyMatrix("1990-08-15", { ...AS_OF, calculationVersion: "matrix-v3" })!;
+    const reopened = resolveMatrixForDisplay({
+      birthDate: "1990-08-15",
+      calculationVersion: "matrix-v3",
+      createdAt: "2026-08-18",
+    })!;
+    expect(reopened.comfort.number).toBe(v3.comfort.number);
+    expect(reopened.paternal.number).toBe(v3.paternal.number);
   });
 });
 
