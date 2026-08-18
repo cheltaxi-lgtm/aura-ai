@@ -4828,6 +4828,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         }),
     }).then((result) => {
       applyGuestResumeResultNotice(result);
+      if (result.ok) guestResumeHydrateAttemptedRef.current = true;
       if (!result.ok) guestResumeBootRef.current = false;
     });
   }, [isLoggedIn, getActiveProfile, applyGuestResumeResultNotice]);
@@ -4894,13 +4895,14 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           } | null;
           const cardsOk =
             Array.isArray(owned?.cards) && (owned?.cards.length ?? 0) === 3;
+          // Claimed = reading not delivered yet (cookie/cache loss).
+          // Consumed = do not reopen a finished guest reading after the user leaves chat.
           if (
             !cancelled &&
             owned?.ok &&
             owned.sessionId &&
             cardsOk &&
-            (owned.status === "claimed" ||
-              (owned.status === "reading_consumed" && owned.readingId))
+            owned.status === "claimed"
           ) {
             cache = {
               version: 1,
@@ -4970,6 +4972,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return;
       }
       applyGuestResumeResultNotice(result);
+      if (result.ok) guestResumeHydrateAttemptedRef.current = true;
       if (!result.ok) guestResumeBootRef.current = false;
     })();
 

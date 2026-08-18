@@ -133,6 +133,17 @@ describe("guest-registration-conversion", () => {
     expect(src).toContain("forceProfileOnboarding");
   });
 
+  it("home bootstrap hydrates incomplete claimed resume only, not a finished reading", async () => {
+    const src = await import("node:fs/promises").then((fs) =>
+      fs.readFile("src/hooks/useOnboardingFlow.ts", "utf8")
+    );
+    expect(src).toContain('owned.status === "claimed"');
+    expect(src).not.toMatch(
+      /owned\.status === "reading_consumed"\s*&&\s*owned\.readingId/
+    );
+    expect(src).toContain("do not reopen a finished guest reading");
+  });
+
   it("topic cards start guest spread without auth gate", async () => {
     const src = await import("node:fs/promises").then((fs) =>
       fs.readFile("src/components/AuraSellingLanding.tsx", "utf8")
