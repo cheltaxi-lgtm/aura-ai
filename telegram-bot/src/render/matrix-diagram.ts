@@ -75,7 +75,11 @@ const SLOT_POS: Record<string, { x: number; y: number; r: number }> = {
   karmicMid: { ...polar(INNER, -90), r: 20 },
   relationships: { ...polar(INNER, 180), r: 20 },
   money: { ...polar(INNER, 0), r: 20 },
-  paternal: { ...polar(R + 22, 208), r: 26 },
+  paternal: {
+    x: Math.round((polar(R, 180).x + (polar(R, -45).x - polar(R, 180).x) * 0.34) * 100) / 100,
+    y: Math.round((polar(R, 180).y + (polar(R, -45).y - polar(R, 180).y) * 0.34) * 100) / 100,
+    r: 26,
+  },
   karmicTip: { x: CX, y: Math.round((polar(R, -90).y + 96) * 100) / 100, r: 28 },
 };
 

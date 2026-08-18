@@ -16,7 +16,7 @@ export const MATRIX_RADIUS = 376;
 export const AGE_RING_GAP = 72;
 export const AGE_BEAD_RADIUS = 17;
 export const INNER_RATIO = 0.5;
-export const PATERNAL_ANGLE = 208;
+export const PATERNAL_T = 0.34;
 export const TAIL_GAP = 96;
 export const GEN_RIBBON_GAP = 22;
 
@@ -96,6 +96,13 @@ const BOTTOM_LEFT = polar(MATRIX_RADIUS, OUTER_ANGLE_DEG["outer.bottomLeft"]);
 export const INNER_RADIUS = MATRIX_RADIUS * INNER_RATIO;
 export const GENERATION_RIBBON_RADIUS = MATRIX_RADIUS + GEN_RIBBON_GAP;
 
+function lerp2(a: MatrixPoint2d, b: MatrixPoint2d, t: number): MatrixPoint2d {
+  return {
+    x: round2(a.x + (b.x - a.x) * t),
+    y: round2(a.y + (b.y - a.y) * t),
+  };
+}
+
 export const MATRIX_NODE_LAYOUT: Record<MatrixLayoutId, MatrixPoint2d> = {
   "outer.left": LEFT,
   "outer.topLeft": TOP_LEFT,
@@ -110,7 +117,7 @@ export const MATRIX_NODE_LAYOUT: Record<MatrixLayoutId, MatrixPoint2d> = {
   "vertical.bottom": polar(INNER_RADIUS, -90),
   "horizontal.left": polar(INNER_RADIUS, 180),
   "horizontal.right": polar(INNER_RADIUS, 0),
-  "maleLine.head": polar(GENERATION_RIBBON_RADIUS, PATERNAL_ANGLE),
+  "maleLine.head": lerp2(LEFT, BOTTOM_RIGHT, PATERNAL_T),
   "karmicTail.tip": { x: MATRIX_ORIGIN.x, y: round2(BOTTOM.y + TAIL_GAP) },
   "period.year": { x: 280, y: 1028 },
   "period.month": { x: 720, y: 1028 },
@@ -136,7 +143,7 @@ export const MATRIX_NODE_RADIUS: Record<MatrixLayoutId, number> = {
   "period.month": 0,
 };
 
-export const CENTER_HALO_RADIUS = 84;
+export const CENTER_HALO_RADIUS = 72;
 export const CENTER_CORE_RADIUS = 50;
 
 function intersectVertical(a: MatrixPoint2d, b: MatrixPoint2d, x: number): MatrixPoint2d {
@@ -194,12 +201,13 @@ export type MatrixChannelLayoutId =
   | "female"
   | "karmicTail";
 
+/** Paths follow destiny-matrix.ts channel point lists, spatially ordered. */
 export const MATRIX_CHANNEL_PATHS: Record<MatrixChannelLayoutId, readonly MatrixLayoutId[]> = {
   skyEarth: ["outer.top", "vertical.top", "center", "vertical.bottom", "outer.bottom"],
-  love: ["outer.left", "horizontal.left", "center"],
-  money: ["center", "horizontal.right", "outer.right"],
-  male: ["outer.left", "maleLine.head", "outer.bottomRight"],
-  female: ["outer.topRight", "outer.top", "outer.topLeft"],
+  love: ["outer.left", "horizontal.left", "center", "horizontal.right"],
+  money: ["vertical.top", "center", "horizontal.right", "vertical.bottom"],
+  male: ["outer.left", "maleLine.head", "outer.right", "outer.bottomRight"],
+  female: ["outer.topLeft", "outer.top", "outer.topRight", "outer.bottomLeft"],
   karmicTail: ["vertical.bottom", "outer.bottom", "karmicTail.tip"],
 };
 

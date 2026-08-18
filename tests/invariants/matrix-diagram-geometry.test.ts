@@ -12,9 +12,12 @@ import {
   MATRIX_NODE_LAYOUT,
   MATRIX_ORIGIN,
   MATRIX_RADIUS,
+  ANCESTRAL_SQUARE_IDS,
   OUTER_LAYOUT_IDS,
+  PERSONAL_DIAMOND_IDS,
   STAR_OUTLINE,
   ageMarkPosition,
+  polylineFor,
 } from "@/lib/numerology/matrix-layout";
 import { buildMatrixSemanticModel } from "@/lib/numerology/matrix-semantic-model";
 
@@ -178,11 +181,13 @@ describe("matrix layout geometry", () => {
 });
 
 describe("canonical matrix SVG", () => {
-  it("emits a filled star silhouette and a circular age bezel", () => {
+  it("keeps a circular age bezel and square-plus-diamond frame", () => {
     const m = computeMatrix("2001-01-11", AS_OF)!;
     const svg = buildMatrixDiagramSvg(buildMatrixSemanticModel(m), { uid: "star" });
     expect(STAR_OUTLINE).toHaveLength(16);
     expect(svg).toContain(`r="${MATRIX_RADIUS + 72}"`);
+    expect(svg).toContain(polylineFor(PERSONAL_DIAMOND_IDS));
+    expect(svg).toContain(polylineFor(ANCESTRAL_SQUARE_IDS));
     expect(svg).toContain('data-age="0"');
     expect(svg).toContain('data-age="40"');
     expect(svg).not.toContain("current");
@@ -199,9 +204,12 @@ describe("canonical matrix SVG", () => {
     expect(svg).toContain('data-node="center"');
     expect(svg).toContain('data-node="karmicTail.tip"');
     expect(svg).toContain("Кармический хвост");
-    expect(svg).toContain("♂ линия");
-    expect(svg).toContain("♀ линия");
+    expect(svg).toContain("Мужская линия");
+    expect(svg).toContain("Женская линия");
+    expect(svg).toContain("Отношения");
+    expect(svg).toContain("Деньги");
     expect(svg).not.toContain(">Центр<");
+    expect(svg).not.toContain("♀ линия");
     expect(svg).not.toContain("destiny-matrix--v2");
   });
 

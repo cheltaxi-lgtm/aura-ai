@@ -83,8 +83,8 @@ export default function DestinyMatrixDiagram({
         <ul className="destiny-matrix-legend">
           <li>♥ Отношения</li>
           <li>$ Деньги</li>
-          <li>♂ Мужская линия</li>
-          <li>♀ Женская линия</li>
+          <li>Мужская линия рода</li>
+          <li>Женская линия рода</li>
           <li>↓ Кармический хвост</li>
         </ul>
       ) : null}
