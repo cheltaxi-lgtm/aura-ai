@@ -2024,7 +2024,7 @@ button.editorial-practice-card {
 
 /* ── Extra features (guest: PhotoTarot + Numerology, not a product grid) ── */
 .editorial-extra-features {
-  overflow-x: hidden;
+  overflow: visible;
 }
 
 .editorial-extra-features .editorial-landing__inner {
@@ -2044,6 +2044,7 @@ button.editorial-practice-card {
 .editorial-extra-feature__media,
 .editorial-extra-feature__copy {
   min-width: 0;
+  overflow: visible;
 }
 
 .editorial-extra-feature__img {
@@ -2051,8 +2052,9 @@ button.editorial-practice-card {
   width: 100%;
   max-width: 100%;
   height: auto;
-  aspect-ratio: 16 / 10;
-  object-fit: cover;
+  aspect-ratio: 4 / 3;
+  object-fit: contain;
+  object-position: center;
   border-radius: var(--radius-md);
   border: 1px solid var(--color-border);
 }
