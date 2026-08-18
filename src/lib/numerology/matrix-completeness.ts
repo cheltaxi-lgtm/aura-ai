@@ -4,7 +4,8 @@
  *
  * Note: JS `\b` is ASCII-only — use `(?!\p{L})` for Cyrillic titles.
  */
-import { getArcanaEntry } from "./arcana-dictionary";
+import { getMatrixArcanaEntry } from "./matrix-arcana-map";
+import { MATRIX_CALCULATION_VERSION } from "./matrix-result";
 import type { MatrixReadingDocument } from "./matrix-reading-document";
 import { matrixZoneDefsFor } from "./matrix-zones";
 import type { DestinyMatrixResult } from "./destiny-matrix";
@@ -13,7 +14,7 @@ import type { DestinyMatrixResult } from "./destiny-matrix";
 export function majorArcanaNameTable(): ReadonlyArray<{ number: number; name: string }> {
   const out: Array<{ number: number; name: string }> = [];
   for (let n = 1; n <= 22; n++) {
-    const title = getArcanaEntry(n)?.title;
+    const title = getMatrixArcanaEntry(n, MATRIX_CALCULATION_VERSION)?.title;
     if (title) out.push({ number: n, name: title });
   }
   return out;
@@ -30,12 +31,15 @@ function normArcanaName(s: string): string {
  * Rewrite every «N — Name» pair so Name matches ARCANA_DICTIONARY.
  * Model may invent Marseille swaps / synonyms; saved text must use engine titles.
  */
-export function canonicalizeArcanaNamesInText(text: string): string {
+export function canonicalizeArcanaNamesInText(
+  text: string,
+  calculationVersion: string = MATRIX_CALCULATION_VERSION
+): string {
   return String(text || "").replace(
     ARCANA_PAIR_RE,
     (_full, numStr: string, dash: string, openQuote: string, name: string) => {
       const n = Number(numStr);
-      const canon = getArcanaEntry(n)?.title;
+      const canon = getMatrixArcanaEntry(n, calculationVersion)?.title;
       if (!canon || n < 1 || n > 22) {
         return `${numStr} ${dash} ${openQuote}${name}`;
       }
@@ -76,7 +80,7 @@ export function matrixDocumentMatchesEngine(
 
   for (const zone of doc.zones) {
     if (zone.number == null || !zone.arcanaName) continue;
-    const table = getArcanaEntry(zone.number)?.title;
+    const table = getMatrixArcanaEntry(zone.number)?.title;
     if (!table) return false;
     if (normArcanaName(zone.arcanaName) !== normArcanaName(table)) return false;
     const engine = expected.get(zone.number);
@@ -104,7 +108,7 @@ export function canonicalizeMatrixReadingDocument(
       practice: z.practice ? canonicalizeArcanaNamesInText(z.practice) : z.practice,
       arcanaName:
         z.number != null
-          ? getArcanaEntry(z.number)?.title ?? z.arcanaName
+          ? getMatrixArcanaEntry(z.number)?.title ?? z.arcanaName
           : z.arcanaName,
     })),
   };
@@ -226,7 +230,7 @@ export function matrixReadingMatchesEngine(
     const n = Number(m[1]);
     const name = normArcanaName(m[4] ?? "");
     if (n < 1 || n > 22 || !name) continue;
-    const tableName = getArcanaEntry(n)?.title;
+    const tableName = getMatrixArcanaEntry(n)?.title;
     if (!tableName) continue;
     if (!name.startsWith(normArcanaName(tableName))) return false;
     const engineName = expected.get(n);

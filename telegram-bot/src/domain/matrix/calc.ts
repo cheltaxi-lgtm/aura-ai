@@ -5,7 +5,7 @@ import type { MatrixDiagramInput, MatrixDiagramSlot } from "../../render/matrix-
  * Must stay equal to site `MATRIX_CALCULATION_VERSION`.
  * Drift is caught by `scripts/verify-matrix-calc-drift.mjs`.
  */
-export const BOT_MATRIX_CALC_VERSION = "matrix-v3" as const;
+export const BOT_MATRIX_CALC_VERSION = "matrix-v4" as const;
 
 function sumDigits(n: number): number {
   return String(Math.abs(Math.trunc(n)))
@@ -13,10 +13,14 @@ function sumDigits(n: number): number {
     .reduce((a, d) => a + Number(d), 0);
 }
 
-/** Same canonical reduce as site matrix-v3: subtract 22 (1–22; 0 → 22). */
+/** Same as site matrix-v4: digit-sum, 22 stays (1–22; 0 → 22). */
 function reduceToArcanaNumber(n: number): number {
   let value = Math.abs(Math.trunc(n));
-  while (value > 22) value -= 22;
+  while (value > 22) {
+    value = String(value)
+      .split("")
+      .reduce((sum, digit) => sum + Number(digit), 0);
+  }
   return value === 0 ? 22 : value;
 }
 
@@ -55,6 +59,8 @@ function parseBirthDate(raw: string): { day: number; month: number; year: number
 }
 
 function arcanaName(n: number): string {
+  if (n === 8) return "Справедливость";
+  if (n === 11) return "Сила";
   const card = n === 22 ? FULL_DECK.find((c) => c.id === 0) : FULL_DECK.find((c) => c.id === n);
   return card?.name ?? `Аркан ${n}`;
 }
@@ -132,7 +138,7 @@ export function buildLocalMatrixDiagram(
   const bc = reduceToArcanaNumber(b + c);
   const cg = reduceToArcanaNumber(c + g);
   const ga = reduceToArcanaNumber(g + a);
-  const paternal = reduceToArcanaNumber(a + c);
+  const paternal = reduceToArcanaNumber(c + g);
   const maternal = reduceToArcanaNumber(b + c);
   const now = asOf ? new Date(asOf.year, asOf.month - 1, asOf.day) : new Date();
   const year = now.getFullYear();

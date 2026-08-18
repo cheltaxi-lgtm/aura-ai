@@ -180,11 +180,8 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     subjectBirthDate,
     subjectName || gate.resolved.name
   );
-  // Legacy-reducer reports are not offerable as "owned" — they owe a free rebuild.
   const summaryOwnedUsable = Boolean(
-    owned?.content?.trim() &&
-      !isLegacyMatrixCalculationVersion(owned.calculationVersion) &&
-      isUsableMatrixReading(owned.content, toolId)
+    owned?.content?.trim() && isUsableMatrixReading(owned.content, toolId)
   );
   const currentStructured = summary.matrix
     ? matrixToStructuredData(summary.matrix)

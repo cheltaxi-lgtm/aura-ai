@@ -26,34 +26,33 @@ function skeletonReading(matrix: ReturnType<typeof destinyMatrix>): string {
   return `${blocks.join("\n\n")}\n\nПростыми словами: итог.`;
 }
 
-describe("matrix arcana name table (Rider–Waite)", () => {
-  it("exposes all 22 majors with RW order (8 Сила, 11 Справедливость)", () => {
+describe("matrix arcana name table (Marseille for Matrix, RW for Tarot)", () => {
+  it("keeps Tarot deck on Rider–Waite while Matrix uses 8 Justice / 11 Strength", () => {
     const table = majorArcanaNameTable();
     expect(table).toHaveLength(22);
     expect(getArcanaEntry(8)?.title).toBe("Сила");
     expect(getArcanaEntry(11)?.title).toBe("Справедливость");
-    expect(getArcanaEntry(22)?.title).toBe("Шут");
-    for (const { number, name } of table) {
-      const deck = number === 22 ? MAJOR_ARCANA[0] : MAJOR_ARCANA[number];
-      expect(deck?.name).toBe(name);
-    }
+    expect(table.find((row) => row.number === 8)?.name).toBe("Справедливость");
+    expect(table.find((row) => row.number === 11)?.name).toBe("Сила");
+    expect(MAJOR_ARCANA.find((c) => c.id === 8)?.name).toBe("Сила");
+    expect(MAJOR_ARCANA.find((c) => c.id === 11)?.name).toBe("Справедливость");
     expect(ARCANA_DICTIONARY).toHaveLength(22);
   });
 
-  it("arcanaForNumber uses dictionary titles", () => {
-    expect(arcanaForNumber(8).arcanaName).toBe("Сила");
-    expect(arcanaForNumber(11).arcanaName).toBe("Справедливость");
+  it("arcanaForNumber uses Matrix dictionary titles", () => {
+    expect(arcanaForNumber(8).arcanaName).toBe("Справедливость");
+    expect(arcanaForNumber(11).arcanaName).toBe("Сила");
     expect(arcanaForNumber(22).arcanaName).toBe("Шут");
   });
 
-  it("canonicalize rewrites Marseille / synonym swaps to engine names", () => {
+  it("canonicalize rewrites Rider–Waite swaps to Matrix names", () => {
     const raw =
-      "Деньги (8 — Справедливость)\nОтношения (11 — Сила)\nТаланты (10 — Колесо Судьбы)";
+      "Деньги (8 — Сила)\nОтношения (11 — Справедливость)\nТаланты (10 — Колесо Судьбы)";
     const fixed = canonicalizeArcanaNamesInText(raw);
-    expect(fixed).toContain("8 — Сила");
-    expect(fixed).toContain("11 — Справедливость");
+    expect(fixed).toContain("8 — Справедливость");
+    expect(fixed).toContain("11 — Сила");
     expect(fixed).toContain("10 — Колесо Фортуны");
-    expect(fixed).not.toContain("8 — Справедливость");
+    expect(fixed).not.toContain("8 — Сила");
   });
 
   it("validator rejects wrong names; accepts after canonicalize", () => {

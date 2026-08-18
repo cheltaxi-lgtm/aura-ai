@@ -99,14 +99,14 @@ function digitSumFold(n) {
   return v === 0 ? 22 : v;
 }
 for (let n = 1; n <= 500; n++) {
-  if (reduceToArcanaNumber(n) !== subtract22(n)) {
-    note("REDUCE_NOT_CANONICAL", `${n} -> ${reduceToArcanaNumber(n)} (expected ${subtract22(n)})`);
+  if (reduceToArcanaNumber(n) !== digitSumFold(n)) {
+    note("REDUCE_NOT_METHODOLOGY", `${n} -> ${reduceToArcanaNumber(n)} (expected ${digitSumFold(n)})`);
   }
 }
-const foldRegression = [23, 41, 43, 44].every(
-  (n) => reduceToArcanaNumber(n) === digitSumFold(n)
+const subtractRegression = [23, 31, 41, 42].every(
+  (n) => reduceToArcanaNumber(n) === subtract22(n)
 );
-if (foldRegression) note("REDUCE_IS_DIGIT_SUM", "reducer reverted to digit-sum folding");
+if (subtractRegression) note("REDUCE_IS_SUBTRACT22", "live reducer must not be matrix-v3 subtract-22");
 
 // 6. High arcana must be reachable through reduction (they were not under folding).
 const reachable = new Set();

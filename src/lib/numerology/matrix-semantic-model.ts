@@ -34,6 +34,8 @@ export type MatrixSemanticAgeMark = DestinyMatrixAgePoint & {
 };
 
 export type MatrixSemanticModel = {
+  calculationVersion: string;
+  methodologyId: string;
   nodes: MatrixSemanticNode[];
   ageMarks: MatrixSemanticAgeMark[];
   focusKey: string;
@@ -75,14 +77,15 @@ function node(
 }
 
 /**
- * Maps engine result onto the octagram. Maternal energy is B+C = top-right vertex.
- * Paternal (A+C) is the extra male-line head. BC / CG / GA come from the age belt.
+ * Maps engine result onto the octagram. Renderer must not invent numbers.
+ * v4: paternal = C+G at bottom-right. v3: paternal stays on maleLine.head (A+C).
  */
 export function buildMatrixSemanticModel(
   matrix: DestinyMatrixResult
 ): MatrixSemanticModel {
-  const topRight = ageAt(matrix, 30);
-  const bottomRight = ageAt(matrix, 50);
+  const isV3 = matrix.calculationVersion.split("@")[0] === "matrix-v3";
+  const topRight = isV3 ? matrix.maternal : ageAt(matrix, 30);
+  const bottomRight = isV3 ? ageAt(matrix, 50) : matrix.paternal;
   const bottomLeft = ageAt(matrix, 70);
 
   const nodes: MatrixSemanticNode[] = [
@@ -102,11 +105,11 @@ export function buildMatrixSemanticModel(
     node(
       "outer.bottomRight",
       "outer",
-      "Родовая точка · 50 лет",
-      "",
+      isV3 ? "Родовая точка · 50 лет" : "Род отца",
+      isV3 ? "" : "Отец",
       bottomRight,
-      null,
-      []
+      isV3 ? null : "paternal",
+      isV3 ? [] : ["paternal"]
     ),
     node("outer.bottom", "outer", "Кармический хвост · корень", "", matrix.karma, "karma", [
       "karma",
@@ -145,15 +148,19 @@ export function buildMatrixSemanticModel(
       ["relationships"]
     ),
     node("horizontal.right", "axis", "Деньги", "Деньги", matrix.money, "money", ["money"]),
-    node(
-      "maleLine.head",
-      "lineage",
-      "Род отца",
-      "Отец",
-      matrix.paternal,
-      "paternal",
-      ["paternal"]
-    ),
+    ...(isV3
+      ? [
+          node(
+            "maleLine.head",
+            "lineage",
+            "Род отца",
+            "Отец",
+            matrix.paternal,
+            "paternal",
+            ["paternal"]
+          ),
+        ]
+      : []),
     node(
       "karmicTail.tip",
       "tail",
@@ -179,6 +186,8 @@ export function buildMatrixSemanticModel(
     }));
 
   return {
+    calculationVersion: matrix.calculationVersion,
+    methodologyId: matrix.methodologyId,
     nodes,
     ageMarks,
     focusKey: matrix.focusKey,

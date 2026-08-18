@@ -57,16 +57,16 @@ function independentCore(iso: string) {
     bc: reduceToArcanaNumber(b + c),
     cg: reduceToArcanaNumber(c + g),
     ga: reduceToArcanaNumber(g + a),
-    paternal: reduceToArcanaNumber(a + c),
+    paternal: reduceToArcanaNumber(c + g),
     maternal: reduceToArcanaNumber(b + c),
   };
 }
 
 describe("destiny matrix calculation vectors", () => {
-  it("keeps the canonical subtract-22 reducer", () => {
-    expect(MATRIX_CALCULATION_VERSION).toBe("matrix-v3");
+  it("uses the methodology digit-sum reducer", () => {
+    expect(MATRIX_CALCULATION_VERSION).toBe("matrix-v4");
     expect(reduceToArcanaNumber(22)).toBe(22);
-    expect(reduceToArcanaNumber(23)).toBe(1);
+    expect(reduceToArcanaNumber(23)).toBe(5);
     expect(reduceToArcanaNumber(11)).toBe(11);
     expect(reduceToArcanaNumber(0)).toBe(22);
   });
@@ -109,7 +109,8 @@ describe("matrix semantic model", () => {
     expect(byId["vertical.top"]?.number).toBe(m.skySpirit.number);
     expect(byId["vertical.bottom"]?.number).toBe(m.earthTask.number);
     expect(byId["karmicTail.tip"]?.number).toBe(m.karmicTail[2].number);
-    expect(byId["maleLine.head"]?.number).toBe(m.paternal.number);
+    expect(byId["maleLine.head"]).toBeUndefined();
+    expect(byId["outer.bottomRight"]?.number).toBe(m.paternal.number);
     expect(byId["outer.topRight"]?.number).toBe(m.maternal.number);
     expect(byId["outer.topRight"]?.number).toBe(m.agePoints.find((p) => p.age === 30)?.number);
     expect(byId["outer.bottomRight"]?.number).toBe(m.agePoints.find((p) => p.age === 50)?.number);

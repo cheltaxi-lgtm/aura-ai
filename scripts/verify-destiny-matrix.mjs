@@ -225,22 +225,19 @@ const FIXTURES = [
   },
 ];
 
-assert(MATRIX_CALCULATION_VERSION === "matrix-v3", "version must be matrix-v3");
+assert(MATRIX_CALCULATION_VERSION === "matrix-v4", "version must be matrix-v4");
 assert(DESTINY_MATRIX_POINT_KEYS.length === 11, "expected 11 core point keys");
 
-// Canonical reduction: subtract 22, not digit-sum folding.
 for (const [n, expected] of [
   [0, 22],
   [22, 22],
-  [23, 1],
-  [45, 1],
-  [99, 11],
+  [23, 5],
+  [31, 4],
+  [45, 9],
+  [99, 18],
 ]) {
   assert(reduceToArcanaNumber(n) === expected, `reduceToArcanaNumber(${n}) => ${expected}`);
 }
-// Digit-sum folding caps at 18 for two-digit input; canonical must not do that.
-assert(reduceToArcanaNumber(41) === 19, "reduceToArcanaNumber(41) => 19 (high arcana reachable)");
-assert(reduceToArcanaNumber(43) === 21, "reduceToArcanaNumber(43) => 21 (high arcana reachable)");
 
 assert(ARCANA_DICTIONARY.length === 22, "dictionary must have 22 entries");
 for (let id = 1; id <= 22; id++) {
@@ -255,7 +252,10 @@ assert(destinyMatrix("") === null, "empty date => null");
 assert(destinyMatrix("not-a-date") === null, "invalid date => null");
 
 for (const fixture of FIXTURES) {
-  const matrix = destinyMatrix(fixture.date, { asOfYear: fixture.asOfYear });
+  const matrix = destinyMatrix(fixture.date, {
+    asOfYear: fixture.asOfYear,
+    calculationVersion: "matrix-v3",
+  });
   assert(!!matrix, `${fixture.date}: matrix computed`);
   if (!matrix) continue;
   for (const key of DESTINY_MATRIX_POINT_KEYS) {
@@ -353,7 +353,10 @@ for (const fixture of FIXTURES) {
   assert(/нельзя объединять/i.test(facts), "anti-collapse rule in facts");
 
   // matrix-v3 sample: repeats still possible across roles — prose must stay distinct.
-  const gennady = destinyMatrix("1979-09-18", { asOfYear: 2026 });
+  const gennady = destinyMatrix("1979-09-18", {
+    asOfYear: 2026,
+    calculationVersion: "matrix-v3",
+  });
   assert(!!gennady, "1979-09-18 matrix");
   assert(gennady?.body.number === 18, "1979-09-18 body=18 Moon");
   assert(gennady?.energy.number === 9 && gennady?.karma.number === 9, "energy/karma both 9");

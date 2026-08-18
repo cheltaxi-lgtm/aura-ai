@@ -201,14 +201,20 @@ export type MatrixChannelLayoutId =
   | "female"
   | "karmicTail";
 
-/** Paths follow destiny-matrix.ts channel point lists, spatially ordered. */
+/** v4 paths follow MATRIX_CHANNEL_DEFINITIONS. v3 replay keeps maleLine.head. */
 export const MATRIX_CHANNEL_PATHS: Record<MatrixChannelLayoutId, readonly MatrixLayoutId[]> = {
   skyEarth: ["outer.top", "vertical.top", "center", "vertical.bottom", "outer.bottom"],
   love: ["outer.left", "horizontal.left", "center", "horizontal.right"],
   money: ["vertical.top", "center", "horizontal.right", "vertical.bottom"],
+  male: ["outer.left", "outer.bottomLeft", "outer.bottomRight", "outer.right"],
+  female: ["outer.topLeft", "outer.top", "outer.topRight"],
+  karmicTail: ["vertical.bottom", "outer.bottom", "karmicTail.tip"],
+};
+
+export const MATRIX_V3_CHANNEL_PATHS: Record<MatrixChannelLayoutId, readonly MatrixLayoutId[]> = {
+  ...MATRIX_CHANNEL_PATHS,
   male: ["outer.left", "maleLine.head", "outer.right", "outer.bottomRight"],
   female: ["outer.topLeft", "outer.top", "outer.topRight", "outer.bottomLeft"],
-  karmicTail: ["vertical.bottom", "outer.bottom", "karmicTail.tip"],
 };
 
 export function ageSector(age: number): { index: number; t: number; angle: number } {
@@ -225,11 +231,18 @@ export function ageRingRadius(): number {
   return MATRIX_RADIUS + AGE_RING_GAP;
 }
 
-/** Bead / tick on the circular age ring. Age 60 is rotated off the tail. */
+/** True mathematical energy coordinate on the age ring. */
+export function ageEnergyPosition(age: number): MatrixPoint2d {
+  return polar(ageRingRadius(), ageSector(age).angle);
+}
+
+/**
+ * Visual bead/label only. Age 60 shares the bottom vertex, so the numeral
+ * is nudged off the node. Semantic angle stays ageSector(60).
+ */
 export function ageMarkPosition(age: number): MatrixPoint2d {
-  const { angle } = ageSector(age);
-  const a = age === 60 ? -112 : angle;
-  return polar(ageRingRadius(), a);
+  if (age === 60) return polar(ageRingRadius(), -112);
+  return ageEnergyPosition(age);
 }
 
 export function ageTickPosition(age: number): MatrixPoint2d {

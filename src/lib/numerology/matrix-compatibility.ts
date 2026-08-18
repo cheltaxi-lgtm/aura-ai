@@ -1,7 +1,8 @@
 /**
  * Pair destiny-matrix compatibility (matrix-v2) — MVP keys for love/money/comfort/tail/year.
  */
-import { getArcanaEntry } from "./arcana-dictionary";
+import { getMatrixArcanaEntry } from "./matrix-arcana-map";
+import { MATRIX_METHODOLOGY_ID } from "./matrix-result";
 import {
   destinyMatrix,
   MATRIX_CALCULATION_VERSION,
@@ -32,6 +33,9 @@ export type MatrixCompatibilityResult = {
   risks: string[];
   pairComfort: number;
   pairYear: number;
+  personA: { methodologyId: string; calculationVersion: string };
+  personB: { methodologyId: string; calculationVersion: string };
+  compatibility: { methodologyId: string; calculationVersion: string };
 };
 
 function pairScore(a: number, b: number): number {
@@ -45,7 +49,7 @@ function pairScore(a: number, b: number): number {
 }
 
 function titleOf(n: number): string {
-  return getArcanaEntry(n)?.title ?? `Аркан ${n}`;
+  return getMatrixArcanaEntry(n, MATRIX_CALCULATION_VERSION)?.title ?? `Аркан ${n}`;
 }
 
 function noteFor(
@@ -221,6 +225,18 @@ export function matrixCompatibility(
     risks: risks.length ? risks : ["Следите, чтобы разный ритм не превращался в молчаливую обиду."],
     pairComfort,
     pairYear,
+    personA: {
+      methodologyId: matrixA.methodologyId,
+      calculationVersion: matrixA.calculationVersion,
+    },
+    personB: {
+      methodologyId: matrixB.methodologyId,
+      calculationVersion: matrixB.calculationVersion,
+    },
+    compatibility: {
+      methodologyId: MATRIX_METHODOLOGY_ID,
+      calculationVersion: MATRIX_CALCULATION_VERSION,
+    },
   };
 }
 

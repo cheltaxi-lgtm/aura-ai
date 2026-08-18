@@ -192,9 +192,8 @@ function ageScale(t: ThemeTokens, compact: boolean, type: TypeScale): string {
   const ticks = minors
     .map((age) => {
       const { angle } = ageSector(age);
-      const a = age === 60 ? -112 : angle;
-      const inner = polar(ring - 6, a);
-      const outer = polar(ring + 6, a);
+      const inner = polar(ring - 6, angle);
+      const outer = polar(ring + 6, angle);
       return `<line data-age-tick="${age}" x1="${inner.x}" y1="${inner.y}" x2="${outer.x}" y2="${outer.y}" stroke="${t.bezel}" stroke-width="1.05" stroke-linecap="round"/>`;
     })
     .join("");
@@ -228,12 +227,19 @@ function channels(t: ThemeTokens): string {
   ].join("");
 }
 
-function generation(t: ThemeTokens): string {
+function generation(t: ThemeTokens, version: string): string {
+  const v3 = version.split("@")[0] === "matrix-v3";
+  if (v3) {
+    return [
+      `<polyline fill="none" stroke="${t.male}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.left", "maleLine.head", "outer.bottomRight"])}"/>`,
+      `<polyline fill="none" stroke="${t.male}" stroke-width="1.85" stroke-linecap="round" points="${polylineFor(["maleLine.head", "outer.right"])}"/>`,
+      `<polyline fill="none" stroke="${t.female}" stroke-width="2.45" stroke-linecap="round" points="${polylineFor(["outer.topRight", "outer.bottomLeft"])}"/>`,
+      `<polyline fill="none" stroke="${t.female}" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.topLeft", "outer.top", "outer.topRight"])}"/>`,
+    ].join("");
+  }
   return [
-    `<polyline fill="none" stroke="${t.male}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.left", "maleLine.head", "outer.bottomRight"])}"/>`,
-    `<polyline fill="none" stroke="${t.male}" stroke-width="1.85" stroke-linecap="round" points="${polylineFor(["maleLine.head", "outer.right"])}"/>`,
-    `<polyline fill="none" stroke="${t.female}" stroke-width="2.45" stroke-linecap="round" points="${polylineFor(["outer.topRight", "outer.bottomLeft"])}"/>`,
-    `<polyline fill="none" stroke="${t.female}" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.topLeft", "outer.top", "outer.topRight"])}"/>`,
+    `<polyline fill="none" stroke="${t.male}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.male)}"/>`,
+    `<polyline fill="none" stroke="${t.female}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.female)}"/>`,
   ].join("");
 }
 
@@ -406,13 +412,14 @@ function markers(t: ThemeTokens): string {
   ].join("");
 }
 
-function zoneLabels(t: ThemeTokens, compact: boolean, type: TypeScale): string {
+function zoneLabels(t: ThemeTokens, compact: boolean, type: TypeScale, version: string): string {
   const left = MATRIX_NODE_LAYOUT["outer.left"];
   const top = MATRIX_NODE_LAYOUT["outer.top"];
   const right = MATRIX_NODE_LAYOUT["outer.right"];
   const love = MATRIX_NODE_LAYOUT["horizontal.left"];
   const money = MATRIX_NODE_LAYOUT["horizontal.right"];
-  const paternal = MATRIX_NODE_LAYOUT["maleLine.head"];
+  const v3 = version.split("@")[0] === "matrix-v3";
+  const paternal = v3 ? MATRIX_NODE_LAYOUT["maleLine.head"] : MATRIX_NODE_LAYOUT["outer.bottomRight"];
   const mother = MATRIX_NODE_LAYOUT["outer.topRight"];
   const tip = MATRIX_NODE_LAYOUT["karmicTail.tip"];
   const zone = [
@@ -480,12 +487,12 @@ export function buildMatrixDiagramSvg(
   ${showAge ? `<g data-layer="age-scale">${ageScale(t, compact, type)}</g>` : ""}
   <g data-layer="structural-axes">${axes(t)}</g>
   <g data-layer="semantic-channels">${channels(t)}</g>
-  <g data-layer="generation-lines">${generation(t)}</g>
+  <g data-layer="generation-lines">${generation(t, model.calculationVersion)}</g>
   <g data-layer="secondary-connections">${tailSpine(t)}</g>
   <g data-layer="nodes">${nodesLayer(model, t, revealed, focusKey, type)}</g>
   <g data-layer="node-values">${valuesLayer(model, t, revealed, focusKey, type)}</g>
   <g data-layer="markers">${markers(t)}</g>
-  <g data-layer="labels">${zoneLabels(t, compact, type)}</g>
+  <g data-layer="labels">${zoneLabels(t, compact, type, model.calculationVersion)}</g>
   ${showPeriod ? `<g data-layer="period">${periodLayer(model, t, revealed)}</g>` : ""}
   <g data-layer="interactive"></g>`;
 

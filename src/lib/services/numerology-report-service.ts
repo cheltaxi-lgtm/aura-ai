@@ -3,6 +3,7 @@ import { parseBirthDate } from "@/lib/numerology/constants";
 import {
   isLegacyMatrixCalculationVersion,
   MATRIX_CALCULATION_VERSION,
+  methodologyIdForCalculationVersion,
 } from "@/lib/numerology/destiny-matrix";
 
 export const MATRIX_REPORT_TOOL_ID = "destiny_matrix" as const;
@@ -239,9 +240,7 @@ export type OwnedMatrixLookup = {
 };
 
 /**
- * A report saved before matrix-v3 carries digit-sum numbers that the engine can
- * no longer reproduce, so its text would contradict the live diagram. Treat it as
- * unusable: callers already wipe + regenerate unusable reports free of charge.
+ * Purchased reports stay openable. A retired engine version is a badge, not a wipe.
  */
 function classifyOwnedReport(
   report: NumerologyReportHistoryItem | null,
@@ -249,8 +248,7 @@ function classifyOwnedReport(
 ): OwnedMatrixLookup {
   if (!report) return { report: null, usable: false, unusable: false, legacyVersion: false };
   const legacyVersion = isLegacyMatrixCalculationVersion(report.calculationVersion);
-  const usable = contentUsable && !legacyVersion;
-  return { report, usable, unusable: !usable, legacyVersion };
+  return { report, usable: contentUsable, unusable: !contentUsable, legacyVersion };
 }
 
 /** Owned report + usability — mirror Telegram botMatrixService gates. */
@@ -441,19 +439,14 @@ export async function saveMatrixReport(params: {
     }
 
     if (overwrite) {
-      // Wipe prior rows for this subject across calculation versions — but for
-      // period-scoped tools only within the current period, so an earlier year's
-      // purchased forecast survives.
       await queryClient(
         client,
         `DELETE FROM numerology_report_history
          WHERE user_id = $1
            AND tool_id = $2
            AND subject_id = $3::uuid
-           ${ownedVersionClause(toolId, "calculation_version", "created_at", 4, 5)}`,
-        isPeriodScopedMatrixTool(toolId)
-          ? [params.userId, toolId, subjectId, `%@${currentPeriodYear()}`, currentPeriodYear()]
-          : [params.userId, toolId, subjectId]
+           AND calculation_version = $4`,
+        [params.userId, toolId, subjectId, calculationVersion]
       );
     }
 
@@ -461,6 +454,9 @@ export async function saveMatrixReport(params: {
       ? `ON CONFLICT (user_id, tool_id, subject_id, calculation_version) DO UPDATE SET
            content = EXCLUDED.content,
            structured_data = EXCLUDED.structured_data,
+           methodology_id = EXCLUDED.methodology_id,
+           renderer_version = EXCLUDED.renderer_version,
+           as_of_date = EXCLUDED.as_of_date,
            rune_cost = EXCLUDED.rune_cost,
            charge_transaction_id = EXCLUDED.charge_transaction_id,
            session_id = EXCLUDED.session_id,
@@ -470,10 +466,11 @@ export async function saveMatrixReport(params: {
     const inserted = await queryClient<NumerologyReportHistoryRow>(
       client,
       `INSERT INTO numerology_report_history (
-         user_id, tool_id, subject_id, birth_date, calculation_version, content,
+         user_id, tool_id, subject_id, birth_date, calculation_version, methodology_id,
+         renderer_version, as_of_date, content,
          structured_data, rune_cost, charge_transaction_id, session_id
        ) VALUES (
-         $1, $2, $3::uuid, $4::date, $5, $6, $7::jsonb, $8, $9, $10
+         $1, $2, $3::uuid, $4::date, $5, $6, $7, $8::date, $9, $10::jsonb, $11, $12, $13
        )
        ${conflictSql}
        RETURNING ${SELECT_COLS}`,
@@ -483,6 +480,13 @@ export async function saveMatrixReport(params: {
         subjectId,
         birthDate,
         calculationVersion,
+        methodologyIdForCalculationVersion(calculationVersion),
+        typeof params.structuredData?.rendererVersion === "string"
+          ? params.structuredData.rendererVersion
+          : null,
+        typeof (params.structuredData?.asOf as { date?: unknown } | undefined)?.date === "string"
+          ? (params.structuredData?.asOf as { date: string }).date
+          : null,
         content,
         params.structuredData ? JSON.stringify(params.structuredData) : null,
         params.runeCost,

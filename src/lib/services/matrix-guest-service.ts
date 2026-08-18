@@ -3,6 +3,7 @@ import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import {
   destinyMatrix,
   MATRIX_CALCULATION_VERSION,
+  MATRIX_METHODOLOGY_ID,
   matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
 import { MATRIX_GUEST_CLAIM_TTL_MS } from "@/lib/matrix-guest-claim-cookie";
@@ -149,11 +150,11 @@ export async function createGuestMatrixPending(input: {
 
   const { rows } = await query<{ id: string; expires_at: string }>(
     `INSERT INTO matrix_guest_pending (
-       birth_date, display_name, as_of_date, calculation_version,
+       birth_date, display_name, as_of_date, calculation_version, methodology_id,
        matrix_snapshot, claim_token_hash, expires_at
      ) VALUES (
-       $1::date, $2, $3::date, $4,
-       $5::jsonb, $6, $7::timestamptz
+       $1::date, $2, $3::date, $4, $5,
+       $6::jsonb, $7, $8::timestamptz
      )
      RETURNING id, expires_at::text`,
     [
@@ -161,6 +162,7 @@ export async function createGuestMatrixPending(input: {
       displayName,
       asOfDate,
       MATRIX_CALCULATION_VERSION,
+      MATRIX_METHODOLOGY_ID,
       JSON.stringify(snapshot),
       claimHash,
       expiresAt,
