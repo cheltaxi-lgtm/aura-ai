@@ -107,6 +107,8 @@ type LandingSeoHubProps = {
   compact?: boolean;
   /** When FAQ lives in a dedicated landing section. */
   hideFaq?: boolean;
+  /** Guest conversion landing: no reading-price / tariff teaser under the hub. */
+  hidePricingNote?: boolean;
 };
 
 export default function LandingSeoHub({
@@ -115,6 +117,7 @@ export default function LandingSeoHub({
   readingCost,
   compact = true,
   hideFaq = false,
+  hidePricingNote = false,
 }: LandingSeoHubProps) {
   const priceNode =
     typeof readingCost === "number" ? (
@@ -184,33 +187,35 @@ export default function LandingSeoHub({
           </div>
         ) : null}
 
-        <p className="landing-seo-hub__pricing-note">
-          {priceNode ? (
-            <>
-              Полная расшифровка расклада — {priceNode}
-              {rubPerRune > 0 ? (
-                <span className="text-aura-ivory/55">
-                  {" "}
-                  · курс 1 <RuneIcon className="inline-block h-[0.9em] w-[0.6em] align-[-0.1em]" /> ={" "}
-                  {rubPerRune} ₽
-                </span>
-              ) : null}
-              . Подробный прайс — в{" "}
-              <Link href="/#тарифы" className="landing-seo-hub__inline-link">
-                разделе тарифов
-              </Link>
-              .
-            </>
-          ) : (
-            <>
-              Полный прайс в рунах и курс к рублю — в{" "}
-              <Link href="/#тарифы" className="landing-seo-hub__inline-link">
-                разделе тарифов
-              </Link>
-              .
-            </>
-          )}
-        </p>
+        {hidePricingNote ? null : (
+          <p className="landing-seo-hub__pricing-note">
+            {priceNode ? (
+              <>
+                Полная расшифровка расклада — {priceNode}
+                {rubPerRune > 0 ? (
+                  <span className="text-aura-ivory/55">
+                    {" "}
+                    · курс 1 <RuneIcon className="inline-block h-[0.9em] w-[0.6em] align-[-0.1em]" /> ={" "}
+                    {rubPerRune} ₽
+                  </span>
+                ) : null}
+                . Подробный прайс — в{" "}
+                <Link href="/#тарифы" className="landing-seo-hub__inline-link">
+                  разделе тарифов
+                </Link>
+                .
+              </>
+            ) : (
+              <>
+                Полный прайс в рунах и курс к рублю — в{" "}
+                <Link href="/#тарифы" className="landing-seo-hub__inline-link">
+                  разделе тарифов
+                </Link>
+                .
+              </>
+            )}
+          </p>
+        )}
       </div>
     </section>
   );

@@ -69,6 +69,7 @@ describe("guest landing conversion cleanup", () => {
   it("SeoHub comes before the final CTA, not after", () => {
     const guest = guestLandingBranch();
     expect(guest.indexOf("<LandingSeoHub")).toBeLessThan(guest.indexOf("<LandingClosingBand"));
+    expect(guest).toContain("hidePricingNote");
     const closing = readSrc("src/components/seo/LandingClosingBand.tsx");
     expect(closing).not.toContain("LandingFaqSection");
   });

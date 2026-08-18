@@ -432,6 +432,7 @@ export default function AuraSellingLanding({
             readingCost={ready && config.enabled ? cost("READING") : undefined}
             compact
             hideFaq
+            hidePricingNote
           />
         ) : null}
         <LandingClosingBand onOpenCards={() => handlePrimaryCta("final")} />
