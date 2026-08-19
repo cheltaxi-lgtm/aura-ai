@@ -6,7 +6,8 @@ import { getSessionTopic, topicLabel, type SessionTopicId } from "@/lib/session-
 import { formatCabinetPredictionPreview, stripMarkdownText, truncate } from "@/lib/cabinet-utils";
 import { getSpread, normalizeSpreadId } from "@/lib/spreads";
 import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
-import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
+import { clientSafeMatrixResolveError } from "@/lib/numerology/matrix-labels";
+import { resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
 import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
 import MasterAvatar from "@/components/MasterAvatar";
 import { getCharacterById } from "@/lib/characters";
@@ -169,19 +170,24 @@ function isDestinyMatrixSession(item: SessionListItem): boolean {
 }
 
 function MatrixSessionPreview({ item }: { item: SessionListItem }) {
-  const matrix = useMemo(() => {
+  const resolved = useMemo(() => {
     const birth = item.matrixBirthDate?.trim();
     if (!birth) return null;
-    return resolveMatrixForDisplay({
+    return resolveMatrixForDisplayDetailed({
       birthDate: birth,
       calculationVersion: item.matrixCalculationVersion,
       createdAt: item.createdAt,
     });
   }, [item.matrixBirthDate, item.matrixCalculationVersion, item.createdAt]);
-  if (!matrix) return null;
+  if (!resolved) return null;
+  if (!resolved.ok) {
+    return (
+      <p className="mt-3 text-sm opacity-70">{clientSafeMatrixResolveError(resolved.error)}</p>
+    );
+  }
   return (
     <div className="destiny-matrix--session-list mt-3 origin-top-left">
-      <DestinyMatrixGrid matrix={matrix} revealed={99} hint="" compact showPeriod={false} />
+      <DestinyMatrixGrid matrix={resolved.matrix} revealed={99} hint="" compact showPeriod={false} />
     </div>
   );
 }

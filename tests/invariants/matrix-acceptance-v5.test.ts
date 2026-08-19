@@ -26,7 +26,9 @@ import {
   resolveMatrixForDisplayDetailed,
 } from "@/lib/numerology/matrix-snapshot";
 import { listMatrixZones } from "@/lib/numerology/matrix-zones";
-import { MATRIX_LABELS } from "@/lib/numerology/matrix-labels";
+import { clientSafeMatrixResolveError, MATRIX_LABELS } from "@/lib/numerology/matrix-labels";
+import { buildNumerologSessionResult } from "@/lib/numerology/session-result";
+import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import {
   claimGuestMatrixPending,
   createMatrixGuestClaimToken,
@@ -521,5 +523,57 @@ describe.runIf(hasTestDb)("D/E/F/G acceptance (db)", () => {
     expect(claim.preview.score).toBe(61);
     expect(JSON.stringify(claim.preview)).not.toContain("purposeBlock");
     expect(claim.preview.version).not.toBe(MATRIX_CALCULATION_VERSION);
+  });
+});
+
+describe("year forecast UI contract", () => {
+  it("surfaces 34→35, 39→40, 44→45 and stays quiet mid-period", () => {
+    const from = new Date(2026, 2, 1);
+    const cases = [
+      { dob: "1991-03-08", fromPeriod: 30, toPeriod: 35 },
+      { dob: "1986-03-08", fromPeriod: 35, toPeriod: 40 },
+      { dob: "1981-03-08", fromPeriod: 40, toPeriod: 45 },
+    ] as const;
+    for (const row of cases) {
+      const engine = matrixYearForecast(row.dob, from)!;
+      const aprilEngine = engine.months.find((m) => m.year === 2026 && m.month === 4);
+      expect(aprilEngine?.ageTransition).toBe(true);
+      expect(aprilEngine?.periodFrom).toBe(row.fromPeriod);
+      expect(aprilEngine?.periodTo).toBe(row.toPeriod);
+      const ui = buildNumerologSessionResult({
+        toolId: "matrix_year_forecast",
+        birthDate: row.dob,
+        fromDate: from,
+      });
+      const april = ui?.positions.find((p) => p.label === "Апрель 2026");
+      expect(april?.detail).toContain(
+        `Смена периода матрицы: ${row.fromPeriod}→${row.toPeriod} лет`
+      );
+    }
+    const mid = buildNumerologSessionResult({
+      toolId: "matrix_year_forecast",
+      birthDate: "1990-08-15",
+      fromDate: from,
+    });
+    const march = mid?.positions.find((p) => p.label === "Март 2026");
+    expect(march?.detail ?? "").not.toContain("Смена периода матрицы");
+  });
+
+  it("session age detail uses chronological + period, not period-only", () => {
+    const result = buildNumerologSessionResult({
+      toolId: "destiny_matrix",
+      birthDate: "1990-08-15",
+    });
+    const age = result?.positions.find((p) => p.label === MATRIX_LABELS.ageAndPeriod);
+    expect(age?.detail).toContain("Текущий возраст");
+    expect(age?.detail).toContain("Период Матрицы");
+  });
+});
+
+describe("client-safe resolve errors", () => {
+  it("never leaks raw version enums", () => {
+    expect(clientSafeMatrixResolveError("legacy_without_snapshot")).not.toMatch(/matrix-v/i);
+    expect(clientSafeMatrixResolveError("unsupported_matrix_version")).not.toMatch(/matrix-v/i);
+    expect(clientSafeMatrixResolveError("unsupported_matrix_version")).toContain("не поддерживается");
   });
 });

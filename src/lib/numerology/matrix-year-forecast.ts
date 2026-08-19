@@ -17,7 +17,17 @@ function asOfFor(date: Date): { asOfYear: number; asOfMonth: number; asOfDate: s
 
 export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
   yearArcana: { number: number; title: string };
-  months: Array<{ year: number; month: number; label: string; number: number; title: string; ageTransition?: boolean }>;
+  months: Array<{
+    year: number;
+    month: number;
+    label: string;
+    number: number;
+    title: string;
+    ageTransition?: boolean;
+    periodFrom?: number;
+    periodTo?: number;
+    chronological?: number;
+  }>;
   opportunityMonths: number[];
   cautionMonths: number[];
 } | null {
@@ -38,7 +48,14 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
       label: `${RU_MONTHS[date.getMonth()]} ${date.getFullYear()}`,
       number,
       title: point.arcanaName,
-      ...(ageTransition ? { ageTransition: true } : {}),
+      ...(ageTransition
+        ? {
+            ageTransition: true,
+            periodFrom: previous!.ageCurrent.age,
+            periodTo: matrix.ageCurrent.age,
+            chronological: matrix.chronologicalAge,
+          }
+        : {}),
     };
   });
 

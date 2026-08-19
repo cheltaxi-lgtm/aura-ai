@@ -473,7 +473,20 @@ export async function generateNumerologSessionReading(input: {
       ? [
           `Аркан года: ${forecastContext.yearArcana.number} — ${forecastContext.yearArcana.title}.`,
           "Месяцы (не пересчитывай):",
-          ...forecastContext.months.map((m) => `${m.label}: ${m.number} — ${m.title}`),
+          ...forecastContext.months.map((m) => {
+            const extra = m.ageTransition
+              ? m.periodFrom != null && m.periodTo != null
+                ? ` · смена периода матрицы ${m.periodFrom}→${m.periodTo} лет`
+                : " · смена периода матрицы"
+              : "";
+            return `${m.label}: ${m.number} — ${m.title}${extra}`;
+          }),
+          `Смены периода матрицы: ${
+            forecastContext.months
+              .filter((m) => m.ageTransition)
+              .map((m) => m.label)
+              .join(", ") || "нет"
+          }.`,
           `Возможности: ${forecastContext.opportunityMonths.map((i) => forecastContext.months[i]!.label).join(", ")}.`,
           `Осторожность: ${forecastContext.cautionMonths.map((i) => forecastContext.months[i]!.label).join(", ")}.`,
         ].join("\n")

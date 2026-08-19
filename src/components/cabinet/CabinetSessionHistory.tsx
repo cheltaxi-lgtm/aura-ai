@@ -9,7 +9,8 @@ import ShareButton from "@/components/share/ShareButton";
 import { sessionToSharePayload } from "@/lib/share/payload-builders";
 import { MasterAvatarInline } from "@/components/MasterAvatar";
 import DestinyMatrixGrid from "@/components/numerolog/DestinyMatrixGrid";
-import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
+import { clientSafeMatrixResolveError } from "@/lib/numerology/matrix-labels";
+import { resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
 import { decodeNumerologSpreadId } from "@/lib/numerology/tools";
 import {
   formatCabinetDate,
@@ -115,19 +116,23 @@ function CabinetMatrixPreview({
   generatedAt: string | null;
   calculationVersion?: string | null;
 }) {
-  const matrix = useMemo(
+  const resolved = useMemo(
     () =>
-      resolveMatrixForDisplay({
+      resolveMatrixForDisplayDetailed({
         birthDate,
         calculationVersion,
         createdAt: generatedAt,
       }),
     [birthDate, calculationVersion, generatedAt]
   );
-  if (!matrix) return null;
+  if (!resolved.ok) {
+    return (
+      <p className="mt-3 text-sm opacity-70">{clientSafeMatrixResolveError(resolved.error)}</p>
+    );
+  }
   return (
     <div className="destiny-matrix--session-list mt-3">
-      <DestinyMatrixGrid matrix={matrix} revealed={99} hint="" compact showPeriod={false} />
+      <DestinyMatrixGrid matrix={resolved.matrix} revealed={99} hint="" compact showPeriod={false} />
     </div>
   );
 }

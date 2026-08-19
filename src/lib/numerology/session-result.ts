@@ -89,6 +89,8 @@ export function buildNumerologSessionResult(input: {
   birthDate?: string | null;
   fullName?: string | null;
   params?: NumerologToolParams;
+  /** Frozen start of the 12-month year-forecast window (tests / replay). */
+  fromDate?: Date;
 }): NumerologSessionResult | null {
   const tool = getNumerologTool(input.toolId);
 
@@ -118,8 +120,8 @@ export function buildNumerologSessionResult(input: {
           label: z.label,
           value: z.arcanaName!,
           detail:
-            z.id === "age" && z.age != null
-              ? `${z.age} лет`
+            z.id === "age"
+              ? z.focusLabel ?? (z.age != null ? `${z.age} лет` : undefined)
               : z.focusLabel ?? undefined,
           number: z.number!,
         }));
@@ -133,17 +135,25 @@ export function buildNumerologSessionResult(input: {
       };
     }
     if (input.toolId === "matrix_year_forecast") {
-      const forecast = matrixYearForecast(input.birthDate ?? "");
+      const forecast = matrixYearForecast(input.birthDate ?? "", input.fromDate);
       if (!forecast) return null;
-      const points = forecast.months.map((month) => ({
-        label: month.label,
-        value: `${month.number} — ${month.title}`,
-        detail: forecast.opportunityMonths.includes(forecast.months.indexOf(month))
-          ? "Окно возможностей"
-          : forecast.cautionMonths.includes(forecast.months.indexOf(month))
-            ? "Месяц внимательности"
-            : undefined,
-      }));
+      const points = forecast.months.map((month, index) => {
+        const bits: string[] = [];
+        if (month.ageTransition) {
+          bits.push(
+            month.periodFrom != null && month.periodTo != null
+              ? `Смена периода матрицы: ${month.periodFrom}→${month.periodTo} лет`
+              : "Смена периода матрицы"
+          );
+        }
+        if (forecast.opportunityMonths.includes(index)) bits.push("Окно возможностей");
+        else if (forecast.cautionMonths.includes(index)) bits.push("Месяц внимательности");
+        return {
+          label: month.label,
+          value: `${month.number} — ${month.title}`,
+          detail: bits.length ? bits.join(" · ") : undefined,
+        };
+      });
       return {
         toolId: input.toolId,
         title: tool.label,

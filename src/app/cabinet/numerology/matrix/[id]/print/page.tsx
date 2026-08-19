@@ -5,9 +5,12 @@ import {
   classifyMatrixReportVersion,
   isLegacyMatrixCalculationVersion,
 } from "@/lib/numerology/destiny-matrix";
-import { clientSafeMatrixVersionLabel } from "@/lib/numerology/matrix-labels";
+import {
+  clientSafeMatrixResolveError,
+  clientSafeMatrixVersionLabel,
+} from "@/lib/numerology/matrix-labels";
 import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
-import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
+import { resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { getUserMatrixReportById } from "@/lib/services/numerology-report-service";
 
@@ -27,12 +30,13 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
   // Pre-v3 reports stay printable — they were paid for — but their numbers came from
   // the retired digit-sum reducer and will not match the diagram shown today.
   const isLegacy = isLegacyMatrixCalculationVersion(report.calculationVersion);
-  const matrix = resolveMatrixForDisplay({
+  const resolved = resolveMatrixForDisplayDetailed({
     birthDate: report.birthDate,
     structuredData: report.structuredData,
     calculationVersion: report.calculationVersion,
     createdAt: report.createdAt,
   });
+  const matrix = resolved.ok ? resolved.matrix : null;
   const diagramSvg = matrix
     ? buildMatrixDiagramSvgFromResult(matrix, {
         theme: "print",
@@ -57,6 +61,9 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
         ...(isLegacy
           ? [{ label: "Метод", value: "сохранённый разбор (числа не пересчитываются)" }]
           : []),
+        ...(!resolved.ok
+          ? [{ label: "Схема", value: clientSafeMatrixResolveError(resolved.error) }]
+          : []),
       ]}
       sections={[]}
       visual={
@@ -69,9 +76,11 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
       }
       legacyContent={report.content}
       methodology={
-        isLegacy
-          ? "Этот разбор сохранён как есть. Новая версия движка его не пересчитывает и не заменяет."
-          : "Матрица судьбы Zovus · система 22 энергий. Интерпретация для саморефлексии, не научный прогноз."
+        !resolved.ok
+          ? clientSafeMatrixResolveError(resolved.error)
+          : isLegacy
+            ? "Этот разбор сохранён как есть. Новая версия движка его не пересчитывает и не заменяет."
+            : "Матрица судьбы Zovus · система 22 энергий. Интерпретация для саморефлексии, не научный прогноз."
       }
       disclaimer="Нумерологическая интерпретация носит развлекательный и рефлексивный характер."
       evidence={[]}

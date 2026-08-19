@@ -64,3 +64,19 @@ export function clientSafeMatrixVersionLabel(input: {
   if (input.currentMethodology) return MATRIX_LABELS.methodologyName;
   return "Сохранённый разбор";
 }
+
+/** Client-safe resolve errors — never leak raw enums. */
+export function clientSafeMatrixResolveError(
+  error: "unsupported_matrix_version" | "legacy_without_snapshot" | "invalid_birth_date" | string
+): string {
+  if (error === "legacy_without_snapshot") {
+    return "Этот разбор сохранён в старой методике, и схему нельзя восстановить.";
+  }
+  if (error === "unsupported_matrix_version") {
+    return "Этот разбор нельзя открыть: версия методики не поддерживается.";
+  }
+  if (error === "invalid_birth_date") {
+    return "Некорректная дата рождения — схему нельзя показать.";
+  }
+  return "Не удалось показать сохранённую схему.";
+}
