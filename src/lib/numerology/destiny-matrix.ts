@@ -3,8 +3,7 @@ import { computeDestinyMatrixV4 } from "./destiny-matrix-v4";
 import { computeDestinyMatrixV5 } from "./destiny-matrix-v5";
 import { AGE_BELT_END } from "./destiny-matrix-internal";
 import { arcanaForNumber } from "./matrix-arcana-map";
-import { formatAgePeriodLabel, MATRIX_LABELS } from "./matrix-labels";
-import { reduceToArcanaNumber } from "./matrix-reducers";
+import { MATRIX_LABELS } from "./matrix-labels";
 import {
   MATRIX_CALCULATION_VERSION,
   matrixBaseVersion,
@@ -114,7 +113,7 @@ export function matrixOptionsForTimestamp(
 export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {
   const periodEnd = m.ageModel?.periodEnd ?? m.ageNext?.age ?? m.ageCurrent.age + 5;
   const lines = [
-    `${MATRIX_LABELS.methodologyName} (${m.calculationVersion}):`,
+    `${MATRIX_LABELS.methodologyName}:`,
     `${MATRIX_LABELS.body}: ${m.body.number} — ${m.body.arcanaName}`,
     `${MATRIX_LABELS.energyLong}: ${m.energy.number} — ${m.energy.arcanaName}`,
     `${MATRIX_LABELS.rootsLong}: ${m.roots.number} — ${m.roots.arcanaName}`,
@@ -125,7 +124,7 @@ export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {
     `${MATRIX_LABELS.money}: ${m.money.number} — ${m.money.arcanaName}`,
     `${MATRIX_LABELS.paternal}: ${m.paternal.number} — ${m.paternal.arcanaName}`,
     `${MATRIX_LABELS.maternal}: ${m.maternal.number} — ${m.maternal.arcanaName}`,
-    `${formatAgePeriodLabel(m.ageCurrent.age, periodEnd)}: ${m.ageCurrent.number} — ${m.ageCurrent.arcanaName}`,
+    `${MATRIX_LABELS.ageAndPeriod}: ${m.chronologicalAge} лет · период ${m.ageCurrent.age}–${periodEnd} · ${m.ageCurrent.number} — ${m.ageCurrent.arcanaName}`,
     `${MATRIX_LABELS.yearArcana}: ${m.yearArcana.number} — ${m.yearArcana.arcanaName}`,
     `${MATRIX_LABELS.monthArcana}: ${m.monthArcana.number} — ${m.monthArcana.arcanaName}`,
     `${m.focusLabel}`,

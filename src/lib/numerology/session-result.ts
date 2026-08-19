@@ -162,9 +162,9 @@ export function buildNumerologSessionResult(input: {
       const partnerName = input.params?.partnerName?.trim() || "Партнёр";
       const points = [
         {
-          label: "Общий score",
+          label: "Оценка Zovus",
           value: `${compat.score}/100`,
-          detail: compat.summary,
+          detail: `${compat.summary} Авторская аналитика Zovus, не научная метрика.`,
         },
         ...compat.keys.map((k) => ({
           label: k.label,

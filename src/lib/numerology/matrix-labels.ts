@@ -20,6 +20,7 @@ export const MATRIX_LABELS = {
   maleLine: "Мужская линия",
   femaleLine: "Женская линия",
   agePeriod: "Период возраста",
+  ageAndPeriod: "Возраст и текущий период",
   yearArcana: "Аркан года",
   monthArcana: "Аркан месяца",
   focusZovus: "Аналитический акцент Zovus",
@@ -44,4 +45,22 @@ export const MATRIX_LABELS = {
 
 export function formatAgePeriodLabel(periodStart: number, periodEnd = periodStart + 5): string {
   return `Период ${periodStart}–${periodEnd} лет`;
+}
+
+export function formatAgeAndPeriodFocus(input: {
+  chronological: number;
+  periodStart: number;
+  periodEnd: number;
+}): string {
+  return `${MATRIX_LABELS.ageChronological}: ${input.chronological} лет. Период Матрицы: ${input.periodStart}–${input.periodEnd} лет`;
+}
+
+/** Client-safe report badge — never leak engine ids like matrix-v5. */
+export function clientSafeMatrixVersionLabel(input: {
+  currentMethodology: boolean;
+  outdatedMethodology: boolean;
+}): string {
+  if (input.outdatedMethodology) return MATRIX_LABELS.outdatedMethodology;
+  if (input.currentMethodology) return MATRIX_LABELS.methodologyName;
+  return "Сохранённый разбор";
 }

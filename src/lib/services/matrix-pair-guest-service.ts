@@ -93,8 +93,12 @@ function previewFromSnapshot(
   fallback: MatrixCompatFreeSummary | null
 ): MatrixCompatFreeSummary {
   if (fallback) return fallback;
+  const storedVersion =
+    typeof snap.version === "string" && snap.version.trim()
+      ? snap.version.trim()
+      : "";
   return {
-    version: MATRIX_CALCULATION_VERSION,
+    version: storedVersion || "unsupported",
     methodology: "zovus",
     score: typeof snap.score === "number" ? snap.score : 0,
     summary: typeof snap.summary === "string" ? snap.summary : "",

@@ -5,6 +5,7 @@ import {
   type DestinyMatrixOptions,
   type DestinyMatrixResult,
 } from "./destiny-matrix";
+import { formatAgeAndPeriodFocus } from "./matrix-labels";
 import { periodFromMatrix, type MatrixPeriodSnapshot } from "./matrix-period";
 
 export type MatrixFreeSummary = {
@@ -172,7 +173,13 @@ export function buildMatrixFreeSummary(
     yearInsight: lineFor("Аркан года", matrix.yearArcana.number, "short", matrix.calculationVersion),
     comfortInsight: `${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}) — ${comfort?.shortMeaning ?? matrix.comfort.arcanaMeaning}`,
     karmicInsight: `${tail} · корень ${rootEntry?.title ?? matrix.karmicTail[0].arcanaName} (${matrix.karmicTail[0].number})`,
-    ageInsight: `${matrix.ageCurrent.age}: ${matrix.ageCurrent.number} — ${matrix.ageCurrent.arcanaName}`,
+    ageInsight: matrix.ageModel
+      ? `${formatAgeAndPeriodFocus({
+          chronological: matrix.ageModel.chronological,
+          periodStart: matrix.ageModel.periodStart,
+          periodEnd: matrix.ageModel.periodEnd,
+        })} · энергия ${matrix.ageCurrent.number} — ${matrix.ageCurrent.arcanaName}`
+      : `${matrix.ageCurrent.age}: ${matrix.ageCurrent.number} — ${matrix.ageCurrent.arcanaName}`,
     period,
     denseTeaser: "",
   };

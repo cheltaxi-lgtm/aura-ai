@@ -304,7 +304,9 @@ export function computeMatrixFacts(
     "Каналы:",
     ...channelLines.map((l) => `- ${l}`),
     "",
-    `Возрастной пояс сейчас: ${matrix.ageCurrent.age} лет → ${pointLabel(matrix.ageCurrent)}`,
+    matrix.ageModel
+      ? `Возраст и текущий период: ${matrix.ageModel.chronological} лет · период ${matrix.ageModel.periodStart}–${matrix.ageModel.periodEnd} · ${pointLabel(matrix.ageCurrent)}`
+      : `Возраст и текущий период: период ${matrix.ageCurrent.age} · ${pointLabel(matrix.ageCurrent)}`,
   ].join("\n");
 
   return {

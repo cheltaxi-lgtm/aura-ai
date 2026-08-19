@@ -3,6 +3,7 @@
  * Used by completeness gate, sectioned generator, and prompts.
  */
 import type { DestinyMatrixResult } from "./destiny-matrix";
+import { formatAgeAndPeriodFocus } from "./matrix-labels";
 import type { MatrixPointRole } from "./matrix-point-prompt";
 
 export type MatrixZoneId =
@@ -152,10 +153,10 @@ export const MATRIX_ZONE_DEFS: MatrixZoneDef[] = [
   },
   {
     id: "age",
-    label: "Точка возраста сейчас",
+    label: "Возраст и текущий период",
     role: "age",
     required: true,
-    titleCore: String.raw`Точка\s+возраста(?:\s+сейчас)?`,
+    titleCore: String.raw`(?:Возраст\s+и\s+текущий\s+период|Точка\s+возраста(?:\s+сейчас)?)`,
   },
   {
     id: "age_next",
@@ -331,7 +332,11 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
         pushPoint(def, matrix.ageCurrent, {
           age: matrix.ageCurrent.age,
           focusLabel: matrix.ageModel
-            ? `Текущий возраст: ${matrix.ageModel.chronological} лет. Период Матрицы: ${matrix.ageModel.periodStart}–${matrix.ageModel.periodEnd} лет`
+            ? formatAgeAndPeriodFocus({
+                chronological: matrix.ageModel.chronological,
+                periodStart: matrix.ageModel.periodStart,
+                periodEnd: matrix.ageModel.periodEnd,
+              })
             : undefined,
         });
         break;

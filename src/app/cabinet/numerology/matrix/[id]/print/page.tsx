@@ -1,7 +1,11 @@
 import { notFound, redirect } from "next/navigation";
 import PrintableReport from "@/components/natal/PrintableReport";
 import { buildAuthHref } from "@/lib/post-auth-return";
-import { isLegacyMatrixCalculationVersion } from "@/lib/numerology/destiny-matrix";
+import {
+  classifyMatrixReportVersion,
+  isLegacyMatrixCalculationVersion,
+} from "@/lib/numerology/destiny-matrix";
+import { clientSafeMatrixVersionLabel } from "@/lib/numerology/matrix-labels";
 import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
 import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
 import { requireProfileUserId } from "@/lib/require-auth";
@@ -42,9 +46,16 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
       meta={[
         { label: "Дата рождения", value: report.birthDate },
         { label: "Дата отчёта", value: new Date(report.createdAt).toLocaleString("ru-RU") },
-        { label: "Версия расчёта", value: report.calculationVersion },
+        {
+          label: "Методика",
+          value: clientSafeMatrixVersionLabel(
+            classifyMatrixReportVersion({
+              calculationVersion: report.calculationVersion,
+            })
+          ),
+        },
         ...(isLegacy
-          ? [{ label: "Метод", value: "сохранённый legacy-снимок (числа не пересчитываются)" }]
+          ? [{ label: "Метод", value: "сохранённый разбор (числа не пересчитываются)" }]
           : []),
       ]}
       sections={[]}

@@ -17,7 +17,7 @@ export type MatrixCompatZonePreview = {
 };
 
 export type MatrixCompatFreeSummary = {
-  version: typeof MATRIX_CALCULATION_VERSION;
+  version: string;
   /** Methodology label — not a universal official metric. */
   methodology: "zovus";
   score: number;
