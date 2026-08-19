@@ -3,6 +3,7 @@
  * Uses existing matrixCompatibility() — does not reimplement scoring.
  */
 import { MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
+import { MATRIX_LABELS } from "./matrix-labels";
 import { matrixCompatibility, type MatrixCompatKey } from "./matrix-compatibility";
 
 export type MatrixCompatZonePreview = {
@@ -27,6 +28,7 @@ export type MatrixCompatFreeSummary = {
   zones: MatrixCompatZonePreview[];
   pairComfort: number;
   pairYear: number;
+  disclaimer: string;
 };
 
 function zoneFromKey(
@@ -82,6 +84,7 @@ export function buildMatrixCompatFreeSummary(
     zones,
     pairComfort: result.pairComfort,
     pairYear: result.pairYear,
+    disclaimer: MATRIX_LABELS.pairScoreDisclaimer,
   };
 }
 
@@ -99,5 +102,6 @@ export function matrixCompatSnapshotForPending(
     zones: summary.zones,
     pairComfort: summary.pairComfort,
     pairYear: summary.pairYear,
+    disclaimer: summary.disclaimer,
   };
 }

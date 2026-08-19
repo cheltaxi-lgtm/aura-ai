@@ -9,6 +9,7 @@ import {
   matrixCompatSnapshotForPending,
   type MatrixCompatFreeSummary,
 } from "@/lib/numerology/matrix-compat-free-summary";
+import { MATRIX_LABELS } from "@/lib/numerology/matrix-labels";
 import { MATRIX_PAIR_GUEST_CLAIM_TTL_MS } from "@/lib/matrix-pair-guest-claim-cookie";
 import { validateSubjectBirthDate } from "@/lib/services/matrix-subject-service";
 import { profileHasBirthData } from "@/lib/users";
@@ -109,6 +110,10 @@ function previewFromSnapshot(
       : [],
     pairComfort: typeof snap.pairComfort === "number" ? snap.pairComfort : 0,
     pairYear: typeof snap.pairYear === "number" ? snap.pairYear : 0,
+    disclaimer:
+      typeof snap.disclaimer === "string" && snap.disclaimer.trim()
+        ? snap.disclaimer.trim()
+        : MATRIX_LABELS.pairScoreDisclaimer,
   };
 }
 

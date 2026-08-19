@@ -14,6 +14,7 @@ import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { PRICING } from "@/lib/config/pricing";
 import type { MatrixCompatFreeSummary } from "@/lib/numerology/matrix-compat-free-summary";
+import { MATRIX_LABELS } from "@/lib/numerology/matrix-labels";
 import { parseBirthDate } from "@/lib/numerology/constants";
 import {
   FREE_TO_PAID,
@@ -463,13 +464,16 @@ export default function MatrixCompatibilityPreview() {
         <div className="mt-8 space-y-6">
           <div className="rounded-2xl border border-aura-gold/25 bg-aura-gold/[0.05] p-5">
             <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">
-              Методика Zovus · score пары
+              {MATRIX_LABELS.pairScore}
             </p>
             <p className="font-display mt-2 text-4xl font-semibold text-white">
               {preview.score}
               <span className="text-lg text-white/50">/100</span>
             </p>
             <p className="mt-3 text-sm text-white/70">{preview.summary}</p>
+            <p className="mt-2 text-xs text-white/45">
+              {preview.disclaimer ?? MATRIX_LABELS.pairScoreDisclaimer}
+            </p>
           </div>
 
           <div className="grid gap-4 sm:grid-cols-3">

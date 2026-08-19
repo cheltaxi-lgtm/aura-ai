@@ -13,6 +13,7 @@ import {
 import { personalYearForecast } from "./forecast";
 import { matrixYearForecast } from "./matrix-year-forecast";
 import { parseBirthDate } from "./constants";
+import { MATRIX_LABELS } from "./matrix-labels";
 
 export interface NumerologSessionPosition {
   label: string;
@@ -172,9 +173,9 @@ export function buildNumerologSessionResult(input: {
       const partnerName = input.params?.partnerName?.trim() || "Партнёр";
       const points = [
         {
-          label: "Оценка Zovus",
+          label: MATRIX_LABELS.pairScore,
           value: `${compat.score}/100`,
-          detail: `${compat.summary} Авторская аналитика Zovus, не научная метрика.`,
+          detail: `${compat.summary} ${MATRIX_LABELS.pairScoreDisclaimer}`,
         },
         ...compat.keys.map((k) => ({
           label: k.label,

@@ -27,6 +27,8 @@ import {
 } from "@/lib/numerology/matrix-snapshot";
 import { listMatrixZones } from "@/lib/numerology/matrix-zones";
 import { clientSafeMatrixResolveError, MATRIX_LABELS } from "@/lib/numerology/matrix-labels";
+import { buildMatrixCompatFreeSummary } from "@/lib/numerology/matrix-compat-free-summary";
+import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
 import { buildMatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
 import { buildNumerologSessionResult } from "@/lib/numerology/session-result";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
@@ -595,6 +597,35 @@ describe("child purpose is personal, not comfort", () => {
     expect(zone?.label).toBe("Для чего дан ребёнок");
     expect(zone?.number).toBe(matrix!.purposeBlock!.personal.number);
     expect(zone?.number).not.toBe(matrix!.comfort.number);
+  });
+});
+
+describe("pair score is marked authorial", () => {
+  it("guest preview and session result carry the Zovus disclaimer", () => {
+    const preview = buildMatrixCompatFreeSummary("1990-08-15", "1984-10-31")!;
+    expect(preview.disclaimer).toBe(MATRIX_LABELS.pairScoreDisclaimer);
+    expect(preview.disclaimer).toMatch(/авторская аналитика/i);
+    expect(preview.disclaimer).not.toMatch(/matrix-v/i);
+    const session = buildNumerologSessionResult({
+      toolId: "matrix_compatibility",
+      birthDate: "1990-08-15",
+      params: { partnerDate: "1984-10-31" },
+    });
+    const score = session?.positions.find((p) => p.label === MATRIX_LABELS.pairScore);
+    expect(score?.detail).toContain(MATRIX_LABELS.pairScoreDisclaimer);
+  });
+});
+
+describe("print SVG contract", () => {
+  it("print and dark diagrams do not leak engine ids and keep an accessible title", () => {
+    const matrix = destinyMatrix("1990-08-15", AS_OF)!;
+    for (const theme of ["print", "dark"] as const) {
+      const svg = buildMatrixDiagramSvgFromResult(matrix, { theme, uid: theme });
+      expect(svg).toContain('role="img"');
+      expect(svg).toContain("Матрица судьбы");
+      expect(svg).not.toMatch(/matrix-v[0-9]/i);
+      expect(svg).not.toContain("structured_data");
+    }
   });
 });
 

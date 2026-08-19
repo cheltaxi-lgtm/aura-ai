@@ -41,6 +41,8 @@ export const MATRIX_LABELS = {
   maternalMatter: "Род матери · материальное",
   ageChronological: "Текущий возраст",
   outdatedMethodology: "Предыдущая версия методики",
+  pairScore: "Оценка Zovus",
+  pairScoreDisclaimer: "Авторская аналитика Zovus, не научная метрика.",
 } as const;
 
 export function formatAgePeriodLabel(periodStart: number, periodEnd = periodStart + 5): string {
