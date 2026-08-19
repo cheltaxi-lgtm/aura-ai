@@ -74,13 +74,18 @@ export function matrixDocumentMatchesEngine(
   add(matrix.monthArcana);
   add(matrix.ageCurrent);
   add(matrix.ageNext);
+  if (matrix.purposeBlock) {
+    add(matrix.purposeBlock.personal);
+    add(matrix.purposeBlock.social);
+    add(matrix.purposeBlock.spiritual);
+  }
   matrix.karmicTail.forEach(add);
   matrix.agePoints.forEach(add);
   for (const ch of matrix.channels) ch.points.forEach(add);
 
   for (const zone of doc.zones) {
     if (zone.number == null || !zone.arcanaName) continue;
-    const table = getMatrixArcanaEntry(zone.number)?.title;
+    const table = getMatrixArcanaEntry(zone.number, matrix.calculationVersion)?.title;
     if (!table) return false;
     if (normArcanaName(zone.arcanaName) !== normArcanaName(table)) return false;
     const engine = expected.get(zone.number);
@@ -95,20 +100,21 @@ export function matrixDocumentMatchesEngine(
 
 /** Canonicalize N—Name pairs inside structured zone prose/titles. */
 export function canonicalizeMatrixReadingDocument(
-  doc: MatrixReadingDocument
+  doc: MatrixReadingDocument,
+  calculationVersion: string = MATRIX_CALCULATION_VERSION
 ): MatrixReadingDocument {
   return {
     ...doc,
-    intro: canonicalizeArcanaNamesInText(doc.intro || ""),
-    finale: canonicalizeArcanaNamesInText(doc.finale || ""),
+    intro: canonicalizeArcanaNamesInText(doc.intro || "", calculationVersion),
+    finale: canonicalizeArcanaNamesInText(doc.finale || "", calculationVersion),
     zones: doc.zones.map((z) => ({
       ...z,
-      title: canonicalizeArcanaNamesInText(z.title || ""),
-      prose: canonicalizeArcanaNamesInText(z.prose || ""),
-      practice: z.practice ? canonicalizeArcanaNamesInText(z.practice) : z.practice,
+      title: canonicalizeArcanaNamesInText(z.title || "", calculationVersion),
+      prose: canonicalizeArcanaNamesInText(z.prose || "", calculationVersion),
+      practice: z.practice ? canonicalizeArcanaNamesInText(z.practice, calculationVersion) : z.practice,
       arcanaName:
         z.number != null
-          ? getMatrixArcanaEntry(z.number)?.title ?? z.arcanaName
+          ? getMatrixArcanaEntry(z.number, calculationVersion)?.title ?? z.arcanaName
           : z.arcanaName,
     })),
   };
@@ -132,8 +138,8 @@ function titleRe(core: string): RegExp {
 }
 
 /** Required paid zones — derived from MATRIX_ZONE_DEFS. */
-export function matrixRequiredSections(toolId?: string): MatrixSectionCheck[] {
-  return matrixZoneDefsFor(toolId).filter((z) => z.required).map((z) => ({
+export function matrixRequiredSections(toolId?: string, calculationVersion?: string): MatrixSectionCheck[] {
+  return matrixZoneDefsFor(toolId, calculationVersion).filter((z) => z.required).map((z) => ({
   id: z.id,
   label: z.label,
   re: titleRe(z.titleCore),
@@ -157,8 +163,8 @@ function hasKarmicTailCoverage(text: string, sections: MatrixSectionCheck[]): bo
   return parts >= 3;
 }
 
-export function matrixMissingSections(text: string, toolId?: string): string[] {
-  const sections = matrixRequiredSections(toolId);
+export function matrixMissingSections(text: string, toolId?: string, calculationVersion?: string): string[] {
+  const sections = matrixRequiredSections(toolId, calculationVersion);
   const raw = (text || "").replace(/\r\n/g, "\n");
   if (!raw.trim()) {
     return sections.filter((s) => !s.id.startsWith("tail_"))
@@ -182,10 +188,10 @@ export function matrixMissingSections(text: string, toolId?: string): string[] {
 }
 
 /** Paid full matrix: all required zone headers + finale (+ sane length). */
-export function isCompleteMatrixReading(text: string, toolId?: string): boolean {
+export function isCompleteMatrixReading(text: string, toolId?: string, calculationVersion?: string): boolean {
   const t = (text || "").trim();
   if (t.length < 2200) return false;
-  return matrixMissingSections(t, toolId).length === 0;
+  return matrixMissingSections(t, toolId, calculationVersion).length === 0;
 }
 
 /**
@@ -220,6 +226,11 @@ export function matrixReadingMatchesEngine(
   add(matrix.monthArcana);
   add(matrix.ageCurrent);
   add(matrix.ageNext);
+  if (matrix.purposeBlock) {
+    add(matrix.purposeBlock.personal);
+    add(matrix.purposeBlock.social);
+    add(matrix.purposeBlock.spiritual);
+  }
   matrix.karmicTail.forEach(add);
   matrix.agePoints.forEach(add);
   for (const ch of matrix.channels) {
@@ -230,7 +241,7 @@ export function matrixReadingMatchesEngine(
     const n = Number(m[1]);
     const name = normArcanaName(m[4] ?? "");
     if (n < 1 || n > 22 || !name) continue;
-    const tableName = getMatrixArcanaEntry(n)?.title;
+    const tableName = getMatrixArcanaEntry(n, matrix.calculationVersion)?.title;
     if (!tableName) continue;
     if (!name.startsWith(normArcanaName(tableName))) return false;
     const engineName = expected.get(n);
@@ -252,11 +263,14 @@ export function matrixReadingMatchesEngine(
     year: matrix.yearArcana.number,
     month: matrix.monthArcana.number,
     sky_spirit: matrix.skySpirit.number,
+    purpose_personal: matrix.purposeBlock?.personal.number ?? -1,
+    purpose_social: matrix.purposeBlock?.social.number ?? -1,
+    purpose_spiritual: matrix.purposeBlock?.spiritual.number ?? -1,
   };
-  for (const def of matrixZoneDefsFor(toolId)) {
+  for (const def of matrixZoneDefsFor(toolId, matrix.calculationVersion)) {
     if (!def.required) continue;
     const zoneNumber = zoneNumberById[def.id];
-    if (zoneNumber == null) continue;
+    if (zoneNumber == null || zoneNumber < 1) continue;
     const headingWithNumber = new RegExp(
       String.raw`(?:^|\n)\s*(?:#{1,3}\s*)?(?:${EMOJI}\s*)?${def.titleCore}[^\n]*\b${zoneNumber}\b`,
       "iu"
@@ -270,10 +284,10 @@ export function matrixReadingMatchesEngine(
   const tailCovered = tailNums.every((n, i) =>
     new RegExp(String.raw`(?:^|\n)\s*(?:·\s*)?${tailLabels[i]}\s*[:.\-—–][^\n]*\b${n}\b`, "iu").test(t)
   );
-  const tailRequired = matrixZoneDefsFor(toolId).some((z) => z.required && z.id === "tail_root");
+  const tailRequired = matrixZoneDefsFor(toolId, matrix.calculationVersion).some((z) => z.required && z.id === "tail_root");
   if (tailRequired && !tailCovered) {
     const perPart = ["tail_root", "tail_mid", "tail_tip"].every((id, i) => {
-      const def = matrixZoneDefsFor(toolId).find((z) => z.id === id);
+      const def = matrixZoneDefsFor(toolId, matrix.calculationVersion).find((z) => z.id === id);
       if (!def) return false;
       return new RegExp(
         String.raw`(?:^|\n)\s*(?:#{1,3}\s*)?(?:${EMOJI}\s*)?${def.titleCore}[^\n]*\b${tailNums[i]}\b`,

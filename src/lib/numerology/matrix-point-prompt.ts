@@ -1,5 +1,6 @@
-import { getArcanaEntry, type ArcanaDictionaryEntry } from "./arcana-dictionary";
+import type { ArcanaDictionaryEntry } from "./arcana-dictionary";
 import type { DestinyMatrixResult } from "./destiny-matrix";
+import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import { focusNumber } from "./matrix-period";
 
 /** Matrix-v1 point roles — each needs a distinct prose angle even if arcana numbers match. */
@@ -103,7 +104,7 @@ export function formatMatrixRepeatArcanaNote(points: MatrixPointPromptLine[]): s
 /** Compact keys for main reading + deterministic «Простыми словами». */
 export function formatMatrixFinaleKeys(matrix: DestinyMatrixResult): string {
   const line = (role: string, n: number) => {
-    const entry = getArcanaEntry(n);
+    const entry = getMatrixArcanaEntry(n, matrix.calculationVersion);
     return `${role}: ${n} — ${entry?.title ?? `Аркан ${n}`}`;
   };
   return [
@@ -127,11 +128,12 @@ export function buildMatrixPlainFinale(
   matrix: DestinyMatrixResult,
   opts?: { aboutOther?: boolean; subjectName?: string }
 ): string {
-  const body = getArcanaEntry(matrix.body.number);
-  const purpose = getArcanaEntry(matrix.purpose.number);
-  const money = getArcanaEntry(matrix.money.number);
-  const love = getArcanaEntry(matrix.relationships.number);
-  const year = getArcanaEntry(matrix.yearArcana.number);
+  const entry = (n: number) => getMatrixArcanaEntry(n, matrix.calculationVersion);
+  const body = entry(matrix.body.number);
+  const comfort = entry(matrix.comfort.number);
+  const money = entry(matrix.money.number);
+  const love = entry(matrix.relationships.number);
+  const year = entry(matrix.yearArcana.number);
   const who = name.trim() || "друг";
   const subject = (opts?.subjectName ?? "").trim() || "этот человек";
 
@@ -140,8 +142,8 @@ export function buildMatrixPlainFinale(
       `${who}, ты смотришь матрицу ${subject}. Опора характера — ${
         body?.title ?? matrix.body.arcanaName
       } (${matrix.body.number}): ${body?.shortMeaning ?? matrix.body.arcanaMeaning}`,
-      `Зона комфорта — ${purpose?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}): ${
-        purpose?.purpose ?? matrix.comfort.arcanaMeaning
+      `Зона комфорта — ${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}): ${
+        comfort?.purpose ?? matrix.comfort.arcanaMeaning
       }`,
       `Кармический хвост — ${matrix.karmicTail.map((p) => `${p.number} ${p.arcanaName}`).join(" → ")}.`,
       `Деньги — через ${money?.title ?? matrix.money.arcanaName}: ${
@@ -161,8 +163,8 @@ export function buildMatrixPlainFinale(
     `${who}, опора характера — ${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}): ${
       body?.shortMeaning ?? matrix.body.arcanaMeaning
     }`,
-    `Зона комфорта — ${purpose?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}): ${
-      purpose?.purpose ?? matrix.comfort.arcanaMeaning
+    `Зона комфорта — ${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}): ${
+      comfort?.purpose ?? matrix.comfort.arcanaMeaning
     }`,
     `Кармический хвост — ${matrix.karmicTail.map((p) => `${p.number} ${p.arcanaName}`).join(" → ")}.`,
     `Деньги — через ${money?.title ?? matrix.money.arcanaName}: ${

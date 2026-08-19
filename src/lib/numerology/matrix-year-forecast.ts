@@ -5,30 +5,33 @@ const RU_MONTHS = [
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 ];
 
+function asOfFor(date: Date): { asOfYear: number; asOfMonth: number; asOfDate: string } {
+  const year = date.getFullYear();
+  const month = date.getMonth() + 1;
+  return {
+    asOfYear: year,
+    asOfMonth: month,
+    asOfDate: `${year}-${String(month).padStart(2, "0")}-01`,
+  };
+}
+
 export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
   yearArcana: { number: number; title: string };
   months: Array<{ year: number; month: number; label: string; number: number; title: string; ageTransition?: boolean }>;
   opportunityMonths: number[];
   cautionMonths: number[];
 } | null {
-  const initial = destinyMatrix(birthDate, {
-    asOfYear: fromDate.getFullYear(),
-    asOfMonth: fromDate.getMonth() + 1,
-    asOfDate: `${fromDate.getFullYear()}-${String(fromDate.getMonth() + 1).padStart(2, "0")}-${String(fromDate.getDate()).padStart(2, "0")}`,
-  });
+  const initial = destinyMatrix(birthDate, asOfFor(fromDate));
   if (!initial) return null;
 
   const months = Array.from({ length: 12 }, (_, index) => {
     const date = new Date(fromDate.getFullYear(), fromDate.getMonth() + index, 1);
-    const matrix = destinyMatrix(birthDate, {
-      asOfYear: date.getFullYear(),
-      asOfMonth: date.getMonth() + 1,
-      asOfDate: `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-01`,
-    })!;
-    // Same month formula as destinyMatrix: reduce(year arcana + calendar month).
+    const prevDate = new Date(fromDate.getFullYear(), fromDate.getMonth() + index - 1, 1);
+    const matrix = destinyMatrix(birthDate, asOfFor(date))!;
+    const previous = destinyMatrix(birthDate, asOfFor(prevDate));
     const number = reduceToArcanaNumber(matrix.yearArcana.number + date.getMonth() + 1);
-    const point = arcanaForNumber(number);
-    const ageTransition = matrix.ageNext != null && matrix.ageNext.age === matrix.ageCurrent.age;
+    const point = arcanaForNumber(number, matrix.calculationVersion);
+    const ageTransition = Boolean(previous && previous.ageCurrent.age !== matrix.ageCurrent.age);
     return {
       year: date.getFullYear(),
       month: date.getMonth() + 1,

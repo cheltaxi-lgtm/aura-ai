@@ -225,7 +225,7 @@ const FIXTURES = [
   },
 ];
 
-assert(MATRIX_CALCULATION_VERSION === "matrix-v4", "version must be matrix-v4");
+assert(MATRIX_CALCULATION_VERSION === "matrix-v5", "version must be matrix-v5");
 assert(DESTINY_MATRIX_POINT_KEYS.length === 11, "expected 11 core point keys");
 
 for (const [n, expected] of [
@@ -442,7 +442,10 @@ for (const fixture of FIXTURES) {
       finale: "Зона комфорта — опора.\nДеньги — канал.",
       meta: { aiZones: 0, engineZones: zones.length, totalZones: zones.length },
     });
-    assert(isCompleteMatrixReading(goodDoc), "engine-rendered doc passes completeness");
+    assert(
+      isCompleteMatrixReading(goodDoc, undefined, gennady.calculationVersion),
+      "engine-rendered doc passes completeness"
+    );
     assert(
       matrixReadingMatchesEngine(goodDoc, gennady),
       "engine-rendered doc passes arcana fidelity"

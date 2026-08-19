@@ -28,6 +28,18 @@ export const MATRIX_LABELS = {
   maleChannel: "Мужская линия рода",
   femaleChannel: "Женская линия рода",
   skyEarthChannel: "Небо — Земля",
+  purposePersonal: "Личное предназначение",
+  purposeSocial: "Социальное предназначение",
+  purposeSpiritual: "Духовное предназначение",
+  talentPrimary: "Линия талантов · высшая суть",
+  talentSecondary: "Линия талантов · дар",
+  talentTertiary: "Линия талантов · глубина",
+  paternalSpirit: "Род отца · духовное",
+  paternalMatter: "Род отца · материальное",
+  maternalSpirit: "Род матери · духовное",
+  maternalMatter: "Род матери · материальное",
+  ageChronological: "Текущий возраст",
+  outdatedMethodology: "Предыдущая версия методики",
 } as const;
 
 export function formatAgePeriodLabel(periodStart: number, periodEnd = periodStart + 5): string {

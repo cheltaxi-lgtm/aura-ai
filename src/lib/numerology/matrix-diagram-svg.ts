@@ -6,6 +6,7 @@ import {
   CENTER_HALO_RADIUS,
   INNER_RADIUS,
   MATRIX_CHANNEL_PATHS,
+  MATRIX_V5_CHANNEL_PATHS,
   MATRIX_NODE_LAYOUT,
   MATRIX_NODE_RADIUS,
   MATRIX_ORIGIN,
@@ -228,7 +229,9 @@ function channels(t: ThemeTokens): string {
 }
 
 function generation(t: ThemeTokens, version: string): string {
-  const v3 = version.split("@")[0] === "matrix-v3";
+  const base = version.split("@")[0];
+  const v3 = base === "matrix-v3";
+  const v5 = base === "matrix-v5";
   if (v3) {
     return [
       `<polyline fill="none" stroke="${t.male}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.left", "maleLine.head", "outer.bottomRight"])}"/>`,
@@ -237,9 +240,10 @@ function generation(t: ThemeTokens, version: string): string {
       `<polyline fill="none" stroke="${t.female}" stroke-width="1.85" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(["outer.topLeft", "outer.top", "outer.topRight"])}"/>`,
     ].join("");
   }
+  const paths = v5 ? MATRIX_V5_CHANNEL_PATHS : MATRIX_CHANNEL_PATHS;
   return [
-    `<polyline fill="none" stroke="${t.male}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.male)}"/>`,
-    `<polyline fill="none" stroke="${t.female}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(MATRIX_CHANNEL_PATHS.female)}"/>`,
+    `<polyline fill="none" stroke="${t.male}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(paths.male)}"/>`,
+    `<polyline fill="none" stroke="${t.female}" stroke-width="2.45" stroke-linecap="round" stroke-linejoin="round" points="${polylineFor(paths.female)}"/>`,
   ].join("");
 }
 

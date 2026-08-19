@@ -217,6 +217,13 @@ export const MATRIX_V3_CHANNEL_PATHS: Record<MatrixChannelLayoutId, readonly Mat
   female: ["outer.topLeft", "outer.top", "outer.topRight", "outer.bottomLeft"],
 };
 
+/** Ancestral diagonals: F–H (father) and G–I (mother). */
+export const MATRIX_V5_CHANNEL_PATHS: Record<MatrixChannelLayoutId, readonly MatrixLayoutId[]> = {
+  ...MATRIX_CHANNEL_PATHS,
+  male: ["outer.topLeft", "outer.bottomRight"],
+  female: ["outer.topRight", "outer.bottomLeft"],
+};
+
 export function ageSector(age: number): { index: number; t: number; angle: number } {
   const clamped = ((age % 80) + 80) % 80;
   const sector = clamped / 10;

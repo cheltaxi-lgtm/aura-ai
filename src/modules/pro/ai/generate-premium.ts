@@ -13,7 +13,7 @@ import {
 } from "@/lib/natal/report";
 import { NATAL_ENGINE_VERSION, type NatalChartRecord } from "@/lib/natal/types";
 import { generateFullMatrixSectionedReading } from "@/lib/numerology/matrix-sectioned-reading";
-import { getArcanaEntry } from "@/lib/numerology/arcana-dictionary";
+import { getMatrixArcanaEntry } from "@/lib/numerology/matrix-arcana-map";
 import type { DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
 import type {
   MatrixReadingDocument,
@@ -144,8 +144,8 @@ function matrixFocusAnswerBlock(
 ): ProReportBlock {
   const money = matrix.money;
   const love = matrix.relationships;
-  const moneyEntry = getArcanaEntry(money.number);
-  const loveEntry = getArcanaEntry(love.number);
+  const moneyEntry = getMatrixArcanaEntry(money.number, matrix.calculationVersion);
+  const loveEntry = getMatrixArcanaEntry(love.number, matrix.calculationVersion);
   const name = clientAlias.trim() || "клиент";
   const moneySense = moneyEntry?.money ?? money.arcanaMeaning;
   const loveSense = loveEntry?.love ?? love.arcanaMeaning;

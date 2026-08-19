@@ -1,16 +1,8 @@
 /**
- * Frozen matrix-v3 engine. Do not change formulas — purchased reports replay through this.
+ * Frozen production methodology matrix-v4 / zovus-matrix-22-v1.
+ * Do not mutate formulas. Purchased reports replay through this file only.
  */
 import { parseBirthDate, sumDigits } from "./constants";
-import { arcanaForNumber } from "./matrix-arcana-map";
-import {
-  MATRIX_V3_CALCULATION_VERSION,
-  MATRIX_V3_METHODOLOGY_ID,
-  MATRIX_V3_RENDERER_VERSION,
-  type DestinyMatrixOptions,
-  type DestinyMatrixResult,
-} from "./matrix-result";
-import { reduceToArcanaSubtract22 } from "./matrix-reducers";
 import {
   buildAgeBelt,
   pickAgeWindow,
@@ -19,16 +11,28 @@ import {
   toIsoDay,
   yearsBetween,
 } from "./destiny-matrix-internal";
+import { arcanaForNumber } from "./matrix-arcana-map";
+import { MATRIX_CHANNEL_DEFINITIONS } from "./matrix-channels";
+import { reduceToArcanaDigitSum } from "./matrix-reducers";
+import {
+  MATRIX_V4_CALCULATION_VERSION,
+  MATRIX_V4_METHODOLOGY_ID,
+  MATRIX_V4_RENDERER_VERSION,
+  type DestinyMatrixChannel,
+  type DestinyMatrixOptions,
+  type DestinyMatrixPoint,
+  type DestinyMatrixResult,
+} from "./matrix-result";
 
-export function computeDestinyMatrixV3(
+export function computeDestinyMatrixV4(
   birthDate: string,
   options?: DestinyMatrixOptions
 ): DestinyMatrixResult | null {
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
   const asOf = resolveAsOf(options);
-  const reduce = reduceToArcanaSubtract22;
-  const point = (n: number) => arcanaForNumber(n, MATRIX_V3_CALCULATION_VERSION);
+  const reduce = reduceToArcanaDigitSum;
+  const point = (n: number) => arcanaForNumber(n, MATRIX_V4_CALCULATION_VERSION);
 
   const a = reduce(parsed.day);
   const b = reduce(parsed.month);
@@ -44,8 +48,6 @@ export function computeDestinyMatrixV3(
   const cg = reduce(c + g);
   const ga = reduce(g + a);
   const karmicTip = reduce(g + earthInner);
-  const paternalN = reduce(a + c);
-  const maternalN = reduce(b + c);
   const yearArcanaN = reduce(a + b + sumDigits(asOf.year));
   const monthArcanaN = reduce(yearArcanaN + asOf.month);
 
@@ -64,12 +66,13 @@ export function computeDestinyMatrixV3(
   const relationships = point(loveInner);
   const money = point(moneyInner);
   const talents = point(ab);
-  const paternal = point(paternalN);
-  const maternal = point(maternalN);
+  const paternal = point(cg);
+  const maternal = point(bc);
   const yearArcana = point(yearArcanaN);
   const monthArcana = point(monthArcanaN);
   const skySpirit = point(skyInner);
   const earthTask = karmicMid;
+  const gaPoint = point(ga);
   const focus = pickFocus({
     yearN: yearArcanaN,
     monthN: monthArcanaN,
@@ -80,10 +83,27 @@ export function computeDestinyMatrixV3(
     ageN: ageCurrent.number,
   });
 
+  const byId: Record<string, DestinyMatrixPoint> = {
+    body,
+    energy,
+    roots,
+    comfort,
+    relationships,
+    money,
+    talents,
+    paternal,
+    maternal,
+    skySpirit,
+    earthTask,
+    karma,
+    karmicTip: karmicTipPt,
+    "lineage.ga": gaPoint,
+  };
+
   return {
-    methodologyId: MATRIX_V3_METHODOLOGY_ID,
-    calculationVersion: MATRIX_V3_CALCULATION_VERSION,
-    rendererVersion: MATRIX_V3_RENDERER_VERSION,
+    methodologyId: MATRIX_V4_METHODOLOGY_ID,
+    calculationVersion: MATRIX_V4_CALCULATION_VERSION,
+    rendererVersion: MATRIX_V4_RENDERER_VERSION,
     body,
     energy,
     roots,
@@ -104,13 +124,13 @@ export function computeDestinyMatrixV3(
     ageCurrent,
     ageNext,
     chronologicalAge,
-    channels: [
-      { id: "money", label: "Денежный канал", points: [skySpirit, comfort, money, earthTask] },
-      { id: "love", label: "Канал отношений", points: [body, relationships, comfort, money] },
-      { id: "male", label: "Мужская / отцовская линия", points: [body, paternal, roots, point(cg)] },
-      { id: "female", label: "Женская / материнская линия", points: [energy, maternal, talents, point(ga)] },
-      { id: "skyEarth", label: "Небо — Земля", points: [energy, skySpirit, comfort, earthTask, karma] },
-    ],
+    channels: MATRIX_CHANNEL_DEFINITIONS.filter(
+      (def): def is typeof def & { id: DestinyMatrixChannel["id"] } => def.id !== "karmicTail"
+    ).map((def) => ({
+      id: def.id,
+      label: def.label,
+      points: def.pointIds.map((id) => byId[id] ?? comfort),
+    })),
     focusKey: focus.focusKey,
     focusLabel: focus.focusLabel,
     asOf: { year: asOf.year, month: asOf.month, date: toIsoDay(asOf.date) },

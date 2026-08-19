@@ -128,6 +128,16 @@ export async function ensureSelfSubject(userId: string): Promise<MatrixSubject |
        ON CONFLICT DO NOTHING`,
       [userId, user.name?.trim() || null, birthDate]
     );
+    await queryClient(
+      client,
+      `UPDATE matrix_subjects
+       SET birth_date = $2::date,
+           display_name = COALESCE(NULLIF(trim(display_name), ''), $3),
+           updated_at = NOW()
+       WHERE user_id = $1 AND kind = 'self'
+         AND birth_date IS DISTINCT FROM $2::date`,
+      [userId, birthDate, user.name?.trim() || null]
+    );
     const subject = await queryClient<MatrixSubjectRow>(
       client,
       `SELECT ${SUBJECT_COLS}
@@ -169,19 +179,28 @@ export async function upsertMatrixSubject(input: {
       return self;
     }
 
-    const { rows } = await query<MatrixSubjectRow>(
-      `UPDATE matrix_subjects
-       SET display_name = $3,
-           birth_date = $4::date,
-           birth_time = $5::time,
-           birth_city = $6,
-           updated_at = NOW()
-       WHERE user_id = $1 AND id = $2::uuid AND kind = 'self'
-       RETURNING ${SUBJECT_COLS}`,
-      [input.userId, existing.rows[0].id, displayName, birthDate, birthTime, birthCity]
-    );
-    if (!rows[0]) throw subjectError("self_exists");
-    return mapSubject(rows[0]);
+    return withTransaction(async (client) => {
+      await queryClient(
+        client,
+        `UPDATE users SET birth_date = $2::date
+         WHERE id = $1 AND birth_date IS DISTINCT FROM $2::date`,
+        [input.userId, birthDate]
+      );
+      const { rows } = await queryClient<MatrixSubjectRow>(
+        client,
+        `UPDATE matrix_subjects
+         SET display_name = $3,
+             birth_date = $4::date,
+             birth_time = $5::time,
+             birth_city = $6,
+             updated_at = NOW()
+         WHERE user_id = $1 AND id = $2::uuid AND kind = 'self'
+         RETURNING ${SUBJECT_COLS}`,
+        [input.userId, existing.rows[0].id, displayName, birthDate, birthTime, birthCity]
+      );
+      if (!rows[0]) throw subjectError("self_exists");
+      return mapSubject(rows[0]);
+    });
   }
 
   return withTransaction(async (client) => {

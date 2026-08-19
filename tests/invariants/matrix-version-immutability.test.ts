@@ -49,8 +49,14 @@ describe.runIf(hasTestDb)("matrix version rows (db)", () => {
       asOfDate: "2026-01-01",
       calculationVersion: MATRIX_V3_CALCULATION_VERSION,
     })!;
-    const v4 = destinyMatrix("1990-08-15", { asOfDate: "2026-01-01" })!;
+    const v4 = destinyMatrix("1990-08-15", {
+      asOfDate: "2026-01-01",
+      calculationVersion: "matrix-v4",
+    })!;
+    const v5 = destinyMatrix("1990-08-15", { asOfDate: "2026-01-01" })!;
     expect(v3.comfort.number).not.toBe(v4.comfort.number);
+    expect(v4.talents.number).toBe(5);
+    expect(v5.talents.number).toBe(20);
 
     await saveMatrixReport({
       userId: user.id,
@@ -67,8 +73,17 @@ describe.runIf(hasTestDb)("matrix version rows (db)", () => {
       subjectId: self!.id,
       content: `v4 comfort ${v4.comfort.number}`,
       runeCost: 0,
-      calculationVersion: MATRIX_CALCULATION_VERSION,
+      calculationVersion: "matrix-v4",
       structuredData: matrixToStructuredData(v4),
+    });
+    await saveMatrixReport({
+      userId: user.id,
+      birthDateRaw: "1990-08-15",
+      subjectId: self!.id,
+      content: `v5 comfort ${v5.comfort.number}`,
+      runeCost: 0,
+      calculationVersion: MATRIX_CALCULATION_VERSION,
+      structuredData: matrixToStructuredData(v5),
     });
 
     const rows = await query<{
@@ -83,39 +98,44 @@ describe.runIf(hasTestDb)("matrix version rows (db)", () => {
        ORDER BY calculation_version`,
       [user.id, self!.id]
     );
-    expect(rows.rows).toHaveLength(2);
+    expect(rows.rows).toHaveLength(3);
 
     const old = rows.rows.find((r) => r.calculation_version === "matrix-v3")!;
+    const frozenV4 = rows.rows.find((r) => r.calculation_version === "matrix-v4")!;
     const next = rows.rows.find((r) => r.calculation_version === MATRIX_CALCULATION_VERSION)!;
     expect(old.content).toContain(String(v3.comfort.number));
-    expect(next.content).toContain(String(v4.comfort.number));
+    expect(frozenV4.content).toContain(String(v4.comfort.number));
+    expect(next.content).toContain(String(v5.comfort.number));
     expect(old.methodology_id).toBe("zovus-matrix-subtract22-v3");
+    expect(frozenV4.methodology_id).toBe("zovus-matrix-22-v1");
     expect(next.methodology_id).toBe(MATRIX_METHODOLOGY_ID);
     expect(hydrateDestinyMatrixFromSnapshot(old.structured_data)!.comfort.number).toBe(
       v3.comfort.number
     );
-    expect(hydrateDestinyMatrixFromSnapshot(next.structured_data)!.comfort.number).toBe(
-      v4.comfort.number
-    );
+    expect(hydrateDestinyMatrixFromSnapshot(frozenV4.structured_data)!.talents.number).toBe(5);
+    expect(hydrateDestinyMatrixFromSnapshot(next.structured_data)!.talents.number).toBe(20);
 
     await saveMatrixReport({
       userId: user.id,
       birthDateRaw: "1990-08-15",
       subjectId: self!.id,
-      content: "v4 overwritten",
+      content: "v5 overwritten",
       runeCost: 0,
       calculationVersion: MATRIX_CALCULATION_VERSION,
       overwrite: true,
-      structuredData: matrixToStructuredData(v4),
+      structuredData: matrixToStructuredData(v5),
     });
     const after = await query<{ calculation_version: string; content: string }>(
       `SELECT calculation_version, content FROM numerology_report_history
        WHERE user_id = $1 AND subject_id = $2::uuid`,
       [user.id, self!.id]
     );
-    expect(after.rows).toHaveLength(2);
+    expect(after.rows).toHaveLength(3);
     expect(after.rows.find((r) => r.calculation_version === "matrix-v3")?.content).toContain(
       String(v3.comfort.number)
+    );
+    expect(after.rows.find((r) => r.calculation_version === "matrix-v4")?.content).toContain(
+      String(v4.comfort.number)
     );
 
     await query(
@@ -128,7 +148,10 @@ describe.runIf(hasTestDb)("matrix version rows (db)", () => {
        WHERE user_id = $1 AND subject_id = $2::uuid`,
       [user.id, self!.id]
     );
-    expect(remaining.rows).toHaveLength(1);
-    expect(remaining.rows[0]?.calculation_version).toBe("matrix-v3");
+    expect(remaining.rows).toHaveLength(2);
+    expect(remaining.rows.map((r) => r.calculation_version).sort()).toEqual([
+      "matrix-v3",
+      "matrix-v4",
+    ]);
   });
 });

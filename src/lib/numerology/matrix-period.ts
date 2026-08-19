@@ -7,7 +7,7 @@ import {
   type DestinyMatrixOptions,
   type DestinyMatrixResult,
 } from "./destiny-matrix";
-import { getArcanaEntry } from "./arcana-dictionary";
+import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 
 export type MatrixPeriodSnapshot = {
   yearArcana: { number: number; title: string; shortMeaning: string };
@@ -36,7 +36,8 @@ export function focusNumber(m: DestinyMatrixResult): number {
     case "ageCurrent":
       return m.ageCurrent.number;
     case "purpose":
-      return m.purpose.number;
+      // pickFocus still keys the center as "purpose"; the number is comfort/X.
+      return m.comfort.number;
     case "yearArcana":
       return m.yearArcana.number;
     case "monthArcana":
@@ -57,9 +58,9 @@ export function buildMatrixPeriodSnapshot(
 
 export function periodFromMatrix(m: DestinyMatrixResult): MatrixPeriodSnapshot {
   const focusN = focusNumber(m);
-  const focusEntry = getArcanaEntry(focusN);
-  const yearEntry = getArcanaEntry(m.yearArcana.number);
-  const monthEntry = getArcanaEntry(m.monthArcana.number);
+  const focusEntry = getMatrixArcanaEntry(focusN, m.calculationVersion);
+  const yearEntry = getMatrixArcanaEntry(m.yearArcana.number, m.calculationVersion);
+  const monthEntry = getMatrixArcanaEntry(m.monthArcana.number, m.calculationVersion);
   const practice =
     focusEntry?.advice?.trim() ||
     "Одно маленькое действие по этой зоне в ближайшие 7 дней — без героизма.";

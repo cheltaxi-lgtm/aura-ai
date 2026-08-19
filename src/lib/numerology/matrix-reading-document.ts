@@ -36,8 +36,15 @@ const PRACTICE_SPLIT_RE = /\n\s*Практика\s*:\s*/i;
 
 export function headingLineForZone(zone: MatrixZoneInstance): string {
   if (zone.id === "steps") return zone.label;
-  if (zone.id === "age" && zone.age != null && zone.number != null) {
-    return `${zone.label} (${zone.number} — ${zone.arcanaName ?? "аркан"}, ${zone.age} лет)`;
+  if (zone.id === "age" && zone.number != null) {
+    const periodNote = zone.focusLabel
+      ? zone.focusLabel
+      : zone.age != null
+        ? `период от ${zone.age} лет`
+        : "";
+    return periodNote
+      ? `${zone.label} (${zone.number} — ${zone.arcanaName ?? "аркан"}; ${periodNote})`
+      : `${zone.label} (${zone.number} — ${zone.arcanaName ?? "аркан"})`;
   }
   if (zone.id === "period" && zone.focusLabel) {
     return zone.number != null

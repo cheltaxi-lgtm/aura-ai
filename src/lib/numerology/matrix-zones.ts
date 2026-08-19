@@ -10,6 +10,9 @@ export type MatrixZoneId =
   | "sky_energy"
   | "matter"
   | "comfort"
+  | "purpose_personal"
+  | "purpose_social"
+  | "purpose_spiritual"
   | "talents"
   | "money"
   | "love"
@@ -69,6 +72,27 @@ export const MATRIX_ZONE_DEFS: MatrixZoneDef[] = [
     role: "purpose",
     required: true,
     titleCore: String.raw`Зона\s+комфорта`,
+  },
+  {
+    id: "purpose_personal",
+    label: "Личное предназначение",
+    role: "purpose",
+    required: false,
+    titleCore: String.raw`Личное\s+предназначение`,
+  },
+  {
+    id: "purpose_social",
+    label: "Социальное предназначение",
+    role: "purpose",
+    required: false,
+    titleCore: String.raw`Социальное\s+предназначение`,
+  },
+  {
+    id: "purpose_spiritual",
+    label: "Духовное предназначение",
+    role: "purpose",
+    required: false,
+    titleCore: String.raw`Духовное\s+предназначение`,
   },
   {
     id: "talents",
@@ -211,8 +235,17 @@ const CHILD_MATRIX_ZONE_DEFS: MatrixZoneDef[] = [
   },
 ];
 
-export function matrixZoneDefsFor(toolId?: string): MatrixZoneDef[] {
-  return toolId === "child_matrix" ? CHILD_MATRIX_ZONE_DEFS : MATRIX_ZONE_DEFS;
+const PURPOSE_ZONE_IDS = new Set(["purpose_personal", "purpose_social", "purpose_spiritual"]);
+
+export function matrixZoneDefsFor(toolId?: string, calculationVersion?: string): MatrixZoneDef[] {
+  const base = (calculationVersion ?? "").split("@")[0];
+  const defs = toolId === "child_matrix" ? CHILD_MATRIX_ZONE_DEFS : MATRIX_ZONE_DEFS;
+  if (!base || base === "matrix-v5") {
+    return defs.map((def) =>
+      PURPOSE_ZONE_IDS.has(def.id) ? { ...def, required: true } : def
+    );
+  }
+  return defs.filter((def) => !PURPOSE_ZONE_IDS.has(def.id));
 }
 
 export type MatrixZoneInstance = {
@@ -247,7 +280,7 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
     });
   };
 
-  for (const def of matrixZoneDefsFor(toolId)) {
+  for (const def of matrixZoneDefsFor(toolId, matrix.calculationVersion)) {
     switch (def.id) {
       case "character":
         pushPoint(def, matrix.body);
@@ -260,6 +293,15 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
         break;
       case "comfort":
         pushPoint(def, matrix.comfort);
+        break;
+      case "purpose_personal":
+        if (matrix.purposeBlock) pushPoint(def, matrix.purposeBlock.personal);
+        break;
+      case "purpose_social":
+        if (matrix.purposeBlock) pushPoint(def, matrix.purposeBlock.social);
+        break;
+      case "purpose_spiritual":
+        if (matrix.purposeBlock) pushPoint(def, matrix.purposeBlock.spiritual);
         break;
       case "talents":
         pushPoint(def, matrix.talents);
@@ -286,7 +328,12 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
         pushPoint(def, matrix.karmicTail[2]);
         break;
       case "age":
-        pushPoint(def, matrix.ageCurrent, { age: matrix.ageCurrent.age });
+        pushPoint(def, matrix.ageCurrent, {
+          age: matrix.ageCurrent.age,
+          focusLabel: matrix.ageModel
+            ? `Текущий возраст: ${matrix.ageModel.chronological} лет. Период Матрицы: ${matrix.ageModel.periodStart}–${matrix.ageModel.periodEnd} лет`
+            : undefined,
+        });
         break;
       case "age_next":
         if (matrix.ageNext) {
@@ -317,7 +364,7 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
               case "ageCurrent":
                 return matrix.ageCurrent.number;
               case "purpose":
-                return matrix.purpose.number;
+                return matrix.comfort.number;
               case "yearArcana":
                 return matrix.yearArcana.number;
               case "monthArcana":
@@ -357,7 +404,7 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
         });
         break;
       case "child_purpose":
-        pushPoint(def, matrix.purpose);
+        pushPoint(def, matrix.purposeBlock?.personal ?? matrix.comfort);
         break;
       case "parent_role":
         pushPoint(def, matrix.body);
@@ -374,6 +421,6 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
   return out;
 }
 
-export function requiredMatrixZoneLabels(toolId?: string): string[] {
-  return matrixZoneDefsFor(toolId).filter((z) => z.required).map((z) => z.label);
+export function requiredMatrixZoneLabels(toolId?: string, calculationVersion?: string): string[] {
+  return matrixZoneDefsFor(toolId, calculationVersion).filter((z) => z.required).map((z) => z.label);
 }

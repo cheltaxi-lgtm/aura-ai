@@ -252,8 +252,8 @@ export function buildMatrixCompatibilityPromptBlock(
   const a = nameA?.trim() || "Вы";
   const b = nameB?.trim() || "Партнёр";
   return [
-    `СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ (${MATRIX_CALCULATION_VERSION}, расчёт Zovus):`,
-    `${a} × ${b}. Общий score: ${result.score}/100.`,
+    `СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ (${MATRIX_CALCULATION_VERSION}, авторская аналитика Zovus):`,
+    `${a} × ${b}. Оценка Zovus: ${result.score}/100 — не классическая и не научная метрика.`,
     result.summary,
     ...result.keys.map(
       (k) =>

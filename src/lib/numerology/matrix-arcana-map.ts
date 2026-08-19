@@ -25,7 +25,7 @@ export function getMatrixArcanaEntry(
   calculationVersion?: string | null
 ): ArcanaDictionaryEntry | null {
   const base = matrixBaseVersion(calculationVersion);
-  if (!base || base === "matrix-v4") {
+  if (!base || base === "matrix-v4" || base === "matrix-v5") {
     return MATRIX_ARCANA_DICTIONARY.find((entry) => entry.id === id) ?? null;
   }
   return getArcanaEntry(id);

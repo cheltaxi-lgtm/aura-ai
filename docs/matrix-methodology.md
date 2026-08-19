@@ -1,8 +1,10 @@
 # Матрица судьбы Zovus — методология
 
 **methodology_id:** `zovus-matrix-22-v1`  
-**calculation_version (live):** `matrix-v4`  
-**renderer_version (live):** `matrix-svg-v5`
+**calculation_version:** `matrix-v4` — **frozen**. Do not mutate formulas.  
+**renderer_version:** `matrix-svg-v5`
+
+Live methodology is documented in `docs/matrix-methodology-v5.md`.
 
 Это **не** лицензированная «официальная Матрица Ладини».
 Zovus фиксирует одну воспроизводимую систему 22 энергий по открытым учебным источникам

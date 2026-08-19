@@ -5,7 +5,7 @@ import type { MatrixDiagramInput, MatrixDiagramSlot } from "../../render/matrix-
  * Must stay equal to site `MATRIX_CALCULATION_VERSION`.
  * Drift is caught by `scripts/verify-matrix-calc-drift.mjs`.
  */
-export const BOT_MATRIX_CALC_VERSION = "matrix-v4" as const;
+export const BOT_MATRIX_CALC_VERSION = "matrix-v5" as const;
 
 function sumDigits(n: number): number {
   return String(Math.abs(Math.trunc(n)))
@@ -13,7 +13,7 @@ function sumDigits(n: number): number {
     .reduce((a, d) => a + Number(d), 0);
 }
 
-/** Same as site matrix-v4: digit-sum, 22 stays (1–22; 0 → 22). */
+/** Same as site matrix-v5: digit-sum, 22 stays (1–22; 0 → 22). */
 function reduceToArcanaNumber(n: number): number {
   let value = Math.abs(Math.trunc(n));
   while (value > 22) {
@@ -85,7 +85,7 @@ type SlotDef = {
   pick: (p: Record<string, number>) => number;
 };
 
-/** Mapping matches site DESTINY_MATRIX_DIAGRAM_SLOTS (matrix-v2). */
+/** Mapping matches site DESTINY_MATRIX_DIAGRAM_SLOTS (matrix-v5). */
 const SLOTS: SlotDef[] = [
   { key: "energy", label: "Небо / энергия", area: "energy", pick: (p) => p.b! },
   { key: "skySpirit", label: "Дух", area: "sky", pick: (p) => p.sky! },
@@ -98,7 +98,7 @@ const SLOTS: SlotDef[] = [
     pick: (p) => p.x!,
   },
   { key: "roots", label: "Материя / год", area: "roots", pick: (p) => p.c! },
-  { key: "talents", label: "Таланты", area: "talents", pick: (p) => p.ab! },
+  { key: "talents", label: "Таланты", area: "talents", pick: (p) => p.sky! },
   { key: "relationships", label: "Отношения", area: "rel", pick: (p) => p.love! },
   { key: "money", label: "Деньги", area: "money", pick: (p) => p.money! },
   { key: "paternal", label: "Род отца", area: "paternal", pick: (p) => p.paternal! },
@@ -106,13 +106,13 @@ const SLOTS: SlotDef[] = [
   { key: "karma", label: "Хвост · корень", area: "karma", pick: (p) => p.g! },
   { key: "karmicMid", label: "Хвост · середина", area: "tailMid", pick: (p) => p.mid! },
   { key: "karmicTip", label: "Хвост · остриё", area: "tailTip", pick: (p) => p.tip! },
-  { key: "ageCurrent", label: "Возраст сейчас", area: "age", pick: (p) => p.age! },
+  { key: "ageCurrent", label: "Период возраста", area: "age", pick: (p) => p.age! },
   { key: "yearArcana", label: "Аркан года", area: "year", pick: (p) => p.yearArcana! },
   { key: "monthArcana", label: "Аркан месяца", area: "month", pick: (p) => p.monthArcana! },
 ];
 
 /**
- * Local fallback matching site destinyMatrix matrix-v2 when API omits `diagram`.
+ * Local fallback matching site destinyMatrix matrix-v5 when API omits `diagram`.
  */
 export function buildLocalMatrixDiagram(
   birthDate: string,

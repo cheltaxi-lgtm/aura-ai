@@ -12,7 +12,7 @@ import {
 import { compatibility } from "./compatibility";
 import { destinyMatrix, MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
 import { buildMatrixCompatibilityPromptBlock } from "./matrix-compatibility";
-import { getArcanaEntry } from "./arcana-dictionary";
+import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import { periodFromMatrix } from "./matrix-period";
 import {
   formatMatrixFinaleKeys,
@@ -458,6 +458,25 @@ function buildTopicBlock(
         { role: "energy", label: "2. Небо / энергия", number: matrix.energy.number },
         { role: "roots", label: "3. Материя / год рождения", number: matrix.roots.number },
         { role: "purpose", label: "4. Зона комфорта (центр)", number: matrix.comfort.number },
+        ...(matrix.purposeBlock
+          ? [
+              {
+                role: "purpose" as const,
+                label: "4a. Личное предназначение",
+                number: matrix.purposeBlock.personal.number,
+              },
+              {
+                role: "purpose" as const,
+                label: "4b. Социальное предназначение",
+                number: matrix.purposeBlock.social.number,
+              },
+              {
+                role: "purpose" as const,
+                label: "4c. Духовное предназначение",
+                number: matrix.purposeBlock.spiritual.number,
+              },
+            ]
+          : []),
         { role: "sky", label: "5. Духовный полюс", number: matrix.skySpirit.number },
         { role: "talents", label: "6. Таланты", number: matrix.talents.number },
         { role: "money", label: "7. Денежный канал", number: matrix.money.number },
@@ -469,7 +488,7 @@ function buildTopicBlock(
         { role: "karmicTip", label: "13. Кармический хвост · остриё", number: matrix.karmicTail[2].number },
         {
           role: "age",
-          label: `14. Точка возраста сейчас (${matrix.ageCurrent.age})`,
+          label: `14. Текущий возраст ${matrix.chronologicalAge} лет · период ${matrix.ageCurrent.age}–${matrix.ageModel?.periodEnd ?? matrix.ageCurrent.age + 5}`,
           number: matrix.ageCurrent.number,
         },
         ...(matrix.ageNext
@@ -497,9 +516,10 @@ function buildTopicBlock(
       return {
         text: [
           `МАТРИЦА СУДЬБЫ / ПОЛНАЯ (${MATRIX_CALCULATION_VERSION}, 22 аркана, авторский расчёт Zovus):`,
+          "DO NOT RECALCULATE MATRIX VALUES. USE ONLY PROVIDED VALUES.",
           formatMatrixFinaleKeys(matrix),
           `Каналы: деньги [${matrix.channels.find((c) => c.id === "money")?.points.map((p) => p.number).join(", ")}]; отношения [${matrix.channels.find((c) => c.id === "love")?.points.map((p) => p.number).join(", ")}].`,
-          "Структура: характер → небо → материя → комфорт → таланты → деньги → отношения → род отца → род матери → хвост (3) → возраст сейчас → ближайший переход возраста → год → месяц → узел периода → (небо-натал если есть) → шаги на 30 дней.",
+          "Структура: характер → небо → материя → комфорт → предназначения (личное/социальное/духовное если есть) → таланты → деньги → отношения → род отца → род матери → хвост (3) → возраст сейчас → ближайший переход возраста → год → месяц → узел периода → (небо-натал если есть) → шаги на 30 дней.",
           "КРИТИЧНО: даже при одинаковом аркане у разных точек пиши РАЗНЫЕ смыслы по роли. Нельзя объединять «энергия и таланты» или «хвост + комфорт» в одну тему.",
           "КРИТИЧНО: не копируй одну практику/фразу на несколько точек.",
           "ЗАПРЕЩЕНО: пифагорейский портрет, психоматрица, личный цикл 1–9.",
@@ -507,7 +527,9 @@ function buildTopicBlock(
           "Числа и названия арканов бери ТОЛЬКО из этого блока. Не пересчитывай матрицу.",
           "Это полная матрица Zovus по мотивам популярного 22-арканного метода — инструмент рефлексии, не научный факт и не «официальная Ладини».",
           ...(repeatNote ? [repeatNote] : []),
-          ...points.map((p) => formatMatrixPointDictLine(p, getArcanaEntry(p.number))),
+          ...points.map((p) =>
+            formatMatrixPointDictLine(p, getMatrixArcanaEntry(p.number, matrix.calculationVersion))
+          ),
         ].join("\n"),
       };
     }

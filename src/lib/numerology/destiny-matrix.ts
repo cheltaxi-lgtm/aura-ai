@@ -1,30 +1,19 @@
-import { parseBirthDate, sumDigits } from "./constants";
 import { computeDestinyMatrixV3 } from "./destiny-matrix-v3";
-import {
-  AGE_BELT_END,
-  buildAgeBelt,
-  pickAgeWindow,
-  pickFocus,
-  resolveAsOf,
-  toIsoDay,
-  yearsBetween,
-} from "./destiny-matrix-internal";
+import { computeDestinyMatrixV4 } from "./destiny-matrix-v4";
+import { computeDestinyMatrixV5 } from "./destiny-matrix-v5";
+import { AGE_BELT_END } from "./destiny-matrix-internal";
 import { arcanaForNumber } from "./matrix-arcana-map";
-import { MATRIX_CHANNEL_DEFINITIONS } from "./matrix-channels";
 import { formatAgePeriodLabel, MATRIX_LABELS } from "./matrix-labels";
 import { reduceToArcanaNumber } from "./matrix-reducers";
 import {
   MATRIX_CALCULATION_VERSION,
-  MATRIX_METHODOLOGY_ID,
-  MATRIX_RENDERER_VERSION,
   matrixBaseVersion,
-  type DestinyMatrixChannel,
   type DestinyMatrixOptions,
   type DestinyMatrixPoint,
   type DestinyMatrixResult,
 } from "./matrix-result";
 
-export { AGE_BELT_END } from "./destiny-matrix-internal";
+export { AGE_BELT_END };
 export {
   MATRIX_CALCULATION_VERSION,
   MATRIX_LEGACY_CALCULATION_VERSIONS,
@@ -32,150 +21,49 @@ export {
   MATRIX_RENDERER_VERSION,
   MATRIX_V3_CALCULATION_VERSION,
   MATRIX_V3_METHODOLOGY_ID,
+  MATRIX_V4_CALCULATION_VERSION,
+  MATRIX_V4_METHODOLOGY_ID,
+  MATRIX_V3_RENDERER_VERSION,
+  MATRIX_V4_RENDERER_VERSION,
+  MATRIX_V5_RENDERER_VERSION,
+  MATRIX_V5_ENGINE_FINGERPRINT,
   DESTINY_MATRIX_POINT_KEYS,
+  classifyMatrixReportVersion,
   isFrozenReplayVersion,
+  isKnownMatrixCalculationVersion,
   isLegacyMatrixCalculationVersion,
   methodologyIdForCalculationVersion,
   matrixBaseVersion,
 } from "./matrix-result";
 export type {
+  DestinyMatrixAgeModel,
   DestinyMatrixAgePoint,
   DestinyMatrixChannel,
   DestinyMatrixChannelId,
+  DestinyMatrixLineage,
   DestinyMatrixOptions,
   DestinyMatrixPoint,
+  DestinyMatrixPurposeBlock,
   DestinyMatrixResult,
+  DestinyMatrixTalentChain,
+  MatrixDisplayResolution,
   MatrixEngineVersion,
   MatrixMethodologyId,
+  MatrixResolveError,
 } from "./matrix-result";
 export { reduceToArcanaNumber, reduceToArcanaDigitSum, reduceToArcanaSubtract22 } from "./matrix-reducers";
 export { arcanaForNumber, getMatrixArcanaEntry, MATRIX_ARCANA_DICTIONARY } from "./matrix-arcana-map";
-
-function computeDestinyMatrixV4(
-  birthDate: string,
-  options?: DestinyMatrixOptions
-): DestinyMatrixResult | null {
-  const parsed = parseBirthDate(birthDate);
-  if (!parsed) return null;
-  const asOf = resolveAsOf(options);
-  const reduce = reduceToArcanaNumber;
-  const point = (n: number) => arcanaForNumber(n, MATRIX_CALCULATION_VERSION);
-
-  const a = reduce(parsed.day);
-  const b = reduce(parsed.month);
-  const c = reduce(sumDigits(parsed.year));
-  const g = reduce(a + b + c);
-  const x = reduce(a + b + c + g);
-  const loveInner = reduce(a + x);
-  const skyInner = reduce(b + x);
-  const moneyInner = reduce(c + x);
-  const earthInner = reduce(g + x);
-  const ab = reduce(a + b);
-  const bc = reduce(b + c);
-  const cg = reduce(c + g);
-  const ga = reduce(g + a);
-  const karmicTip = reduce(g + earthInner);
-  const yearArcanaN = reduce(a + b + sumDigits(asOf.year));
-  const monthArcanaN = reduce(yearArcanaN + asOf.month);
-
-  const perimeter = [a, ab, b, bc, c, cg, g, ga];
-  const agePoints = buildAgeBelt(perimeter, reduce, point);
-  const chronologicalAge = yearsBetween(parsed, asOf.date);
-  const { ageCurrent, ageNext } = pickAgeWindow(agePoints, chronologicalAge);
-
-  const body = point(a);
-  const energy = point(b);
-  const roots = point(c);
-  const comfort = point(x);
-  const karma = point(g);
-  const karmicMid = point(earthInner);
-  const karmicTipPt = point(karmicTip);
-  const relationships = point(loveInner);
-  const money = point(moneyInner);
-  const talents = point(ab);
-  const paternal = point(cg);
-  const maternal = point(bc);
-  const yearArcana = point(yearArcanaN);
-  const monthArcana = point(monthArcanaN);
-  const skySpirit = point(skyInner);
-  const earthTask = karmicMid;
-  const gaPoint = point(ga);
-  const focus = pickFocus({
-    yearN: yearArcanaN,
-    monthN: monthArcanaN,
-    comfortN: x,
-    moneyN: moneyInner,
-    loveN: loveInner,
-    tail: [g, earthInner, karmicTip],
-    ageN: ageCurrent.number,
-  });
-
-  const byId: Record<string, DestinyMatrixPoint> = {
-    body,
-    energy,
-    roots,
-    comfort,
-    relationships,
-    money,
-    talents,
-    paternal,
-    maternal,
-    skySpirit,
-    earthTask,
-    karma,
-    karmicTip: karmicTipPt,
-    "lineage.ga": gaPoint,
-  };
-
-  return {
-    methodologyId: MATRIX_METHODOLOGY_ID,
-    calculationVersion: MATRIX_CALCULATION_VERSION,
-    rendererVersion: MATRIX_RENDERER_VERSION,
-    body,
-    energy,
-    roots,
-    purpose: comfort,
-    relationships,
-    money,
-    karma,
-    talents,
-    paternal,
-    maternal,
-    yearArcana,
-    comfort,
-    karmicTail: [karma, karmicMid, karmicTipPt],
-    skySpirit,
-    earthTask,
-    monthArcana,
-    agePoints,
-    ageCurrent,
-    ageNext,
-    chronologicalAge,
-    channels: MATRIX_CHANNEL_DEFINITIONS.filter(
-      (def): def is typeof def & { id: DestinyMatrixChannel["id"] } => def.id !== "karmicTail"
-    ).map((def) => ({
-      id: def.id,
-      label: def.label,
-      points: def.pointIds.map((id) => byId[id] ?? comfort),
-    })),
-    focusKey: focus.focusKey,
-    focusLabel: focus.focusLabel,
-    asOf: { year: asOf.year, month: asOf.month, date: toIsoDay(asOf.date) },
-  };
-}
 
 export function destinyMatrix(
   birthDate: string,
   options?: DestinyMatrixOptions
 ): DestinyMatrixResult | null {
   const requested = matrixBaseVersion(options?.calculationVersion);
-  if (requested === "matrix-v3") {
-    return computeDestinyMatrixV3(birthDate, options);
-  }
-  if (requested === "matrix-v1" || requested === "matrix-v2") {
-    return null;
-  }
-  return computeDestinyMatrixV4(birthDate, options);
+  if (!requested) return computeDestinyMatrixV5(birthDate, options);
+  if (requested === "matrix-v5") return computeDestinyMatrixV5(birthDate, options);
+  if (requested === "matrix-v4") return computeDestinyMatrixV4(birthDate, options);
+  if (requested === "matrix-v3") return computeDestinyMatrixV3(birthDate, options);
+  return null;
 }
 
 export const DESTINY_MATRIX_DIAGRAM_SLOTS: Array<{
@@ -193,7 +81,7 @@ export const DESTINY_MATRIX_DIAGRAM_SLOTS: Array<{
     label: MATRIX_LABELS.comfort,
     area: "purpose",
     featured: true,
-    pick: (m) => m.purpose,
+    pick: (m) => m.comfort,
   },
   { key: "roots", label: MATRIX_LABELS.rootsLong, area: "roots", pick: (m) => m.roots },
   { key: "talents", label: MATRIX_LABELS.talents, area: "talents", pick: (m) => m.talents },
@@ -224,8 +112,8 @@ export function matrixOptionsForTimestamp(
 }
 
 export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {
-  const periodEnd = m.ageNext?.age ?? m.ageCurrent.age + 5;
-  return [
+  const periodEnd = m.ageModel?.periodEnd ?? m.ageNext?.age ?? m.ageCurrent.age + 5;
+  const lines = [
     `${MATRIX_LABELS.methodologyName} (${m.calculationVersion}):`,
     `${MATRIX_LABELS.body}: ${m.body.number} — ${m.body.arcanaName}`,
     `${MATRIX_LABELS.energyLong}: ${m.energy.number} — ${m.energy.arcanaName}`,
@@ -241,7 +129,17 @@ export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {
     `${MATRIX_LABELS.yearArcana}: ${m.yearArcana.number} — ${m.yearArcana.arcanaName}`,
     `${MATRIX_LABELS.monthArcana}: ${m.monthArcana.number} — ${m.monthArcana.arcanaName}`,
     `${m.focusLabel}`,
-  ].join("\n");
+  ];
+  if (m.purposeBlock) {
+    lines.splice(
+      5,
+      0,
+      `${MATRIX_LABELS.purposePersonal}: ${m.purposeBlock.personal.number} — ${m.purposeBlock.personal.arcanaName}`,
+      `${MATRIX_LABELS.purposeSocial}: ${m.purposeBlock.social.number} — ${m.purposeBlock.social.arcanaName}`,
+      `${MATRIX_LABELS.purposeSpiritual}: ${m.purposeBlock.spiritual.number} — ${m.purposeBlock.spiritual.arcanaName}`
+    );
+  }
+  return lines.join("\n");
 }
 
 export function matrixToStructuredData(m: DestinyMatrixResult): Record<string, unknown> {
@@ -283,5 +181,38 @@ export function matrixToStructuredData(m: DestinyMatrixResult): Record<string, u
     focusKey: m.focusKey,
     focusLabel: m.focusLabel,
     asOf: m.asOf,
+    ...(m.purposeBlock
+      ? {
+          purposeBlock: {
+            personal: point(m.purposeBlock.personal),
+            social: point(m.purposeBlock.social),
+            spiritual: point(m.purposeBlock.spiritual),
+            skyLine: point(m.purposeBlock.skyLine),
+            earthLine: point(m.purposeBlock.earthLine),
+            maleChannel: point(m.purposeBlock.maleChannel),
+            femaleChannel: point(m.purposeBlock.femaleChannel),
+          },
+        }
+      : {}),
+    ...(m.talentsChain
+      ? {
+          talentsChain: {
+            primary: point(m.talentsChain.primary),
+            secondary: point(m.talentsChain.secondary),
+            tertiary: point(m.talentsChain.tertiary),
+          },
+        }
+      : {}),
+    ...(m.lineage
+      ? {
+          lineage: {
+            male: m.lineage.male.map(point),
+            female: m.lineage.female.map(point),
+          },
+        }
+      : {}),
+    ...(m.ageModel ? { ageModel: m.ageModel } : {}),
+    ...(m.loveDeep ? { loveDeep: point(m.loveDeep) } : {}),
+    ...(m.moneyDeep ? { moneyDeep: point(m.moneyDeep) } : {}),
   };
 }

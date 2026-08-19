@@ -288,7 +288,17 @@ export async function updateUserProfile(
       JSON.stringify(astroMeta),
     ]
   );
-  return rows[0] ?? null;
+  const updated = rows[0] ?? null;
+  if (updated?.birth_date) {
+    await query(
+      `UPDATE matrix_subjects
+       SET birth_date = $2::date, updated_at = NOW()
+       WHERE user_id = $1 AND kind = 'self'
+         AND birth_date IS DISTINCT FROM $2::date`,
+      [id, updated.birth_date]
+    );
+  }
+  return updated;
 }
 
 export async function linkSessionToUser(

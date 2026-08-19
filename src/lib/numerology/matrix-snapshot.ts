@@ -8,13 +8,20 @@ import {
   type DestinyMatrixResult,
 } from "./destiny-matrix";
 import {
-  MATRIX_CALCULATION_VERSION,
   MATRIX_METHODOLOGY_ID,
   MATRIX_RENDERER_VERSION,
-  MATRIX_V3_CALCULATION_VERSION,
   MATRIX_V3_METHODOLOGY_ID,
+  MATRIX_V3_RENDERER_VERSION,
+  MATRIX_V4_RENDERER_VERSION,
+  MATRIX_V5_RENDERER_VERSION,
+  isKnownMatrixCalculationVersion,
   matrixBaseVersion,
   methodologyIdForCalculationVersion,
+  type DestinyMatrixAgeModel,
+  type DestinyMatrixLineage,
+  type DestinyMatrixPurposeBlock,
+  type DestinyMatrixTalentChain,
+  type MatrixDisplayResolution,
 } from "./matrix-result";
 
 function asPoint(value: unknown): DestinyMatrixPoint | null {
@@ -104,17 +111,28 @@ export function hydrateDestinyMatrixFromSnapshot(
   const version =
     (typeof data.calculationVersion === "string" && data.calculationVersion) ||
     (typeof data.version === "string" && data.version) ||
-    MATRIX_CALCULATION_VERSION;
+    "";
+  const rendererFallback = (() => {
+    const base = matrixBaseVersion(version);
+    if (base === "matrix-v5") return MATRIX_V5_RENDERER_VERSION;
+    if (base === "matrix-v4") return MATRIX_V4_RENDERER_VERSION;
+    if (base === "matrix-v3") return MATRIX_V3_RENDERER_VERSION;
+    return MATRIX_RENDERER_VERSION;
+  })();
   const comfort = points.comfort!;
+  const purposeBlock = asPurposeBlock(data.purposeBlock);
+  const talentsChain = asTalentChain(data.talentsChain);
+  const lineage = asLineage(data.lineage);
+  const ageModel = asAgeModel(data.ageModel);
   return {
     methodologyId: methodologyIdForCalculationVersion(version),
     calculationVersion: version,
     rendererVersion:
-      typeof data.rendererVersion === "string" ? data.rendererVersion : MATRIX_RENDERER_VERSION,
+      typeof data.rendererVersion === "string" ? data.rendererVersion : rendererFallback,
     body: points.body!,
     energy: points.energy!,
     roots: points.roots!,
-    purpose: asPoint(data.purpose) ?? comfort,
+    purpose: asPoint(data.purpose) ?? purposeBlock?.personal ?? comfort,
     relationships: points.relationships!,
     money: points.money!,
     karma: points.karma!,
@@ -136,7 +154,107 @@ export function hydrateDestinyMatrixFromSnapshot(
     focusKey: typeof data.focusKey === "string" ? data.focusKey : "purpose",
     focusLabel: typeof data.focusLabel === "string" ? data.focusLabel : "Зона комфорта",
     asOf,
+    ...(purposeBlock ? { purposeBlock } : {}),
+    ...(talentsChain ? { talentsChain } : {}),
+    ...(lineage ? { lineage } : {}),
+    ...(ageModel ? { ageModel } : {}),
+    ...(asPoint(data.loveDeep) ? { loveDeep: asPoint(data.loveDeep)! } : {}),
+    ...(asPoint(data.moneyDeep) ? { moneyDeep: asPoint(data.moneyDeep)! } : {}),
   };
+}
+
+function asPurposeBlock(value: unknown): DestinyMatrixPurposeBlock | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const personal = asPoint(row.personal);
+  const social = asPoint(row.social);
+  const spiritual = asPoint(row.spiritual);
+  const skyLine = asPoint(row.skyLine);
+  const earthLine = asPoint(row.earthLine);
+  const maleChannel = asPoint(row.maleChannel);
+  const femaleChannel = asPoint(row.femaleChannel);
+  if (!personal || !social || !spiritual || !skyLine || !earthLine || !maleChannel || !femaleChannel) {
+    return null;
+  }
+  return { personal, social, spiritual, skyLine, earthLine, maleChannel, femaleChannel };
+}
+
+function asTalentChain(value: unknown): DestinyMatrixTalentChain | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as Record<string, unknown>;
+  const primary = asPoint(row.primary);
+  const secondary = asPoint(row.secondary);
+  const tertiary = asPoint(row.tertiary);
+  if (!primary || !secondary || !tertiary) return null;
+  return { primary, secondary, tertiary };
+}
+
+function asLineage(value: unknown): DestinyMatrixLineage | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as { male?: unknown; female?: unknown };
+  if (!Array.isArray(row.male) || !Array.isArray(row.female)) return null;
+  const male = row.male.map(asPoint);
+  const female = row.female.map(asPoint);
+  if (male.some((p) => !p) || female.some((p) => !p)) return null;
+  return {
+    male: male as DestinyMatrixPoint[],
+    female: female as DestinyMatrixPoint[],
+  };
+}
+
+function asAgeModel(value: unknown): DestinyMatrixAgeModel | null {
+  if (!value || typeof value !== "object") return null;
+  const row = value as {
+    chronological?: unknown;
+    periodStart?: unknown;
+    periodEnd?: unknown;
+    energy?: unknown;
+    nextPeriod?: unknown;
+  };
+  const energy = asPoint(row.energy);
+  if (
+    typeof row.chronological !== "number" ||
+    typeof row.periodStart !== "number" ||
+    typeof row.periodEnd !== "number" ||
+    !energy
+  ) {
+    return null;
+  }
+  return {
+    chronological: row.chronological,
+    periodStart: row.periodStart,
+    periodEnd: row.periodEnd,
+    energy,
+    nextPeriod: row.nextPeriod == null ? null : asAge(row.nextPeriod),
+  };
+}
+
+export function resolveMatrixForDisplayDetailed(input: {
+  birthDate: string;
+  structuredData?: Record<string, unknown> | null;
+  calculationVersion?: string | null;
+  createdAt?: string | null;
+}): MatrixDisplayResolution {
+  const hydrated = hydrateDestinyMatrixFromSnapshot(input.structuredData ?? null);
+  if (hydrated) return { ok: true, matrix: hydrated };
+  const storedAsOf = asOfFromData(input.structuredData);
+  const asOf = storedAsOf
+    ? { asOfDate: storedAsOf.date, asOfYear: storedAsOf.year, asOfMonth: storedAsOf.month }
+    : matrixOptionsForTimestamp(input.createdAt);
+  const version = matrixBaseVersion(input.calculationVersion);
+  if (!version) {
+    const live = destinyMatrix(input.birthDate, asOf);
+    return live ? { ok: true, matrix: live } : { ok: false, error: "invalid_birth_date" };
+  }
+  if (version === "matrix-v1" || version === "matrix-v2") {
+    return { ok: false, error: "legacy_without_snapshot" };
+  }
+  if (!isKnownMatrixCalculationVersion(version)) {
+    return { ok: false, error: "unsupported_matrix_version" };
+  }
+  const matrix = destinyMatrix(input.birthDate, { ...asOf, calculationVersion: version });
+  if (!matrix) return { ok: false, error: "invalid_birth_date" };
+  return { ok: true, matrix };
 }
 
 export function resolveMatrixForDisplay(input: {
@@ -145,20 +263,8 @@ export function resolveMatrixForDisplay(input: {
   calculationVersion?: string | null;
   createdAt?: string | null;
 }): DestinyMatrixResult | null {
-  const hydrated = hydrateDestinyMatrixFromSnapshot(input.structuredData ?? null);
-  if (hydrated) return hydrated;
-  const asOf =
-    asOfFromData(input.structuredData) ??
-    matrixOptionsForTimestamp(input.createdAt) ??
-    undefined;
-  const version = matrixBaseVersion(input.calculationVersion);
-  if (version === "matrix-v1" || version === "matrix-v2") {
-    return null;
-  }
-  if (version === MATRIX_V3_CALCULATION_VERSION) {
-    return destinyMatrix(input.birthDate, { ...asOf, calculationVersion: MATRIX_V3_CALCULATION_VERSION });
-  }
-  return destinyMatrix(input.birthDate, { ...asOf, calculationVersion: MATRIX_CALCULATION_VERSION });
+  const resolved = resolveMatrixForDisplayDetailed(input);
+  return resolved.ok ? resolved.matrix : null;
 }
 
 export function snapshotHasCoreNumbers(data: Record<string, unknown> | null | undefined): boolean {

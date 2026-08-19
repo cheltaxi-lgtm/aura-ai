@@ -64,7 +64,7 @@ function independentCore(iso: string) {
 
 describe("destiny matrix calculation vectors", () => {
   it("uses the methodology digit-sum reducer", () => {
-    expect(MATRIX_CALCULATION_VERSION).toBe("matrix-v4");
+    expect(MATRIX_CALCULATION_VERSION).toBe("matrix-v5");
     expect(reduceToArcanaNumber(22)).toBe(22);
     expect(reduceToArcanaNumber(23)).toBe(5);
     expect(reduceToArcanaNumber(11)).toBe(11);
@@ -86,7 +86,7 @@ describe("destiny matrix calculation vectors", () => {
       expect(m!.money.number, `${birth} money`).toBe(raw.money);
       expect(m!.karmicTail[1].number, `${birth} mid`).toBe(raw.mid);
       expect(m!.karmicTail[2].number, `${birth} tip`).toBe(raw.tip);
-      expect(m!.talents.number, `${birth} AB`).toBe(raw.ab);
+      expect(m!.talents.number, `${birth} B+X`).toBe(raw.sky);
       expect(m!.paternal.number, `${birth} paternal`).toBe(raw.paternal);
       expect(m!.maternal.number, `${birth} maternal`).toBe(raw.maternal);
       expect(m!.maternal.number, `${birth} maternal=BC`).toBe(raw.bc);
@@ -137,6 +137,30 @@ describe("matrix semantic model", () => {
       m.monthArcana.number,
       ...m.karmicTail.map((p) => p.number),
       ...m.agePoints.map((p) => p.number),
+      m.purpose.number,
+      ...(m.purposeBlock
+        ? [
+            m.purposeBlock.personal.number,
+            m.purposeBlock.social.number,
+            m.purposeBlock.spiritual.number,
+            m.purposeBlock.skyLine.number,
+            m.purposeBlock.earthLine.number,
+            m.purposeBlock.maleChannel.number,
+            m.purposeBlock.femaleChannel.number,
+          ]
+        : []),
+      ...(m.talentsChain
+        ? [
+            m.talentsChain.primary.number,
+            m.talentsChain.secondary.number,
+            m.talentsChain.tertiary.number,
+          ]
+        : []),
+      ...(m.lineage
+        ? [...m.lineage.male, ...m.lineage.female].map((p) => p.number)
+        : []),
+      ...(m.loveDeep ? [m.loveDeep.number] : []),
+      ...(m.moneyDeep ? [m.moneyDeep.number] : []),
     ]);
     for (const node of model.nodes) {
       expect(engineNumbers.has(node.number), node.id).toBe(true);

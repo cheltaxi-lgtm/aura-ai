@@ -1183,7 +1183,10 @@ export async function POST(request: NextRequest) {
               );
               // Prefer structured document: titles are engine-locked; prose names are canonicalized.
               if (matrixDocumentForSave) {
-                const locked = canonicalizeMatrixReadingDocument(matrixDocumentForSave);
+                const locked = canonicalizeMatrixReadingDocument(
+                  matrixDocumentForSave,
+                  matrix.calculationVersion
+                );
                 if (!matrixDocumentMatchesEngine(locked, matrix)) {
                   console.error(
                     `[matrix-save] document arcana mismatch user=${authed.profileUserId} tool=${toolId}`
@@ -1192,12 +1195,16 @@ export async function POST(request: NextRequest) {
                 }
                 matrixDocumentForSave = locked;
                 matrixContent = canonicalizeArcanaNamesInText(
-                  renderMatrixReadingMarkdown(locked)
+                  renderMatrixReadingMarkdown(locked),
+                  matrix.calculationVersion
                 );
                 // Document already validated — do not re-fail on brittle markdown
                 // heading geometry (LLM prose may still contain extra N—Name pairs).
               } else {
-                matrixContent = canonicalizeArcanaNamesInText(matrixContent);
+                matrixContent = canonicalizeArcanaNamesInText(
+                  matrixContent,
+                  matrix.calculationVersion
+                );
                 if (!matrixReadingMatchesEngine(matrixContent, matrix, toolId)) {
                   console.error(
                     `[matrix-save] arcana fidelity mismatch user=${authed.profileUserId} tool=${toolId}`

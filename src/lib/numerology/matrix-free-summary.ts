@@ -1,4 +1,4 @@
-import { getArcanaEntry } from "./arcana-dictionary";
+import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import {
   destinyMatrix,
   MATRIX_CALCULATION_VERSION,
@@ -31,8 +31,11 @@ function clip(text: string, max: number): string {
   return `${(sp > 24 ? cut.slice(0, sp) : cut).trim()}…`;
 }
 
-function arc(n: number): { title: string; short: string; money: string; love: string; light: string } {
-  const e = getArcanaEntry(n);
+function arc(
+  n: number,
+  calculationVersion?: string
+): { title: string; short: string; money: string; love: string; light: string } {
+  const e = getMatrixArcanaEntry(n, calculationVersion);
   return {
     title: e?.title ?? `Аркан ${n}`,
     short: e?.shortMeaning ?? "",
@@ -42,8 +45,13 @@ function arc(n: number): { title: string; short: string; money: string; love: st
   };
 }
 
-function lineFor(role: string, n: number, sphere: "purpose" | "money" | "love" | "short"): string {
-  const entry = getArcanaEntry(n);
+function lineFor(
+  role: string,
+  n: number,
+  sphere: "purpose" | "money" | "love" | "short",
+  calculationVersion?: string
+): string {
+  const entry = getMatrixArcanaEntry(n, calculationVersion);
   if (!entry) return `${role}: аркан ${n}.`;
   const text =
     sphere === "money"
@@ -70,24 +78,25 @@ export function formatMatrixDenseTeaser(
 ): string {
   const m = summary.matrix;
   const p = summary.period;
-  const body = arc(m.body.number);
-  const energy = arc(m.energy.number);
-  const comfort = arc(m.comfort.number);
-  const talents = arc(m.talents.number);
-  const money = arc(m.money.number);
-  const love = arc(m.relationships.number);
-  const year = arc(m.yearArcana.number);
-  const month = arc(m.monthArcana.number);
-  const age = arc(m.ageCurrent.number);
+  const ver = m.calculationVersion;
+  const body = arc(m.body.number, ver);
+  const energy = arc(m.energy.number, ver);
+  const comfort = arc(m.comfort.number, ver);
+  const talents = arc(m.talents.number, ver);
+  const money = arc(m.money.number, ver);
+  const love = arc(m.relationships.number, ver);
+  const year = arc(m.yearArcana.number, ver);
+  const month = arc(m.monthArcana.number, ver);
+  const age = arc(m.ageCurrent.number, ver);
   const tail = m.karmicTail.map((x) => x.number).join("→");
-  const root = arc(m.karmicTail[0].number);
+  const root = arc(m.karmicTail[0].number, ver);
 
   const name = (opts?.name || "").trim();
   const birth = (opts?.birthDate || "").trim().slice(0, 10);
   const who = [name || null, birth || null].filter(Boolean).join(" · ");
 
   const practice = clip(p.practiceSeed, 90);
-  const focusHook = clip(arc(p.focusNumber).short || p.focusTitle, 56);
+  const focusHook = clip(arc(p.focusNumber, ver).short || p.focusTitle, 56);
 
   const lines = [
     who ? `🌌 Полная матрица Zovus · ${who}` : "🌌 Полная матрица Zovus",
@@ -96,7 +105,7 @@ export function formatMatrixDenseTeaser(
     `✨ ${m.comfort.number} ${comfort.title} — ${clip(comfort.short, 52)}`,
     `💎 ${m.talents.number} ${talents.title} — ${clip(talents.short, 52)}`,
     `♻️ Хвост ${tail} · корень ${root.title}`,
-    `🪴 ${m.ageCurrent.age} лет · ${m.ageCurrent.number} ${age.title}`,
+    `🪴 ${m.chronologicalAge} лет · период ${m.ageCurrent.age}–${m.ageModel?.periodEnd ?? m.ageCurrent.age + 5} · ${m.ageCurrent.number} ${age.title}`,
     `💰 ${m.money.number} ${money.title} — ${clip(money.money || money.short, 52)}`,
     `💞 ${m.relationships.number} ${love.title} — ${clip(love.love || love.short, 52)}`,
     `📅 Год ${m.yearArcana.number} ${year.title} · месяц ${m.monthArcana.number} ${month.title}`,
@@ -124,13 +133,13 @@ export function buildMatrixFreeSummary(
   const matrix = destinyMatrix(birthDate, options);
   if (!matrix) return null;
 
-  const comfort = getArcanaEntry(matrix.comfort.number);
-  const body = getArcanaEntry(matrix.body.number);
+  const comfort = getMatrixArcanaEntry(matrix.comfort.number, matrix.calculationVersion);
+  const body = getMatrixArcanaEntry(matrix.body.number, matrix.calculationVersion);
   const name = options?.name?.trim();
   const who = name ? `${name}, ` : "";
   const period = periodFromMatrix(matrix);
   const tail = matrix.karmicTail.map((p) => `${p.number}`).join(" → ");
-  const rootEntry = getArcanaEntry(matrix.karmicTail[0].number);
+  const rootEntry = getMatrixArcanaEntry(matrix.karmicTail[0].number, matrix.calculationVersion);
 
   const portrait = `${who}${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}) — ${clip(body?.light ?? body?.shortMeaning ?? matrix.body.arcanaMeaning, 80)}. Комфорт: ${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}).`;
 
@@ -158,9 +167,9 @@ export function buildMatrixFreeSummary(
       },
     ],
     portrait,
-    moneyInsight: lineFor("Денежный канал", matrix.money.number, "money"),
-    loveInsight: lineFor("Отношения", matrix.relationships.number, "love"),
-    yearInsight: lineFor("Аркан года", matrix.yearArcana.number, "short"),
+    moneyInsight: lineFor("Денежный канал", matrix.money.number, "money", matrix.calculationVersion),
+    loveInsight: lineFor("Отношения", matrix.relationships.number, "love", matrix.calculationVersion),
+    yearInsight: lineFor("Аркан года", matrix.yearArcana.number, "short", matrix.calculationVersion),
     comfortInsight: `${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}) — ${comfort?.shortMeaning ?? matrix.comfort.arcanaMeaning}`,
     karmicInsight: `${tail} · корень ${rootEntry?.title ?? matrix.karmicTail[0].arcanaName} (${matrix.karmicTail[0].number})`,
     ageInsight: `${matrix.ageCurrent.age}: ${matrix.ageCurrent.number} — ${matrix.ageCurrent.arcanaName}`,

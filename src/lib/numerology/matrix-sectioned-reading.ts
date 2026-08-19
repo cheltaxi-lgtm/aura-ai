@@ -11,7 +11,7 @@ import {
   type BinaryGender,
 } from "@/lib/russian-name-gender";
 import type { MatrixSubjectKind } from "@/lib/services/matrix-subject-service";
-import { getArcanaEntry } from "./arcana-dictionary";
+import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
 import {
   buildMatrixAudience,
@@ -187,14 +187,14 @@ export function renderEngineZoneProse(
   const title = headingLine(zone);
 
   if (zone.id === "steps") {
-    const year = getArcanaEntry(matrix.yearArcana.number);
-    const money = getArcanaEntry(matrix.money.number);
-    const comfort = getArcanaEntry(matrix.comfort.number);
+    const year = getMatrixArcanaEntry(matrix.yearArcana.number, matrix.calculationVersion);
+    const money = getMatrixArcanaEntry(matrix.money.number, matrix.calculationVersion);
+    const comfort = getMatrixArcanaEntry(matrix.comfort.number, matrix.calculationVersion);
     if (aboutOther) {
       return [
         title,
         `1) Опора характера ${subject}: раз в неделю отмечай, где «${
-          getArcanaEntry(matrix.body.number)?.title ?? matrix.body.arcanaName
+          getMatrixArcanaEntry(matrix.body.number, matrix.calculationVersion)?.title ?? matrix.body.arcanaName
         }» проявляется рядом с тобой — одно наблюдение без оценки.`,
         `2) Зона комфорта «${comfort?.title ?? matrix.comfort.arcanaName}»: одно решение на 30 дней, как ты поддерживаешь ${subject} в этом векторе — без чужих сценариев.`,
         `3) Деньги через «${money?.title ?? matrix.money.arcanaName}»: один конкретный шаг с твоей стороны (${
@@ -207,7 +207,7 @@ export function renderEngineZoneProse(
     return [
       title,
       `1) Опора характера: раз в неделю отмечай, где «${
-        getArcanaEntry(matrix.body.number)?.title ?? matrix.body.arcanaName
+        getMatrixArcanaEntry(matrix.body.number, matrix.calculationVersion)?.title ?? matrix.body.arcanaName
       }» помогает, а где мешает — одно наблюдение без самокритики.`,
       `2) Зона комфорта «${comfort?.title ?? matrix.comfort.arcanaName}»: одно решение на 30 дней строго в этом векторе — без чужих сценариев.`,
       `3) Деньги через «${money?.title ?? matrix.money.arcanaName}»: один конкретный шаг (${
@@ -219,7 +219,7 @@ export function renderEngineZoneProse(
   }
 
   const n = zone.number ?? 0;
-  const entry = getArcanaEntry(n);
+  const entry = getMatrixArcanaEntry(n, matrix.calculationVersion);
   const arcana = entry?.title ?? zone.arcanaName ?? `Аркан ${n}`;
   const role = zone.role === "steps" ? "body" : (zone.role as MatrixPointRole);
   const lens = entry ? matrixRoleLens(role, entry) : "";
@@ -509,7 +509,7 @@ async function generateMatrixZoneLlm(
   });
   const aboutOther = isMatrixAboutOther(audience.subjectKind);
   const n = zone.number;
-  const entry = n != null ? getArcanaEntry(n) : null;
+  const entry = n != null ? getMatrixArcanaEntry(n, matrix.calculationVersion) : null;
   const role = zone.role === "steps" ? null : (zone.role as MatrixPointRole);
   const lens =
     entry && role ? matrixRoleLens(role, entry) : entry ? entry.advice : "";
@@ -609,7 +609,7 @@ async function generateMatrixZoneLlm(
   );
   if (!raw) return null;
   const normalized = normalizeZoneBlock(
-    canonicalizeArcanaNamesInText(raw),
+    canonicalizeArcanaNamesInText(raw, matrix.calculationVersion),
     zone
   );
   if (!normalized) return null;
@@ -978,7 +978,7 @@ export async function generateFullMatrixSectionedReading(input: {
   }
 
   // Engine titles win over LLM renames (Marseille swaps / synonyms).
-  reading = canonicalizeArcanaNamesInText(reading);
+  reading = canonicalizeArcanaNamesInText(reading, matrix.calculationVersion);
 
   const meta: MatrixSectionedMeta = {
     aiZones: document.meta.aiZones,

@@ -49,7 +49,10 @@ for (let year = 1900; year <= 2100; year++) {
           if (outOfRange < 10) note("OUT_OF_RANGE", `${iso} ${label}=${n}`);
         }
       }
-      if (m.comfort.number !== m.purpose.number) note("COMFORT_NE_PURPOSE", iso);
+      if (!m.purposeBlock) note("MISSING_PURPOSE_BLOCK", iso);
+      else if (m.purpose.number !== m.purposeBlock.personal.number) {
+        note("PURPOSE_NOT_PERSONAL", iso);
+      }
       if (m.earthTask.number !== m.karmicTail[1].number) note("EARTHTASK_NE_TAILMID", iso);
       if (m.agePoints.length !== 17) note("AGE_POINTS_COUNT", `${iso} ${m.agePoints.length}`);
       focusHistogram.set(m.focusKey, (focusHistogram.get(m.focusKey) ?? 0) + 1);

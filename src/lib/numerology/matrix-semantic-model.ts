@@ -83,14 +83,22 @@ function node(
 export function buildMatrixSemanticModel(
   matrix: DestinyMatrixResult
 ): MatrixSemanticModel {
-  const isV3 = matrix.calculationVersion.split("@")[0] === "matrix-v3";
+  const base = matrix.calculationVersion.split("@")[0];
+  const isV3 = base === "matrix-v3";
+  const isV5 = base === "matrix-v5";
   const topRight = isV3 ? matrix.maternal : ageAt(matrix, 30);
   const bottomRight = isV3 ? ageAt(matrix, 50) : matrix.paternal;
-  const bottomLeft = ageAt(matrix, 70);
+  const bottomLeft = isV5
+    ? (matrix.lineage?.female[2] ?? ageAt(matrix, 70))
+    : ageAt(matrix, 70);
+  const topLeftPoint = isV5
+    ? (matrix.lineage?.male[0] ?? matrix.talents)
+    : matrix.talents;
+  const topLeftLabel = isV5 ? "Род отца · духовное" : "Таланты";
 
   const nodes: MatrixSemanticNode[] = [
     node("outer.left", "outer", "Характер", "Характер", matrix.body, "body", ["body"]),
-    node("outer.topLeft", "outer", "Таланты", "", matrix.talents, "talents", ["talents"]),
+    node("outer.topLeft", "outer", topLeftLabel, isV5 ? "Отец" : "", topLeftPoint, isV5 ? null : "talents", isV5 ? ["paternal"] : ["talents"]),
     node("outer.top", "outer", "Небо / энергия", "Небо", matrix.energy, "energy", ["energy"]),
     node(
       "outer.topRight",
@@ -117,11 +125,11 @@ export function buildMatrixSemanticModel(
     node(
       "outer.bottomLeft",
       "outer",
-      "Родовая точка · 70 лет",
-      "",
+      isV5 ? "Род матери · материальное" : "Родовая точка · 70 лет",
+      isV5 ? "Мать" : "",
       bottomLeft,
-      null,
-      []
+      isV5 ? "maternal" : null,
+      isV5 ? ["maternal"] : []
     ),
     node("center", "center", "Зона комфорта", "", matrix.comfort, "purpose", [
       "purpose",
