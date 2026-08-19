@@ -27,6 +27,7 @@ import {
 } from "@/lib/numerology/matrix-snapshot";
 import { listMatrixZones } from "@/lib/numerology/matrix-zones";
 import { clientSafeMatrixResolveError, MATRIX_LABELS } from "@/lib/numerology/matrix-labels";
+import { buildMatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
 import { buildNumerologSessionResult } from "@/lib/numerology/session-result";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import {
@@ -575,5 +576,42 @@ describe("client-safe resolve errors", () => {
     expect(clientSafeMatrixResolveError("legacy_without_snapshot")).not.toMatch(/matrix-v/i);
     expect(clientSafeMatrixResolveError("unsupported_matrix_version")).not.toMatch(/matrix-v/i);
     expect(clientSafeMatrixResolveError("unsupported_matrix_version")).toContain("не поддерживается");
+  });
+});
+
+describe("child purpose is personal, not comfort", () => {
+  it("child_purpose zone uses purposeBlock.personal", () => {
+    const matrix = [
+      "1995-03-14",
+      "1984-10-31",
+      "2000-01-01",
+      "1978-01-20",
+      "2012-06-01",
+    ]
+      .map((dob) => destinyMatrix(dob, AS_OF)!)
+      .find((m) => m.purposeBlock && m.purposeBlock.personal.number !== m.comfort.number);
+    expect(matrix).toBeTruthy();
+    const zone = listMatrixZones(matrix!, "child_matrix").find((z) => z.id === "child_purpose");
+    expect(zone?.label).toBe("Для чего дан ребёнок");
+    expect(zone?.number).toBe(matrix!.purposeBlock!.personal.number);
+    expect(zone?.number).not.toBe(matrix!.comfort.number);
+  });
+});
+
+describe("Telegram teaser snapshot-first", () => {
+  it("does not rewrite a v4 matrix through the live v5 engine", () => {
+    const v4 = destinyMatrix("1990-08-15", {
+      ...AS_OF,
+      calculationVersion: MATRIX_V4_CALCULATION_VERSION,
+    })!;
+    const live = destinyMatrix("1990-08-15", AS_OF)!;
+    expect(v4.talents.number).not.toBe(live.talents.number);
+    const summary = buildMatrixFreeSummary("1990-08-15", { matrix: v4 })!;
+    expect(summary.version).toBe(MATRIX_V4_CALCULATION_VERSION);
+    expect(summary.matrix.calculationVersion).toBe(MATRIX_V4_CALCULATION_VERSION);
+    expect(summary.matrix.talents.number).toBe(v4.talents.number);
+    expect(summary.matrix.comfort.number).toBe(v4.comfort.number);
+    expect(JSON.stringify(summary.matrix)).not.toContain("purposeBlock");
+    expect(JSON.stringify(summary.matrix)).not.toContain("talentsChain");
   });
 });

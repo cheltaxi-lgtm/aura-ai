@@ -1,7 +1,6 @@
 import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import {
   destinyMatrix,
-  MATRIX_CALCULATION_VERSION,
   type DestinyMatrixOptions,
   type DestinyMatrixResult,
 } from "./destiny-matrix";
@@ -9,7 +8,7 @@ import { formatAgeAndPeriodFocus } from "./matrix-labels";
 import { periodFromMatrix, type MatrixPeriodSnapshot } from "./matrix-period";
 
 export type MatrixFreeSummary = {
-  version: typeof MATRIX_CALCULATION_VERSION;
+  version: string;
   matrix: DestinyMatrixResult;
   keyArcana: Array<{ role: string; number: number; title: string; shortMeaning: string }>;
   portrait: string;
@@ -129,9 +128,9 @@ export function formatMatrixDenseTeaser(
 
 export function buildMatrixFreeSummary(
   birthDate: string,
-  options?: DestinyMatrixOptions & { name?: string }
+  options?: DestinyMatrixOptions & { name?: string; matrix?: DestinyMatrixResult }
 ): MatrixFreeSummary | null {
-  const matrix = destinyMatrix(birthDate, options);
+  const matrix = options?.matrix ?? destinyMatrix(birthDate, options);
   if (!matrix) return null;
 
   const comfort = getMatrixArcanaEntry(matrix.comfort.number, matrix.calculationVersion);
@@ -145,7 +144,7 @@ export function buildMatrixFreeSummary(
   const portrait = `${who}${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}) — ${clip(body?.light ?? body?.shortMeaning ?? matrix.body.arcanaMeaning, 80)}. Комфорт: ${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}).`;
 
   const summary: MatrixFreeSummary = {
-    version: MATRIX_CALCULATION_VERSION,
+    version: matrix.calculationVersion,
     matrix,
     keyArcana: [
       {

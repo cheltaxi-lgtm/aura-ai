@@ -13,7 +13,8 @@ import {
   type DestinyMatrixResult,
 } from "@/lib/numerology/destiny-matrix";
 import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
-import { resolveMatrixForDisplay } from "@/lib/numerology/matrix-snapshot";
+import { resolveMatrixForDisplay, resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
+import { clientSafeMatrixResolveError } from "@/lib/numerology/matrix-labels";
 import { diffMatrixStructured, formatMatrixDiffTeaser } from "@/lib/numerology/matrix-diff";
 import {
   buildMatrixFreeSummary,
@@ -183,8 +184,30 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
   if (subjectId && !subject) return { ok: false as const, error: "not_found" as const, message: "Субъект матрицы не найден." };
   const subjectBirthDate = subject?.birthDate ?? gate.user.birth_date!;
   const subjectName = subject?.displayName?.trim() || gate.user.name || undefined;
+  // Ownership + diagram must follow the selected subject, not the account profile —
+  // otherwise a child's summary showed the parent's matrix and "owned" flag.
+  const toolId = subject?.kind === "child" ? "child_matrix" : "destiny_matrix";
+  const owned = subject?.id
+    ? await findOwnedMatrixReportBySubject(gate.resolved.profileUserId!, subject.id, { toolId })
+    : await findOwnedMatrixReport(gate.resolved.profileUserId!, subjectBirthDate, { toolId });
+  const savedMatrix = owned
+    ? resolveMatrixForDisplayDetailed({
+        birthDate: subjectBirthDate,
+        structuredData: owned.structuredData,
+        calculationVersion: owned.calculationVersion,
+        createdAt: owned.createdAt,
+      })
+    : null;
+  if (savedMatrix && !savedMatrix.ok) {
+    return {
+      ok: false as const,
+      error: "not_found" as const,
+      message: clientSafeMatrixResolveError(savedMatrix.error),
+    };
+  }
   const summary = buildMatrixFreeSummary(subjectBirthDate, {
     name: subjectName,
+    ...(savedMatrix?.ok ? { matrix: savedMatrix.matrix } : {}),
   });
   if (!summary) {
     return {
@@ -193,13 +216,6 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
       message: "Не удалось посчитать матрицу по дате рождения.",
     };
   }
-
-  // Ownership + diagram must follow the selected subject, not the account profile —
-  // otherwise a child's summary showed the parent's matrix and "owned" flag.
-  const toolId = subject?.kind === "child" ? "child_matrix" : "destiny_matrix";
-  const owned = subject?.id
-    ? await findOwnedMatrixReportBySubject(gate.resolved.profileUserId!, subject.id, { toolId })
-    : await findOwnedMatrixReport(gate.resolved.profileUserId!, subjectBirthDate, { toolId });
   const reports = await listUserMatrixReports(gate.resolved.profileUserId!, 20);
   const cost = getNumerologTool(toolId).cost || PRICING.NUMEROLOGY_SESSION;
   const runeBalance = await getRuneBalance(gate.resolved.profileUserId!);
@@ -213,10 +229,12 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     ? matrixToStructuredData(summary.matrix)
     : null;
   // Never diff across reducer generations: every point would "change" spuriously.
+  const sameGeneration =
+    Boolean(owned?.calculationVersion) &&
+    owned!.calculationVersion === summary.matrix.calculationVersion &&
+    !isLegacyMatrixCalculationVersion(owned!.calculationVersion);
   const prevStructured =
-    owned?.structuredData &&
-    typeof owned.structuredData === "object" &&
-    !isLegacyMatrixCalculationVersion(owned.calculationVersion)
+    sameGeneration && owned?.structuredData && typeof owned.structuredData === "object"
       ? (owned.structuredData as Record<string, unknown>)
       : null;
   const sinceLast =
