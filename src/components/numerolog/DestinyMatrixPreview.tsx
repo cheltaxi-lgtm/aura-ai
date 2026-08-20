@@ -147,6 +147,30 @@ export default function DestinyMatrixPreview() {
     }
   }, []);
 
+  const persistAuthMatrix = useCallback(
+    async (date: string, personName: string) => {
+      const subject = selectedSubjectId
+        ? matrixSubjects.subjects.find((item) => item.id === selectedSubjectId)
+        : null;
+      try {
+        await fetch("/api/numerology/matrix-snapshot", {
+          method: "POST",
+          credentials: "include",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            birthDate: date,
+            displayName: personName.trim() || subject?.displayName || null,
+            subjectKind: subject?.kind ?? "self",
+            subjectId: selectedSubjectId,
+          }),
+        });
+      } catch {
+        /* preview stays local; server persist is best-effort */
+      }
+    },
+    [matrixSubjects.subjects, selectedSubjectId]
+  );
+
   const runClaim = useCallback(async (confirmReplace = false) => {
     setClaiming(true);
     setClaimError(null);
@@ -206,13 +230,14 @@ export default function DestinyMatrixPreview() {
         trackSeoEvent("matrix_preview_complete");
         trackProductFunnel("free_start", { product: "matrix", source: "preview" });
         trackProductFunnel("free_complete", { product: "matrix", source: "preview" });
-        // Guest only: server pending + HttpOnly claim cookie (no localStorage authority).
         if (!isLoggedIn) {
           void persistGuestMatrix(date, personName);
+        } else {
+          void persistAuthMatrix(date, personName);
         }
       });
     },
-    [isLoggedIn, persistGuestMatrix]
+    [isLoggedIn, persistGuestMatrix, persistAuthMatrix]
   );
 
   useEffect(() => {

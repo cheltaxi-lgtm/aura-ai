@@ -383,6 +383,7 @@ function nodesLayer(
       return `<g data-node="${n.id}" opacity="${visible(n, revealed) ? 1 : 0}">
         ${halo}
         <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${look.fill}" stroke="${look.stroke}" stroke-width="${look.sw}"/>
+        <circle data-node-hit="${n.id}" cx="${p.x}" cy="${p.y}" r="${Math.max(r + 10, 22)}" fill="transparent" style="cursor:pointer"/>
       </g>`;
     })
     .join("");
@@ -504,7 +505,7 @@ export function buildMatrixDiagramSvg(
     return `<g class="destiny-matrix-svg">${body}</g>`;
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${matrixViewBoxAttr(compact && !showPeriod)}" role="img" aria-labelledby="${uid}-title" class="destiny-matrix-svg">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${matrixViewBoxAttr(compact && !showPeriod)}" role="img" aria-labelledby="${uid}-title" class="destiny-matrix-svg destiny-matrix-svg--interactive">
   ${body}
 </svg>`;
 }

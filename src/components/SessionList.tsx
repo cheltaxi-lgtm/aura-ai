@@ -38,6 +38,7 @@ export type SessionListItem = {
   matrixSubjectId?: string | null;
   matrixBirthDate?: string | null;
   matrixCalculationVersion?: string | null;
+  matrixStructuredData?: Record<string, unknown> | null;
   matrixSubjectName?: string | null;
   matrixSubjectKind?: string | null;
   readingPreview?: string | null;
@@ -177,8 +178,14 @@ function MatrixSessionPreview({ item }: { item: SessionListItem }) {
       birthDate: birth,
       calculationVersion: item.matrixCalculationVersion,
       createdAt: item.createdAt,
+      structuredData: item.matrixStructuredData,
     });
-  }, [item.matrixBirthDate, item.matrixCalculationVersion, item.createdAt]);
+  }, [
+    item.matrixBirthDate,
+    item.matrixCalculationVersion,
+    item.createdAt,
+    item.matrixStructuredData,
+  ]);
   if (!resolved) return null;
   if (!resolved.ok) {
     return (

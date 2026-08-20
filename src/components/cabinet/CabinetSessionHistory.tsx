@@ -111,10 +111,12 @@ function CabinetMatrixPreview({
   birthDate,
   generatedAt,
   calculationVersion,
+  structuredData,
 }: {
   birthDate: string;
   generatedAt: string | null;
   calculationVersion?: string | null;
+  structuredData?: Record<string, unknown> | null;
 }) {
   const resolved = useMemo(
     () =>
@@ -122,8 +124,9 @@ function CabinetMatrixPreview({
         birthDate,
         calculationVersion,
         createdAt: generatedAt,
+        structuredData,
       }),
-    [birthDate, calculationVersion, generatedAt]
+    [birthDate, calculationVersion, generatedAt, structuredData]
   );
   if (!resolved.ok) {
     return (
@@ -212,6 +215,7 @@ function SessionCard({
           birthDate={session.matrixBirthDate}
           generatedAt={session.createdAt || session.sessionDate}
           calculationVersion={session.matrixCalculationVersion}
+          structuredData={session.matrixStructuredData}
         />
       ) : null}
 

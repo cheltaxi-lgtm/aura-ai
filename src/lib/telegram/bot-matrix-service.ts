@@ -715,7 +715,7 @@ export async function botMatrixRun(
       charged,
       reused: saved.status === "already_saved",
       replaced: replace || saved.status === "updated",
-      diagram: buildLiveMatrixDiagram(isoBirth, subjectName),
+      diagram: diagramForSavedReport(saved.report, subjectName),
       url: `${siteBase()}/?chat_session=${encodeURIComponent(session.id)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
   } catch (err) {

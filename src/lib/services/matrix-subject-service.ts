@@ -1,5 +1,6 @@
 import { query, queryClient, withTransaction } from "@/lib/db";
 import { PRICING } from "@/lib/config/pricing";
+import { matrixCalendarYmd } from "@/lib/numerology/matrix-calendar";
 import { toIsoBirthDate } from "@/lib/services/numerology-report-service";
 
 export type MatrixSubjectKind = "self" | "child" | "partner" | "other";
@@ -49,12 +50,9 @@ export function validateSubjectBirthDate(
   if (!iso) return null;
 
   const [year, month, day] = iso.split("-").map(Number);
-  const today = new Date();
-  const todayYear = today.getUTCFullYear();
-  const todayMonth = today.getUTCMonth() + 1;
-  const todayDay = today.getUTCDate();
-  let age = todayYear - year;
-  if (todayMonth < month || (todayMonth === month && todayDay < day)) age -= 1;
+  const today = matrixCalendarYmd();
+  let age = today.year - year;
+  if (today.month < month || (today.month === month && today.day < day)) age -= 1;
 
   return age >= 0 && age <= 120 ? iso : null;
 }

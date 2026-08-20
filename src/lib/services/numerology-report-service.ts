@@ -8,6 +8,13 @@ import {
 
 export const MATRIX_REPORT_TOOL_ID = "destiny_matrix" as const;
 
+export const MATRIX_OWNED_TOOL_IDS = [
+  "destiny_matrix",
+  "child_matrix",
+  "matrix_year_forecast",
+  "matrix_compatibility",
+] as const;
+
 /**
  * Tools whose product covers one calendar year. Their entitlement must renew
  * annually, so the stored `calculation_version` carries the period ("...@2026").
@@ -616,8 +623,8 @@ export async function deleteUserMatrixReport(
      FROM numerology_report_history
      WHERE user_id = $1
        AND id = $2::uuid
-       AND tool_id = $3`,
-    [userId, id, MATRIX_REPORT_TOOL_ID]
+       AND tool_id = ANY($3::text[])`,
+    [userId, id, [...MATRIX_OWNED_TOOL_IDS]]
   );
   if (!before.rows[0]) return { deleted: false, sessionIds: [] };
 
@@ -625,8 +632,8 @@ export async function deleteUserMatrixReport(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1
        AND id = $2::uuid
-       AND tool_id = $3`,
-    [userId, id, MATRIX_REPORT_TOOL_ID]
+       AND tool_id = ANY($3::text[])`,
+    [userId, id, [...MATRIX_OWNED_TOOL_IDS]]
   );
   const sessionIds = before.rows
     .map((r) => r.session_id)
@@ -708,21 +715,21 @@ export async function deleteOwnedMatrixReportsForSubject(
   subjectId: string,
   options?: { toolId?: string; calculationVersion?: string }
 ): Promise<{ deleted: number; sessionIds: string[] }> {
-  const toolId = options?.toolId ?? MATRIX_REPORT_TOOL_ID;
+  const toolIds = options?.toolId ? [options.toolId] : [...MATRIX_OWNED_TOOL_IDS];
   if (!UUID_RE.test(subjectId.trim())) return { deleted: 0, sessionIds: [] };
   const version = options?.calculationVersion?.trim() || null;
   const before = await query<{ session_id: string | null }>(
     `SELECT session_id
      FROM numerology_report_history
-     WHERE user_id = $1 AND tool_id = $2 AND subject_id = $3::uuid
+     WHERE user_id = $1 AND tool_id = ANY($2::text[]) AND subject_id = $3::uuid
        AND ($4::text IS NULL OR calculation_version = $4)`,
-    [userId, toolId, subjectId.trim(), version]
+    [userId, toolIds, subjectId.trim(), version]
   );
   const { rowCount } = await query(
     `DELETE FROM numerology_report_history
-     WHERE user_id = $1 AND tool_id = $2 AND subject_id = $3::uuid
+     WHERE user_id = $1 AND tool_id = ANY($2::text[]) AND subject_id = $3::uuid
        AND ($4::text IS NULL OR calculation_version = $4)`,
-    [userId, toolId, subjectId.trim(), version]
+    [userId, toolIds, subjectId.trim(), version]
   );
   return {
     deleted: rowCount ?? 0,

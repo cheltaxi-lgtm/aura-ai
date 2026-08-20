@@ -184,6 +184,35 @@
   white-space: nowrap;
 }
 
+.destiny-matrix-legend--full {
+  max-width: 36rem;
+  margin-inline: auto;
+}
+
+.destiny-matrix-node-card {
+  margin: 0.75rem auto 0;
+  max-width: 22rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid rgba(212, 175, 55, 0.35);
+  border-radius: 0.75rem;
+  background: rgba(12, 10, 8, 0.72);
+  text-align: center;
+}
+
+.destiny-matrix-node-card__label {
+  margin: 0;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: rgba(236, 226, 208, 0.62);
+}
+
+.destiny-matrix-node-card__value {
+  margin: 0.2rem 0 0;
+  font-size: 1rem;
+  color: #f4e6c3;
+}
+
 @media (max-width: 359px) {
   .destiny-matrix-frame {
     max-width: 100%;

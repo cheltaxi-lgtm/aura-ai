@@ -1142,7 +1142,8 @@ export async function POST(request: NextRequest) {
                 : userName),
             asOfDate: matrixAsOfDate,
             onMatrixProgress:
-              workerJobId && toolId === "destiny_matrix"
+              workerJobId &&
+              (toolId === "destiny_matrix" || toolId === "child_matrix")
                 ? async (progress) => {
                     await mergeAsyncJobPeriodMetadata(workerJobId, { progress });
                   }
@@ -1344,6 +1345,38 @@ export async function POST(request: NextRequest) {
               spentRunes = 0;
             }
             return { kind: "failed" as const };
+          }
+        }
+
+        if (toolId === "matrix_compatibility" && birthDate && (await ensureDb())) {
+          try {
+            const partnerDate = toIsoBirthDateShared(numerologToolParams.partnerDate ?? "");
+            const pairMatrix = destinyMatrix(
+              birthDate,
+              matrixAsOfDate ? { asOfDate: matrixAsOfDate } : undefined
+            );
+            const pairContent = (reading || "").trim();
+            if (pairContent && partnerDate) {
+              await saveMatrixReport({
+                userId: authed.profileUserId,
+                birthDateRaw: birthDate,
+                subjectId: resolvedMatrixSubject?.id,
+                toolId: "matrix_compatibility",
+                content: pairContent,
+                runeCost: billingCharge?.spentRunes ?? tool.cost,
+                chargeTransactionId: billingCharge?.transactionId,
+                sessionId,
+                overwrite: forceRegenerate,
+                structuredData: {
+                  ...(pairMatrix ? matrixToStructuredData(pairMatrix) : {}),
+                  partnerDate,
+                  dateB: partnerDate,
+                  numerologToolParams,
+                },
+              });
+            }
+          } catch (pairSaveErr) {
+            console.error("Matrix pair report save failed:", pairSaveErr);
           }
         }
 

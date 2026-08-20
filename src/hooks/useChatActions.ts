@@ -1625,7 +1625,9 @@ export function useChatActions(options: UseChatActionsOptions) {
       try {
         const data = await resumeStoredOrActiveAsyncJob({
           storageKey: "aura:reading-active-job",
-          kind: "reading",
+          kind: isNumerologMaster(selectedCharacter)
+            ? "numerology_reading"
+            : "reading",
         });
         if (cancelled || !data) return;
         const readingText =
@@ -1654,6 +1656,7 @@ export function useChatActions(options: UseChatActionsOptions) {
     authLoading,
     sessionLoading,
     isLoading,
+    selectedCharacter,
     setIsLoading,
     setMessages,
     readingInFlightRef,

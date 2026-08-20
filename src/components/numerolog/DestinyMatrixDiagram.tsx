@@ -35,6 +35,7 @@ export default function DestinyMatrixDiagram({
   const uid = useId().replace(/:/g, "");
   const reduceMotion = useReducedMotion();
   const [narrow, setNarrow] = useState(false);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
     if (compact != null) return;
@@ -60,25 +61,32 @@ export default function DestinyMatrixDiagram({
       }),
     [model, theme, density, revealed, focusKey, matrix.focusKey, showPeriod, showAgeMarks, uid, reduceMotion]
   );
+  const selected = selectedId ? model.nodes.find((node) => node.id === selectedId) ?? null : null;
 
   return (
     <figure className={`destiny-matrix-figure destiny-matrix-figure--${theme} destiny-matrix-figure--${density}`}>
       <div
         className="destiny-matrix-frame"
-        role="img"
-        aria-label="Матрица судьбы — схема 22 арканов"
         dangerouslySetInnerHTML={{ __html: svg }}
+        onClick={(event) => {
+          const hit = (event.target as Element | null)?.closest?.("[data-node-hit],[data-node]");
+          const id = hit?.getAttribute("data-node-hit") || hit?.getAttribute("data-node");
+          setSelectedId(id ?? null);
+        }}
       />
-      <dl className="destiny-matrix-sr">
-        {model.nodes.map((node) => (
-          <div key={node.id}>
-            <dt>{node.label}</dt>
-            <dd>
-              {node.number} — {node.arcanaName}
-            </dd>
-          </div>
-        ))}
-      </dl>
+      <p className="destiny-matrix-sr" id={`${uid}-live`} aria-live="polite">
+        {selected
+          ? `${selected.label}: ${selected.number} — ${selected.arcanaName}`
+          : "Нажмите точку на схеме, чтобы увидеть аркан из сохранённого расчёта."}
+      </p>
+      {selected ? (
+        <div className="destiny-matrix-node-card" role="status">
+          <p className="destiny-matrix-node-card__label">{selected.label}</p>
+          <p className="destiny-matrix-node-card__value">
+            {selected.number} — {selected.arcanaName}
+          </p>
+        </div>
+      ) : null}
       {density === "compact" ? (
         <ul className="destiny-matrix-legend">
           <li>♥ Отношения</li>
@@ -87,7 +95,16 @@ export default function DestinyMatrixDiagram({
           <li>Женская линия рода</li>
           <li>↓ Кармический хвост</li>
         </ul>
-      ) : null}
+      ) : (
+        <ul className="destiny-matrix-legend destiny-matrix-legend--full">
+          <li>Центр — зона комфорта</li>
+          <li>♥ Отношения</li>
+          <li>$ Деньги</li>
+          <li>Мужская / женская линия рода</li>
+          <li>↓ Кармический хвост</li>
+          <li>Контур — возраст</li>
+        </ul>
+      )}
       {hint ? <figcaption className="destiny-matrix__hint">{hint}</figcaption> : null}
     </figure>
   );

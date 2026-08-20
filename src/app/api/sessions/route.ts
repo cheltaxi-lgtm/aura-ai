@@ -52,6 +52,7 @@ export async function GET(request: NextRequest) {
     matrixSubjectId: s.matrix_subject_id ?? null,
     matrixBirthDate: s.matrix_birth_date ?? null,
     matrixCalculationVersion: s.matrix_calculation_version ?? null,
+    matrixStructuredData: s.matrix_structured_data ?? null,
     matrixSubjectName: s.matrix_subject_name ?? null,
     matrixSubjectKind: s.matrix_subject_kind ?? null,
     readingPreview: s.reading_preview ?? null,

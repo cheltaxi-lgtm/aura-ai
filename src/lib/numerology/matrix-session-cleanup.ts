@@ -11,7 +11,7 @@ import {
   deleteOwnedMatrixReportsForBirth,
   deleteOwnedMatrixReportsForSubject,
   deleteUserMatrixReport,
-  MATRIX_REPORT_TOOL_ID,
+  MATRIX_OWNED_TOOL_IDS,
   toIsoBirthDate,
 } from "@/lib/services/numerology-report-service";
 import { decodeNumerologSpreadId } from "@/lib/numerology/tools";
@@ -19,9 +19,13 @@ import { decodeNumerologSpreadId } from "@/lib/numerology/tools";
 /** SQL predicate: session row is a destiny-matrix consultation. */
 export function sqlIsDestinyMatrixSession(alias = "s"): string {
   return `(
-    COALESCE(${alias}.spread_id, '') IN ('destiny_matrix', 'numerolog:destiny_matrix')
+    COALESCE(${alias}.spread_id, '') IN (
+      'destiny_matrix', 'numerolog:destiny_matrix',
+      'child_matrix', 'numerolog:child_matrix'
+    )
     OR COALESCE(${alias}.spread_id, '') LIKE 'numerolog:destiny_matrix%'
-    OR COALESCE(${alias}.intention, '') = 'destiny_matrix'
+    OR COALESCE(${alias}.spread_id, '') LIKE 'numerolog:child_matrix%'
+    OR COALESCE(${alias}.intention, '') IN ('destiny_matrix', 'child_matrix')
   )`;
 }
 
@@ -32,12 +36,20 @@ export function isDestinyMatrixSession(session: {
 }): boolean {
   const spreadId = session.spread_id ?? session.spreadId ?? "";
   const intention = session.intention ?? "";
-  if (intention === "destiny_matrix") return true;
-  if (spreadId === "destiny_matrix" || spreadId === "numerolog:destiny_matrix") {
+  if (intention === "destiny_matrix" || intention === "child_matrix") return true;
+  if (
+    spreadId === "destiny_matrix" ||
+    spreadId === "numerolog:destiny_matrix" ||
+    spreadId === "child_matrix" ||
+    spreadId === "numerolog:child_matrix"
+  ) {
     return true;
   }
-  if (spreadId.startsWith("numerolog:destiny_matrix")) return true;
-  return decodeNumerologSpreadId(spreadId) === "destiny_matrix";
+  if (spreadId.startsWith("numerolog:destiny_matrix") || spreadId.startsWith("numerolog:child_matrix")) {
+    return true;
+  }
+  const tool = decodeNumerologSpreadId(spreadId);
+  return tool === "destiny_matrix" || tool === "child_matrix";
 }
 
 /** Delete leftover matrix chat sessions after report wipe. */
@@ -59,11 +71,11 @@ export async function purgeMatrixConsultationSessions(
          SELECT 1
          FROM numerology_report_history n
          WHERE n.user_id = s.user_id
-           AND n.tool_id = $2
+           AND n.tool_id = ANY($2::text[])
            AND length(trim(n.content)) > 0
            AND n.session_id = s.id
        )`,
-    [profileUserId, MATRIX_REPORT_TOOL_ID]
+    [profileUserId, [...MATRIX_OWNED_TOOL_IDS]]
   );
   for (const row of orphans) wanted.add(row.id);
 
@@ -119,9 +131,9 @@ export async function wipeUserMatrixReports(input: {
     }>(
       `SELECT birth_date, session_id, subject_id
        FROM numerology_report_history
-       WHERE user_id = $1 AND id = $2::uuid AND tool_id = $3
+       WHERE user_id = $1 AND id = $2::uuid AND tool_id = ANY($3::text[])
        LIMIT 1`,
-      [input.userId, input.reportId.trim(), MATRIX_REPORT_TOOL_ID]
+      [input.userId, input.reportId.trim(), [...MATRIX_OWNED_TOOL_IDS]]
     );
     const row = rows[0];
     if (row) {
@@ -204,9 +216,9 @@ export async function wipeMatrixOwnershipForSession(input: {
     `SELECT id, birth_date, subject_id
      FROM numerology_report_history
      WHERE user_id = $1
-       AND tool_id = $2
+       AND tool_id = ANY($2::text[])
        AND session_id = $3::uuid`,
-    [input.userId, MATRIX_REPORT_TOOL_ID, input.sessionId]
+    [input.userId, [...MATRIX_OWNED_TOOL_IDS], input.sessionId]
   );
 
   let deletedReports = 0;
@@ -225,9 +237,9 @@ export async function wipeMatrixOwnershipForSession(input: {
   const dangling = await query(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1
-       AND tool_id = $2
+       AND tool_id = ANY($2::text[])
        AND session_id = $3::uuid`,
-    [input.userId, MATRIX_REPORT_TOOL_ID, input.sessionId]
+    [input.userId, [...MATRIX_OWNED_TOOL_IDS], input.sessionId]
   );
   deletedReports += dangling.rowCount ?? 0;
 

@@ -15,8 +15,8 @@ import {
 } from "@/lib/services/matrix-subject-service";
 import { PRICING } from "@/lib/config/pricing";
 import { profileHasBirthData } from "@/lib/users";
-import { buildAstroMeta } from "@/lib/astro-profile";
 import { getZodiacFromDate } from "@/utils/zodiac";
+import { attachSnapshotToSubject } from "@/lib/services/matrix-snapshot-persist";
 
 type GuestRow = {
   id: string;
@@ -218,8 +218,6 @@ async function adoptSelfSubject(
       `UPDATE matrix_subjects
        SET birth_date = $3::date,
            display_name = COALESCE($4, display_name),
-           birth_time = CASE WHEN birth_date IS DISTINCT FROM $3::date THEN NULL ELSE birth_time END,
-           birth_city = CASE WHEN birth_date IS DISTINCT FROM $3::date THEN NULL ELSE birth_city END,
            updated_at = NOW()
        WHERE user_id = $1 AND id = $2::uuid AND kind = 'self'
        RETURNING id`,
@@ -355,6 +353,13 @@ export async function claimGuestMatrixPending(opts: {
         guestBirth,
         guest.display_name
       );
+      await attachSnapshotToSubject(
+        client,
+        subjectId,
+        guest.matrix_snapshot || {},
+        String(guest.as_of_date).slice(0, 10),
+        guest.calculation_version
+      );
       await queryClient(
         client,
         `UPDATE matrix_guest_pending
@@ -388,20 +393,14 @@ export async function claimGuestMatrixPending(opts: {
 
     if (!hasBirth || !matches) {
       const zodiac = getZodiacFromDate(guestBirth).name || user.zodiac || "";
-      const nextMeta = {
-        ...buildAstroMeta(guestBirth),
-        stubProfile: false,
-      };
+      // Date-only write. Never erase Natal/HD time/place/astro_meta.
       await queryClient(
         client,
         `UPDATE users SET
            birth_date = $2::date,
-           zodiac = $3,
-           birth_time = NULL,
-           birth_city = NULL,
-           astro_meta = $4::jsonb
+           zodiac = $3
          WHERE id = $1`,
-        [opts.profileUserId, guestBirth, zodiac, JSON.stringify(nextMeta)]
+        [opts.profileUserId, guestBirth, zodiac]
       );
     }
 
@@ -410,6 +409,14 @@ export async function claimGuestMatrixPending(opts: {
       opts.profileUserId,
       guestBirth,
       guest.display_name
+    );
+
+    await attachSnapshotToSubject(
+      client,
+      subjectId,
+      guest.matrix_snapshot || {},
+      String(guest.as_of_date).slice(0, 10),
+      guest.calculation_version
     );
 
     await queryClient(

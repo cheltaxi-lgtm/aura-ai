@@ -1173,6 +1173,9 @@ CREATE TABLE IF NOT EXISTS matrix_subjects (
   birth_city TEXT,
   birth_lat DOUBLE PRECISION,
   birth_lon DOUBLE PRECISION,
+  as_of_date DATE,
+  calculation_version TEXT,
+  matrix_snapshot JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 );

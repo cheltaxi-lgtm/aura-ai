@@ -28,6 +28,9 @@ import {
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { findOwnedExactMatrixPairReport } from "@/lib/numerology/matrix-pair-ownership";
 import {
+  persistOwnedMatrixSnapshot,
+} from "@/lib/services/matrix-snapshot-persist";
+import {
   claimGuestMatrixPending,
   createGuestMatrixPending,
 } from "@/lib/services/matrix-guest-service";
@@ -75,6 +78,15 @@ describe("matrix calendar Europe/Moscow", () => {
       "utf8"
     );
     expect(internal).toContain("matrixCalendarYmd");
+    const subject = readFileSync(
+      path.join(ROOT, "src/lib/services/matrix-subject-service.ts"),
+      "utf8"
+    );
+    expect(subject).toContain("matrixCalendarYmd");
+    expect(subject).not.toMatch(/today\.getUTCFullYear/);
+    const resume = readFileSync(path.join(ROOT, "src/hooks/useChatActions.ts"), "utf8");
+    expect(resume).toContain('kind: isNumerologMaster(selectedCharacter)');
+    expect(resume).toContain('"numerology_reading"');
   });
 
   it("timezone boundary 00:00–03:00 MSK is not UTC day", () => {
@@ -83,6 +95,55 @@ describe("matrix calendar Europe/Moscow", () => {
     expect(utcEvening.toISOString().slice(0, 10)).toBe("2026-08-19");
     expect(matrixCalendarDate(utcEvening)).toBe("2026-08-20");
     expect(matrixCalendarDate(utcAfternoon)).toBe("2026-08-19");
+  });
+
+  it("same DOB + explicit asOf is identical from any wall-clock instant", () => {
+    const instants = [
+      new Date("2026-01-01T00:00:00.000Z"),
+      new Date("2026-01-01T10:00:00-05:00"),
+      new Date("2026-01-01T12:00:00+03:00"),
+      new Date("2026-01-01T16:00:00+05:00"),
+      new Date("2026-01-01T21:00:00+14:00"),
+      new Date("2025-12-31T14:00:00-10:00"),
+    ];
+    const matrices = instants.map(() => destinyMatrix(DOB, { asOfDate: AS_OF }));
+    const first = matrices[0]!;
+    for (const matrix of matrices) {
+      expect(matrix?.talents.number).toBe(first.talents.number);
+      expect(matrix?.comfort.number).toBe(first.comfort.number);
+      expect(matrix?.purpose.number).toBe(first.purpose.number);
+      expect(matrix?.asOf.date).toBe(AS_OF);
+    }
+    expect(first.talents.number).toBe(20);
+    expect(first.comfort.number).toBe(12);
+  });
+
+  it("explicit asOf ignores process timezone", () => {
+    const zones = [
+      "UTC",
+      "Europe/Moscow",
+      "Asia/Yekaterinburg",
+      "Europe/Stockholm",
+      "America/New_York",
+      "Pacific/Kiritimati",
+      "Pacific/Honolulu",
+    ];
+    const numbers = zones.map((timeZone) => {
+      const asOf = matrixCalendarDate(new Date("2026-01-01T12:00:00+03:00"));
+      expect(asOf).toBe("2026-01-01");
+      const matrix = destinyMatrix(DOB, { asOfDate: asOf })!;
+      return {
+        timeZone,
+        talents: matrix.talents.number,
+        comfort: matrix.comfort.number,
+        age: matrix.chronologicalAge,
+      };
+    });
+    for (const row of numbers) {
+      expect(row.talents).toBe(20);
+      expect(row.comfort).toBe(12);
+      expect(row.age).toBe(35);
+    }
   });
 
   it("birthday boundary uses asOf calendar day, not clock TZ", () => {
@@ -291,7 +352,7 @@ describe.skipIf(!hasTestDb)("guest claim birth profile (db)", () => {
     expect(after?.birth_city).toBeFalsy();
   });
 
-  it("guest self replace clears incompatible birth_time/place", async () => {
+  it("guest self replace keeps Natal/HD time/place", async () => {
     const { rawClaimToken } = await createGuestMatrixPending({
       birthDate: "1984-10-31",
       subjectKind: "self",
@@ -314,8 +375,8 @@ describe.skipIf(!hasTestDb)("guest claim birth profile (db)", () => {
     expect(claim.ok).toBe(true);
     const after = await getUserById(user.id);
     expect(String(after?.birth_date).slice(0, 10)).toContain("1984-10-31");
-    expect(after?.birth_time).toBeFalsy();
-    expect(after?.birth_city).toBeFalsy();
+    expect(after?.birth_time).toBeTruthy();
+    expect(after?.birth_city).toBe("Berlin");
   });
 
   it("guest non-self claim does not change users.birth_date", async () => {
@@ -339,6 +400,22 @@ describe.skipIf(!hasTestDb)("guest claim birth profile (db)", () => {
     expect(kids.rows.some((row) => String(row.birth_date).slice(0, 10) === "2012-06-01")).toBe(
       true
     );
+  });
+
+  it("authenticated persist stores snapshot without wiping natal time/place", async () => {
+    const user = await seedUser("persist-auth", "1990-08-15");
+    const persisted = await persistOwnedMatrixSnapshot({
+      userId: user.id,
+      birthDate: "1990-08-15",
+      subjectKind: "self",
+    });
+    expect(persisted.calculationVersion).toBe(MATRIX_CALCULATION_VERSION);
+    expect(persisted.asOfDate).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+    expect((persisted.snapshot.talents as { number?: number })?.number).toBe(20);
+    expect((persisted.snapshot.comfort as { number?: number })?.number).toBe(12);
+    const after = await getUserById(user.id);
+    expect(after?.birth_time).toBeTruthy();
+    expect(after?.birth_city).toBe("Berlin");
   });
 
   it("two children stay isolated from self DOB", async () => {
