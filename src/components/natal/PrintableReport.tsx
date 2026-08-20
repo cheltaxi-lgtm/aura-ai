@@ -23,7 +23,7 @@ export default function PrintableReport({
 }) {
   return <main data-print-report="static" className="mx-auto min-h-screen max-w-4xl [overflow-wrap:anywhere] bg-white px-4 py-6 text-black sm:px-6 sm:py-8 print:max-w-none print:px-0">
     <style>{`@media print {
-      @page { margin: 18mm; }
+      @page { size: A4 portrait; margin: 18mm; }
       body { background: white !important; }
       [data-print-section] { break-inside: avoid; }
       a { color: black; text-decoration: none; }

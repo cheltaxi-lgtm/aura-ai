@@ -3,6 +3,7 @@ import { getMatrixPairGuestPendingMeta } from "@/lib/services/matrix-pair-guest-
 import {
   listUserMatrixCompatibilityReports,
   toIsoBirthDate,
+  type NumerologyReportHistoryItem,
 } from "@/lib/services/numerology-report-service";
 
 const PENDING_ID_RE =
@@ -82,18 +83,44 @@ async function partnerDateFromSession(
   );
 }
 
-async function userHasExactMatrixPairReport(
-  userId: string,
-  pair: MatrixPairIdentity
-): Promise<boolean> {
+async function reportsWithPartnerDates(
+  userId: string
+): Promise<Array<{ report: NumerologyReportHistoryItem; partnerDate: string | null }>> {
   const reports = await listUserMatrixCompatibilityReports(userId, 50);
-  const withPartner: MatrixPairOwnershipReport[] = [];
+  const out: Array<{ report: NumerologyReportHistoryItem; partnerDate: string | null }> = [];
   for (const report of reports) {
     const fromStructured = partnerDateFromPairStructuredData(report.structuredData);
     const partnerDate =
       fromStructured ?? (await partnerDateFromSession(userId, report.sessionId));
-    withPartner.push({ birthDate: report.birthDate, partnerDate });
+    out.push({ report, partnerDate });
   }
+  return out;
+}
+
+/** Exact current pair only — never the latest compatibility row for the subject. */
+export async function findOwnedExactMatrixPairReport(opts: {
+  userId: string;
+  dateA: string;
+  dateB: string;
+}): Promise<NumerologyReportHistoryItem | null> {
+  const dateA = toIsoBirthDate(opts.dateA);
+  const dateB = toIsoBirthDate(opts.dateB);
+  if (!dateA || !dateB) return null;
+  const rows = await reportsWithPartnerDates(opts.userId);
+  const hit = rows.find(
+    (row) => toIsoBirthDate(row.report.birthDate) === dateA && row.partnerDate === dateB
+  );
+  return hit?.report ?? null;
+}
+
+async function userHasExactMatrixPairReport(
+  userId: string,
+  pair: MatrixPairIdentity
+): Promise<boolean> {
+  const withPartner = (await reportsWithPartnerDates(userId)).map((row) => ({
+    birthDate: row.report.birthDate,
+    partnerDate: row.partnerDate,
+  }));
   if (matrixPairReportOwnsCurrentPair(withPartner, pair)) return true;
 
   const { rows } = await query<{

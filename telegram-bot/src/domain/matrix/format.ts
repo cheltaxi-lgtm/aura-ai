@@ -35,8 +35,8 @@ const MATRIX_POINTS: Array<{ name: string; emoji: string; aliases?: string[] }> 
     emoji: "🌳",
     aliases: ["Материя/год", "Материя / год рождения", "Род и корни"],
   },
-  { name: "Зона комфорта", emoji: "✨", aliases: ["Предназначение"] },
-  { name: "Личное предназначение", emoji: "✦" },
+  { name: "Зона комфорта", emoji: "✨" },
+  { name: "Личное предназначение", emoji: "✦", aliases: ["Предназначение"] },
   { name: "Социальное предназначение", emoji: "✦" },
   { name: "Духовное предназначение", emoji: "✦" },
   { name: "Духовный полюс", emoji: "🌌" },
@@ -126,7 +126,8 @@ function escapeHtml(s: string): string {
     .replace(/"/g, "&quot;");
 }
 
-function emojiForTitle(title: string): string {
+/** Canonical section name for a heading. Longest match wins. */
+export function canonicalMatrixSectionName(title: string): string | null {
   const base = title
     .replace(/^#{1,3}\s*/u, "")
     .replace(/^[✨⚡🜁🌳💎💞💰🕯🌙♻️📅🪴✦🌌]\s*/u, "")
@@ -136,19 +137,27 @@ function emojiForTitle(title: string): string {
     .toLowerCase()
     .replace(/\s*\/\s*/g, " / ")
     .replace(/\s+/g, " ");
-  let best: { emoji: string; len: number } | null = null;
-  for (const p of MATRIX_POINTS) {
-    for (const n of [p.name, ...(p.aliases || [])].map((x) =>
+  let best: { name: string; len: number } | null = null;
+  for (const point of MATRIX_POINTS) {
+    for (const n of [point.name, ...(point.aliases || [])].map((x) =>
       x.toLowerCase().replace(/\s*\/\s*/g, " / ").replace(/\s+/g, " ")
     )) {
       if (base === n || base.startsWith(`${n} `) || base.startsWith(`${n}(`) || base.startsWith(`${n}·`)) {
-        if (!best || n.length > best.len) best = { emoji: p.emoji, len: n.length };
+        if (!best || n.length > best.len) best = { name: point.name, len: n.length };
       }
     }
   }
-  if (best) return best.emoji;
-  if (/шаг|практик|что делать|итог|вывод/i.test(base)) return "🪴";
-  if (/матрица/i.test(base)) return "🌌";
+  return best?.name ?? null;
+}
+
+function emojiForTitle(title: string): string {
+  const name = canonicalMatrixSectionName(title);
+  if (name) {
+    const point = MATRIX_POINTS.find((row) => row.name === name);
+    if (point) return point.emoji;
+  }
+  if (/шаг|практик|что делать|итог|вывод/i.test(title)) return "🪴";
+  if (/матрица/i.test(title)) return "🌌";
   return "✦";
 }
 

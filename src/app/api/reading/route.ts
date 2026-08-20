@@ -107,6 +107,7 @@ import {
   getMatrixSubject,
   type MatrixSubject,
 } from "@/lib/services/matrix-subject-service";
+import { findOwnedExactMatrixPairReport } from "@/lib/numerology/matrix-pair-ownership";
 import type { RuneActionType } from "@/lib/rune-costs";
 import { purgeMatrixConsultationSessions } from "@/lib/numerology/matrix-session-cleanup";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
@@ -991,6 +992,77 @@ export async function POST(request: NextRequest) {
               authed.profileUserId,
               wiped.sessionIds
             );
+          }
+        }
+
+        // Pair is exact-dates buy-once — never reuse another compatibility row.
+        if (toolId === "matrix_compatibility" && !forceRegenerate && (await ensureDb())) {
+          const isoBirth =
+            toIsoBirthDateShared(birthDate) ??
+            toIsoBirthDateShared(String(birthDate).slice(0, 10));
+          const partnerDate = toIsoBirthDateShared(numerologToolParams.partnerDate ?? "");
+          if (isoBirth && partnerDate) {
+            const owned = await findOwnedExactMatrixPairReport({
+              userId: authed.profileUserId,
+              dateA: isoBirth,
+              dateB: partnerDate,
+            });
+            if (owned?.content?.trim()) {
+              const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
+              if (isUsableMatrixReading(owned.content, "matrix_compatibility")) {
+                reading = owned.content;
+                isPaid = true;
+                let reopenHistoryId: string | undefined;
+                try {
+                  await persistReadingToSession({
+                    sessionId,
+                    profileUserId: authed.profileUserId,
+                    characterId,
+                    customQuestion: customQuestion || undefined,
+                    reading,
+                    tarotCards,
+                    intention: intention || undefined,
+                    spreadType: isDailySpread ? "daily" : "new",
+                    spreadId: storedSpreadId,
+                  });
+                } catch (err) {
+                  console.warn("Reading chat save failed:", err);
+                }
+                try {
+                  const entry = await createHistoryEntry({
+                    userId: authed.profileUserId,
+                    characterName: characterId,
+                    contextData: {
+                      type: "reading",
+                      reading,
+                      tarotCards,
+                      deckSystem: resolveMasterDeckSystem(characterId),
+                      userName,
+                      birthDate: isoBirth,
+                      numerologToolId: toolId,
+                      matrixOwned: true,
+                      reportId: owned.id,
+                      ...(sessionId ? { sessionId } : {}),
+                    },
+                    isPaid: true,
+                  });
+                  reopenHistoryId = entry.id;
+                } catch (err) {
+                  console.warn("Owned matrix pair history entry failed:", err);
+                }
+                return {
+                  kind: "new" as const,
+                  reading,
+                  historyId: reopenHistoryId,
+                  reportId: owned.id,
+                  isPaid: true,
+                  runeBalance: undefined,
+                  numerologyUi,
+                  reused: true,
+                  matrixOwned: true,
+                };
+              }
+            }
           }
         }
 

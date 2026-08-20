@@ -136,6 +136,25 @@
   max-width: 40rem;
 }
 
+@media print {
+  @page {
+    size: A4 portrait;
+    margin: 12mm;
+  }
+
+  .destiny-matrix-figure--print {
+    break-inside: avoid;
+    max-width: 170mm;
+    margin-inline: auto;
+  }
+
+  .destiny-matrix-figure--print .destiny-matrix-frame,
+  .destiny-matrix-figure--print svg {
+    max-width: 170mm;
+    height: auto;
+  }
+}
+
 .destiny-matrix-sr {
   position: absolute;
   width: 1px;

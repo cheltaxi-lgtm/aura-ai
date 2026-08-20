@@ -614,6 +614,23 @@ describe("pair score is marked authorial", () => {
     const score = session?.positions.find((p) => p.label === MATRIX_LABELS.pairScore);
     expect(score?.detail).toContain(MATRIX_LABELS.pairScoreDisclaimer);
   });
+
+  it("SEO pair copy does not present score as a scientific metric", () => {
+    const slug = readFileSync(
+      path.join(ROOT, "src/app/numerology/[slug]/page.tsx"),
+      "utf8"
+    );
+    const index = readFileSync(path.join(ROOT, "src/app/numerology/page.tsx"), "utf8");
+    const natal = readFileSync(path.join(ROOT, "src/app/natalnaya-karta/page.tsx"), "utf8");
+    for (const src of [slug, index, natal]) {
+      expect(src).not.toMatch(/score методики Zovus/i);
+      expect(src).not.toMatch(/общий score/i);
+      expect(src).not.toMatch(/score пары/i);
+    }
+    expect(slug).toMatch(/авторская аналитика/i);
+    expect(index).toMatch(/оценка Zovus/i);
+    expect(natal).toMatch(/оценка Zovus/i);
+  });
 });
 
 describe("print SVG contract", () => {
@@ -626,6 +643,37 @@ describe("print SVG contract", () => {
       expect(svg).not.toMatch(/matrix-v[0-9]/i);
       expect(svg).not.toContain("structured_data");
     }
+  });
+
+  it("print CSS pins A4 and hides UI-only print chrome", () => {
+    const css = readFileSync(path.join(ROOT, "src/styles/numerolog.css"), "utf8");
+    const printable = readFileSync(
+      path.join(ROOT, "src/components/natal/PrintableReport.tsx"),
+      "utf8"
+    );
+    expect(css).toMatch(/@media print/);
+    expect(css).toMatch(/size:\s*A4 portrait/);
+    expect(css).toMatch(/destiny-matrix-figure--print/);
+    expect(printable).toMatch(/size: A4 portrait/);
+    expect(printable).toMatch(/print:hidden/);
+  });
+});
+
+describe("Telegram purpose is not comfort", () => {
+  it("maps Предназначение to personal purpose, not the center", async () => {
+    const { canonicalMatrixSectionName } = await import(
+      "../../telegram-bot/src/domain/matrix/format"
+    );
+    expect(canonicalMatrixSectionName("Зона комфорта (12 — Повешенный)")).toBe("Зона комфорта");
+    expect(canonicalMatrixSectionName("Личное предназначение (9 — Отшельник)")).toBe(
+      "Личное предназначение"
+    );
+    expect(canonicalMatrixSectionName("Предназначение (9 — Отшельник)")).toBe(
+      "Личное предназначение"
+    );
+    expect(canonicalMatrixSectionName("Предназначение (9 — Отшельник)")).not.toBe(
+      "Зона комфорта"
+    );
   });
 });
 

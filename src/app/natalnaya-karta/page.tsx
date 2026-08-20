@@ -106,7 +106,7 @@ const RELATED = [
   {
     href: "/numerology/matrica-sovmestimosti",
     title: "Совместимость матриц",
-    text: "Две даты — score пары по методике Zovus.",
+    text: "Две даты — оценка Zovus, авторская аналитика, не научная метрика.",
   },
   {
     href: "/taro",

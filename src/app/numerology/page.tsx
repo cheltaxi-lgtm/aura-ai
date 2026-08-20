@@ -45,7 +45,7 @@ const NUMEROLOGY_DIRECTIONS = [
   },
   {
     title: "Совместимость матриц",
-    text: "Две даты — score методики Zovus, сильные стороны и зоны напряжения.",
+    text: "Две даты — оценка Zovus (авторская аналитика), сильные стороны и зоны напряжения.",
     action: "Бесплатный preview пары; полный разбор — с Эвелиной.",
     href: "/numerology/matrica-sovmestimosti",
   },

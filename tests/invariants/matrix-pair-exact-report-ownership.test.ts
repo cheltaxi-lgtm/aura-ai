@@ -9,6 +9,7 @@ import { query } from "@/lib/db";
 import { PRICING } from "@/lib/config/pricing";
 import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import {
+  findOwnedExactMatrixPairReport,
   hasOwnedMatrixPairForPending,
   matrixPairHistoryOwnsCurrentPair,
   matrixPairReportOwnsCurrentPair,
@@ -106,6 +107,10 @@ describe("matrix-pair-exact-report-ownership", () => {
     expect(read("src/lib/free-to-paid-conversion.ts")).toMatch(
       /runeAction:\s*"MATRIX_PAIR_REPORT"/
     );
+    expect(reading).toContain("findOwnedExactMatrixPairReport");
+    expect(reading).toMatch(
+      /toolId === "matrix_year_forecast";\s*let runeBalance/
+    );
   });
 });
 
@@ -188,6 +193,19 @@ describe.skipIf(!hasTestDb)("matrix-pair-exact-report-ownership (db)", () => {
         pendingId: payload.pendingId,
       })
     ).toBe(true);
+    const exact = await findOwnedExactMatrixPairReport({
+      userId: user.id,
+      dateA: "1990-01-01",
+      dateB: "1992-06-15",
+    });
+    expect(exact?.content).toContain("полный купленный разбор пары");
+    expect(
+      await findOwnedExactMatrixPairReport({
+        userId: user.id,
+        dateA: "1990-01-01",
+        dateB: "1988-03-03",
+      })
+    ).toBeNull();
   });
 
   it("B: paid report for another pair → not owned", async () => {
