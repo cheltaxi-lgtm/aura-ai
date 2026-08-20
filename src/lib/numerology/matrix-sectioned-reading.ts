@@ -12,7 +12,8 @@ import {
 } from "@/lib/russian-name-gender";
 import type { MatrixSubjectKind } from "@/lib/services/matrix-subject-service";
 import { getMatrixArcanaEntry } from "./matrix-arcana-map";
-import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
+import type { DestinyMatrixResult } from "./destiny-matrix";
+import { resolveMatrixForEngine } from "./matrix-snapshot";
 import {
   buildMatrixAudience,
   buildMatrixAudiencePromptBlock,
@@ -706,6 +707,10 @@ export async function generateFullMatrixSectionedReading(input: {
    * When omitted, destinyMatrix uses "now" (existing behavior).
    */
   asOfDate?: string | null;
+  /** Immutable saved snapshot — AI must not recalculate numbers. */
+  snapshot?: Record<string, unknown> | null;
+  /** Already-hydrated engine result; wins over snapshot / asOf. */
+  matrix?: DestinyMatrixResult | null;
   /**
    * LLM coverage:
    * - omitted / true / "all" → every zone (default paid quality)
@@ -720,11 +725,13 @@ export async function generateFullMatrixSectionedReading(input: {
   matrix: DestinyMatrixResult;
   document: MatrixReadingDocument;
 }> {
-  const asOf =
-    typeof input.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.asOfDate)
-      ? input.asOfDate
-      : undefined;
-  const matrix = destinyMatrix(input.birthDate, asOf ? { asOfDate: asOf } : undefined);
+  const matrix =
+    input.matrix ??
+    resolveMatrixForEngine({
+      birthDate: input.birthDate,
+      snapshot: input.snapshot,
+      asOfDate: input.asOfDate,
+    });
   if (!matrix) {
     throw new Error("matrix_calc_failed");
   }

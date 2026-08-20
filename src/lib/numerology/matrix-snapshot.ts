@@ -278,4 +278,22 @@ export function snapshotHasCoreNumbers(data: Record<string, unknown> | null | un
   return hydrateDestinyMatrixFromSnapshot(data) != null;
 }
 
+/**
+ * Engine / report numbers come from the saved snapshot first.
+ * Live calc is only a fallback when no immutable snapshot exists yet.
+ */
+export function resolveMatrixForEngine(input: {
+  birthDate: string;
+  snapshot?: Record<string, unknown> | null;
+  asOfDate?: string | null;
+}): DestinyMatrixResult | null {
+  const hydrated = hydrateDestinyMatrixFromSnapshot(input.snapshot ?? null);
+  if (hydrated) return hydrated;
+  const asOf =
+    typeof input.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.asOfDate)
+      ? { asOfDate: input.asOfDate }
+      : undefined;
+  return destinyMatrix(input.birthDate, asOf);
+}
+
 export { matrixToStructuredData, MATRIX_METHODOLOGY_ID, MATRIX_V3_METHODOLOGY_ID };

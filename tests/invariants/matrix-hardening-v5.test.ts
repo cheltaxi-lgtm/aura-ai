@@ -24,6 +24,7 @@ import { buildMatrixSemanticModel } from "@/lib/numerology/matrix-semantic-model
 import {
   hydrateDestinyMatrixFromSnapshot,
   resolveMatrixForDisplayDetailed,
+  resolveMatrixForEngine,
 } from "@/lib/numerology/matrix-snapshot";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { findOwnedExactMatrixPairReport } from "@/lib/numerology/matrix-pair-ownership";
@@ -87,6 +88,25 @@ describe("matrix calendar Europe/Moscow", () => {
     const resume = readFileSync(path.join(ROOT, "src/hooks/useChatActions.ts"), "utf8");
     expect(resume).toContain('kind: isNumerologMaster(selectedCharacter)');
     expect(resume).toContain('"numerology_reading"');
+    const persist = readFileSync(
+      path.join(ROOT, "src/lib/services/matrix-snapshot-persist.ts"),
+      "utf8"
+    );
+    expect(persist).toContain("existingFrozenSnapshot");
+    expect(persist).toContain("ensureOwnedMatrixSnapshot");
+    const reading = readFileSync(path.join(ROOT, "src/app/api/reading/route.ts"), "utf8");
+    expect(reading).toContain("ensureOwnedMatrixSnapshot");
+    expect(reading).toContain("resolveMatrixForEngine");
+    expect(reading).toContain("matrixSnapshot");
+    const svg = readFileSync(path.join(ROOT, "src/lib/numerology/matrix-diagram-svg.ts"), "utf8");
+    expect(svg).toContain('data-node-hit="${n.id}"');
+    expect(svg).toMatch(/data-value="\$\{n\.id\}" data-node-hit=/);
+    const sectioned = readFileSync(
+      path.join(ROOT, "src/lib/numerology/matrix-sectioned-reading.ts"),
+      "utf8"
+    );
+    expect(sectioned).toContain("resolveMatrixForEngine");
+    expect(sectioned).not.toMatch(/const matrix = destinyMatrix\(/);
   });
 
   it("timezone boundary 00:00–03:00 MSK is not UTC day", () => {
@@ -144,6 +164,21 @@ describe("matrix calendar Europe/Moscow", () => {
       expect(row.comfort).toBe(12);
       expect(row.age).toBe(35);
     }
+  });
+
+  it("resolveMatrixForEngine prefers saved snapshot over a later asOf", () => {
+    const frozen = destinyMatrix(DOB, { asOfDate: "2024-01-01" })!;
+    const snapshot = matrixToStructuredData(frozen);
+    const resolved = resolveMatrixForEngine({
+      birthDate: DOB,
+      snapshot,
+      asOfDate: "2026-08-20",
+    });
+    expect(resolved?.asOf.date).toBe("2024-01-01");
+    expect(resolved?.chronologicalAge).toBe(frozen.chronologicalAge);
+    expect(resolved?.comfort.number).toBe(frozen.comfort.number);
+    const live = destinyMatrix(DOB, { asOfDate: "2026-08-20" })!;
+    expect(live.chronologicalAge).not.toBe(frozen.chronologicalAge);
   });
 
   it("birthday boundary uses asOf calendar day, not clock TZ", () => {
@@ -416,6 +451,17 @@ describe.skipIf(!hasTestDb)("guest claim birth profile (db)", () => {
     const after = await getUserById(user.id);
     expect(after?.birth_time).toBeTruthy();
     expect(after?.birth_city).toBe("Berlin");
+    const again = await persistOwnedMatrixSnapshot({
+      userId: user.id,
+      birthDate: "1990-08-15",
+      subjectKind: "self",
+      asOfDate: "2028-01-01",
+    });
+    expect(again.reused).toBe(true);
+    expect(again.asOfDate).toBe(persisted.asOfDate);
+    expect((again.snapshot.ageCurrent as { age?: number })?.age).toBe(
+      (persisted.snapshot.ageCurrent as { age?: number })?.age
+    );
   });
 
   it("two children stay isolated from self DOB", async () => {

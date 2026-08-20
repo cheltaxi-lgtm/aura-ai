@@ -5,6 +5,8 @@ import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
 import { buildMatrixFreeSummary, type MatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
+import { matrixToStructuredData } from "@/lib/numerology/destiny-matrix";
+import { hydrateDestinyMatrixFromSnapshot } from "@/lib/numerology/matrix-snapshot";
 import { downloadMatrixShareCardSvg } from "@/lib/numerology/matrix-share-card-svg";
 import { parseBirthDate } from "@/lib/numerology/constants";
 import { readStoredProfile } from "@/lib/home-flow-storage";
@@ -148,7 +150,7 @@ export default function DestinyMatrixPreview() {
   }, []);
 
   const persistAuthMatrix = useCallback(
-    async (date: string, personName: string) => {
+    async (date: string, personName: string, matrix?: MatrixFreeSummary["matrix"]) => {
       const subject = selectedSubjectId
         ? matrixSubjects.subjects.find((item) => item.id === selectedSubjectId)
         : null;
@@ -162,6 +164,13 @@ export default function DestinyMatrixPreview() {
             displayName: personName.trim() || subject?.displayName || null,
             subjectKind: subject?.kind ?? "self",
             subjectId: selectedSubjectId,
+            ...(matrix
+              ? {
+                  snapshot: matrixToStructuredData(matrix),
+                  asOfDate: matrix.asOf.date,
+                  calculationVersion: matrix.calculationVersion,
+                }
+              : {}),
           }),
         });
       } catch {
@@ -233,7 +242,7 @@ export default function DestinyMatrixPreview() {
         if (!isLoggedIn) {
           void persistGuestMatrix(date, personName);
         } else {
-          void persistAuthMatrix(date, personName);
+          void persistAuthMatrix(date, personName, result.matrix);
         }
       });
     },
@@ -310,6 +319,33 @@ export default function DestinyMatrixPreview() {
       if (nextName) setName(nextName);
       if (nextDate) setBirthDate(nextDate);
       if (nextName || nextDate) setFromProfile(true);
+
+      if (isLoggedIn) {
+        try {
+          const snapRes = await fetch("/api/numerology/matrix-snapshot", {
+            credentials: "include",
+          });
+          if (snapRes.ok) {
+            const data = (await snapRes.json()) as {
+              birthDate?: string;
+              snapshot?: Record<string, unknown>;
+            };
+            const matrix = hydrateDestinyMatrixFromSnapshot(data.snapshot ?? null);
+            const date = data.birthDate && parseBirthDate(data.birthDate) ? data.birthDate : "";
+            if (matrix && date) {
+              const frozen = buildMatrixFreeSummary(date, { name: nextName || undefined, matrix });
+              if (frozen && !cancelled) {
+                setBirthDate(date);
+                setSummary(frozen);
+                autoRanRef.current = true;
+                return;
+              }
+            }
+          }
+        } catch {
+          /* first calc still persists */
+        }
+      }
 
       if (nextDate && parseBirthDate(nextDate)) {
         autoRanRef.current = true;

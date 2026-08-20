@@ -112,6 +112,8 @@
   position: relative;
   margin: 1rem 0 0;
   width: 100%;
+  max-width: 100%;
+  overflow-x: clip;
 }
 
 .destiny-matrix-frame {
@@ -211,6 +213,12 @@
   margin: 0.2rem 0 0;
   font-size: 1rem;
   color: #f4e6c3;
+}
+
+@media (max-width: 430px) {
+  .destiny-matrix-legend li {
+    white-space: normal;
+  }
 }
 
 @media (max-width: 359px) {

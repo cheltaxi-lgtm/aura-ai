@@ -11,6 +11,7 @@ import {
   type MatrixSubjectKind,
 } from "@/lib/services/matrix-subject-service";
 import { PRICING } from "@/lib/config/pricing";
+import { hydrateDestinyMatrixFromSnapshot } from "@/lib/numerology/matrix-snapshot";
 
 export type PersistedMatrixSnapshot = {
   subjectId: string;
@@ -18,10 +19,52 @@ export type PersistedMatrixSnapshot = {
   asOfDate: string;
   calculationVersion: string;
   snapshot: Record<string, unknown>;
+  reused?: boolean;
 };
+
+function asOfFromSnapshot(snapshot: Record<string, unknown> | null): string | null {
+  const asOf = snapshot?.asOf;
+  if (!asOf || typeof asOf !== "object") return null;
+  const date = (asOf as { date?: unknown }).date;
+  return typeof date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : null;
+}
 
 function persistError(code: string): Error & { code: string } {
   return Object.assign(new Error(code), { code });
+}
+
+async function existingFrozenSnapshot(
+  client: PoolClient,
+  userId: string,
+  subjectId: string,
+  birthDate: string
+): Promise<PersistedMatrixSnapshot | null> {
+  const found = await queryClient<{
+    id: string;
+    birth_date: string;
+    as_of_date: string | null;
+    calculation_version: string | null;
+    matrix_snapshot: Record<string, unknown> | null;
+  }>(
+    client,
+    `SELECT id, birth_date::text, as_of_date::text, calculation_version, matrix_snapshot
+     FROM matrix_subjects
+     WHERE user_id = $1 AND id = $2::uuid
+     FOR UPDATE`,
+    [userId, subjectId]
+  );
+  const row = found.rows[0];
+  if (!row?.matrix_snapshot || !row.as_of_date) return null;
+  const existingDob = String(row.birth_date).slice(0, 10);
+  if (existingDob !== birthDate) return null;
+  return {
+    subjectId: row.id,
+    birthDate: existingDob,
+    asOfDate: String(row.as_of_date).slice(0, 10),
+    calculationVersion: row.calculation_version || MATRIX_CALCULATION_VERSION,
+    snapshot: row.matrix_snapshot,
+    reused: true,
+  };
 }
 
 export async function attachSnapshotToSubject(
@@ -65,20 +108,28 @@ export async function persistOwnedMatrixSnapshot(input: {
     input.subjectKind && isMatrixSubjectKind(input.subjectKind) ? input.subjectKind : "self";
   const displayName = input.displayName?.trim().slice(0, 80) || null;
 
-  let snapshot = input.snapshot && typeof input.snapshot === "object" ? input.snapshot : null;
+  let snapshot =
+    input.snapshot &&
+    typeof input.snapshot === "object" &&
+    hydrateDestinyMatrixFromSnapshot(input.snapshot)
+      ? input.snapshot
+      : null;
   let asOfDate =
     typeof input.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.asOfDate)
       ? input.asOfDate
-      : null;
+      : asOfFromSnapshot(snapshot);
   let calculationVersion = input.calculationVersion?.trim() || null;
 
-  if (!snapshot || !asOfDate) {
-    asOfDate = matrixCalendarDate();
+  if (!snapshot) {
+    asOfDate = asOfDate || matrixCalendarDate();
     const matrix = destinyMatrix(birthDate, { asOfDate });
     if (!matrix) throw persistError("invalid_birth_date");
     snapshot = matrixToStructuredData(matrix);
     calculationVersion = matrix.calculationVersion;
+  } else if (!asOfDate) {
+    asOfDate = matrixCalendarDate();
   }
+  if (!snapshot || !asOfDate) throw persistError("invalid_birth_date");
   calculationVersion = calculationVersion || MATRIX_CALCULATION_VERSION;
 
   return withTransaction(async (client) => {
@@ -129,6 +180,9 @@ export async function persistOwnedMatrixSnapshot(input: {
         }
       }
       if (!subjectId) throw persistError("SUBJECT_INSERT_FAILED");
+
+      const frozen = await existingFrozenSnapshot(client, input.userId, subjectId, birthDate);
+      if (frozen) return frozen;
 
       await queryClient(
         client,
@@ -183,6 +237,9 @@ export async function persistOwnedMatrixSnapshot(input: {
     }
     if (!subjectId) throw persistError("SUBJECT_INSERT_FAILED");
 
+    const frozen = await existingFrozenSnapshot(client, input.userId, subjectId, birthDate);
+    if (frozen) return frozen;
+
     await queryClient(
       client,
       `UPDATE matrix_subjects
@@ -234,4 +291,51 @@ export async function getOwnedMatrixSnapshot(
     calculationVersion: row.calculation_version || MATRIX_CALCULATION_VERSION,
     snapshot: row.matrix_snapshot,
   };
+}
+
+export async function getOwnedSelfMatrixSnapshot(
+  userId: string
+): Promise<PersistedMatrixSnapshot | null> {
+  const { rows } = await query<{
+    id: string;
+    birth_date: string;
+    as_of_date: string | null;
+    calculation_version: string | null;
+    matrix_snapshot: Record<string, unknown> | null;
+  }>(
+    `SELECT id, birth_date::text, as_of_date::text, calculation_version, matrix_snapshot
+     FROM matrix_subjects
+     WHERE user_id = $1 AND kind = 'self'
+     LIMIT 1`,
+    [userId]
+  );
+  const row = rows[0];
+  if (!row?.matrix_snapshot || !row.as_of_date) return null;
+  return {
+    subjectId: row.id,
+    birthDate: String(row.birth_date).slice(0, 10),
+    asOfDate: String(row.as_of_date).slice(0, 10),
+    calculationVersion: row.calculation_version || MATRIX_CALCULATION_VERSION,
+    snapshot: row.matrix_snapshot,
+    reused: true,
+  };
+}
+
+/** Load frozen snapshot, or persist one once if this subject has none yet. */
+export async function ensureOwnedMatrixSnapshot(input: {
+  userId: string;
+  birthDate: string;
+  displayName?: string | null;
+  subjectKind?: MatrixSubjectKind | null;
+  subjectId?: string | null;
+  asOfDate?: string | null;
+}): Promise<PersistedMatrixSnapshot> {
+  if (input.subjectId) {
+    const existing = await getOwnedMatrixSnapshot(input.userId, input.subjectId);
+    if (existing && existing.birthDate === input.birthDate) return { ...existing, reused: true };
+  } else if (!input.subjectKind || input.subjectKind === "self") {
+    const existing = await getOwnedSelfMatrixSnapshot(input.userId);
+    if (existing && existing.birthDate === input.birthDate) return existing;
+  }
+  return persistOwnedMatrixSnapshot(input);
 }

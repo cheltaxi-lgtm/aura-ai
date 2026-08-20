@@ -14,7 +14,12 @@ import {
 } from "@/lib/numerology/destiny-matrix";
 import { matrixCalendarDate } from "@/lib/numerology/matrix-calendar";
 import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
-import { resolveMatrixForDisplay, resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
+import {
+  resolveMatrixForDisplay,
+  resolveMatrixForDisplayDetailed,
+  resolveMatrixForEngine,
+} from "@/lib/numerology/matrix-snapshot";
+import { ensureOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
 import { clientSafeMatrixResolveError } from "@/lib/numerology/matrix-labels";
 import { diffMatrixStructured, formatMatrixDiffTeaser } from "@/lib/numerology/matrix-diff";
 import {
@@ -595,6 +600,13 @@ export async function botMatrixRun(
       `${numerologMemoryCtx.clientBlock}${numerologMemoryCtx.pastSessionsBlock}${numerologMemoryCtx.factsBlock}`.trim() ||
       undefined;
 
+    const ownedSnap = await ensureOwnedMatrixSnapshot({
+      userId: profileUserId,
+      birthDate,
+      displayName: subjectName,
+      subjectKind: subject?.kind ?? "self",
+      subjectId: subject?.id,
+    });
     const sessionResult = await generateNumerologSessionReading({
       toolId,
       userName: readerName,
@@ -603,15 +615,21 @@ export async function botMatrixRun(
       gender: gate.user.gender,
       spreadNumbers: [],
       memoryBlock: numerologMemoryBlock,
-      birthTime: gate.user.birth_time,
-      birthCity: gate.user.birth_city,
+      birthTime: subject?.kind && subject.kind !== "self" ? undefined : gate.user.birth_time,
+      birthCity: subject?.kind && subject.kind !== "self" ? undefined : gate.user.birth_city,
       userId: profileUserId,
       subjectKind: subject?.kind ?? "self",
       subjectName,
+      asOfDate: ownedSnap.asOfDate,
+      matrixSnapshot: ownedSnap.snapshot,
     });
     const rawReading = sessionResult.reply?.trim() || "";
     let reading = sanitizeReadingForClient(rawReading) || rawReading;
-    const matrix = destinyMatrix(birthDate, { asOfDate: matrixCalendarDate() });
+    const matrix = resolveMatrixForEngine({
+      birthDate,
+      snapshot: ownedSnap.snapshot,
+      asOfDate: ownedSnap.asOfDate,
+    });
     if (matrix && (!isUsableMatrixReading(reading, toolId) || !reading.trim())) {
       const { buildMatrixAudience } = await import("@/lib/numerology/matrix-audience");
       reading = forceFillMissingSections(

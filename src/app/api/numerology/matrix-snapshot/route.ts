@@ -4,7 +4,11 @@ import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { isMatrixSubjectKind } from "@/lib/services/matrix-subject-service";
-import { persistOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
+import {
+  getOwnedMatrixSnapshot,
+  getOwnedSelfMatrixSnapshot,
+  persistOwnedMatrixSnapshot,
+} from "@/lib/services/matrix-snapshot-persist";
 
 export const runtime = "nodejs";
 
@@ -36,6 +40,13 @@ export async function POST(request: NextRequest) {
       ? body.subjectKind
       : "self";
   const subjectId = typeof body.subjectId === "string" ? body.subjectId : null;
+  const snapshot =
+    body.snapshot && typeof body.snapshot === "object"
+      ? (body.snapshot as Record<string, unknown>)
+      : null;
+  const asOfDate = typeof body.asOfDate === "string" ? body.asOfDate : null;
+  const calculationVersion =
+    typeof body.calculationVersion === "string" ? body.calculationVersion : null;
 
   try {
     const persisted = await persistOwnedMatrixSnapshot({
@@ -44,6 +55,9 @@ export async function POST(request: NextRequest) {
       displayName,
       subjectKind,
       subjectId,
+      snapshot,
+      asOfDate,
+      calculationVersion,
     });
     return NextResponse.json({
       ok: true,
@@ -51,6 +65,7 @@ export async function POST(request: NextRequest) {
       birthDate: persisted.birthDate,
       asOfDate: persisted.asOfDate,
       calculationVersion: persisted.calculationVersion,
+      reused: Boolean(persisted.reused),
     });
   } catch (err) {
     const code =
@@ -67,4 +82,29 @@ export async function POST(request: NextRequest) {
     console.warn("[matrix-snapshot] persist failed");
     return NextResponse.json({ error: "persist_failed" }, { status: 500 });
   }
+}
+
+/** Reopen the frozen Matrix — never live-recalculate. */
+export async function GET(request: NextRequest) {
+  const auth = await requireProfileUserId();
+  if (!auth) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "unavailable" }, { status: 503 });
+  }
+
+  const subjectId = request.nextUrl.searchParams.get("subjectId");
+  const persisted = subjectId
+    ? await getOwnedMatrixSnapshot(auth.profileUserId, subjectId)
+    : await getOwnedSelfMatrixSnapshot(auth.profileUserId);
+  if (!persisted) {
+    return NextResponse.json({ error: "not_found" }, { status: 404 });
+  }
+  return NextResponse.json({
+    ok: true,
+    subjectId: persisted.subjectId,
+    birthDate: persisted.birthDate,
+    asOfDate: persisted.asOfDate,
+    calculationVersion: persisted.calculationVersion,
+    snapshot: persisted.snapshot,
+  });
 }

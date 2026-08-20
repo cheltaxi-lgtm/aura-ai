@@ -403,7 +403,7 @@ function valuesLayer(
       const p = layoutPoint(n.id);
       const focused = isNodeFocused(n, focusKey);
       const look = nodeLook(n, focused, t, type);
-      return `<text data-value="${n.id}" x="${p.x}" y="${p.y}" text-anchor="middle" dominant-baseline="central" font-size="${look.numSize}" font-weight="600" fill="${look.num}" font-family="${FONT}" opacity="${visible(n, revealed) ? 1 : 0}">${n.number}</text>`;
+      return `<text data-value="${n.id}" data-node-hit="${n.id}" x="${p.x}" y="${p.y}" text-anchor="middle" dominant-baseline="central" font-size="${look.numSize}" font-weight="600" fill="${look.num}" font-family="${FONT}" opacity="${visible(n, revealed) ? 1 : 0}" style="cursor:pointer">${n.number}</text>`;
     })
     .join("");
 }
@@ -497,7 +497,7 @@ export function buildMatrixDiagramSvg(
   <g data-layer="nodes">${nodesLayer(model, t, revealed, focusKey, type)}</g>
   <g data-layer="node-values">${valuesLayer(model, t, revealed, focusKey, type)}</g>
   <g data-layer="markers">${markers(t)}</g>
-  <g data-layer="labels">${zoneLabels(t, compact, type, model.calculationVersion)}</g>
+  <g data-layer="labels" pointer-events="none">${zoneLabels(t, compact, type, model.calculationVersion)}</g>
   ${showPeriod ? `<g data-layer="period">${periodLayer(model, t, revealed)}</g>` : ""}
   <g data-layer="interactive"></g>`;
 

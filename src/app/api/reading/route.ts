@@ -87,10 +87,11 @@ import {
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
 import {
-  destinyMatrix,
   MATRIX_CALCULATION_VERSION,
   matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
+import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
+import { ensureOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
 import {
   deleteOwnedMatrixReportsForSubject,
   deleteOwnedMatrixReportsForBirth,
@@ -450,8 +451,11 @@ export async function POST(request: NextRequest) {
 
     if (resolvedMatrixSubject) {
       birthDate = resolvedMatrixSubject.birthDate;
-      birthTime = resolvedMatrixSubject.birthTime ?? undefined;
-      birthCity = resolvedMatrixSubject.birthCity ?? undefined;
+      // Date-only Matrix: never inherit Natal/HD time/place from the subject.
+      if (resolvedMatrixSubject.kind !== "self") {
+        birthTime = undefined;
+        birthCity = undefined;
+      }
       // Keep userName = buyer (address «ты»). Subject name is passed separately
       // so prose does not speak as if the other person ordered their own matrix.
     }
@@ -471,6 +475,24 @@ export async function POST(request: NextRequest) {
     );
     if (freeze?.asOfDate) {
       matrixAsOfDate = freeze.asOfDate;
+    }
+  }
+
+  let matrixSnapshot: Record<string, unknown> | null = null;
+  if (isMatrixSubjectTool && resolvedMatrixSubject && birthDate && (await ensureDb())) {
+    try {
+      const owned = await ensureOwnedMatrixSnapshot({
+        userId: authed.profileUserId,
+        birthDate,
+        displayName: resolvedMatrixSubject.displayName,
+        subjectKind: resolvedMatrixSubject.kind,
+        subjectId: resolvedMatrixSubject.id,
+        asOfDate: matrixAsOfDate,
+      });
+      matrixSnapshot = owned.snapshot;
+      matrixAsOfDate = owned.asOfDate;
+    } catch {
+      /* generate still has asOf fallback */
     }
   }
 
@@ -1141,6 +1163,7 @@ export async function POST(request: NextRequest) {
                 ? null
                 : userName),
             asOfDate: matrixAsOfDate,
+            matrixSnapshot,
             onMatrixProgress:
               workerJobId &&
               (toolId === "destiny_matrix" || toolId === "child_matrix")
@@ -1196,10 +1219,11 @@ export async function POST(request: NextRequest) {
               return { kind: "failed" as const };
             }
             const matrix = birthDate
-              ? destinyMatrix(
+              ? resolveMatrixForEngine({
                   birthDate,
-                  matrixAsOfDate ? { asOfDate: matrixAsOfDate } : undefined
-                )
+                  snapshot: matrixSnapshot,
+                  asOfDate: matrixAsOfDate,
+                })
               : null;
             const {
               isUsableMatrixReading,
@@ -1351,10 +1375,11 @@ export async function POST(request: NextRequest) {
         if (toolId === "matrix_compatibility" && birthDate && (await ensureDb())) {
           try {
             const partnerDate = toIsoBirthDateShared(numerologToolParams.partnerDate ?? "");
-            const pairMatrix = destinyMatrix(
+            const pairMatrix = resolveMatrixForEngine({
               birthDate,
-              matrixAsOfDate ? { asOfDate: matrixAsOfDate } : undefined
-            );
+              snapshot: matrixSnapshot,
+              asOfDate: matrixAsOfDate,
+            });
             const pairContent = (reading || "").trim();
             if (pairContent && partnerDate) {
               await saveMatrixReport({

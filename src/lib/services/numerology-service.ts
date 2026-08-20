@@ -1,5 +1,5 @@
 import { buildNumerologSpreadReading, buildSpreadOpeningFinale } from "@/lib/numerolog/welcome";
-import { destinyMatrix } from "@/lib/numerology/destiny-matrix";
+import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
 import { buildNumerologEngineReply, buildRichEngineFacts } from "@/lib/numerology/engine-reply";
 import {
   buildMatrixNatalBridgeFacts,
@@ -70,6 +70,8 @@ export interface NumerologEngineParams {
   subjectName?: string | null;
   /** Frozen guest/report as-of day for period-dependent Matrix zones. */
   asOfDate?: string | null;
+  /** Immutable saved Matrix — AI never recalculates these numbers. */
+  matrixSnapshot?: Record<string, unknown> | null;
 }
 
 /** Keep only matrix-safe memory lines (drop Pythagorean / life-path leaks). */
@@ -210,11 +212,11 @@ export async function generateNumerologStreamReply(
       : "";
     if (safeMem) engineFacts = `${safeMem}\n\n${engineFacts}`;
     if (params.birthDate) {
-      const asOf =
-        typeof params.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.asOfDate)
-          ? params.asOfDate
-          : undefined;
-      const matrix = destinyMatrix(params.birthDate, asOf ? { asOfDate: asOf } : undefined);
+      const matrix = resolveMatrixForEngine({
+        birthDate: params.birthDate,
+        snapshot: params.matrixSnapshot,
+        asOfDate: params.asOfDate,
+      });
       if (matrix) {
         let natalInput = natalBridgeInputFromProfile({
           birthDate: params.birthDate,
@@ -261,6 +263,7 @@ export async function generateNumerologStreamReply(
         subjectKind: params.subjectKind,
         subjectName: params.subjectName,
         asOfDate: params.asOfDate,
+        snapshot: params.matrixSnapshot,
         // Natal bridge + filtered memory — previously built then discarded.
         contextFacts: engineFacts,
         useLlm: "all",
@@ -317,12 +320,11 @@ export async function generateNumerologStreamReply(
 
   const matrixForFinale =
     engineResult.primaryTopic === "destiny_matrix" && params.birthDate
-      ? destinyMatrix(
-          params.birthDate,
-          typeof params.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(params.asOfDate)
-            ? { asOfDate: params.asOfDate }
-            : undefined
-        )
+      ? resolveMatrixForEngine({
+          birthDate: params.birthDate,
+          snapshot: params.matrixSnapshot,
+          asOfDate: params.asOfDate,
+        })
       : null;
 
   const [engineBody, finale] = await Promise.all([
@@ -436,6 +438,7 @@ export async function generateNumerologSessionReading(input: {
   subjectName?: string | null;
   /** Guest→auth freeze; period zones must match guest snapshot on first open. */
   asOfDate?: string | null;
+  matrixSnapshot?: Record<string, unknown> | null;
   onMatrixProgress?: (progress: {
     done: number;
     total: number;
@@ -512,6 +515,7 @@ export async function generateNumerologSessionReading(input: {
       (input.toolId === "child_matrix" ? "child" : undefined),
     subjectName: input.subjectName,
     asOfDate: input.asOfDate,
+    matrixSnapshot: input.matrixSnapshot,
     // Paid session: AI-only. completeNumerologProse walks paid → fallbackModels.
     allowEngineFallback: false,
   });
