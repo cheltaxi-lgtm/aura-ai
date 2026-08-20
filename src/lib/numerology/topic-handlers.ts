@@ -457,7 +457,7 @@ function buildTopicBlock(
         { role: "body", label: "1. Характер (визитка)", number: matrix.body.number },
         { role: "energy", label: "2. Небо / энергия", number: matrix.energy.number },
         { role: "roots", label: "3. Материя / год рождения", number: matrix.roots.number },
-        { role: "purpose", label: "4. Зона комфорта (центр)", number: matrix.comfort.number },
+        { role: "comfort", label: "4. Зона комфорта (центр)", number: matrix.comfort.number },
         ...(matrix.purposeBlock
           ? [
               {

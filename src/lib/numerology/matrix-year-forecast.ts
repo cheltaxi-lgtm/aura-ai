@@ -1,3 +1,4 @@
+import { addMatrixCalendarMonths, matrixCalendarYmd } from "./matrix-calendar";
 import { arcanaForNumber, destinyMatrix, reduceToArcanaNumber } from "./destiny-matrix";
 
 const RU_MONTHS = [
@@ -5,9 +6,7 @@ const RU_MONTHS = [
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 ];
 
-function asOfFor(date: Date): { asOfYear: number; asOfMonth: number; asOfDate: string } {
-  const year = date.getFullYear();
-  const month = date.getMonth() + 1;
+function asOfFor(year: number, month: number): { asOfYear: number; asOfMonth: number; asOfDate: string } {
   return {
     asOfYear: year,
     asOfMonth: month,
@@ -31,21 +30,22 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
   opportunityMonths: number[];
   cautionMonths: number[];
 } | null {
-  const initial = destinyMatrix(birthDate, asOfFor(fromDate));
+  const start = matrixCalendarYmd(fromDate);
+  const initial = destinyMatrix(birthDate, asOfFor(start.year, start.month));
   if (!initial) return null;
 
   const months = Array.from({ length: 12 }, (_, index) => {
-    const date = new Date(fromDate.getFullYear(), fromDate.getMonth() + index, 1);
-    const prevDate = new Date(fromDate.getFullYear(), fromDate.getMonth() + index - 1, 1);
-    const matrix = destinyMatrix(birthDate, asOfFor(date))!;
-    const previous = destinyMatrix(birthDate, asOfFor(prevDate));
-    const number = reduceToArcanaNumber(matrix.yearArcana.number + date.getMonth() + 1);
+    const cur = addMatrixCalendarMonths(start.year, start.month, index);
+    const prev = addMatrixCalendarMonths(start.year, start.month, index - 1);
+    const matrix = destinyMatrix(birthDate, asOfFor(cur.year, cur.month))!;
+    const previous = destinyMatrix(birthDate, asOfFor(prev.year, prev.month));
+    const number = reduceToArcanaNumber(matrix.yearArcana.number + cur.month);
     const point = arcanaForNumber(number, matrix.calculationVersion);
     const ageTransition = Boolean(previous && previous.ageCurrent.age !== matrix.ageCurrent.age);
     return {
-      year: date.getFullYear(),
-      month: date.getMonth() + 1,
-      label: `${RU_MONTHS[date.getMonth()]} ${date.getFullYear()}`,
+      year: cur.year,
+      month: cur.month,
+      label: `${RU_MONTHS[cur.month - 1]} ${cur.year}`,
       number,
       title: point.arcanaName,
       ...(ageTransition

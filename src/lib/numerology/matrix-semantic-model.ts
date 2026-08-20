@@ -131,8 +131,8 @@ export function buildMatrixSemanticModel(
       isV5 ? "maternal" : null,
       isV5 ? ["maternal"] : []
     ),
-    node("center", "center", "Зона комфорта", "", matrix.comfort, "purpose", [
-      "purpose",
+    node("center", "center", "Зона комфорта", "", matrix.comfort, "comfort", [
+      "comfort",
     ]),
     node("vertical.top", "axis", "Духовный полюс", "Дух", matrix.skySpirit, "skySpirit", [
       "skySpirit",

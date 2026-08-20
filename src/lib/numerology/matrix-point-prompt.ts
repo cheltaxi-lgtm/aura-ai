@@ -8,6 +8,7 @@ export type MatrixPointRole =
   | "body"
   | "energy"
   | "roots"
+  | "comfort"
   | "purpose"
   | "talents"
   | "money"
@@ -43,6 +44,8 @@ export function matrixRoleLens(role: MatrixPointRole, entry: ArcanaDictionaryEnt
       return `Угол энергии: откуда набирается и куда утекает сила «${title}». Опора: ${d(entry.light)}. Ловушка: ${d(entry.shadow)}. Практика: режим нагрузки/паузы на эту неделю.`;
     case "roots":
       return `Угол рода/корней: какой семейный сценарий «${title}» мог достаться по наследству. Опора: ${d(entry.resource)}. Практика: отдели «моё» от «так принято в семье» — один пример.`;
+    case "comfort":
+      return `Угол зоны комфорта: как «${title}» держит опору и ритм. Опора: ${d(entry.resource)}. Ловушка: ${d(entry.risk)}. Практика: одно решение на 30 дней, как ты поддерживаешь себя в этом векторе — без чужих сценариев.`;
     case "purpose":
       return `Угол предназначения: ${d(entry.purpose)}. Практика: одно решение на 30 дней строго в этом векторе — без чужих сценариев.`;
     case "talents":

@@ -6,6 +6,18 @@ import type { MatrixDiagramInput, MatrixDiagramSlot } from "../../render/matrix-
  * Drift is caught by `scripts/verify-matrix-calc-drift.mjs`.
  */
 export const BOT_MATRIX_CALC_VERSION = "matrix-v5" as const;
+const MATRIX_CALENDAR_TZ = "Europe/Moscow";
+
+function moscowToday(ref = new Date()): { year: number; month: number; day: number } {
+  const iso = new Intl.DateTimeFormat("en-CA", {
+    timeZone: MATRIX_CALENDAR_TZ,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(ref);
+  const [year, month, day] = iso.split("-").map(Number);
+  return { year, month, day };
+}
 
 function sumDigits(n: number): number {
   return String(Math.abs(Math.trunc(n)))
@@ -91,9 +103,9 @@ const SLOTS: SlotDef[] = [
   { key: "skySpirit", label: "Дух", area: "sky", pick: (p) => p.sky! },
   { key: "body", label: "Характер", area: "body", pick: (p) => p.a! },
   {
-    key: "purpose",
+    key: "comfort",
     label: "Зона комфорта",
-    area: "purpose",
+    area: "comfort",
     featured: true,
     pick: (p) => p.x!,
   },
@@ -140,9 +152,10 @@ export function buildLocalMatrixDiagram(
   const ga = reduceToArcanaNumber(g + a);
   const paternal = reduceToArcanaNumber(c + g);
   const maternal = reduceToArcanaNumber(b + c);
-  const now = asOf ? new Date(asOf.year, asOf.month - 1, asOf.day) : new Date();
-  const year = now.getFullYear();
-  const month = now.getMonth() + 1;
+  const today = asOf ?? moscowToday();
+  const now = new Date(today.year, today.month - 1, today.day);
+  const year = today.year;
+  const month = today.month;
   const yearArcana = reduceToArcanaNumber(a + b + sumDigits(year));
   const monthArcana = reduceToArcanaNumber(yearArcana + month);
 
@@ -173,7 +186,7 @@ export function buildLocalMatrixDiagram(
     { key: "karmicTip", n: tip, weight: 2.4 },
     { key: "money", n: money, weight: 2 },
     { key: "relationships", n: love, weight: 2 },
-    { key: "purpose", n: x, weight: 1 },
+    { key: "comfort", n: x, weight: 1 },
     { key: "yearArcana", n: yearArcana, weight: 1.5 },
     { key: "monthArcana", n: monthArcana, weight: 1.5 },
   ];

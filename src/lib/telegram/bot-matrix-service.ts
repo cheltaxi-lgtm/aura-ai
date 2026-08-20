@@ -12,6 +12,7 @@ import {
   matrixToStructuredData,
   type DestinyMatrixResult,
 } from "@/lib/numerology/destiny-matrix";
+import { matrixCalendarDate } from "@/lib/numerology/matrix-calendar";
 import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
 import { resolveMatrixForDisplay, resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
 import { clientSafeMatrixResolveError } from "@/lib/numerology/matrix-labels";
@@ -119,7 +120,11 @@ function buildMatrixDiagramFromResult(
 }
 
 function buildLiveMatrixDiagram(birthDate: string, name?: string | null): BotMatrixDiagram | null {
-  return buildMatrixDiagramFromResult(destinyMatrix(birthDate), birthDate, name);
+  return buildMatrixDiagramFromResult(
+    destinyMatrix(birthDate, { asOfDate: matrixCalendarDate() }),
+    birthDate,
+    name
+  );
 }
 
 function diagramForSavedReport(
@@ -606,7 +611,7 @@ export async function botMatrixRun(
     });
     const rawReading = sessionResult.reply?.trim() || "";
     let reading = sanitizeReadingForClient(rawReading) || rawReading;
-    const matrix = destinyMatrix(birthDate);
+    const matrix = destinyMatrix(birthDate, { asOfDate: matrixCalendarDate() });
     if (matrix && (!isUsableMatrixReading(reading, toolId) || !reading.trim())) {
       const { buildMatrixAudience } = await import("@/lib/numerology/matrix-audience");
       reading = forceFillMissingSections(

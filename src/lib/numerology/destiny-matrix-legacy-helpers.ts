@@ -1,21 +1,21 @@
+/**
+ * Frozen helpers for matrix-v3 / matrix-v4 replay.
+ * Do not import these from v5. Do not "fix" them to match live calendar or comfort ids.
+ */
 import { parseBirthDate } from "./constants";
 import { MATRIX_LABELS } from "./matrix-labels";
-import {
-  matrixCalendarDateObject,
-  matrixCalendarYmd,
-} from "./matrix-calendar";
 import type { DestinyMatrixAgePoint, DestinyMatrixOptions, DestinyMatrixPoint } from "./matrix-result";
 
-export const AGE_BELT_END = 80;
+export const LEGACY_AGE_BELT_END = 80;
 
-export function toIsoDay(date: Date): string {
+export function legacyToIsoDay(date: Date): string {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, "0");
   const d = String(date.getDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
-export function yearsBetween(
+export function legacyYearsBetween(
   birth: { year: number; month: number; day: number },
   asOf: Date
 ): number {
@@ -26,38 +26,35 @@ export function yearsBetween(
   return Math.max(0, age);
 }
 
-export function resolveAsOf(options?: DestinyMatrixOptions): {
+/** Explicit asOf only. Missing asOf is a caller bug for frozen replay. */
+export function legacyResolveAsOf(options?: DestinyMatrixOptions): {
   year: number;
   month: number;
   date: Date;
-} {
-  const today = matrixCalendarYmd();
-  let year = today.year;
-  let month = today.month;
-  let date = matrixCalendarDateObject();
-  if (typeof options?.asOfYear === "number" && Number.isFinite(options.asOfYear)) {
-    year = Math.trunc(options.asOfYear);
-  }
-  if (typeof options?.asOfMonth === "number" && Number.isFinite(options.asOfMonth)) {
-    month = Math.min(12, Math.max(1, Math.trunc(options.asOfMonth)));
-  }
+} | null {
   if (options?.asOfDate) {
     const parsed = parseBirthDate(options.asOfDate);
-    if (parsed) {
-      date = new Date(parsed.year, parsed.month - 1, parsed.day);
-      year = parsed.year;
-      month = parsed.month;
-    }
-  } else if (options?.asOfYear != null || options?.asOfMonth != null) {
-    date = new Date(year, month - 1, Math.min(28, today.day));
+    if (!parsed) return null;
+    return {
+      year: parsed.year,
+      month: parsed.month,
+      date: new Date(parsed.year, parsed.month - 1, parsed.day),
+    };
   }
-  return { year, month, date };
+  if (
+    typeof options?.asOfYear === "number" &&
+    Number.isFinite(options.asOfYear) &&
+    typeof options?.asOfMonth === "number" &&
+    Number.isFinite(options.asOfMonth)
+  ) {
+    const year = Math.trunc(options.asOfYear);
+    const month = Math.min(12, Math.max(1, Math.trunc(options.asOfMonth)));
+    return { year, month, date: new Date(year, month - 1, 1) };
+  }
+  return null;
 }
 
-export function agePoint(
-  age: number,
-  point: DestinyMatrixPoint
-): DestinyMatrixAgePoint {
+function agePoint(age: number, point: DestinyMatrixPoint): DestinyMatrixAgePoint {
   return {
     age,
     number: point.number,
@@ -73,13 +70,12 @@ const FOCUS_LABELS: Record<string, string> = {
   money: "Денежный канал",
   relationships: "Канал отношений",
   ageCurrent: "Период возраста",
-  comfort: "Зона комфорта",
+  purpose: "Зона комфорта",
   yearArcana: "Аркан года",
   monthArcana: "Аркан месяца",
 };
 
-/** Zovus-derived accent. Not a Destiny Matrix point. v5 center id is comfort. */
-export function pickFocus(input: {
+export function legacyPickFocus(input: {
   yearN: number;
   monthN: number;
   comfortN: number;
@@ -95,7 +91,7 @@ export function pickFocus(input: {
     { key: "karmicTip", n: input.tail[2], weight: 2.4 },
     { key: "money", n: input.moneyN, weight: 2 },
     { key: "relationships", n: input.loveN, weight: 2 },
-    { key: "comfort", n: input.comfortN, weight: 1 },
+    { key: "purpose", n: input.comfortN, weight: 1 },
     { key: "yearArcana", n: input.yearN, weight: 1.5 },
     { key: "monthArcana", n: input.monthN, weight: 1.5 },
   ];
@@ -116,7 +112,7 @@ export function pickFocus(input: {
   };
 }
 
-export function buildAgeBelt(
+export function legacyBuildAgeBelt(
   perimeter: number[],
   reduce: (n: number) => number,
   pointFor: (n: number) => DestinyMatrixPoint
@@ -127,12 +123,12 @@ export function buildAgeBelt(
     const mid = reduce(perimeter[i]! + perimeter[(i + 1) % 8]!);
     agePoints.push(agePoint(i * 10 + 5, pointFor(mid)));
   }
-  agePoints.push(agePoint(AGE_BELT_END, pointFor(perimeter[0]!)));
+  agePoints.push(agePoint(LEGACY_AGE_BELT_END, pointFor(perimeter[0]!)));
   agePoints.sort((p, q) => p.age - q.age);
   return agePoints;
 }
 
-export function pickAgeWindow(
+export function legacyPickAgeWindow(
   agePoints: DestinyMatrixAgePoint[],
   chronologicalAge: number
 ): { ageCurrent: DestinyMatrixAgePoint; ageNext: DestinyMatrixAgePoint | null } {

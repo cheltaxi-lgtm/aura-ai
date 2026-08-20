@@ -70,7 +70,7 @@ export const MATRIX_ZONE_DEFS: MatrixZoneDef[] = [
   {
     id: "comfort",
     label: "Зона комфорта",
-    role: "purpose",
+    role: "comfort",
     required: true,
     titleCore: String.raw`Зона\s+комфорта`,
   },
@@ -368,6 +368,7 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
                 return matrix.relationships.number;
               case "ageCurrent":
                 return matrix.ageCurrent.number;
+              case "comfort":
               case "purpose":
                 return matrix.comfort.number;
               case "yearArcana":
@@ -386,6 +387,7 @@ export function listMatrixZones(matrix: DestinyMatrixResult, toolId?: string): M
               matrix.money,
               matrix.relationships,
               matrix.ageCurrent,
+              matrix.comfort,
               matrix.purpose,
               matrix.yearArcana,
               matrix.monthArcana,

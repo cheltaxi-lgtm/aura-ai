@@ -4,14 +4,15 @@
  */
 import { parseBirthDate, sumDigits } from "./constants";
 import {
-  buildAgeBelt,
-  pickAgeWindow,
-  pickFocus,
-  resolveAsOf,
-  toIsoDay,
-  yearsBetween,
-} from "./destiny-matrix-internal";
+  legacyBuildAgeBelt,
+  legacyPickAgeWindow,
+  legacyPickFocus,
+  legacyResolveAsOf,
+  legacyToIsoDay,
+  legacyYearsBetween,
+} from "./destiny-matrix-legacy-helpers";
 import { arcanaForNumber } from "./matrix-arcana-map";
+import { matrixCalendarDate } from "./matrix-calendar";
 import { MATRIX_CHANNEL_DEFINITIONS } from "./matrix-channels";
 import { reduceToArcanaDigitSum } from "./matrix-reducers";
 import {
@@ -30,7 +31,9 @@ export function computeDestinyMatrixV4(
 ): DestinyMatrixResult | null {
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
-  const asOf = resolveAsOf(options);
+  const asOf =
+    legacyResolveAsOf(options) ?? legacyResolveAsOf({ asOfDate: matrixCalendarDate() });
+  if (!asOf) return null;
   const reduce = reduceToArcanaDigitSum;
   const point = (n: number) => arcanaForNumber(n, MATRIX_V4_CALCULATION_VERSION);
 
@@ -52,9 +55,9 @@ export function computeDestinyMatrixV4(
   const monthArcanaN = reduce(yearArcanaN + asOf.month);
 
   const perimeter = [a, ab, b, bc, c, cg, g, ga];
-  const agePoints = buildAgeBelt(perimeter, reduce, point);
-  const chronologicalAge = yearsBetween(parsed, asOf.date);
-  const { ageCurrent, ageNext } = pickAgeWindow(agePoints, chronologicalAge);
+  const agePoints = legacyBuildAgeBelt(perimeter, reduce, point);
+  const chronologicalAge = legacyYearsBetween(parsed, asOf.date);
+  const { ageCurrent, ageNext } = legacyPickAgeWindow(agePoints, chronologicalAge);
 
   const body = point(a);
   const energy = point(b);
@@ -73,7 +76,7 @@ export function computeDestinyMatrixV4(
   const skySpirit = point(skyInner);
   const earthTask = karmicMid;
   const gaPoint = point(ga);
-  const focus = pickFocus({
+  const focus = legacyPickFocus({
     yearN: yearArcanaN,
     monthN: monthArcanaN,
     comfortN: x,
@@ -133,6 +136,6 @@ export function computeDestinyMatrixV4(
     })),
     focusKey: focus.focusKey,
     focusLabel: focus.focusLabel,
-    asOf: { year: asOf.year, month: asOf.month, date: toIsoDay(asOf.date) },
+    asOf: { year: asOf.year, month: asOf.month, date: legacyToIsoDay(asOf.date) },
   };
 }

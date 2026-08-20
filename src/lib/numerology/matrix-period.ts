@@ -35,8 +35,10 @@ export function focusNumber(m: DestinyMatrixResult): number {
       return m.relationships.number;
     case "ageCurrent":
       return m.ageCurrent.number;
+    case "comfort":
+      return m.comfort.number;
     case "purpose":
-      // pickFocus still keys the center as "purpose"; the number is comfort/X.
+      // v3/v4 snapshots keyed the center as purpose; the number is comfort/X.
       return m.comfort.number;
     case "yearArcana":
       return m.yearArcana.number;

@@ -71,6 +71,7 @@ const SLOT_POS: Record<string, { x: number; y: number; r: number }> = {
   roots: { ...polar(R, 0), r: 28 },
   karma: { ...polar(R, -90), r: 28 },
   purpose: { x: CX, y: CY, r: 40 },
+  comfort: { x: CX, y: CY, r: 40 },
   skySpirit: { ...polar(INNER, 90), r: 20 },
   karmicMid: { ...polar(INNER, -90), r: 20 },
   relationships: { ...polar(INNER, 180), r: 20 },
@@ -95,13 +96,13 @@ function fallbackOctagram(slots: MatrixDiagramSlot[], focusKey: string): string 
       const slot = byKey.get(key);
       if (!slot) return "";
       const focus = focusKey && slot.key === focusKey;
-      const featured = slot.featured || key === "purpose" || focus;
+      const featured = slot.featured || key === "comfort" || key === "purpose" || focus;
       const stroke = focus ? "#e8c77e" : featured ? "rgba(201,162,74,0.78)" : "rgba(237,230,218,0.38)";
       const fill = focus ? "#241c12" : featured ? "#1c1914" : "#141210";
       const num = slot.number > 9 ? 22 : 24;
       return `<g>
         <circle cx="${pos.x}" cy="${pos.y}" r="${pos.r}" fill="${fill}" stroke="${stroke}" stroke-width="${featured ? 2.2 : 1.35}"/>
-        <text x="${pos.x}" y="${pos.y + 1}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${key === "purpose" ? 34 : num}" font-weight="700" fill="#ede6da">${slot.number}</text>
+        <text x="${pos.x}" y="${pos.y + 1}" text-anchor="middle" dominant-baseline="central" font-family="${FONT}" font-size="${key === "comfort" || key === "purpose" ? 34 : num}" font-weight="700" fill="#ede6da">${slot.number}</text>
       </g>`;
     })
     .join("");

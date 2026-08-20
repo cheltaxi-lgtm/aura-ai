@@ -2,6 +2,7 @@ import { computeDestinyMatrixV3 } from "./destiny-matrix-v3";
 import { computeDestinyMatrixV4 } from "./destiny-matrix-v4";
 import { computeDestinyMatrixV5 } from "./destiny-matrix-v5";
 import { AGE_BELT_END } from "./destiny-matrix-internal";
+import { matrixCalendarDateFromTimestamp } from "./matrix-calendar";
 import { arcanaForNumber } from "./matrix-arcana-map";
 import { MATRIX_LABELS } from "./matrix-labels";
 import {
@@ -76,9 +77,9 @@ export const DESTINY_MATRIX_DIAGRAM_SLOTS: Array<{
   { key: "skySpirit", label: MATRIX_LABELS.skySpirit, area: "sky", pick: (m) => m.skySpirit },
   { key: "body", label: MATRIX_LABELS.body, area: "body", pick: (m) => m.body },
   {
-    key: "purpose",
+    key: "comfort",
     label: MATRIX_LABELS.comfort,
-    area: "purpose",
+    area: "comfort",
     featured: true,
     pick: (m) => m.comfort,
   },
@@ -106,8 +107,10 @@ export const DESTINY_MATRIX_UI_SLOT_COUNT = DESTINY_MATRIX_DIAGRAM_SLOTS.length;
 export function matrixOptionsForTimestamp(
   timestamp: string | null | undefined
 ): DestinyMatrixOptions | undefined {
-  const day = timestamp?.slice(0, 10);
-  return day && /^\d{4}-\d{2}-\d{2}$/.test(day) ? { asOfDate: day } : undefined;
+  if (!timestamp) return undefined;
+  if (/^\d{4}-\d{2}-\d{2}$/.test(timestamp)) return { asOfDate: timestamp };
+  const day = matrixCalendarDateFromTimestamp(timestamp);
+  return day ? { asOfDate: day } : undefined;
 }
 
 export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {

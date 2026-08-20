@@ -25,7 +25,7 @@ export function diffMatrixStructured(
   if (!previous || typeof previous !== "object") return [];
   const lines: MatrixDiffLine[] = [];
   const pairs: Array<{ key: string; label: string }> = [
-    { key: "purpose", label: "Зона комфорта" },
+    { key: "comfort", label: "Зона комфорта" },
     { key: "money", label: "Деньги" },
     { key: "relationships", label: "Отношения" },
     { key: "yearArcana", label: "Аркан года" },

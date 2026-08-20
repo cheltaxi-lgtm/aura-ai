@@ -7,7 +7,13 @@ import {
   matrixToStructuredData,
 } from "@/lib/numerology/destiny-matrix";
 import { MATRIX_GUEST_CLAIM_TTL_MS } from "@/lib/matrix-guest-claim-cookie";
-import { validateSubjectBirthDate } from "@/lib/services/matrix-subject-service";
+import { matrixCalendarDate } from "@/lib/numerology/matrix-calendar";
+import {
+  isMatrixSubjectKind,
+  validateSubjectBirthDate,
+  type MatrixSubjectKind,
+} from "@/lib/services/matrix-subject-service";
+import { PRICING } from "@/lib/config/pricing";
 import { profileHasBirthData } from "@/lib/users";
 import { buildAstroMeta } from "@/lib/astro-profile";
 import { getZodiacFromDate } from "@/utils/zodiac";
@@ -91,9 +97,11 @@ export function createMatrixGuestClaimToken(): string {
 
 export { hashMatrixGuestClaimToken };
 
-function todayUtcIsoDate(): string {
-  const now = new Date();
-  return `${now.getUTCFullYear()}-${String(now.getUTCMonth() + 1).padStart(2, "0")}-${String(now.getUTCDate()).padStart(2, "0")}`;
+function claimSubjectKindFromSnapshot(
+  snapshot: Record<string, unknown>
+): MatrixSubjectKind {
+  const raw = snapshot._claimSubjectKind;
+  return typeof raw === "string" && isMatrixSubjectKind(raw) ? raw : "self";
 }
 
 async function sweepExpired(client?: PoolClient): Promise<void> {
@@ -132,15 +140,21 @@ function personalNumbersFromSnapshot(snapshot: Record<string, unknown>) {
 export async function createGuestMatrixPending(input: {
   birthDate: string;
   displayName?: string | null;
+  subjectKind?: MatrixSubjectKind | null;
 }): Promise<{ rawClaimToken: string; payload: MatrixGuestSafePayload }> {
   const birthDate = validateSubjectBirthDate(input.birthDate);
   if (!birthDate) throw new Error("INVALID_BIRTH_DATE");
+  const subjectKind =
+    input.subjectKind && isMatrixSubjectKind(input.subjectKind) ? input.subjectKind : "self";
 
-  const asOfDate = todayUtcIsoDate();
+  const asOfDate = matrixCalendarDate();
   const matrix = destinyMatrix(birthDate, { asOfDate });
   if (!matrix) throw new Error("INVALID_BIRTH_DATE");
 
-  const snapshot = matrixToStructuredData(matrix);
+  const snapshot = {
+    ...matrixToStructuredData(matrix),
+    _claimSubjectKind: subjectKind,
+  };
   const rawClaimToken = createMatrixGuestClaimToken();
   const claimHash = hashMatrixGuestClaimToken(rawClaimToken);
   const expiresAt = new Date(Date.now() + MATRIX_GUEST_CLAIM_TTL_MS).toISOString();
@@ -204,6 +218,8 @@ async function adoptSelfSubject(
       `UPDATE matrix_subjects
        SET birth_date = $3::date,
            display_name = COALESCE($4, display_name),
+           birth_time = CASE WHEN birth_date IS DISTINCT FROM $3::date THEN NULL ELSE birth_time END,
+           birth_city = CASE WHEN birth_date IS DISTINCT FROM $3::date THEN NULL ELSE birth_city END,
            updated_at = NOW()
        WHERE user_id = $1 AND id = $2::uuid AND kind = 'self'
        RETURNING id`,
@@ -219,6 +235,32 @@ async function adoptSelfSubject(
      VALUES ($1, 'self', $2, $3::date)
      RETURNING id`,
     [userId, displayName, birthDate]
+  );
+  if (!rows[0]) throw new Error("SUBJECT_INSERT_FAILED");
+  return rows[0].id;
+}
+
+async function adoptNonSelfSubject(
+  client: PoolClient,
+  userId: string,
+  kind: Exclude<MatrixSubjectKind, "self">,
+  birthDate: string,
+  displayName: string | null
+): Promise<string> {
+  const count = await queryClient<{ count: string }>(
+    client,
+    `SELECT count(*)::text AS count FROM matrix_subjects WHERE user_id = $1`,
+    [userId]
+  );
+  if (Number(count.rows[0]?.count ?? 0) >= PRICING.MATRIX_SUBJECT_LIMIT) {
+    throw new Error("SUBJECT_LIMIT");
+  }
+  const { rows } = await queryClient<{ id: string }>(
+    client,
+    `INSERT INTO matrix_subjects (user_id, kind, display_name, birth_date)
+     VALUES ($1, $2, $3, $4::date)
+     RETURNING id`,
+    [userId, kind, displayName, birthDate]
   );
   if (!rows[0]) throw new Error("SUBJECT_INSERT_FAILED");
   return rows[0].id;
@@ -300,9 +342,38 @@ export async function claimGuestMatrixPending(opts: {
     if (!user) return { ok: false, code: "NOT_FOUND" };
 
     const guestBirth = String(guest.birth_date).slice(0, 10);
+    const claimKind = claimSubjectKindFromSnapshot(guest.matrix_snapshot || {});
     const hasBirth = profileHasBirthData(user);
     const existingBirth = user.birth_date ? String(user.birth_date).slice(0, 10) : null;
     const matches = Boolean(existingBirth && existingBirth === guestBirth);
+
+    if (claimKind !== "self") {
+      const subjectId = await adoptNonSelfSubject(
+        client,
+        opts.profileUserId,
+        claimKind,
+        guestBirth,
+        guest.display_name
+      );
+      await queryClient(
+        client,
+        `UPDATE matrix_guest_pending
+         SET claimed_user_id = $2,
+             claimed_subject_id = $3::uuid,
+             claimed_at = NOW()
+         WHERE id = $1 AND claimed_user_id IS NULL`,
+        [guest.id, opts.profileUserId, subjectId]
+      );
+      return {
+        ok: true,
+        status: "claimed",
+        pendingId: guest.id,
+        subjectId,
+        birthDate: guestBirth,
+        asOfDate: String(guest.as_of_date).slice(0, 10),
+        calculationVersion: guest.calculation_version,
+      };
+    }
 
     if (hasBirth && !matches && !opts.confirmReplace) {
       return {
@@ -315,10 +386,9 @@ export async function claimGuestMatrixPending(opts: {
       };
     }
 
-    if (!hasBirth || !matches || opts.confirmReplace) {
+    if (!hasBirth || !matches) {
       const zodiac = getZodiacFromDate(guestBirth).name || user.zodiac || "";
       const nextMeta = {
-        ...(typeof user.astro_meta === "object" && user.astro_meta ? user.astro_meta : {}),
         ...buildAstroMeta(guestBirth),
         stubProfile: false,
       };
@@ -327,6 +397,8 @@ export async function claimGuestMatrixPending(opts: {
         `UPDATE users SET
            birth_date = $2::date,
            zodiac = $3,
+           birth_time = NULL,
+           birth_city = NULL,
            astro_meta = $4::jsonb
          WHERE id = $1`,
         [opts.profileUserId, guestBirth, zodiac, JSON.stringify(nextMeta)]

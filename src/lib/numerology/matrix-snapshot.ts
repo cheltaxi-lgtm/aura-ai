@@ -252,6 +252,13 @@ export function resolveMatrixForDisplayDetailed(input: {
   if (!isKnownMatrixCalculationVersion(version)) {
     return { ok: false, error: "unsupported_matrix_version" };
   }
+  if (
+    (version === "matrix-v3" || version === "matrix-v4") &&
+    !storedAsOf &&
+    !asOf?.asOfDate
+  ) {
+    return { ok: false, error: "legacy_without_snapshot" };
+  }
   const matrix = destinyMatrix(input.birthDate, { ...asOf, calculationVersion: version });
   if (!matrix) return { ok: false, error: "invalid_birth_date" };
   return { ok: true, matrix };

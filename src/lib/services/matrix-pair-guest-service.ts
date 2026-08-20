@@ -274,10 +274,9 @@ export async function claimGuestMatrixPairPending(opts: {
       };
     }
 
-    if (!hasBirth || !matches || opts.confirmReplace) {
+    if (!hasBirth || !matches) {
       const zodiac = getZodiacFromDate(dateA).name || user.zodiac || "";
       const nextMeta = {
-        ...(typeof user.astro_meta === "object" && user.astro_meta ? user.astro_meta : {}),
         ...buildAstroMeta(dateA),
         stubProfile: false,
       };
@@ -286,6 +285,8 @@ export async function claimGuestMatrixPairPending(opts: {
         `UPDATE users SET
            birth_date = $2::date,
            zodiac = $3,
+           birth_time = NULL,
+           birth_city = NULL,
            astro_meta = $4::jsonb
          WHERE id = $1`,
         [opts.profileUserId, dateA, zodiac, JSON.stringify(nextMeta)]

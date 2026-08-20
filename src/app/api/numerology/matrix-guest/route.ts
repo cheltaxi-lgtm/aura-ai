@@ -9,6 +9,7 @@ import {
 } from "@/lib/api-guards";
 import { setMatrixGuestClaimCookieOnResponse } from "@/lib/matrix-guest-claim-cookie";
 import { createGuestMatrixPending } from "@/lib/services/matrix-guest-service";
+import { isMatrixSubjectKind } from "@/lib/services/matrix-subject-service";
 
 export const runtime = "nodejs";
 
@@ -40,11 +41,16 @@ export async function POST(request: NextRequest) {
 
   const birthDate = typeof body.birthDate === "string" ? body.birthDate : "";
   const displayName = typeof body.displayName === "string" ? body.displayName : null;
+  const subjectKind =
+    typeof body.subjectKind === "string" && isMatrixSubjectKind(body.subjectKind)
+      ? body.subjectKind
+      : "self";
 
   try {
     const { rawClaimToken, payload } = await createGuestMatrixPending({
       birthDate,
       displayName,
+      subjectKind,
     });
 
     const response = NextResponse.json({

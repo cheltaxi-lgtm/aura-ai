@@ -3,6 +3,7 @@
  */
 import { parseBirthDate, sumDigits } from "./constants";
 import { arcanaForNumber } from "./matrix-arcana-map";
+import { matrixCalendarDate } from "./matrix-calendar";
 import {
   MATRIX_V3_CALCULATION_VERSION,
   MATRIX_V3_METHODOLOGY_ID,
@@ -12,13 +13,13 @@ import {
 } from "./matrix-result";
 import { reduceToArcanaSubtract22 } from "./matrix-reducers";
 import {
-  buildAgeBelt,
-  pickAgeWindow,
-  pickFocus,
-  resolveAsOf,
-  toIsoDay,
-  yearsBetween,
-} from "./destiny-matrix-internal";
+  legacyBuildAgeBelt,
+  legacyPickAgeWindow,
+  legacyPickFocus,
+  legacyResolveAsOf,
+  legacyToIsoDay,
+  legacyYearsBetween,
+} from "./destiny-matrix-legacy-helpers";
 
 export function computeDestinyMatrixV3(
   birthDate: string,
@@ -26,7 +27,9 @@ export function computeDestinyMatrixV3(
 ): DestinyMatrixResult | null {
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
-  const asOf = resolveAsOf(options);
+  const asOf =
+    legacyResolveAsOf(options) ?? legacyResolveAsOf({ asOfDate: matrixCalendarDate() });
+  if (!asOf) return null;
   const reduce = reduceToArcanaSubtract22;
   const point = (n: number) => arcanaForNumber(n, MATRIX_V3_CALCULATION_VERSION);
 
@@ -50,9 +53,9 @@ export function computeDestinyMatrixV3(
   const monthArcanaN = reduce(yearArcanaN + asOf.month);
 
   const perimeter = [a, ab, b, bc, c, cg, g, ga];
-  const agePoints = buildAgeBelt(perimeter, reduce, point);
-  const chronologicalAge = yearsBetween(parsed, asOf.date);
-  const { ageCurrent, ageNext } = pickAgeWindow(agePoints, chronologicalAge);
+  const agePoints = legacyBuildAgeBelt(perimeter, reduce, point);
+  const chronologicalAge = legacyYearsBetween(parsed, asOf.date);
+  const { ageCurrent, ageNext } = legacyPickAgeWindow(agePoints, chronologicalAge);
 
   const body = point(a);
   const energy = point(b);
@@ -70,7 +73,7 @@ export function computeDestinyMatrixV3(
   const monthArcana = point(monthArcanaN);
   const skySpirit = point(skyInner);
   const earthTask = karmicMid;
-  const focus = pickFocus({
+  const focus = legacyPickFocus({
     yearN: yearArcanaN,
     monthN: monthArcanaN,
     comfortN: x,
@@ -113,6 +116,6 @@ export function computeDestinyMatrixV3(
     ],
     focusKey: focus.focusKey,
     focusLabel: focus.focusLabel,
-    asOf: { year: asOf.year, month: asOf.month, date: toIsoDay(asOf.date) },
+    asOf: { year: asOf.year, month: asOf.month, date: legacyToIsoDay(asOf.date) },
   };
 }
