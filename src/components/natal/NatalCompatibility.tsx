@@ -791,7 +791,7 @@ function CompatibilityViewer({
         <summary className="cursor-pointer text-xs text-white/60">Рассчитанные межкартные аспекты ({record.evidence.crossAspects.length})</summary>
         <div className="mt-3 space-y-2">{record.evidence.crossAspects.map((aspect) => <p id={`compatibility-evidence-${aspect.id}`} tabIndex={-1} key={aspect.id} className="text-xs leading-5 text-white/50 focus:ring-2 focus:ring-rose-300/50">{aspect.label} · орб {aspect.orb.toFixed(2)}°</p>)}</div>
       </details> : null}
-      {synastry.chartA?.western && synastry.chartB?.western ? <div className="mt-6 grid gap-6 lg:grid-cols-2">
+      {synastry.chartA?.western && synastry.chartB?.western ? <div className="mt-6 grid items-stretch gap-6 lg:grid-cols-2">
         <NatalSynastryWheel chartA={synastry.chartA.western} chartB={synastry.chartB.western}
           crossAspects={synastry.crossAspects} labelA={record.ownerLabel} labelB={record.partnerLabel}
           timeKnownA={synastry.chartA.timeKnown !== false} timeKnownB={synastry.chartB.timeKnown !== false} />

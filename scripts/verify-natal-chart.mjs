@@ -703,12 +703,29 @@ async function main() {
     { key: "b", longitude: 12 },
     { key: "c", longitude: 14 },
     { key: "d", longitude: 180 },
-  ]);
+  ], 16);
+  const clusterAbc = clustered
+    .filter((body) => body.longitude < 20)
+    .sort((left, right) => left.displayLongitude - right.displayLongitude);
+  const wrapCluster = layoutWheelBodies([
+    { key: "late", longitude: 358 },
+    { key: "early", longitude: 2 },
+    { key: "next", longitude: 5 },
+  ], 16);
+  const wrapSpread = wrapCluster
+    .slice()
+    .sort((left, right) => {
+      const leftOff = (left.displayLongitude + 180) % 360;
+      const rightOff = (right.displayLongitude + 180) % 360;
+      return leftOff - rightOff;
+    });
   assert(
-    new Set(clustered.filter((body) => body.longitude < 20).map((body) => body.lane)).size >= 3 &&
-      clustered.find((body) => body.key === "d")?.lane === 0 &&
+    clusterAbc.length === 3 &&
+      clusterAbc[1].displayLongitude - clusterAbc[0].displayLongitude >= 15 &&
+      clustered.find((body) => body.key === "d")?.displayLongitude === 180 &&
+      wrapSpread.length === 3 &&
       wheeledRadius(100, 2, 10) === 80,
-    "wheel layout stacks nearby glyphs on separate radii"
+    "wheel layout fans nearby glyphs instead of stacking them"
   );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,
