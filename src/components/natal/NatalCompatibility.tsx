@@ -483,7 +483,7 @@ export default function NatalCompatibility() {
       });
       const data = await responseJson<{ deleted?: boolean; error?: string }>(response);
       if (!response.ok || !data.deleted) throw new Error(data.error);
-      setSelectedId(null);
+      setSelectedId((current) => (current === record.id ? null : current));
       setNotice("Отчёт удалён, приватные ссылки отозваны.");
       await loadRecords();
     } catch (reason) {
@@ -690,12 +690,31 @@ export default function NatalCompatibility() {
           {!loading && !records.length ? <p className="text-sm text-white/40">Сохранённых совместимостей пока нет.</p> : null}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {records.map((record) => (
-              <button key={record.id} type="button" onClick={() => setSelectedId(record.id)}
-                className={`rounded-xl border p-4 text-left transition ${selectedId === record.id ? "border-rose-300/30 bg-rose-300/[0.08]" : "border-white/8 bg-black/15 hover:border-white/15"}`}>
-                <p className="text-sm font-medium text-white">{record.ownerLabel} и {record.partnerLabel}</p>
-                <p className="mt-1 text-xs text-white/40">{STATUS_LABELS[record.status]} · {new Date(record.createdAt).toLocaleDateString("ru-RU")}</p>
-                {record.synastry ? <p className="mt-3 text-2xl font-semibold text-rose-100">{record.synastry.overallScore}<span className="text-xs font-normal text-white/35"> / 100</span></p> : null}
-              </button>
+              <article
+                key={record.id}
+                className={`relative rounded-xl border p-4 ${selectedId === record.id ? "border-rose-300/30 bg-rose-300/[0.08]" : "border-white/8 bg-black/15"}`}
+              >
+                <button
+                  type="button"
+                  onClick={() => setSelectedId(record.id)}
+                  className="block w-full pr-10 text-left"
+                >
+                  <p className="text-sm font-medium text-white">{record.ownerLabel} и {record.partnerLabel}</p>
+                  <p className="mt-1 text-xs text-white/40">{STATUS_LABELS[record.status]} · {new Date(record.createdAt).toLocaleDateString("ru-RU")}</p>
+                  {record.synastry ? <p className="mt-3 text-2xl font-semibold text-rose-100">{record.synastry.overallScore}<span className="text-xs font-normal text-white/35"> / 100</span></p> : null}
+                </button>
+                {record.ownerUserId === user?.profileUserId ? (
+                  <button
+                    type="button"
+                    aria-label={`Удалить совместимость ${record.ownerLabel} и ${record.partnerLabel}`}
+                    disabled={busy !== null}
+                    onClick={() => void remove(record)}
+                    className="absolute right-2 top-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-rose-200/70 transition hover:bg-rose-400/10 hover:text-rose-100 disabled:opacity-50"
+                  >
+                    <Trash2 className="h-4 w-4" aria-hidden />
+                  </button>
+                ) : null}
+              </article>
             ))}
           </div>
         </div>
