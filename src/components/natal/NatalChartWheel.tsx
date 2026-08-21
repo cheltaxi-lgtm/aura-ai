@@ -75,8 +75,8 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   const cy = size / 2;
   const outerR = size * 0.475;
   const zodiacR = size * 0.405;
-  const planetBase = size * 0.355;
-  const laneStep = size * 0.026;
+  const planetBase = size * 0.36;
+  const laneStep = size * 0.024;
   const houseOuterR = size * 0.22;
   const houseInnerR = size * 0.16;
   const houseLabelR = size * 0.19;
@@ -110,7 +110,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
         if (longitude != null) items.push({ key, glyph, color, longitude, sign: bodySign ? signLabel(bodySign) : null, retrograde: false });
       }
     }
-    return layoutWheelBodies(items, 8, 5, { stayInSign: true });
+    return layoutWheelBodies(items, 12, 6, { radialOnly: true });
   }, [timeKnown, western]);
 
   const allAspects = useMemo(() => {

@@ -736,6 +736,15 @@ async function main() {
       new Set(natalCluster.map((body) => body.lane)).size >= 2,
     "natal wheel keeps fanned glyphs inside their own sign"
   );
+  const radialOnly = layoutWheelBodies([
+    { key: "mars", longitude: 100 },
+    { key: "rising", longitude: 108 },
+  ], 12, 6, { radialOnly: true });
+  assert(
+    radialOnly.every((body) => body.displayLongitude === body.longitude) &&
+      radialOnly.find((body) => body.key === "rising")?.lane !== radialOnly.find((body) => body.key === "mars")?.lane,
+    "natal radial layout keeps true longitudes and stacks nearby glyphs"
+  );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,
     chartA: { label: "A", western: { ...syn?.chartA?.western, birth_lat: 55.7, place: { latitude: 55.7 } } },

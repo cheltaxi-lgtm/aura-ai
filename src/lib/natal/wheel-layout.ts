@@ -52,7 +52,7 @@ export function layoutWheelBodies<T extends { longitude: number }>(
   items: readonly T[],
   minGapDeg = 16,
   laneCount = 3,
-  options?: { stayInSign?: boolean },
+  options?: { stayInSign?: boolean; radialOnly?: boolean },
 ): Array<LaidWheelBody<T>> {
   if (items.length === 0) return [];
   const sorted = [...items].sort((a, b) => a.longitude - b.longitude);
@@ -76,6 +76,14 @@ export function layoutWheelBodies<T extends { longitude: number }>(
       const last = groups.pop();
       if (first && last) groups.push([...last, ...first]);
     }
+  }
+
+  if (options?.radialOnly) {
+    return groups.flatMap((group) => group.map((item, index) => ({
+      ...item,
+      lane: group.length === 1 ? 0 : index % laneCount,
+      displayLongitude: item.longitude,
+    })));
   }
 
   const laid = groups.flatMap((group) => {
