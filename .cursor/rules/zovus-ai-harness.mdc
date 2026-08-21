@@ -1,0 +1,20 @@
+---
+description: Zovus AI harness — cycle, scoped gates, hard COMPLETED
+alwaysApply: true
+---
+
+# Zovus AI harness
+
+For implementation work follow `discover → plan → implement → test → review → fix → retest`. Read `.cursor/skills/zovus-harness/SKILL.md` when doing product work. Do not duplicate P0 / deploy / change-discipline rules.
+
+## Checks
+
+Run existing scripts via `node scripts/ai-harness.mjs --scope <auto|product|full|production> --level <fast|full|production>`. Do not invent a second test stack. Skip expensive full/e2e/production unless the change needs them.
+
+## Independent review
+
+After tests, launch matching project subagents (`harness-code-review`, `harness-calc-review`, `harness-visual-review`, `harness-security-review`, `harness-production-review`). Fix findings and retest. Record `node scripts/ai-harness.mjs --record-review <id> --result PASS|FAIL`.
+
+## COMPLETED
+
+`COMPLETED` is forbidden unless `.cursor/harness-state.json` is a fresh machine `PASS` and production is `PASS` or `NOT_REQUIRED`. Missing run, FAIL, PARTIAL, stale state, or assumption-only results are not COMPLETED. If a required check cannot run, status is `PARTIAL` with the exact reason.

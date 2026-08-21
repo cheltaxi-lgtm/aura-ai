@@ -72,7 +72,12 @@
     "test:e2e:natal": "playwright test",
     "test:e2e:memory": "playwright test tests/e2e/personal-memory.public.spec.ts --project=public-chromium",
     "test:e2e:guest-triplet": "playwright test --project=guest-triplet-mobile",
-    "build:geonames": "node scripts/build-geonames-index.mjs"
+    "build:geonames": "node scripts/build-geonames-index.mjs",
+    "harness": "node scripts/ai-harness.mjs",
+    "harness:fast": "node scripts/ai-harness.mjs --level fast --scope auto",
+    "harness:full": "node scripts/ai-harness.mjs --level full --scope auto",
+    "harness:prod": "node scripts/ai-harness.mjs --level production --scope production",
+    "harness:selftest": "node scripts/ai-harness-selftest.mjs"
   },
   "dependencies": {
     "@capacitor/app": "^8.1.0",

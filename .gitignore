@@ -77,3 +77,9 @@ scripts/prod-journal.txt
 !.cursor/hooks.json
 !.cursor/hooks/
 !.cursor/hooks/**
+!.cursor/skills/
+!.cursor/skills/**
+!.cursor/commands/
+!.cursor/commands/**
+!.cursor/agents/
+!.cursor/agents/**

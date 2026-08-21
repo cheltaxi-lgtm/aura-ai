@@ -103,9 +103,4 @@ Locally, `schema:diff` runs inside `preflight` only when `TEST_DATABASE_URL` (or
 
 ## Cursor hooks
 
-Project hooks in `.cursor/hooks.json` run **after file edits** (`afterFileEdit`):
-
-- `npm run typecheck`
-- `npm run guards`
-
-Build is intentionally omitted (too slow for every edit). Hooks require a Cursor build that supports project hooks (schema `version: 1`); unsupported clients ignore the file.
+Project hooks live in `.cursor/hooks.json` (schema `version: 1`). They no longer run typecheck after every edit. See [`docs/AI_HARNESS.md`](./AI_HARNESS.md) for the AI harness, scoped gates, and COMPLETED rules.
