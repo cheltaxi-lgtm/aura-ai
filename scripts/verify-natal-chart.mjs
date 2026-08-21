@@ -8,7 +8,7 @@ import { buildNatalPromptBlock } from "../src/lib/natal/format-prompt.ts";
 import { computeDeepTransits, detectSignIngresses } from "../src/lib/natal/transits.ts";
 import { computeSynastry, computeSynastryDimensions, sanitizeSynastryForClient } from "../src/lib/natal/synastry.ts";
 import { compositeMidpointLongitude, computeCompositeChart } from "../src/lib/natal/composite.ts";
-import { layoutWheelBodies, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
+import { layoutWheelBodies, minDisplayGap, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
 import {
   allowedShareSections, isHighEntropyShareToken,
   sanitizeCompatibilityReportShare, sanitizeNatalReportShare, sanitizeRelationshipReportShare,
@@ -712,20 +712,19 @@ async function main() {
     { key: "early", longitude: 2 },
     { key: "next", longitude: 5 },
   ], 16);
-  const wrapSpread = wrapCluster
-    .slice()
-    .sort((left, right) => {
-      const leftOff = (left.displayLongitude + 180) % 360;
-      const rightOff = (right.displayLongitude + 180) % 360;
-      return leftOff - rightOff;
-    });
+  const neighboring = layoutWheelBodies([
+    { key: "a", longitude: 10 },
+    { key: "b", longitude: 12 },
+    { key: "c", longitude: 28 },
+  ], 16);
   assert(
     clusterAbc.length === 3 &&
-      clusterAbc[1].displayLongitude - clusterAbc[0].displayLongitude >= 15 &&
+      minDisplayGap(clusterAbc) >= 15 &&
       clustered.find((body) => body.key === "d")?.displayLongitude === 180 &&
-      wrapSpread.length === 3 &&
+      minDisplayGap(wrapCluster) >= 15 &&
+      minDisplayGap(neighboring) >= 15 &&
       wheeledRadius(100, 2, 10) === 80,
-    "wheel layout fans nearby glyphs instead of stacking them"
+    "wheel layout fans nearby glyphs and keeps separate clusters apart"
   );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,

@@ -86,11 +86,11 @@ export default function NatalSynastryWheel({
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size * 0.475;
-  const zodiacR = size * 0.395;
-  const ringB = size * 0.345;
-  const ringA = size * 0.285;
-  const aspectR = size * 0.205;
-  const laneStep = size * 0.018;
+  const zodiacR = size * 0.40;
+  const ringB = size * 0.348;
+  const ringA = size * 0.268;
+  const aspectR = size * 0.20;
+  const laneStep = size * 0.014;
   const ascA = timeKnownA ? longitudeOf(chartA.rising) : null;
   const longitudeRotation = ascA == null ? 0 : 270 - ascA;
 
@@ -137,9 +137,10 @@ export default function NatalSynastryWheel({
       ? (planet.key === "rising" ? "#34d399" : meta?.colorA ?? "#34d399")
       : (planet.key === "rising" ? "#f472b6" : meta?.colorB ?? "#f472b6");
     const id = `${ring}:${planet.key}`;
-    const radius = wheeledRadius(baseRadius, planet.lane, laneStep);
+    const radius = wheeledRadius(baseRadius, planet.lane, laneStep, ring === "b" ? 1 : -1);
     const point = wheelPolar(cx, cy, radius, planet.displayLongitude + longitudeRotation);
-    const tick = wheelPolar(cx, cy, zodiacR, planet.longitude + longitudeRotation);
+    const tickRail = ring === "b" ? zodiacR : baseRadius;
+    const tick = wheelPolar(cx, cy, tickRail, planet.longitude + longitudeRotation);
     const selected = selectedBody === id;
     const glyphSize = planet.label.length > 1 ? size * 0.022 : size * 0.034;
     const owner = ring === "a" ? labelA : labelB;
@@ -191,14 +192,16 @@ export default function NatalSynastryWheel({
       )}
       footer={(
         <>
-          <div className="flex min-h-10 flex-wrap items-center justify-center gap-4 text-[11px] text-white/50">
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-full bg-emerald-400/70" />
-              {labelA} · внутри
+          <div className="grid min-h-10 grid-cols-2 items-center gap-3 text-[11px] text-white/50">
+            <span className="flex min-w-0 items-center justify-end gap-1.5">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-emerald-400/70" />
+              <span className="truncate" title={labelA}>{labelA}</span>
+              <span className="shrink-0 text-white/35">внутри</span>
             </span>
-            <span className="flex items-center gap-1.5">
-              <span className="inline-block h-2 w-2 rounded-full bg-pink-400/70" />
-              {labelB} · снаружи
+            <span className="flex min-w-0 items-center gap-1.5">
+              <span className="inline-block h-2 w-2 shrink-0 rounded-full bg-pink-400/70" />
+              <span className="truncate" title={labelB}>{labelB}</span>
+              <span className="shrink-0 text-white/35">снаружи</span>
             </span>
           </div>
           <details className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/55">

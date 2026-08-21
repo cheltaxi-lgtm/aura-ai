@@ -414,14 +414,13 @@ export default function JointReadingTokenPage() {
           </div>
 
           {data.synastry?.chartA?.western && data.synastry?.chartB?.western ? (
-            <div className="mt-6 rounded-xl border border-white/10 bg-black/20 p-4">
-              <p className="text-center text-xs font-medium uppercase tracking-wide text-amber-200/70">
-                Синастрия
-                {typeof data.synastry.overallScore === "number"
-                  ? ` · индекс ${data.synastry.overallScore}/100`
-                  : ""}
-              </p>
-              <div className="mt-3">
+            <div className="mt-6 space-y-4">
+              {typeof data.synastry.overallScore === "number" ? (
+                <p className="text-center text-xs font-medium uppercase tracking-wide text-amber-200/70">
+                  Индекс {data.synastry.overallScore}/100
+                </p>
+              ) : null}
+              <div className="grid items-stretch gap-6 lg:grid-cols-2">
                 <NatalSynastryWheel
                   chartA={data.synastry.chartA.western}
                   chartB={data.synastry.chartB.western}
@@ -429,16 +428,17 @@ export default function JointReadingTokenPage() {
                   labelA={data.synastry.chartA.label ?? labelA}
                   labelB={data.synastry.chartB.label ?? labelB}
                 />
+                {data.synastry.composite ? <CompositeWheel composite={data.synastry.composite} /> : null}
               </div>
               {data.synastry.highlights?.length ? (
-                <ul className="mt-3 space-y-1 text-xs text-white/60">
+                <ul className="space-y-1 text-xs text-white/60">
                   {data.synastry.highlights.slice(0, 4).map((h) => (
                     <li key={h}>· {h}</li>
                   ))}
                 </ul>
               ) : null}
               {data.synastry.dimensions?.length ? (
-                <div className="mt-4 grid gap-2 sm:grid-cols-2">
+                <div className="grid gap-2 sm:grid-cols-2">
                   {data.synastry.dimensions.map((dimension) => (
                     <article key={dimension.key} className="rounded-lg border border-white/10 bg-white/[0.03] p-3">
                       <div className="flex items-center justify-between gap-3 text-xs">
@@ -453,12 +453,6 @@ export default function JointReadingTokenPage() {
                       </ul>
                     </article>
                   ))}
-                </div>
-              ) : null}
-              {data.synastry.composite ? (
-                <div className="mt-6 border-t border-white/10 pt-5">
-                  <h3 className="text-center text-sm font-medium text-amber-100">Композит отношений</h3>
-                  <CompositeWheel composite={data.synastry.composite} />
                 </div>
               ) : null}
             </div>
