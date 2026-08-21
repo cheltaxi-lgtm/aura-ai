@@ -8,6 +8,7 @@ import { buildNatalPromptBlock } from "../src/lib/natal/format-prompt.ts";
 import { computeDeepTransits, detectSignIngresses } from "../src/lib/natal/transits.ts";
 import { computeSynastry, computeSynastryDimensions, sanitizeSynastryForClient } from "../src/lib/natal/synastry.ts";
 import { compositeMidpointLongitude, computeCompositeChart } from "../src/lib/natal/composite.ts";
+import { layoutWheelBodies, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
 import {
   allowedShareSections, isHighEntropyShareToken,
   sanitizeCompatibilityReportShare, sanitizeNatalReportShare, sanitizeRelationshipReportShare,
@@ -696,6 +697,18 @@ async function main() {
     syntheticComposite.houses === null && syntheticComposite.angles === null &&
       syntheticComposite.oppositionPolicy === "lower-longitude-plus-90",
     "composite explicitly omits houses/angles and declares ambiguity policy"
+  );
+  const clustered = layoutWheelBodies([
+    { key: "a", longitude: 10 },
+    { key: "b", longitude: 12 },
+    { key: "c", longitude: 14 },
+    { key: "d", longitude: 180 },
+  ]);
+  assert(
+    new Set(clustered.filter((body) => body.longitude < 20).map((body) => body.lane)).size >= 3 &&
+      clustered.find((body) => body.key === "d")?.lane === 0 &&
+      wheeledRadius(100, 2, 10) === 80,
+    "wheel layout stacks nearby glyphs on separate radii"
   );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,

@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
+import { layoutWheelBodies, wheeledRadius } from "@/lib/natal/wheel-layout";
 
 const SIGNS = [
   ["Овен", "♈"],
@@ -88,7 +89,7 @@ export default function NatalSynastryWheel({
   crossAspects = [],
   labelA = "A",
   labelB = "B",
-  size = 300,
+  size = 340,
   timeKnownA = true,
   timeKnownB = true,
 }: Props) {
@@ -96,15 +97,22 @@ export default function NatalSynastryWheel({
   const descriptionId = useId();
   const cx = size / 2;
   const cy = size / 2;
-  const outerR = size * 0.46;
-  const innerR = size * 0.3;
-  const ringA = size * 0.34;
-  const ringB = size * 0.42;
+  const outerR = size * 0.47;
+  const innerR = size * 0.22;
+  const ringA = size * 0.30;
+  const ringB = size * 0.41;
+  const laneStep = size * 0.018;
   const ascA = timeKnownA ? longitudeOf(chartA.rising) : null;
   const longitudeRotation = ascA == null ? 0 : 270 - ascA;
 
-  const planetsA = useMemo(() => collectPlanets(chartA, timeKnownA), [chartA, timeKnownA]);
-  const planetsB = useMemo(() => collectPlanets(chartB, timeKnownB), [chartB, timeKnownB]);
+  const planetsA = useMemo(
+    () => layoutWheelBodies(collectPlanets(chartA, timeKnownA)),
+    [chartA, timeKnownA],
+  );
+  const planetsB = useMemo(
+    () => layoutWheelBodies(collectPlanets(chartB, timeKnownB)),
+    [chartB, timeKnownB],
+  );
   const [selectedAspect, setSelectedAspect] = useState<string | null>(null);
   const [selectedBody, setSelectedBody] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "supportive" | "challenging">("all");
@@ -119,11 +127,11 @@ export default function NatalSynastryWheel({
       const a = mapA.get(asp.bodyAKey);
       const b = mapB.get(asp.bodyBKey);
       if (!a || !b) return [];
-      const p1 = polar(cx, cy, ringA, a.longitude + longitudeRotation);
-      const p2 = polar(cx, cy, ringB, b.longitude + longitudeRotation);
+      const p1 = polar(cx, cy, wheeledRadius(ringA, a.lane, laneStep), a.longitude + longitudeRotation);
+      const p2 = polar(cx, cy, wheeledRadius(ringB, b.lane, laneStep), b.longitude + longitudeRotation);
       return [{ ...asp, p1, p2 }];
     });
-  }, [crossAspects, planetsA, planetsB, cx, cy, ringA, ringB, longitudeRotation, filter]);
+  }, [crossAspects, planetsA, planetsB, cx, cy, ringA, ringB, laneStep, longitudeRotation, filter]);
 
   return (
     <div className="space-y-2">
@@ -141,7 +149,7 @@ export default function NatalSynastryWheel({
       </div>
       <svg
         viewBox={`0 0 ${size} ${size}`}
-        className="mx-auto w-full max-w-[340px]"
+        className="mx-auto w-full max-w-[400px]"
         role="img"
         aria-labelledby={`${titleId} ${descriptionId}`}
       >
@@ -154,7 +162,7 @@ export default function NatalSynastryWheel({
           const lon = i * 30;
           const p1 = polar(cx, cy, innerR, lon + longitudeRotation);
           const p2 = polar(cx, cy, outerR, lon + longitudeRotation);
-          const labelPoint = polar(cx, cy, size * 0.275, lon + 15 + longitudeRotation);
+          const labelPoint = polar(cx, cy, size * 0.16, lon + 15 + longitudeRotation);
           return (
             <g key={name}>
               <line x1={p1.x} y1={p1.y} x2={p2.x} y2={p2.y} stroke="#ffffff18" strokeWidth="0.5" />
@@ -210,9 +218,10 @@ export default function NatalSynastryWheel({
         })}
 
         {planetsA.map((p) => {
-          const { x, y } = polar(cx, cy, ringA, p.longitude + longitudeRotation);
+          const { x, y } = polar(cx, cy, wheeledRadius(ringA, p.lane, laneStep), p.longitude + longitudeRotation);
           const meta = PLANET_KEYS.find((k) => k.key === p.key);
           const color = meta?.colorA ?? "#34d399";
+          const glyphSize = p.label.length > 1 ? size * 0.028 : size * 0.036;
           return (
             <g key={`a-${p.key}`} tabIndex={0} role="button" aria-label={`${labelA}: ${p.key}, ${p.longitude.toFixed(1)}°`}
               aria-pressed={selectedBody === `a:${p.key}`}
@@ -226,8 +235,8 @@ export default function NatalSynastryWheel({
               }}
               opacity={selectedBody && selectedBody !== `a:${p.key}` ? 0.35 : 1} className="cursor-pointer focus:outline-none">
               <title>{labelA}: {p.key}, {p.longitude.toFixed(1)}°</title>
-              <circle cx={x} cy={y} r={size * 0.024} fill={color} fillOpacity="0.3" stroke={color} strokeWidth="1" />
-              <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill={color} fontSize={size * 0.04}>
+              <circle cx={x} cy={y} r={size * 0.02} fill={color} fillOpacity="0.3" stroke={color} strokeWidth="1" />
+              <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill={color} fontSize={glyphSize}>
                 {p.label}
               </text>
             </g>
@@ -235,9 +244,10 @@ export default function NatalSynastryWheel({
         })}
 
         {planetsB.map((p) => {
-          const { x, y } = polar(cx, cy, ringB, p.longitude + longitudeRotation);
+          const { x, y } = polar(cx, cy, wheeledRadius(ringB, p.lane, laneStep), p.longitude + longitudeRotation);
           const meta = PLANET_KEYS.find((k) => k.key === p.key);
           const color = meta?.colorB ?? "#f472b6";
+          const glyphSize = p.label.length > 1 ? size * 0.026 : size * 0.034;
           return (
             <g key={`b-${p.key}`} tabIndex={0} role="button" aria-label={`${labelB}: ${p.key}, ${p.longitude.toFixed(1)}°`}
               aria-pressed={selectedBody === `b:${p.key}`}
@@ -251,8 +261,8 @@ export default function NatalSynastryWheel({
               }}
               opacity={selectedBody && selectedBody !== `b:${p.key}` ? 0.35 : 1} className="cursor-pointer focus:outline-none">
               <title>{labelB}: {p.key}, {p.longitude.toFixed(1)}°</title>
-              <circle cx={x} cy={y} r={size * 0.024} fill={color} fillOpacity="0.2" stroke={color} strokeWidth="0.8" />
-              <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill={color} fontSize={size * 0.038}>
+              <circle cx={x} cy={y} r={size * 0.019} fill={color} fillOpacity="0.2" stroke={color} strokeWidth="0.8" />
+              <text x={x} y={y} textAnchor="middle" dominantBaseline="middle" fill={color} fontSize={glyphSize}>
                 {p.label}
               </text>
             </g>
