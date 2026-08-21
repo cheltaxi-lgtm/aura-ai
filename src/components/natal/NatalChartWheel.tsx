@@ -74,11 +74,13 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size * 0.475;
-  const zodiacR = size * 0.40;
-  const planetBase = size * 0.312;
-  const laneStep = size * 0.022;
-  const houseLabelR = size * 0.215;
-  const aspectR = size * 0.185;
+  const zodiacR = size * 0.405;
+  const planetBase = size * 0.355;
+  const laneStep = size * 0.026;
+  const houseOuterR = size * 0.22;
+  const houseInnerR = size * 0.16;
+  const houseLabelR = size * 0.19;
+  const aspectR = size * 0.13;
   const asc = timeKnown ? longitudeOf(western.rising) : null;
   const rotation = asc == null ? 0 : 270 - asc;
 
@@ -108,7 +110,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
         if (longitude != null) items.push({ key, glyph, color, longitude, sign: bodySign ? signLabel(bodySign) : null, retrograde: false });
       }
     }
-    return layoutWheelBodies(items, 14);
+    return layoutWheelBodies(items, 8, 5, { stayInSign: true });
   }, [timeKnown, western]);
 
   const allAspects = useMemo(() => {
@@ -175,19 +177,21 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
               <text x={mid.x} y={mid.y} textAnchor="middle" dominantBaseline="middle" fill="#fef3c7cc" fontSize={size * .052}>{glyph}</text>
             </g>;
           })}
+          <circle cx={cx} cy={cy} r={houseOuterR} fill="none" stroke="#fbbf2428" />
+          <circle cx={cx} cy={cy} r={houseInnerR} fill="none" stroke="#fbbf2428" />
           {houses.map((house) => {
             const next = houses.find((item) => item.house === (house.house % 12) + 1) ?? houses[0];
             const midLongitude = next
               ? mod360(house.longitude + mod360(next.longitude - house.longitude) / 2)
               : house.longitude;
-            const outer = polar(cx, cy, zodiacR, house.longitude + rotation);
-            const inner = polar(cx, cy, planetBase + size * 0.028, house.longitude + rotation);
+            const outer = polar(cx, cy, houseOuterR, house.longitude + rotation);
+            const inner = polar(cx, cy, houseInnerR, house.longitude + rotation);
             const label = polar(cx, cy, houseLabelR, midLongitude + rotation);
             const selected = selection?.kind === "house" && selection.id === String(house.house);
             const action = () => setSelection({ kind: "house", id: String(house.house), title: `${house.house} дом`, detail: `Куспид: ${house.longitude.toFixed(2)}° · система ${String(western.houseSystem ?? "не указана")}` });
             return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
               <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#fff7d6" : "#fbbf24"} strokeOpacity={selected ? 1 : .55} strokeWidth={selected ? 3 : 1} />
-              <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#fde68a" fontSize={size * .026}>{house.house}</text>
+              <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#fde68a" fontSize={size * .024}>{house.house}</text>
             </g>;
           })}
           <circle cx={cx} cy={cy} r={zodiacR} fill="none" stroke="#fbbf2455" />
@@ -240,13 +244,13 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
             ))}
           </div>
         </section>
-        <details className="rounded-xl border border-white/10 bg-black/20 p-3">
-          <summary className="cursor-pointer text-xs text-white/60">Текстовая версия карты</summary>
-          <ul className="mt-3 space-y-1.5 text-xs leading-5 text-white/50">
+        <section className="max-h-56 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3">
+          <h3 className="text-xs font-medium text-white/65">Текстовая версия карты</h3>
+          <ul className="mt-2 space-y-1.5 text-xs leading-5 text-white/50">
             {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
             {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
           </ul>
-        </details>
+        </section>
       </aside>
     </div>
   );

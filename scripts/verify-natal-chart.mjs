@@ -726,6 +726,16 @@ async function main() {
       wheeledRadius(100, 2, 10) === 80,
     "wheel layout fans nearby glyphs and keeps separate clusters apart"
   );
+  const natalCluster = layoutWheelBodies([
+    { key: "sun", longitude: 155 },
+    { key: "mercury", longitude: 157 },
+    { key: "venus", longitude: 162 },
+  ], 8, 5, { stayInSign: true });
+  assert(
+    natalCluster.every((body) => Math.floor(body.displayLongitude / 30) === Math.floor(body.longitude / 30)) &&
+      new Set(natalCluster.map((body) => body.lane)).size >= 2,
+    "natal wheel keeps fanned glyphs inside their own sign"
+  );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,
     chartA: { label: "A", western: { ...syn?.chartA?.western, birth_lat: 55.7, place: { latitude: 55.7 } } },

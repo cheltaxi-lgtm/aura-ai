@@ -38,10 +38,21 @@ function separateDisplayLongitudes<T extends { displayLongitude: number }>(
   return sorted;
 }
 
+function clampDisplayToSign(trueLongitude: number, displayLongitude: number): number {
+  const start = Math.floor(mod360(trueLongitude) / 30) * 30;
+  const min = start + 2;
+  const max = start + 28;
+  let display = displayLongitude;
+  while (display < start - 180) display += 360;
+  while (display >= start + 180) display -= 360;
+  return mod360(Math.min(max, Math.max(min, display)));
+}
+
 export function layoutWheelBodies<T extends { longitude: number }>(
   items: readonly T[],
   minGapDeg = 16,
   laneCount = 3,
+  options?: { stayInSign?: boolean },
 ): Array<LaidWheelBody<T>> {
   if (items.length === 0) return [];
   const sorted = [...items].sort((a, b) => a.longitude - b.longitude);
@@ -80,7 +91,12 @@ export function layoutWheelBodies<T extends { longitude: number }>(
     }));
   });
 
-  return separateDisplayLongitudes(laid, minGapDeg);
+  const separated = separateDisplayLongitudes(laid, minGapDeg);
+  if (!options?.stayInSign) return separated;
+  return separated.map((item) => ({
+    ...item,
+    displayLongitude: clampDisplayToSign(item.longitude, item.displayLongitude),
+  }));
 }
 
 export function wheeledRadius(
