@@ -9,15 +9,15 @@ import { layoutWheelBodies, wheeledRadius } from "@/lib/natal/wheel-layout";
 import WheelZodiacBand from "./WheelZodiacBand";
 
 const PLANETS = [
-  ["sun", "☉", "#fbbf24"], ["moon", "☽", "#e2e8f0"], ["mercury", "☿", "#94a3b8"],
-  ["venus", "♀", "#f472b6"], ["mars", "♂", "#ef4444"], ["jupiter", "♃", "#a78bfa"],
-  ["saturn", "♄", "#94a3b8"], ["uranus", "♅", "#22d3ee"], ["neptune", "♆", "#818cf8"],
-  ["pluto", "♇", "#c084fc"],
+  ["sun", "☉", "#e8c98a"], ["moon", "☽", "#e2e8f0"], ["mercury", "☿", "#a8b4c4"],
+  ["venus", "♀", "#e8a0c0"], ["mars", "♂", "#e07a72"], ["jupiter", "♃", "#c4b5e8"],
+  ["saturn", "♄", "#94a3b8"], ["uranus", "♅", "#7dd3e8"], ["neptune", "♆", "#8b9cf0"],
+  ["pluto", "♇", "#c4a0e0"],
 ] as const;
 
 const ASPECT_COLORS: Record<string, string> = {
-  conjunction: "#fbbf24", sextile: "#34d399", square: "#ef4444",
-  trine: "#60a5fa", opposition: "#f97316", "semi-sextile": "#a3a3a3", quincunx: "#d8b4fe",
+  conjunction: "#e8c98a", sextile: "#6ec8a0", square: "#e07a72",
+  trine: "#7eb6e8", opposition: "#e0a070", "semi-sextile": "#9a9a9a", quincunx: "#c4b0d8",
 };
 
 type Selection =
@@ -58,7 +58,7 @@ function keyboardSelect(event: React.KeyboardEvent, action: () => void) {
   }
 }
 
-export default function NatalChartWheel({ western, timeKnown, size = 560 }: Props) {
+export default function NatalChartWheel({ western, timeKnown, size = 600 }: Props) {
   const gradientId = useId().replace(/:/g, "");
   const reducedMotion = useReducedMotion();
   const [selection, setSelection] = useState<Selection>(null);
@@ -66,14 +66,14 @@ export default function NatalChartWheel({ western, timeKnown, size = 560 }: Prop
   const compact = size < 480;
   const cx = size / 2;
   const cy = size / 2;
-  const outerR = size * 0.48;
-  const zodiacR = size * 0.418;
-  const planetBase = size * 0.34;
-  const laneStep = size * 0.03;
-  const houseInnerR = size * 0.09;
-  const houseLabelR = size * 0.175;
-  const aspectR = size * 0.125;
-  const axisLabelR = size * 0.392;
+  const outerR = size * 0.478;
+  const zodiacR = size * 0.412;
+  const planetBase = size * 0.335;
+  const laneStep = size * 0.032;
+  const houseInnerR = size * 0.088;
+  const houseLabelR = size * 0.168;
+  const aspectR = size * 0.12;
+  const axisLabelR = size * 0.388;
   const asc = timeKnown ? longitudeOf(western.rising) : null;
   const mc = timeKnown ? longitudeOf(western.midheaven) : null;
   const origin = asc ?? 0;
@@ -94,14 +94,14 @@ export default function NatalChartWheel({ western, timeKnown, size = 560 }: Prop
     const ic = mc != null ? mod360(mc + 180) : houses.find((house) => house.house === 4)?.longitude ?? null;
     const mcLon = mc ?? houses.find((house) => house.house === 10)?.longitude ?? null;
     const items = [
-      { id: "horizon", color: "#34d399", ends: [
+      { id: "horizon", color: "#9dccb4", ends: [
         { id: "asc", title: "ASC", longitude: asc },
         { id: "dsc", title: "DSC", longitude: dsc },
       ] },
     ];
     if (mcLon != null && ic != null) {
       items.push({
-        id: "meridian", color: "#fb923c",
+        id: "meridian", color: "#e0b07a",
         ends: [
           { id: "mc", title: "MC", longitude: mcLon },
           { id: "ic", title: "IC", longitude: ic },
@@ -158,136 +158,128 @@ export default function NatalChartWheel({ western, timeKnown, size = 560 }: Prop
     detail: `${body.sign ?? "Знак не указан"} · ${body.longitude.toFixed(2)}°${body.retrograde ? " · ретроградно" : ""}`,
   });
 
-  const shell = compact
-    ? "flex w-full min-w-0 flex-col gap-3"
-    : "grid w-full min-w-0 items-start gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(11rem,13.5rem)]";
-
   return (
-    <div className={shell}>
-      <div className="min-w-0">
-        <div className="mb-2 flex flex-wrap items-center gap-2" aria-label="Какие аспекты показать">
-          {(["all", "major", "minor"] as const).map((value) => (
-            <button key={value} type="button" onClick={() => setNature(value)}
-              aria-pressed={nature === value}
-              className={`rounded-full border px-3 py-1.5 text-xs transition ${nature === value ? "border-amber-300/40 bg-amber-300/15 text-amber-100" : "border-white/10 text-white/50 hover:text-white"}`}>
-              {value === "all" ? "Все" : value === "major" ? "Основные" : "Дополнительные"}
-            </button>
-          ))}
-        </div>
-        <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-auto w-full"
-          role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
-          <title>Интерактивная натальная карта</title>
-          <desc>{timeKnown ? "Выберите планету, дом или аспект, чтобы увидеть подробности." : "Время рождения неизвестно: дома, асцендент и MC не показаны."}</desc>
-          <defs><radialGradient id={gradientId}><stop offset="0%" stopColor="#1e1b4b" /><stop offset="100%" stopColor="#0b0713" /></radialGradient></defs>
-          <circle cx={cx} cy={cy} r={outerR + 2} fill={`url(#${gradientId})`} stroke="#fbbf2430" />
-          <WheelZodiacBand cx={cx} cy={cy} size={size} innerR={zodiacR} outerR={outerR} originLongitude={origin} />
-
-          {houses.map((house) => {
-            const next = houses.find((item) => item.house === (house.house % 12) + 1) ?? houses[0];
-            const midLongitude = next
-              ? mod360(house.longitude + mod360(next.longitude - house.longitude) / 2)
-              : house.longitude;
-            const outer = chartPolar(cx, cy, zodiacR, house.longitude, origin);
-            const inner = chartPolar(cx, cy, houseInnerR, house.longitude, origin);
-            const label = chartPolar(cx, cy, houseLabelR, midLongitude, origin);
-            const cardinal = house.house === 1 || house.house === 4 || house.house === 7 || house.house === 10;
-            const selected = selection?.kind === "house" && selection.id === String(house.house);
-            const action = () => setSelection({ kind: "house", id: String(house.house), title: `${house.house} дом`, detail: `Куспид: ${house.longitude.toFixed(2)}° · система ${String(western.houseSystem ?? "не указана")}` });
-            return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
-              {cardinal ? null : <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#fff7d6" : "#fbbf24"} strokeOpacity={selected ? 1 : 0.2} strokeWidth={selected ? 2.2 : 0.9} />}
-              <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#fde68acc" fontSize={size * .022}>{house.house}</text>
-            </g>;
-          })}
-
-          {axes.map((axis) => {
-            const [first, second] = axis.ends;
-            const a = chartPolar(cx, cy, zodiacR, first.longitude, origin);
-            const b = chartPolar(cx, cy, zodiacR, second.longitude, origin);
-            const selected = selection?.kind === "axis" && (selection.id === first.id || selection.id === second.id);
-            return (
-              <g key={axis.id}>
-                <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={axis.color} strokeOpacity={selected ? 1 : 0.8} strokeWidth={selected ? 2.6 : 1.7} />
-                {axis.ends.map((end) => {
-                  const label = chartPolar(cx, cy, axisLabelR, end.longitude, origin);
-                  const action = () => setSelection({
-                    kind: "axis", id: end.id, title: end.title,
-                    detail: `${end.longitude.toFixed(2)}°`,
-                  });
-                  return (
-                    <g key={end.id} role="button" tabIndex={0} aria-label={end.title} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
-                      <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill={axis.color} fontSize={size * 0.02} fontWeight="600">{end.title}</text>
-                    </g>
-                  );
-                })}
-              </g>
-            );
-          })}
-
-          <circle cx={cx} cy={cy} r={aspectR} fill="#08050e" fillOpacity=".45" stroke="#ffffff14" />
-          {aspects.map((aspect) => {
-            const first = chartPolar(cx, cy, aspectR, aspect.firstLongitude, origin);
-            const second = chartPolar(cx, cy, aspectR, aspect.secondLongitude, origin);
-            const selected = selection?.kind === "aspect" && selection.id === aspect.id;
-            const bodySelected = selection?.kind === "body" && (selection.id === aspect.first || selection.id === aspect.second);
-            const action = () => setSelection({ kind: "aspect", id: aspect.id, title: ASPECT_NAMES[aspect.type] ?? aspect.type, detail: `${BODY_NAMES[aspect.first] ?? aspect.first} — ${BODY_NAMES[aspect.second] ?? aspect.second}${aspect.orb == null ? "" : ` · орб ${aspect.orb.toFixed(2)}°`}` });
-            return <line key={aspect.id} role="button" tabIndex={0} aria-label={`${ASPECT_NAMES[aspect.type] ?? aspect.type}: ${BODY_NAMES[aspect.first] ?? aspect.first} и ${BODY_NAMES[aspect.second] ?? aspect.second}`}
-              onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
-              x1={first.x} y1={first.y} x2={second.x} y2={second.y}
-              stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"} strokeOpacity={selected ? 1 : bodySelected ? .85 : .38}
-              strokeWidth={selected ? 4 : bodySelected ? 2.5 : 1.2} className="cursor-pointer focus:outline-none" />;
-          })}
-          {bodies.map((body) => {
-            const radius = wheeledRadius(planetBase, body.lane, laneStep);
-            const point = chartPolar(cx, cy, radius, body.displayLongitude, origin);
-            const truePoint = chartPolar(cx, cy, planetBase, body.longitude, origin);
-            const tick = chartPolar(cx, cy, zodiacR, body.longitude, origin);
-            const selected = selection?.kind === "body" && selection.id === body.key;
-            const highlighted = selected || related.has(body.key);
-            const action = () => selectBody(body);
-            return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${body.longitude.toFixed(1)} градусов`}
-              onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
-              className={`cursor-pointer focus:outline-none ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .38 : 1}>
-              <line x1={tick.x} y1={tick.y} x2={truePoint.x} y2={truePoint.y} stroke={body.color} strokeOpacity=".35" />
-              {body.lane !== 0 ? <line x1={truePoint.x} y1={truePoint.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".55" /> : null}
-              <circle cx={point.x} cy={point.y} r={size * (selected ? .03 : .024)} fill="#100a1d" stroke={body.color} strokeWidth={selected ? 2.4 : 1.4} />
-              <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={size * .034} fontWeight="600">{body.glyph}</text>
-            </g>;
-          })}
-        </svg>
-        {compact ? (
-          <p className="mt-2 text-[11px] leading-4 text-white/40">
-            {selection ? `${selection.title}: ${selection.detail}` : "Нажмите планету, дом или аспект."}
-          </p>
-        ) : null}
+    <div className="flex w-full min-w-0 flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-1.5" aria-label="Какие аспекты показать">
+        {(["all", "major", "minor"] as const).map((value) => (
+          <button key={value} type="button" onClick={() => setNature(value)}
+            aria-pressed={nature === value}
+            className={`rounded-full px-3 py-1.5 text-[11px] tracking-wide transition ${nature === value ? "bg-amber-200/12 text-amber-100" : "text-white/40 hover:text-white/70"}`}>
+            {value === "all" ? "Все" : value === "major" ? "Основные" : "Дополнительные"}
+          </button>
+        ))}
       </div>
 
-      {compact ? null : (
-        <aside className="space-y-3 lg:sticky lg:top-24">
-          {selection ? (
-            <section className="rounded-xl border border-amber-300/15 bg-black/25 p-3" aria-live="polite">
-              <p className="text-[10px] uppercase tracking-[.18em] text-amber-200/50">Выбранный объект</p>
-              <h3 className="mt-1.5 text-sm font-medium text-white">{selection.title}</h3>
-              <p className="mt-0.5 text-xs leading-5 text-white/55">{selection.detail}</p>
-            </section>
-          ) : (
-            <p className="text-[11px] leading-5 text-white/40">Нажмите планету, куспид или аспект. Tab, Enter, Space.</p>
-          )}
-          <section>
-            <h3 className="text-[11px] font-medium text-white/50">Аспекты</h3>
-            <div className="mt-1.5 flex flex-wrap gap-1.5">
-              {Object.entries(ASPECT_COLORS).map(([type, color]) => (
-                <span key={type} className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 text-[10px] text-white/45">
-                  <span className="h-0.5 w-2.5" style={{ backgroundColor: color }} /> {ASPECT_NAMES[type] ?? type}
-                </span>
-              ))}
-            </div>
-          </section>
-        </aside>
-      )}
+      <svg viewBox={`0 0 ${size} ${size}`} className={`mx-auto h-auto w-full ${compact ? "max-w-full" : "max-w-[44rem]"}`}
+        role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
+        <title>Интерактивная натальная карта</title>
+        <desc>{timeKnown ? "Выберите планету, дом или аспект, чтобы увидеть подробности." : "Время рождения неизвестно: дома, асцендент и MC не показаны."}</desc>
+        <defs>
+          <radialGradient id={gradientId}>
+            <stop offset="0%" stopColor="#17121c" />
+            <stop offset="100%" stopColor="#0a070e" />
+          </radialGradient>
+        </defs>
+        <circle cx={cx} cy={cy} r={outerR + 1.5} fill={`url(#${gradientId})`} stroke="#e8c98a" strokeOpacity="0.22" />
+        <WheelZodiacBand cx={cx} cy={cy} size={size} innerR={zodiacR} outerR={outerR} originLongitude={origin} />
 
-      <details className={`rounded-xl border border-white/10 bg-black/20 p-3 ${compact ? "" : "lg:col-span-2"}`}>
-        <summary className="cursor-pointer text-sm text-white/75">Текстовая версия карты</summary>
-        <ul className="mt-2 grid gap-x-6 gap-y-1 text-xs leading-5 text-white/55 sm:grid-cols-2">
+        {houses.map((house) => {
+          const next = houses.find((item) => item.house === (house.house % 12) + 1) ?? houses[0];
+          const midLongitude = next
+            ? mod360(house.longitude + mod360(next.longitude - house.longitude) / 2)
+            : house.longitude;
+          const outer = chartPolar(cx, cy, zodiacR, house.longitude, origin);
+          const inner = chartPolar(cx, cy, houseInnerR, house.longitude, origin);
+          const label = chartPolar(cx, cy, houseLabelR, midLongitude, origin);
+          const cardinal = house.house === 1 || house.house === 4 || house.house === 7 || house.house === 10;
+          const selected = selection?.kind === "house" && selection.id === String(house.house);
+          const action = () => setSelection({ kind: "house", id: String(house.house), title: `${house.house} дом`, detail: `Куспид: ${house.longitude.toFixed(2)}° · система ${String(western.houseSystem ?? "не указана")}` });
+          return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
+            {cardinal ? null : <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#f4e6c4" : "#e8c98a"} strokeOpacity={selected ? 0.9 : 0.16} strokeWidth={selected ? 1.8 : 0.8} />}
+            <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#d8c9a4" fillOpacity="0.55" fontSize={size * 0.02}>{house.house}</text>
+          </g>;
+        })}
+
+        {axes.map((axis) => {
+          const [first, second] = axis.ends;
+          const a = chartPolar(cx, cy, zodiacR, first.longitude, origin);
+          const b = chartPolar(cx, cy, zodiacR, second.longitude, origin);
+          const selected = selection?.kind === "axis" && (selection.id === first.id || selection.id === second.id);
+          return (
+            <g key={axis.id}>
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={axis.color} strokeOpacity={selected ? 1 : 0.75} strokeWidth={selected ? 2.2 : 1.55} />
+              {axis.ends.map((end) => {
+                const label = chartPolar(cx, cy, axisLabelR, end.longitude, origin);
+                const action = () => setSelection({
+                  kind: "axis", id: end.id, title: end.title,
+                  detail: `${end.longitude.toFixed(2)}°`,
+                });
+                return (
+                  <g key={end.id} role="button" tabIndex={0} aria-label={end.title} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
+                    <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill={axis.color} fontSize={size * 0.02} fontWeight="600">{end.title}</text>
+                  </g>
+                );
+              })}
+            </g>
+          );
+        })}
+
+        <circle cx={cx} cy={cy} r={aspectR} fill="#0a070e" fillOpacity=".55" stroke="#ffffff10" />
+        {aspects.map((aspect) => {
+          const first = chartPolar(cx, cy, aspectR, aspect.firstLongitude, origin);
+          const second = chartPolar(cx, cy, aspectR, aspect.secondLongitude, origin);
+          const selected = selection?.kind === "aspect" && selection.id === aspect.id;
+          const bodySelected = selection?.kind === "body" && (selection.id === aspect.first || selection.id === aspect.second);
+          const action = () => setSelection({ kind: "aspect", id: aspect.id, title: ASPECT_NAMES[aspect.type] ?? aspect.type, detail: `${BODY_NAMES[aspect.first] ?? aspect.first} — ${BODY_NAMES[aspect.second] ?? aspect.second}${aspect.orb == null ? "" : ` · орб ${aspect.orb.toFixed(2)}°`}` });
+          return <line key={aspect.id} role="button" tabIndex={0} aria-label={`${ASPECT_NAMES[aspect.type] ?? aspect.type}: ${BODY_NAMES[aspect.first] ?? aspect.first} и ${BODY_NAMES[aspect.second] ?? aspect.second}`}
+            onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
+            x1={first.x} y1={first.y} x2={second.x} y2={second.y}
+            stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"} strokeOpacity={selected ? 1 : bodySelected ? .8 : .32}
+            strokeWidth={selected ? 3.2 : bodySelected ? 2.1 : 1.05} className="cursor-pointer focus:outline-none" />;
+        })}
+        {bodies.map((body) => {
+          const radius = wheeledRadius(planetBase, body.lane, laneStep);
+          const point = chartPolar(cx, cy, radius, body.displayLongitude, origin);
+          const truePoint = chartPolar(cx, cy, planetBase, body.longitude, origin);
+          const tick = chartPolar(cx, cy, zodiacR, body.longitude, origin);
+          const selected = selection?.kind === "body" && selection.id === body.key;
+          const highlighted = selected || related.has(body.key);
+          const action = () => selectBody(body);
+          return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${body.longitude.toFixed(1)} градусов`}
+            onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
+            className={`cursor-pointer focus:outline-none ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .35 : 1}>
+            <line x1={tick.x} y1={tick.y} x2={truePoint.x} y2={truePoint.y} stroke={body.color} strokeOpacity=".28" />
+            {body.lane !== 0 ? <line x1={truePoint.x} y1={truePoint.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".5" /> : null}
+            <circle cx={point.x} cy={point.y} r={size * (selected ? .028 : .023)} fill="#100a16" stroke={body.color} strokeWidth={selected ? 2 : 1.25} />
+            <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={size * .032} fontWeight="500">{body.glyph}</text>
+          </g>;
+        })}
+      </svg>
+
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+        <p className="min-w-0 text-sm leading-6" aria-live="polite">
+          {selection ? (
+            <>
+              <span className="font-medium text-white/90">{selection.title}</span>
+              <span className="text-white/45"> · {selection.detail}</span>
+            </>
+          ) : (
+            <span className="text-white/40">Нажмите планету, ось или аспект</span>
+          )}
+        </p>
+        <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-5 text-white/38">
+          {Object.entries(ASPECT_COLORS).map(([type, color]) => (
+            <li key={type} className="inline-flex items-center gap-1.5">
+              <span className="h-px w-3" style={{ backgroundColor: color }} />
+              {ASPECT_NAMES[type] ?? type}
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <details className="border-t border-white/8 pt-3">
+        <summary className="cursor-pointer text-sm leading-6 text-white/55 hover:text-white/80">Текстовая версия карты</summary>
+        <ul className="mt-3 grid gap-x-8 gap-y-1.5 text-sm leading-6 text-white/50 sm:grid-cols-2">
           {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
           {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
           {axisEnds.map((end) => <li key={`text-${end.id}`}>{end.title}: {end.longitude.toFixed(2)}°</li>)}

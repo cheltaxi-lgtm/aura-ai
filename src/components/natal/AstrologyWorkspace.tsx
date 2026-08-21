@@ -755,41 +755,43 @@ export default function AstrologyWorkspace() {
           <span className="text-amber-100/75">Натальная карта</span>
         </nav>
 
-        <section className="mt-4 rounded-3xl border border-amber-300/15 bg-black/35 p-4 backdrop-blur-xl sm:p-6">
-          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-            <div>
-              <p className="text-[11px] uppercase tracking-[.25em] text-amber-300/55">{BRAND_NAME} · астрология</p>
-              <h2 className="mt-1 font-display text-xl font-semibold sm:text-2xl">Интерактивное колесо</h2>
-              <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/50">
-                {western ? bigThree(western, chart.timeKnown).map((item) => <span key={item} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{item}</span>) : null}
-                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{chart.place?.label ?? "Место не указано"}</span>
-                <span className={`rounded-full border px-3 py-1.5 ${chart.timeKnown ? "border-emerald-300/20 text-emerald-200/70" : "border-amber-300/25 text-amber-100/70"}`}>{chart.timeKnown ? "Точное время" : "Время неизвестно"}</span>
+        <section className="mt-4 rounded-3xl border border-amber-300/12 bg-black/30 p-4 backdrop-blur-xl sm:p-6">
+          <div className="mb-5 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+            <div className="min-w-0">
+              <p className="text-[11px] uppercase tracking-[.22em] text-amber-200/40">{BRAND_NAME} · астрология</p>
+              <h2 className="mt-1 font-display text-2xl font-semibold tracking-tight text-white sm:text-3xl">Интерактивное колесо</h2>
+              <div className="mt-2">
+                <SectionIntroduction title="Колесо" compact>
+                  Круг разделён на 12 знаков; при известном времени также видны дома. Линии между объектами — <ExplainTerm term="аспекты">геометрические углы между положениями; они не предсказывают результат.</ExplainTerm>
+                </SectionIntroduction>
+              </div>
+              <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/45">
+                {western ? bigThree(western, chart.timeKnown).map((item) => <span key={item} className="rounded-full bg-white/[0.04] px-3 py-1.5">{item}</span>) : null}
+                <span className="rounded-full bg-white/[0.04] px-3 py-1.5">{chart.place?.label ?? "Место не указано"}</span>
+                <span className={`rounded-full px-3 py-1.5 ${chart.timeKnown ? "bg-emerald-300/8 text-emerald-200/70" : "bg-amber-300/8 text-amber-100/70"}`}>{chart.timeKnown ? "Точное время" : "Время неизвестно"}</span>
               </div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:max-w-xl lg:justify-end">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:max-w-md lg:justify-end">
               <button type="button" onClick={() => void loadChart(true)} disabled={busy !== null}
                 title="Строит новую карту по текущим данным профиля. Платные отчёты не перегенерируются."
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.12] px-4 text-sm font-medium text-amber-100 transition hover:bg-amber-300/[0.18] disabled:opacity-50">
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-4 text-sm font-medium text-amber-100/90 transition hover:bg-amber-300/[0.14] disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Получить новую карту
               </button>
               <button type="button" onClick={() => void deleteChart()} disabled={busy !== null}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-400/25 bg-rose-400/[0.08] px-4 text-sm text-rose-100 transition hover:bg-rose-400/[0.14] disabled:opacity-50">
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm text-rose-100/80 transition hover:bg-rose-400/[0.08] disabled:opacity-50">
                 <Trash2 className={`h-4 w-4 ${busy === "delete" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Удалить карту
               </button>
               <button
                 type="button"
                 onClick={navigateToBirthProfileOnboarding}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-4 text-sm text-amber-100/80 transition hover:bg-white/[0.04]"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm text-white/50 transition hover:text-amber-100/80"
               >
                 Изменить данные рождения
               </button>
             </div>
           </div>
-          <SectionIntroduction title="Колесо">
-            Круг разделён на 12 знаков; при известном времени также видны дома. Линии между объектами — <ExplainTerm term="аспекты">геометрические углы между положениями; они не предсказывают результат.</ExplainTerm>
-          </SectionIntroduction>
           {western ? <NatalChartWheel western={western} timeKnown={chart.timeKnown} /> : (
-            <p className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-white/50">
+            <p className="px-1 py-6 text-sm leading-6 text-white/45">
               Западное колесо ещё не рассчитано. Нажмите «Получить новую карту».
             </p>
           )}

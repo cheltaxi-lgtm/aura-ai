@@ -23,7 +23,23 @@ export function AstrologyGuide({ guide, className = "" }: { guide: GuideCopy; cl
   );
 }
 
-export function SectionIntroduction({ title, children }: { title: string; children: ReactNode }) {
+export function SectionIntroduction({
+  title,
+  children,
+  compact = false,
+}: {
+  title: string;
+  children: ReactNode;
+  compact?: boolean;
+}) {
+  if (compact) {
+    return (
+      <section aria-label={`Объяснение: ${title}`} className="max-w-xl text-sm leading-6 text-white/48">
+        <h3 className="sr-only">{title}</h3>
+        <div>{children}</div>
+      </section>
+    );
+  }
   return (
     <section aria-label={`Объяснение: ${title}`} className="rounded-xl border border-white/10 bg-black/20 px-3 py-3 text-sm leading-6 text-white/65 sm:px-4 sm:py-4">
       <h3 className="text-sm font-medium leading-snug text-amber-100/90">{title}</h3>

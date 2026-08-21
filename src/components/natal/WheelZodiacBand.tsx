@@ -28,10 +28,20 @@ type Props = {
 export default function WheelZodiacBand({
   cx, cy, size, innerR, outerR, originLongitude = 0,
 }: Props) {
+  const ring = [
+    `M ${cx + outerR} ${cy}`,
+    `A ${outerR} ${outerR} 0 1 0 ${cx - outerR} ${cy}`,
+    `A ${outerR} ${outerR} 0 1 0 ${cx + outerR} ${cy}`,
+    `M ${cx + innerR} ${cy}`,
+    `A ${innerR} ${innerR} 0 1 1 ${cx - innerR} ${cy}`,
+    `A ${innerR} ${innerR} 0 1 1 ${cx + innerR} ${cy}`,
+  ].join(" ");
+
   return (
     <>
-      <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="#fbbf2433" strokeWidth={1.2} />
-      <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="#fbbf2440" />
+      <path d={ring} fill="#e8c98a" fillOpacity="0.045" fillRule="evenodd" />
+      <circle cx={cx} cy={cy} r={outerR} fill="none" stroke="#e8c98a" strokeOpacity="0.28" strokeWidth={1} />
+      <circle cx={cx} cy={cy} r={innerR} fill="none" stroke="#e8c98a" strokeOpacity="0.18" strokeWidth={0.8} />
       {SIGNS.map(([name, glyph], index) => {
         const start = index * 30;
         const tickInner = chartPolar(cx, cy, innerR, start, originLongitude);
@@ -44,17 +54,19 @@ export default function WheelZodiacBand({
               y1={tickInner.y}
               x2={tickOuter.x}
               y2={tickOuter.y}
-              stroke="#fde68a28"
-              strokeWidth={1}
+              stroke="#e8c98a"
+              strokeOpacity="0.22"
+              strokeWidth={0.8}
             />
             <text
               x={mid.x}
               y={mid.y}
               textAnchor="middle"
               dominantBaseline="middle"
-              fill="#fef3c7a6"
-              fontSize={size * 0.032}
-              fontWeight="500"
+              fill="#ead7a8"
+              fillOpacity="0.72"
+              fontSize={size * 0.028}
+              fontWeight="400"
               aria-label={name}
             >
               {glyph}
