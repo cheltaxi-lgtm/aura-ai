@@ -839,7 +839,10 @@ async function main() {
   );
   const stelliumOpts = {
     cx: 300, cy: 300, origin: 110,
-    baseR: 180, minR: 118, maxR: 220, glyphR: 14.4,
+    baseR: size * 0.318,
+    minR: size * 0.318 - size * 0.028 * 1.6,
+    maxR: Math.min(size * 0.378 - size * 0.028 * 1.7, size * 0.318 + size * 0.028 * 1.15),
+    glyphR: size * 0.028,
   };
   const virgoStellium = layoutNatalGlyphs([
     { key: "sun", longitude: 158.2 },
@@ -850,7 +853,7 @@ async function main() {
     { key: "jupiter", longitude: 143.2 },
     { key: "mars", longitude: 104.5 },
   ], stelliumOpts);
-  const stelliumMinDist = stelliumOpts.glyphR * 2 + 8;
+  const stelliumMinDist = stelliumOpts.glyphR * 2.8;
   let stelliumClosest = Infinity;
   for (let i = 0; i < virgoStellium.length; i += 1) {
     for (let j = i + 1; j < virgoStellium.length; j += 1) {
@@ -864,7 +867,7 @@ async function main() {
       ["sun", "mercury", "venus", "saturn", "moon", "jupiter", "mars"].indexOf(body.key)
     ]) &&
       stelliumClosest + 1e-6 >= stelliumMinDist &&
-      new Set(virgoStellium.map((body) => body.radius.toFixed(1))).size >= 4,
+      new Set(virgoStellium.map((body) => body.radius.toFixed(1))).size >= 3,
     "natal stellium glyphs keep true longitudes and stay separated on screen"
   );
   const sanitizedSynastry = sanitizeSynastryForClient({

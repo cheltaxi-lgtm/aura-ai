@@ -167,9 +167,10 @@ function clusterByLongitude<T extends { longitude: number }>(
 
 function evenRadii(count: number, base: number, step: number, minR: number, maxR: number): number[] {
   if (count <= 1) return [Math.min(maxR, Math.max(minR, base))];
-  const ideal = Array.from({ length: count }, (_, index) => base + (index - (count - 1) / 2) * step);
-  if (ideal[0] >= minR && ideal[count - 1] <= maxR) return ideal;
-  return Array.from({ length: count }, (_, index) => minR + (index / (count - 1)) * (maxR - minR));
+  return Array.from({ length: count }, (_, index) => {
+    const radius = base + (index - (count - 1) / 2) * step;
+    return Math.min(maxR, Math.max(minR, radius));
+  });
 }
 
 function clampDisplay(trueLongitude: number, displayLongitude: number, maxNudge: number): number {
@@ -230,19 +231,20 @@ export function layoutNatalGlyphs<T extends { longitude: number }>(
   },
 ): Array<NatalGlyphLayout<T>> {
   if (items.length === 0) return [];
-  const maxNudge = 18;
-  const minDist = opts.glyphR * 2 + 8;
-  const step = Math.max(opts.glyphR * 2.45, (opts.maxR - opts.minR) / Math.max(items.length, 4));
+  const maxNudge = 22;
+  const minDist = opts.glyphR * 2.8;
+  const step = opts.glyphR * 2.2;
   const clusterGap = natalScreenGapDeg(opts.baseR, opts.glyphR);
   const fanGap = (minDist / Math.max(opts.baseR, 1)) * (180 / Math.PI);
   const laid = clusterByLongitude(items, clusterGap).flatMap((group) => {
-    const radii = staggerRadii(evenRadii(group.length, opts.baseR, step, opts.minR, opts.maxR));
+    const ringCount = Math.min(Math.max(group.length, 1), 3);
+    const rings = staggerRadii(evenRadii(ringCount, opts.baseR, step, opts.minR, opts.maxR));
     const display = fanDisplayLongitudes(group.map((item) => item.longitude), fanGap, maxNudge);
     return group.map((item, index) => ({
       ...item,
       lane: index,
       displayLongitude: display[index],
-      radius: radii[index],
+      radius: rings[index % ringCount],
     }));
   });
 

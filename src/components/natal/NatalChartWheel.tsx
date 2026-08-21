@@ -70,20 +70,21 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
   const reducedMotion = useReducedMotion();
   const [selection, setSelection] = useState<Selection>(null);
   const [hoveredAspect, setHoveredAspect] = useState<string | null>(null);
-  const [nature, setNature] = useState<"all" | "major" | "minor">("all");
+  const [nature, setNature] = useState<"all" | "major" | "minor">("major");
   const compact = size < 480;
   const cx = size / 2;
   const cy = size / 2;
-  const outerR = size * 0.478;
-  const zodiacR = size * 0.412;
-  const planetBase = size * 0.3;
-  const glyphR = size * 0.024;
-  const aspectR = size * 0.138;
-  const houseInnerR = aspectR + size * 0.016;
-  const houseLabelR = zodiacR - size * 0.032;
-  const axisLabelR = size * 0.386;
-  const laneMin = aspectR + glyphR * 2.1;
-  const laneMax = zodiacR - glyphR * 2.4;
+  const pad = size * 0.055;
+  const outerR = size * 0.448;
+  const zodiacR = size * 0.378;
+  const planetBase = size * 0.318;
+  const glyphR = size * 0.028;
+  const aspectR = size * 0.148;
+  const houseInnerR = aspectR + size * 0.01;
+  const laneMin = planetBase - glyphR * 1.6;
+  const laneMax = Math.min(zodiacR - glyphR * 1.7, planetBase + glyphR * 1.15);
+  const houseLabelR = houseInnerR + (laneMin - houseInnerR) * 0.42;
+  const axisLabelR = outerR + size * 0.028;
   const asc = timeKnown ? longitudeOf(western.rising) : null;
   const mc = timeKnown ? longitudeOf(western.midheaven) : null;
   const origin = asc ?? 0;
@@ -188,17 +189,18 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
         </div>
       </div>
 
-      <svg viewBox={`0 0 ${size} ${size}`} className={`mx-auto h-auto w-full ${compact ? "max-w-full" : "max-w-[48rem]"}`}
+      <svg viewBox={`${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}`} className={`mx-auto h-auto w-full ${compact ? "max-w-full" : "max-w-[48rem]"}`}
         role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
         <title>Интерактивная натальная карта</title>
         <desc>{timeKnown ? "Выберите планету, дом или аспект, чтобы увидеть подробности." : "Время рождения неизвестно: дома, асцендент и MC не показаны."}</desc>
         <defs>
           <radialGradient id={gradientId}>
-            <stop offset="0%" stopColor="#17121c" />
-            <stop offset="100%" stopColor="#0a070e" />
+            <stop offset="0%" stopColor="#1c1510" />
+            <stop offset="52%" stopColor="#100c14" />
+            <stop offset="100%" stopColor="#07050a" />
           </radialGradient>
         </defs>
-        <circle cx={cx} cy={cy} r={outerR + 1.5} fill={`url(#${gradientId})`} stroke="#e8c98a" strokeOpacity="0.22" />
+        <circle cx={cx} cy={cy} r={outerR + 3} fill={`url(#${gradientId})`} stroke="#e8c98a" strokeOpacity="0.2" />
         <WheelZodiacBand cx={cx} cy={cy} size={size} innerR={zodiacR} outerR={outerR} originLongitude={origin} />
 
         {houses.map((house) => {
@@ -206,38 +208,42 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           const midLongitude = next
             ? mod360(house.longitude + mod360(next.longitude - house.longitude) / 2)
             : house.longitude;
-          const outer = chartPolar(cx, cy, zodiacR, house.longitude, origin);
           const inner = chartPolar(cx, cy, houseInnerR, house.longitude, origin);
+          const gapInner = chartPolar(cx, cy, laneMin, house.longitude, origin);
+          const gapOuter = chartPolar(cx, cy, laneMax, house.longitude, origin);
+          const rim = chartPolar(cx, cy, zodiacR, house.longitude, origin);
           const label = chartPolar(cx, cy, houseLabelR, midLongitude, origin);
           const cardinal = house.house === 1 || house.house === 4 || house.house === 7 || house.house === 10;
           const selected = selection?.kind === "house" && selection.id === String(house.house);
           const action = () => setSelection({ kind: "house", id: String(house.house), title: `${house.house} дом`, detail: `Куспид: ${house.longitude.toFixed(2)}° · система ${String(western.houseSystem ?? "не указана")}` });
-          return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
-            {cardinal ? null : <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#f4e6c4" : "#e8c98a"} strokeOpacity={selected ? 0.85 : 0.14} strokeWidth={selected ? 1.6 : 0.75} />}
-            <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#e4d4b0" fillOpacity="0.72" fontSize={size * 0.022}>{house.house}</text>
+          return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200/70">
+            {cardinal ? null : (
+              <>
+                <line x1={inner.x} y1={inner.y} x2={gapInner.x} y2={gapInner.y} stroke={selected ? "#f4e6c4" : "#e8c98a"} strokeOpacity={selected ? 0.8 : 0.16} strokeWidth={selected ? 1.5 : 0.8} />
+                <line x1={gapOuter.x} y1={gapOuter.y} x2={rim.x} y2={rim.y} stroke={selected ? "#f4e6c4" : "#e8c98a"} strokeOpacity={selected ? 0.8 : 0.16} strokeWidth={selected ? 1.5 : 0.8} />
+              </>
+            )}
+            <circle cx={label.x} cy={label.y} r={Math.max(8, size * 0.017)} fill="#120c18" stroke="#e8c98a" strokeOpacity={selected ? 0.7 : 0.28} />
+            <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#f0d9a8" fillOpacity="0.88" fontSize={Math.max(10, size * 0.02)} fontWeight="600">{house.house}</text>
           </g>;
         })}
 
         {axes.map((axis) => {
-          const [first, second] = axis.ends;
-          const a = chartPolar(cx, cy, houseInnerR, first.longitude, origin);
-          const b = chartPolar(cx, cy, zodiacR, first.longitude, origin);
-          const c = chartPolar(cx, cy, houseInnerR, second.longitude, origin);
-          const d = chartPolar(cx, cy, zodiacR, second.longitude, origin);
-          const selected = selection?.kind === "axis" && (selection.id === first.id || selection.id === second.id);
+          const selected = selection?.kind === "axis" && axis.ends.some((end) => end.id === selection.id);
           return (
             <g key={axis.id}>
-              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={axis.color} strokeOpacity={selected ? 0.95 : 0.55} strokeWidth={selected ? 2 : 1.35} />
-              <line x1={c.x} y1={c.y} x2={d.x} y2={d.y} stroke={axis.color} strokeOpacity={selected ? 0.95 : 0.55} strokeWidth={selected ? 2 : 1.35} />
               {axis.ends.map((end) => {
+                const inner = chartPolar(cx, cy, houseInnerR, end.longitude, origin);
+                const rim = chartPolar(cx, cy, outerR, end.longitude, origin);
                 const label = chartPolar(cx, cy, axisLabelR, end.longitude, origin);
                 const action = () => setSelection({
                   kind: "axis", id: end.id, title: end.title,
                   detail: `${end.longitude.toFixed(2)}°`,
                 });
                 return (
-                  <g key={end.id} role="button" tabIndex={0} aria-label={end.title} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
-                    <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill={axis.color} fontSize={size * 0.022} fontWeight="600">{end.title}</text>
+                  <g key={end.id} role="button" tabIndex={0} aria-label={end.title} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200/70">
+                    <line x1={inner.x} y1={inner.y} x2={rim.x} y2={rim.y} stroke={axis.color} strokeOpacity={selected ? 0.98 : 0.78} strokeWidth={selected ? 2.4 : 1.85} />
+                    <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill={axis.color} fontSize={Math.max(12, size * 0.026)} fontWeight="700" className="font-display">{end.title}</text>
                   </g>
                 );
               })}
@@ -245,7 +251,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           );
         })}
 
-        <circle cx={cx} cy={cy} r={aspectR} fill="#0a070e" fillOpacity=".42" stroke="#ffffff12" />
+        <circle cx={cx} cy={cy} r={aspectR} fill="#08060c" fillOpacity=".72" stroke="#e8c98a" strokeOpacity="0.12" />
         {aspects.map((aspect) => {
           const first = chartPolar(cx, cy, aspectR, aspect.firstLongitude, origin);
           const second = chartPolar(cx, cy, aspectR, aspect.secondLongitude, origin);
@@ -263,7 +269,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
               onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
               onPointerEnter={() => setHoveredAspect(aspect.id)}
               onPointerLeave={() => setHoveredAspect((value) => value === aspect.id ? null : value)}
-              className="cursor-pointer focus:outline-none">
+              className="cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200/70">
               {tight ? (
                 <>
                   <circle cx={first.x} cy={first.y} r={14} fill="transparent" />
@@ -278,24 +284,29 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
                   <line x1={first.x} y1={first.y} x2={second.x} y2={second.y}
                     stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"}
                     strokeOpacity={faded ? 0.12 : style.opacity}
-                    strokeWidth={style.width} />
+                    strokeWidth={style.width}
+                    strokeLinecap="round"
+                    strokeDasharray={isMajorAspect(aspect.type) ? undefined : "5 4"} />
                 </>
               )}
             </g>
           );
         })}
-        {bodies.map((body) => {
+        {[...bodies].sort((left, right) => left.radius - right.radius).map((body) => {
           const point = chartPolar(cx, cy, body.radius, body.displayLongitude, origin);
           const tick = chartPolar(cx, cy, zodiacR, body.longitude, origin);
           const selected = selection?.kind === "body" && selection.id === body.key;
           const highlighted = selected || related.has(body.key);
+          const markerR = Math.max(9, size * (selected || highlighted ? .03 : .026));
           const action = () => selectBody(body);
           return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${body.longitude.toFixed(1)} градусов`}
             onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
-            className={`cursor-pointer focus:outline-none ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .32 : 1}>
-            <line x1={tick.x} y1={tick.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".38" />
-            <circle cx={point.x} cy={point.y} r={size * (selected || highlighted ? .026 : .022)} fill="#100a16" stroke={body.color} strokeWidth={selected || highlighted ? 2.1 : 1.35} />
-            <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={size * .03} fontWeight="500">{body.glyph}</text>
+            className={`cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200/70 ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .32 : 1}>
+            <line x1={tick.x} y1={tick.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".5" />
+            <circle cx={point.x} cy={point.y} r={markerR + 1.2} fill="#0c0810" stroke={body.color} strokeOpacity="0.35" strokeWidth={0.8} />
+            <circle cx={point.x} cy={point.y} r={markerR} fill="#161018" stroke={body.color} strokeWidth={selected || highlighted ? 2.2 : 1.7} />
+            <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={Math.max(12, size * .032)} fontWeight="600" fontFamily='"Segoe UI Symbol", "Apple Symbols", "Noto Sans Symbols", "Noto Sans Symbols 2", sans-serif'>{body.glyph}</text>
+            {body.retrograde ? <text x={point.x + markerR * 0.78} y={point.y - markerR * 0.7} fill={body.color} fontSize={Math.max(8, size * 0.016)} fontWeight="700">℞</text> : null}
           </g>;
         })}
       </svg>
