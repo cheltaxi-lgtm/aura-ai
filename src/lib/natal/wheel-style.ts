@@ -11,6 +11,6 @@ export function aspectLineStyle(
   emphasized: boolean,
 ): { width: number; opacity: number } {
   const major = isMajorAspect(type);
-  if (emphasized) return { width: major ? 3.6 : 2.5, opacity: 1 };
-  return { width: major ? 2.5 : 1.45, opacity: major ? 0.9 : 0.48 };
+  if (emphasized) return { width: major ? 4.2 : 2.6, opacity: 1 };
+  return { width: major ? 3.15 : 1.7, opacity: major ? 0.96 : 0.4 };
 }

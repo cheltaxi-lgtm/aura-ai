@@ -21,12 +21,23 @@ const ASPECT_COLORS: Record<string, string> = {
   trine: "#7eb6e8", opposition: "#e0a070", "semi-sextile": "#9a9a9a", quincunx: "#c4b0d8",
 };
 
+const LEGEND_ORDER = [
+  "conjunction", "opposition", "square", "trine", "sextile", "semi-sextile", "quincunx",
+] as const;
+
 type Selection =
   | { kind: "body"; id: string; title: string; detail: string }
   | { kind: "house"; id: string; title: string; detail: string }
   | { kind: "aspect"; id: string; title: string; detail: string }
   | { kind: "axis"; id: string; title: string; detail: string }
   | null;
+
+const SELECTION_KIND: Record<NonNullable<Selection>["kind"], string> = {
+  body: "Планета",
+  house: "Дом",
+  aspect: "Аспект",
+  axis: "Ось",
+};
 
 type Props = {
   western: Record<string, unknown>;
@@ -79,11 +90,11 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
   const zodiacR = size * 0.378;
   const planetBase = size * 0.318;
   const glyphR = size * 0.028;
-  const aspectR = size * 0.148;
-  const houseInnerR = aspectR + size * 0.01;
+  const aspectR = size * 0.178;
+  const houseInnerR = aspectR + size * 0.008;
   const laneMin = planetBase - glyphR * 1.6;
   const laneMax = Math.min(zodiacR - glyphR * 1.7, planetBase + glyphR * 1.15);
-  const houseLabelR = houseInnerR + (laneMin - houseInnerR) * 0.42;
+  const houseLabelR = houseInnerR + (laneMin - houseInnerR) * 0.34;
   const axisLabelR = outerR + size * 0.028;
   const asc = timeKnown ? longitudeOf(western.rising) : null;
   const mc = timeKnown ? longitudeOf(western.midheaven) : null;
@@ -182,14 +193,14 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           {(["all", "major", "minor"] as const).map((value) => (
             <button key={value} type="button" onClick={() => setNature(value)}
               aria-pressed={nature === value}
-              className={`rounded-full px-3 py-1.5 text-xs tracking-wide transition ${nature === value ? "bg-amber-200/12 text-amber-100" : "text-white/40 hover:text-white/70"}`}>
+              className={`rounded-full px-3 py-1.5 text-xs tracking-wide ${reducedMotion ? "" : "transition-colors"} ${nature === value ? "bg-amber-200/12 text-amber-100" : "text-white/40 hover:text-white/70"}`}>
               {value === "all" ? "Все" : value === "major" ? "Основные" : "Дополнительные"}
             </button>
           ))}
         </div>
       </div>
 
-      <svg viewBox={`${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}`} className={`mx-auto h-auto w-full ${compact ? "max-w-full" : "max-w-[48rem]"}`}
+      <svg viewBox={`${-pad} ${-pad} ${size + pad * 2} ${size + pad * 2}`} className={`mx-auto h-auto w-full ${compact ? "max-w-full" : "max-w-[54rem]"}`}
         role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
         <title>Интерактивная натальная карта</title>
         <desc>{timeKnown ? "Выберите планету, дом или аспект, чтобы увидеть подробности." : "Время рождения неизвестно: дома, асцендент и MC не показаны."}</desc>
@@ -223,8 +234,8 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
                 <line x1={gapOuter.x} y1={gapOuter.y} x2={rim.x} y2={rim.y} stroke={selected ? "#f4e6c4" : "#e8c98a"} strokeOpacity={selected ? 0.8 : 0.16} strokeWidth={selected ? 1.5 : 0.8} />
               </>
             )}
-            <circle cx={label.x} cy={label.y} r={Math.max(8, size * 0.017)} fill="#120c18" stroke="#e8c98a" strokeOpacity={selected ? 0.7 : 0.28} />
-            <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#f0d9a8" fillOpacity="0.88" fontSize={Math.max(10, size * 0.02)} fontWeight="600">{house.house}</text>
+            <circle cx={label.x} cy={label.y} r={size * 0.019} fill="#120c18" stroke="#e8c98a" strokeOpacity={selected ? 0.85 : 0.48} strokeWidth={selected ? 1.4 : 1} />
+            <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#f6e2b0" fillOpacity="0.96" fontSize={size * 0.022} fontWeight="700">{house.house}</text>
           </g>;
         })}
 
@@ -280,7 +291,9 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
                 </>
               ) : (
                 <>
-                  <line x1={first.x} y1={first.y} x2={second.x} y2={second.y} stroke="transparent" strokeWidth={12} />
+                  <line x1={first.x} y1={first.y} x2={second.x} y2={second.y} stroke="transparent" strokeWidth={14} />
+                  <line x1={first.x} y1={first.y} x2={second.x} y2={second.y}
+                    stroke="#08060c" strokeOpacity={faded ? 0.04 : 0.55} strokeWidth={style.width + 1.8} strokeLinecap="round" />
                   <line x1={first.x} y1={first.y} x2={second.x} y2={second.y}
                     stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"}
                     strokeOpacity={faded ? 0.12 : style.opacity}
@@ -311,37 +324,45 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
         })}
       </svg>
 
-      <div className="rounded-2xl bg-white/[0.035] px-4 py-3 sm:px-5 sm:py-4">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
-          <p className="min-w-0 text-sm leading-6" aria-live="polite">
-            {selection ? (
-              <>
-                <span className="text-[11px] uppercase tracking-[.16em] text-amber-200/45">Объект</span>
-                <span className="mt-1 block font-medium text-white/92">{selection.title}</span>
-                <span className="block text-white/50">{selection.detail}</span>
-              </>
-            ) : (
-              <span className="text-white/42">Нажмите планету, ось или аспект</span>
-            )}
-          </p>
-          <ul className="flex flex-wrap gap-x-3.5 gap-y-1.5 text-xs leading-5 text-white/45">
-            {Object.entries(ASPECT_COLORS).map(([type, color]) => (
-              <li key={type} className="inline-flex items-center gap-1.5">
-                <span className="w-3.5 rounded-full" style={{ backgroundColor: color, height: isMajorAspect(type) ? 2.5 : 1.25 }} />
-                {ASPECT_NAMES[type] ?? type}
-              </li>
-            ))}
-          </ul>
-        </div>
-        <details className="mt-3 border-t border-white/[0.06] pt-3">
-          <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm text-white/62 hover:text-white/85 [&::-webkit-details-marker]:hidden">
+      <div className="flex flex-col gap-5 rounded-2xl border border-white/[0.06] bg-white/[0.03] px-5 py-5 sm:px-6 sm:py-6">
+        <section className="min-h-[4.75rem] rounded-xl border border-amber-200/[0.08] bg-black/30 px-4 py-4" aria-live="polite">
+          {selection ? (
+            <>
+              <p className="text-[11px] uppercase tracking-[.16em] text-amber-200/50">{SELECTION_KIND[selection.kind]}</p>
+              <p className="mt-1.5 font-display text-lg font-medium leading-snug text-white">{selection.title}</p>
+              <p className="mt-1 text-sm leading-6 text-white/55">{selection.detail}</p>
+            </>
+          ) : (
+            <p className="text-sm leading-6 text-white/45">Нажмите планету, ось или аспект</p>
+          )}
+        </section>
+        <ul className="flex flex-wrap gap-x-5 gap-y-2.5 text-sm leading-5">
+          {LEGEND_ORDER.map((type) => (
+            <li key={type} className={`inline-flex items-center gap-2 ${isMajorAspect(type) ? "text-white/72" : "text-white/40"}`}>
+              <span
+                className="w-5 rounded-full"
+                style={{
+                  backgroundColor: ASPECT_COLORS[type],
+                  height: isMajorAspect(type) ? 3 : 1.5,
+                  opacity: isMajorAspect(type) ? 1 : 0.7,
+                }}
+              />
+              {ASPECT_NAMES[type] ?? type}
+            </li>
+          ))}
+        </ul>
+        <details className="group rounded-xl border border-white/[0.08] bg-black/20">
+          <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-sm text-white/75 hover:text-white [&::-webkit-details-marker]:hidden">
             Текстовая версия карты
+            <span aria-hidden className={`text-lg text-white/35 ${reducedMotion ? "" : "transition-transform"} group-open:rotate-90`}>›</span>
           </summary>
-          <ul className="mt-3 grid gap-x-8 gap-y-1.5 text-sm leading-6 text-white/52 sm:grid-cols-2">
-            {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
-            {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
-            {axisEnds.map((end) => <li key={`text-${end.id}`}>{end.title}: {end.longitude.toFixed(2)}°</li>)}
-          </ul>
+          <div className="border-t border-white/[0.06] px-4 py-4">
+            <ul className="grid gap-x-10 gap-y-2 text-sm leading-7 text-white/58 sm:grid-cols-2">
+              {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
+              {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
+              {axisEnds.map((end) => <li key={`text-${end.id}`}>{end.title}: {end.longitude.toFixed(2)}°</li>)}
+            </ul>
+          </div>
         </details>
       </div>
     </div>

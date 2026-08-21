@@ -214,7 +214,14 @@ function fanDisplayLongitudes(trueLongitudes: number[], minGapDeg: number, maxNu
 }
 
 function natalScreenGapDeg(baseR: number, glyphR: number): number {
-  return Math.max(18, ((glyphR * 2.8) / Math.max(baseR, 1)) * (180 / Math.PI));
+  return Math.max(20, ((glyphR * 3.1) / Math.max(baseR, 1)) * (180 / Math.PI));
+}
+
+function signedLongitudeDelta(from: number, to: number): number {
+  let delta = to - from;
+  while (delta > 180) delta -= 360;
+  while (delta < -180) delta += 360;
+  return delta;
 }
 
 /** Place natal glyphs so they do not overlap on screen. True longitude is unchanged. */
@@ -231,13 +238,13 @@ export function layoutNatalGlyphs<T extends { longitude: number }>(
   },
 ): Array<NatalGlyphLayout<T>> {
   if (items.length === 0) return [];
-  const maxNudge = 22;
-  const minDist = opts.glyphR * 2.8;
-  const step = opts.glyphR * 2.2;
+  const maxNudge = 28;
+  const minDist = opts.glyphR * 3.1;
+  const step = opts.glyphR * 2.35;
   const clusterGap = natalScreenGapDeg(opts.baseR, opts.glyphR);
-  const fanGap = (minDist / Math.max(opts.baseR, 1)) * (180 / Math.PI);
+  const fanGap = ((minDist * 1.12) / Math.max(opts.baseR, 1)) * (180 / Math.PI);
   const laid = clusterByLongitude(items, clusterGap).flatMap((group) => {
-    const ringCount = Math.min(Math.max(group.length, 1), 3);
+    const ringCount = Math.min(Math.max(group.length, 1), 4);
     const rings = staggerRadii(evenRadii(ringCount, opts.baseR, step, opts.minR, opts.maxR));
     const display = fanDisplayLongitudes(group.map((item) => item.longitude), fanGap, maxNudge);
     return group.map((item, index) => ({
@@ -248,7 +255,7 @@ export function layoutNatalGlyphs<T extends { longitude: number }>(
     }));
   });
 
-  for (let pass = 0; pass < 12; pass += 1) {
+  for (let pass = 0; pass < 16; pass += 1) {
     let moved = false;
     for (let i = 0; i < laid.length; i += 1) {
       for (let j = i + 1; j < laid.length; j += 1) {
@@ -257,15 +264,21 @@ export function layoutNatalGlyphs<T extends { longitude: number }>(
         const dist = Math.hypot(right.x - left.x, right.y - left.y) || 0.01;
         if (dist >= minDist) continue;
         moved = true;
-        const push = (minDist - dist) / 2;
-        const dir = laid[j].radius >= laid[i].radius ? 1 : -1;
-        laid[j].radius = Math.min(opts.maxR, Math.max(opts.minR, laid[j].radius + dir * push));
-        laid[i].radius = Math.min(opts.maxR, Math.max(opts.minR, laid[i].radius - dir * push));
+        const angPush = Math.max(1.2, ((minDist - dist) / Math.max(opts.baseR, 1)) * (90 / Math.PI));
+        if (signedLongitudeDelta(laid[i].displayLongitude, laid[j].displayLongitude) >= 0) {
+          laid[i].displayLongitude = clampDisplay(laid[i].longitude, laid[i].displayLongitude - angPush, maxNudge);
+          laid[j].displayLongitude = clampDisplay(laid[j].longitude, laid[j].displayLongitude + angPush, maxNudge);
+        } else {
+          laid[i].displayLongitude = clampDisplay(laid[i].longitude, laid[i].displayLongitude + angPush, maxNudge);
+          laid[j].displayLongitude = clampDisplay(laid[j].longitude, laid[j].displayLongitude - angPush, maxNudge);
+        }
         const again = chartPolar(opts.cx, opts.cy, laid[j].radius, laid[j].displayLongitude, opts.origin);
         const still = chartPolar(opts.cx, opts.cy, laid[i].radius, laid[i].displayLongitude, opts.origin);
         if (Math.hypot(again.x - still.x, again.y - still.y) < minDist) {
-          laid[j].displayLongitude = clampDisplay(laid[j].longitude, laid[j].displayLongitude + 2.5, maxNudge);
-          laid[i].displayLongitude = clampDisplay(laid[i].longitude, laid[i].displayLongitude - 2.5, maxNudge);
+          const push = (minDist - Math.hypot(again.x - still.x, again.y - still.y)) / 2;
+          const dir = laid[j].radius >= laid[i].radius ? 1 : -1;
+          laid[j].radius = Math.min(opts.maxR, Math.max(opts.minR, laid[j].radius + dir * push));
+          laid[i].radius = Math.min(opts.maxR, Math.max(opts.minR, laid[i].radius - dir * push));
         }
       }
     }

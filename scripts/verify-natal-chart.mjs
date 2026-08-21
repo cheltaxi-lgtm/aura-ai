@@ -853,7 +853,7 @@ async function main() {
     { key: "jupiter", longitude: 143.2 },
     { key: "mars", longitude: 104.5 },
   ], stelliumOpts);
-  const stelliumMinDist = stelliumOpts.glyphR * 2.8;
+  const stelliumMinDist = stelliumOpts.glyphR * 3.1;
   let stelliumClosest = Infinity;
   for (let i = 0; i < virgoStellium.length; i += 1) {
     for (let j = i + 1; j < virgoStellium.length; j += 1) {
