@@ -2,7 +2,7 @@
 
 import { useId, useMemo, useState } from "react";
 import type { CompositeChart } from "@/lib/natal/composite";
-import { ASPECT_NAMES, BODY_NAMES } from "@/lib/natal/presentation";
+import { ASPECT_NAMES, BODY_NAMES, SIGN_RU } from "@/lib/natal/presentation";
 import { layoutWheelBodies, wheeledRadius } from "@/lib/natal/wheel-layout";
 import CompatibilityWheelCard from "./CompatibilityWheelCard";
 import WheelZodiacBand, { wheelPolar } from "./WheelZodiacBand";
@@ -45,29 +45,48 @@ export default function CompositeWheel({ composite, size = 480 }: { composite: C
   const laneStep = size * 0.022;
   const bodies = useMemo(() => layoutWheelBodies(composite.bodies, 17), [composite.bodies]);
   const bodyByKey = useMemo(() => new Map(bodies.map((body) => [body.key, body])), [bodies]);
+  const drawnAspects = useMemo(
+    () => composite.aspects.slice().sort((left, right) => left.orb - right.orb).slice(0, 16),
+    [composite.aspects],
+  );
+  const selectedBody = selected?.startsWith("body:") ? bodies.find((body) => `body:${body.key}` === selected) : null;
+  const selectedAspect = selected?.startsWith("aspect:")
+    ? drawnAspects.find((aspect) => `aspect:${aspect.id}` === selected)
+    : null;
+  const status = selectedAspect
+    ? <>
+      <p className="text-[10px] uppercase tracking-[0.16em] text-amber-200/50">Аспект композита</p>
+      <p className="mt-1 text-sm text-white">
+        {bodyLabel(selectedAspect.firstKey)} — {ASPECT_NAMES[selectedAspect.aspect] ?? selectedAspect.aspect} — {bodyLabel(selectedAspect.secondKey)}
+      </p>
+      <p className="mt-0.5 text-[11px] text-white/50">орб {selectedAspect.orb}°</p>
+    </>
+    : selectedBody
+      ? <>
+        <p className="text-[10px] uppercase tracking-[0.16em] text-amber-200/50">Мидпойнт</p>
+        <p className="mt-1 text-sm text-white">{bodyLabel(selectedBody.key)}</p>
+        <p className="mt-0.5 text-[11px] text-white/50">{SIGN_RU[selectedBody.sign] ?? selectedBody.sign} {selectedBody.degree.toFixed(1)}°</p>
+      </>
+      : <p className="text-xs leading-5 text-white/45">Нажмите планету или линию — здесь будет мидпойнт и орб.</p>;
 
   return (
     <CompatibilityWheelCard
       title="Композит"
+      status={status}
       toolbar={(
         <p className="min-h-10 max-w-sm px-2 text-center text-[11px] leading-5 text-white/40">
-          Мидпойнты планет · дома и углы в этой методике не считаются
+          Середина между теми же планетами двух людей. Дома и углы не считаются.
         </p>
       )}
       footer={(
-        <>
-          <p className="line-clamp-2 min-h-10 text-center text-[11px] leading-5 text-amber-100/45" title={composite.limitation}>
-            {composite.limitation}
-          </p>
-          <details className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/55">
-            <summary className="cursor-pointer text-white/70">Текстовая версия композита</summary>
-            <ul className="mt-2 space-y-1">
-              {composite.bodies.map((body) => (
-                <li key={body.key}>{bodyLabel(body.key)}: {body.sign} {body.degree.toFixed(1)}°</li>
-              ))}
-            </ul>
-          </details>
-        </>
+        <div className="max-h-28 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3 text-[11px] leading-5 text-white/55">
+          <p className="mb-1.5 text-white/70">Положения мидпойнтов</p>
+          <ul className="space-y-1">
+            {composite.bodies.map((body) => (
+              <li key={body.key}>{bodyLabel(body.key)}: {SIGN_RU[body.sign] ?? body.sign} {body.degree.toFixed(1)}°</li>
+            ))}
+          </ul>
+        </div>
       )}
     >
       <svg
@@ -88,16 +107,12 @@ export default function CompositeWheel({ composite, size = 480 }: { composite: C
         <WheelZodiacBand cx={cx} cy={cy} size={size} innerR={zodiacR} outerR={outerR} />
         <circle cx={cx} cy={cy} r={zodiacR} fill="none" stroke="#fbbf2455" />
         <circle cx={cx} cy={cy} r={aspectR} fill="#08050e" fillOpacity=".35" stroke="#ffffff18" />
-        {composite.aspects
-          .slice()
-          .sort((left, right) => left.orb - right.orb)
-          .slice(0, 12)
-          .map((aspect) => {
+        {drawnAspects.map((aspect) => {
             const first = bodyByKey.get(aspect.firstKey);
             const second = bodyByKey.get(aspect.secondKey);
             if (!first || !second) return null;
-            const a = wheelPolar(cx, cy, aspectR, first.longitude);
-            const b = wheelPolar(cx, cy, aspectR, second.longitude);
+            const a = wheelPolar(cx, cy, wheeledRadius(planetBase, first.lane, laneStep), first.displayLongitude);
+            const b = wheelPolar(cx, cy, wheeledRadius(planetBase, second.lane, laneStep), second.displayLongitude);
             const selectionKey = `aspect:${aspect.id}`;
             const active = selected === selectionKey;
             const bodyActive = selected === `body:${aspect.firstKey}` || selected === `body:${aspect.secondKey}`;
@@ -113,7 +128,6 @@ export default function CompositeWheel({ composite, size = 480 }: { composite: C
                 aria-pressed={active}
                 aria-label={`${bodyLabel(aspect.firstKey)} ${ASPECT_NAMES[aspect.aspect] ?? aspect.aspect} ${bodyLabel(aspect.secondKey)}, орб ${aspect.orb}°`}
                 onFocus={() => setSelected(selectionKey)}
-                onBlur={() => setSelected(null)}
                 onClick={() => setSelected(active ? null : selectionKey)}
                 onKeyDown={(event) => keyboardSelect(event, () => setSelected(active ? null : selectionKey))}
                 stroke={aspect.aspect === "trine" || aspect.aspect === "sextile" ? "#34d399" : "#f87171"}
@@ -139,7 +153,6 @@ export default function CompositeWheel({ composite, size = 480 }: { composite: C
               aria-pressed={active}
               aria-label={`${bodyLabel(body.key)}: ${body.sign} ${body.degree.toFixed(1)}°`}
               onFocus={() => setSelected(selectionKey)}
-              onBlur={() => setSelected(null)}
               onClick={() => setSelected(active ? null : selectionKey)}
               onKeyDown={(event) => keyboardSelect(event, () => setSelected(active ? null : selectionKey))}
               className="cursor-pointer focus:outline-none"

@@ -1,7 +1,8 @@
 "use client";
 
 import { useId, useMemo, useState } from "react";
-import { ASPECT_NAMES, BODY_NAMES } from "@/lib/natal/presentation";
+import { signFromLongitude } from "@/lib/natal/math";
+import { ASPECT_NAMES, BODY_NAMES, SIGN_RU } from "@/lib/natal/presentation";
 import { layoutWheelBodies, wheeledRadius } from "@/lib/natal/wheel-layout";
 import CompatibilityWheelCard from "./CompatibilityWheelCard";
 import WheelZodiacBand, { wheelPolar } from "./WheelZodiacBand";
@@ -63,6 +64,11 @@ function aspectStroke(aspect: string): string {
   return "#fbbf24";
 }
 
+function positionCaption(longitude: number) {
+  const sign = signFromLongitude(longitude);
+  return `${SIGN_RU[sign.name] ?? sign.name} ${sign.degree.toFixed(1)}°`;
+}
+
 function keyboardSelect(event: React.KeyboardEvent, action: () => void) {
   if (event.key === "Enter" || event.key === " ") {
     event.preventDefault();
@@ -91,8 +97,6 @@ export default function NatalSynastryWheel({
   const ringA = size * 0.268;
   const aspectR = size * 0.20;
   const laneStep = size * 0.014;
-  const ascA = timeKnownA ? longitudeOf(chartA.rising) : null;
-  const longitudeRotation = ascA == null ? 0 : 270 - ascA;
 
   const planetsA = useMemo(
     () => layoutWheelBodies(collectPlanets(chartA, timeKnownA), 15),
@@ -105,6 +109,13 @@ export default function NatalSynastryWheel({
   const [selectedAspect, setSelectedAspect] = useState<string | null>(null);
   const [selectedBody, setSelectedBody] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "supportive" | "challenging">("all");
+
+  const glyphPoint = (planet: (typeof planetsA)[number], ring: "a" | "b") => {
+    const base = ring === "a" ? ringA : ringB;
+    const radius = wheeledRadius(base, planet.lane, laneStep, ring === "b" ? 1 : -1);
+    return wheelPolar(cx, cy, radius, planet.displayLongitude);
+  };
+
   const aspectLines = useMemo(() => {
     const mapA = new Map(planetsA.map((planet) => [planet.key, planet]));
     const mapB = new Map(planetsB.map((planet) => [planet.key, planet]));
@@ -116,16 +127,44 @@ export default function NatalSynastryWheel({
       })
       .slice()
       .sort((left, right) => (left.orb ?? 99) - (right.orb ?? 99))
-      .slice(0, 12)
+      .slice(0, 16)
       .flatMap((aspect) => {
         const a = mapA.get(aspect.bodyAKey);
         const b = mapB.get(aspect.bodyBKey);
         if (!a || !b) return [];
-        const p1 = wheelPolar(cx, cy, aspectR, a.longitude + longitudeRotation);
-        const p2 = wheelPolar(cx, cy, aspectR, b.longitude + longitudeRotation);
-        return [{ ...aspect, p1, p2 }];
+        return [{ ...aspect, p1: glyphPoint(a, "a"), p2: glyphPoint(b, "b") }];
       });
-  }, [crossAspects, planetsA, planetsB, cx, cy, aspectR, longitudeRotation, filter]);
+  }, [crossAspects, planetsA, planetsB, cx, cy, ringA, ringB, laneStep, filter]);
+
+  const selectedPlanet = selectedBody
+    ? (selectedBody.startsWith("a:")
+      ? planetsA.find((planet) => `a:${planet.key}` === selectedBody)
+      : planetsB.find((planet) => `b:${planet.key}` === selectedBody))
+    : null;
+  const selectedLine = selectedAspect
+    ? aspectLines.find((line) => (line.id ?? `${line.bodyAKey}:${line.aspect}:${line.bodyBKey}`) === selectedAspect)
+    : null;
+  const status = selectedLine
+    ? <>
+      <p className="text-[10px] uppercase tracking-[0.16em] text-amber-200/50">Аспект</p>
+      <p className="mt-1 text-sm text-white">
+        {labelA}: {BODY_NAMES[selectedLine.bodyAKey] ?? selectedLine.bodyAKey}
+        {" — "}
+        {ASPECT_NAMES[selectedLine.aspect] ?? selectedLine.aspect}
+        {" — "}
+        {labelB}: {BODY_NAMES[selectedLine.bodyBKey] ?? selectedLine.bodyBKey}
+      </p>
+      <p className="mt-0.5 text-[11px] text-white/50">орб {selectedLine.orb ?? "—"}°</p>
+    </>
+    : selectedPlanet && selectedBody
+      ? <>
+        <p className="text-[10px] uppercase tracking-[0.16em] text-amber-200/50">
+          {selectedBody.startsWith("a:") ? labelA : labelB}
+        </p>
+        <p className="mt-1 text-sm text-white">{BODY_NAMES[selectedPlanet.key] ?? selectedPlanet.key}</p>
+        <p className="mt-0.5 text-[11px] text-white/50">{positionCaption(selectedPlanet.longitude)}</p>
+      </>
+      : <p className="text-xs leading-5 text-white/45">Нажмите планету или линию — здесь будет знак, градус и орб.</p>;
 
   const renderBody = (
     planet: (typeof planetsA)[number],
@@ -137,10 +176,9 @@ export default function NatalSynastryWheel({
       ? (planet.key === "rising" ? "#34d399" : meta?.colorA ?? "#34d399")
       : (planet.key === "rising" ? "#f472b6" : meta?.colorB ?? "#f472b6");
     const id = `${ring}:${planet.key}`;
-    const radius = wheeledRadius(baseRadius, planet.lane, laneStep, ring === "b" ? 1 : -1);
-    const point = wheelPolar(cx, cy, radius, planet.displayLongitude + longitudeRotation);
+    const point = glyphPoint(planet, ring);
     const tickRail = ring === "b" ? zodiacR : baseRadius;
-    const tick = wheelPolar(cx, cy, tickRail, planet.longitude + longitudeRotation);
+    const tick = wheelPolar(cx, cy, tickRail, planet.longitude);
     const selected = selectedBody === id;
     const glyphSize = planet.label.length > 1 ? size * 0.022 : size * 0.034;
     const owner = ring === "a" ? labelA : labelB;
@@ -149,16 +187,21 @@ export default function NatalSynastryWheel({
         key={id}
         tabIndex={0}
         role="button"
-        aria-label={`${owner}: ${BODY_NAMES[planet.key] ?? planet.key}, ${planet.longitude.toFixed(1)}°`}
+        aria-label={`${owner}: ${BODY_NAMES[planet.key] ?? planet.key}, ${positionCaption(planet.longitude)}`}
         aria-pressed={selected}
-        onFocus={() => setSelectedBody(id)}
-        onBlur={() => setSelectedBody(null)}
-        onClick={() => setSelectedBody((value) => value === id ? null : id)}
-        onKeyDown={(event) => keyboardSelect(event, () => setSelectedBody((value) => value === id ? null : id))}
+        onFocus={() => { setSelectedAspect(null); setSelectedBody(id); }}
+        onClick={() => {
+          setSelectedAspect(null);
+          setSelectedBody((value) => value === id ? null : id);
+        }}
+        onKeyDown={(event) => keyboardSelect(event, () => {
+          setSelectedAspect(null);
+          setSelectedBody((value) => value === id ? null : id);
+        })}
         opacity={selectedBody && !selected ? 0.32 : 1}
         className="cursor-pointer focus:outline-none"
       >
-        <title>{owner}: {BODY_NAMES[planet.key] ?? planet.key}, {planet.longitude.toFixed(1)}°</title>
+        <title>{owner}: {BODY_NAMES[planet.key] ?? planet.key}, {positionCaption(planet.longitude)}</title>
         <line x1={tick.x} y1={tick.y} x2={point.x} y2={point.y} stroke={color} strokeOpacity="0.45" />
         <circle cx={point.x} cy={point.y} r={size * (selected ? 0.026 : 0.022)} fill="#100a1d" stroke={color} strokeWidth={selected ? 2 : 1.3} />
         <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={color} fontSize={glyphSize} fontWeight="600">
@@ -171,6 +214,7 @@ export default function NatalSynastryWheel({
   return (
     <CompatibilityWheelCard
       title="Синастрия"
+      status={status}
       toolbar={(
         <div className="flex flex-wrap justify-center gap-2" role="group" aria-label="Какие аспекты показать">
           {([
@@ -204,16 +248,16 @@ export default function NatalSynastryWheel({
               <span className="shrink-0 text-white/35">снаружи</span>
             </span>
           </div>
-          <details className="rounded-xl border border-white/10 bg-black/20 p-3 text-xs text-white/55">
-            <summary className="cursor-pointer text-white/70">Текстовая версия синастрии</summary>
-            <ul className="mt-2 space-y-1">
+          <div className="max-h-28 overflow-y-auto rounded-xl border border-white/10 bg-black/20 p-3 text-[11px] leading-5 text-white/55">
+            <p className="mb-1.5 text-white/70">На круге {aspectLines.length} аспект{aspectLines.length === 1 ? "" : aspectLines.length < 5 ? "а" : "ов"}</p>
+            <ul className="space-y-1">
               {aspectLines.length ? aspectLines.map((line, index) => (
                 <li key={`${line.id ?? index}-text`}>
-                  {BODY_NAMES[line.bodyAKey] ?? line.bodyAKey} — {ASPECT_NAMES[line.aspect] ?? line.aspect} — {BODY_NAMES[line.bodyBKey] ?? line.bodyBKey}; орб {line.orb ?? "—"}°
+                  {labelA}: {BODY_NAMES[line.bodyAKey] ?? line.bodyAKey} — {ASPECT_NAMES[line.aspect] ?? line.aspect} — {labelB}: {BODY_NAMES[line.bodyBKey] ?? line.bodyBKey}; орб {line.orb ?? "—"}°
                 </li>
               )) : <li>Аспекты по выбранному фильтру отсутствуют.</li>}
             </ul>
-          </details>
+          </div>
         </>
       )}
     >
@@ -234,7 +278,7 @@ export default function NatalSynastryWheel({
           </radialGradient>
         </defs>
         <circle cx={cx} cy={cy} r={outerR + 4} fill={`url(#${gradientId})`} stroke="#fbbf2440" />
-        <WheelZodiacBand cx={cx} cy={cy} size={size} innerR={zodiacR} outerR={outerR} rotation={longitudeRotation} />
+        <WheelZodiacBand cx={cx} cy={cy} size={size} innerR={zodiacR} outerR={outerR} />
         <circle cx={cx} cy={cy} r={zodiacR} fill="none" stroke="#fbbf2455" />
         <circle cx={cx} cy={cy} r={ringB} fill="none" stroke="#f472b622" />
         <circle cx={cx} cy={cy} r={ringA} fill="none" stroke="#34d39922" />
@@ -251,10 +295,15 @@ export default function NatalSynastryWheel({
               role="button"
               aria-pressed={selectedAspect === id}
               aria-label={`${BODY_NAMES[line.bodyAKey] ?? line.bodyAKey}, ${ASPECT_NAMES[line.aspect] ?? line.aspect}, ${BODY_NAMES[line.bodyBKey] ?? line.bodyBKey}, орб ${line.orb ?? "не указан"}°`}
-              onFocus={() => setSelectedAspect(id)}
-              onBlur={() => setSelectedAspect(null)}
-              onClick={() => setSelectedAspect((value) => value === id ? null : id)}
-              onKeyDown={(event) => keyboardSelect(event, () => setSelectedAspect((value) => value === id ? null : id))}
+              onFocus={() => { setSelectedBody(null); setSelectedAspect(id); }}
+              onClick={() => {
+                setSelectedBody(null);
+                setSelectedAspect((value) => value === id ? null : id);
+              }}
+              onKeyDown={(event) => keyboardSelect(event, () => {
+                setSelectedBody(null);
+                setSelectedAspect((value) => value === id ? null : id);
+              })}
               x1={line.p1.x}
               y1={line.p1.y}
               x2={line.p2.x}
