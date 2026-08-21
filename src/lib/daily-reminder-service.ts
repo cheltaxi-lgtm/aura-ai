@@ -38,7 +38,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
   dailyEmail: true,
   dailyInApp: true,
   dailyTelegram: true,
-  reminderHourMsk: 9,
+  reminderHourMsk: 6,
   bonusEmail: true,
   marketingEmail: true,
   reportReadyEmail: true,
@@ -171,7 +171,7 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
        CASE
          WHEN (u.notification_prefs->>'reminderHourUtc') IS NOT NULL
          THEN ((u.notification_prefs->>'reminderHourUtc')::int + 3) % 24
-         ELSE 9
+         ELSE 6
        END
      ) = $1`,
     [hourMsk]

@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       ? Math.min(23, Math.max(0, Number(hourParam)))
       : new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" })).getHours();
 
-  const result = await sendDailyRemindersForHour(Number.isFinite(hourMsk) ? hourMsk : 9);
+  const result = await sendDailyRemindersForHour(Number.isFinite(hourMsk) ? hourMsk : 6);
 
   return NextResponse.json({ hourMsk, ...result });
 }
