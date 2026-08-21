@@ -734,11 +734,6 @@ function CompatibilityViewer({
     ...(record.evidence?.dimensions ?? []).map((item) => [`dimension:${item.key}`, item.label] as const),
     ...(record.evidence?.crossAspects ?? []).map((item) => [item.id, item.label] as const),
   ]);
-  const focusEvidence = (id: string) => {
-    const element = document.getElementById(`compatibility-evidence-${id}`);
-    element?.scrollIntoView({ behavior: "smooth", block: "center" });
-    element?.focus({ preventScroll: true });
-  };
   if (record.status === "expired") {
     return <section className="rounded-2xl border border-amber-300/20 bg-amber-300/[0.05] p-5 sm:p-7">
       <p className="text-[10px] uppercase tracking-[.18em] text-amber-200/60">Срок истёк</p>
@@ -801,10 +796,8 @@ function CompatibilityViewer({
             deepLink: aspect.id,
           })),
         ]}
-        onEvidence={focusEvidence}
         methodology={null}
         disclaimer={record.report.disclaimer}
-        evidenceTone="rose"
         showMethodology={Boolean(record.report.disclaimer)}
       />
       <div className="flex flex-wrap gap-3">

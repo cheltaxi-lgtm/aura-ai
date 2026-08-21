@@ -310,18 +310,6 @@ export default function AstrologyWorkspace() {
     };
   }, [loadHistory, selectTab]);
 
-  const focusEvidence = useCallback((target: string) => {
-    const url = new URL(target, window.location.origin);
-    const requested = url.searchParams.get("tab") as Tab | null;
-    if (requested && TABS.some((item) => item.id === requested)) selectTab(requested);
-    window.setTimeout(() => {
-      if (!url.hash) return;
-      const element = document.getElementById(decodeURIComponent(url.hash.slice(1)));
-      element?.scrollIntoView({ behavior: "smooth", block: "center" });
-      element?.focus({ preventScroll: true });
-    }, 80);
-  }, [selectTab]);
-
   const requestInterpretation = async (tradition: NatalTradition, opts?: { forceWait?: boolean }) => {
     if (!chart?.[tradition]) {
       setError("Сначала укажите дату и город рождения в настройках карты.");
@@ -830,11 +818,11 @@ export default function AstrologyWorkspace() {
 
         <div className="mt-5">
           {tab === "overview" && <Overview chart={chart} reports={reports} onTab={selectTab} />}
-          {tab === "western" && (western ? <Western chart={chart} western={western} savedReport={currentWesternReport} freshReport={freshReports.western} fallbackText={westernReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} onEvidence={focusEvidence} onOpenArchive={() => openReportArchive(currentWesternReport?.id)} /> : <Unavailable title="Западный расчёт отсутствует" />)}
-          {tab === "jyotish" && (chart.vedic ? <Jyotish chart={chart} vedic={chart.vedic} savedReport={currentVedicReport} freshReport={freshReports.vedic} fallbackText={vedicReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} onEvidence={focusEvidence} onOpenArchive={() => openReportArchive(currentVedicReport?.id)} /> : <Unavailable title="Расчёт джйотиш отсутствует" />)}
-          {tab === "timing" && <Timing chart={chart} reports={reports} busy={busy} forecastCost={cost("FORECAST_REPORT")} onRequestForecast={requestForecast} onEvidence={focusEvidence} onOpenArchive={openReportArchive} />}
+          {tab === "western" && (western ? <Western chart={chart} western={western} savedReport={currentWesternReport} freshReport={freshReports.western} fallbackText={westernReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} onOpenArchive={() => openReportArchive(currentWesternReport?.id)} /> : <Unavailable title="Западный расчёт отсутствует" />)}
+          {tab === "jyotish" && (chart.vedic ? <Jyotish chart={chart} vedic={chart.vedic} savedReport={currentVedicReport} freshReport={freshReports.vedic} fallbackText={vedicReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} onOpenArchive={() => openReportArchive(currentVedicReport?.id)} /> : <Unavailable title="Расчёт джйотиш отсутствует" />)}
+          {tab === "timing" && <Timing chart={chart} reports={reports} busy={busy} forecastCost={cost("FORECAST_REPORT")} onRequestForecast={requestForecast} onOpenArchive={openReportArchive} />}
           {tab === "compatibility" && <NatalCompatibility />}
-          {tab === "reports" && <Reports chart={chart} reports={reports} loading={historyLoading} error={historyError} deletingReportId={deletingReportId} onDelete={deleteReport} onReload={loadHistory} onEvidence={focusEvidence} selectedReportId={selectedReportId} onSelectReport={setSelectedReportId} />}
+          {tab === "reports" && <Reports chart={chart} reports={reports} loading={historyLoading} error={historyError} deletingReportId={deletingReportId} onDelete={deleteReport} onReload={loadHistory} selectedReportId={selectedReportId} onSelectReport={setSelectedReportId} />}
           {tab === "settings" && <NatalSettings />}
         </div>
       </div>
@@ -873,7 +861,7 @@ function Overview({ chart, reports, onTab }: { chart: NatalChartPayload; reports
   </div>;
 }
 
-function Western({ chart, western, savedReport, freshReport, fallbackText, busy, cost, onRequest, onEvidence, onOpenArchive }: {
+function Western({ chart, western, savedReport, freshReport, fallbackText, busy, cost, onRequest, onOpenArchive }: {
   chart: NatalChartPayload;
   western: Record<string, unknown>;
   savedReport?: Report;
@@ -882,7 +870,6 @@ function Western({ chart, western, savedReport, freshReport, fallbackText, busy,
   busy: string | null;
   cost: number;
   onRequest: (tradition: NatalTradition) => void;
-  onEvidence: (target: string) => void;
   onOpenArchive: () => void;
 }) {
   const positions = positionRows(western, chart.timeKnown);
@@ -902,7 +889,6 @@ function Western({ chart, western, savedReport, freshReport, fallbackText, busy,
       busy={busy}
       cost={cost}
       onRequest={onRequest}
-      onEvidence={onEvidence}
       onOpenArchive={onOpenArchive}
     />
     <Panel title="Все тела и углы" eyebrow={`${positions.length} положений`}>
@@ -934,7 +920,7 @@ function Western({ chart, western, savedReport, freshReport, fallbackText, busy,
   </div>;
 }
 
-function Jyotish({ chart, vedic, savedReport, freshReport, fallbackText, busy, cost, onRequest, onEvidence, onOpenArchive }: {
+function Jyotish({ chart, vedic, savedReport, freshReport, fallbackText, busy, cost, onRequest, onOpenArchive }: {
   chart: NatalChartPayload;
   vedic: VedicChart;
   savedReport?: Report;
@@ -943,7 +929,6 @@ function Jyotish({ chart, vedic, savedReport, freshReport, fallbackText, busy, c
   busy: string | null;
   cost: number;
   onRequest: (tradition: NatalTradition) => void;
-  onEvidence: (target: string) => void;
   onOpenArchive: () => void;
 }) {
   const moon = vedic.moonSign;
@@ -959,7 +944,6 @@ function Jyotish({ chart, vedic, savedReport, freshReport, fallbackText, busy, c
       busy={busy}
       cost={cost}
       onRequest={onRequest}
-      onEvidence={onEvidence}
       onOpenArchive={onOpenArchive}
     />
     <Panel title="Джйотиш" eyebrow="Сидерический зодиак · аянамша Лахири">
@@ -1013,13 +997,12 @@ function formatRuDateRange(start: string, end: string): string {
   return `${formatRuDate(start)} — ${formatRuDate(end)}`;
 }
 
-function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvidence, onOpenArchive }: {
+function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onOpenArchive }: {
   chart: NatalChartPayload;
   reports: Report[];
   busy: string | null;
   forecastCost: number;
   onRequestForecast: (horizon: TimingHorizon) => void;
-  onEvidence: (target: string) => void;
   onOpenArchive: (reportId?: string) => void;
 }) {
   const [horizon, setHorizon] = useState<TimingHorizon>(30);
@@ -1111,7 +1094,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
           Готов · {reportLabel(currentForecast)} · {new Date(currentForecast.createdAt).toLocaleString("ru-RU")} · сохранён в архиве
         </p>
         {isNatalReport(currentForecast.structuredData)
-          ? <StructuredReport report={currentForecast.structuredData} evidence={currentForecast.evidenceRefs ?? []} onEvidence={onEvidence} />
+          ? <StructuredReport report={currentForecast.structuredData} evidence={currentForecast.evidenceRefs ?? []} />
           : <Interpretation text={currentForecast.content} />}
         <div className="flex flex-wrap items-center gap-3">
           <Link href={`/cabinet/astrology/reports/${currentForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
@@ -1133,7 +1116,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
               </p>
             </div>
             {isNatalReport(previousForecast.structuredData)
-              ? <StructuredReport report={previousForecast.structuredData} evidence={previousForecast.evidenceRefs ?? []} onEvidence={onEvidence} />
+              ? <StructuredReport report={previousForecast.structuredData} evidence={previousForecast.evidenceRefs ?? []} />
               : <Interpretation text={previousForecast.content} />}
             <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-3">
               <Link href={`/cabinet/astrology/reports/${previousForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
@@ -1286,13 +1269,13 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
   </div>;
 }
 
-function Reports({ chart, reports, loading, error, deletingReportId, onDelete, onReload, onEvidence, selectedReportId, onSelectReport }: {
+function Reports({ chart, reports, loading, error, deletingReportId, onDelete, onReload, selectedReportId, onSelectReport }: {
   chart: NatalChartPayload; reports: Report[];
   loading: boolean; error: string;
   deletingReportId: string | null;
   onReload: () => void;
   onDelete: (report: Report) => void;
-  onEvidence: (target: string) => void; selectedReportId: string | null;
+  selectedReportId: string | null;
   onSelectReport: (reportId: string | null) => void;
 }) {
   const [filter, setFilter] = useState<"all" | "natal" | "forecast">("all");
@@ -1344,7 +1327,7 @@ function Reports({ chart, reports, loading, error, deletingReportId, onDelete, o
     </Panel>
     {selected ? <Panel title={reportLabel(selected)} eyebrow="Полный отчёт">
       <p className="text-xs text-white/35">{new Date(selected.createdAt).toLocaleString("ru-RU")} · сохранённая версия расчёта</p>
-      {isNatalReport(selected.structuredData) ? <StructuredReport report={selected.structuredData} evidence={selected.evidenceRefs ?? []} onEvidence={onEvidence} /> : <Interpretation text={selected.content} />}
+      {isNatalReport(selected.structuredData) ? <StructuredReport report={selected.structuredData} evidence={selected.evidenceRefs ?? []} /> : <Interpretation text={selected.content} />}
       <div className="flex flex-wrap items-center gap-3">
         <Link href={`/cabinet/astrology/reports/${selected.id}/print`} className="text-xs text-amber-200">Печать</Link>
         <button type="button" disabled={deletingReportId !== null} onClick={() => onDelete(selected)}
@@ -1398,7 +1381,7 @@ function reportLabel(report: Report): string {
   return report.tradition === "western" ? "Западная трактовка" : "Трактовка джйотиш";
 }
 
-function ReportCard({ tradition, title, text, report, evidence, savedReport, busy, cost, onRequest, onEvidence, onOpenArchive }: {
+function ReportCard({ tradition, title, text, report, evidence, savedReport, busy, cost, onRequest, onOpenArchive }: {
   tradition: NatalTradition;
   title: string;
   text?: string;
@@ -1408,12 +1391,11 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
   busy: string | null;
   cost: number;
   onRequest: (tradition: NatalTradition) => void;
-  onEvidence: (target: string) => void;
   onOpenArchive: () => void;
 }) {
   return <Panel title={title} eyebrow={text ? "Готов · сохранён в архиве" : "Отдельная покупка"}>
     {savedReport ? <p className="text-xs text-emerald-100/60">Создан {new Date(savedReport.createdAt).toLocaleString("ru-RU")} · {savedReport.runeCost ?? "—"} ᚢ</p> : null}
-    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
     {text ? <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-4">
       {savedReport ? <Link href={`/cabinet/astrology/reports/${savedReport.id}/print`} className="text-xs text-amber-200">Печать</Link> : null}
       <button type="button" onClick={onOpenArchive} className="text-xs text-white/50 transition hover:text-white/75">Открыть архив версий →</button>
@@ -1422,12 +1404,11 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
   </Panel>;
 }
 
-function StructuredReport({ report, evidence, onEvidence }: { report: NatalReport; evidence: NatalEvidence[]; onEvidence: (target: string) => void }) {
+function StructuredReport({ report, evidence }: { report: NatalReport; evidence: NatalEvidence[] }) {
   return (
     <NatalStructuredReportView
       sections={report.sections}
       evidence={evidence}
-      onEvidence={onEvidence}
       methodology={report.methodology}
       disclaimer={report.disclaimer}
       reportType={report.reportType}

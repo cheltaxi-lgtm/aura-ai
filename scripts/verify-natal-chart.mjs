@@ -1160,9 +1160,9 @@ async function main() {
   }
   assert(
     printableReport.includes("Приложение: расчётные данные") &&
-      (printableReport.includes("Основано на рассчитанных данных") ||
-        natalStructuredReportView.includes("Основано на рассчитанных данных")) &&
       printableReport.includes("NatalStructuredReportView") &&
+      !natalStructuredReportView.includes("Основано на") &&
+      !natalStructuredReportView.includes("Показать расчёт:") &&
       astrologyWorkspace.includes("NatalStructuredReportView") &&
       !printableReport.includes("Evidence:") &&
       !astrologyWorkspace.includes('label="FORECAST_REPORT"') &&
@@ -1181,10 +1181,7 @@ async function main() {
     "all major natal panels include plain-language introductions"
   );
   assert(
-    natalStructuredReportView.includes("Показать расчёт:") &&
-      natalStructuredReportView.includes("полноты показывает") &&
-      natalStructuredReportView.includes("не подтверждает истинность") &&
-      natalSettings.includes("не создают прогноз") &&
+    natalSettings.includes("не создают прогноз") &&
       astrologyWorkspace.includes("асцендент девятой карты (навамша) также исключён") &&
       astrologyWorkspace.includes('aria-label="Горизонт прогноза"'),
     "timing and evidence language remains calibrated and explicit about limits"
