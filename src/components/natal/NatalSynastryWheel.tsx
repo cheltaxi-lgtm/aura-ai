@@ -132,9 +132,13 @@ export default function NatalSynastryWheel({
         const a = mapA.get(aspect.bodyAKey);
         const b = mapB.get(aspect.bodyBKey);
         if (!a || !b) return [];
-        return [{ ...aspect, p1: glyphPoint(a, "a"), p2: glyphPoint(b, "b") }];
+        return [{
+          ...aspect,
+          p1: wheelPolar(cx, cy, aspectR, a.longitude),
+          p2: wheelPolar(cx, cy, aspectR, b.longitude),
+        }];
       });
-  }, [crossAspects, planetsA, planetsB, cx, cy, ringA, ringB, laneStep, filter]);
+  }, [crossAspects, planetsA, planetsB, cx, cy, aspectR, filter]);
 
   const selectedPlanet = selectedBody
     ? (selectedBody.startsWith("a:")

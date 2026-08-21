@@ -9,6 +9,7 @@ import { computeDeepTransits, detectSignIngresses } from "../src/lib/natal/trans
 import { computeSynastry, computeSynastryDimensions, sanitizeSynastryForClient } from "../src/lib/natal/synastry.ts";
 import { compositeMidpointLongitude, computeCompositeChart } from "../src/lib/natal/composite.ts";
 import { layoutWheelBodies, minDisplayGap, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
+import { chartPolar, longitudeToChartAngle } from "../src/lib/natal/chart-angle.ts";
 import {
   allowedShareSections, isHighEntropyShareToken,
   sanitizeCompatibilityReportShare, sanitizeNatalReportShare, sanitizeRelationshipReportShare,
@@ -740,10 +741,56 @@ async function main() {
     { key: "mars", longitude: 100 },
     { key: "rising", longitude: 108 },
   ], 12, 6, { radialOnly: true });
+  const radialStellium = layoutWheelBodies(
+    Array.from({ length: 7 }, (_, index) => ({ key: `p${index}`, longitude: 100 + index })),
+    12, 6, { radialOnly: true },
+  );
   assert(
     radialOnly.every((body) => body.displayLongitude === body.longitude) &&
-      radialOnly.find((body) => body.key === "rising")?.lane !== radialOnly.find((body) => body.key === "mars")?.lane,
+      radialOnly.find((body) => body.key === "rising")?.lane !== radialOnly.find((body) => body.key === "mars")?.lane &&
+      new Set(radialStellium.map((body) => body.lane)).size === 7 &&
+      radialStellium.every((body) => body.displayLongitude === body.longitude),
     "natal radial layout keeps true longitudes and stacks nearby glyphs"
+  );
+  assert(
+    longitudeToChartAngle(0, 0) === 180 &&
+      longitudeToChartAngle(90, 0) === 270 &&
+      longitudeToChartAngle(180, 0) === 0 &&
+      longitudeToChartAngle(270, 0) === 90 &&
+      longitudeToChartAngle(47, 47) === 180 &&
+      longitudeToChartAngle(137, 47) === 270 &&
+      longitudeToChartAngle(227, 47) === 0 &&
+      longitudeToChartAngle(317, 47) === 90,
+    "longitudeToChartAngle maps ASC-relative 0/90/180/270 to left/bottom/right/top math angles"
+  );
+  const wheelCx = 100;
+  const wheelCy = 100;
+  const wheelR = 50;
+  const at = (longitude, origin = 0) => chartPolar(wheelCx, wheelCy, wheelR, longitude, origin);
+  const cardinalOf = (point) => {
+    const dx = point.x - wheelCx;
+    const dy = point.y - wheelCy;
+    if (Math.abs(dy) < 1e-6 && dx < 0) return "left";
+    if (Math.abs(dy) < 1e-6 && dx > 0) return "right";
+    if (Math.abs(dx) < 1e-6 && dy > 0) return "bottom";
+    if (Math.abs(dx) < 1e-6 && dy < 0) return "top";
+    return "other";
+  };
+  const houseCusps = [0, 90, 180, 270];
+  assert(
+    cardinalOf(at(0)) === "left" &&
+      cardinalOf(at(90)) === "bottom" &&
+      cardinalOf(at(180)) === "right" &&
+      cardinalOf(at(270)) === "top" &&
+      cardinalOf(at(houseCusps[0], 0)) === "left" &&
+      cardinalOf(at(houseCusps[1], 0)) === "bottom" &&
+      cardinalOf(at(houseCusps[2], 0)) === "right" &&
+      cardinalOf(at(houseCusps[3], 0)) === "top" &&
+      cardinalOf(at(12.7, 12.7)) === "left" &&
+      cardinalOf(at(102.7, 12.7)) === "bottom" &&
+      cardinalOf(at(192.7, 12.7)) === "right" &&
+      cardinalOf(at(282.7, 12.7)) === "top",
+    "natal renderer: house 1 left, 4 bottom, 7 right, 10 top for ASC-relative 0"
   );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,
@@ -957,6 +1004,14 @@ async function main() {
     new URL("../src/components/natal/NatalChartWheel.tsx", import.meta.url),
     "utf8"
   );
+  const wheelZodiacBand = readFileSync(
+    new URL("../src/components/natal/WheelZodiacBand.tsx", import.meta.url),
+    "utf8"
+  );
+  const chartAngleSource = readFileSync(
+    new URL("../src/lib/natal/chart-angle.ts", import.meta.url),
+    "utf8"
+  );
   const reportShareRoute = readFileSync(
     new URL("../src/app/api/report-shares/route.ts", import.meta.url), "utf8"
   );
@@ -1121,7 +1176,16 @@ async function main() {
   assert(
     interactiveWheel.includes('tabIndex={0}') &&
       interactiveWheel.includes("Текстовая версия карты") &&
-      interactiveWheel.includes("filterAspectNature"),
+      interactiveWheel.includes("filterAspectNature") &&
+      interactiveWheel.includes("<details") &&
+      interactiveWheel.includes("chartPolar") &&
+      interactiveWheel.includes("@/lib/natal/chart-angle") &&
+      !interactiveWheel.includes("270 - asc") &&
+      !/\(\(90 - longitude\)/.test(interactiveWheel) &&
+      !/\(\(90 - longitude\)/.test(wheelZodiacBand) &&
+      wheelZodiacBand.includes("chartPolar") &&
+      chartAngleSource.includes("export function longitudeToChartAngle") &&
+      chartAngleSource.includes("export function chartPolar"),
     "wheel includes keyboard interaction, text alternative, and filters"
   );
   assert(

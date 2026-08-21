@@ -111,8 +111,8 @@ export default function CompositeWheel({ composite, size = 480 }: { composite: C
             const first = bodyByKey.get(aspect.firstKey);
             const second = bodyByKey.get(aspect.secondKey);
             if (!first || !second) return null;
-            const a = wheelPolar(cx, cy, wheeledRadius(planetBase, first.lane, laneStep), first.displayLongitude);
-            const b = wheelPolar(cx, cy, wheeledRadius(planetBase, second.lane, laneStep), second.displayLongitude);
+            const a = wheelPolar(cx, cy, aspectR, first.longitude);
+            const b = wheelPolar(cx, cy, aspectR, second.longitude);
             const selectionKey = `aspect:${aspect.id}`;
             const active = selected === selectionKey;
             const bodyActive = selected === `body:${aspect.firstKey}` || selected === `body:${aspect.secondKey}`;

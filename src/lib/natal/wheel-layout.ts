@@ -81,7 +81,7 @@ export function layoutWheelBodies<T extends { longitude: number }>(
   if (options?.radialOnly) {
     return groups.flatMap((group) => group.map((item, index) => ({
       ...item,
-      lane: group.length === 1 ? 0 : index % laneCount,
+      lane: group.length === 1 ? 0 : index,
       displayLongitude: item.longitude,
     })));
   }

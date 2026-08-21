@@ -506,10 +506,8 @@ export default function NatalGuestCalculator() {
           </div>
 
           {result.western ? (
-            <div className="overflow-x-auto">
-              <div className="mx-auto w-full max-w-[520px]">
-                <NatalChartWheel western={result.western} timeKnown={result.timeKnown} size={360} />
-              </div>
+            <div className="mx-auto w-full min-w-0 max-w-lg">
+              <NatalChartWheel western={result.western} timeKnown={result.timeKnown} size={360} />
             </div>
           ) : null}
 
