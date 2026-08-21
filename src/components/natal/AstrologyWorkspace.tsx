@@ -469,7 +469,7 @@ export default function AstrologyWorkspace() {
     }
   };
 
-  const requestForecast = async (horizon: TimingHorizon, opts?: { forceWait?: boolean }) => {
+  const requestForecast = async (horizon: TimingHorizon, opts?: { forceWait?: boolean; forceRegenerate?: boolean }) => {
     if (!chart?.western) {
       setError("Сначала укажите дату и город рождения в настройках карты.");
       selectTab("settings");
@@ -484,7 +484,12 @@ export default function AstrologyWorkspace() {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ horizon, aiDataUseAcknowledged: true, async: true }),
+        body: JSON.stringify({
+          horizon,
+          aiDataUseAcknowledged: true,
+          async: true,
+          ...(opts?.forceRegenerate ? { forceRegenerate: true } : {}),
+        }),
         timeoutMs: NATAL_MUTATION_TIMEOUT_MS,
       });
       let data = await responseJson<NatalMutationError & {
@@ -501,7 +506,7 @@ export default function AstrologyWorkspace() {
             report: accepted,
             resume: () => {
               setAcceptedReport(null);
-              void requestForecast(horizon, { forceWait: true });
+              void requestForecast(horizon, { forceWait: true, forceRegenerate: opts?.forceRegenerate });
             },
           });
           return;
@@ -998,12 +1003,13 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast }: {
   reports: Report[];
   busy: string | null;
   forecastCost: number;
-  onRequestForecast: (horizon: TimingHorizon) => void;
+  onRequestForecast: (horizon: TimingHorizon, opts?: { forceRegenerate?: boolean }) => void;
 }) {
   const [horizon, setHorizon] = useState<TimingHorizon>(30);
   const [timing, setTiming] = useState<PersonalTimingResult | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [refreshId, setRefreshId] = useState(0);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -1030,7 +1036,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast }: {
       if (!controller.signal.aborted) setLoading(false);
     });
     return () => controller.abort();
-  }, [horizon]);
+  }, [horizon, refreshId]);
 
   const visibleEvents = timing?.events ?? [];
   const startMs = timing ? new Date(`${timing.windowStart}T00:00:00Z`).getTime() : Date.now();
@@ -1069,9 +1075,8 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast }: {
     {!chart.timeKnown ? <UnknownTimeWarning context="Периоды, солнечное возвращение и прогрессии" /> : null}
     <Panel title="Персональный прогноз" eyebrow="Отдельная покупка">
       <SectionIntroduction title={`Текстовый прогноз на ${horizonLabel}`}>
-        Расчёт событий ниже остаётся бесплатным. Платный отчёт строится по текущей шкале транзитов
-        {windowLabel ? ` (${windowLabel})` : ""}: даты окна, положения планет и события на выбранный горизонт.
-        Когда окно обновляется (обычно со сменой дня), можно заказать новый прогноз — предыдущие остаются в архиве.
+        Выберите срок, при необходимости обновите даты, затем закажите прогноз.
+        {windowLabel ? ` Сейчас окно: ${windowLabel}.` : ""}
       </SectionIntroduction>
       <div className="flex flex-wrap items-center gap-2" role="group" aria-label="Горизонт прогноза">
         {([7, 30, 90, 365] as TimingHorizon[]).map((days) => <button key={days} type="button"
@@ -1079,53 +1084,49 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast }: {
           className={`min-h-11 rounded-xl px-4 text-sm ${horizon === days ? "bg-cyan-300/15 text-cyan-100 ring-1 ring-cyan-300/25" : "bg-white/[0.04] text-white/55"}`}>
           {days === 365 ? "1 год" : `${days} дней`}
         </button>)}
+        <button type="button" onClick={() => setRefreshId((value) => value + 1)} disabled={loading}
+          className="min-h-11 rounded-xl border border-white/10 px-4 text-sm text-white/70 disabled:opacity-50">
+          Обновить даты
+        </button>
       </div>
-      {currentForecast ? <PanelBlock>
-        <p className="text-xs text-emerald-100/60">
-          Готов · {reportLabel(currentForecast)} · {new Date(currentForecast.createdAt).toLocaleString("ru-RU")} · сохранён в архиве
-        </p>
-        {isNatalReport(currentForecast.structuredData)
-          ? <StructuredReport report={currentForecast.structuredData} evidence={currentForecast.evidenceRefs ?? []} />
-          : <Interpretation text={currentForecast.content} />}
-        <div className="flex flex-wrap items-center gap-3">
-          <Link href={`/cabinet/astrology/reports/${currentForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
-        </div>
-        <ReportShareControls reportKind="natal" reportId={currentForecast.id} />
-      </PanelBlock> : <PanelBlock>
-        {previousForecast ? (
+      <PanelBlock>
+        {currentForecast ? (
+          <>
+            <p className="text-xs text-emerald-100/60">
+              Готов · {reportLabel(currentForecast)} · {new Date(currentForecast.createdAt).toLocaleString("ru-RU")}
+            </p>
+            {isNatalReport(currentForecast.structuredData)
+              ? <StructuredReport report={currentForecast.structuredData} evidence={currentForecast.evidenceRefs ?? []} />
+              : <Interpretation text={currentForecast.content} />}
+            <Link href={`/cabinet/astrology/reports/${currentForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
+            <ReportShareControls reportKind="natal" reportId={currentForecast.id} />
+          </>
+        ) : previousForecast ? (
           <div className="space-y-4 rounded-xl border border-white/10 bg-white/[0.03] p-4">
-            <div className="space-y-1">
-              <p className="text-xs text-emerald-100/60">
-                Предыдущий прогноз · {reportLabel(previousForecast)} ·{" "}
-                {new Date(previousForecast.createdAt).toLocaleString("ru-RU")}
-              </p>
-              <p className="text-xs text-white/45">
-                Ниже — сохранённый текст. Для актуального окна дат закажите новый прогноз.
-              </p>
-            </div>
+            <p className="text-xs text-white/45">
+              Старый прогноз на другие даты. Ниже он сохранён — для нового окна закажите заново.
+            </p>
             {isNatalReport(previousForecast.structuredData)
               ? <StructuredReport report={previousForecast.structuredData} evidence={previousForecast.evidenceRefs ?? []} />
               : <Interpretation text={previousForecast.content} />}
-            <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-3">
-              <Link href={`/cabinet/astrology/reports/${previousForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
-            </div>
-            <ReportShareControls reportKind="natal" reportId={previousForecast.id} />
+            <Link href={`/cabinet/astrology/reports/${previousForecast.id}/print`} className="text-xs text-amber-200">Печать</Link>
           </div>
         ) : null}
         <p className="text-xs leading-5 text-amber-100/60">После подтверждения будет списано {forecastCost} ᚢ.</p>
-        <p className="rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">
-          Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Дата, время, город и координаты рождения не передаются.
-        </p>
-        <button type="button" disabled={!timing || busy !== null} onClick={() => onRequestForecast(horizon)}
-          className="btn-primary flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50">
+        <button
+          type="button"
+          disabled={!timing || busy !== null}
+          onClick={() => onRequestForecast(horizon, { forceRegenerate: Boolean(currentForecast) })}
+          className="btn-primary flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50"
+        >
           {busy === "forecast" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}
           {!timing
-            ? "Готовим расчёт периода…"
-            : previousForecast
+            ? "Готовим даты периода…"
+            : currentForecast || previousForecast
               ? `Новый прогноз на ${formatRuDateRange(timing.windowStart, timing.windowEnd)} · ${forecastCost} ᚢ`
               : `Подтвердить и получить прогноз · ${forecastCost} ᚢ`}
         </button>
-      </PanelBlock>}
+      </PanelBlock>
     </Panel>
     <Panel title="Персональная шкала" eyebrow={timing ? formatRuDateRange(timing.windowStart, timing.windowEnd) : "Транзиты"}>
       <SectionIntroduction title="Шкала и фильтры">

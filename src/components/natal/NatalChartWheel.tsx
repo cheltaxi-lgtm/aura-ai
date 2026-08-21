@@ -67,7 +67,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   const gradientId = useId().replace(/:/g, "");
   const reducedMotion = useReducedMotion();
   const [selection, setSelection] = useState<Selection>(null);
-  const nature = "major" as const;
+  const [nature, setNature] = useState<"all" | "major" | "minor">("all");
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size * 0.475;
@@ -149,6 +149,15 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
       <div>
+        <div className="mb-3 flex flex-wrap items-center gap-2" aria-label="Какие аспекты показать">
+          {(["all", "major", "minor"] as const).map((value) => (
+            <button key={value} type="button" onClick={() => setNature(value)}
+              aria-pressed={nature === value}
+              className={`rounded-full border px-3 py-1.5 text-xs transition ${nature === value ? "border-amber-300/40 bg-amber-300/15 text-amber-100" : "border-white/10 text-white/50 hover:text-white"}`}>
+              {value === "all" ? "Все" : value === "major" ? "Основные" : "Дополнительные"}
+            </button>
+          ))}
+        </div>
         <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-auto w-full max-w-[620px]"
           role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
           <title>Интерактивная натальная карта</title>

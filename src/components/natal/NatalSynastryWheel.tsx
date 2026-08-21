@@ -107,10 +107,15 @@ export default function NatalSynastryWheel({
   const planetsB = useMemo(() => collectPlanets(chartB, timeKnownB), [chartB, timeKnownB]);
   const [selectedAspect, setSelectedAspect] = useState<string | null>(null);
   const [selectedBody, setSelectedBody] = useState<string | null>(null);
+  const [filter, setFilter] = useState<"all" | "supportive" | "challenging">("all");
   const aspectLines = useMemo(() => {
     const mapA = new Map(planetsA.map((p) => [p.key, p]));
     const mapB = new Map(planetsB.map((p) => [p.key, p]));
-    return crossAspects.slice(0, 16).flatMap((asp) => {
+    return crossAspects.filter((aspect) => {
+      if (filter === "supportive") return aspect.aspect === "trine" || aspect.aspect === "sextile";
+      if (filter === "challenging") return aspect.aspect === "square" || aspect.aspect === "opposition";
+      return true;
+    }).slice(0, 16).flatMap((asp) => {
       const a = mapA.get(asp.bodyAKey);
       const b = mapB.get(asp.bodyBKey);
       if (!a || !b) return [];
@@ -118,10 +123,22 @@ export default function NatalSynastryWheel({
       const p2 = polar(cx, cy, ringB, b.longitude + longitudeRotation);
       return [{ ...asp, p1, p2 }];
     });
-  }, [crossAspects, planetsA, planetsB, cx, cy, ringA, ringB, longitudeRotation]);
+  }, [crossAspects, planetsA, planetsB, cx, cy, ringA, ringB, longitudeRotation, filter]);
 
   return (
     <div className="space-y-2">
+      <div className="flex flex-wrap justify-center gap-2" role="group" aria-label="Какие аспекты показать">
+        {([
+          ["all", "Все"],
+          ["supportive", "Поддерживающие"],
+          ["challenging", "Напряжённые"],
+        ] as const).map(([value, label]) => (
+          <button key={value} type="button" onClick={() => setFilter(value)} aria-pressed={filter === value}
+            className={`min-h-10 rounded-lg px-3 text-xs ${filter === value ? "bg-amber-300/15 text-amber-100" : "bg-white/[0.04] text-white/50"}`}>
+            {label}
+          </button>
+        ))}
+      </div>
       <svg
         viewBox={`0 0 ${size} ${size}`}
         className="mx-auto w-full max-w-[340px]"
