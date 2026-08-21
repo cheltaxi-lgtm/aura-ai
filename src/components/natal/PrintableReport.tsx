@@ -8,7 +8,7 @@ type Section = { key: string; title: string; claims: Array<{ text: string; evide
 type Evidence = { id: string; label: string; value?: string; confidence?: string; uncertainty?: string };
 
 export default function PrintableReport({
-  title, meta, sections, legacyContent, methodology, disclaimer, evidence = [], returnHref, visual,
+  title, meta, sections, legacyContent, methodology, disclaimer, evidence = [], returnHref, visual, reportType,
 }: {
   title: string;
   meta: Array<{ label: string; value: string }>;
@@ -18,6 +18,7 @@ export default function PrintableReport({
   disclaimer?: string | null;
   evidence?: Evidence[];
   returnHref?: string;
+  reportType?: "interpretation" | "forecast";
   /** Optional chart visual rendered between header and content (e.g. bodygraph). */
   visual?: ReactNode;
 }) {
@@ -51,6 +52,7 @@ export default function PrintableReport({
               evidence={evidence}
               variant="print"
               showMethodology={false}
+              reportType={reportType}
             />
           </div>
         ))}

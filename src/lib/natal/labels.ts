@@ -58,3 +58,56 @@ export function russianGrahaLabel(key: string): string {
 export function russianSignLabel(sign: string): string {
   return SIGN_LABELS[sign] ?? sign;
 }
+
+const ASPECT_MOOD: Record<string, string> = {
+  conjunction: "тема усиливается",
+  sextile: "появляется удобное окно",
+  square: "нарастает трение",
+  trine: "идёт легче обычного",
+  opposition: "тянет в две стороны",
+};
+
+const ASPECT_NAME_RU: Record<string, string> = {
+  conjunction: "соединение",
+  sextile: "секстиль",
+  square: "квадрат",
+  trine: "трин",
+  opposition: "оппозиция",
+};
+
+const CATEGORY_PLACE: Record<TimingCategory, string> = {
+  identity: "в самоощущении",
+  emotions: "в чувствах",
+  relationships: "в отношениях",
+  career: "в деле",
+  growth: "в развитии",
+  pressure: "в нагрузке",
+  transformation: "в переменах",
+};
+
+/** One-line life meaning + short calculation detail for timing cards. */
+export function describeTimingEventPlain(event: {
+  kind: string;
+  planetKey: string;
+  targetKey?: string;
+  aspect?: string | null;
+  sign?: string | null;
+  previousSign?: string | null;
+  category: TimingCategory;
+}): { headline: string; detail: string } {
+  const place = CATEGORY_PLACE[event.category] ?? "в жизни";
+  if (event.kind === "ingress") {
+    const from = event.previousSign ? russianSignLabel(event.previousSign) : "прошлого знака";
+    const to = event.sign ? russianSignLabel(event.sign) : "новый знак";
+    return {
+      headline: `Меняется тон ${place}`,
+      detail: `${russianPlanetLabel(event.planetKey)}: ${from} → ${to}`,
+    };
+  }
+  const mood = ASPECT_MOOD[event.aspect ?? ""] ?? "тема становится заметнее";
+  const aspectRu = ASPECT_NAME_RU[event.aspect ?? ""] ?? "аспект";
+  return {
+    headline: `${mood} ${place}`,
+    detail: `${russianPlanetLabel(event.planetKey)} к ${russianPlanetLabel(event.targetKey ?? "")} · ${aspectRu}`,
+  };
+}

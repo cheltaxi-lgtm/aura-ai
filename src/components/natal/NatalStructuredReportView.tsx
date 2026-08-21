@@ -32,6 +32,7 @@ export default function NatalStructuredReportView({
   variant = "mystic",
   showMethodology = true,
   evidenceTone = "amber",
+  reportType,
 }: {
   sections: Section[];
   evidence?: EvidenceLike[];
@@ -41,6 +42,7 @@ export default function NatalStructuredReportView({
   variant?: ReadingRenderVariant;
   showMethodology?: boolean;
   evidenceTone?: "amber" | "rose";
+  reportType?: "interpretation" | "forecast";
 }) {
   const byId = new Map(evidence.map((item) => [item.id, item]));
   const chipClass =
@@ -51,7 +53,7 @@ export default function NatalStructuredReportView({
   return (
     <article className="natal-structured-report min-w-0 space-y-8">
       {sections.map((section) => {
-        const markdown = formatNatalSectionForDisplay(section);
+        const markdown = formatNatalSectionForDisplay(section, reportType);
         if (!markdown) return null;
         const evidenceIds = [
           ...new Set(

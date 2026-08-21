@@ -3,8 +3,11 @@ import { normalizeClientTyAddress } from "@/lib/reading-quality-gate";
 import type { NatalEvidence } from "./evidence";
 import {
   findNearDuplicateSections,
+  FORECAST_SECTION_ROLE_CONTRACTS,
+  FORECAST_SECTION_TITLES,
   natalSectionRoleSubtitle,
   NATAL_FLUFF_RE,
+  NATAL_HUMAN_VOICE,
   SECTION_ROLE_CONTRACTS,
   type NatalSectionKey,
 } from "./report-quality";
@@ -74,6 +77,13 @@ const SECTION_TITLES: Record<NatalReportSectionKey, string> = {
   currentPeriod: "Текущий период",
   recommendations: "Рекомендации",
 };
+
+function sectionTitle(
+  key: NatalReportSectionKey,
+  reportType: NatalReport["reportType"] = "interpretation"
+): string {
+  return reportType === "forecast" ? FORECAST_SECTION_TITLES[key] : SECTION_TITLES[key];
+}
 
 function resolveEvidenceId(
   rawId: string,
@@ -172,7 +182,7 @@ export function prepareNatalReportCandidate(
     if (existing) return existing;
     return {
       key: expectedKey,
-      title: SECTION_TITLES[expectedKey],
+      title: sectionTitle(expectedKey, params.reportType),
       claims: [],
     };
   });
@@ -264,7 +274,7 @@ export function salvageNatalReport(
       title:
         typeof rawSection?.title === "string" && rawSection.title.trim()
           ? rawSection.title.trim()
-          : SECTION_TITLES[expectedKey],
+          : sectionTitle(expectedKey, expectedReportType),
       claims: [{ text, evidenceIds: evidenceIds.length ? evidenceIds : primaryId ? [primaryId] : [] }],
     };
   });
@@ -338,7 +348,7 @@ function buildFallbackSectionText(
 ): string {
   const horizonBit =
     reportType === "forecast" && horizonDays ? ` на горизонте ${horizonDays} дней` : "";
-  return `Раздел «${SECTION_TITLES[sectionKey]}»${horizonBit} опирается на рассчитанные астрологические факторы. Назови в разборе конкретные планеты, аспекты и даты из evidence и не подменяй их общими формулировками.`;
+  return `Раздел «${sectionTitle(sectionKey, reportType)}»${horizonBit} опирается на рассчитанные факторы. Скажи простыми словами, что человек может заметить в жизни, и один раз сошлись на фактор из evidence.`;
 }
 
 function buildEvidenceGroundedClaimText(
@@ -357,59 +367,51 @@ function buildEvidenceGroundedClaimText(
   switch (sectionKey) {
     case "summary":
       return [
+        `Простыми словами${horizonBit}: тема «${item.label}» может задавать тон обычным дням.`,
         fact,
-        `Главная тема${horizonBit}: «${item.label}» задаёт тон окна — держи её как рамку.`,
-        "Детали и даты смотри в «Текущем периоде», шаги — в «Рекомендациях».",
-        "Это тезис по расчёту, не список советов и не гарантия событий.",
+        "Это ориентир, не обещание событий. Подробности дат — ниже, шаги — в конце.",
       ].join(" ");
     case "currentPeriod":
       return [
+        `В эти дни имеет смысл заметить тему «${item.label}» — не как прогноз судьбы, а как календарную веху.`,
         fact,
-        `На шкале периода отметь этот фактор как опорную точку${horizonBit}.`,
-        "Сверяй ощущения с датой и положением из расчёта, а не с общим настроением дня.",
-        "Здесь важны пики и окна; советы вынесены в отдельный раздел.",
+        "Сверяй ощущения с датой из расчёта. Советы вынесены отдельно.",
       ].join(" ");
     case "recommendations":
       return [
+        `Сделай одно конкретное дело вокруг темы «${item.label}»${horizonBit}: заложив час в календарь и проверив в конце окна, что подтвердилось.`,
         fact,
-        `Сделай одно конкретное действие вокруг темы «${item.label}»${horizonBit}.`,
-        "Заранее заложи время на пик или аспект из расчёта и в конце окна зафиксируй, что подтвердилось.",
-        "Не растягивай решение на всё окно — привяжи шаг к названному фактору.",
+        "Не растягивай решение на весь срок — привяжи шаг к этой теме.",
       ].join(" ");
     case "tensions":
       return [
+        `Там, где всплывает «${item.label}», чаще всего тесно. Назови себе одно место трения и сузь реакцию до одного шага.`,
         fact,
-        `Точка давления: тема «${item.label}» требует ясного контура, а не избегания.`,
-        "Назови себе, где проявляется трение, и сузь реакцию до одного управляемого шага.",
       ].join(" ");
     case "personality":
       return [
+        `В характере это может читаться как привычный стиль вокруг темы «${item.label}». Опирайся на него, а не жди от себя противоположного без причины.`,
         fact,
-        `В характере это читается как устойчивый стиль «${item.label}».`,
-        "Опирайся на него как на сильную сторону и не жди от себя противоположного паттерна без причины из карты.",
       ].join(" ");
     case "relationships":
       return [
+        `В близости тема «${item.label}» часто задаёт ритм сближения и дистанции. Замечай повтор и называй его в разговоре без обвинений.`,
         fact,
-        `В близости фактор «${item.label}» задаёт ритм сближения и дистанции.`,
-        "Замечай, где повторяется этот паттерн в паре, и называй его в разговоре без обвинений.",
       ].join(" ");
     case "career":
       return [
+        `В деле «${item.label}» подсказывает, где ты держишь рамку и где растёт нагрузка. Выбери один рабочий фокус.`,
         fact,
-        `В деле «${item.label}» показывает, где ты держишь рамку и где просится рост нагрузки.`,
-        "Выбери один рабочий фокус под этот фактор и не распыляйся на соседние темы карты.",
       ].join(" ");
     case "resources":
       return [
+        `По силам и деньгам «${item.label}» показывает, куда утекает ресурс. Отслеживай один контур и сверяй его с расчётом.`,
         fact,
-        `По ресурсам «${item.label}» подсказывает, куда уходит и откуда возвращается энергия или средства.`,
-        "Отслеживай один денежный или энергетический контур и сверяй его с этим фактором из расчёта.",
       ].join(" ");
     default:
       return [
+        `Сверяй выводы с темой «${item.label}» и не подменяй её общими словами.`,
         fact,
-        "Сверяй выводы с этим рассчитанным фактором и не подменяй его общими словами из воздуха.",
       ].join(" ");
   }
 }
@@ -439,7 +441,7 @@ export function buildMinimalNatalReport(
     const item = evidence.find((entry) => entry.id === primaryId) ?? evidence[0];
     return {
       key,
-      title: SECTION_TITLES[key],
+      title: reportType === "forecast" ? FORECAST_SECTION_TITLES[key] : SECTION_TITLES[key],
       claims: [{
         text: buildEvidenceGroundedClaimText(
           item,
@@ -577,7 +579,7 @@ export function validateNatalReport(
       continue;
     }
     const titleRaw = typeof rawSection.title === "string" ? rawSection.title.trim() : "";
-    const title = titleRaw || (options.coerceEvidence ? (SECTION_TITLES[expectedKey] ?? expectedKey) : "");
+    const title = titleRaw || (options.coerceEvidence ? sectionTitle(expectedKey, expectedReportType) : "");
     if (!title) errors.push(`Раздел ${expectedKey}: title обязателен.`);
     const rawClaims = Array.isArray(rawSection.claims) ? rawSection.claims : [];
     if (!rawClaims.length) errors.push(`Раздел ${expectedKey}: нужен минимум один claim.`);
@@ -585,7 +587,7 @@ export function validateNatalReport(
     for (let claimIndex = 0; claimIndex < rawClaims.length; claimIndex += 1) {
       const rawClaim = record(rawClaims[claimIndex]);
       const textRaw = typeof rawClaim?.text === "string" ? rawClaim.text.trim() : "";
-      const text = textRaw || (options.coerceEvidence ? `Ключевой вывод по разделу «${SECTION_TITLES[expectedKey]}».` : "");
+      const text = textRaw || (options.coerceEvidence ? `Ключевой вывод по разделу «${sectionTitle(expectedKey, expectedReportType)}».` : "");
       let evidenceIds = Array.isArray(rawClaim?.evidenceIds)
         ? [...new Set(rawClaim.evidenceIds.filter((id): id is string => typeof id === "string" && id.trim().length > 0))]
         : [];
@@ -726,9 +728,9 @@ export function formatNatalSectionForDisplay(section: {
   key?: string;
   title: string;
   claims: Array<{ text: string }>;
-}): string {
+}, reportType?: NatalReport["reportType"]): string {
   const title = section.title.trim();
-  const subtitle = natalSectionRoleSubtitle(section.key);
+  const subtitle = natalSectionRoleSubtitle(section.key, reportType);
   const body = section.claims
     .map((claim) => claim.text.trim())
     .filter(Boolean)
@@ -743,7 +745,7 @@ export function formatNatalSectionForDisplay(section: {
 /** Full structured natal report as premium reading markdown. */
 export function formatNatalReportForDisplay(report: NatalReport): string {
   const sections = report.sections
-    .map((section) => formatNatalSectionForDisplay(section))
+    .map((section) => formatNatalSectionForDisplay(section, report.reportType))
     .filter(Boolean);
   const footer = [
     report.methodology.trim()
@@ -780,10 +782,15 @@ export function buildNatalReportJsonInstructions(
       : reportType === "forecast"
         ? "общий объём текста восьми разделов — не менее 1800 знаков"
         : "общий объём текста восьми разделов — не менее 2000 знаков";
+  const roles = reportType === "forecast" ? FORECAST_SECTION_ROLE_CONTRACTS : SECTION_ROLE_CONTRACTS;
   const roleBlock = NATAL_REPORT_SECTION_KEYS.map(
-    (key) => `- ${key}: ${SECTION_ROLE_CONTRACTS[key as NatalSectionKey]}`
+    (key) => `- ${key}: ${roles[key as NatalSectionKey]}`
   ).join("\n");
+  const titleHint = reportType === "forecast"
+    ? NATAL_REPORT_SECTION_KEYS.map((key) => `${key}→«${FORECAST_SECTION_TITLES[key]}»`).join("; ")
+    : NATAL_REPORT_SECTION_KEYS.map((key) => `${key}→«${SECTION_TITLES[key]}»`).join("; ");
   return `Верни ТОЛЬКО JSON-объект без markdown.
+${NATAL_HUMAN_VOICE}
 Схема:
 {"version":"${NATAL_REPORT_VERSION}","tradition":"${tradition}","reportType":"${reportType}"${horizonField},"sections":[
 ${NATAL_REPORT_SECTION_KEYS.map((key) => `{"key":"${key}","title":"локализованный заголовок","claims":[{"text":"вывод на русском","evidenceIds":["точный ID из блока evidence"]}]}`).join(",\n")}
@@ -794,8 +801,10 @@ ${roleBlock}
 - все восемь разделов обязательны и идут в указанном порядке;
 - ${sectionDepth};
 - ${totalDepth};
-- плотность важнее объёма: убери воду, повторы и общие фразы; каждое предложение должно опираться на названный фактор из evidence;
-- в тексте claim обязательно назови планету, знак, дом, аспект или дату из evidence (не только ID в JSON);
+- заголовки разделов человеческие: ${titleHint};
+- плотность важнее объёма: убери воду, повторы и общие фразы;
+- в тексте claim сначала жизненный вывод, затем одна короткая отсылка к фактору из evidence (планета, знак, аспект или дата) — не только ID в JSON и не лекция по астрологии;
+- запрещено слово «расклад»;
 - используй имя клиента из пользовательского сообщения естественно, но не в каждом разделе; имя — Title Case, не КАПСОМ;
 - обращайся к клиенту строго на «ты» (ты/тебе/твой/твоя/твои); запрещены «вы/вам/вас/ваш/ваша/ваши» в обращении к клиенту;
 - запрещены универсальные фразы: «у тебя есть потенциал», «возможны изменения», «сосредоточься на целях», «практический акцент», «интерпретация символическая»;

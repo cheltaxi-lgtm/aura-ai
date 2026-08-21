@@ -32,8 +32,9 @@ import {
 } from "@/lib/natal/presentation";
 import { evidenceAnchorId } from "@/lib/natal/evidence-anchor";
 import {
+  describeTimingEventPlain,
   russianGrahaLabel, russianPlanetLabel, russianSignLabel,
-  TIMING_CATEGORY_LABELS, TIMING_SOURCE_LABELS,
+  TIMING_CATEGORY_LABELS,
 } from "@/lib/natal/labels";
 import type { NatalTradition } from "@/lib/natal/types";
 import type { NatalEvidence } from "@/lib/natal/evidence";
@@ -1111,13 +1112,15 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
             {group === "now" ? "Сейчас" : group === "next" ? "Следом" : "Позже"}
           </h3>
           {grouped[group].length ? <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {grouped[group].map((event) => <article id={evidenceAnchorId("timing", event.id)} tabIndex={-1} key={event.id} className="rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-3 focus:ring-2 focus:ring-cyan-300/50">
-              <p className="text-sm text-white/75">{event.kind === "ingress"
-                ? `${russianPlanetLabel(event.planetKey)}: ${event.previousSign ?? "знак не указан"} → ${event.sign ?? "знак не указан"}`
-                : `${russianPlanetLabel(event.planetKey)} · ${aspectLabels[event.aspect ?? ""] ?? "аспект не указан"} · ${russianPlanetLabel(event.targetKey ?? "")}`}</p>
-              <p className="mt-1 text-xs leading-5 text-white/40">Пик: {event.peakAtLocal.replace("T", " ")} · орб {event.orb.toFixed(3)}° / {event.maxOrb}°</p>
-              <p className="text-[11px] text-white/40">{categoryLabels[event.category]} · {TIMING_SOURCE_LABELS[event.source]}</p>
-            </article>)}
+            {grouped[group].map((event) => {
+              const plain = describeTimingEventPlain(event);
+              return <article id={evidenceAnchorId("timing", event.id)} tabIndex={-1} key={event.id} className="rounded-xl border border-cyan-300/10 bg-cyan-300/[0.035] p-3 focus:ring-2 focus:ring-cyan-300/50">
+              <p className="text-sm text-white/80">{plain.headline}</p>
+              <p className="mt-1 text-xs leading-5 text-white/50">{plain.detail}</p>
+              <p className="mt-1 text-xs leading-5 text-white/40">Пик {event.peakAtLocal.replace("T", " ").slice(0, 16)} · точность {event.orb.toFixed(1)}°</p>
+              <p className="text-[11px] text-white/35">{categoryLabels[event.category]}</p>
+            </article>;
+            })}
           </div> : <p className="text-xs text-white/30">Нет событий по выбранным фильтрам.</p>}
         </section>)}
       </div> : null}
@@ -1337,6 +1340,7 @@ function StructuredReport({ report, evidence, onEvidence }: { report: NatalRepor
       onEvidence={onEvidence}
       methodology={report.methodology}
       disclaimer={report.disclaimer}
+      reportType={report.reportType}
     />
   );
 }
