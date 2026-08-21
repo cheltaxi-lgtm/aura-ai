@@ -21,9 +21,10 @@ function buildPromoState(input: {
   loading: boolean;
   error: string;
   chart: NatalChartPayload | null;
+  needsRebuild: boolean;
   readingCostLabel: string;
 }): PromoState {
-  const { enabled, loading, error, chart, readingCostLabel } = input;
+  const { enabled, loading, error, chart, needsRebuild, readingCostLabel } = input;
 
   if (!enabled) {
     return {
@@ -57,9 +58,19 @@ function buildPromoState(input: {
   if (!chart) {
     return {
       kicker: "Натальная карта · расчёт бесплатно",
-      title: "Постройте карту по дате рождения",
+      title: "Получите новую карту по дате рождения",
       text: `Западное колесо, джйотиш и личные периоды — расчёт по вашим данным, трактовка в кабинете. Полный отчёт — ${readingCostLabel}.`,
-      cta: "Построить карту",
+      cta: "Получить новую карту",
+    };
+  }
+
+  if (needsRebuild) {
+    return {
+      kicker: "Натальная карта · данные изменились",
+      title: "Постройте новую карту",
+      text: "Дата, время или город в профиле уже другие. Старая карта сохранена — откройте раздел и нажмите «Получить новую карту».",
+      cta: "Получить новую карту",
+      hint: chart.place?.label,
     };
   }
 
@@ -96,6 +107,7 @@ function buildPromoState(input: {
 export default function CabinetNatalChart() {
   const { cost, formatRunes, ready } = useRuneConfig();
   const [chart, setChart] = useState<NatalChartPayload | null>(null);
+  const [needsRebuild, setNeedsRebuild] = useState(false);
   const [enabled, setEnabled] = useState(true);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -108,11 +120,13 @@ export default function CabinetNatalChart() {
         const data = await response.json() as {
           enabled?: boolean;
           chart?: NatalChartPayload | null;
+          needsRebuild?: boolean;
           error?: string;
         };
         if (!response.ok) throw new Error(data.error || "Не удалось загрузить карту");
         setEnabled(data.enabled !== false);
         setChart(data.chart ?? null);
+        setNeedsRebuild(Boolean(data.needsRebuild));
       })
       .catch((reason: unknown) => {
         setError(reason instanceof Error ? reason.message : "Не удалось загрузить карту");
@@ -132,8 +146,8 @@ export default function CabinetNatalChart() {
   );
 
   const promo = useMemo(
-    () => buildPromoState({ enabled, loading, error, chart, readingCostLabel }),
-    [chart, enabled, error, loading, readingCostLabel]
+    () => buildPromoState({ enabled, loading, error, chart, needsRebuild, readingCostLabel }),
+    [chart, enabled, error, loading, needsRebuild, readingCostLabel]
   );
 
   const openNatal = () => {

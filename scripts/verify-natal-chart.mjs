@@ -1035,8 +1035,11 @@ async function main() {
     astrologyWorkspace.includes('"overview"') &&
       (astrologyWorkspace.includes('"relationships"') ||
         astrologyWorkspace.includes('"compatibility"')) &&
-      astrologyWorkspace.includes("/api/natal-chart/history"),
-    "astrology workspace includes all sections and report history"
+      astrologyWorkspace.includes("/api/natal-chart/history") &&
+      astrologyWorkspace.includes("Получить новую карту") &&
+      astrologyWorkspace.includes("Удалить карту") &&
+      astrologyWorkspace.includes("method: \"DELETE\""),
+    "astrology workspace includes all sections, report history, and chart replace actions"
   );
   assert(
     chatOrchestrator.includes('purpose: "chat"') &&

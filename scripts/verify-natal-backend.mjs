@@ -79,6 +79,14 @@ assert.match(natalService, /forceClearNatalInterpretationClaimKey/);
 assert.match(natalService, /UPDATE private_report_shares[\s\S]*revoked_at/);
 assert.match(natalService, /DELETE FROM natal_report_history/);
 assert.match(natalService, /DELETE FROM natal_report_history[\s\S]*interpretationClaims/);
+assert.match(natalService, /DELETE FROM natal_charts WHERE user_id/);
+assert.match(natalService, /DELETE FROM natal_timing_cache WHERE user_id/);
+assert.match(natalService, /getNatalChartClientView/);
+
+const natalChartRoute = read("src/app/api/natal-chart/route.ts");
+assert.match(natalChartRoute, /export async function DELETE/);
+assert.match(natalChartRoute, /getNatalChartClientView/);
+assert.doesNotMatch(natalChartRoute, /getOrComputeNatalChart/);
 
 const shares = read("src/app/api/report-shares/route.ts");
 assert.match(shares, /LEFT\(token, 8\) AS token_prefix/);

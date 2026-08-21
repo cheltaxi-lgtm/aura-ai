@@ -64,6 +64,59 @@ export async function getStoredNatalChart(userId: string): Promise<NatalChartRec
   return rowToRecord(row);
 }
 
+export async function isStoredNatalChartStale(
+  stored: NatalChartRecord,
+  user: {
+    birth_date: string | Date;
+    birth_time?: string | null;
+    birth_city?: string | null;
+  }
+): Promise<boolean> {
+  const fingerprint = fingerprintFromUser(user);
+  const settings = await getSetting("natalChart");
+  const expectedEphemeris =
+    settings.ephemeris === "natalengine" ? "natalengine" : "celestine";
+  const storedEphemeris =
+    stored.western && typeof stored.western.ephemeris === "string"
+      ? stored.western.ephemeris
+      : null;
+  return (
+    stored.engineVersion !== NATAL_ENGINE_VERSION ||
+    stored.birthFingerprint !== fingerprint ||
+    (stored.western !== null && storedEphemeris !== expectedEphemeris)
+  );
+}
+
+export async function getNatalChartClientView(userId: string): Promise<{
+  chart: NatalChartRecord | null;
+  needsRebuild: boolean;
+  canCompute: boolean;
+}> {
+  const user = await getUserById(userId);
+  const canCompute = Boolean(user?.birth_date);
+  const chart = await getStoredNatalChart(userId);
+  if (!chart) {
+    return { chart: null, needsRebuild: false, canCompute };
+  }
+  if (!user?.birth_date) {
+    return { chart, needsRebuild: true, canCompute: false };
+  }
+  const needsRebuild = await isStoredNatalChartStale(chart, {
+    birth_date: user.birth_date,
+    birth_time: user.birth_time,
+    birth_city: user.birth_city,
+  });
+  return { chart, needsRebuild, canCompute };
+}
+
+export async function deleteStoredNatalChart(userId: string): Promise<boolean> {
+  return withTransaction(async (client) => {
+    await client.query(`DELETE FROM natal_timing_cache WHERE user_id = $1`, [userId]);
+    const result = await client.query(`DELETE FROM natal_charts WHERE user_id = $1`, [userId]);
+    return (result.rowCount ?? 0) > 0;
+  });
+}
+
 export async function computeAndStoreNatalChart(userId: string): Promise<NatalChartRecord | null> {
   if (!(await isNatalChartEnabled())) return null;
 

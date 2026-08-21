@@ -75,6 +75,7 @@ export const PAID_ROUTE_LIMITS = {
   joint_reading_view: { max: 40, windowMs: 60_000 },
   natal_chart_read: { max: 30, windowMs: 60_000 },
   natal_chart_recompute: { max: 5, windowMs: 300_000 },
+  natal_chart_delete: { max: 5, windowMs: 60_000 },
   natal_chart_interpretation: { max: 3, windowMs: 60_000 },
   natal_places: { max: 60, windowMs: 60_000 },
   natal_timing: { max: 6, windowMs: 60_000 },

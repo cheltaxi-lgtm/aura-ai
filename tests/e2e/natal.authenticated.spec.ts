@@ -55,6 +55,7 @@ const reports = [
 ];
 
 async function installNatalMocks(page: Page) {
+  let natalChart: typeof chart | null = chart;
   let reportItems = [...reports];
   let aiContextEnabled = false;
   let tarotContextEnabled = false;
@@ -81,7 +82,11 @@ async function installNatalMocks(page: Page) {
       } });
     }
     if (path === "/api/natal-chart") {
-      return route.fulfill({ json: { enabled: true, chart } });
+      if (request.method() === "DELETE") {
+        natalChart = null;
+        return route.fulfill({ json: { ok: true, deleted: true, enabled: true, chart: null, needsRebuild: false, canCompute: true } });
+      }
+      return route.fulfill({ json: { enabled: true, chart: natalChart, needsRebuild: false, canCompute: true } });
     }
     if (path === "/api/natal-chart/history") {
       return route.fulfill({ json: { reports: reportItems } });
@@ -234,17 +239,32 @@ test("tabs, unknown-time guard, and recompute work", async ({ page }) => {
   await expect(page.getByText("Ограниченная точность без времени рождения")).toBeVisible();
   await expect(page.getByText(/ASC, MC, дома и лагна скрыты/)).toBeVisible();
 
+  await expect(page.getByRole("heading", { name: "Интерактивное колесо" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Получить новую карту" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Удалить карту" })).toBeVisible();
+
   await navigation.getByRole("button", { name: "Западная" }).click();
   await expect(page).toHaveURL(/tab=western/);
   await expect(page.getByRole("heading", { name: "Интерактивное колесо" })).toBeVisible();
 
-  const recompute = page.getByRole("button", { name: "Обновить расчёт" });
+  const recompute = page.getByRole("button", { name: "Получить новую карту" });
   const recomputeResponse = page.waitForResponse((response) =>
     response.url().endsWith("/api/natal-chart") && response.request().method() === "POST"
   );
   await recompute.click();
   await recomputeResponse;
-  await expect(page.getByRole("status")).toContainText("Расчёт обновлён");
+  await expect(page.getByRole("status")).toContainText("Новая карта построена");
+});
+
+test("can delete the stored natal chart and request a new one", async ({ page }) => {
+  page.once("dialog", (dialog) => dialog.accept());
+  const deleteResponse = page.waitForResponse((response) =>
+    response.url().endsWith("/api/natal-chart") && response.request().method() === "DELETE"
+  );
+  await page.getByRole("button", { name: "Удалить карту" }).click();
+  await deleteResponse;
+  await expect(page.getByRole("heading", { name: "Натальной карты пока нет" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Получить новую карту" })).toBeVisible();
 });
 
 test("compatibility tab is separate from Tarot joint readings", async ({ page }) => {

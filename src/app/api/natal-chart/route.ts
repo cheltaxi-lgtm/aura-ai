@@ -6,7 +6,8 @@ import {
 import { isNatalChartEnabled } from "@/lib/settings";
 import {
   computeAndStoreNatalChart,
-  getOrComputeNatalChart,
+  deleteStoredNatalChart,
+  getNatalChartClientView,
 } from "@/lib/services/natal-chart-service";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { stripUnreliableAngles } from "@/lib/natal/western";
@@ -48,11 +49,15 @@ export async function GET() {
   if (rateLimited) return rateLimited;
 
   try {
-    const chart = await getOrComputeNatalChart(resolved.profileUserId);
+    const view = await getNatalChartClientView(resolved.profileUserId);
     // Claims are server-side nonces used to serialize paid generation. They
     // are not chart data and must not be exposed in a browser payload.
-    if (!chart) return NextResponse.json({ enabled: true, chart: null });
-    return NextResponse.json({ enabled: true, chart: toClientNatalChart(chart) });
+    return NextResponse.json({
+      enabled: true,
+      chart: view.chart ? toClientNatalChart(view.chart) : null,
+      needsRebuild: view.needsRebuild,
+      canCompute: view.canCompute,
+    });
   } catch (error) {
     return natalCalculationError(error);
   }
@@ -76,8 +81,46 @@ export async function POST(request: NextRequest) {
     if (!chart) {
       return NextResponse.json({ error: "natal_profile_incomplete" }, { status: 400 });
     }
-    return NextResponse.json({ ok: true, enabled: true, chart: toClientNatalChart(chart) });
+    return NextResponse.json({
+      ok: true,
+      enabled: true,
+      chart: toClientNatalChart(chart),
+      needsRebuild: false,
+      canCompute: true,
+    });
   } catch (error) {
     return natalCalculationError(error);
+  }
+}
+
+export async function DELETE() {
+  if (!(await isNatalChartEnabled())) {
+    return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+
+  const resolved = await resolveBirthProfileUserContext();
+  if (!resolved.ok) {
+    return profileAuthFailureResponse(resolved.reason);
+  }
+
+  const rateLimited = await enforcePaidRouteRateLimit(resolved.profileUserId, "natal_chart_delete");
+  if (rateLimited) return rateLimited;
+
+  try {
+    const deleted = await deleteStoredNatalChart(resolved.profileUserId);
+    return NextResponse.json({
+      ok: true,
+      deleted,
+      enabled: true,
+      chart: null,
+      needsRebuild: false,
+      canCompute: true,
+    });
+  } catch (error) {
+    console.warn("[natal-chart] chart delete failed");
+    return NextResponse.json(
+      { error: "Не удалось удалить натальную карту." },
+      { status: 500 }
+    );
   }
 }

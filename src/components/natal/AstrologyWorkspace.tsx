@@ -157,7 +157,9 @@ export default function AstrologyWorkspace() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [busy, setBusy] = useState<"recompute" | "forecast" | NatalTradition | null>(null);
+  const [busy, setBusy] = useState<"recompute" | "delete" | "forecast" | NatalTradition | null>(null);
+  const [needsRebuild, setNeedsRebuild] = useState(false);
+  const [canCompute, setCanCompute] = useState(true);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
   const [error, setError] = useState("");
   const [historyError, setHistoryError] = useState("");
@@ -220,12 +222,16 @@ export default function AstrologyWorkspace() {
       const data = await responseJson<{
         enabled?: boolean;
         chart?: NatalChartPayload | null;
+        needsRebuild?: boolean;
+        canCompute?: boolean;
         error?: string;
         code?: string;
       }>(response);
       if (response.status === 401 && data.code === "NEEDS_PROFILE") {
         setEnabled(true);
         setChart(null);
+        setNeedsRebuild(false);
+        setCanCompute(false);
         setError(data.error || "Завершите профиль: укажите дату и город рождения.");
         return;
       }
@@ -237,8 +243,10 @@ export default function AstrologyWorkspace() {
       }
       setEnabled(data.enabled !== false);
       setChart(data.chart ?? null);
+      setNeedsRebuild(Boolean(data.needsRebuild));
+      setCanCompute(data.canCompute !== false);
       if (recompute) {
-        setNotice("Расчёт обновлён. Сохранённые платные отчёты остаются в истории версий.");
+        setNotice("Новая карта построена по данным профиля. Платные отчёты остаются в архиве.");
         void loadHistory();
       }
     } catch (reason) {
@@ -650,9 +658,75 @@ export default function AstrologyWorkspace() {
     }
   };
 
+  const deleteChart = async () => {
+    if (busy !== null) return;
+    if (!window.confirm("Удалить сохранённую натальную карту? Платные отчёты останутся в архиве. Чтобы увидеть новую карту, проверьте дату и город в профиле и нажмите «Получить новую карту».")) {
+      return;
+    }
+    setBusy("delete");
+    setError("");
+    setNotice("");
+    try {
+      const response = await fetchRobust("/api/natal-chart", { method: "DELETE", credentials: "include" }, 0);
+      const data = await responseJson<{ deleted?: boolean; error?: string; code?: string }>(response);
+      if (isNatalAuthRequired(response.status, data)) {
+        throw new Error(toUserFacingError(data.error, "Войдите, чтобы продолжить."));
+      }
+      if (response.status === 429) {
+        showRateLimit("natal_chart_delete", Number(response.headers.get("retry-after")) || undefined);
+        return;
+      }
+      if (!response.ok) {
+        throw new Error(toUserFacingError(data.error, "Не удалось удалить карту"));
+      }
+      setChart(null);
+      setNeedsRebuild(false);
+      setNotice("Старая карта удалена. Проверьте данные рождения и нажмите «Получить новую карту».");
+    } catch (reason) {
+      setError(
+        toUserFacingError(
+          reason instanceof Error ? reason.message : reason,
+          "Сеть недоступна. Проверьте соединение."
+        )
+      );
+    } finally {
+      setBusy(null);
+    }
+  };
+
   if (loading) return <StateCard icon={Loader2} spin title="Строим астрологическое пространство" text="Загружаем карту, методологию и сохранённые отчёты…" />;
   if (enabled === false) return <StateCard icon={Star} title="Астрология временно недоступна" text="Раздел выключен в настройках платформы. Ваши профильные данные не изменены." />;
-  if (!chart) return <StateCard icon={Compass} title="Данных для расчёта пока нет" text="Добавьте дату, город и, по возможности, точное время рождения в профиле." action={<button type="button" onClick={navigateToBirthProfileOnboarding} className="btn-primary inline-flex px-4 py-2 text-sm">Заполнить профиль</button>} />;
+  if (!chart) {
+    return (
+      <StateCard
+        icon={Compass}
+        title="Натальной карты пока нет"
+        text={canCompute
+          ? "Данные рождения уже в профиле. Постройте новую карту или сначала проверьте дату, время и город."
+          : "Добавьте дату, город и, по возможности, точное время рождения в профиле — затем получите карту."}
+        action={
+          <div className="flex flex-col items-center gap-3">
+            {notice ? <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-3 py-2 text-sm text-emerald-200/80" role="status">{notice}</p> : null}
+            {error ? <p className="rounded-xl border border-rose-400/25 bg-rose-400/[0.07] px-3 py-2 text-sm text-rose-200" role="alert">{error}</p> : null}
+            {canCompute ? (
+              <button
+                type="button"
+                onClick={() => void loadChart(true)}
+                disabled={busy !== null}
+                className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2 text-sm"
+              >
+                <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden />
+                Получить новую карту
+              </button>
+            ) : null}
+            <button type="button" onClick={navigateToBirthProfileOnboarding} className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/15 px-4 py-2 text-sm text-white/80">
+              {canCompute ? "Изменить данные рождения" : "Заполнить профиль"}
+            </button>
+          </div>
+        }
+      />
+    );
+  }
 
   const western = chart.western;
   const westernReport = chart.interpretations?.western ?? chart.interpretation;
@@ -680,44 +754,59 @@ export default function AstrologyWorkspace() {
         </div>
       ) : null}
       <div className="relative mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
-        <header className="rounded-3xl border border-amber-300/15 bg-black/35 p-5 backdrop-blur-xl sm:p-7">
-          <nav className="flex flex-wrap items-center gap-2 text-xs text-white/50" aria-label="Навигация по сайту">
-            <Link href="/cabinet" className="transition hover:text-amber-100">
-              ← Кабинет
-            </Link>
-            <span aria-hidden>·</span>
-            <span className="text-amber-100/75">Натальная карта</span>
-          </nav>
-          <div className="mt-5 flex flex-col justify-between gap-5 lg:flex-row lg:items-end">
+        <nav className="flex flex-wrap items-center gap-2 text-xs text-white/50" aria-label="Навигация по сайту">
+          <Link href="/cabinet" className="transition hover:text-amber-100">
+            ← Кабинет
+          </Link>
+          <span aria-hidden>·</span>
+          <span className="text-amber-100/75">Натальная карта</span>
+        </nav>
+
+        <section className="mt-4 rounded-3xl border border-amber-300/15 bg-black/35 p-4 backdrop-blur-xl sm:p-6">
+          <div className="mb-4 flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
             <div>
               <p className="text-[11px] uppercase tracking-[.25em] text-amber-300/55">{BRAND_NAME} · астрология</p>
-              <h1 className="mt-2 font-display text-3xl font-semibold sm:text-5xl">Астрологическое пространство</h1>
-              <p className="mt-3 max-w-2xl text-sm leading-6 text-white/50">
-                Западная карта, джйотиш, периоды и ваши платные отчёты — с прозрачной методологией и ограничениями расчёта.
-              </p>
+              <h2 className="mt-1 font-display text-xl font-semibold sm:text-2xl">Интерактивное колесо</h2>
+              <div className="mt-2 flex flex-wrap gap-2 text-xs text-white/50">
+                {western ? bigThree(western, chart.timeKnown).map((item) => <span key={item} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{item}</span>) : null}
+                <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{chart.place?.label ?? "Место не указано"}</span>
+                <span className={`rounded-full border px-3 py-1.5 ${chart.timeKnown ? "border-emerald-300/20 text-emerald-200/70" : "border-amber-300/25 text-amber-100/70"}`}>{chart.timeKnown ? "Точное время" : "Время неизвестно"}</span>
+              </div>
             </div>
-            <div className="flex flex-col items-stretch gap-2 sm:items-end">
+            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:max-w-xl lg:justify-end">
               <button type="button" onClick={() => void loadChart(true)} disabled={busy !== null}
-                title="Обновляет положения планет и транзиты по данным профиля. Платные отчёты не перегенерируются."
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] px-4 text-sm text-amber-100 transition hover:bg-amber-300/[0.13] disabled:opacity-50">
-                <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Обновить расчёт
+                title="Строит новую карту по текущим данным профиля. Платные отчёты не перегенерируются."
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.12] px-4 text-sm font-medium text-amber-100 transition hover:bg-amber-300/[0.18] disabled:opacity-50">
+                <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Получить новую карту
               </button>
-              <Link
-                href="/cabinet"
-                className="text-center text-xs text-amber-100/70 underline-offset-2 transition hover:text-amber-100 hover:underline sm:text-right"
+              <button type="button" onClick={() => void deleteChart()} disabled={busy !== null}
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-rose-400/25 bg-rose-400/[0.08] px-4 text-sm text-rose-100 transition hover:bg-rose-400/[0.14] disabled:opacity-50">
+                <Trash2 className={`h-4 w-4 ${busy === "delete" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Удалить карту
+              </button>
+              <button
+                type="button"
+                onClick={navigateToBirthProfileOnboarding}
+                className="inline-flex min-h-11 items-center justify-center rounded-xl border border-white/10 px-4 text-sm text-amber-100/80 transition hover:bg-white/[0.04]"
               >
-                Изменить дату, время или город в профиле
-              </Link>
-              <p className="max-w-xs text-center text-[11px] leading-4 text-white/35 sm:text-right">
-                Карта строится по данным рождения из профиля. Без города асцендент и дома недоступны.
-              </p>
+                Изменить данные рождения
+              </button>
             </div>
           </div>
-          <div className="mt-5 flex flex-wrap gap-2 text-xs text-white/50">
-            {western ? bigThree(western, chart.timeKnown).map((item) => <span key={item} className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{item}</span>) : null}
-            <span className="rounded-full border border-white/10 bg-white/[0.04] px-3 py-1.5">{chart.place?.label ?? "Место не указано"}</span>
-            <span className={`rounded-full border px-3 py-1.5 ${chart.timeKnown ? "border-emerald-300/20 text-emerald-200/70" : "border-amber-300/25 text-amber-100/70"}`}>{chart.timeKnown ? "Точное время" : "Время неизвестно"}</span>
-          </div>
+          <SectionIntroduction title="Колесо">
+            Круг разделён на 12 знаков; при известном времени также видны дома. Линии между объектами — <ExplainTerm term="аспекты">геометрические углы между положениями; они не предсказывают результат.</ExplainTerm>
+          </SectionIntroduction>
+          {western ? <NatalChartWheel western={western} timeKnown={chart.timeKnown} /> : (
+            <p className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-6 text-sm text-white/50">
+              Западное колесо ещё не рассчитано. Нажмите «Получить новую карту».
+            </p>
+          )}
+        </section>
+
+        <header className="mt-4 rounded-3xl border border-amber-300/15 bg-black/35 p-5 backdrop-blur-xl sm:p-6">
+          <h1 className="font-display text-3xl font-semibold sm:text-4xl">Астрологическое пространство</h1>
+          <p className="mt-2 max-w-2xl text-sm leading-6 text-white/50">
+            Западная карта, джйотиш, периоды и ваши платные отчёты — с прозрачной методологией и ограничениями расчёта.
+          </p>
         </header>
 
         <nav className="mt-5 flex snap-x gap-2 overflow-x-auto rounded-2xl border border-white/10 bg-black/35 p-2" aria-label="Разделы карты">
@@ -732,6 +821,11 @@ export default function AstrologyWorkspace() {
 
         {error ? <div className="mt-4 rounded-xl border border-rose-400/25 bg-rose-400/[0.07] px-4 py-3 text-sm text-rose-200" role="alert">{error}</div> : null}
         {notice ? <div className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-4 py-3 text-sm text-emerald-200/80" role="status">{notice}</div> : null}
+        {needsRebuild ? (
+          <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] px-4 py-3 text-sm text-amber-100" role="status">
+            Данные рождения в профиле изменились. Старая карта ещё на экране — нажмите «Получить новую карту», чтобы построить её заново.
+          </div>
+        ) : null}
         {!chart.timeKnown && <UnknownTimeWarning />}
 
         <div className="mt-5">
@@ -811,10 +905,6 @@ function Western({ chart, western, savedReport, freshReport, fallbackText, busy,
       onEvidence={onEvidence}
       onOpenArchive={onOpenArchive}
     />
-    <Panel title="Интерактивное колесо" eyebrow="Западная карта">
-      <SectionIntroduction title="Колесо">Круг разделён на 12 знаков; при известном времени также видны дома. Линии между объектами — <ExplainTerm term="аспекты">геометрические углы между положениями; они не предсказывают результат.</ExplainTerm>.</SectionIntroduction>
-      <div><NatalChartWheel western={western} timeKnown={chart.timeKnown} /></div>
-    </Panel>
     <Panel title="Все тела и углы" eyebrow={`${positions.length} положений`}>
       <SectionIntroduction title="Положения">Планета — тема, знак — её символический стиль, дом — область опыта. Дом показывается только при точном времени.</SectionIntroduction>
       <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">{positions.map((position) => <details id={evidenceAnchorId("planet", position.key)} key={position.key} className="rounded-xl border border-white/8 bg-black/20 p-3 focus-within:ring-2 focus-within:ring-amber-300/50">
