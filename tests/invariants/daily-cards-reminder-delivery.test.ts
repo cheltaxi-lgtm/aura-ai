@@ -345,6 +345,53 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     expect(sendEmailMock).toHaveBeenCalledTimes(1);
   });
 
+  it("never-drawing user is reminded again on the next day", async () => {
+    const { profile } = await seedReminderUser({
+      optIn: true,
+      dailyEmail: true,
+      dailyInApp: true,
+    });
+    const first = await sendDailyRemindersForHour(9);
+    expect(first).toEqual({ inApp: 1, email: 1, telegram: 0 });
+
+    await query(
+      `UPDATE daily_reminder_log
+          SET sent_date = CURRENT_DATE - 1,
+              created_at = NOW() - interval '1 day'
+        WHERE user_id = $1`,
+      [profile.id]
+    );
+
+    const second = await sendDailyRemindersForHour(9);
+    expect(second).toEqual({ inApp: 1, email: 1, telegram: 0 });
+    expect(sendEmailMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("reminder repeats while the user has not drawn since the previous send", async () => {
+    const { profile } = await seedReminderUser({
+      optIn: true,
+      dailyEmail: true,
+      dailyInApp: true,
+    });
+    await recordTripletDrawAnchor(
+      profile.id,
+      new Date(Date.now() - 3 * 24 * 60 * 60 * 1000)
+    );
+    const first = await sendDailyRemindersForHour(9);
+    expect(first.inApp).toBe(1);
+
+    await query(
+      `UPDATE daily_reminder_log
+          SET sent_date = CURRENT_DATE - 1,
+              created_at = NOW() - interval '1 day'
+        WHERE user_id = $1`,
+      [profile.id]
+    );
+
+    const second = await sendDailyRemindersForHour(9);
+    expect(second.inApp).toBe(1);
+  });
+
   it("two authoritative reminder slots are not collapsed by generic notification dedup", async () => {
     const { profile } = await seedReminderUser({
       optIn: true,

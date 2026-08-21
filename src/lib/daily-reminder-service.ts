@@ -191,23 +191,19 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
   });
 }
 
-/** True if a reminder was already logged in this availability window (since last daily draw). */
-export async function alreadySentThisAvailabilityWindow(
+/**
+ * True if a reminder was already logged today.
+ * Availability re-opens every day while the user has not drawn — dedupe is per
+ * calendar day; claimReminderSlot enforces the same slot atomically.
+ */
+export async function alreadySentReminderToday(
   userId: string,
-  channel: "in_app" | "email" | "telegram",
-  lastDailyAt: string | null
+  channel: "in_app" | "email" | "telegram"
 ): Promise<boolean> {
-  if (lastDailyAt) {
-    const res = await query(
-      `SELECT 1 FROM daily_reminder_log
-       WHERE user_id = $1 AND channel = $2 AND created_at > $3::timestamptz
-       LIMIT 1`,
-      [userId, channel, lastDailyAt]
-    );
-    return res.rows.length > 0;
-  }
   const res = await query(
-    `SELECT 1 FROM daily_reminder_log WHERE user_id = $1 AND channel = $2 LIMIT 1`,
+    `SELECT 1 FROM daily_reminder_log
+     WHERE user_id = $1 AND channel = $2 AND sent_date = CURRENT_DATE
+     LIMIT 1`,
     [userId, channel]
   );
   return res.rows.length > 0;
@@ -239,21 +235,9 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
 
   for (const user of candidates) {
     const cooldown = await checkTripletCooldown(user.userId);
-    const alreadySentInApp = await alreadySentThisAvailabilityWindow(
-      user.userId,
-      "in_app",
-      cooldown.lastTripletAt
-    );
-    const alreadySentEmail = await alreadySentThisAvailabilityWindow(
-      user.userId,
-      "email",
-      cooldown.lastTripletAt
-    );
-    const alreadySentTelegram = await alreadySentThisAvailabilityWindow(
-      user.userId,
-      "telegram",
-      cooldown.lastTripletAt
-    );
+    const alreadySentInApp = await alreadySentReminderToday(user.userId, "in_app");
+    const alreadySentEmail = await alreadySentReminderToday(user.userId, "email");
+    const alreadySentTelegram = await alreadySentReminderToday(user.userId, "telegram");
     const plan = resolveDailyCardsReminderDelivery({
       dailyCardsReminder: user.dailyCardsReminder,
       cooldownAllowed: cooldown.allowed,
