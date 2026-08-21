@@ -11,6 +11,7 @@ import {
   claimTextSimilarity,
   findNearDuplicateSections,
   natalSectionRoleSubtitle,
+  FORECAST_SECTION_ROLE_CONTRACTS,
   SECTION_ROLE_CONTRACTS,
 } from "@/lib/natal/report-quality";
 
@@ -48,11 +49,14 @@ const SAME =
 
 describe("natal report quality contracts", () => {
   it("prompt defines distinct roles for summary / period / recommendations", () => {
-    const instructions = buildNatalReportJsonInstructions("western", "forecast", 30);
-    expect(instructions).toContain(SECTION_ROLE_CONTRACTS.summary.slice(0, 40));
-    expect(instructions).toContain(SECTION_ROLE_CONTRACTS.recommendations.slice(0, 40));
-    expect(instructions).toContain("summary ≠ recommendations");
-    expect(instructions).toContain("убери воду");
+    const forecast = buildNatalReportJsonInstructions("western", "forecast", 30);
+    expect(forecast).toContain(FORECAST_SECTION_ROLE_CONTRACTS.summary.slice(0, 40));
+    expect(forecast).toContain(FORECAST_SECTION_ROLE_CONTRACTS.recommendations.slice(0, 40));
+    expect(forecast).toContain("summary ≠ recommendations");
+    expect(forecast).toContain("убери воду");
+    const interpretation = buildNatalReportJsonInstructions("western", "interpretation");
+    expect(interpretation).toContain(SECTION_ROLE_CONTRACTS.summary.slice(0, 40));
+    expect(interpretation).toContain(SECTION_ROLE_CONTRACTS.recommendations.slice(0, 40));
   });
 
   it("UI role subtitles exist for all section keys", () => {
