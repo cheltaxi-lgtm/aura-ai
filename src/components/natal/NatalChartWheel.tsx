@@ -2,7 +2,9 @@
 
 import { useId, useMemo, useState } from "react";
 import { useReducedMotion } from "framer-motion";
+import { mod360 } from "@/lib/natal/math";
 import { ASPECT_NAMES, BODY_NAMES, asRecord, signLabel, signName } from "@/lib/natal/presentation";
+import { layoutWheelBodies, wheeledRadius } from "@/lib/natal/wheel-layout";
 
 const SIGNS = [
   ["Овен", "♈"], ["Телец", "♉"], ["Близнецы", "♊"], ["Рак", "♋"],
@@ -34,6 +36,7 @@ type WheelBody = {
   glyph: string;
   color: string;
   longitude: number;
+  displayLongitude: number;
   lane: number;
   sign: string | null;
   retrograde: boolean;
@@ -71,9 +74,11 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size * 0.475;
-  const zodiacR = size * 0.39;
-  const houseR = size * 0.25;
-  const aspectR = size * 0.23;
+  const zodiacR = size * 0.40;
+  const planetBase = size * 0.312;
+  const laneStep = size * 0.022;
+  const houseLabelR = size * 0.215;
+  const aspectR = size * 0.185;
   const asc = timeKnown ? longitudeOf(western.rising) : null;
   const rotation = asc == null ? 0 : 270 - asc;
 
@@ -88,28 +93,22 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   }, [timeKnown, western.houses]);
 
   const bodies = useMemo(() => {
-    const items: WheelBody[] = PLANETS.flatMap(([key, glyph, color]) => {
+    const items: Array<Omit<WheelBody, "lane" | "displayLongitude">> = PLANETS.flatMap(([key, glyph, color]) => {
       const body = key === "sun" || key === "moon" ? western[key] : asRecord(western.planets)?.[key];
       const longitude = longitudeOf(body);
       if (longitude == null) return [];
       const record = asRecord(body);
       const sign = signName(body);
-      return [{ key, glyph, color, longitude, lane: 0, sign: sign ? signLabel(sign) : null, retrograde: record?.retrograde === true }];
+      return [{ key, glyph, color, longitude, sign: sign ? signLabel(sign) : null, retrograde: record?.retrograde === true }];
     });
     if (timeKnown) {
       for (const [key, glyph, color] of [["rising", "ASC", "#34d399"], ["midheaven", "MC", "#fb923c"]] as const) {
         const longitude = longitudeOf(western[key]);
         const bodySign = signName(western[key]);
-        if (longitude != null) items.push({ key, glyph, color, longitude, lane: 0, sign: bodySign ? signLabel(bodySign) : null, retrograde: false });
+        if (longitude != null) items.push({ key, glyph, color, longitude, sign: bodySign ? signLabel(bodySign) : null, retrograde: false });
       }
     }
-    items.sort((a, b) => a.longitude - b.longitude);
-    items.forEach((item, index) => {
-      const previous = items[(index - 1 + items.length) % items.length];
-      const gap = index === 0 ? item.longitude + 360 - previous.longitude : item.longitude - previous.longitude;
-      item.lane = gap < 11 ? (previous.lane + 1) % 3 : 0;
-    });
-    return items;
+    return layoutWheelBodies(items, 14);
   }, [timeKnown, western]);
 
   const allAspects = useMemo(() => {
@@ -177,14 +176,18 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
             </g>;
           })}
           {houses.map((house) => {
+            const next = houses.find((item) => item.house === (house.house % 12) + 1) ?? houses[0];
+            const midLongitude = next
+              ? mod360(house.longitude + mod360(next.longitude - house.longitude) / 2)
+              : house.longitude;
             const outer = polar(cx, cy, zodiacR, house.longitude + rotation);
-            const inner = polar(cx, cy, houseR, house.longitude + rotation);
-            const label = polar(cx, cy, houseR + size * .045, house.longitude + rotation + 5);
+            const inner = polar(cx, cy, planetBase + size * 0.028, house.longitude + rotation);
+            const label = polar(cx, cy, houseLabelR, midLongitude + rotation);
             const selected = selection?.kind === "house" && selection.id === String(house.house);
             const action = () => setSelection({ kind: "house", id: String(house.house), title: `${house.house} дом`, detail: `Куспид: ${house.longitude.toFixed(2)}° · система ${String(western.houseSystem ?? "не указана")}` });
             return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
-              <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#fff7d6" : "#fbbf24"} strokeOpacity={selected ? 1 : .6} strokeWidth={selected ? 3 : 1} />
-              <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#fde68a" fontSize={size * .028}>{house.house}</text>
+              <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#fff7d6" : "#fbbf24"} strokeOpacity={selected ? 1 : .55} strokeWidth={selected ? 3 : 1} />
+              <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#fde68a" fontSize={size * .026}>{house.house}</text>
             </g>;
           })}
           <circle cx={cx} cy={cy} r={zodiacR} fill="none" stroke="#fbbf2455" />
@@ -202,8 +205,8 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
               strokeWidth={selected ? 4 : bodySelected ? 2.5 : 1.2} className="cursor-pointer focus:outline-none" />;
           })}
           {bodies.map((body) => {
-            const radius = size * (.33 - body.lane * .035);
-            const point = polar(cx, cy, radius, body.longitude + rotation);
+            const radius = wheeledRadius(planetBase, body.lane, laneStep);
+            const point = polar(cx, cy, radius, body.displayLongitude + rotation);
             const tick = polar(cx, cy, zodiacR, body.longitude + rotation);
             const selected = selection?.kind === "body" && selection.id === body.key;
             const highlighted = selected || related.has(body.key);
