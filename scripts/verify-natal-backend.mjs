@@ -169,7 +169,7 @@ assert.match(
   /report\.reportType === currentForecastType && matchesCurrentChart/
 );
 assert.match(astrologyWorkspace, /Новый прогноз на \$\{formatRuDateRange/);
-assert.match(astrologyWorkspace, /onOpenArchive=\{openReportArchive\}/);
+assert.match(astrologyWorkspace, /const openReportArchive = useCallback/);
 assert.doesNotMatch(astrologyWorkspace, /FORECAST_REPORT ·/);
 assert.doesNotMatch(astrologyWorkspace, /Центр премиальных отчётов/);
 

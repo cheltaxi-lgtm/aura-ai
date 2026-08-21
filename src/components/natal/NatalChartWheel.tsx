@@ -67,8 +67,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   const gradientId = useId().replace(/:/g, "");
   const reducedMotion = useReducedMotion();
   const [selection, setSelection] = useState<Selection>(null);
-  const [nature, setNature] = useState<"all" | "major" | "minor">("major");
-  const [visibleTypes, setVisibleTypes] = useState<Set<string>>(() => new Set(Object.keys(ASPECT_COLORS)));
+  const nature = "major" as const;
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size * 0.475;
@@ -135,8 +134,8 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
   }, [bodies, western.aspects]);
 
   const aspects = useMemo(
-    () => filterAspectNature(allAspects, nature).filter((aspect) => visibleTypes.has(aspect.type)),
-    [allAspects, nature, visibleTypes]
+    () => filterAspectNature(allAspects, nature),
+    [allAspects, nature]
   );
   const related = selection?.kind === "body"
     ? new Set(aspects.flatMap((aspect) => aspect.first === selection.id ? [aspect.second] : aspect.second === selection.id ? [aspect.first] : []))
@@ -147,24 +146,9 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
     detail: `${body.sign ?? "Знак не указан"} · ${body.longitude.toFixed(2)}°${body.retrograde ? " · ретроградно" : ""}`,
   });
 
-  const toggleType = (type: string) => setVisibleTypes((previous) => {
-    const next = new Set(previous);
-    if (next.has(type)) next.delete(type); else next.add(type);
-    return next;
-  });
-
   return (
     <div className="grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_17rem]">
       <div>
-        <div className="mb-3 flex flex-wrap items-center gap-2" aria-label="Фильтры аспектов">
-          {(["major", "minor", "all"] as const).map((value) => (
-            <button key={value} type="button" onClick={() => setNature(value)}
-              aria-pressed={nature === value}
-              className={`rounded-full border px-3 py-1.5 text-xs transition ${nature === value ? "border-amber-300/40 bg-amber-300/15 text-amber-100" : "border-white/10 text-white/50 hover:text-white"}`}>
-              {value === "major" ? "Мажорные" : value === "minor" ? "Минорные" : "Все"}
-            </button>
-          ))}
-        </div>
         <svg viewBox={`0 0 ${size} ${size}`} className="mx-auto h-auto w-full max-w-[620px]"
           role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
           <title>Интерактивная натальная карта</title>
@@ -238,11 +222,9 @@ export default function NatalChartWheel({ western, timeKnown, size = 520 }: Prop
           <h3 className="text-xs font-medium text-white/65">Легенда аспектов</h3>
           <div className="mt-2 flex flex-wrap gap-2">
             {Object.entries(ASPECT_COLORS).map(([type, color]) => (
-              <button key={type} type="button" onClick={() => toggleType(type)} aria-pressed={visibleTypes.has(type)}
-                className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-[10px] text-white/55 disabled:opacity-30"
-                style={{ opacity: visibleTypes.has(type) ? 1 : .4 }}>
+              <span key={type} className="inline-flex items-center gap-1.5 rounded-md border border-white/10 px-2 py-1 text-[10px] text-white/55">
                 <span className="h-0.5 w-3" style={{ backgroundColor: color }} /> {ASPECT_NAMES[type] ?? type}
-              </button>
+              </span>
             ))}
           </div>
         </section>
