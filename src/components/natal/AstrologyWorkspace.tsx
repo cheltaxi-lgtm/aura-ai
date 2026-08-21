@@ -765,32 +765,39 @@ export default function AstrologyWorkspace() {
                   Круг разделён на 12 знаков; при известном времени также видны дома. Линии между объектами — <ExplainTerm term="аспекты">геометрические углы между положениями; они не предсказывают результат.</ExplainTerm>
                 </SectionIntroduction>
               </div>
-              <div className="mt-3 flex flex-wrap gap-2 text-xs text-white/45">
-                {western ? bigThree(western, chart.timeKnown).map((item) => <span key={item} className="rounded-full bg-white/[0.04] px-3 py-1.5">{item}</span>) : null}
-                <span className="rounded-full bg-white/[0.04] px-3 py-1.5">{chart.place?.label ?? "Место не указано"}</span>
-                <span className={`rounded-full px-3 py-1.5 ${chart.timeKnown ? "bg-emerald-300/8 text-emerald-200/70" : "bg-amber-300/8 text-amber-100/70"}`}>{chart.timeKnown ? "Точное время" : "Время неизвестно"}</span>
-              </div>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:flex-wrap lg:max-w-md lg:justify-end">
+            <div className="flex shrink-0 flex-col gap-1 rounded-2xl bg-white/[0.035] p-1 sm:flex-row sm:flex-wrap lg:justify-end">
               <button type="button" onClick={() => void loadChart(true)} disabled={busy !== null}
                 title="Строит новую карту по текущим данным профиля. Платные отчёты не перегенерируются."
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/20 bg-amber-300/[0.08] px-4 text-sm font-medium text-amber-100/90 transition hover:bg-amber-300/[0.14] disabled:opacity-50">
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-amber-100/90 transition hover:bg-amber-300/[0.1] disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Получить новую карту
               </button>
               <button type="button" onClick={() => void deleteChart()} disabled={busy !== null}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm text-rose-100/80 transition hover:bg-rose-400/[0.08] disabled:opacity-50">
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm text-rose-100/75 transition hover:bg-rose-400/[0.08] disabled:opacity-50">
                 <Trash2 className={`h-4 w-4 ${busy === "delete" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Удалить карту
               </button>
               <button
                 type="button"
                 onClick={navigateToBirthProfileOnboarding}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm text-white/50 transition hover:text-amber-100/80"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm text-white/48 transition hover:bg-white/[0.04] hover:text-amber-100/80"
               >
                 Изменить данные рождения
               </button>
             </div>
           </div>
-          {western ? <NatalChartWheel western={western} timeKnown={chart.timeKnown} /> : (
+          {western ? (
+            <NatalChartWheel
+              western={western}
+              timeKnown={chart.timeKnown}
+              summary={(
+                <>
+                  {bigThree(western, chart.timeKnown).map((item) => <span key={item} className="rounded-full bg-white/[0.045] px-3 py-1.5">{item}</span>)}
+                  <span className="rounded-full bg-white/[0.045] px-3 py-1.5">{chart.place?.label ?? "Место не указано"}</span>
+                  <span className={`rounded-full px-3 py-1.5 ${chart.timeKnown ? "bg-emerald-300/10 text-emerald-200/75" : "bg-amber-300/10 text-amber-100/75"}`}>{chart.timeKnown ? "Точное время" : "Время неизвестно"}</span>
+                </>
+              )}
+            />
+          ) : (
             <p className="px-1 py-6 text-sm leading-6 text-white/45">
               Западное колесо ещё не рассчитано. Нажмите «Получить новую карту».
             </p>

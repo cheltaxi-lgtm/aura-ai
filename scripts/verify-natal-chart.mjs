@@ -8,8 +8,9 @@ import { buildNatalPromptBlock } from "../src/lib/natal/format-prompt.ts";
 import { computeDeepTransits, detectSignIngresses } from "../src/lib/natal/transits.ts";
 import { computeSynastry, computeSynastryDimensions, sanitizeSynastryForClient } from "../src/lib/natal/synastry.ts";
 import { compositeMidpointLongitude, computeCompositeChart } from "../src/lib/natal/composite.ts";
-import { layoutWheelBodies, minDisplayGap, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
+import { layoutWheelBodies, minDisplayGap, natalLaneRadius, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
 import { chartPolar, longitudeToChartAngle } from "../src/lib/natal/chart-angle.ts";
+import { aspectLineStyle, isMajorAspect } from "../src/lib/natal/wheel-style.ts";
 import {
   allowedShareSections, isHighEntropyShareToken,
   sanitizeCompatibilityReportShare, sanitizeNatalReportShare, sanitizeRelationshipReportShare,
@@ -792,6 +793,50 @@ async function main() {
       cardinalOf(at(282.7, 12.7)) === "top",
     "natal renderer: house 1 left, 4 bottom, 7 right, 10 top for ASC-relative 0"
   );
+  const origin = 41.2;
+  const planetLon = 88.4;
+  const houseLon = origin + 90;
+  const aspectLon = planetLon;
+  const planetPoint = chartPolar(200, 200, 80, planetLon, origin);
+  const housePoint = chartPolar(200, 200, 80, houseLon, origin);
+  const aspectPoint = chartPolar(200, 200, 40, aspectLon, origin);
+  const axisPoint = chartPolar(200, 200, 80, origin, origin);
+  assert(
+    Math.abs(aspectPoint.x - 200 - (planetPoint.x - 200) * 0.5) < 1e-6 &&
+      Math.abs(aspectPoint.y - 200 - (planetPoint.y - 200) * 0.5) < 1e-6 &&
+      Math.abs(housePoint.x - 200) < 1e-6 &&
+      housePoint.y > 200 &&
+      Math.abs(axisPoint.x - 120) < 1e-6 &&
+      Math.abs(axisPoint.y - 200) < 1e-6,
+    "planets, houses, axes and aspect endpoints share chartPolar"
+  );
+  const idleMajor = aspectLineStyle("trine", false);
+  const idleMinor = aspectLineStyle("quincunx", false);
+  const hotMajor = aspectLineStyle("square", true);
+  assert(
+    isMajorAspect("opposition") &&
+      !isMajorAspect("semi-sextile") &&
+      idleMajor.width > idleMinor.width &&
+      idleMajor.opacity > idleMinor.opacity &&
+      hotMajor.width > idleMajor.width &&
+      hotMajor.opacity === 1,
+    "major aspects render stronger than minor; hover/selected is thicker"
+  );
+  const size = 600;
+  const base = size * 0.308;
+  const step = size * 0.044;
+  const glyph = size * 0.02;
+  const minR = size * 0.168 + glyph * 2;
+  const maxR = size * 0.412 - glyph * 2.2;
+  const radii = [0, 1, 2, 3].map((lane) => natalLaneRadius(base, lane, step, minR, maxR));
+  const sortedRadii = [...radii].sort((left, right) => left - right);
+  const gaps = sortedRadii.slice(1).map((radius, index) => radius - sortedRadii[index]);
+  assert(
+    radii.every((radius) => radius >= minR - 1e-6 && radius <= maxR + 1e-6) &&
+      gaps.every((gap) => gap + 1e-6 >= glyph * 2) &&
+      natalLaneRadius(base, 0, step, minR, maxR) === base,
+    "natal radial lanes keep glyphs from overlapping while preserving true longitude"
+  );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,
     chartA: { label: "A", western: { ...syn?.chartA?.western, birth_lat: 55.7, place: { latitude: 55.7 } } },
@@ -1178,7 +1223,10 @@ async function main() {
       interactiveWheel.includes("Текстовая версия карты") &&
       interactiveWheel.includes("filterAspectNature") &&
       interactiveWheel.includes("<details") &&
-      interactiveWheel.includes("chartPolar") &&
+      interactiveWheel.includes("natalLaneRadius") &&
+      interactiveWheel.includes("aspectLineStyle") &&
+      interactiveWheel.includes("firstLongitude") &&
+      !interactiveWheel.includes("displayLongitude +") &&
       interactiveWheel.includes("@/lib/natal/chart-angle") &&
       !interactiveWheel.includes("270 - asc") &&
       !/\(\(90 - longitude\)/.test(interactiveWheel) &&

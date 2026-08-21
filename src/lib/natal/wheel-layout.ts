@@ -116,6 +116,20 @@ export function wheeledRadius(
   return Math.max(base * 0.45, base + direction * lane * step);
 }
 
+/** Alternate inward/outward natal lanes without changing true longitude. */
+export function natalLaneRadius(
+  base: number,
+  lane: number,
+  step: number,
+  minR: number,
+  maxR: number,
+): number {
+  if (lane <= 0) return Math.min(maxR, Math.max(minR, base));
+  const ring = Math.ceil(lane / 2);
+  const signed = (lane % 2 === 1 ? -1 : 1) * ring * step;
+  return Math.min(maxR, Math.max(minR, base + signed));
+}
+
 export function minDisplayGap(items: ReadonlyArray<{ displayLongitude: number }>): number {
   if (items.length < 2) return 360;
   return items.reduce((smallest, item, index) => {

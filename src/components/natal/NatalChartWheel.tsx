@@ -1,11 +1,12 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import { useId, useMemo, useState, type ReactNode } from "react";
 import { useReducedMotion } from "framer-motion";
 import { chartPolar } from "@/lib/natal/chart-angle";
-import { mod360 } from "@/lib/natal/math";
+import { angularSeparation, mod360 } from "@/lib/natal/math";
 import { ASPECT_NAMES, BODY_NAMES, asRecord, signLabel, signName } from "@/lib/natal/presentation";
-import { layoutWheelBodies, wheeledRadius } from "@/lib/natal/wheel-layout";
+import { layoutWheelBodies, natalLaneRadius } from "@/lib/natal/wheel-layout";
+import { aspectLineStyle, isMajorAspect } from "@/lib/natal/wheel-style";
 import WheelZodiacBand from "./WheelZodiacBand";
 
 const PLANETS = [
@@ -27,7 +28,12 @@ type Selection =
   | { kind: "axis"; id: string; title: string; detail: string }
   | null;
 
-type Props = { western: Record<string, unknown>; timeKnown: boolean; size?: number };
+type Props = {
+  western: Record<string, unknown>;
+  timeKnown: boolean;
+  size?: number;
+  summary?: ReactNode;
+};
 type WheelBody = {
   key: string;
   glyph: string;
@@ -58,22 +64,26 @@ function keyboardSelect(event: React.KeyboardEvent, action: () => void) {
   }
 }
 
-export default function NatalChartWheel({ western, timeKnown, size = 600 }: Props) {
+export default function NatalChartWheel({ western, timeKnown, size = 600, summary }: Props) {
   const gradientId = useId().replace(/:/g, "");
   const reducedMotion = useReducedMotion();
   const [selection, setSelection] = useState<Selection>(null);
+  const [hoveredAspect, setHoveredAspect] = useState<string | null>(null);
   const [nature, setNature] = useState<"all" | "major" | "minor">("all");
   const compact = size < 480;
   const cx = size / 2;
   const cy = size / 2;
   const outerR = size * 0.478;
   const zodiacR = size * 0.412;
-  const planetBase = size * 0.335;
-  const laneStep = size * 0.032;
-  const houseInnerR = size * 0.088;
-  const houseLabelR = size * 0.168;
-  const aspectR = size * 0.12;
-  const axisLabelR = size * 0.388;
+  const planetBase = size * 0.308;
+  const laneStep = size * 0.044;
+  const glyphR = size * 0.02;
+  const aspectR = size * 0.168;
+  const houseInnerR = aspectR + size * 0.016;
+  const houseLabelR = (houseInnerR + zodiacR) / 2;
+  const axisLabelR = size * 0.386;
+  const laneMin = aspectR + glyphR * 2;
+  const laneMax = zodiacR - glyphR * 2.2;
   const asc = timeKnown ? longitudeOf(western.rising) : null;
   const mc = timeKnown ? longitudeOf(western.midheaven) : null;
   const origin = asc ?? 0;
@@ -149,9 +159,12 @@ export default function NatalChartWheel({ western, timeKnown, size = 600 }: Prop
     () => filterAspectNature(allAspects, nature),
     [allAspects, nature]
   );
+  const activeAspectId = selection?.kind === "aspect" ? selection.id : hoveredAspect;
   const related = selection?.kind === "body"
     ? new Set(aspects.flatMap((aspect) => aspect.first === selection.id ? [aspect.second] : aspect.second === selection.id ? [aspect.first] : []))
-    : new Set<string>();
+    : activeAspectId
+      ? new Set(aspects.flatMap((aspect) => aspect.id === activeAspectId ? [aspect.first, aspect.second] : []))
+      : new Set<string>();
 
   const selectBody = (body: WheelBody) => setSelection({
     kind: "body", id: body.key, title: BODY_NAMES[body.key] ?? body.key,
@@ -160,17 +173,20 @@ export default function NatalChartWheel({ western, timeKnown, size = 600 }: Prop
 
   return (
     <div className="flex w-full min-w-0 flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-1.5" aria-label="Какие аспекты показать">
-        {(["all", "major", "minor"] as const).map((value) => (
-          <button key={value} type="button" onClick={() => setNature(value)}
-            aria-pressed={nature === value}
-            className={`rounded-full px-3 py-1.5 text-[11px] tracking-wide transition ${nature === value ? "bg-amber-200/12 text-amber-100" : "text-white/40 hover:text-white/70"}`}>
-            {value === "all" ? "Все" : value === "major" ? "Основные" : "Дополнительные"}
-          </button>
-        ))}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        {summary ? <div className="flex min-w-0 flex-wrap gap-2 text-xs text-white/50">{summary}</div> : null}
+        <div className={`flex flex-wrap items-center gap-1 ${summary ? "sm:justify-end" : ""}`} aria-label="Какие аспекты показать">
+          {(["all", "major", "minor"] as const).map((value) => (
+            <button key={value} type="button" onClick={() => setNature(value)}
+              aria-pressed={nature === value}
+              className={`rounded-full px-3 py-1.5 text-xs tracking-wide transition ${nature === value ? "bg-amber-200/12 text-amber-100" : "text-white/40 hover:text-white/70"}`}>
+              {value === "all" ? "Все" : value === "major" ? "Основные" : "Дополнительные"}
+            </button>
+          ))}
+        </div>
       </div>
 
-      <svg viewBox={`0 0 ${size} ${size}`} className={`mx-auto h-auto w-full ${compact ? "max-w-full" : "max-w-[44rem]"}`}
+      <svg viewBox={`0 0 ${size} ${size}`} className={`mx-auto h-auto w-full ${compact ? "max-w-full" : "max-w-[48rem]"}`}
         role="group" aria-label={timeKnown ? "Интерактивное натальное колесо" : "Интерактивное натальное колесо без домов и углов"}>
         <title>Интерактивная натальная карта</title>
         <desc>{timeKnown ? "Выберите планету, дом или аспект, чтобы увидеть подробности." : "Время рождения неизвестно: дома, асцендент и MC не показаны."}</desc>
@@ -195,19 +211,22 @@ export default function NatalChartWheel({ western, timeKnown, size = 600 }: Prop
           const selected = selection?.kind === "house" && selection.id === String(house.house);
           const action = () => setSelection({ kind: "house", id: String(house.house), title: `${house.house} дом`, detail: `Куспид: ${house.longitude.toFixed(2)}° · система ${String(western.houseSystem ?? "не указана")}` });
           return <g key={house.house} role="button" tabIndex={0} aria-label={`Дом ${house.house}`} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
-            {cardinal ? null : <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#f4e6c4" : "#e8c98a"} strokeOpacity={selected ? 0.9 : 0.16} strokeWidth={selected ? 1.8 : 0.8} />}
-            <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#d8c9a4" fillOpacity="0.55" fontSize={size * 0.02}>{house.house}</text>
+            {cardinal ? null : <line x1={inner.x} y1={inner.y} x2={outer.x} y2={outer.y} stroke={selected ? "#f4e6c4" : "#e8c98a"} strokeOpacity={selected ? 0.85 : 0.14} strokeWidth={selected ? 1.6 : 0.75} />}
+            <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill="#e4d4b0" fillOpacity="0.72" fontSize={size * 0.022}>{house.house}</text>
           </g>;
         })}
 
         {axes.map((axis) => {
           const [first, second] = axis.ends;
-          const a = chartPolar(cx, cy, zodiacR, first.longitude, origin);
-          const b = chartPolar(cx, cy, zodiacR, second.longitude, origin);
+          const a = chartPolar(cx, cy, houseInnerR, first.longitude, origin);
+          const b = chartPolar(cx, cy, zodiacR, first.longitude, origin);
+          const c = chartPolar(cx, cy, houseInnerR, second.longitude, origin);
+          const d = chartPolar(cx, cy, zodiacR, second.longitude, origin);
           const selected = selection?.kind === "axis" && (selection.id === first.id || selection.id === second.id);
           return (
             <g key={axis.id}>
-              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={axis.color} strokeOpacity={selected ? 1 : 0.75} strokeWidth={selected ? 2.2 : 1.55} />
+              <line x1={a.x} y1={a.y} x2={b.x} y2={b.y} stroke={axis.color} strokeOpacity={selected ? 0.95 : 0.55} strokeWidth={selected ? 2 : 1.35} />
+              <line x1={c.x} y1={c.y} x2={d.x} y2={d.y} stroke={axis.color} strokeOpacity={selected ? 0.95 : 0.55} strokeWidth={selected ? 2 : 1.35} />
               {axis.ends.map((end) => {
                 const label = chartPolar(cx, cy, axisLabelR, end.longitude, origin);
                 const action = () => setSelection({
@@ -216,7 +235,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600 }: Prop
                 });
                 return (
                   <g key={end.id} role="button" tabIndex={0} aria-label={end.title} onClick={action} onKeyDown={(event) => keyboardSelect(event, action)} className="cursor-pointer focus:outline-none">
-                    <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill={axis.color} fontSize={size * 0.02} fontWeight="600">{end.title}</text>
+                    <text x={label.x} y={label.y} textAnchor="middle" dominantBaseline="middle" fill={axis.color} fontSize={size * 0.022} fontWeight="600">{end.title}</text>
                   </g>
                 );
               })}
@@ -224,22 +243,48 @@ export default function NatalChartWheel({ western, timeKnown, size = 600 }: Prop
           );
         })}
 
-        <circle cx={cx} cy={cy} r={aspectR} fill="#0a070e" fillOpacity=".55" stroke="#ffffff10" />
+        <circle cx={cx} cy={cy} r={aspectR} fill="#0a070e" fillOpacity=".42" stroke="#ffffff12" />
         {aspects.map((aspect) => {
           const first = chartPolar(cx, cy, aspectR, aspect.firstLongitude, origin);
           const second = chartPolar(cx, cy, aspectR, aspect.secondLongitude, origin);
           const selected = selection?.kind === "aspect" && selection.id === aspect.id;
           const bodySelected = selection?.kind === "body" && (selection.id === aspect.first || selection.id === aspect.second);
+          const hovered = hoveredAspect === aspect.id;
+          const emphasized = selected || hovered || bodySelected;
+          const style = aspectLineStyle(aspect.type, emphasized);
+          const faded = Boolean(activeAspectId || selection?.kind === "body") && !emphasized;
+          const tight = angularSeparation(aspect.firstLongitude, aspect.secondLongitude) < 8;
           const action = () => setSelection({ kind: "aspect", id: aspect.id, title: ASPECT_NAMES[aspect.type] ?? aspect.type, detail: `${BODY_NAMES[aspect.first] ?? aspect.first} — ${BODY_NAMES[aspect.second] ?? aspect.second}${aspect.orb == null ? "" : ` · орб ${aspect.orb.toFixed(2)}°`}` });
-          return <line key={aspect.id} role="button" tabIndex={0} aria-label={`${ASPECT_NAMES[aspect.type] ?? aspect.type}: ${BODY_NAMES[aspect.first] ?? aspect.first} и ${BODY_NAMES[aspect.second] ?? aspect.second}`}
-            onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
-            x1={first.x} y1={first.y} x2={second.x} y2={second.y}
-            stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"} strokeOpacity={selected ? 1 : bodySelected ? .8 : .32}
-            strokeWidth={selected ? 3.2 : bodySelected ? 2.1 : 1.05} className="cursor-pointer focus:outline-none" />;
+          return (
+            <g key={aspect.id} role="button" tabIndex={0}
+              aria-label={`${ASPECT_NAMES[aspect.type] ?? aspect.type}: ${BODY_NAMES[aspect.first] ?? aspect.first} и ${BODY_NAMES[aspect.second] ?? aspect.second}`}
+              onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
+              onPointerEnter={() => setHoveredAspect(aspect.id)}
+              onPointerLeave={() => setHoveredAspect((value) => value === aspect.id ? null : value)}
+              className="cursor-pointer focus:outline-none">
+              {tight ? (
+                <>
+                  <circle cx={first.x} cy={first.y} r={14} fill="transparent" />
+                  <circle cx={first.x} cy={first.y} r={emphasized ? 7 : 5.5} fill="none"
+                    stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"}
+                    strokeOpacity={faded ? 0.12 : style.opacity}
+                    strokeWidth={style.width} />
+                </>
+              ) : (
+                <>
+                  <line x1={first.x} y1={first.y} x2={second.x} y2={second.y} stroke="transparent" strokeWidth={12} />
+                  <line x1={first.x} y1={first.y} x2={second.x} y2={second.y}
+                    stroke={ASPECT_COLORS[aspect.type] ?? "#ffffff55"}
+                    strokeOpacity={faded ? 0.12 : style.opacity}
+                    strokeWidth={style.width} />
+                </>
+              )}
+            </g>
+          );
         })}
         {bodies.map((body) => {
-          const radius = wheeledRadius(planetBase, body.lane, laneStep);
-          const point = chartPolar(cx, cy, radius, body.displayLongitude, origin);
+          const radius = natalLaneRadius(planetBase, body.lane, laneStep, laneMin, laneMax);
+          const point = chartPolar(cx, cy, radius, body.longitude, origin);
           const truePoint = chartPolar(cx, cy, planetBase, body.longitude, origin);
           const tick = chartPolar(cx, cy, zodiacR, body.longitude, origin);
           const selected = selection?.kind === "body" && selection.id === body.key;
@@ -247,44 +292,48 @@ export default function NatalChartWheel({ western, timeKnown, size = 600 }: Prop
           const action = () => selectBody(body);
           return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${body.longitude.toFixed(1)} градусов`}
             onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
-            className={`cursor-pointer focus:outline-none ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .35 : 1}>
-            <line x1={tick.x} y1={tick.y} x2={truePoint.x} y2={truePoint.y} stroke={body.color} strokeOpacity=".28" />
-            {body.lane !== 0 ? <line x1={truePoint.x} y1={truePoint.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".5" /> : null}
-            <circle cx={point.x} cy={point.y} r={size * (selected ? .028 : .023)} fill="#100a16" stroke={body.color} strokeWidth={selected ? 2 : 1.25} />
-            <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={size * .032} fontWeight="500">{body.glyph}</text>
+            className={`cursor-pointer focus:outline-none ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .32 : 1}>
+            <line x1={tick.x} y1={tick.y} x2={truePoint.x} y2={truePoint.y} stroke={body.color} strokeOpacity=".26" />
+            {Math.abs(radius - planetBase) > 1 ? <line x1={truePoint.x} y1={truePoint.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".55" /> : null}
+            <circle cx={point.x} cy={point.y} r={size * (selected || highlighted ? .026 : .021)} fill="#100a16" stroke={body.color} strokeWidth={selected || highlighted ? 2.1 : 1.25} />
+            <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={size * .03} fontWeight="500">{body.glyph}</text>
           </g>;
         })}
       </svg>
 
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
-        <p className="min-w-0 text-sm leading-6" aria-live="polite">
-          {selection ? (
-            <>
-              <span className="font-medium text-white/90">{selection.title}</span>
-              <span className="text-white/45"> · {selection.detail}</span>
-            </>
-          ) : (
-            <span className="text-white/40">Нажмите планету, ось или аспект</span>
-          )}
-        </p>
-        <ul className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] leading-5 text-white/38">
-          {Object.entries(ASPECT_COLORS).map(([type, color]) => (
-            <li key={type} className="inline-flex items-center gap-1.5">
-              <span className="h-px w-3" style={{ backgroundColor: color }} />
-              {ASPECT_NAMES[type] ?? type}
-            </li>
-          ))}
-        </ul>
+      <div className="rounded-2xl bg-white/[0.035] px-4 py-3 sm:px-5 sm:py-4">
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between lg:gap-8">
+          <p className="min-w-0 text-sm leading-6" aria-live="polite">
+            {selection ? (
+              <>
+                <span className="text-[11px] uppercase tracking-[.16em] text-amber-200/45">Объект</span>
+                <span className="mt-1 block font-medium text-white/92">{selection.title}</span>
+                <span className="block text-white/50">{selection.detail}</span>
+              </>
+            ) : (
+              <span className="text-white/42">Нажмите планету, ось или аспект</span>
+            )}
+          </p>
+          <ul className="flex flex-wrap gap-x-3.5 gap-y-1.5 text-xs leading-5 text-white/45">
+            {Object.entries(ASPECT_COLORS).map(([type, color]) => (
+              <li key={type} className="inline-flex items-center gap-1.5">
+                <span className="w-3.5 rounded-full" style={{ backgroundColor: color, height: isMajorAspect(type) ? 2.5 : 1.25 }} />
+                {ASPECT_NAMES[type] ?? type}
+              </li>
+            ))}
+          </ul>
+        </div>
+        <details className="mt-3 border-t border-white/[0.06] pt-3">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center text-sm text-white/62 hover:text-white/85 [&::-webkit-details-marker]:hidden">
+            Текстовая версия карты
+          </summary>
+          <ul className="mt-3 grid gap-x-8 gap-y-1.5 text-sm leading-6 text-white/52 sm:grid-cols-2">
+            {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
+            {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
+            {axisEnds.map((end) => <li key={`text-${end.id}`}>{end.title}: {end.longitude.toFixed(2)}°</li>)}
+          </ul>
+        </details>
       </div>
-
-      <details className="border-t border-white/8 pt-3">
-        <summary className="cursor-pointer text-sm leading-6 text-white/55 hover:text-white/80">Текстовая версия карты</summary>
-        <ul className="mt-3 grid gap-x-8 gap-y-1.5 text-sm leading-6 text-white/50 sm:grid-cols-2">
-          {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
-          {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
-          {axisEnds.map((end) => <li key={`text-${end.id}`}>{end.title}: {end.longitude.toFixed(2)}°</li>)}
-        </ul>
-      </details>
     </div>
   );
 }
