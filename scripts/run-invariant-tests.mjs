@@ -27,9 +27,21 @@ const REAL_FAILURE_RE = /\n *FAIL[ \t]|Failed Tests/;
 
 function runVitest() {
   return new Promise((resolve) => {
+    const extra = process.argv.slice(2);
+    const hasWorkers = extra.some(
+      (a) => a.startsWith("--maxWorkers") || a === "--no-file-parallelism"
+    );
+    // Shared TEST_DATABASE_URL: parallel files TRUNCATE the same tables and
+    // produce "Account not found" / FK flakes. Override with --maxWorkers=N.
+    const args = [
+      "run",
+      "tests/invariants",
+      ...(hasWorkers ? [] : ["--maxWorkers=1"]),
+      ...extra,
+    ];
     const child = spawn(
       process.execPath,
-      [vitestCli, "run", "tests/invariants", ...process.argv.slice(2)],
+      [vitestCli, ...args],
       { cwd: ROOT, env: { ...process.env, TZ: "UTC" } }
     );
     // Tee output: stream live AND keep a bounded tail for signature checks.
