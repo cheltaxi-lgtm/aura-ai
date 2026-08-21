@@ -45,6 +45,9 @@ export function buildNatalPromptBlock(
       ["rising", "Асцендент"],
       ["midheaven", "MC"],
     ] as const) {
+      // ASC/MC come from the technical noon when birth time is unknown —
+      // never feed them to the model as facts in limited mode.
+      if (!chart.timeKnown && (key === "rising" || key === "midheaven")) continue;
       const line = signLine(label, w[key]);
       if (line) lines.push(line);
     }

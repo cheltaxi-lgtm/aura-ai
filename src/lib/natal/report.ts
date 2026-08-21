@@ -42,6 +42,8 @@ export interface NatalReport {
   sections: NatalReportSection[];
   disclaimer: string;
   methodology: string;
+  /** LLM model that produced the text — provenance for audits/regressions. */
+  model?: string;
 }
 
 export type NatalReportValidation =
@@ -646,6 +648,10 @@ export function validateNatalReport(
       sections: parsedSections,
       disclaimer: (root.disclaimer as string).trim(),
       methodology: (root.methodology as string).trim(),
+      // Preserve model provenance across re-validation/salvage of a stamped report.
+      ...(typeof root.model === "string" && root.model.trim()
+        ? { model: root.model.trim().slice(0, 120) }
+        : {}),
     },
   };
 }

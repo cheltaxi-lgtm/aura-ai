@@ -2,7 +2,8 @@ import { angularSeparation } from "./math";
 import { computeCompositeChart, sanitizeCompositeChart, type CompositeChart } from "./composite";
 import type { NatalChartRecord } from "./types";
 
-export const SYNASTRY_VERSION = "2.0" as const;
+// 2.1: unknown-time charts exclude the technical-noon ascendant from aspects/wheel.
+export const SYNASTRY_VERSION = "2.1" as const;
 export type SynastryDimensionKey =
   | "communication"
   | "emotional"
@@ -35,8 +36,8 @@ export type SynastrySummary = {
   crossAspects: SynastryCrossAspect[];
   dimensions: SynastryDimension[];
   composite: CompositeChart;
-  chartA?: { label: string | null; western: Record<string, unknown> } | null;
-  chartB?: { label: string | null; western: Record<string, unknown> } | null;
+  chartA?: { label: string | null; western: Record<string, unknown>; timeKnown?: boolean } | null;
+  chartB?: { label: string | null; western: Record<string, unknown>; timeKnown?: boolean } | null;
 };
 
 export type ClientSynastryPayload = SynastrySummary;
@@ -117,8 +118,11 @@ function bodyLongitude(western: Record<string, unknown>, key: string): number | 
   return typeof lon === "number" ? lon : null;
 }
 
-function collectBodies(western: Record<string, unknown>) {
+function collectBodies(western: Record<string, unknown>, timeKnown = true) {
   return BODY_KEYS.flatMap((key) => {
+    // Rising comes from the technical noon when birth time is unknown —
+    // exclude it from cross-aspects in limited mode.
+    if (key === "rising" && !timeKnown) return [];
     const lon = bodyLongitude(western, key);
     return lon == null ? [] : [{ key, label: BODY_LABELS[key] ?? key, longitude: lon }];
   });
@@ -126,10 +130,11 @@ function collectBodies(western: Record<string, unknown>) {
 
 export function computeCrossAspects(
   chartA: Record<string, unknown>,
-  chartB: Record<string, unknown>
+  chartB: Record<string, unknown>,
+  options?: { timeKnownA?: boolean; timeKnownB?: boolean }
 ): SynastryCrossAspect[] {
-  const aBodies = collectBodies(chartA);
-  const bBodies = collectBodies(chartB);
+  const aBodies = collectBodies(chartA, options?.timeKnownA !== false);
+  const bBodies = collectBodies(chartB, options?.timeKnownB !== false);
   const hits: SynastryCrossAspect[] = [];
 
   for (const a of aBodies) {
@@ -202,10 +207,14 @@ export function computeSynastryDimensions(
   });
 }
 
-function wheelOnlyWestern(western: Record<string, unknown>): Record<string, unknown> {
+function wheelOnlyWestern(
+  western: Record<string, unknown>,
+  timeKnown = true
+): Record<string, unknown> {
   const planets: Record<string, unknown> = {};
   for (const key of BODY_KEYS) {
     if (key === "sun" || key === "moon") continue;
+    if (key === "rising" && !timeKnown) continue;
     const body = (western.planets as Record<string, unknown> | undefined)?.[key];
     if (body && typeof body === "object") {
       const lon = (body as { longitude?: number }).longitude;
@@ -216,6 +225,7 @@ function wheelOnlyWestern(western: Record<string, unknown>): Record<string, unkn
   }
   const out: Record<string, unknown> = { planets };
   for (const key of ["sun", "moon", "rising"] as const) {
+    if (key === "rising" && !timeKnown) continue;
     const body = western[key];
     if (body && typeof body === "object") {
       const lon = (body as { longitude?: number }).longitude;
@@ -232,7 +242,12 @@ export function computeSynastry(
 ): SynastrySummary | null {
   if (!chartA.western || !chartB.western) return null;
 
-  const crossAspects = computeCrossAspects(chartA.western, chartB.western);
+  const timeKnownA = chartA.timeKnown !== false;
+  const timeKnownB = chartB.timeKnown !== false;
+  const crossAspects = computeCrossAspects(chartA.western, chartB.western, {
+    timeKnownA,
+    timeKnownB,
+  });
   const overallScore = scoreFromAspects(crossAspects);
   const highlights = crossAspects.slice(0, 5).map((a) => a.label);
   if (highlights.length === 0) {
@@ -248,11 +263,13 @@ export function computeSynastry(
     composite: computeCompositeChart(chartA.western, chartB.western),
     chartA: {
       label: labels?.a ?? null,
-      western: wheelOnlyWestern(chartA.western),
+      western: wheelOnlyWestern(chartA.western, timeKnownA),
+      timeKnown: timeKnownA,
     },
     chartB: {
       label: labels?.b ?? null,
-      western: wheelOnlyWestern(chartB.western),
+      western: wheelOnlyWestern(chartB.western, timeKnownB),
+      timeKnown: timeKnownB,
     },
   };
 }
@@ -265,6 +282,13 @@ export function sanitizeSynastryForClient(
   const highlights = Array.isArray((data as SynastrySummary).highlights)
     ? (data as SynastrySummary).highlights.filter((item): item is string => typeof item === "string").slice(0, 6)
     : [];
+  const chartA = (data as SynastrySummary).chartA;
+  const chartB = (data as SynastrySummary).chartB;
+  // Snapshots created before timeKnown was persisted keep legacy behavior;
+  // explicit false strips the technical-noon ascendant from replay.
+  const timeKnownA = chartA?.timeKnown !== false;
+  const timeKnownB = chartB?.timeKnown !== false;
+
   const rawAspects = Array.isArray((data as SynastrySummary).crossAspects)
     ? (data as SynastrySummary).crossAspects : [];
   const crossAspects = rawAspects.flatMap((item) => {
@@ -276,6 +300,8 @@ export function sanitizeSynastryForClient(
       typeof hit.aspect !== "string" || !SYNASTRY_RULES.some((rule) => rule.name === hit.aspect) ||
       typeof hit.orb !== "number" || !Number.isFinite(hit.orb)
     ) return [];
+    if (hit.bodyAKey === "rising" && !timeKnownA) return [];
+    if (hit.bodyBKey === "rising" && !timeKnownB) return [];
     const id = `${hit.bodyAKey}:${hit.aspect}:${hit.bodyBKey}`;
     return [{
       id,
@@ -289,9 +315,6 @@ export function sanitizeSynastryForClient(
   }).slice(0, 16);
   const dimensions = computeSynastryDimensions(crossAspects);
 
-  const chartA = (data as SynastrySummary).chartA;
-  const chartB = (data as SynastrySummary).chartB;
-
   return {
     version: SYNASTRY_VERSION,
     // The score and dimensions must describe the exact same sanitized aspect
@@ -302,10 +325,10 @@ export function sanitizeSynastryForClient(
     dimensions,
     composite: sanitizeCompositeChart((data as SynastrySummary).composite),
     chartA: chartA?.western
-      ? { label: chartA.label ?? null, western: wheelOnlyWestern(chartA.western) }
+      ? { label: chartA.label ?? null, western: wheelOnlyWestern(chartA.western, timeKnownA), timeKnown: timeKnownA }
       : null,
     chartB: chartB?.western
-      ? { label: chartB.label ?? null, western: wheelOnlyWestern(chartB.western) }
+      ? { label: chartB.label ?? null, western: wheelOnlyWestern(chartB.western, timeKnownB), timeKnown: timeKnownB }
       : null,
   };
 }

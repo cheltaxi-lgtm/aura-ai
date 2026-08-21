@@ -62,6 +62,9 @@ export function resolveFallbackCity(query: string): FallbackCity | null {
   if (!q) return null;
   const exact = FALLBACK_CITIES.find((c) => c.query === q);
   if (exact) return exact;
-  const starts = FALLBACK_CITIES.find((c) => c.query.startsWith(q) || q.startsWith(c.query));
+  // Prefix resolution is only safe in one direction: a longer user query that
+  // starts with a known city ("москва центр"). The reverse ("мо" → Москва)
+  // would silently bind a typo to a major city and shift the whole chart.
+  const starts = FALLBACK_CITIES.find((c) => q.startsWith(c.query));
   return starts ?? null;
 }

@@ -9,6 +9,16 @@ import {
   getOrComputeNatalChart,
 } from "@/lib/services/natal-chart-service";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
+import { stripUnreliableAngles } from "@/lib/natal/western";
+import type { NatalChartRecord } from "@/lib/natal/types";
+
+function toClientNatalChart(chart: NatalChartRecord) {
+  const { interpretationClaims: _claims, ...rest } = chart;
+  if (!rest.timeKnown && rest.western) {
+    return { ...rest, western: stripUnreliableAngles(rest.western) };
+  }
+  return rest;
+}
 
 function natalCalculationError(error: unknown) {
   if (error instanceof Error && error.message === "INVALID_BIRTH_DATE") {
@@ -42,8 +52,7 @@ export async function GET() {
     // Claims are server-side nonces used to serialize paid generation. They
     // are not chart data and must not be exposed in a browser payload.
     if (!chart) return NextResponse.json({ enabled: true, chart: null });
-    const { interpretationClaims: _claims, ...clientChart } = chart;
-    return NextResponse.json({ enabled: true, chart: clientChart });
+    return NextResponse.json({ enabled: true, chart: toClientNatalChart(chart) });
   } catch (error) {
     return natalCalculationError(error);
   }
@@ -64,7 +73,10 @@ export async function POST(request: NextRequest) {
 
   try {
     const chart = await computeAndStoreNatalChart(resolved.profileUserId);
-    return NextResponse.json({ ok: true, enabled: true, chart });
+    if (!chart) {
+      return NextResponse.json({ error: "natal_profile_incomplete" }, { status: 400 });
+    }
+    return NextResponse.json({ ok: true, enabled: true, chart: toClientNatalChart(chart) });
   } catch (error) {
     return natalCalculationError(error);
   }

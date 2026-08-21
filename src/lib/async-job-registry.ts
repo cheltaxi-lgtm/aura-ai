@@ -43,8 +43,16 @@ const NATAL_INTERPRETATION: PaidJobKindConfig = {
     body: { ...job.input, async: false },
   }),
   matchesWorkerPath: (pathname) => pathname === "/api/natal-chart/interpretation",
+  // forceRegenerate must bust dedupe: returning the in-flight non-regenerating
+  // job would silently deliver the stale report the user explicitly refused.
   buildDedupeKey: (userId, payload) =>
-    hashDedupeParts([userId, "natal_interpretation", payload.tradition, payload.engineVersion]),
+    hashDedupeParts([
+      userId,
+      "natal_interpretation",
+      payload.tradition,
+      payload.engineVersion,
+      payload.forceRegenerate === true,
+    ]),
 };
 
 const NATAL_FORECAST: PaidJobKindConfig = {
@@ -67,6 +75,7 @@ const NATAL_FORECAST: PaidJobKindConfig = {
       payload.tradition,
       payload.horizon,
       payload.engineVersion,
+      payload.forceRegenerate === true,
     ]),
 };
 

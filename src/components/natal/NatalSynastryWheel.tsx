@@ -42,6 +42,9 @@ type Props = {
   labelA?: string;
   labelB?: string;
   size?: number;
+  // Default true keeps legacy snapshots (pre-timeKnown payloads) unchanged.
+  timeKnownA?: boolean;
+  timeKnownB?: boolean;
 };
 
 function longitudeOf(body: unknown): number | null {
@@ -56,7 +59,7 @@ function polar(cx: number, cy: number, r: number, longitude: number) {
   return { x: cx + r * Math.cos(rad), y: cy - r * Math.sin(rad) };
 }
 
-function collectPlanets(western: Record<string, unknown>) {
+function collectPlanets(western: Record<string, unknown>, timeKnown: boolean) {
   const list: Array<{ key: string; label: string; longitude: number }> = [];
   for (const p of PLANET_KEYS) {
     const body =
@@ -66,7 +69,9 @@ function collectPlanets(western: Record<string, unknown>) {
     const longitude = longitudeOf(body);
     if (longitude != null) list.push({ key: p.key, label: p.label, longitude });
   }
-  const rising = longitudeOf(western.rising);
+  // Defense in depth: never paint a technical-noon ascendant for unknown time,
+  // even if a stale payload still carries one.
+  const rising = timeKnown ? longitudeOf(western.rising) : null;
   if (rising != null) list.push({ key: "rising", label: "ASC", longitude: rising });
   return list;
 }
@@ -84,6 +89,8 @@ export default function NatalSynastryWheel({
   labelA = "A",
   labelB = "B",
   size = 300,
+  timeKnownA = true,
+  timeKnownB = true,
 }: Props) {
   const titleId = useId();
   const descriptionId = useId();
@@ -93,11 +100,11 @@ export default function NatalSynastryWheel({
   const innerR = size * 0.3;
   const ringA = size * 0.34;
   const ringB = size * 0.42;
-  const ascA = longitudeOf(chartA.rising);
+  const ascA = timeKnownA ? longitudeOf(chartA.rising) : null;
   const longitudeRotation = ascA == null ? 0 : 270 - ascA;
 
-  const planetsA = useMemo(() => collectPlanets(chartA), [chartA]);
-  const planetsB = useMemo(() => collectPlanets(chartB), [chartB]);
+  const planetsA = useMemo(() => collectPlanets(chartA, timeKnownA), [chartA, timeKnownA]);
+  const planetsB = useMemo(() => collectPlanets(chartB, timeKnownB), [chartB, timeKnownB]);
   const [selectedAspect, setSelectedAspect] = useState<string | null>(null);
   const [selectedBody, setSelectedBody] = useState<string | null>(null);
   const [filter, setFilter] = useState<"all" | "supportive" | "challenging">("all");

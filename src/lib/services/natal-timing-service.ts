@@ -173,10 +173,11 @@ export async function getCachedPersonalTiming(userId: string): Promise<PersonalT
      WHERE user_id = $1
        AND horizon_days IN (7, 30)
        AND timing_data IS NOT NULL
+       AND engine_version = $2
        AND generated_at > NOW() - INTERVAL '48 hours'
      ORDER BY horizon_days ASC, generated_at DESC
      LIMIT 1`,
-    [userId]
+    [userId, TIMING_ENGINE_VERSION]
   );
   return rows[0]?.timing_data ?? null;
 }

@@ -194,7 +194,6 @@ export type NatalReportHistoryItem = {
   structuredData: Record<string, unknown> | null;
   evidenceRefs: unknown[] | Record<string, unknown> | null;
   runeCost: number | null;
-  chargeTransactionId: string | null;
   createdAt: string;
   updatedAt: string;
 };
@@ -210,7 +209,6 @@ type NatalReportHistoryRow = {
   structured_data: Record<string, unknown> | null;
   evidence_refs: unknown[] | Record<string, unknown> | null;
   rune_cost: number | null;
-  charge_transaction_id: string | null;
   created_at: Date | string;
   updated_at: Date | string;
 };
@@ -227,7 +225,6 @@ function mapNatalReportHistoryRow(row: NatalReportHistoryRow): NatalReportHistor
     structuredData: row.structured_data,
     evidenceRefs: row.evidence_refs,
     runeCost: row.rune_cost,
-    chargeTransactionId: row.charge_transaction_id,
     createdAt: new Date(row.created_at).toISOString(),
     updatedAt: new Date(row.updated_at).toISOString(),
   };
@@ -243,7 +240,7 @@ export async function listCurrentUserNatalReportHistory(
   const { rows } = await query<NatalReportHistoryRow>(
     `SELECT id, birth_fingerprint, engine_version, ephemeris, tradition,
             report_type, content, structured_data, evidence_refs, rune_cost,
-            charge_transaction_id, created_at, updated_at
+            created_at, updated_at
      FROM natal_report_history
      WHERE user_id = $1
      ORDER BY created_at DESC, id DESC
@@ -285,7 +282,7 @@ export async function deleteCurrentUserNatalReport(
       client,
       `SELECT id, birth_fingerprint, engine_version, ephemeris, tradition,
               report_type, content, structured_data, evidence_refs, rune_cost,
-              charge_transaction_id, created_at, updated_at
+              created_at, updated_at
        FROM natal_report_history
        WHERE id = $1 AND user_id = $2
        FOR UPDATE`,
@@ -406,7 +403,7 @@ export async function saveCurrentNatalInterpretation(params: {
        ) DO NOTHING
        RETURNING id, birth_fingerprint, engine_version, ephemeris, tradition,
                  report_type, content, structured_data, evidence_refs, rune_cost,
-                 charge_transaction_id, created_at, updated_at`,
+                 created_at, updated_at`,
       [
         params.userId,
         params.expectedBirthFingerprint,
@@ -430,7 +427,7 @@ export async function saveCurrentNatalInterpretation(params: {
           client,
           `SELECT id, birth_fingerprint, engine_version, ephemeris, tradition,
                   report_type, content, structured_data, evidence_refs, rune_cost,
-                  charge_transaction_id, created_at, updated_at
+                  created_at, updated_at
            FROM natal_report_history
            WHERE user_id = $1
              AND birth_fingerprint = $2

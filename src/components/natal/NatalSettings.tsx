@@ -108,7 +108,7 @@ export default function NatalSettings() {
       <div className="space-y-6 p-5">
         {error ? <p className="rounded-xl border border-rose-400/25 bg-rose-400/[0.07] p-3 text-sm text-rose-200" role="alert">{error}</p> : null}
         {notice ? <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] p-3 text-sm text-emerald-200/80" role="status">{notice}</p> : null}
-        {!ai || !events ? <p className="flex items-center gap-2 text-sm text-white/45" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Загружаем настройки…</p> : null}
+        {!ai || !events ? <p className="flex items-center gap-2 text-sm text-white/45" role="status"><Loader2 className="h-4 w-4 motion-safe:animate-spin" /> Загружаем настройки…</p> : null}
         {ai ? <section aria-labelledby="ai-context-title">
           <h3 id="ai-context-title" className="font-display text-lg text-amber-50">Контекст для Shri Raj</h3>
           <p className="mt-2 text-xs leading-5 text-white/45">По умолчанию выключены.</p>

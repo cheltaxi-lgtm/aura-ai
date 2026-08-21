@@ -186,7 +186,9 @@ export function buildNatalEvidence(
   // Jyotish interpretation. Vedic current-period evidence comes from dasha.
   const timing = options.tradition === "vedic" ? null : options.timing;
   if (timing) {
-    for (const event of timing.events.slice(0, 24)) {
+    for (const event of timing.events
+      .filter((item) => chart.timeKnown || item.targetKey !== "rising")
+      .slice(0, 24)) {
       const subject = event.kind === "ingress"
         ? `${russianPlanetLabel(event.planetKey)}: ${event.previousSign ?? "знак не указан"} → ${event.sign ?? "знак не указан"}`
         : `${russianPlanetLabel(event.planetKey)} · ${ASPECT_NAMES[event.aspect ?? ""] ?? "аспект не указан"} · ${russianPlanetLabel(event.targetKey ?? "")}`;
@@ -211,8 +213,10 @@ export function buildNatalEvidence(
       label: "Солнечное возвращение",
       value: timing.solarReturn.exactAtLocal,
       sourcePath: "timing.solarReturn.exactAtLocal",
-      confidence: "high",
-      uncertainty: "Место рождения принято как место возвращения; дома рассчитаны для этой точки.",
+      confidence: chart.timeKnown ? "high" : "medium",
+      uncertainty: chart.timeKnown
+        ? "Место рождения принято как место возвращения; дома рассчитаны для этой точки."
+        : "Время рождения неизвестно: момент возвращения приблизителен, дома и углы карты года не используются.",
       deepLink: "/cabinet/astrology?tab=timing#solar-return",
     });
     for (const aspect of timing.progressions.aspectsToNatal.slice(0, 12)) {
@@ -231,7 +235,11 @@ export function buildNatalEvidence(
       });
     }
   } else if (chart.transits?.length) {
-    chart.transits.slice(0, 12).forEach((transit, index) => evidence.push({
+    chart.transits.filter((transit) =>
+      // Snapshots stored before the unknown-time transit fix may still carry
+      // ascendant-targeted hits; never surface them in limited mode.
+      chart.timeKnown || transit.targetKey !== "rising"
+    ).slice(0, 12).forEach((transit, index) => evidence.push({
       id: stableId("timing", "transit", `${transit.kind}-${transit.date ?? "current"}-${transit.planet}-${stableHash(transit.note)}`),
       tradition: "timing",
       category: "timing",

@@ -547,7 +547,7 @@ export default function NatalCompatibility() {
               <div className="mt-4 flex flex-wrap gap-3">
                 <button type="button" disabled={busy !== null || !participantConsent} onClick={() => void acceptInvite()}
                   className="btn-luxe btn-luxe--md btn-luxe--gold">
-                  {busy === "accept" ? <Loader2 className="h-4 w-4 animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
+                  {busy === "accept" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Принять приглашение
                 </button>
                 <Link href="/cabinet" className="btn-luxe btn-luxe--md btn-luxe--ghost">
@@ -647,7 +647,7 @@ export default function NatalCompatibility() {
               <div className="sm:col-span-2">
                 <button type="button" disabled={busy !== null} onClick={() => void createManual()}
                   className="btn-luxe btn-luxe--md btn-luxe--gold">
-                  {busy === "create" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Plus className="h-4 w-4" />}
+                  {busy === "create" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Plus className="h-4 w-4" />}
                   Рассчитать совместимость
                 </button>
               </div>
@@ -665,7 +665,7 @@ export default function NatalCompatibility() {
               </Field>
               <button type="button" disabled={busy !== null} onClick={() => void createInvite()}
                 className="btn-luxe btn-luxe--md btn-luxe--gold mt-4">
-                {busy === "invite" ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                {busy === "invite" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <UserPlus className="h-4 w-4" />}
                 Создать приглашение
               </button>
               {inviteUrl ? <div className="mt-4 flex flex-col gap-2 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.04] p-4 sm:flex-row sm:items-center">
@@ -686,7 +686,7 @@ export default function NatalCompatibility() {
           <p className="mt-1 text-xs text-white/40">Расчёты и купленные отчёты остаются доступны здесь.</p>
         </div>
         <div className="p-5">
-          {loading ? <p className="flex items-center gap-2 text-sm text-white/45"><Loader2 className="h-4 w-4 animate-spin" /> Загружаем…</p> : null}
+          {loading ? <p className="flex items-center gap-2 text-sm text-white/45"><Loader2 className="h-4 w-4 motion-safe:animate-spin" /> Загружаем…</p> : null}
           {!loading && !records.length ? <p className="text-sm text-white/40">Сохранённых совместимостей пока нет.</p> : null}
           <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
             {records.map((record) => (
@@ -779,7 +779,8 @@ function CompatibilityViewer({
       </details> : null}
       {synastry.chartA?.western && synastry.chartB?.western ? <div className="mt-6 grid gap-6 lg:grid-cols-2">
         <NatalSynastryWheel chartA={synastry.chartA.western} chartB={synastry.chartB.western}
-          crossAspects={synastry.crossAspects} labelA={record.ownerLabel} labelB={record.partnerLabel} />
+          crossAspects={synastry.crossAspects} labelA={record.ownerLabel} labelB={record.partnerLabel}
+          timeKnownA={synastry.chartA.timeKnown !== false} timeKnownB={synastry.chartB.timeKnown !== false} />
         <CompositeWheel composite={synastry.composite} />
       </div> : null}
     </> : null}
@@ -823,7 +824,7 @@ function CompatibilityViewer({
       </label>
       <button type="button" disabled={busy !== null || !aiDataConsent} onClick={onGenerate}
         className="btn-luxe btn-luxe--md btn-luxe--gold mt-4 disabled:opacity-50">
-        {busy === "generate" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+        {busy === "generate" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}
         Получить полный отчёт · {cost} ᚢ
       </button>
     </div> : record.status === "ready" ? <p className="mt-6 text-sm text-white/45">Расчёт готов. Полный отчёт может заказать инициатор приглашения.</p> : null}

@@ -11,6 +11,7 @@ import {
   markAsyncJobNeedsRegeneration,
   markAsyncJobRefunded,
   releaseAsyncJobSaveClaim,
+  REPORT_JOB_MAX_ATTEMPTS,
   retryOrFailReportJob,
   updateAsyncJobProgress,
 } from "@/lib/async-jobs";
@@ -66,6 +67,27 @@ export async function trackWorkerJobRefunded(request: NextRequest): Promise<void
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return;
   await markAsyncJobRefunded(jobId);
+}
+
+/**
+ * Refund decision for a failing worker-driven paid route. When report retry
+ * is enabled and the job WILL be requeued, the charge must stay in place —
+ * the retry attempt reuses it (retryOrFailReportJob refunds once the retry
+ * budget is exhausted). Refunding before a requeue would let the next
+ * attempt charge the user twice for one report.
+ */
+export async function shouldRefundBeforeWorkerFail(
+  request: NextRequest,
+  errorCode: string
+): Promise<boolean> {
+  const jobId = getAsyncJobIdFromRequest(request);
+  // Plain synchronous call (no job header) — retry is impossible, refund.
+  if (!jobId) return true;
+  if (!isReportJobRetryEnabled() || !isRetryableReportErrorCode(errorCode)) return true;
+  const job = await getAsyncJobById(jobId);
+  if (!job || job.status !== "running" || !isReportJobKind(job.kind)) return true;
+  // Mirror retryOrFailReportJob: a requeue happens only under the attempt budget.
+  return job.attempt_count >= REPORT_JOB_MAX_ATTEMPTS;
 }
 
 /** Route is source of truth: mark job completed when the handler succeeds. */

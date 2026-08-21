@@ -44,7 +44,6 @@ export type CompatibilityRecord = {
   report: CompatibilityReport | null;
   evidence: CompatibilityEvidence | null;
   runeCost: number | null;
-  chargeTransactionId: string | null;
   expiresAt: string;
   claimedAt: string | null;
   completedAt: string | null;
@@ -93,7 +92,6 @@ function mapRow(row: CompatibilityRow): CompatibilityRecord {
     report: row.report_data,
     evidence: row.evidence_refs,
     runeCost: row.rune_cost,
-    chargeTransactionId: row.charge_transaction_id,
     expiresAt: new Date(row.expires_at).toISOString(),
     claimedAt: row.claimed_at ? new Date(row.claimed_at).toISOString() : null,
     completedAt: row.completed_at ? new Date(row.completed_at).toISOString() : null,
@@ -259,7 +257,18 @@ export async function getInviteStatus(
   if (row.canonical_report_id) {
     return getCompatibilityRecord(row.canonical_report_id, viewerUserId);
   }
-  return mapRow(row);
+  const mapped = mapRow(row);
+  // Pending invite status is readable by any authenticated bearer of the
+  // opaque token — do not leak the owner's user id to a stranger.
+  if (
+    mapped.status !== "completed" &&
+    mapped.status !== "ready" &&
+    mapped.ownerUserId !== viewerUserId &&
+    mapped.participantUserId !== viewerUserId
+  ) {
+    return { ...mapped, ownerUserId: "" };
+  }
+  return mapped;
 }
 
 export async function acceptCompatibilityInvite(params: {
@@ -328,6 +337,19 @@ export async function acceptCompatibilityInvite(params: {
       [invite.owner_user_id, pairFp, invite.id]
     );
     if (duplicate.rows[0]) {
+      // Give the accepting participant durable access to the canonical row when
+      // it has no participant yet — otherwise their later GET by id/token 404s
+      // and only the one-shot accept body ever showed the result.
+      if (!duplicate.rows[0].participant_user_id) {
+        await queryClient(
+          client,
+          `UPDATE natal_compatibility_reports
+           SET participant_user_id = $2, updated_at = NOW()
+           WHERE id = $1 AND participant_user_id IS NULL`,
+          [duplicate.rows[0].id, params.participantUserId]
+        );
+        duplicate.rows[0].participant_user_id = params.participantUserId;
+      }
       await queryClient(
         client,
         `UPDATE natal_compatibility_reports

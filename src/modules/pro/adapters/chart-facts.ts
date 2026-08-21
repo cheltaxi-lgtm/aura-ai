@@ -212,7 +212,7 @@ export async function computeNatalFacts(
 
   const evidenceText = [
     `Дата: ${n.birthDate}`,
-    `Время: ${timeKnown ? timeStr : "неизвестно (12:00)"}`,
+    `Время: ${timeKnown ? timeStr : "неизвестно"}`,
     `Место: ${n.birthPlace || "—"} (${tz})`,
     `Big Three: ${String(western.bigThree || "")}`,
     "",

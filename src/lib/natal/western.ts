@@ -47,7 +47,6 @@ export async function computeWesternChart(params: {
   longitude: number;
   timeKnown: boolean;
 }): Promise<Record<string, unknown>> {
-  void params.timeKnown;
   const birth = toCelestineBirthData(params);
   const planetsRaw = calculatePlanets(birth, CHART_OPTIONS);
   const { houses: houseBlock, angles, warnings: houseWarnings } = calculateHouseCusps(birth, {
@@ -117,7 +116,7 @@ export async function computeWesternChart(params: {
   const utHour = params.localHourDecimal - params.utcOffsetHours;
   const jd = dateToJulianDay(y, m, d, utHour);
 
-  return {
+  const chart: Record<string, unknown> = {
     ephemeris: "celestine",
     houseSystem: houseBlock.systemName,
     sun,
@@ -133,6 +132,25 @@ export async function computeWesternChart(params: {
     bigThree: `${sunSign} Sun, ${moonSign} Moon, ${risingSign} Rising`,
     julianDay: jd,
     houseWarnings,
+  };
+  return params.timeKnown ? chart : stripUnreliableAngles(chart);
+}
+
+/**
+ * Technical-noon ASC/MC/houses are not product facts. Drop them from the
+ * canonical western payload whenever birth time is unknown.
+ */
+export function stripUnreliableAngles(western: Record<string, unknown>): Record<string, unknown> {
+  const { rising: _r, midheaven: _m, houses: _h, planetHouses: _ph, ...rest } = western;
+  const sunSign = (rest.sun as { sign?: { name?: string } } | null | undefined)?.sign?.name ?? "?";
+  const moonSign = (rest.moon as { sign?: { name?: string } } | null | undefined)?.sign?.name ?? "?";
+  return {
+    ...rest,
+    bigThree: `${sunSign} Sun, ${moonSign} Moon`,
+    houseWarnings: [
+      ...(Array.isArray(rest.houseWarnings) ? rest.houseWarnings.filter((item): item is string => typeof item === "string") : []),
+      "Время рождения неизвестно — асцендент, MC и дома не включены в расчёт.",
+    ],
   };
 }
 

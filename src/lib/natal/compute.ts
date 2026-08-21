@@ -10,12 +10,25 @@ import {
 } from "./time";
 import type { NatalChartInput, NatalChartRecord, NatalPlace } from "./types";
 import { NATAL_ENGINE_VERSION, buildBirthFingerprint } from "./types";
-import { computeWesternChart } from "./western";
+import { computeWesternChart, stripUnreliableAngles } from "./western";
 import { normalizeVedicChart } from "./vedic";
 
 function normalizeBirthDate(raw: string): string {
   const d = raw.trim().slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(d)) {
+    throw new Error("INVALID_BIRTH_DATE");
+  }
+  // Regex alone lets impossible civil dates (2001-02-29, 2026-13-40) reach the
+  // engines, where they silently roll over to a different day and shift every
+  // position. Reject them instead of computing a silently wrong chart.
+  const [year, month, day] = d.split("-").map(Number);
+  const probe = new Date(Date.UTC(year, month - 1, day, 12));
+  if (
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day ||
+    probe.getTime() > Date.now()
+  ) {
     throw new Error("INVALID_BIRTH_DATE");
   }
   return d;
@@ -45,7 +58,9 @@ export async function computeNatalChartRecord(
     input.place.label.trim()
   ) {
     place = {
-      label: input.place.label.trim(),
+      // Label reaches LLM prompts — collapse whitespace/newlines and cap length
+      // so a crafted place string can't inject instructions.
+      label: input.place.label.trim().replace(/\s+/g, " ").slice(0, 120),
       latitude: input.place.latitude,
       longitude: input.place.longitude,
       timezone: input.place.timezone.trim(),
@@ -92,6 +107,9 @@ export async function computeNatalChartRecord(
         place.longitude
       ) as Record<string, unknown>;
       western = { ...calculated, ephemeris: "natalengine" };
+      if (!effectiveTimeKnown) {
+        western = stripUnreliableAngles(western);
+      }
     } else {
       western = await computeWesternChart({
         birthDate,

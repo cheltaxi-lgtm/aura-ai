@@ -21,6 +21,7 @@ import { angularSeparation, houseForLongitude } from "../src/lib/natal/math.ts";
 import { computeAspects } from "../src/lib/natal/aspects.ts";
 import { toCelestineBirthData } from "../src/lib/natal/celestine/adapter.ts";
 import { computeWesternChart } from "../src/lib/natal/western.ts";
+import { resolveBirthUtcOffsetHours } from "../src/lib/natal/time.ts";
 import { addDaysInTimezone } from "../src/lib/natal/sky.ts";
 import { searchFallbackCities, resolveFallbackCity } from "../src/lib/natal/cities-fallback.ts";
 import { searchGeonames, geonamesIndexLoaded } from "../src/lib/natal/geonames.ts";
@@ -535,6 +536,43 @@ async function main() {
   assert(signName(moscow.western?.sun) === "Pisces", "moscow: sun in Pisces");
   assertNear(sunLongitude(moscow), 359.0, 1.2, "moscow: sun longitude near 0° Aries/Pisces cusp");
 
+  // Historical timezone/DST: USSR decree time + summer DST vs winter standard.
+  assert(
+    resolveBirthUtcOffsetHours("1985-07-15", "12:00", "Europe/Moscow") === 4 &&
+      resolveBirthUtcOffsetHours("1985-01-15", "12:00", "Europe/Moscow") === 3,
+    "historical Europe/Moscow offset honors 1985 DST (+4 summer / +3 winter)"
+  );
+  assert(
+    resolveBirthUtcOffsetHours("2012-06-15", "12:00", "Europe/Moscow") === 4 &&
+      resolveBirthUtcOffsetHours("2015-01-15", "12:00", "Europe/Moscow") === 3,
+    "Europe/Moscow 2011-2014 permanent-DST era differs from post-2014 +3"
+  );
+
+  const leap = await testCase("leap", {
+    birthDate: "2000-02-29",
+    birthTime: "10:30",
+    birthCity: "New York",
+    timeKnown: true,
+  });
+  assert(signName(leap.western?.sun) === "Pisces", "leap: Feb-29 sun in Pisces");
+  assert(leap.timeKnown === true && Boolean(leap.western?.rising), "leap: known time keeps ascendant");
+
+  const midnight = await testCase("midnight", {
+    birthDate: "1995-07-04",
+    birthTime: "00:00",
+    birthCity: "London",
+    timeKnown: true,
+  });
+  assert(midnight.timeKnown === true, "midnight 00:00 stays known time");
+  assert(Boolean(midnight.western?.rising), "midnight 00:00 computes ascendant");
+  const lateNight = await testCase("late-night", {
+    birthDate: "1995-07-04",
+    birthTime: "23:59",
+    birthCity: "London",
+    timeKnown: true,
+  });
+  assert(lateNight.timeKnown === true, "23:59 stays known time");
+
   const unknownTime = await testCase("unknown-time", {
     birthDate: "1992-11-02",
     birthCity: "London",
@@ -543,6 +581,13 @@ async function main() {
   assert(!unknownTime.vedic?.positions.ascendant, "unknown-time: D1 lagna excluded");
   assert(!unknownTime.vedic?.navamsa.ascendant, "unknown-time: D9 ascendant excluded");
   assert(unknownTime.vedic?.houses === null, "unknown-time: whole-sign houses excluded");
+  assert(
+    !unknownTime.western?.rising &&
+      !unknownTime.western?.midheaven &&
+      !unknownTime.western?.houses &&
+      !unknownTime.western?.planetHouses,
+    "unknown-time western snapshot omits ASC/MC/houses"
+  );
   const unknownEvidence = buildNatalEvidence(unknownTime);
   assert(
     unknownEvidence.every((item) =>
@@ -552,6 +597,56 @@ async function main() {
       !item.sourcePath.includes("ascendant")
     ),
     "unknown-time evidence excludes houses and angles"
+  );
+  const unknownPrompt = buildNatalPromptBlock(unknownTime);
+  assert(
+    !/^Асцендент:/m.test(unknownPrompt) && !/^MC:/m.test(unknownPrompt),
+    "unknown-time prompt excludes ASC/MC fact lines"
+  );
+  const unknownTransits = await computeDeepTransits(unknownTime, { correlateMemory: false });
+  assert(
+    unknownTransits.every((t) => t.targetKey !== "rising" && !/Асцендент/.test(t.note ?? "")),
+    "unknown-time transits exclude ascendant target"
+  );
+  const solarReturnUnknown = await computeSolarReturn({ natal: unknownTime, birthDate: "1992-11-02", year: 2026 });
+  assert(
+    solarReturnUnknown.houses === null &&
+      solarReturnUnknown.positions.every((position) => position.house == null) &&
+      /[Вв]ремя рождения неизвестно/.test(solarReturnUnknown.method),
+    "unknown-time solar return omits houses/angles and discloses approximate moment"
+  );
+  const synUnknown = computeSynastry(ny, unknownTime);
+  assert(
+    synUnknown != null &&
+      synUnknown.crossAspects.every((a) => a.bodyBKey !== "rising") &&
+      synUnknown.chartB?.western != null &&
+      !("rising" in synUnknown.chartB.western),
+    "unknown-time synastry excludes partner rising from aspects and wheel"
+  );
+  const synUnknownA = computeSynastry(unknownTime, ny);
+  assert(
+    synUnknownA != null &&
+      synUnknownA.crossAspects.every((a) => a.bodyAKey !== "rising") &&
+      synUnknownA.chartA?.western != null &&
+      !("rising" in synUnknownA.chartA.western),
+    "unknown-time synastry excludes own rising from aspects and wheel"
+  );
+  const synUnknownReplay = sanitizeSynastryForClient({
+    version: "2.0",
+    overallScore: 50,
+    highlights: [],
+    crossAspects: [
+      { id: "sun:trine:rising", bodyAKey: "sun", bodyBKey: "rising", aspect: "trine", orb: 1, label: "x", strength: 0.8 },
+    ],
+    chartA: { label: "A", western: { sun: { longitude: 100 } }, timeKnown: true },
+    chartB: { label: "B", western: { rising: { longitude: 10 } }, timeKnown: false },
+  });
+  assert(
+    synUnknownReplay != null &&
+      synUnknownReplay.crossAspects.every((a) => a.bodyBKey !== "rising") &&
+      synUnknownReplay.chartB?.western != null &&
+      !("rising" in synUnknownReplay.chartB.western),
+    "synastry sanitize strips rising on unknown-time replay"
   );
 
   const polar = await computeWesternChart({

@@ -32,6 +32,7 @@ import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
   beginWorkerJobSave,
   chargeRuneActionForWorkerJob,
+  shouldRefundBeforeWorkerFail,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobRefunded,
@@ -112,12 +113,17 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   const evidence = buildCompatibilityEvidence(claim.record.synastry);
+  // Snapshots persist per-chart timeKnown; absent flag means legacy known-time.
+  const eitherTimeUnknown =
+    claim.record.synastry?.chartA?.timeKnown === false ||
+    claim.record.synastry?.chartB?.timeKnown === false;
   const compatUser = await getUserById(auth.profileUserId).catch(() => null);
   const systemPrompt = await appendNatalPersonalizationLens(
     await wrapSystemPrompt(`Ты — астрологический аналитик Zovus.
 Создай проверяемый отчёт о совместимости на русском языке.
 Используй ТОЛЬКО рассчитанный evidence ниже. Не выдумывай положения, аспекты,
 биографические факты или даты. Не делай предсказаний и не упоминай координаты.
+${eitherTimeUnknown ? "У одного из партнёров время рождения неизвестно: не заявляй дома, ASC, MC или лагну и не делай выводов из асцендента; явно отрази неопределённость там, где вывод зависит от точного времени." : ""}
 ${compatibilityReportJsonInstructions()}
 
 EVIDENCE:
@@ -239,20 +245,27 @@ ${formatCompatibilityEvidence(evidence)}`),
         "[natal-compatibility] validation failed:",
         validation.errors.slice(0, 12).join("; ")
       );
-      await rollback();
+      // When report retry requeues this job the charge must survive — the next
+      // attempt reuses it. Refund only when no requeue will happen.
+      const refundNow = await shouldRefundBeforeWorkerFail(request, "invalid_model_report");
+      if (refundNow) await rollback();
       await trackWorkerJobFailed(
         request,
-        "Модель не смогла создать проверяемый отчёт. Оплата возвращена.",
+        refundNow
+          ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена."
+          : "Модель не смогла создать проверяемый отчёт. Повторяем попытку.",
         {
-          refunded: true,
+          refunded: refundNow,
           errorCode: "invalid_model_report",
         }
       );
       return NextResponse.json(
         {
           error: "invalid_model_report",
-          refunded: true,
-          message: "Модель не смогла создать проверяемый отчёт. Оплата возвращена.",
+          refunded: refundNow,
+          message: refundNow
+            ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена."
+            : "Модель не смогла создать проверяемый отчёт. Повторяем попытку.",
         },
         { status: 502 }
       );
@@ -260,6 +273,12 @@ ${formatCompatibilityEvidence(evidence)}`),
 
     if (!(await beginWorkerJobSave(request))) {
       await rollback();
+      // The save barrier was lost (timeout/abort): refund landed, so close the
+      // job terminally instead of leaving it running until the reaper.
+      await trackWorkerJobFailed(request, "generation_timeout", {
+        refunded: true,
+        errorCode: "generation_claim_lost",
+      });
       return NextResponse.json(
         { error: "generation_timeout", refunded: true },
         { status: 409 }
@@ -269,7 +288,7 @@ ${formatCompatibilityEvidence(evidence)}`),
       id,
       ownerUserId: auth.profileUserId,
       claimToken: claim.token,
-      report: validation.report,
+      report: { ...validation.report, model: natalModel },
       evidence,
       runeCost: charge.spentRunes,
       chargeTransactionId: charge.transactionId,
@@ -289,9 +308,6 @@ ${formatCompatibilityEvidence(evidence)}`),
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (error) {
-    await rollback().catch(() => {
-      console.warn("[natal-compatibility] billing rollback failed");
-    });
     if (error instanceof InsufficientFundsError) {
       await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
       return NextResponse.json(
@@ -299,13 +315,22 @@ ${formatCompatibilityEvidence(evidence)}`),
         { status: 402 }
       );
     }
+    // Keep the charge when report retry will requeue this job (the next attempt
+    // reuses it); refund only when the failure is terminal.
+    const refundNow = await shouldRefundBeforeWorkerFail(request, "generation_failed");
+    if (refundNow) {
+      await rollback().catch(() => {
+        console.warn("[natal-compatibility] billing rollback failed");
+      });
+    }
+    const refunded = refundNow && rollbackAttempted;
     console.warn("[natal-compatibility] generation failed");
     await trackWorkerJobFailed(request, "generation_failed", {
-      refunded: rollbackAttempted,
+      refunded,
       errorCode: "generation_failed",
     });
     return NextResponse.json(
-      { error: "generation_failed", refunded: rollbackAttempted },
+      { error: "generation_failed", refunded },
       { status: 502 }
     );
   } finally {

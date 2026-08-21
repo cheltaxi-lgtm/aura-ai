@@ -64,9 +64,15 @@ function natalLongitude(western: Record<string, unknown>, key: string): number |
   return typeof lon === "number" ? lon : null;
 }
 
-function collectNatalBodies(western: Record<string, unknown>): Array<{ key: string; label: string; longitude: number }> {
+function collectNatalBodies(
+  western: Record<string, unknown>,
+  timeKnown: boolean
+): Array<{ key: string; label: string; longitude: number }> {
   const out: Array<{ key: string; label: string; longitude: number }> = [];
-  for (const key of [...NATAL_TARGET_KEYS, "rising"] as const) {
+  // Rising comes from the technical noon when birth time is unknown — never
+  // use it as a transit target in limited mode.
+  const keys = timeKnown ? ([...NATAL_TARGET_KEYS, "rising"] as const) : NATAL_TARGET_KEYS;
+  for (const key of keys) {
     const lon = natalLongitude(western, key);
     if (lon == null) continue;
     const label = key === "rising" ? "Асцендент" : (PLANET_LABELS[key] ?? key);
@@ -150,7 +156,7 @@ export async function computeDeepTransits(
   const todayStr = localDateStringInTimezone(place.timezone, ref);
   const hits: TransitHit[] = [];
 
-  const natalBodies = collectNatalBodies(natal.western);
+  const natalBodies = collectNatalBodies(natal.western, natal.timeKnown);
   const skyCache = new Map<
     string,
     Awaited<ReturnType<typeof getSkyForLocalDate>>

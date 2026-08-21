@@ -6,7 +6,8 @@ import { addDaysInTimezone } from "./sky";
 import { localDateStringInTimezone, parseBirthTimeToDecimal, resolveBirthUtcOffsetHours } from "./time";
 import type { NatalChartRecord, NatalPlace } from "./types";
 
-export const TIMING_ENGINE_VERSION = "timing-celestine-v2";
+// v3: unknown-time charts no longer emit ascendant-targeted transits.
+export const TIMING_ENGINE_VERSION = "timing-celestine-v3";
 export const TIMING_HORIZONS = [7, 30, 90, 365] as const;
 export type TimingHorizon = (typeof TIMING_HORIZONS)[number];
 export type TimingCategory =
@@ -51,13 +52,15 @@ export interface SolarReturnResult {
   positions: TimingPosition[];
   method: string;
   resolutionSeconds: number;
+  // Null when birth time is unknown: the return moment inherits the natal
+  // noon uncertainty (hours), so return-chart angles/houses are not reliable.
   houses: {
     system: string;
     cusps: HouseCusp[];
     ascendant: TimingPosition;
     midheaven: TimingPosition;
     warnings: string[];
-  };
+  } | null;
 }
 
 export interface SecondaryProgressionResult {
@@ -389,6 +392,7 @@ export async function computeSolarReturn(params: {
     else hi = mid;
   }
   const exact = new Date(Math.round((lo + hi) / 2));
+  const timeKnown = params.natal.timeKnown !== false;
   const exactBirthData = toCelestineBirthData({
     birthDate: exact.toISOString().slice(0, 10),
     localHourDecimal: exact.getUTCHours() + exact.getUTCMinutes() / 60 + exact.getUTCSeconds() / 3600,
@@ -396,13 +400,13 @@ export async function computeSolarReturn(params: {
     latitude: params.natal.place.latitude,
     longitude: params.natal.place.longitude,
   });
-  const { houses: houseBlock, angles, warnings } = calculateHouseCusps(exactBirthData, {
-    houseSystem: "placidus",
-  });
-  const cuspLongitudes = houseBlock.cusps.map((cusp) => cusp.longitude);
+  const { houses: houseBlock, angles, warnings } = timeKnown
+    ? calculateHouseCusps(exactBirthData, { houseSystem: "placidus" })
+    : { houses: null, angles: null, warnings: [] as string[] };
+  const cuspLongitudes = houseBlock ? houseBlock.cusps.map((cusp) => cusp.longitude) : null;
   const positions = positionsFromSky(skyAtUtc(exact, params.natal.place)).map((position) => ({
     ...position,
-    house: houseForLongitude(cuspLongitudes, position.longitude),
+    house: cuspLongitudes ? houseForLongitude(cuspLongitudes, position.longitude) : undefined,
   }));
   const anglePosition = (key: string, longitude: number): TimingPosition => {
     const sign = signFromLongitude(longitude);
@@ -419,15 +423,19 @@ export async function computeSolarReturn(params: {
     timezone: params.natal.place.timezone,
     location: { ...params.natal.place, assumption: "natal_place" },
     positions,
-    method: "Момент возвращения найден по точному совпадению транзитного Солнца с натальным в тропическом зодиаке: поиск в шестичасовых интервалах с уточнением до 1 секунды. Дома Плацидуса рассчитаны для места рождения.",
+    method: timeKnown
+      ? "Момент возвращения найден по точному совпадению транзитного Солнца с натальным в тропическом зодиаке: поиск в шестичасовых интервалах с уточнением до 1 секунды. Дома Плацидуса рассчитаны для места рождения."
+      : "Момент возвращения найден по точному совпадению транзитного Солнца с натальным в тропическом зодиаке. Время рождения неизвестно, поэтому момент возвращения приблизителен, а дома и углы карты возвращения не рассчитываются.",
     resolutionSeconds: 1,
-    houses: {
-      system: houseBlock.systemName,
-      cusps: formatHouseCusps(cuspLongitudes),
-      ascendant: anglePosition("rising", angles.ascendant.longitude),
-      midheaven: anglePosition("midheaven", angles.midheaven.longitude),
-      warnings,
-    },
+    houses: houseBlock && angles && cuspLongitudes
+      ? {
+        system: houseBlock.systemName,
+        cusps: formatHouseCusps(cuspLongitudes),
+        ascendant: anglePosition("rising", angles.ascendant.longitude),
+        midheaven: anglePosition("midheaven", angles.midheaven.longitude),
+        warnings,
+      }
+      : null,
   };
 }
 

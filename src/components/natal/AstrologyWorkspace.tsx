@@ -699,7 +699,7 @@ export default function AstrologyWorkspace() {
               <button type="button" onClick={() => void loadChart(true)} disabled={busy !== null}
                 title="Обновляет положения планет и транзиты по данным профиля. Платные отчёты не перегенерируются."
                 className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] px-4 text-sm text-amber-100 transition hover:bg-amber-300/[0.13] disabled:opacity-50">
-                <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "animate-spin" : ""}`} aria-hidden /> Обновить расчёт
+                <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Обновить расчёт
               </button>
               <Link
                 href="/cabinet"
@@ -1059,7 +1059,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
         </p>
         <button type="button" disabled={!timing || busy !== null} onClick={() => onRequestForecast(horizon)}
           className="btn-primary flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50">
-          {busy === "forecast" ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}
+          {busy === "forecast" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}
           {!timing
             ? "Готовим расчёт периода…"
             : previousForecast
@@ -1103,7 +1103,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
         </div>
       </fieldset>
       {error ? <p className="rounded-xl bg-rose-400/[0.08] p-3 text-sm text-rose-200" role="alert">{error}</p> : null}
-      {loading ? <p className="flex items-center gap-2 text-sm text-white/50" role="status"><Loader2 className="h-4 w-4 animate-spin" /> Рассчитываем и проверяем кэш…</p> : null}
+      {loading ? <p className="flex items-center gap-2 text-sm text-white/50" role="status"><Loader2 className="h-4 w-4 motion-safe:animate-spin" /> Рассчитываем и проверяем кэш…</p> : null}
       {!loading && !error && !timing ? <Empty text="Для выбранного горизонта периоды пока не рассчитаны. Попробуйте обновить данные." /> : null}
       {!loading && timing ? <div className="space-y-5">
         {(["now", "next", "later"] as const).map((group) => <section key={group} aria-labelledby={`timing-${group}`}>
@@ -1145,7 +1145,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
               </article>)}
             </div>
           </section>
-          <section className="rounded-xl border border-amber-300/10 bg-amber-300/[0.025] p-4">
+          {timing.solarReturn.houses ? <section className="rounded-xl border border-amber-300/10 bg-amber-300/[0.025] p-4">
             <h3 className="text-sm font-medium text-amber-100/85">Дома солнечного возвращения</h3>
             <p className="mt-1 text-xs leading-5 text-white/45">
               Система домов: {timing.solarReturn.houses.system}. Асцендент — {russianSignLabel(timing.solarReturn.houses.ascendant.sign)} {timing.solarReturn.houses.ascendant.degree.toFixed(2)}°; середина неба — {russianSignLabel(timing.solarReturn.houses.midheaven.sign)} {timing.solarReturn.houses.midheaven.degree.toFixed(2)}°.
@@ -1156,13 +1156,13 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast, onEvide
                 <p className="mt-1 text-xs text-white/40">{russianSignLabel(cusp.sign)} · {cusp.degree.toFixed(2)}°</p>
               </article>)}
             </div>
-          </section>
+          </section> : <p className="rounded-xl border border-amber-300/10 bg-amber-300/[0.025] p-4 text-xs leading-5 text-amber-100/55">Время рождения неизвестно, поэтому момент возвращения приблизителен: дома и асцендент карты года не рассчитываются — надёжны только положения планет в знаках.</p>}
           <details className="rounded-xl border border-white/8 bg-black/15 p-3">
             <summary className="cursor-pointer text-xs font-medium text-white/55">Как выполнен расчёт</summary>
             <p className="mt-2 text-xs leading-5 text-white/40">{timing.solarReturn.method}</p>
           </details>
-          <p className="text-xs leading-5 text-amber-100/55">Место расчёта домов: {timing.solarReturn.location.label}. Сейчас используется сохранённое место рождения; поэтому дома описывают год относительно этой точки.</p>
-          {timing.solarReturn.houses.warnings.length ? <ul className="space-y-1 text-xs leading-5 text-amber-100/55">{timing.solarReturn.houses.warnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul> : null}
+          {timing.solarReturn.houses ? <p className="text-xs leading-5 text-amber-100/55">Место расчёта домов: {timing.solarReturn.location.label}. Сейчас используется сохранённое место рождения; поэтому дома описывают год относительно этой точки.</p> : null}
+          {timing.solarReturn.houses?.warnings.length ? <ul className="space-y-1 text-xs leading-5 text-amber-100/55">{timing.solarReturn.houses.warnings.map((warning) => <li key={warning}>• {warning}</li>)}</ul> : null}
         </PanelBlock> : <Empty text="Сначала загрузите расчёт периода." />}
       </Panel></div>
       <div className="grid gap-6 lg:grid-cols-2">
@@ -1238,7 +1238,7 @@ function Reports({ chart, reports, loading, error, deletingReportId, onDelete, o
           <button key={value} type="button" aria-pressed={filter === value} onClick={() => setFilter(value)}
             className={`min-h-10 rounded-xl px-4 text-sm ${filter === value ? "bg-amber-300/15 text-amber-100 ring-1 ring-amber-300/25" : "bg-white/[0.04] text-white/50"}`}>{label}</button>)}
       </div>
-      {loading ? <p className="flex items-center gap-2 text-sm text-white/45"><Loader2 className="h-4 w-4 animate-spin" /> Загружаем отчёты…</p>
+      {loading ? <p className="flex items-center gap-2 text-sm text-white/45"><Loader2 className="h-4 w-4 motion-safe:animate-spin" /> Загружаем отчёты…</p>
         : error ? <div><p className="text-sm text-rose-300">{error}</p><button type="button" onClick={onReload} className="mt-2 text-xs text-amber-200">Повторить</button></div>
         : currentReports.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{currentReports.map((report) =>
           <button key={report.id} type="button" onClick={() => selectReport(report.id)}
@@ -1256,7 +1256,7 @@ function Reports({ chart, reports, loading, error, deletingReportId, onDelete, o
         <Link href={`/cabinet/astrology/reports/${selected.id}/print`} className="text-xs text-amber-200">Печать</Link>
         <button type="button" disabled={deletingReportId !== null} onClick={() => onDelete(selected)}
           className="inline-flex min-h-10 items-center gap-1.5 rounded-lg border border-rose-300/15 px-3 text-xs text-rose-200/70 disabled:opacity-50">
-          {deletingReportId === selected.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Удалить
+          {deletingReportId === selected.id ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Удалить
         </button>
       </div>
       <ReportShareControls reportKind="natal" reportId={selected.id} />
@@ -1320,7 +1320,7 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
 }) {
   return <Panel title={title} eyebrow={text ? "Готов · сохранён в архиве" : "Отдельная покупка"}>
     {savedReport ? <p className="text-xs text-emerald-100/60">Создан {new Date(savedReport.createdAt).toLocaleString("ru-RU")} · {savedReport.runeCost ?? "—"} ᚢ</p> : null}
-    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} onEvidence={onEvidence} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
     {text ? <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-4">
       {savedReport ? <Link href={`/cabinet/astrology/reports/${savedReport.id}/print`} className="text-xs text-amber-200">Печать</Link> : null}
       <button type="button" onClick={onOpenArchive} className="text-xs text-white/50 transition hover:text-white/75">Открыть архив версий →</button>
@@ -1365,4 +1365,4 @@ function Metric({ label, value }: { label: string; value: string }) { return <di
 function StatusLine({ label, ready, detail }: { label: string; ready: boolean; detail?: string }) { return <p className="mb-2 flex items-center justify-between text-sm text-white/55"><span className="flex items-center gap-2"><CheckCircle2 className={`h-4 w-4 ${ready ? "text-emerald-300" : "text-white/20"}`} />{label}</span>{detail ? <span>{detail}</span> : null}</p>; }
 function Empty({ text }: { text: string }) { return <p className="rounded-xl border border-dashed border-white/10 p-4 text-sm leading-6 text-white/40">{text}</p>; }
 function Unavailable({ title }: { title: string }) { return <StateCard icon={Archive} title={title} text="Текущий сохранённый расчёт не содержит данных для этого раздела. Пересчитайте карту или проверьте профиль." />; }
-function StateCard({ icon: Icon, title, text, spin, action }: { icon: typeof Star; title: string; text: string; spin?: boolean; action?: React.ReactNode }) { return <main className="flex min-h-[70vh] items-center justify-center bg-[#09070d] px-4 text-white"><section className="max-w-lg rounded-3xl border border-amber-300/15 bg-white/[0.03] p-8 text-center"><Icon className={`mx-auto h-8 w-8 text-amber-200 ${spin ? "animate-spin" : ""}`} /><h1 className="mt-4 font-display text-2xl font-semibold">{title}</h1><p className="mt-3 text-sm leading-6 text-white/50">{text}</p>{action ? <div className="mt-5">{action}</div> : null}</section></main>; }
+function StateCard({ icon: Icon, title, text, spin, action }: { icon: typeof Star; title: string; text: string; spin?: boolean; action?: React.ReactNode }) { return <main className="flex min-h-[70vh] items-center justify-center bg-[#09070d] px-4 text-white"><section className="max-w-lg rounded-3xl border border-amber-300/15 bg-white/[0.03] p-8 text-center"><Icon className={`mx-auto h-8 w-8 text-amber-200 ${spin ? "motion-safe:animate-spin" : ""}`} /><h1 className="mt-4 font-display text-2xl font-semibold">{title}</h1><p className="mt-3 text-sm leading-6 text-white/50">{text}</p>{action ? <div className="mt-5">{action}</div> : null}</section></main>; }

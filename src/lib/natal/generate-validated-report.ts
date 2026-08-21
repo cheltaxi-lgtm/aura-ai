@@ -1030,10 +1030,10 @@ export async function generateValidatedNatalReport(
         params.horizonDays
       );
       if (salvaged.ok) {
-        return { ok: true, report: salvaged.report, raw };
+        return { ok: true, report: { ...salvaged.report, model }, raw };
       }
     }
-    return { ok: true, report: finalReport, raw };
+    return { ok: true, report: { ...finalReport, model }, raw };
   }
 
   if (validation.ok) {

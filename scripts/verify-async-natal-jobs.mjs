@@ -54,10 +54,12 @@ for (const route of [
   assert.match(source, /body\.async === true/);
   assert.match(source, /enqueueNatalAsyncJob/);
   assert.match(source, /getAsyncJobWorkerUserId/);
-  assert.match(source, /requireProfileUserId|resolveProfileUserContext/);
+  assert.match(source, /requireProfileUserId|resolveProfileUserContext|resolveBirthProfileUserContext/);
   assert.match(source, /chargeRuneActionForWorkerJob/);
   assert.match(source, /beginWorkerJobSave/);
   assert.match(source, /trackWorkerJobCompleted/);
+  assert.match(source, /shouldRefundBeforeWorkerFail/);
+  assert.match(source, /errorCode: "generation_claim_lost"/);
   assert.doesNotMatch(source, /await BillingService\.chargeRuneAction/);
 }
 
@@ -110,6 +112,8 @@ const lifecycle = read("src/lib/async-job-lifecycle.ts");
 assert.match(lifecycle, /beginWorkerJobSave/);
 assert.match(lifecycle, /chargeRuneActionForWorkerJob/);
 assert.match(lifecycle, /claimAsyncJobForSave/);
+assert.match(lifecycle, /shouldRefundBeforeWorkerFail/);
+assert.match(lifecycle, /REPORT_JOB_MAX_ATTEMPTS/);
 
 const workerAuth = read("src/lib/async-job-worker-auth.ts");
 assert.match(workerAuth, /getAsyncJobWorkerUserId\(request\)/);

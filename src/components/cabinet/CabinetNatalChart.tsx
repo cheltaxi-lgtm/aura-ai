@@ -152,7 +152,7 @@ export default function CabinetNatalChart() {
     <section className="ritual-cta-banner" aria-labelledby="home-natal-chart-title">
       <div className="ritual-cta-banner__inner">
         <span className="ritual-cta-banner__icon" aria-hidden>
-          {loading ? <Loader2 className="h-6 w-6 animate-spin text-amber-200" /> : <Star className="h-6 w-6 text-amber-200" strokeWidth={1.5} />}
+          {loading ? <Loader2 className="h-6 w-6 motion-safe:animate-spin text-amber-200" /> : <Star className="h-6 w-6 text-amber-200" strokeWidth={1.5} />}
         </span>
         <div className="ritual-cta-banner__copy">
           <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">

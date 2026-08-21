@@ -8,6 +8,7 @@ export {
   failWorkerJobById,
   markWorkerJobNeedsRegenerationById,
   markWorkerJobRefundedById,
+  shouldRefundBeforeWorkerFail,
   trackWorkerJobCharged,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,

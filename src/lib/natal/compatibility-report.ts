@@ -31,6 +31,8 @@ export type CompatibilityReport = {
   version: "1.0";
   sections: CompatibilityReportSection[];
   disclaimer: string;
+  /** LLM model that produced the text — provenance for audits/regressions. */
+  model?: string;
 };
 
 export type CompatibilityEvidence = {
@@ -359,6 +361,14 @@ export function validateCompatibilityReport(
   if (errors.length) return { ok: false, errors };
   return {
     ok: true,
-    report: { version: "1.0", sections, disclaimer },
+    report: {
+      version: "1.0",
+      sections,
+      disclaimer,
+      // Preserve model provenance across re-validation/salvage of a stamped report.
+      ...(typeof root.model === "string" && root.model.trim()
+        ? { model: root.model.trim().slice(0, 120) }
+        : {}),
+    },
   };
 }

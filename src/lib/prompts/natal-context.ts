@@ -33,9 +33,12 @@ export async function buildNatalPromptContext(params: {
       params.purpose === "tarot" ? 8 : 12
     );
     if (!scoped.length) return "";
+    const limitedModeLine = chart.timeKnown
+      ? ""
+      : "Время рождения неизвестно: дома, ASC, MC и лагна не рассчитаны достоверно — не заявляй их и не делай выводов из них.\n";
     return `=== РЕЛЕВАНТНЫЙ КОНТЕКСТ НАТАЛЬНОЙ КАРТЫ ===
 Используй только перечисленные рассчитанные evidence. Не придумывай ID и не делай выводов вне них.
-${formatEvidencePrompt(scoped)}
+${limitedModeLine}${formatEvidencePrompt(scoped)}
 Заверши ответ дословным заголовком «Контекст карты использован» и отдельной строкой «Evidence: ${scoped.slice(0, 5).map((item) => item.id).join(", ")}». Не добавляй другие ID. Координаты рождения в контекст не переданы.`;
   } catch (error) {
     console.warn("[natal-chart] prompt context failed:", error);

@@ -13,10 +13,14 @@ export default async function NatalReportPrintPage({ params }: { params: Promise
   const { rows } = await query<{
     tradition: string; report_type: string; content: string; structured_data: Record<string, unknown> | null;
     evidence_refs: unknown; birth_fingerprint: string; engine_version: string; ephemeris: string; created_at: string;
+    time_known: boolean | null;
   }>(
-    `SELECT tradition, report_type, content, structured_data, evidence_refs, birth_fingerprint,
-            engine_version, ephemeris, created_at
-     FROM natal_report_history WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    `SELECT history.tradition, history.report_type, history.content, history.structured_data, history.evidence_refs,
+            history.birth_fingerprint, history.engine_version, history.ephemeris, history.created_at,
+            (charts.chart_data->>'timeKnown')::boolean AS time_known
+     FROM natal_report_history history
+     LEFT JOIN natal_charts charts ON charts.user_id = history.user_id
+     WHERE history.id = $1 AND history.user_id = $2 LIMIT 1`,
     [id, auth.profileUserId]
   );
   const report = rows[0];
@@ -37,6 +41,15 @@ export default async function NatalReportPrintPage({ params }: { params: Promise
     if (!value || typeof value !== "object") return [];
     const item = value as Record<string, unknown>;
     if (typeof item.id !== "string" || typeof item.label !== "string") return [];
+    // Legacy unknown-time rows can still store rising/house evidence. Never print
+    // angles or houses as if they were reliable facts.
+    const haystack = `${item.id} ${item.label} ${typeof item.sourcePath === "string" ? item.sourcePath : ""}`.toLowerCase();
+    if (
+      report.time_known === false &&
+      /(rising|midheaven|ascendant|асцендент|\bmc\b|house|дом|лагна|lagna)/i.test(haystack)
+    ) {
+      return [];
+    }
     return [{ id: item.id, label: item.label, value: typeof item.value === "string" ? item.value : undefined,
       confidence: typeof item.confidence === "string" ? item.confidence : undefined,
       uncertainty: typeof item.uncertainty === "string" ? item.uncertainty : undefined }];

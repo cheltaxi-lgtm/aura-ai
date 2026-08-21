@@ -35,6 +35,7 @@ import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
   beginWorkerJobSave,
   chargeRuneActionForWorkerJob,
+  shouldRefundBeforeWorkerFail,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobRefunded,
@@ -269,14 +270,21 @@ ${evidenceIds.join("\n")}`),
         generated.errors.slice(0, 12),
         `evidence=${evidence.length}`
       );
-      await rollback();
+      // When report retry requeues this job the charge must survive — the next
+      // attempt reuses it. Refund only when no requeue will happen.
+      const refundNow = await shouldRefundBeforeWorkerFail(request, "invalid_model_report");
+      if (refundNow) await rollback();
       await trackWorkerJobFailed(
         request,
-        "Модель не смогла создать проверяемый отчёт. Оплата возвращена.",
-        { refunded: true, errorCode: "invalid_model_report" }
+        refundNow
+          ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена."
+          : "Модель не смогла создать проверяемый отчёт. Повторяем попытку.",
+        { refunded: refundNow, errorCode: "invalid_model_report" }
       );
       return NextResponse.json(
-        { error: "Модель не смогла создать проверяемый отчёт. Оплата возвращена.", refunded: true },
+        refundNow
+          ? { error: "Модель не смогла создать проверяемый отчёт. Оплата возвращена.", refunded: true }
+          : { error: "Модель не смогла создать проверяемый отчёт. Повторяем попытку.", refunded: false },
         { status: 502 }
       );
     }
@@ -285,6 +293,13 @@ ${evidenceIds.join("\n")}`),
 
     if (!(await beginWorkerJobSave(request))) {
       await rollback();
+      // The save barrier was lost (timeout/abort): refund landed, so close the
+      // job terminally instead of leaving it running until the reaper.
+      await trackWorkerJobFailed(
+        request,
+        "Генерация была отменена по таймауту. Оплата возвращена.",
+        { refunded: true, errorCode: "generation_claim_lost" }
+      );
       return NextResponse.json(
         {
           error: "Генерация была отменена по таймауту. Оплата возвращена.",
@@ -347,9 +362,6 @@ ${evidenceIds.join("\n")}`),
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (error) {
-    await rollback().catch(() => {
-      console.warn("[natal-chart] billing rollback failed");
-    });
     if (error instanceof InsufficientFundsError) {
       await trackWorkerJobFailed(request, "Недостаточно рун для этого действия.", {
         errorCode: "insufficient_runes",
@@ -365,14 +377,23 @@ ${evidenceIds.join("\n")}`),
         { status: 402 }
       );
     }
+    // Keep the charge when report retry will requeue this job (the next attempt
+    // reuses it); refund only when the failure is terminal.
+    const refundNow = await shouldRefundBeforeWorkerFail(request, "generation_failed");
+    if (refundNow) {
+      await rollback().catch(() => {
+        console.warn("[natal-chart] billing rollback failed");
+      });
+    }
+    const refunded = refundNow && rollbackAttempted;
     console.warn("[natal-chart] interpretation failed");
     await trackWorkerJobFailed(
       request,
       "Ошибка генерации трактовки.",
-      { refunded: rollbackAttempted, errorCode: "generation_failed" }
+      { refunded, errorCode: "generation_failed" }
     );
     return NextResponse.json(
-      { error: "Ошибка генерации трактовки.", refunded: rollbackAttempted },
+      { error: "Ошибка генерации трактовки.", refunded },
       { status: 502 }
     );
   } finally {
