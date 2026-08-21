@@ -8,7 +8,7 @@ import { buildNatalPromptBlock } from "../src/lib/natal/format-prompt.ts";
 import { computeDeepTransits, detectSignIngresses } from "../src/lib/natal/transits.ts";
 import { computeSynastry, computeSynastryDimensions, sanitizeSynastryForClient } from "../src/lib/natal/synastry.ts";
 import { compositeMidpointLongitude, computeCompositeChart } from "../src/lib/natal/composite.ts";
-import { layoutWheelBodies, minDisplayGap, natalLaneRadius, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
+import { layoutNatalGlyphs, layoutWheelBodies, minDisplayGap, natalLaneRadius, wheeledRadius } from "../src/lib/natal/wheel-layout.ts";
 import { chartPolar, longitudeToChartAngle } from "../src/lib/natal/chart-angle.ts";
 import { aspectLineStyle, isMajorAspect } from "../src/lib/natal/wheel-style.ts";
 import {
@@ -837,6 +837,36 @@ async function main() {
       natalLaneRadius(base, 0, step, minR, maxR) === base,
     "natal radial lanes keep glyphs from overlapping while preserving true longitude"
   );
+  const stelliumOpts = {
+    cx: 300, cy: 300, origin: 110,
+    baseR: 180, minR: 118, maxR: 220, glyphR: 14.4,
+  };
+  const virgoStellium = layoutNatalGlyphs([
+    { key: "sun", longitude: 158.2 },
+    { key: "mercury", longitude: 163.4 },
+    { key: "venus", longitude: 169.1 },
+    { key: "saturn", longitude: 174.8 },
+    { key: "moon", longitude: 138.6 },
+    { key: "jupiter", longitude: 143.2 },
+    { key: "mars", longitude: 104.5 },
+  ], stelliumOpts);
+  const stelliumMinDist = stelliumOpts.glyphR * 2 + 8;
+  let stelliumClosest = Infinity;
+  for (let i = 0; i < virgoStellium.length; i += 1) {
+    for (let j = i + 1; j < virgoStellium.length; j += 1) {
+      const left = chartPolar(stelliumOpts.cx, stelliumOpts.cy, virgoStellium[i].radius, virgoStellium[i].displayLongitude, stelliumOpts.origin);
+      const right = chartPolar(stelliumOpts.cx, stelliumOpts.cy, virgoStellium[j].radius, virgoStellium[j].displayLongitude, stelliumOpts.origin);
+      stelliumClosest = Math.min(stelliumClosest, Math.hypot(right.x - left.x, right.y - left.y));
+    }
+  }
+  assert(
+    virgoStellium.every((body) => body.longitude === [158.2, 163.4, 169.1, 174.8, 138.6, 143.2, 104.5][
+      ["sun", "mercury", "venus", "saturn", "moon", "jupiter", "mars"].indexOf(body.key)
+    ]) &&
+      stelliumClosest + 1e-6 >= stelliumMinDist &&
+      new Set(virgoStellium.map((body) => body.radius.toFixed(1))).size >= 4,
+    "natal stellium glyphs keep true longitudes and stay separated on screen"
+  );
   const sanitizedSynastry = sanitizeSynastryForClient({
     ...syn,
     chartA: { label: "A", western: { ...syn?.chartA?.western, birth_lat: 55.7, place: { latitude: 55.7 } } },
@@ -1223,7 +1253,7 @@ async function main() {
       interactiveWheel.includes("Текстовая версия карты") &&
       interactiveWheel.includes("filterAspectNature") &&
       interactiveWheel.includes("<details") &&
-      interactiveWheel.includes("natalLaneRadius") &&
+      interactiveWheel.includes("layoutNatalGlyphs") &&
       interactiveWheel.includes("aspectLineStyle") &&
       interactiveWheel.includes("firstLongitude") &&
       !interactiveWheel.includes("displayLongitude +") &&

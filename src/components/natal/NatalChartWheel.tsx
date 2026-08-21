@@ -5,7 +5,7 @@ import { useReducedMotion } from "framer-motion";
 import { chartPolar } from "@/lib/natal/chart-angle";
 import { angularSeparation, mod360 } from "@/lib/natal/math";
 import { ASPECT_NAMES, BODY_NAMES, asRecord, signLabel, signName } from "@/lib/natal/presentation";
-import { layoutWheelBodies, natalLaneRadius } from "@/lib/natal/wheel-layout";
+import { layoutNatalGlyphs } from "@/lib/natal/wheel-layout";
 import { aspectLineStyle, isMajorAspect } from "@/lib/natal/wheel-style";
 import WheelZodiacBand from "./WheelZodiacBand";
 
@@ -41,6 +41,7 @@ type WheelBody = {
   longitude: number;
   displayLongitude: number;
   lane: number;
+  radius: number;
   sign: string | null;
   retrograde: boolean;
 };
@@ -75,15 +76,14 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
   const cy = size / 2;
   const outerR = size * 0.478;
   const zodiacR = size * 0.412;
-  const planetBase = size * 0.308;
-  const laneStep = size * 0.044;
-  const glyphR = size * 0.02;
-  const aspectR = size * 0.168;
+  const planetBase = size * 0.3;
+  const glyphR = size * 0.024;
+  const aspectR = size * 0.138;
   const houseInnerR = aspectR + size * 0.016;
-  const houseLabelR = (houseInnerR + zodiacR) / 2;
+  const houseLabelR = zodiacR - size * 0.032;
   const axisLabelR = size * 0.386;
-  const laneMin = aspectR + glyphR * 2;
-  const laneMax = zodiacR - glyphR * 2.2;
+  const laneMin = aspectR + glyphR * 2.1;
+  const laneMax = zodiacR - glyphR * 2.4;
   const asc = timeKnown ? longitudeOf(western.rising) : null;
   const mc = timeKnown ? longitudeOf(western.midheaven) : null;
   const origin = asc ?? 0;
@@ -123,7 +123,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
   const axisEnds = useMemo(() => axes.flatMap((axis) => axis.ends), [axes]);
 
   const bodies = useMemo(() => {
-    const items: Array<Omit<WheelBody, "lane" | "displayLongitude">> = PLANETS.flatMap(([key, glyph, color]) => {
+    const items: Array<Omit<WheelBody, "lane" | "displayLongitude" | "radius">> = PLANETS.flatMap(([key, glyph, color]) => {
       const body = key === "sun" || key === "moon" ? western[key] : asRecord(western.planets)?.[key];
       const longitude = longitudeOf(body);
       if (longitude == null) return [];
@@ -131,8 +131,10 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
       const sign = signName(body);
       return [{ key, glyph, color, longitude, sign: sign ? signLabel(sign) : null, retrograde: record?.retrograde === true }];
     });
-    return layoutWheelBodies(items, 12, 6, { radialOnly: true });
-  }, [western]);
+    return layoutNatalGlyphs(items, {
+      cx, cy, origin, baseR: planetBase, minR: laneMin, maxR: laneMax, glyphR,
+    });
+  }, [western, cx, cy, origin, planetBase, laneMin, laneMax, glyphR]);
 
   const allAspects = useMemo(() => {
     const byKey = new Map(bodies.map((body) => [body.key, body.longitude]));
@@ -283,9 +285,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           );
         })}
         {bodies.map((body) => {
-          const radius = natalLaneRadius(planetBase, body.lane, laneStep, laneMin, laneMax);
-          const point = chartPolar(cx, cy, radius, body.longitude, origin);
-          const truePoint = chartPolar(cx, cy, planetBase, body.longitude, origin);
+          const point = chartPolar(cx, cy, body.radius, body.displayLongitude, origin);
           const tick = chartPolar(cx, cy, zodiacR, body.longitude, origin);
           const selected = selection?.kind === "body" && selection.id === body.key;
           const highlighted = selected || related.has(body.key);
@@ -293,9 +293,8 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${body.longitude.toFixed(1)} градусов`}
             onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
             className={`cursor-pointer focus:outline-none ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .32 : 1}>
-            <line x1={tick.x} y1={tick.y} x2={truePoint.x} y2={truePoint.y} stroke={body.color} strokeOpacity=".26" />
-            {Math.abs(radius - planetBase) > 1 ? <line x1={truePoint.x} y1={truePoint.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".55" /> : null}
-            <circle cx={point.x} cy={point.y} r={size * (selected || highlighted ? .026 : .021)} fill="#100a16" stroke={body.color} strokeWidth={selected || highlighted ? 2.1 : 1.25} />
+            <line x1={tick.x} y1={tick.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".38" />
+            <circle cx={point.x} cy={point.y} r={size * (selected || highlighted ? .026 : .022)} fill="#100a16" stroke={body.color} strokeWidth={selected || highlighted ? 2.1 : 1.35} />
             <text x={point.x} y={point.y} textAnchor="middle" dominantBaseline="middle" fill={body.color} fontSize={size * .03} fontWeight="500">{body.glyph}</text>
           </g>;
         })}
