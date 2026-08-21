@@ -44,6 +44,11 @@ export default defineConfig({
       testMatch: /daily-artifact\.public\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
+    {
+      name: "matrix-e2e",
+      testMatch: /matrix\.e2e\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
     ...(fixtureBaseURL && storageState
       ? [{
           name: "authenticated-natal",

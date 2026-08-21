@@ -64,6 +64,23 @@ export async function ensureTestDbMigrated(): Promise<void> {
       assertSafeTestDatabaseUrl(url);
       process.env.DATABASE_URL = url;
 
+      const formatMigrateError = (err: unknown): string => {
+        const execErr = err as {
+          stderr?: Buffer;
+          stdout?: Buffer;
+          status?: number;
+          message?: string;
+        };
+        return [
+          execErr.stdout?.toString?.().trim(),
+          execErr.stderr?.toString?.().trim(),
+          execErr.message,
+          execErr.status != null ? `exit ${execErr.status}` : "",
+        ]
+          .filter(Boolean)
+          .join("\n");
+      };
+
       const runMigrate = () =>
         execFileSync(process.execPath, [path.join(ROOT, "scripts/migrate.mjs")], {
           cwd: ROOT,
@@ -71,21 +88,44 @@ export async function ensureTestDbMigrated(): Promise<void> {
           stdio: "pipe",
         });
 
+      const tryStartLocalPostgres = () => {
+        try {
+          execFileSync("docker", ["compose", "up", "-d", "postgres"], {
+            cwd: ROOT,
+            stdio: "pipe",
+            timeout: 90_000,
+          });
+          return true;
+        } catch {
+          return false;
+        }
+      };
+
       try {
         runMigrate();
       } catch (err) {
-        const msg = String(
-          (err as { stderr?: Buffer; message?: string }).stderr?.toString?.() ||
-            (err as Error).message ||
-            err
-        );
+        let msg = formatMigrateError(err);
+        const unreachable =
+          /ECONNREFUSED|connect ECONNREFUSED|the database system is starting|password authentication failed/i.test(
+            msg
+          );
+        if (unreachable && tryStartLocalPostgres()) {
+          try {
+            runMigrate();
+            return;
+          } catch (retryErr) {
+            msg = formatMigrateError(retryErr);
+          }
+        }
         // Recover empty/broken test DB when HD tables are missing mid-ledger.
         if (/hd_charts|relation .* does not exist/i.test(msg)) {
           await resetTestDatabase(url);
           runMigrate();
           return;
         }
-        throw err;
+        throw new Error(
+          `TEST_DATABASE_URL migrate failed (${url.replace(/:[^:@/]+@/, ":***@")}): ${msg || "unknown error. Start local Postgres: docker compose up -d postgres"}`
+        );
       }
     })().catch((err) => {
       migratePromise = null;
