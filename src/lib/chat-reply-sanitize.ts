@@ -116,7 +116,16 @@ export function hasDuplicateSymbolInterpretations(text: string): boolean {
 export type ChatReplyQualityOpts = {
   lastUserMessage?: string;
   cardNames?: string[];
+  /** Destiny Matrix follow-up: reject tarot-style «Позиция N» dumps. */
+  rejectTarotPositionDump?: boolean;
 };
+
+const TAROT_POSITION_DUMP_RE = /Позиция\s+\d+/gi;
+
+export function looksLikeTarotPositionDump(text: string, minHits = 5): boolean {
+  const hits = text.match(TAROT_POSITION_DUMP_RE);
+  return (hits?.length ?? 0) >= minHits;
+}
 
 /** Chat-specific quality gate (loop, echo, lazy symbol blocks). */
 export function isRejectedChatReply(text: string, opts?: ChatReplyQualityOpts): boolean {
@@ -124,6 +133,7 @@ export function isRejectedChatReply(text: string, opts?: ChatReplyQualityOpts): 
   if (hasRepeatedPhrase(text)) return true;
   if (hasDuplicateSymbolInterpretations(text)) return true;
   if (opts?.lastUserMessage && isEchoingUserMessage(text, opts.lastUserMessage)) return true;
+  if (opts?.rejectTarotPositionDump && looksLikeTarotPositionDump(text)) return true;
   return false;
 }
 
@@ -133,6 +143,9 @@ export function chatReplyRejectionReason(text: string, opts?: ChatReplyQualityOp
   if (hasDuplicateSymbolInterpretations(text)) return "duplicate symbol interpretations";
   if (opts?.lastUserMessage && isEchoingUserMessage(text, opts.lastUserMessage)) {
     return "echoing user message";
+  }
+  if (opts?.rejectTarotPositionDump && looksLikeTarotPositionDump(text)) {
+    return "matrix follow-up dumped tarot positions";
   }
   return null;
 }

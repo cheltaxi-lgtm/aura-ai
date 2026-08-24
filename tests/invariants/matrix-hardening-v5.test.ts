@@ -36,6 +36,10 @@ import {
 import { sessionTopicToNumerologyTopics } from "@/lib/numerology/topic-handlers";
 import { resolveMatrixSessionBirthDate } from "@/lib/numerology/matrix-chat-allowance";
 import {
+  isRejectedChatReply,
+  looksLikeTarotPositionDump,
+} from "@/lib/chat-reply-sanitize";
+import {
   persistOwnedMatrixSnapshot,
 } from "@/lib/services/matrix-snapshot-persist";
 import {
@@ -586,6 +590,27 @@ describe("chat follow-ups do not rebuild a paid matrix report", () => {
     expect(orch).toContain("isComputedNumerologChatSession()");
     expect(orch).toContain("resolveMatrixSessionBirthDate");
     expect(orch).toContain("СЕАНС МАТРИЦЫ СУДЬБЫ");
+    expect(orch).toContain("не нумеруй «Позиция 1/2/…»");
+    expect(orch).toContain("rejectTarotPositionDump");
+    expect(orch).toContain("if (this.paidMatrixSessionTool()) return 1100");
+    const prompts = readFileSync(path.join(ROOT, "src/lib/chat-prompts.ts"), "utf8");
+    expect(prompts).toContain("Это вопрос по уже построенной матрице судьбы, не расклад Таро.");
+    expect(
+      looksLikeTarotPositionDump(
+        "Позиция 1 — Сила. Позиция 2 — Императрица. Позиция 3 — Мир. Позиция 4 — Колесница. Позиция 5 — Башня."
+      )
+    ).toBe(true);
+    expect(
+      isRejectedChatReply("Позиция 1 — Сила. Короткий ответ.", {
+        rejectTarotPositionDump: true,
+      })
+    ).toBe(false);
+    expect(
+      isRejectedChatReply(
+        "Позиция 1 — Сила. Позиция 2 — Императрица. Позиция 3 — Мир. Позиция 4 — Колесница. Позиция 5 — Башня.",
+        { rejectTarotPositionDump: true }
+      )
+    ).toBe(true);
   });
 
   it("session birth prefers the matrix subject over the purchaser profile", async () => {

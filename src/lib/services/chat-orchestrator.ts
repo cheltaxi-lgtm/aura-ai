@@ -688,8 +688,8 @@ export class ChatOrchestrator {
 
     const addressName = normalizePersonDisplayNameOr(this.userProfile?.name, "друг");
     const matrixWho =
-      this.matrixSubjectName ||
-      addressName;
+      this.matrixSubjectName?.trim() ||
+      (this.matrixSessionIsAboutOther() ? "человек этой матрицы" : addressName);
     return {
       characterId: this.characterId,
       imageBase64: this.imageBase64,
@@ -798,9 +798,10 @@ export class ChatOrchestrator {
     const chatCtx = this.buildChatContext();
     const matrixTool = this.paidMatrixSessionTool();
     const matrixWho =
-      this.matrixSubjectName ||
-      normalizePersonDisplayName(this.userProfile?.name) ||
-      undefined;
+      this.matrixSubjectName?.trim() ||
+      (this.matrixSessionIsAboutOther()
+        ? undefined
+        : normalizePersonDisplayName(this.userProfile?.name) || undefined);
     const { numerologyBlock } = buildNumerologyPromptContext({
       characterId: this.characterId,
       birthDate: this.matrixSubjectBirthDate ?? this.userProfile?.birthDate,
@@ -1031,7 +1032,14 @@ export class ChatOrchestrator {
     }
 
     if (this.lastUserMsg.trim()) {
-      if (usePremiumReading) {
+      if (matrixTool) {
+        systemPrompt += `
+
+ЧАТ — ВОПРОС ПО УЖЕ ПОСТРОЕННОЙ МАТРИЦЕ:
+«${this.lastUserMsg.trim().slice(0, 400)}»
+
+Ответь на ЭТОТ вопрос. Не строй расклад Таро и не нумеруй «Позиция 1/2/…».`;
+      } else if (usePremiumReading) {
         systemPrompt += `
 
 ОПЛАЧЕННЫЙ ПОЛНЫЙ РАСКЛАД — запрос клиента:
@@ -1062,8 +1070,10 @@ export class ChatOrchestrator {
 СЕАНС МАТРИЦЫ СУДЬБЫ (уже построен в этой переписке).
 Субъект схемы: ${subjectLabel}, дата ${birthLabel}. Читатель сеанса: ${readerName}.
 Правила ответа на вопрос:
-- отвечай на последнюю реплику по числам и зонам ЭТОЙ матрицы (не строй полный отчёт заново);
+- отвечай на последнюю реплику по 2–4 числам и зонам ЭТОЙ матрицы (не полный отчёт и не список всех точек);
+- имя в тексте только «${subjectLabel}» — не искажай и не выдумывай другое;
 - не подменяй матрицу ${subjectLabel} матрицей ${readerName}, если вопрос про ${subjectLabel};
+- это не расклад Таро: запрещены формулировки «Позиция N», «выпала карта», колода и масти;
 - это символическое чтение, не юридический и не военный прогноз; не отказывайся отвечать;
 - 5–12 предложений, конкретные арканы/точки из схемы, без повторного списка всех зон.`;
     }
@@ -1083,6 +1093,7 @@ export class ChatOrchestrator {
       cardNames: this.resolvedCardNames.length
         ? this.resolvedCardNames
         : this.tarotCards?.map((c) => c.name),
+      rejectTarotPositionDump: Boolean(this.paidMatrixSessionTool()),
     };
   }
 
@@ -1131,6 +1142,7 @@ export class ChatOrchestrator {
 
   /** Long-form spread replies (period chips, new/daily spread) need more output budget. */
   private streamMaxTokens(): number {
+    if (this.paidMatrixSessionTool()) return 1100;
     const cards = this.activeSpreadCardNames();
     if (this.shouldUsePremiumReadingPrompt() || this.periodSpreadScope) {
       return paidSpreadMaxTokens(cards.length || 3);

@@ -665,7 +665,17 @@ export async function regenerateChatReply(
     temperature?: number;
   }
 ): Promise<string | null> {
-  const correction = `
+  const matrixDump = /matrix follow-up dumped tarot positions/i.test(opts.rejectionReason);
+  const correction = matrixDump
+    ? `
+
+[КОРРЕКЦИЯ — предыдущий ответ отклонён: ${opts.rejectionReason}]
+Это вопрос по уже построенной матрице судьбы, не расклад Таро.
+Ответь заново на последнюю реплику:
+- запрещены «Позиция N», колода и масти;
+- 5–12 предложений по 2–4 зонам схемы, без списка всех точек;
+- имя субъекта не искажай и не выдумывай.`
+    : `
 
 [КОРРЕКЦИЯ — предыдущий ответ отклонён: ${opts.rejectionReason}]
 Ответь заново на последнюю реплику клиента:
