@@ -102,6 +102,9 @@ export function sessionTopicToNumerologyTopics(
       return [];
     case "life_death":
       return [];
+    case "destiny_matrix":
+    case "child_matrix":
+      return ["destiny_matrix"];
     default:
       return [];
   }
@@ -722,9 +725,7 @@ export function buildNumerologyChatContext(
 
   const profile = fullProfile(birthDate, resolvedName.fullName, system);
   // Full Matrix sessions must not receive Pythagorean LP/soul/destiny — models mash systems.
-  const matrixIsolated =
-    topics.includes("destiny_matrix") &&
-    topics.every((t) => t === "destiny_matrix");
+  const matrixIsolated = topics.includes("destiny_matrix");
 
   if (matrixIsolated) {
     // Prefer profile name: free-form matrix CTA text must not become "ФИО".
@@ -736,7 +737,7 @@ export function buildNumerologyChatContext(
     parts.push(
       [
         "КЛИЕНТ ДЛЯ МАТРИЦЫ СУДЬБЫ:",
-        `Имя для обращения (именительный падеж): ${who}.`,
+        `Имя субъекта матрицы (именительный падеж): ${who}.`,
         gender
           ? `Пол клиента: ${genderLabelRu(gender)} — весь разбор только в ${
               gender === "female" ? "женском" : "мужском"
@@ -762,6 +763,7 @@ export function buildNumerologyChatContext(
   let ui: NumerologyChatUi | undefined;
 
   for (const topic of topics) {
+    if (matrixIsolated && topic !== "destiny_matrix") continue;
     const block = buildTopicBlock(topic, {
       birthDate,
       fullName: resolvedName.fullName,

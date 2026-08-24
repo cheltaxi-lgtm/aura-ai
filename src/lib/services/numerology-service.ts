@@ -186,8 +186,10 @@ export async function generateNumerologStreamReply(
   // Chat questions about an existing matrix must not rebuild a 3–7 minute report.
   // That path is /api/reading with toolId destiny_matrix | child_matrix only.
   if (
-    engineResult.primaryTopic === "destiny_matrix" &&
-    !shouldRebuildPaidMatrixReading(params.toolId)
+    !shouldRebuildPaidMatrixReading(params.toolId) &&
+    (engineResult.primaryTopic === "destiny_matrix" ||
+      params.intention === "destiny_matrix" ||
+      params.intention === "child_matrix")
   ) {
     return null;
   }

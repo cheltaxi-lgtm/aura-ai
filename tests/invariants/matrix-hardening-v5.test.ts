@@ -28,7 +28,13 @@ import {
 } from "@/lib/numerology/matrix-snapshot";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { findOwnedExactMatrixPairReport } from "@/lib/numerology/matrix-pair-ownership";
-import { shouldRebuildPaidMatrixReading } from "@/lib/numerology/tools";
+import {
+  decodePaidMatrixSessionTool,
+  isNumerologComputedSessionSpread,
+  shouldRebuildPaidMatrixReading,
+} from "@/lib/numerology/tools";
+import { sessionTopicToNumerologyTopics } from "@/lib/numerology/topic-handlers";
+import { resolveMatrixSessionBirthDate } from "@/lib/numerology/matrix-chat-allowance";
 import {
   persistOwnedMatrixSnapshot,
 } from "@/lib/services/matrix-snapshot-persist";
@@ -549,8 +555,45 @@ describe("chat follow-ups do not rebuild a paid matrix report", () => {
       "!shouldRebuildPaidMatrixReading(params.toolId)"
     );
     expect(skipPaidRebuild).toBeGreaterThan(-1);
-    expect(service.slice(skipPaidRebuild, skipPaidRebuild + 120)).toContain(
+    expect(service.slice(skipPaidRebuild, skipPaidRebuild + 400)).toContain(
       "return null"
     );
+    expect(service).toContain('params.intention === "destiny_matrix"');
+  });
+
+  it("matrix chat follow-ups stay on the session subject and skip tarot buffering", () => {
+    expect(decodePaidMatrixSessionTool("destiny_matrix")).toBe("destiny_matrix");
+    expect(decodePaidMatrixSessionTool("numerolog:destiny_matrix")).toBe(
+      "destiny_matrix"
+    );
+    expect(decodePaidMatrixSessionTool(undefined, "child_matrix")).toBe(
+      "child_matrix"
+    );
+    expect(decodePaidMatrixSessionTool("triplet", "love")).toBeNull();
+    expect(isNumerologComputedSessionSpread("numerolog:destiny_matrix")).toBe(
+      true
+    );
+    expect(isNumerologComputedSessionSpread("numerolog:spread_three_numbers")).toBe(
+      false
+    );
+    expect(sessionTopicToNumerologyTopics("destiny_matrix")).toEqual([
+      "destiny_matrix",
+    ]);
+    const orch = readFileSync(
+      path.join(ROOT, "src/lib/services/chat-orchestrator.ts"),
+      "utf8"
+    );
+    expect(orch).toContain("isComputedNumerologChatSession()");
+    expect(orch).toContain("resolveMatrixSessionBirthDate");
+    expect(orch).toContain("СЕАНС МАТРИЦЫ СУДЬБЫ");
+  });
+
+  it("session birth prefers the matrix subject over the purchaser profile", async () => {
+    const birth = await resolveMatrixSessionBirthDate({
+      profileUserId: null,
+      profileBirthDate: "1990-01-01",
+      numerologToolParams: { matrixBirthDate: "1985-05-09" },
+    });
+    expect(birth).toBe("1985-05-09");
   });
 });

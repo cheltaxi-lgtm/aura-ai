@@ -403,6 +403,33 @@ export function shouldRebuildPaidMatrixReading(
   return toolId === "destiny_matrix" || toolId === "child_matrix";
 }
 
+/** Full/Child Matrix session from spread_id or intention — no default to three-numbers. */
+export function decodePaidMatrixSessionTool(
+  spreadId?: string | null,
+  intention?: string | null
+): "destiny_matrix" | "child_matrix" | null {
+  if (spreadId === "destiny_matrix" || spreadId === "child_matrix") {
+    return spreadId;
+  }
+  const fromSpread = decodeNumerologSpreadId(spreadId);
+  if (fromSpread === "destiny_matrix" || fromSpread === "child_matrix") {
+    return fromSpread;
+  }
+  if (intention === "destiny_matrix" || intention === "child_matrix") {
+    return intention;
+  }
+  return null;
+}
+
+/** No drawable cards — chat follow-ups must not be treated as a tarot spread. */
+export function isNumerologComputedSessionSpread(
+  spreadId?: string | null
+): boolean {
+  if (spreadId === "destiny_matrix" || spreadId === "child_matrix") return true;
+  const id = decodeNumerologSpreadId(spreadId);
+  return Boolean(id && numerologComputedOnlyTool(id));
+}
+
 export function resolveNumerologToolId(
   spreadId?: string | null,
   explicitToolId?: NumerologToolId | null

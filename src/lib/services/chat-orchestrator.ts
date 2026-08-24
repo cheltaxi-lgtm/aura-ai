@@ -81,7 +81,14 @@ import {
 } from "@/lib/services/numerology-service";
 import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
 import { buildHdPromptContext } from "@/lib/prompts/hd-context";
-import { resolveMatrixAwareFreeQuestionLimit } from "@/lib/numerology/matrix-chat-allowance";
+import {
+  resolveMatrixAwareFreeQuestionLimit,
+  resolveMatrixSessionBirthDate,
+} from "@/lib/numerology/matrix-chat-allowance";
+import {
+  decodePaidMatrixSessionTool,
+  isNumerologComputedSessionSpread,
+} from "@/lib/numerology/tools";
 import {
   getSession,
   saveMessage,
@@ -243,6 +250,8 @@ export class ChatOrchestrator {
   private clientMemoryBlock = "";
   private lastSystemPrompt = "";
   private chatTemperature: number | undefined;
+  private matrixSubjectBirthDate: string | null = null;
+  private matrixSubjectName: string | null = null;
 
   private constructor(parsed: ParsedChatRequest) {
     this.characterId = parsed.characterId;
@@ -339,6 +348,7 @@ export class ChatOrchestrator {
   /** Main pipeline: session meta → numerolog or LLM stream → SSE response. */
   async run(): Promise<Response> {
     await this.syncSessionMeta();
+    await this.resolveMatrixSessionSubject();
     await this.persistUserMessage();
     await this.loadPromptMemory();
     await this.loadLlmMessages();
@@ -506,6 +516,7 @@ export class ChatOrchestrator {
     }
 
     try {
+      this.stripCardsFromComputedNumerologSession();
       const activeSpreadId = this.resolvedSpreadId ?? this.spreadId;
       const cardNames = this.spreadCardNames?.length
         ? this.spreadCardNames
@@ -676,12 +687,15 @@ export class ChatOrchestrator {
       .map((m) => m.content);
 
     const addressName = normalizePersonDisplayNameOr(this.userProfile?.name, "друг");
+    const matrixWho =
+      this.matrixSubjectName ||
+      addressName;
     return {
       characterId: this.characterId,
       imageBase64: this.imageBase64,
       userName: addressName,
-      birthDate: this.userProfile?.birthDate,
-      profileName: addressName,
+      birthDate: this.matrixSubjectBirthDate ?? this.userProfile?.birthDate,
+      profileName: matrixWho,
       gender: this.userProfile?.gender || null,
       lastUserMessage: this.lastUserMsg,
       recentUserMessages,
@@ -689,7 +703,9 @@ export class ChatOrchestrator {
       memoryBlock:
         [this.clientMemoryBlock, this.memoryBlock].filter(Boolean).join("\n\n") ||
         undefined,
-      intention: this.periodSpreadScope ? null : this.resolvedIntention,
+      intention: this.periodSpreadScope
+        ? null
+        : (this.paidMatrixSessionTool() ?? this.resolvedIntention),
     };
   }
 
@@ -705,12 +721,20 @@ export class ChatOrchestrator {
       userName: addressName,
       gender: this.userProfile?.gender,
       zodiac: this.userProfile?.zodiac,
-      birthDate: this.userProfile?.birthDate,
-      birthTime: this.userProfile?.birthTime,
-      birthCity: this.userProfile?.birthCity,
+      birthDate: this.matrixSessionIsAboutOther()
+        ? undefined
+        : this.userProfile?.birthDate,
+      birthTime: this.matrixSessionIsAboutOther()
+        ? undefined
+        : this.userProfile?.birthTime,
+      birthCity: this.matrixSessionIsAboutOther()
+        ? undefined
+        : this.userProfile?.birthCity,
+      astroMeta: this.matrixSessionIsAboutOther()
+        ? undefined
+        : this.userProfile?.astroMeta,
       lifeFocus: this.userProfile?.lifeFocus,
       mainQuestion: this.userProfile?.mainQuestion,
-      astroMeta: this.userProfile?.astroMeta,
       today,
       tarotCards: this.tarotCards,
       isPaid: this.promptHasFullAccess(),
@@ -772,24 +796,36 @@ export class ChatOrchestrator {
   /** Assembles system prompt: character, blogger knowledge, user memory, intention/spread blocks. */
   async buildSystemPrompt(): Promise<string> {
     const chatCtx = this.buildChatContext();
+    const matrixTool = this.paidMatrixSessionTool();
+    const matrixWho =
+      this.matrixSubjectName ||
+      normalizePersonDisplayName(this.userProfile?.name) ||
+      undefined;
     const { numerologyBlock } = buildNumerologyPromptContext({
       characterId: this.characterId,
-      birthDate: this.userProfile?.birthDate,
-      profileName: normalizePersonDisplayName(this.userProfile?.name) || undefined,
+      birthDate: this.matrixSubjectBirthDate ?? this.userProfile?.birthDate,
+      profileName: matrixWho,
       gender: this.userProfile?.gender || null,
       lastUserMessage: this.lastUserMsg,
-      intention: this.periodSpreadScope ? null : this.resolvedIntention,
+      intention: this.periodSpreadScope
+        ? null
+        : (matrixTool ?? this.resolvedIntention),
     });
-    const natalChartBlock = await buildNatalPromptContext({
-      characterId: this.characterId,
-      profileUserId: this.profileUserId,
-      topic: this.lastUserMsg,
-      purpose: "chat",
-    });
-    const humanDesignBlock = await buildHdPromptContext({
-      characterId: this.characterId,
-      profileUserId: this.profileUserId,
-    });
+    const skipReaderCharts = this.matrixSessionIsAboutOther();
+    const natalChartBlock = skipReaderCharts
+      ? ""
+      : await buildNatalPromptContext({
+          characterId: this.characterId,
+          profileUserId: this.profileUserId,
+          topic: this.lastUserMsg,
+          purpose: "chat",
+        });
+    const humanDesignBlock = skipReaderCharts
+      ? ""
+      : await buildHdPromptContext({
+          characterId: this.characterId,
+          profileUserId: this.profileUserId,
+        });
 
     let sessionNumber = 1;
     if (this.profileUserId && this.dbOk) {
@@ -1012,8 +1048,24 @@ export class ChatOrchestrator {
 - тема ответа = последняя реплика; память из служебного контекста — только если она про эту же тему;
 - каждая руна/карта расклада — отдельная мысль, без повторения одной формулировки;
 - не пересказывай слова клиента дословно;
-- если вопрос уже уточнён (например «переезд») — не спрашивай снова «какой выбор», отвечай по сути.`;
+        - если вопрос уже уточнён (например «переезд») — не спрашивай снова «какой выбор», отвечай по сути.`;
       }
+    }
+
+    if (matrixTool) {
+      const readerName =
+        normalizePersonDisplayName(this.userProfile?.name) || "читатель";
+      const subjectLabel = this.matrixSubjectName?.trim() || matrixWho || "человек этой матрицы";
+      const birthLabel = this.matrixSubjectBirthDate || "дата в сеансе";
+      systemPrompt += `
+
+СЕАНС МАТРИЦЫ СУДЬБЫ (уже построен в этой переписке).
+Субъект схемы: ${subjectLabel}, дата ${birthLabel}. Читатель сеанса: ${readerName}.
+Правила ответа на вопрос:
+- отвечай на последнюю реплику по числам и зонам ЭТОЙ матрицы (не строй полный отчёт заново);
+- не подменяй матрицу ${subjectLabel} матрицей ${readerName}, если вопрос про ${subjectLabel};
+- это символическое чтение, не юридический и не военный прогноз; не отказывайся отвечать;
+- 5–12 предложений, конкретные арканы/точки из схемы, без повторного списка всех зон.`;
     }
 
     if (this.llmMessages.length > 2 && this.memoryBlock) {
@@ -1034,6 +1086,49 @@ export class ChatOrchestrator {
     };
   }
 
+  private paidMatrixSessionTool(): "destiny_matrix" | "child_matrix" | null {
+    return decodePaidMatrixSessionTool(
+      this.resolvedSpreadId ?? this.spreadId ?? this.session?.spread_id,
+      this.resolvedIntention ?? this.session?.intention
+    );
+  }
+
+  private isComputedNumerologChatSession(): boolean {
+    return isNumerologComputedSessionSpread(
+      this.resolvedSpreadId ?? this.spreadId ?? this.session?.spread_id
+    );
+  }
+
+  private stripCardsFromComputedNumerologSession(): void {
+    if (!this.isComputedNumerologChatSession()) return;
+    this.resolvedCardNames = [];
+    this.spreadCardNames = undefined;
+    this.tarotCards = undefined;
+  }
+
+  private matrixSessionIsAboutOther(): boolean {
+    if (!this.paidMatrixSessionTool()) return false;
+    const params = this.session?.numerolog_tool_params;
+    if (params?.matrixSubjectId?.trim()) return true;
+    const subjectBirth = (this.matrixSubjectBirthDate || params?.matrixBirthDate || "").trim();
+    const profileBirth = (this.userProfile?.birthDate || "").trim();
+    if (subjectBirth && profileBirth && subjectBirth !== profileBirth) return true;
+    const subject = this.matrixSubjectName?.trim().toLowerCase();
+    const reader = (normalizePersonDisplayName(this.userProfile?.name) || "").toLowerCase();
+    return Boolean(subject && reader && subject !== reader);
+  }
+
+  private async resolveMatrixSessionSubject(): Promise<void> {
+    if (this.characterId !== "numerolog") return;
+    const params = this.session?.numerolog_tool_params ?? null;
+    this.matrixSubjectName = params?.subjectName?.trim() || null;
+    this.matrixSubjectBirthDate = await resolveMatrixSessionBirthDate({
+      profileUserId: this.profileUserId,
+      profileBirthDate: this.userProfile?.birthDate,
+      numerologToolParams: params,
+    });
+  }
+
   /** Long-form spread replies (period chips, new/daily spread) need more output budget. */
   private streamMaxTokens(): number {
     const cards = this.activeSpreadCardNames();
@@ -1052,6 +1147,7 @@ export class ChatOrchestrator {
 
   private isLongFormSpreadReply(): boolean {
     if (this.periodSpreadScope) return true;
+    if (this.isComputedNumerologChatSession()) return false;
     const spreadId = this.resolvedSpreadId ?? this.spreadId;
     const cards = this.resolvedCardNames.length
       ? this.resolvedCardNames
@@ -1470,7 +1566,12 @@ export class ChatOrchestrator {
     }
 
     // Engine math may answer tool-style numerology chips, but never replaces a paid long-form AI reading.
-    if (llmFailed && this.numerologParams && !this.isLongFormSpreadReply()) {
+    if (
+      llmFailed &&
+      this.numerologParams &&
+      !this.isLongFormSpreadReply() &&
+      !this.paidMatrixSessionTool()
+    ) {
       const engineFallback = tryNumerologEngineFallback(this.numerologParams);
       if (engineFallback) {
         finalReply = engineFallback.reply;
@@ -1540,7 +1641,12 @@ export class ChatOrchestrator {
     reply = resolved.reply;
     llmFailed = resolved.llmFailed;
 
-    if (llmFailed && this.numerologParams && !this.isLongFormSpreadReply()) {
+    if (
+      llmFailed &&
+      this.numerologParams &&
+      !this.isLongFormSpreadReply() &&
+      !this.paidMatrixSessionTool()
+    ) {
       const engineFallback = tryNumerologEngineFallback(this.numerologParams);
       if (engineFallback) {
         reply = engineFallback.reply;
