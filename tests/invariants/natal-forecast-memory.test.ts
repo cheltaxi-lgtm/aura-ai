@@ -60,6 +60,7 @@ describe("natal forecast memory lens", () => {
     expect(lens).toContain('includePastSessions: !isForecast');
     expect(lens).toContain('depth: isForecast ? "standard" : "deep"');
     expect(lens).toContain("upcomingWithinDays: params.forecast?.horizonDays");
+    expect(lens).toContain("upcomingWindow: params.forecast");
     expect(lens).toMatch(/не источник фактов карты/i);
     expect(lens).toContain("Даты из памяти не подменяют timing evidence");
   });
@@ -89,12 +90,10 @@ describe("natal forecast upcoming window", () => {
   });
 
   it("keeps dated events for a forecast window even if the query is generic", () => {
-    const eventDate = new Date();
-    eventDate.setUTCDate(eventDate.getUTCDate() + 10);
     const wedding = fact({
       id: "evt-wedding",
-      fact: "Свадьба через десять дней",
-      eventDate: eventDate.toISOString().slice(0, 10),
+      fact: "Свадьба в сентябре",
+      eventDate: "2026-09-12",
       category: "event",
       predicateKey: "event.upcoming",
     });
@@ -105,17 +104,36 @@ describe("natal forecast upcoming window", () => {
       depth: "standard",
       relevanceFlags: [false],
       upcomingWithinDays: 30,
+      upcomingWindow: { start: "2026-08-24", end: "2026-09-23" },
     });
     expect(pack.upcomingEvents.map((item) => item.id)).toContain("evt-wedding");
   });
 
+  it("uses the natal calendar window, not a rolling UTC horizon from now", () => {
+    const inWindow = fact({
+      id: "evt-in",
+      fact: "Событие в окне карты",
+      eventDate: "2026-08-24",
+      category: "event",
+      predicateKey: "event.upcoming",
+    });
+    const pack = assembleClientMemoryPackSync({
+      queryText: "натальная трактовка",
+      candidates: [inWindow],
+      expansion: expandMemoryQuery("натальная трактовка"),
+      depth: "standard",
+      relevanceFlags: [false],
+      upcomingWithinDays: 7,
+      upcomingWindow: { start: "2026-08-24", end: "2026-08-31" },
+    });
+    expect(pack.upcomingEvents.map((item) => item.id)).toContain("evt-in");
+  });
+
   it("does not keep dated events outside the requested forecast window", () => {
-    const eventDate = new Date();
-    eventDate.setUTCDate(eventDate.getUTCDate() + 40);
     const later = fact({
       id: "evt-later",
       fact: "Событие через сорок дней",
-      eventDate: eventDate.toISOString().slice(0, 10),
+      eventDate: "2026-10-03",
       category: "event",
       predicateKey: "event.upcoming",
     });
@@ -126,17 +144,16 @@ describe("natal forecast upcoming window", () => {
       depth: "standard",
       relevanceFlags: [false],
       upcomingWithinDays: 7,
+      upcomingWindow: { start: "2026-08-24", end: "2026-08-31" },
     });
     expect(pack.upcomingEvents.map((item) => item.id)).not.toContain("evt-later");
   });
 
   it("drops query-matching dated events that fall outside the forecast window", () => {
-    const eventDate = new Date();
-    eventDate.setUTCDate(eventDate.getUTCDate() + 40);
     const later = fact({
       id: "evt-later-relevant",
       fact: "Свадьба через сорок дней",
-      eventDate: eventDate.toISOString().slice(0, 10),
+      eventDate: "2026-10-03",
       category: "event",
       predicateKey: "event.upcoming",
     });
@@ -147,8 +164,30 @@ describe("natal forecast upcoming window", () => {
       depth: "standard",
       relevanceFlags: [true],
       upcomingWithinDays: 7,
+      upcomingWindow: { start: "2026-08-24", end: "2026-08-31" },
     });
     expect(pack.upcomingEvents.map((item) => item.id)).not.toContain("evt-later-relevant");
+  });
+
+  it("keeps people facts even if they carry an out-of-window date", () => {
+    const partner = fact({
+      id: "person-partner",
+      fact: "Партнёр Анна",
+      eventDate: "2026-12-01",
+      category: "relationship",
+      predicateKey: "relationship.partner",
+    });
+    const pack = assembleClientMemoryPackSync({
+      queryText: "отношения партнёр",
+      candidates: [partner],
+      expansion: expandMemoryQuery("отношения партнёр"),
+      depth: "standard",
+      relevanceFlags: [true],
+      upcomingWithinDays: 7,
+      upcomingWindow: { start: "2026-08-24", end: "2026-08-31" },
+    });
+    expect(pack.coreFacts.map((item) => item.id)).toContain("person-partner");
+    expect(pack.upcomingEvents.map((item) => item.id)).not.toContain("person-partner");
   });
 
   it("drops dated events when no forecast window is requested and query does not match", () => {

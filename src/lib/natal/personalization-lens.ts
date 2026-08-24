@@ -83,6 +83,9 @@ export async function appendNatalPersonalizationLens(
       depth: isForecast ? "standard" : "deep",
       includePastSessions: !isForecast,
       upcomingWithinDays: params.forecast?.horizonDays,
+      upcomingWindow: params.forecast
+        ? { start: params.forecast.windowStart, end: params.forecast.windowEnd }
+        : undefined,
       profile: params.user
         ? {
             name: displayName,

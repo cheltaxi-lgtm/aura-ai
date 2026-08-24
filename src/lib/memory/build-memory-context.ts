@@ -55,6 +55,8 @@ export interface MemoryContextParams {
    * default 45-day window (natal forecast horizon).
    */
   upcomingWithinDays?: number | null;
+  /** Inclusive YYYY-MM-DD bounds from natal timing (preferred over rolling days). */
+  upcomingWindow?: { start: string; end: string } | null;
 }
 
 export interface MemoryContext {
@@ -98,6 +100,7 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
           depth: params.depth,
           product: params.product,
           upcomingWithinDays: params.upcomingWithinDays,
+          upcomingWindow: params.upcomingWindow,
         })
       : Promise.resolve({ block: "", metrics: emptyMemoryMetrics() }),
     memoryOn && includePastSessions

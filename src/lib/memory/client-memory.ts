@@ -43,6 +43,7 @@ export async function loadClientMemoryBlock(params: {
   depth?: MemoryDepth | null;
   product?: string | null;
   upcomingWithinDays?: number | null;
+  upcomingWindow?: { start: string; end: string } | null;
 }): Promise<{ block: string; metrics: MemoryRetrievalMetrics }> {
   const { userId, queryText = "", sessionId } = params;
   const started = Date.now();
@@ -72,6 +73,7 @@ export async function loadClientMemoryBlock(params: {
       depth: params.depth,
       product: params.product,
       upcomingWithinDays: params.upcomingWithinDays,
+      upcomingWindow: params.upcomingWindow,
     });
     const depth = resolveMemoryDepth({
       depth: params.depth,
@@ -201,6 +203,7 @@ export async function loadClientMemoryBlockText(params: {
   depth?: MemoryDepth | null;
   product?: string | null;
   upcomingWithinDays?: number | null;
+  upcomingWindow?: { start: string; end: string } | null;
 }): Promise<string> {
   const loaded = await loadClientMemoryBlock(params);
   return loaded.block;

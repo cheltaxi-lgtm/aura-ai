@@ -133,6 +133,34 @@ export function resolveUpcomingFetchWindow(upcomingWithinDays?: number | null): 
   return { days, limit };
 }
 
+export function parseIsoDay(value: string | null | undefined): string | null {
+  const match = /^(\d{4}-\d{2}-\d{2})/.exec(String(value ?? "").trim());
+  return match?.[1] ?? null;
+}
+
+export function isEventDateInInclusiveRange(
+  eventDate: string | null | undefined,
+  start: string,
+  end: string
+): boolean {
+  const day = parseIsoDay(eventDate);
+  const from = parseIsoDay(start);
+  const to = parseIsoDay(end);
+  if (!day || !from || !to) return false;
+  return from <= to ? day >= from && day <= to : day >= to && day <= from;
+}
+
+export function parseUpcomingCalendarWindow(
+  window?: { start?: string | null; end?: string | null } | null
+): { startDate: string; endDate: string } | null {
+  const startDate = parseIsoDay(window?.start);
+  const endDate = parseIsoDay(window?.end);
+  if (!startDate || !endDate) return null;
+  return startDate <= endDate
+    ? { startDate, endDate }
+    : { startDate: endDate, endDate: startDate };
+}
+
 export function isUpcomingEventInWindow(
   eventDate: string | null | undefined,
   withinDays: number,
@@ -154,6 +182,7 @@ export async function buildClientMemoryPack(params: {
   depth?: MemoryDepth | null;
   product?: string | null;
   upcomingWithinDays?: number | null;
+  upcomingWindow?: { start: string; end: string } | null;
 }): Promise<ClientMemoryPack> {
   const started = Date.now();
   const queryText = params.queryText.trim();
@@ -212,12 +241,16 @@ export async function buildClientMemoryPack(params: {
     wantsTimeline: expansion.wantsTimeline,
   });
   const upcomingWindow = resolveUpcomingFetchWindow(params.upcomingWithinDays);
+  const calendarWindow = parseUpcomingCalendarWindow(params.upcomingWindow);
   const [coreRaw, upcomingRaw, relevantRaw, entityRaw, predicateRaw, timelineRaw] =
     await Promise.all([
       getCoreFacts(params.userId, 12).catch(() => [] as UserFact[]),
-      getUpcomingEvents(params.userId, upcomingWindow.days, upcomingWindow.limit).catch(
-        () => [] as UserFact[]
-      ),
+      getUpcomingEvents(
+        params.userId,
+        upcomingWindow.days,
+        upcomingWindow.limit,
+        calendarWindow
+      ).catch(() => [] as UserFact[]),
       searchFacts(params.userId, expansion.expandedText, {
         topK: candidateLimit,
         includeArchived,
@@ -269,6 +302,7 @@ export async function buildClientMemoryPack(params: {
     relevanceFlags,
     startedAt: started,
     upcomingWithinDays: params.upcomingWithinDays,
+    upcomingWindow: params.upcomingWindow,
   });
   if (isMemoryIntelligenceEnabled()) {
     try {
@@ -315,6 +349,7 @@ export function assembleClientMemoryPackSync(params: {
   relevanceFlags: boolean[];
   startedAt?: number;
   upcomingWithinDays?: number | null;
+  upcomingWindow?: { start: string; end: string } | null;
 }): ClientMemoryPack {
   const started = params.startedAt ?? Date.now();
   const { candidates, expansion, depth, relevanceFlags } = params;
@@ -353,8 +388,23 @@ export function assembleClientMemoryPackSync(params: {
     return factMatchesQueryTheme(fact, expansion);
   };
 
-  const windowEvents =
-    typeof params.upcomingWithinDays === "number" && params.upcomingWithinDays > 0;
+  const calendarWindow = parseUpcomingCalendarWindow(params.upcomingWindow);
+  const rollingDays =
+    typeof params.upcomingWithinDays === "number" && params.upcomingWithinDays > 0
+      ? params.upcomingWithinDays
+      : null;
+  const windowEvents = Boolean(calendarWindow || rollingDays);
+  const eventInForecastWindow = (eventDate: string | null | undefined): boolean => {
+    if (calendarWindow) {
+      return isEventDateInInclusiveRange(
+        eventDate,
+        calendarWindow.startDate,
+        calendarWindow.endDate
+      );
+    }
+    if (rollingDays) return isUpcomingEventInWindow(eventDate, rollingDays);
+    return false;
+  };
   const scored = candidates
     .map((fact, index) => {
       const sessionHit = included.some((f) => f.id === fact.id);
@@ -371,13 +421,14 @@ export function assembleClientMemoryPackSync(params: {
       const factSlug = personSlugFromEntityKey(fact.entityKey);
       const otherPerson = Boolean(factSlug) && mentionedSlugs.size > 0 && !mentionedSlugs.has(factSlug);
       const datedWindowHit =
-        windowEvents &&
-        fact.status === "active" &&
-        isUpcomingEventInWindow(fact.eventDate, params.upcomingWithinDays as number);
+        windowEvents && fact.status === "active" && eventInForecastWindow(fact.eventDate);
+      const datedEventLayer =
+        classifyMemoryLayer(fact) === "events" || fact.predicateKey === "event.upcoming";
       const outsideForecastWindow =
         windowEvents &&
+        datedEventLayer &&
         Boolean(fact.eventDate) &&
-        !isUpcomingEventInWindow(fact.eventDate, params.upcomingWithinDays as number);
+        !eventInForecastWindow(fact.eventDate);
       const keep =
         sessionHit ||
         datedWindowHit ||
@@ -412,12 +463,15 @@ export function assembleClientMemoryPackSync(params: {
   const upcomingCap = windowEvents
     ? resolveUpcomingFetchWindow(params.upcomingWithinDays).limit
     : 4;
-  const upcoming = filterActiveMemoryFacts(
-    take(
-      selected.filter((f) => classifyMemoryLayer(f) === "events" || Boolean(f.eventDate)),
-      upcomingCap
-    )
+  const upcomingCandidates = take(
+    selected.filter((f) => classifyMemoryLayer(f) === "events" || Boolean(f.eventDate)),
+    upcomingCap
   );
+  const upcoming = calendarWindow
+    ? upcomingCandidates.filter((f) =>
+        isEventDateInInclusiveRange(f.eventDate, calendarWindow.startDate, calendarWindow.endDate)
+      )
+    : filterActiveMemoryFacts(upcomingCandidates);
   const upcomingIds = new Set(upcoming.map((f) => f.id));
   const rest = selected.filter((f) => !upcomingIds.has(f.id));
 

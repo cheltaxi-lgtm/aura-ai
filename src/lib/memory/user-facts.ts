@@ -856,9 +856,30 @@ export async function getFactsByPredicates(
 export async function getUpcomingEvents(
   userId: string,
   withinDays = 45,
-  limit = 5
+  limit = 5,
+  range?: { startDate: string; endDate: string } | null
 ): Promise<UserFact[]> {
   if (!userId) return [];
+  const startDate = /^\d{4}-\d{2}-\d{2}$/.test(range?.startDate ?? "") ? range!.startDate : null;
+  const endDate = /^\d{4}-\d{2}-\d{2}$/.test(range?.endDate ?? "") ? range!.endDate : null;
+  if (startDate && endDate) {
+    const from = startDate <= endDate ? startDate : endDate;
+    const to = startDate <= endDate ? endDate : startDate;
+    const { rows } = await query<FactRow>(
+      `SELECT ${FACT_COLUMNS}
+         FROM user_facts
+        WHERE user_id = $1
+          AND status = 'active'
+          AND archive_tier IN ('hot', 'warm')
+          AND event_date IS NOT NULL
+          AND event_date >= $2::date
+          AND event_date <= $3::date
+        ORDER BY event_date ASC
+        LIMIT $4`,
+      [userId, from, to, limit]
+    );
+    return rows.map(mapRow);
+  }
   const { rows } = await query<FactRow>(
     `SELECT ${FACT_COLUMNS}
        FROM user_facts
