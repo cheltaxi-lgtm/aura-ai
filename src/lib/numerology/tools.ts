@@ -396,6 +396,13 @@ export function decodeNumerologSpreadId(
   return isNumerologSessionToolId(id) ? id : null;
 }
 
+/** Paid Full/Child Matrix rebuild lives on /api/reading — never on a chat follow-up. */
+export function shouldRebuildPaidMatrixReading(
+  toolId?: NumerologToolId | string | null
+): toolId is "destiny_matrix" | "child_matrix" {
+  return toolId === "destiny_matrix" || toolId === "child_matrix";
+}
+
 export function resolveNumerologToolId(
   spreadId?: string | null,
   explicitToolId?: NumerologToolId | null

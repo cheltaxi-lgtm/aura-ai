@@ -17,7 +17,8 @@ export const CHECKS = {
   "matrix-drift": { title: "matrix-calc-drift", npm: "verify:matrix-calc-drift" },
   "matrix-unit": {
     title: "matrix-unit",
-    vitest: ["tests/invariants/matrix-*.test.ts"],
+    // Vitest 4 treats `matrix-*.test.ts` as a literal filter (no files). Prefix match works.
+    vitest: ["tests/invariants/matrix"],
   },
   "e2e-matrix": {
     title: "e2e-matrix",

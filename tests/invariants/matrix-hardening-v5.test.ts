@@ -28,6 +28,7 @@ import {
 } from "@/lib/numerology/matrix-snapshot";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { findOwnedExactMatrixPairReport } from "@/lib/numerology/matrix-pair-ownership";
+import { shouldRebuildPaidMatrixReading } from "@/lib/numerology/tools";
 import {
   persistOwnedMatrixSnapshot,
 } from "@/lib/services/matrix-snapshot-persist";
@@ -530,6 +531,26 @@ describe("billing remains server-authoritative", () => {
     expect(pairBlock).toMatch(/return \{[\s\S]*reused: true[\s\S]*matrixOwned: true/);
     expect(pairBlock.indexOf("chargeRuneActionForWorkerJob")).toBeGreaterThan(
       pairBlock.indexOf("reused: true")
+    );
+  });
+});
+
+describe("chat follow-ups do not rebuild a paid matrix report", () => {
+  it("only /api/reading toolIds rebuild Full/Child Matrix", () => {
+    expect(shouldRebuildPaidMatrixReading(undefined)).toBe(false);
+    expect(shouldRebuildPaidMatrixReading("pythagoras")).toBe(false);
+    expect(shouldRebuildPaidMatrixReading("destiny_matrix")).toBe(true);
+    expect(shouldRebuildPaidMatrixReading("child_matrix")).toBe(true);
+    const service = readFileSync(
+      path.join(ROOT, "src/lib/services/numerology-service.ts"),
+      "utf8"
+    );
+    const skipPaidRebuild = service.indexOf(
+      "!shouldRebuildPaidMatrixReading(params.toolId)"
+    );
+    expect(skipPaidRebuild).toBeGreaterThan(-1);
+    expect(service.slice(skipPaidRebuild, skipPaidRebuild + 120)).toContain(
+      "return null"
     );
   });
 });

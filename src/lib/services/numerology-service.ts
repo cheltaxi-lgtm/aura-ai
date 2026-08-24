@@ -31,6 +31,7 @@ import type { PythagorasSquareResult } from "@/lib/numerology/pythagoras-square"
 import {
   buildNumerologToolMessage,
   getNumerologTool,
+  shouldRebuildPaidMatrixReading,
   type NumerologToolId,
   type NumerologToolParams,
 } from "@/lib/numerology/tools";
@@ -182,6 +183,15 @@ export async function generateNumerologStreamReply(
     return null;
   }
 
+  // Chat questions about an existing matrix must not rebuild a 3–7 minute report.
+  // That path is /api/reading with toolId destiny_matrix | child_matrix only.
+  if (
+    engineResult.primaryTopic === "destiny_matrix" &&
+    !shouldRebuildPaidMatrixReading(params.toolId)
+  ) {
+    return null;
+  }
+
   const numerologyUi = engineResult.ui?.pythagorasSquare
     ? { pythagorasSquare: engineResult.ui.pythagorasSquare }
     : undefined;
@@ -252,7 +262,7 @@ export async function generateNumerologStreamReply(
   if (
     engineResult.primaryTopic === "destiny_matrix" &&
     params.birthDate &&
-    (params.toolId === "destiny_matrix" || params.toolId === "child_matrix")
+    shouldRebuildPaidMatrixReading(params.toolId)
   ) {
     try {
       const sectioned = await generateFullMatrixSectionedReading({
