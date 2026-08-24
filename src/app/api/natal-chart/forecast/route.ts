@@ -203,7 +203,15 @@ ${evidenceBlock}
 
 TIMING EVIDENCE ID (обязательны в summary, currentPeriod, recommendations):
 ${timingEvidenceIds.join("\n")}`),
-    { profileUserId: auth.profileUserId, user: forecastUser }
+    {
+      profileUserId: auth.profileUserId,
+      user: forecastUser,
+      forecast: {
+        horizonDays: horizon,
+        windowStart: timing.windowStart,
+        windowEnd: timing.windowEnd,
+      },
+    }
   );
 
   let charge: BillingChargeResult | undefined;

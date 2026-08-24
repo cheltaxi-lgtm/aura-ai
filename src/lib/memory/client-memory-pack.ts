@@ -121,12 +121,39 @@ function take(facts: UserFact[], n: number): UserFact[] {
   return facts.slice(0, Math.max(0, n));
 }
 
+export function resolveUpcomingFetchWindow(upcomingWithinDays?: number | null): {
+  days: number;
+  limit: number;
+} {
+  if (upcomingWithinDays == null || !Number.isFinite(upcomingWithinDays)) {
+    return { days: 45, limit: 5 };
+  }
+  const days = Math.min(365, Math.max(1, Math.round(upcomingWithinDays)));
+  const limit = days >= 365 ? 8 : days >= 90 ? 6 : 5;
+  return { days, limit };
+}
+
+export function isUpcomingEventInWindow(
+  eventDate: string | null | undefined,
+  withinDays: number,
+  now = new Date()
+): boolean {
+  if (!eventDate || !Number.isFinite(withinDays) || withinDays <= 0) return false;
+  const isoDay = /^\d{4}-\d{2}-\d{2}/.exec(eventDate)?.[0];
+  const parsed = Date.parse(isoDay ? `${isoDay}T00:00:00Z` : eventDate);
+  if (Number.isNaN(parsed)) return false;
+  const start = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate());
+  const end = start + withinDays * 86_400_000;
+  return parsed >= start && parsed <= end;
+}
+
 export async function buildClientMemoryPack(params: {
   userId: string;
   queryText: string;
   sessionId?: string | null;
   depth?: MemoryDepth | null;
   product?: string | null;
+  upcomingWithinDays?: number | null;
 }): Promise<ClientMemoryPack> {
   const started = Date.now();
   const queryText = params.queryText.trim();
@@ -184,10 +211,13 @@ export async function buildClientMemoryPack(params: {
     includeArchived,
     wantsTimeline: expansion.wantsTimeline,
   });
+  const upcomingWindow = resolveUpcomingFetchWindow(params.upcomingWithinDays);
   const [coreRaw, upcomingRaw, relevantRaw, entityRaw, predicateRaw, timelineRaw] =
     await Promise.all([
       getCoreFacts(params.userId, 12).catch(() => [] as UserFact[]),
-      getUpcomingEvents(params.userId).catch(() => [] as UserFact[]),
+      getUpcomingEvents(params.userId, upcomingWindow.days, upcomingWindow.limit).catch(
+        () => [] as UserFact[]
+      ),
       searchFacts(params.userId, expansion.expandedText, {
         topK: candidateLimit,
         includeArchived,
@@ -238,6 +268,7 @@ export async function buildClientMemoryPack(params: {
     included: selection.included,
     relevanceFlags,
     startedAt: started,
+    upcomingWithinDays: params.upcomingWithinDays,
   });
   if (isMemoryIntelligenceEnabled()) {
     try {
@@ -283,6 +314,7 @@ export function assembleClientMemoryPackSync(params: {
   included?: UserFact[];
   relevanceFlags: boolean[];
   startedAt?: number;
+  upcomingWithinDays?: number | null;
 }): ClientMemoryPack {
   const started = params.startedAt ?? Date.now();
   const { candidates, expansion, depth, relevanceFlags } = params;
@@ -321,6 +353,8 @@ export function assembleClientMemoryPackSync(params: {
     return factMatchesQueryTheme(fact, expansion);
   };
 
+  const windowEvents =
+    typeof params.upcomingWithinDays === "number" && params.upcomingWithinDays > 0;
   const scored = candidates
     .map((fact, index) => {
       const sessionHit = included.some((f) => f.id === fact.id);
@@ -336,9 +370,19 @@ export function assembleClientMemoryPackSync(params: {
       );
       const factSlug = personSlugFromEntityKey(fact.entityKey);
       const otherPerson = Boolean(factSlug) && mentionedSlugs.size > 0 && !mentionedSlugs.has(factSlug);
+      const datedWindowHit =
+        windowEvents &&
+        fact.status === "active" &&
+        isUpcomingEventInWindow(fact.eventDate, params.upcomingWithinDays as number);
+      const outsideForecastWindow =
+        windowEvents &&
+        Boolean(fact.eventDate) &&
+        !isUpcomingEventInWindow(fact.eventDate, params.upcomingWithinDays as number);
       const keep =
         sessionHit ||
-        (!conflict &&
+        datedWindowHit ||
+        (!outsideForecastWindow &&
+          !conflict &&
           !otherPerson &&
           (injectCore(fact, relevant) ||
             relevant ||
@@ -348,6 +392,7 @@ export function assembleClientMemoryPackSync(params: {
               (entityHit || (expansion.wantsTimeline && relevant)))));
       const rank =
         (sessionHit ? 80 : 0) +
+        (datedWindowHit ? 36 : 0) +
         (entityHit ? 50 : 0) +
         (predicateHit ? 28 : 0) +
         (isProtectedFact(fact) && relevant ? 24 : 0) +
@@ -364,10 +409,13 @@ export function assembleClientMemoryPackSync(params: {
     .sort((a, b) => b.rank - a.rank);
 
   const selected = scored.map((row) => row.fact);
+  const upcomingCap = windowEvents
+    ? resolveUpcomingFetchWindow(params.upcomingWithinDays).limit
+    : 4;
   const upcoming = filterActiveMemoryFacts(
     take(
       selected.filter((f) => classifyMemoryLayer(f) === "events" || Boolean(f.eventDate)),
-      4
+      upcomingCap
     )
   );
   const upcomingIds = new Set(upcoming.map((f) => f.id));

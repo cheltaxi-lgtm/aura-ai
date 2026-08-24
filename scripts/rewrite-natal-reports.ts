@@ -292,7 +292,15 @@ ${formatEvidencePromptCompact(resolved.promptEvidence)}
 
 TIMING EVIDENCE ID (обязательны в summary, currentPeriod, recommendations):
 ${timingEvidenceIds.join("\n")}`),
-    { profileUserId: row.user_id, user }
+    {
+      profileUserId: row.user_id,
+      user,
+      forecast: {
+        horizonDays: horizon,
+        windowStart,
+        windowEnd,
+      },
+    }
   );
 
   const generated = await generateValidatedNatalReport({

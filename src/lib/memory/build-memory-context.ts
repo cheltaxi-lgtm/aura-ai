@@ -50,6 +50,11 @@ export interface MemoryContextParams {
   depth?: MemoryDepth;
   /** Product hint for budget (reading, natal, hd, matrix, daily, chat). */
   product?: string | null;
+  /**
+   * When set, upcoming-event retrieval uses this many days instead of the
+   * default 45-day window (natal forecast horizon).
+   */
+  upcomingWithinDays?: number | null;
 }
 
 export interface MemoryContext {
@@ -92,6 +97,7 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
           sessionId: params.sessionId,
           depth: params.depth,
           product: params.product,
+          upcomingWithinDays: params.upcomingWithinDays,
         })
       : Promise.resolve({ block: "", metrics: emptyMemoryMetrics() }),
     memoryOn && includePastSessions
