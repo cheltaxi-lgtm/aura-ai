@@ -16,6 +16,7 @@ import {
   createTestUser,
   issueGuestReceipt,
   SAMPLE_SYMBOLS,
+  GUEST_PRIMARY_BINDING,
 } from "./db/fixtures";
 
 const SAMPLE: GuestResumeSymbol[] = SAMPLE_SYMBOLS;
@@ -100,6 +101,7 @@ describe.skipIf(!hasTestDb)("guest-continuity (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
@@ -130,6 +132,7 @@ describe.skipIf(!hasTestDb)("guest-continuity (db)", () => {
     const first = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(first.ok).toBe(true);
     if (!first.ok) return;
@@ -156,6 +159,7 @@ describe.skipIf(!hasTestDb)("guest-continuity (db)", () => {
     const blocked = await claimGuestResumeSession({
       token: other.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(blocked.ok).toBe(false);
     if (blocked.ok) return;
@@ -170,6 +174,7 @@ describe.skipIf(!hasTestDb)("guest-continuity (db)", () => {
     const claimA = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: userA.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claimA.ok).toBe(true);
 
@@ -180,5 +185,68 @@ describe.skipIf(!hasTestDb)("guest-continuity (db)", () => {
     expect(claimB.ok).toBe(false);
     if (claimB.ok) return;
     expect(claimB.code).toBe("unavailable");
+  });
+
+  it("A receipt + A binding => primary claim success", async () => {
+    const issued = await issueGuestReceipt();
+    const user = await createTestUser();
+    const claim = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
+    });
+    expect(claim.ok).toBe(true);
+    if (!claim.ok) return;
+    expect(claim.alreadyClaimed).toBe(false);
+    assertSymbolsEqual(claim.payload.symbols, issued.symbols);
+  });
+
+  it("A receipt + B binding => primary claim reject", async () => {
+    const issued = await issueGuestReceipt();
+    const user = await createTestUser();
+    const blocked = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+      bindingOk: false,
+      binding: { state: "mismatch", bindingOk: false, rejectPrimaryClaim: true },
+    });
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) return;
+    expect(blocked.code).toBe("unavailable");
+  });
+
+  it("A receipt + missing binding => primary claim reject", async () => {
+    const issued = await issueGuestReceipt();
+    const user = await createTestUser();
+    const blocked = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+      binding: { state: "missing", bindingOk: false, rejectPrimaryClaim: true },
+    });
+    expect(blocked.ok).toBe(false);
+    if (blocked.ok) return;
+    expect(blocked.code).toBe("unavailable");
+  });
+
+  it("already-claimed same-user retry is idempotent without binding", async () => {
+    const issued = await issueGuestReceipt();
+    const user = await createTestUser();
+    const first = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
+    });
+    expect(first.ok).toBe(true);
+    if (!first.ok) return;
+
+    const second = await claimGuestResumeSession({
+      token: issued.token,
+      profileUserId: user.id,
+    });
+    expect(second.ok).toBe(true);
+    if (!second.ok) return;
+    expect(second.alreadyClaimed).toBe(true);
+    expect(second.sessionId).toBe(first.sessionId);
+    assertSymbolsEqual(second.payload.symbols, issued.symbols);
   });
 });

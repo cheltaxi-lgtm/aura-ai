@@ -11,7 +11,7 @@ import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { deleteConsultationSession } from "@/lib/session";
 import { query } from "@/lib/db";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
-import { createTestUser, issueGuestReceipt, SAMPLE_SYMBOLS } from "./db/fixtures";
+import { createTestUser, issueGuestReceipt, SAMPLE_SYMBOLS, GUEST_PRIMARY_BINDING } from "./db/fixtures";
 import { createHistoryEntry } from "@/lib/users";
 import { recordTripletDrawAnchor } from "@/lib/users";
 import { tarotCardsKey } from "@/lib/tarot";
@@ -25,6 +25,7 @@ describe.skipIf(!hasTestDb)("daily routing + home recap (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
 
@@ -94,6 +95,7 @@ describe.skipIf(!hasTestDb)("daily routing + home recap (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
@@ -122,6 +124,7 @@ describe.skipIf(!hasTestDb)("daily routing + home recap (db)", () => {
     const blocked = await claimGuestResumeSession({
       token: second.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(blocked.ok).toBe(false);
   });
@@ -132,6 +135,7 @@ describe.skipIf(!hasTestDb)("daily routing + home recap (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;

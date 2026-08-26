@@ -123,10 +123,15 @@ section("static: logged-in 401 never shows guest register copy");
   const src = readSrc("src/hooks/useChatActions.ts");
   assert.ok(src.includes("isLoggedIn"));
   assert.ok(src.includes("NEEDS_PROFILE"));
-  // Incomplete profile must leave chat for anketa — not a chat stub banner.
-  assert.ok(src.includes('setStep("onboarding")'));
   assert.ok(src.includes("markNeedsServerProfile"));
-  assert.ok(src.includes('phase: "onboarding_required"'));
+  // Non-guest incomplete profile still leaves chat for anketa.
+  assert.ok(src.includes('setStep("onboarding")'));
+  // Guest resume NEEDS_PROFILE stays on masters — never birth onboarding.
+  const needsIdx = src.indexOf('if (isLoggedIn && code === "NEEDS_PROFILE")');
+  assert.ok(needsIdx > 0);
+  const needsBlock = src.slice(needsIdx, needsIdx + 900);
+  assert.ok(needsBlock.includes("isGuestResume"));
+  assert.ok(needsBlock.includes('setStep("masters")'));
   // Guest registration copy must stay behind !isLoggedIn branch.
   const idx = src.indexOf("Для расшифровки нужна регистрация");
   assert.ok(idx > 0);
@@ -156,7 +161,7 @@ section("static: account bootstrap preserves active guest resume");
   assert.ok(src.includes("forceProfileOnboarding"));
   assert.ok(src.includes("Incomplete profile must stay on the anketa"));
   assert.ok(src.includes("Never auto-open chat before birth profile"));
-  assert.ok(src.includes("Profile is ready — resume even if the form step"));
+  assert.ok(src.includes("Stale onboarding_required is fine once profile exists"));
 }
 
 section("static: reading API distinguishes needs_profile");

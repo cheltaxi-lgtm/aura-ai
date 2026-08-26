@@ -42,13 +42,24 @@ const HERO_VARIANTS: Record<
   },
   b: {
     heroTitle: "Расклад Таро онлайн бесплатно",
-    heroSubtitle: "Три карты откроются прямо здесь — бесплатно и без регистрации.",
+    heroSubtitle:
+      "3 карты без регистрации. Полный персональный разбор этого расклада после входа.",
   },
   c: {
     heroTitle: "Расклад Таро онлайн бесплатно",
-    heroSubtitle: "Три карты откроются прямо здесь — бесплатно и без регистрации.",
+    heroSubtitle:
+      "Задайте вопрос и откройте 3 карты бесплатно. Полный ответ можно открыть после входа.",
   },
 };
+
+/** Guest editorial control copy (variant A). B/C use HERO_VARIANTS expectation lines. */
+export const LANDING_HERO_CONTROL_SUBTITLE =
+  "Задайте вопрос — три карты покажут, что происходит и какой шаг выбрать дальше.";
+
+export function landingHeroExpectationCopy(variant: LandingHeroVariant): string {
+  if (variant === "a") return LANDING_HERO_CONTROL_SUBTITLE;
+  return HERO_VARIANTS[variant].heroSubtitle;
+}
 
 export function resolveLandingHeroVariant(): LandingHeroVariant {
   if (typeof window === "undefined") return "a";

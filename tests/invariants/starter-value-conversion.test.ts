@@ -28,6 +28,7 @@ describe("starter 300ᚢ conversion pass — shared layer", () => {
     // No hardcoded starter amount or product price — everything from server config.
     expect(src).not.toMatch(/starterRunes\s*=\s*\d{2,}/);
     expect(src).not.toContain("₽");
+    expect(src).toContain("Полный разбор этих карт уже включён");
   });
 
   it("StarterRunesValue hides the welcome promise from authenticated users", () => {
@@ -86,7 +87,8 @@ describe("starter 300ᚢ conversion pass — product placements", () => {
 
   it("Tarot guest auth gate shows a generic starter line without touching card logic", () => {
     const src = readSrc("src/components/GuestTripletDraw.tsx");
-    expect(src).toContain('StarterRunesValue variant="badge" generic product="tarot_guest"');
+    expect(src).toContain('product="tarot_guest"');
+    expect(src).toContain('costKey="READING"');
     // P0: no redraw, receipt flow untouched by this pass.
     expect(src).toContain("Карты зафиксированы — пересчёта не будет");
   });

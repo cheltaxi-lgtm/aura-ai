@@ -186,20 +186,30 @@ export async function profileHasUsedGuestResume(
   return Boolean(rows[0]);
 }
 
+export type GuestResumeClaimBinding = {
+  state?: "ok" | "missing" | "mismatch";
+  bindingOk?: boolean;
+  /**
+   * True when pending guest binding is missing or binds a different id.
+   * Primary issued→claimed must reject this. Same-user retry of an already
+   * claimed receipt is idempotent and skips this check.
+   */
+  rejectPrimaryClaim?: boolean;
+};
+
 /**
  * Atomic claim: issued → claimed for authenticated profile user.
  * Same user retry returns existing. Other user / missing → unavailable (no leak).
  * One landing free reading per profile — logout + new guest draw cannot mint another.
+ *
+ * Dual-cookie: zovus_guest_resume is possession. aura_guest_claim is required
+ * second proof for primary issued→claimed. Missing binding rejects.
  */
 export async function claimGuestResumeSession(input: {
   token: string;
   profileUserId: string;
-  /**
-   * Optional defense-in-depth: session-claim cookie matched this receipt.
-   * Not required — HttpOnly guest resume cookie is sufficient. OAuth/login
-   * often overwrites aura_session_claim with a fresh /api/session id.
-   */
   bindingOk?: boolean;
+  binding?: GuestResumeClaimBinding;
 }): Promise<ClaimGuestResumeResult> {
   if (!input.token) {
     return { ok: false, code: "unavailable" };
@@ -256,6 +266,12 @@ export async function claimGuestResumeSession(input: {
     }
 
     if (row.guest_resume_status !== "issued" || row.user_id) {
+      return { ok: false, code: "unavailable" };
+    }
+
+    const bindingOk =
+      input.bindingOk === true || input.binding?.bindingOk === true;
+    if (input.binding?.rejectPrimaryClaim === true || !bindingOk) {
       return { ok: false, code: "unavailable" };
     }
 

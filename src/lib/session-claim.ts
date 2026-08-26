@@ -47,32 +47,6 @@ export async function setSessionClaimCookie(
   sessionId: string,
   request?: CookieRequestContext
 ): Promise<void> {
-  // Do not overwrite a pending guest-resume binding. After OAuth, /api/session
-  // mints a fresh session and used to clobber aura_session_claim — claim then
-  // failed forever while the guest receipt stayed "issued".
-  try {
-    const existing = await readSessionClaimCookie();
-    if (existing) {
-      const existingSessionId = await verifySessionClaim(existing);
-      if (existingSessionId && existingSessionId !== sessionId) {
-        const { getGuestResumeSessionById } = await import(
-          "@/lib/guest-triplet-receipt-db"
-        );
-        const guest = await getGuestResumeSessionById(existingSessionId);
-        if (
-          guest &&
-          (guest.guest_resume_status === "issued" ||
-            guest.guest_resume_status === "claimed") &&
-          !guest.guest_resume_reading_id
-        ) {
-          return;
-        }
-      }
-    }
-  } catch {
-    /* fall through and set the new claim */
-  }
-
   const token = await signSessionClaim(sessionId);
   try {
     const jar = await cookies();
@@ -133,4 +107,47 @@ export async function verifySessionClaimForId(
   if (!claimToken) return false;
   const claimedSessionId = await verifySessionClaim(claimToken);
   return claimedSessionId === sessionId;
+}
+
+export type SessionClaimBindingState = "ok" | "missing" | "mismatch";
+
+/** ok = cookie binds this id; missing = absent/invalid; mismatch = other id. */
+export async function classifySessionClaimBinding(
+  sessionId: string,
+  claimToken: string | null | undefined
+): Promise<SessionClaimBindingState> {
+  if (!claimToken) return "missing";
+  const claimedSessionId = await verifySessionClaim(claimToken);
+  if (!claimedSessionId) return "missing";
+  return claimedSessionId === sessionId ? "ok" : "mismatch";
+}
+
+export type GuestClaimBinding = {
+  state: SessionClaimBindingState;
+  /** True when pending guest binding matches this receipt. */
+  bindingOk: boolean;
+  /**
+   * Primary issued→claimed must reject unless pending guest binding matches
+   * this receipt. Missing binding is a reject — Capacitor cookie-loss uses
+   * safe recovery UI, not a weaker claim path.
+   */
+  rejectPrimaryClaim: boolean;
+};
+
+/**
+ * Dual-cookie evaluation for guest claim.
+ * Possession is the HttpOnly resume cookie. The second proof is the pending
+ * guest binding cookie. Missing and mismatch both reject primary issued→claimed.
+ */
+export async function evaluateGuestClaimBinding(
+  receiptId: string,
+  claimToken: string | null | undefined
+): Promise<GuestClaimBinding> {
+  const state = await classifySessionClaimBinding(receiptId, claimToken);
+  const bindingOk = state === "ok";
+  return {
+    state,
+    bindingOk,
+    rejectPrimaryClaim: !bindingOk,
+  };
 }

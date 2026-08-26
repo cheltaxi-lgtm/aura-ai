@@ -13,7 +13,7 @@ import {
   profileHasBirthData,
 } from "@/lib/users";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
-import { issueGuestReceipt, SAMPLE_SYMBOLS } from "./db/fixtures";
+import { issueGuestReceipt, SAMPLE_SYMBOLS, GUEST_PRIMARY_BINDING } from "./db/fixtures";
 
 describe.skipIf(!hasTestDb)("guest-stub-profile-authority (db)", () => {
   installDbLifecycle();
@@ -51,7 +51,7 @@ describe.skipIf(!hasTestDb)("guest-stub-profile-authority (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: stub.id,
-      bindingOk: true,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;

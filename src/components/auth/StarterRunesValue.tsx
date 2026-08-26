@@ -91,6 +91,10 @@ export default function StarterRunesValue({
   if (!shown) return null;
 
   const starter = config.starterRunes;
+  const guestIncludedNote =
+    product === "tarot_guest"
+      ? `Полный разбор этих карт уже включён — стартовые ${starter} ᚢ тратить на него не нужно.`
+      : null;
 
   if (variant === "line") {
     return (
@@ -168,9 +172,9 @@ export default function StarterRunesValue({
     }
   }
 
-  return (
+  const badge = (
     <p
-      className={`inline-flex flex-wrap items-center justify-center gap-x-1.5 rounded-full border border-aura-gold/25 bg-aura-gold/[0.08] px-3.5 py-1.5 text-xs text-aura-champagne/90 ${className}`.trim()}
+      className={`inline-flex flex-wrap items-center justify-center gap-x-1.5 rounded-full border border-aura-gold/25 bg-aura-gold/[0.08] px-3.5 py-1.5 text-xs text-aura-champagne/90 ${guestIncludedNote ? "" : className}`.trim()}
     >
       <span aria-hidden>✦</span>
       <span>
@@ -178,5 +182,16 @@ export default function StarterRunesValue({
         {valueLine ? ` · ${valueLine}` : ""}
       </span>
     </p>
+  );
+
+  if (!guestIncludedNote) return badge;
+
+  return (
+    <div className={`space-y-2 ${className}`.trim()}>
+      {badge}
+      <p className="text-center text-xs leading-relaxed text-aura-ivory/70">
+        {guestIncludedNote}
+      </p>
+    </div>
   );
 }

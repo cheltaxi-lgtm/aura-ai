@@ -67,6 +67,11 @@ export const CHECKS = {
     cmd: ["npx", "playwright", "test", "--project=guest-funnel-golden"],
     expensive: true,
   },
+  "e2e-guest-conversion": {
+    title: "e2e-guest-conversion",
+    cmd: ["npx", "playwright", "test", "--project=guest-conversion-smoke"],
+    expensive: true,
+  },
 
   "photo-reading": { title: "photo-reading", npm: "test:photo-reading" },
   "photo-aliases": { title: "photo-aliases", npm: "verify:photo-aliases" },
@@ -148,7 +153,7 @@ export const SCOPES = {
     smokeUrls: ["https://zovus.ru/taro", "https://zovus.ru/rasklad"],
     reviews: ["code", "visual", "security"],
     fast: [...CORE_FAST, "tarot-spreads", "guest-resume", "guest-state", "prompt-hygiene"],
-    full: [...CORE_FULL, "tarot-spreads", "tarot-share", "guest-resume", "guest-state", "prompt-hygiene", "dark-reading", "chat-quality", "e2e-guest-mobile", "e2e-guest-funnel"],
+    full: [...CORE_FULL, "tarot-spreads", "tarot-share", "guest-resume", "guest-state", "prompt-hygiene", "dark-reading", "chat-quality", "e2e-guest-mobile", "e2e-guest-funnel", "e2e-guest-conversion"],
     production: ["prod-health", "prod-smoke"],
   },
   photo: {

@@ -43,6 +43,16 @@ export async function createTestUser(opts?: {
   return user;
 }
 
+/** Happy-path primary issued→claimed: possession token plus matching pending binding. */
+export const GUEST_PRIMARY_BINDING = {
+  bindingOk: true as const,
+  binding: {
+    state: "ok" as const,
+    bindingOk: true as const,
+    rejectPrimaryClaim: false as const,
+  },
+};
+
 /** Issue a guest receipt the same way /api/guest-triplet/complete does (minus cookies). */
 export async function issueGuestReceipt(opts?: {
   symbols?: GuestResumeSymbol[];

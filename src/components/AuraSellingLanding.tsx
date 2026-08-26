@@ -31,6 +31,7 @@ import LandingStickyCta from "@/components/seo/LandingStickyCta";
 import LandingClosingBand from "@/components/seo/LandingClosingBand";
 import {
   buildLandingOfferCopy,
+  landingHeroExpectationCopy,
   LANDING_QUESTION_KEY,
   resolveLandingHeroVariant,
   type GuestSpreadStartDetail,
@@ -299,7 +300,7 @@ export default function AuraSellingLanding({
     const variant = resolveLandingHeroVariant();
     setHeroVariant(variant);
     if (showHero && !isLoggedIn) {
-      trackLandingView({ hero_variant: isEditorial ? "editorial" : variant });
+      trackLandingView({ hero_variant: variant });
     }
   }, [showHero, isLoggedIn, isEditorial]);
 
@@ -388,6 +389,7 @@ export default function AuraSellingLanding({
           isLoggedIn={false}
           conversionHero
           pricingLine={undefined}
+          expectationSubtitle={landingHeroExpectationCopy(heroVariant)}
           onPrimaryCta={() => handlePrimaryCta("hero")}
           onSecondaryCta={scrollToSession}
           onQuestionSubmit={(question) => startGuestSpread(question)}

@@ -3,7 +3,9 @@ import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { enforceGuestTripletClaimRateLimit } from "@/lib/api-guards";
 import {
+  clearGuestBindingCookie,
   clearGuestResumeCookie,
+  readGuestBindingCookie,
   readGuestResumeCookie,
 } from "@/lib/guest-resume-cookie";
 import { isGuestResumeToken } from "@/lib/guest-triplet-receipt";
@@ -17,6 +19,7 @@ import { findUserById, getProfileUserIdForAccount } from "@/lib/accounts";
 import { ensureMinimalConsumerProfile } from "@/lib/users";
 import {
   clearSessionClaimCookie,
+  evaluateGuestClaimBinding,
   readSessionClaimCookie,
   verifySessionClaimForId,
 } from "@/lib/session-claim";
@@ -25,8 +28,9 @@ export const runtime = "nodejs";
 
 /**
  * Post-auth: atomically claim a server-issued guest receipt into the user's session.
- * Token from HttpOnly cookie is authoritative. aura_session_claim is optional
- * (often overwritten by /api/session after OAuth) and only used to clear itself.
+ * zovus_guest_resume is possession. aura_guest_claim is required second proof for
+ * primary issued→claimed (missing and mismatch both reject). Chat aura_session_claim
+ * may differ. Capacitor cookie-loss uses safe recovery UI — no token fallback.
  */
 export async function POST(request: NextRequest) {
   if (!(await ensureDb())) {
@@ -62,26 +66,27 @@ export async function POST(request: NextRequest) {
   const receipt = await findGuestResumeByTokenHash(tokenHash);
   if (!receipt) {
     await clearGuestResumeCookie(request);
+    await clearGuestBindingCookie(request);
     return NextResponse.json({ error: "unavailable" }, { status: 404 });
   }
 
-  const claimCookie = await readSessionClaimCookie();
-  const bindingOk = await verifySessionClaimForId(receipt.id, claimCookie);
+  const guestBindingCookie = await readGuestBindingCookie(request);
+  const binding = await evaluateGuestClaimBinding(receipt.id, guestBindingCookie);
+  const bindingOk = binding.bindingOk;
 
   try {
     const result = await claimGuestResumeSession({
       token,
       profileUserId,
       bindingOk,
+      binding,
     });
 
     if (!result.ok) {
       if (result.code === "already_used") {
-        // Burn the fresh guest receipt cookie — this account already used the free landing reading.
+        // Burn the fresh guest receipt cookies — this account already used the free landing reading.
         await clearGuestResumeCookie(request);
-        if (bindingOk) {
-          await clearSessionClaimCookie(request);
-        }
+        await clearGuestBindingCookie(request);
         return NextResponse.json(
           {
             error: "already_used",
@@ -96,9 +101,12 @@ export async function POST(request: NextRequest) {
     }
 
     await clearGuestResumeCookie(request);
+    await clearGuestBindingCookie(request);
 
-    // Clear session-claim only when it bound this claimed receipt.
-    if (bindingOk) {
+    // Chat session claim may already bind a different session — only clear if
+    // it still points at this guest receipt.
+    const sessionClaim = await readSessionClaimCookie();
+    if (sessionClaim && (await verifySessionClaimForId(receipt.id, sessionClaim))) {
       await clearSessionClaimCookie(request);
     }
 

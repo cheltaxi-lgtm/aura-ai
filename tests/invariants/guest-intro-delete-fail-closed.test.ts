@@ -15,7 +15,7 @@ import { deleteConsultationSession } from "@/lib/session";
 import { claimGuestResumeSession } from "@/lib/guest-triplet-receipt-db";
 import { query } from "@/lib/db";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
-import { createTestUser, issueGuestReceipt } from "./db/fixtures";
+import { createTestUser, issueGuestReceipt, GUEST_PRIMARY_BINDING } from "./db/fixtures";
 
 describe.skipIf(!hasTestDb)("guest intro delete fail-closed (db)", () => {
   installDbLifecycle();
@@ -36,6 +36,7 @@ describe.skipIf(!hasTestDb)("guest intro delete fail-closed (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
@@ -57,6 +58,7 @@ describe.skipIf(!hasTestDb)("guest intro delete fail-closed (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;

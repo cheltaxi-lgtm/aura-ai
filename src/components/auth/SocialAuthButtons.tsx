@@ -6,7 +6,7 @@ import { registerPlugin } from "@capacitor/core";
 import { useEffect, useMemo, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
 import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
-import { trackRegistrationStarted } from "@/lib/seo/metrika";
+import { trackAuthProviderClick, trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
 
@@ -142,6 +142,7 @@ export default function SocialAuthButtons({
     }
     if (mode === "register") {
       trackRegistrationStarted(resolveRegistrationSource(`oauth_${provider}`));
+      trackAuthProviderClick(provider);
     }
 
     // Mini App WebView breaks OAuth redirects — open provider flow in system browser.
@@ -268,7 +269,9 @@ export default function SocialAuthButtons({
 
       {consentBlocked ? (
         <p className="auth-salon-hint text-center">
-          Подтвердите возраст и согласие с условиями, чтобы продолжить
+          {ageConfirmed
+            ? "Подтвердите согласие с условиями, чтобы продолжить"
+            : "Подтвердите возраст и согласие с условиями, чтобы продолжить"}
         </p>
       ) : null}
       {nativeError ? <p className="text-center text-xs text-red-300">{nativeError}</p> : null}

@@ -135,6 +135,13 @@ describe("product-funnel-analytics", () => {
     const metrika = read("src/lib/seo/metrika.ts");
     expect(metrika).toMatch(/guest_spread_started/);
     expect(metrika).toMatch(/guest_claim/);
+    expect(metrika).toContain("guest_teaser_view");
+    expect(metrika).toContain("guest_teaser_cta");
+    expect(metrika).toContain("auth_gate_view");
+    expect(metrika).toContain("auth_provider_click");
+    expect(metrika).toContain("auth_email_view");
+    expect(metrika).toContain("registration_completed");
+    expect(metrika).toContain("guest_full");
     const matrix = read("src/components/numerolog/DestinyMatrixPreview.tsx");
     expect(matrix).toMatch(/matrix_preview_complete/);
     expect(matrix).toMatch(/matrix_guest_claim_complete/);

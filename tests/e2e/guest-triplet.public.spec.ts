@@ -27,12 +27,12 @@ test.describe("mobile guest triplet entry points", () => {
     await expectPickerOpened(page);
   });
 
-  test("starter-pack CTA opens and focuses the actual picker", async ({ page }) => {
+  test("daily guest CTA opens and focuses the actual picker", async ({ page }) => {
     await openFreshLanding(page);
-    const button = page.locator(".editorial-starter-pack").getByRole("button", {
-      name: /Попробовать 3 карты бесплатно/i,
+    const button = page.locator(".editorial-daily-ritual").getByRole("button", {
+      name: /Открыть первые 3 карты/i,
     });
-    await expect(button).toHaveAttribute("data-starter-cta", "try_cards");
+    await expect(button).toBeVisible();
     await button.scrollIntoViewIfNeeded();
     await button.click();
     await expectPickerOpened(page);

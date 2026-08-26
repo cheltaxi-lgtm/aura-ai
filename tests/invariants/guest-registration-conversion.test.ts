@@ -104,16 +104,52 @@ describe("guest-registration-conversion", () => {
     expect(offer.heroTitle.toLowerCase()).toContain("таро");
   });
 
+  it("A/B/C landing hero expectation copy actually differs", async () => {
+    const { landingHeroExpectationCopy, buildLandingOfferCopy } = await import(
+      "@/lib/landing-offer"
+    );
+    const a = landingHeroExpectationCopy("a");
+    const b = landingHeroExpectationCopy("b");
+    const c = landingHeroExpectationCopy("c");
+    expect(a).not.toBe(b);
+    expect(b).not.toBe(c);
+    expect(a).not.toBe(c);
+    expect(b).toContain("без регистрации");
+    expect(b.toLowerCase()).toContain("после входа");
+    expect(c.toLowerCase()).toContain("после входа");
+    const offerB = buildLandingOfferCopy(
+      { enabled: true, freeQuestions: 3, costs: { READING: 10 } } as RuneConfig,
+      (n) => `${n}`,
+      undefined,
+      "b"
+    );
+    const offerC = buildLandingOfferCopy(
+      { enabled: true, freeQuestions: 3, costs: { READING: 10 } } as RuneConfig,
+      (n) => `${n}`,
+      undefined,
+      "c"
+    );
+    expect(offerB.heroSubtitle).not.toBe(offerC.heroSubtitle);
+    expect(offerB.heroSubtitle).toContain("без регистрации");
+  });
+
   it("consumer UI copy must not use legacy gate labels", async () => {
     const fs = await import("node:fs/promises");
     const guest = await fs.readFile("src/components/GuestTripletDraw.tsx", "utf8");
     const auth = await fs.readFile("src/components/AuthForm.tsx", "utf8");
     expect(guest).not.toContain("Сохранить расклад и продолжить");
+    expect(guest).not.toContain("3 карты дня бесплатно раз в сутки");
+    expect(guest).not.toContain("Регистрация по email");
     expect(guest).toContain("Получить трактовку");
     expect(guest).toContain("Получить полный разбор");
+    expect(guest).toContain("Полный разбор этих карт готов");
+    expect(guest).toContain("после входа не изменятся");
+    expect(guest).toContain("Продолжить по email");
     expect(guest).toContain("showAuthGate");
+    expect(guest).toContain("showMarketing={false}");
     expect(auth).not.toContain("Аккаунт для сохранения истории");
     expect(auth).toContain("Создать аккаунт и открыть разбор");
+    expect(auth).toContain("Продолжить по email");
   });
 
   it("post-auth success skips onboarding redirect when guest cards present", async () => {
@@ -202,5 +238,30 @@ describe("guest-registration-conversion", () => {
     expect(src).toMatch(/profile_completion_started|profile_completed/);
     expect(src).toContain("registration_account_created");
     expect(src).toContain("registration_completed");
+    expect(src).toContain("guest_teaser_view");
+    expect(src).toContain("guest_teaser_cta");
+    expect(src).toContain("auth_gate_view");
+    expect(src).toContain("auth_provider_click");
+    expect(src).toContain("auth_email_view");
+    expect(src).toContain("guest_claim");
+    expect(src).toContain("guest_full");
+  });
+
+  it("tarot unified auth_cta is emitted once from teaser CTA, not also from auth gate", async () => {
+    const src = await import("node:fs/promises").then((fs) =>
+      fs.readFile("src/lib/seo/metrika.ts", "utf8")
+    );
+    const teaserCta = src.indexOf("export function trackGuestTeaserCta");
+    const authGate = src.indexOf("export function trackAuthGateView");
+    const guestAuth = src.indexOf("export function trackGuestAuth");
+    expect(teaserCta).toBeGreaterThan(-1);
+    expect(authGate).toBeGreaterThan(-1);
+    const teaserBlock = src.slice(teaserCta, authGate);
+    expect(teaserBlock).toContain('trackProductFunnel("auth_cta"');
+    const gateBlock = src.slice(authGate, guestAuth > authGate ? guestAuth + 200 : src.length);
+    expect(src).not.toMatch(
+      /trackGuestAuth[\s\S]{0,180}trackProductFunnel\(\s*["']auth_cta["']/
+    );
+    expect(gateBlock).not.toContain('trackProductFunnel("auth_cta"');
   });
 });

@@ -205,23 +205,28 @@ section("complete stores hash not raw token (static)");
   assert.ok(complete.includes("hashGuestResumeToken"));
   assert.ok(complete.includes("createGuestResumeToken"));
   assert.ok(complete.includes("setGuestResumeCookie"));
+  assert.ok(complete.includes("setGuestBindingCookie"));
   assert.ok(complete.includes("setSessionClaimCookie"));
   assert.ok(!/NextResponse\.json\(\s*\{[^}]*token/.test(complete));
   assert.ok(complete.includes("Never return the opaque token") || !complete.includes("token,"));
 }
 
-section("claim uses guest cookie; session-claim is optional (static)");
+section("claim uses guest cookie; pending guest binding required for primary claim (static)");
 {
   const claim = readSrc("src/app/api/guest-triplet/claim/route.ts");
   assert.ok(claim.includes("readGuestResumeCookie"));
-  assert.ok(claim.includes("readSessionClaimCookie"));
-  assert.ok(claim.includes("verifySessionClaimForId"));
+  assert.ok(claim.includes("readGuestBindingCookie"));
+  assert.ok(claim.includes("evaluateGuestClaimBinding"));
+  assert.ok(claim.includes("clearGuestBindingCookie"));
   assert.ok(claim.includes("requireUserAuth"));
   assert.ok(!claim.includes("body.token") && !claim.includes("body?.token"));
   const db = readSrc("src/lib/guest-triplet-receipt-db.ts");
-  // bindingOk must not hard-block claim (OAuth overwrites aura_session_claim).
-  assert.ok(!db.includes("if (!input.bindingOk)"));
+  assert.ok(
+    db.includes("bindingOk !== true") || db.includes("!bindingOk"),
+    "primary issued→claimed must reject missing binding"
+  );
   assert.ok(db.includes("bindingOk?: boolean") || db.includes("bindingOk?"));
+  assert.ok(db.includes("rejectPrimaryClaim"));
   assert.ok(db.includes("guest_resume_status = 'claimed'"));
   assert.ok(db.includes("user_id IS NULL"));
   assert.ok(
@@ -230,10 +235,22 @@ section("claim uses guest cookie; session-claim is optional (static)");
   );
   const sessionClaim = readSrc("src/lib/session-claim.ts");
   assert.ok(
-    sessionClaim.includes("pending guest-resume binding") ||
-      sessionClaim.includes("Do not overwrite a pending guest-resume"),
-    "setSessionClaimCookie must preserve guest resume binding"
+    !sessionClaim.includes("findPendingGuestBindingId"),
+    "chat session claim must not steal pending guest binding"
   );
+  assert.ok(!sessionClaim.includes("aura_guest_claim"));
+  assert.ok(sessionClaim.includes("classifySessionClaimBinding"));
+  assert.ok(sessionClaim.includes("evaluateGuestClaimBinding"));
+  assert.ok(sessionClaim.includes("rejectPrimaryClaim: !bindingOk"));
+  const guestCookies = readSrc("src/lib/guest-resume-cookie.ts");
+  assert.ok(guestCookies.includes('GUEST_BINDING_COOKIE = "aura_guest_claim"'));
+  assert.ok(guestCookies.includes("setGuestBindingCookie"));
+  const sessionRoute = readSrc("src/app/api/session/route.ts");
+  assert.ok(!sessionRoute.includes("aura_guest_claim"));
+  assert.ok(!sessionRoute.includes("zovus_guest_resume"));
+  const bridge = readSrc("src/app/api/auth/session-bridge/route.ts");
+  assert.ok(!bridge.includes("aura_guest_claim"));
+  assert.ok(!bridge.includes("zovus_guest_resume"));
   assert.ok(
     db.includes("guest-resume-user:"),
     "claim must lock per profile to stop parallel double-claim"
@@ -421,7 +438,7 @@ section("capacitor: no token localStorage fallback (static)");
   const ui = readSrc("src/lib/guest-resume-ui-cache.ts");
   // UI cache may mention "token" only in comments forbidding it — never store receipt token.
   assert.ok(!/GUEST_RESUME.*TOKEN|token_hash|resume_token/i.test(ui));
-  assert.ok(!/\b(zovus_guest_resume|aura_session_claim)\b/.test(ui));
+  assert.ok(!/\b(zovus_guest_resume|aura_session_claim|aura_guest_claim)\b/.test(ui));
 }
 
 console.log("\nverify-guest-triplet-resume: OK");

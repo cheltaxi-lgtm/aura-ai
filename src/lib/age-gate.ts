@@ -35,6 +35,26 @@ export async function confirmAgeGateOnServer(): Promise<boolean> {
   }
 }
 
+/** Server HttpOnly age-gate cookie — legal source of truth for skipping a second 18+ step. */
+export async function fetchServerAgeGateConfirmed(): Promise<boolean> {
+  try {
+    const res = await fetch("/api/age-gate/confirm", {
+      method: "GET",
+      credentials: "include",
+      cache: "no-store",
+    });
+    if (!res.ok) return isAgeGateConfirmed();
+    const data = (await res.json()) as { confirmed?: boolean };
+    if (data.confirmed === true) {
+      confirmAgeGate();
+      return true;
+    }
+    return isAgeGateConfirmed();
+  } catch {
+    return isAgeGateConfirmed();
+  }
+}
+
 const ADULT_AGE_YEARS = 18;
 
 function isBirthDateAdult(birthDate: string): boolean {

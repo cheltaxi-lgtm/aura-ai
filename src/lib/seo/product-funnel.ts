@@ -189,7 +189,7 @@ export const PRODUCT_FUNNEL_LEGACY_GOALS: Record<
     product_view: ["landing_view"],
     free_start: ["guest_spread_started"],
     free_complete: ["guest_spread_completed"],
-    auth_cta: ["guest_auth", "guest_teaser_cta"],
+    auth_cta: ["guest_teaser_cta"],
     claim_complete: ["guest_claim", "guest_triplet_resume_started"],
     paid_cta: ["paywall_open"],
   },

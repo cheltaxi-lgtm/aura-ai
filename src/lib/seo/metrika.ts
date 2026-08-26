@@ -121,10 +121,26 @@ export function trackGuestTeaserCta(): void {
   trackProductFunnel("auth_cta", { product: "tarot", source: "guest_teaser" });
 }
 
-/** Auth step of guest funnel (gate / OAuth / email start). */
+/** Auth gate shown after teaser CTA. Not a second unified auth_cta. */
+export function trackAuthGateView(source: string): void {
+  trackLandingEvent("auth_gate_view", { source });
+}
+
+/** Yandex / VK click on the guest or register gate. Provider id only — never PII. */
+export function trackAuthProviderClick(provider: string): void {
+  const id = provider.trim().slice(0, 32);
+  if (!id || /email|user|token|question|card/i.test(id)) return;
+  trackLandingEvent("auth_provider_click", { provider: id });
+}
+
+/** Email register form shown (guest conversion or auth screen). */
+export function trackAuthEmailView(source: string): void {
+  trackLandingEvent("auth_email_view", { source });
+}
+
+/** @deprecated Use trackAuthGateView. Kept as a no-op dual-cta guard. */
 export function trackGuestAuth(source: string): void {
   trackLandingEvent("guest_auth", { source });
-  trackProductFunnel("auth_cta", { product: "tarot", source: "guest_auth", state: source });
 }
 
 /** Claim/resume of the same guest receipt after auth. */

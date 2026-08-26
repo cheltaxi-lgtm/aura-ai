@@ -10,7 +10,15 @@ import { deleteConsultationSession } from "@/lib/session";
 import { purgeUserCabinetData } from "@/lib/cabinet-data";
 import { query } from "@/lib/db";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
-import { createTestUser, issueGuestReceipt } from "./db/fixtures";
+import { createTestUser, issueGuestReceipt, GUEST_PRIMARY_BINDING } from "./db/fixtures";
+
+function claimIssued(token: string, profileUserId: string) {
+  return claimGuestResumeSession({
+    token,
+    profileUserId,
+    ...GUEST_PRIMARY_BINDING,
+  });
+}
 
 describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
   installDbLifecycle();
@@ -18,10 +26,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
   it("TEST1: first guest receipt + new profile → claim success", async () => {
     const issued = await issueGuestReceipt();
     const user = await createTestUser();
-    const claim = await claimGuestResumeSession({
-      token: issued.token,
-      profileUserId: user.id,
-    });
+    const claim = await claimIssued(issued.token, user.id);
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
     expect(claim.alreadyClaimed).toBe(false);
@@ -32,10 +37,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
   it("TEST2: same profile + second receipt → already_used", async () => {
     const user = await createTestUser();
     const first = await issueGuestReceipt();
-    const claim1 = await claimGuestResumeSession({
-      token: first.token,
-      profileUserId: user.id,
-    });
+    const claim1 = await claimIssued(first.token, user.id);
     expect(claim1.ok).toBe(true);
 
     const second = await issueGuestReceipt({
@@ -45,10 +47,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
         { id: 12, name: "Повешенный", position: 2, reversed: false },
       ],
     });
-    const claim2 = await claimGuestResumeSession({
-      token: second.token,
-      profileUserId: user.id,
-    });
+    const claim2 = await claimIssued(second.token, user.id);
     expect(claim2.ok).toBe(false);
     if (claim2.ok) return;
     expect(claim2.code).toBe("already_used");
@@ -59,10 +58,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     const first = await issueGuestReceipt({
       question: "Секретный вопрос для privacy purge",
     });
-    const claim1 = await claimGuestResumeSession({
-      token: first.token,
-      profileUserId: user.id,
-    });
+    const claim1 = await claimIssued(first.token, user.id);
     expect(claim1.ok).toBe(true);
     if (!claim1.ok) return;
 
@@ -96,10 +92,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     expect(Number(leaked.rows[0]?.n ?? 0)).toBe(0);
 
     const second = await issueGuestReceipt();
-    const claim2 = await claimGuestResumeSession({
-      token: second.token,
-      profileUserId: user.id,
-    });
+    const claim2 = await claimIssued(second.token, user.id);
     expect(claim2.ok).toBe(false);
     if (claim2.ok) return;
     expect(claim2.code).toBe("already_used");
@@ -111,10 +104,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     expect(await profileHasUsedGuestResume(user.id)).toBe(true);
 
     const issued = await issueGuestReceipt();
-    const claim = await claimGuestResumeSession({
-      token: issued.token,
-      profileUserId: user.id,
-    });
+    const claim = await claimIssued(issued.token, user.id);
     expect(claim.ok).toBe(false);
     if (claim.ok) return;
     expect(claim.code).toBe("already_used");
@@ -132,8 +122,8 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     });
 
     const [r1, r2] = await Promise.all([
-      claimGuestResumeSession({ token: a.token, profileUserId: user.id }),
-      claimGuestResumeSession({ token: b.token, profileUserId: user.id }),
+      claimIssued(a.token, user.id),
+      claimIssued(b.token, user.id),
     ]);
 
     const oks = [r1, r2].filter((r) => r.ok);
@@ -146,20 +136,14 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
   it("TEST7: daily cooldown reset does not restore intro", async () => {
     const user = await createTestUser();
     const issued = await issueGuestReceipt();
-    const claim = await claimGuestResumeSession({
-      token: issued.token,
-      profileUserId: user.id,
-    });
+    const claim = await claimIssued(issued.token, user.id);
     expect(claim.ok).toBe(true);
 
     await resetTripletCooldown(user.id);
     expect(await profileHasGuestIntroLifetimeFlag(user.id)).toBe(true);
 
     const second = await issueGuestReceipt();
-    const blocked = await claimGuestResumeSession({
-      token: second.token,
-      profileUserId: user.id,
-    });
+    const blocked = await claimIssued(second.token, user.id);
     expect(blocked.ok).toBe(false);
     if (blocked.ok) return;
     expect(blocked.code).toBe("already_used");
@@ -170,20 +154,14 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     // Simulate client-only "guestResume/isFree" noise — server has no sessions/flag.
     expect(await profileHasUsedGuestResume(user.id)).toBe(false);
     const issued = await issueGuestReceipt();
-    const claim = await claimGuestResumeSession({
-      token: issued.token,
-      profileUserId: user.id,
-    });
+    const claim = await claimIssued(issued.token, user.id);
     expect(claim.ok).toBe(true);
   });
 
   it("TEST12/13: daily cooldown and intro lifetime are independent", async () => {
     const user = await createTestUser();
     const issued = await issueGuestReceipt();
-    const claim = await claimGuestResumeSession({
-      token: issued.token,
-      profileUserId: user.id,
-    });
+    const claim = await claimIssued(issued.token, user.id);
     expect(claim.ok).toBe(true);
 
     // Intro must not consume daily triplet slot.
@@ -210,10 +188,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     const issued = await issueGuestReceipt({
       question: "Вопрос для удаления сессии",
     });
-    const claim = await claimGuestResumeSession({
-      token: issued.token,
-      profileUserId: user.id,
-    });
+    const claim = await claimIssued(issued.token, user.id);
     expect(claim.ok).toBe(true);
     if (!claim.ok) return;
 
@@ -227,10 +202,7 @@ describe.skipIf(!hasTestDb)("guest-intro-lifetime (db)", () => {
     expect(rows).toHaveLength(0);
 
     const second = await issueGuestReceipt();
-    const blocked = await claimGuestResumeSession({
-      token: second.token,
-      profileUserId: user.id,
-    });
+    const blocked = await claimIssued(second.token, user.id);
     expect(blocked.ok).toBe(false);
     if (blocked.ok) return;
     expect(blocked.code).toBe("already_used");

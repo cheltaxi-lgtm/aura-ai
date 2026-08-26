@@ -8,7 +8,7 @@ import {
   clientIp,
   enforceGuestTripletCompleteRateLimit,
 } from "@/lib/api-guards";
-import { setGuestResumeCookie } from "@/lib/guest-resume-cookie";
+import { setGuestBindingCookie, setGuestResumeCookie } from "@/lib/guest-resume-cookie";
 import {
   createGuestResumeToken,
   hashGuestResumeToken,
@@ -23,9 +23,9 @@ export const runtime = "nodejs";
 
 /**
  * Pre-auth: seal a completed guest triplet as an anonymous server receipt.
- * Issues HttpOnly receipt cookie + session-claim binding. No LLM / no free reading.
- * Authenticated users must use the daily authenticated triplet path — not this
- * acquisition mint (lifetime one-time intro is claimed post-auth).
+ * Issues HttpOnly possession cookie + pending guest binding. aura_session_claim
+ * may later become a chat session without destroying the guest binding.
+ * No LLM / no free reading. Authenticated users must use the daily path.
  */
 export async function POST(request: NextRequest) {
   if (!(await ensureDb())) {
@@ -89,6 +89,7 @@ export async function POST(request: NextRequest) {
     });
 
     await setGuestResumeCookie(token, request);
+    await setGuestBindingCookie(session.id, request);
     await setSessionClaimCookie(session.id, request);
 
     // Never return the opaque token — cookie is the only transport.

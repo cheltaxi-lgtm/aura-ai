@@ -35,6 +35,13 @@ describe("guest landing conversion cleanup", () => {
     expect(hero).not.toContain("EDITORIAL_HERO.microcopy");
     expect(hero).toContain('StarterRunesValue variant="line"');
     expect(hero).not.toContain("Как проходит сеанс");
+    expect(hero).toContain("expectationSubtitle");
+  });
+
+  it("guest editorial hero receives A/B/C expectation copy", () => {
+    const landing = readSrc("src/components/AuraSellingLanding.tsx");
+    expect(landing).toContain("landingHeroExpectationCopy(heroVariant)");
+    expect(landing).toContain("expectationSubtitle=");
   });
 
   it("guest landing order is hero → products → starter → masters → birth → daily → extra features → seo → final CTA", () => {

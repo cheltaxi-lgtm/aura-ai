@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
 import { MIN_PASSWORD_LENGTH } from "@/lib/auth-policy";
-import { isAgeGateConfirmed } from "@/lib/age-gate";
+import { isAgeGateConfirmed, fetchServerAgeGateConfirmed } from "@/lib/age-gate";
 import {
   PASSWORD_STRENGTH_COLORS,
   PASSWORD_STRENGTH_LABELS,
@@ -50,6 +50,7 @@ import {
 } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
 import {
+  trackAuthEmailView,
   trackRegistrationAccountCreated,
   trackRegistrationCompleted,
   trackRegistrationError,
@@ -75,6 +76,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [title, setTitle] = useState("");
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(false);
+  const [ageConfirmedLocked, setAgeConfirmedLocked] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [optionalBirthDate, setOptionalBirthDate] = useState("");
   const [optionalGender, setOptionalGender] = useState<"male" | "female">("female");
@@ -86,6 +88,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [showEmailRegister, setShowEmailRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
+  const [guestConversion, setGuestConversion] = useState(false);
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
@@ -123,8 +126,17 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         trackSeoEvent("starter_auth_view", { product: authProduct });
       }
     }
-    if (role === "user" && isAgeGateConfirmed()) {
-      setAgeConfirmed(true);
+    if (role === "user") {
+      setGuestConversion(hasActiveGuestResumeIntent());
+      if (isAgeGateConfirmed()) {
+        setAgeConfirmed(true);
+        setAgeConfirmedLocked(true);
+      }
+      void fetchServerAgeGateConfirmed().then((ok) => {
+        if (!ok) return;
+        setAgeConfirmed(true);
+        setAgeConfirmedLocked(true);
+      });
     }
     const oauthErr = params.get("oauthError");
     if (oauthErr) {
@@ -144,6 +156,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     }
     if (params.get("method") === "email") {
       setShowEmailRegister(true);
+      if (isUserRegister) trackAuthEmailView("auth_form");
     }
   }, [isExpert, isUserRegister, role]);
 
@@ -481,14 +494,17 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             if (oauthError === "consent_required") setOauthError(null);
           }}
           onMarketingConsentChange={setMarketingConsent}
-          showMarketing={mode === "register"}
+          showMarketing={mode === "register" && !guestConversion}
           showDisclaimer
+          ageConfirmedLocked={ageConfirmedLocked}
           termsId="legal-terms-consent"
           ageId="legal-age-consent"
         />
         {!acceptedTerms || !ageConfirmed ? (
           <p className="auth-salon-hint mt-3 text-center">
-            Подтвердите возраст и согласие с условиями, чтобы продолжить
+            {ageConfirmed
+              ? "Подтвердите согласие с условиями, чтобы продолжить"
+              : "Подтвердите возраст и согласие с условиями, чтобы продолжить"}
           </p>
         ) : null}
       </div>
@@ -524,10 +540,13 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         />
         <button
           type="button"
-          onClick={() => setShowEmailRegister(true)}
+          onClick={() => {
+            setShowEmailRegister(true);
+            trackAuthEmailView("auth_form");
+          }}
           className="btn-ghost w-full py-3 text-sm"
         >
-          Регистрация по email
+          Продолжить по email
         </button>
         <p className="text-center text-sm text-aura-ivory/55">
           Уже есть аккаунт?{" "}
@@ -634,7 +653,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
       <div className={isUserRegister ? "border-t border-white/10 pt-5" : ""}>
         <p className={isUserRegister ? "mb-4 text-center text-xs text-aura-ivory/45" : "hidden"}>
-          Откройте полный разбор и сохраните его в Zovus
+          {guestConversion
+            ? "Откройте полный разбор этих карт — они уже сохранены и не изменятся."
+            : "Откройте полный разбор и сохраните его в Zovus"}
         </p>
         <div className="space-y-4">
           <div>
@@ -778,11 +799,15 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             : "Сохраняем…"
           : mode === "login"
             ? "Войти"
-            : "Создать аккаунт и открыть разбор"}
+            : isUserRegister
+              ? "Создать аккаунт и открыть разбор"
+              : "Создать аккаунт"}
       </button>
       {!canSubmit && requiresLegalConsent && (!acceptedTerms || !ageConfirmed) && !loading ? (
         <p className="auth-salon-hint -mt-2 text-center">
-          Подтвердите возраст и согласие с условиями, чтобы продолжить
+          {ageConfirmed
+            ? "Подтвердите согласие с условиями, чтобы продолжить"
+            : "Подтвердите возраст и согласие с условиями, чтобы продолжить"}
         </p>
       ) : null}
 

@@ -19,6 +19,8 @@ type EditorialHeroSectionProps = {
   onPainChip?: (question: string, intentSlug: string) => void;
   /** Guest conversion funnel: pain chips + no social-proof counters. */
   conversionHero?: boolean;
+  /** A/B/C expectation copy. Defaults to EDITORIAL_HERO.subtitle (control). */
+  expectationSubtitle?: string;
 };
 
 export default function EditorialHeroSection({
@@ -29,6 +31,7 @@ export default function EditorialHeroSection({
   onQuestionSubmit,
   onPainChip,
   conversionHero = false,
+  expectationSubtitle,
 }: EditorialHeroSectionProps) {
   const { ref, className } = useScrollReveal<HTMLElement>({ immediate: true });
   const guestConversion = conversionHero && !isLoggedIn;
@@ -48,7 +51,9 @@ export default function EditorialHeroSection({
         <h1 id="editorial-hero-title" className="editorial-hero__title">
           {EDITORIAL_HERO.title}
         </h1>
-        <p className="editorial-hero__subtitle">{EDITORIAL_HERO.subtitle}</p>
+        <p className="editorial-hero__subtitle">
+          {expectationSubtitle ?? EDITORIAL_HERO.subtitle}
+        </p>
         <HeroQuestionField
           className="editorial-hero__question"
           onQuestionSubmit={onQuestionSubmit}

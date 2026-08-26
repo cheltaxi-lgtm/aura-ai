@@ -40,6 +40,11 @@ export default defineConfig({
       use: { ...devices["Desktop Chrome"] },
     },
     {
+      name: "guest-conversion-smoke",
+      testMatch: /guest-conversion-smoke\.public\.spec\.ts/,
+      use: { ...devices["Desktop Chrome"] },
+    },
+    {
       name: "daily-artifact",
       testMatch: /daily-artifact\.public\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },

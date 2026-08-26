@@ -15,7 +15,7 @@ import {
 import { profileHasGuestIntroLifetimeFlag, recordGuestIntroUsed } from "@/lib/rate-limit-anchors";
 import { claimGuestResumeSession } from "@/lib/guest-triplet-receipt-db";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
-import { createTestUser, issueGuestReceipt, SAMPLE_SYMBOLS } from "./db/fixtures";
+import { createTestUser, issueGuestReceipt, SAMPLE_SYMBOLS, GUEST_PRIMARY_BINDING } from "./db/fixtures";
 
 function sampleCards(offset = 0) {
   const names = ["Шут", "Маг", "Жрица", "Императрица", "Император", "Иерофант"] as const;
@@ -352,6 +352,7 @@ describe.skipIf(!hasTestDb)("daily entitlement isolation (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(false);
     if (!claim.ok) expect(claim.code).toBe("already_used");
@@ -363,6 +364,7 @@ describe.skipIf(!hasTestDb)("daily entitlement isolation (db)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     const cooldown = await checkTripletCooldown(user.id);

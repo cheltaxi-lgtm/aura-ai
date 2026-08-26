@@ -9,7 +9,7 @@ import {
 import * as decks from "@/lib/decks";
 import { claimGuestResumeSession } from "@/lib/guest-triplet-receipt-db";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
-import { createTestUser, issueGuestReceipt } from "./db/fixtures";
+import { createTestUser, issueGuestReceipt, GUEST_PRIMARY_BINDING } from "./db/fixtures";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -146,6 +146,7 @@ describe.skipIf(!hasTestDb)("no-redraw (db / claim draw spy)", () => {
     const claim = await claimGuestResumeSession({
       token: issued.token,
       profileUserId: user.id,
+      ...GUEST_PRIMARY_BINDING,
     });
     expect(claim.ok).toBe(true);
     expect(spy).toHaveBeenCalledTimes(0);

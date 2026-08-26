@@ -19,7 +19,11 @@ import {
   buildGuestTripletTeaser,
 } from "@/lib/guest-triplet-teaser";
 import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
-import { confirmAgeGateOnServer, isAgeGateConfirmed } from "@/lib/age-gate";
+import {
+  confirmAgeGateOnServer,
+  fetchServerAgeGateConfirmed,
+  isAgeGateConfirmed,
+} from "@/lib/age-gate";
 import {
   GUEST_SPREAD_DRAFT_KEY,
   GUEST_SPREAD_PICKER_ID,
@@ -37,11 +41,11 @@ import {
   trackGuestCardRevealed,
   trackGuestSpreadCompleted,
   trackGuestSpreadStarted,
-  trackGuestAuth,
+  trackAuthEmailView,
+  trackAuthGateView,
   trackGuestTeaserCta,
   trackGuestTeaserView,
   trackGuestIntroBlockedAuthenticated,
-  trackRegistrationGateView,
   trackRegistrationStarted,
 } from "@/lib/seo/metrika";
 import DeckCard from "@/components/DeckCard";
@@ -121,7 +125,7 @@ export default function GuestTripletDraw({
   const [ageConfirmed, setAgeConfirmed] = useState(false);
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [oauthAgeConfirmed, setOauthAgeConfirmed] = useState(false);
-  const [marketingConsent, setMarketingConsent] = useState(false);
+  const [ageConfirmedLocked, setAgeConfirmedLocked] = useState(false);
   const handledStartRequestId = useRef<number | null>(null);
   const teaserViewTracked = useRef(false);
   const [draftRestored, setDraftRestored] = useState(false);
@@ -292,8 +296,20 @@ export default function GuestTripletDraw({
   useEffect(() => {
     if (!showAuthGate || authGateViewTracked.current) return;
     authGateViewTracked.current = true;
-    trackRegistrationGateView("guest_triplet_done");
-    trackGuestAuth("guest_triplet_done");
+    trackAuthGateView("guest_teaser");
+  }, [showAuthGate]);
+
+  useEffect(() => {
+    if (!showAuthGate) return;
+    if (isAgeGateConfirmed()) {
+      setOauthAgeConfirmed(true);
+      setAgeConfirmedLocked(true);
+    }
+    void fetchServerAgeGateConfirmed().then((ok) => {
+      if (!ok) return;
+      setOauthAgeConfirmed(true);
+      setAgeConfirmedLocked(true);
+    });
   }, [showAuthGate]);
 
   const resetSpreadState = useCallback(() => {
@@ -498,6 +514,7 @@ export default function GuestTripletDraw({
 
   const goToEmailRegistration = useCallback(() => {
     trackRegistrationStarted("guest_triplet_email");
+    trackAuthEmailView("guest_teaser");
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     window.location.assign(
       buildRegisterHref(oauthReturnTo, "/", { method: "email" })
@@ -740,16 +757,18 @@ export default function GuestTripletDraw({
             {!showAuthGate ? (
               <div className="guest-teaser-conversion space-y-4 rounded-xl border border-aura-gold/25 bg-black/25 p-4 text-left">
                 <div>
-                  <h3 className="font-display text-lg text-white">Полный разбор готов</h3>
+                  <h3 className="font-display text-lg text-white">
+                    Полный разбор этих карт готов
+                  </h3>
                   <p className="mt-1 text-sm text-aura-ivory/70">
-                    Создайте бесплатный профиль и получите:
+                    Войдите, чтобы открыть полный ответ на ваш вопрос. Карты уже сохранены и после
+                    входа не изменятся.
                   </p>
                 </div>
                 <ul className="space-y-1.5 text-sm text-aura-ivory/75">
-                  <li>✓ полный разбор этих трёх карт</li>
-                  <li>✓ сохранение вопроса и расклада</li>
+                  <li>✓ полный разбор именно этих трёх карт</li>
+                  <li>✓ карты уже сохранены — после входа не изменятся</li>
                   <li>✓ продолжение диалога с мастером</li>
-                  <li>✓ 3 карты дня бесплатно раз в сутки</li>
                 </ul>
                 <button
                   type="button"
@@ -761,7 +780,7 @@ export default function GuestTripletDraw({
                   Получить полный разбор
                 </button>
                 <p className="text-center text-xs text-aura-ivory/50">
-                  Ваш вопрос и карты уже сохранены.
+                  Ваш вопрос и эти карты уже сохранены.
                 </p>
               </div>
             ) : (
@@ -770,23 +789,37 @@ export default function GuestTripletDraw({
                 className="guest-teaser-auth scroll-mt-28 space-y-4 rounded-xl border border-white/8 bg-black/20 p-4"
               >
                 <div>
-                  <h3 className="font-display text-lg text-white">Полный разбор готов</h3>
+                  <h3 className="font-display text-lg text-white">
+                    Полный разбор этих карт готов
+                  </h3>
                   <p className="mt-1 text-sm text-aura-ivory/65">
-                    Войдите одним способом — эти карты сохранятся, а после регистрации Вы сможете
-                    открывать 3 карты дня бесплатно раз в сутки.
+                    Войдите, чтобы открыть полный ответ на ваш вопрос. Эти три карты уже сохранены
+                    и не изменятся.
                   </p>
-                  <StarterRunesValue variant="badge" generic product="tarot_guest" className="mt-3" />
+                  <StarterRunesValue
+                    variant="badge"
+                    product="tarot_guest"
+                    costKey="READING"
+                    unit={[
+                      "расклад Таро с мастером",
+                      "расклада Таро с мастером",
+                      "раскладов Таро с мастером",
+                    ]}
+                    className="mt-3"
+                  />
                 </div>
 
                 <div id="guest-oauth-consent">
                   <OAuthConsentFields
                     acceptedTerms={acceptedTerms}
                     ageConfirmed={oauthAgeConfirmed}
-                    marketingConsent={marketingConsent}
+                    marketingConsent={false}
                     onAcceptedTermsChange={setAcceptedTerms}
                     onAgeConfirmedChange={setOauthAgeConfirmed}
-                    onMarketingConsentChange={setMarketingConsent}
+                    onMarketingConsentChange={() => undefined}
+                    showMarketing={false}
                     showDisclaimer
+                    ageConfirmedLocked={ageConfirmedLocked}
                     termsId="guest-oauth-terms"
                     ageId="guest-oauth-age"
                   />
@@ -798,7 +831,7 @@ export default function GuestTripletDraw({
                   requireConsent
                   acceptedTerms={acceptedTerms}
                   ageConfirmed={oauthAgeConfirmed}
-                  marketingConsent={marketingConsent}
+                  marketingConsent={false}
                   consentScrollTargetId="guest-oauth-consent"
                   showEmailDivider
                   emailDividerLabel="или email"
@@ -811,7 +844,7 @@ export default function GuestTripletDraw({
                   }}
                   className="btn-luxe btn-luxe--md btn-luxe--ghost w-full"
                 >
-                  Регистрация по email
+                  Продолжить по email
                 </button>
               </div>
             )}

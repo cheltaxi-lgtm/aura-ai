@@ -25,7 +25,7 @@ These are non-negotiable product contracts. Breaking them is a release blocker.
 
 1. Receipt is issued **by the server before auth**.
 2. Token is opaque (not JWT); DB stores **hash only**, never the raw token.
-3. Claim uses dual-cookie binding: guest receipt cookie + `aura_session_claim` (session claim optional for clear-only after OAuth overwrite).
+3. Claim uses dual-cookie binding: `zovus_guest_resume` (possession) + `aura_guest_claim` (required pending guest binding for primary issued→claimed). `aura_session_claim` may bind a chat session and must not destroy pending guest binding. Missing binding rejects primary claim.
 
 ## Capacitor cookie-loss
 
