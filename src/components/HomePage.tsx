@@ -34,7 +34,7 @@ import MasterSessionFlow from "@/components/MasterSessionFlow";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread, isDailyOnlySpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { resolveIntentMasterId } from "@/lib/spread-intents/resolve-master";
-import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
+import { matchSpreadIntentDetailed } from "@/lib/spread-intents/match-question";
 import { setJointReadingToken, setJointReadingRole, getJointReadingIntentSlug, setJointReadingIntentSlug } from "@/lib/joint-reading-storage";
 import { resolveIntentCopy } from "@/lib/spread-intents/gender-copy";
 import {
@@ -666,7 +666,12 @@ export default function HomePage({
   const openSpreadIntentFlow = useCallback(
     (
       intent: NonNullable<ReturnType<typeof getSpreadIntentBySlug>>,
-      options?: { customQuestion?: string | null; spreadIdOverride?: SpreadId }
+      options?: {
+        customQuestion?: string | null;
+        spreadIdOverride?: SpreadId;
+        /** When set, overrides intent.requiresPartnerInfo (free-text must not inherit a fuzzy compatibility match). */
+        collectPartnerInfo?: boolean;
+      }
     ) => {
       // Joint-reading invites let the initiator pick a card depth (3/7/12) that
       // differs from the intent's default spreadId in the registry — honor that
@@ -700,7 +705,11 @@ export default function HomePage({
       setSessionFlowPreselectedMaster(resolveIntentMasterId(intent));
       setSessionFlowInitialTopic("custom");
       setSessionFlowInitialQuestion(question);
-      setSessionFlowRequiresPartnerInfo(jointActive ? false : Boolean(intent.requiresPartnerInfo));
+      const collectPartner =
+        options?.collectPartnerInfo !== undefined
+          ? options.collectPartnerInfo
+          : Boolean(intent.requiresPartnerInfo);
+      setSessionFlowRequiresPartnerInfo(jointActive ? false : collectPartner);
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },
@@ -713,9 +722,13 @@ export default function HomePage({
       if (!q) return;
       consumePendingGuestQuestion();
 
-      const matched = matchSpreadIntentFromQuestion(q);
+      const matched = matchSpreadIntentDetailed(q);
       if (matched) {
-        openSpreadIntentFlow(matched, { customQuestion: q });
+        openSpreadIntentFlow(matched.intent, {
+          customQuestion: q,
+          collectPartnerInfo:
+            matched.via === "alias" && Boolean(matched.intent.requiresPartnerInfo),
+        });
         return;
       }
 
@@ -737,11 +750,17 @@ export default function HomePage({
       if (!q) return;
       // Guests use GuestTriplet on the editorial landing — never open paid session init.
       if (!isLoggedIn) return;
-      const matched =
-        (intentSlug ? getSpreadIntentBySlug(intentSlug) : null) ??
-        matchSpreadIntentFromQuestion(q);
+      const fromSlug = intentSlug ? getSpreadIntentBySlug(intentSlug) : null;
+      if (fromSlug) {
+        openSpreadIntentFlow(fromSlug);
+        return;
+      }
+      const matched = matchSpreadIntentDetailed(q);
       if (matched) {
-        openSpreadIntentFlow(matched);
+        openSpreadIntentFlow(matched.intent, {
+          collectPartnerInfo:
+            matched.via === "alias" && Boolean(matched.intent.requiresPartnerInfo),
+        });
         return;
       }
 
@@ -901,9 +920,13 @@ export default function HomePage({
       }
 
       const spreadFromHero = params.get("spread") === "1";
-      const matched = matchSpreadIntentFromQuestion(askParam);
+      const matched = matchSpreadIntentDetailed(askParam);
       if (matched) {
-        openSpreadIntentFlow(matched, { customQuestion: askParam });
+        openSpreadIntentFlow(matched.intent, {
+          customQuestion: askParam,
+          collectPartnerInfo:
+            matched.via === "alias" && Boolean(matched.intent.requiresPartnerInfo),
+        });
       } else if (spreadFromHero) {
         consumePendingGuestQuestion();
         setDeepLinkSpreadId(null);

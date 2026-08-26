@@ -79,6 +79,7 @@ export const CHECKS = {
     vitest: [
       "tests/invariants/seo-growth-pass.test.ts",
       "tests/invariants/multiproduct-seo-discoverability.test.ts",
+      "tests/invariants/spread-intent-match-question.test.ts",
     ],
   },
 
