@@ -6,7 +6,7 @@ import AdsAdminNav from "./AdsAdminNav";
 export default function AdsDisabled() {
   return (
     <AdminShell>
-      <AdminTitle title="Реклама" subtitle="Ads Autopilot" />
+      <AdminTitle title="Продвижение" subtitle="наблюдение без ads.enabled" />
       <AdsAdminNav />
       <div className="glass-panel p-8 text-center">
         <p className="font-display text-xl text-aura-gold">Модуль недоступен</p>

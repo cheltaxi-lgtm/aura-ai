@@ -125,6 +125,48 @@ export async function POST(req: NextRequest) {
             const budget = await getBudget();
             await setConfigJson("budget", { ...budget, ...p }, auth.sub);
           }
+          if (
+            row.kind === "seo_safe_fix" ||
+            row.kind === "seo_content_change" ||
+            row.kind === "seo_route_change"
+          ) {
+            const { createSeoExperiment, applySeoOverride } = await import(
+              "@/modules/ads/organic/seo-rules"
+            );
+            const url = String(p.url || row.target_id || "/");
+            const action = String(p.action || "metadata") as
+              | "internal_link"
+              | "metadata"
+              | "schema"
+              | "canonical"
+              | "robots"
+              | "content"
+              | "new_route"
+              | "delete_route"
+              | "bulk";
+            if (action === "new_route" || action === "delete_route") {
+              throw new Error(
+                "Создание/удаление SEO-маршрутов не применяется автоматически — только запись approval"
+              );
+            }
+            const exp = await createSeoExperiment({
+              query: typeof p.query === "string" ? p.query : null,
+              url,
+              action,
+              reason: `approval ${row.kind}`,
+              autoSafe: row.kind === "seo_safe_fix",
+              approvalId: body.id,
+              newValue: p,
+            });
+            if (row.kind === "seo_safe_fix" && typeof p.field === "string" && typeof p.newValue === "string") {
+              await applySeoOverride({
+                path: url,
+                field: p.field as "title" | "description" | "h1" | "canonical" | "robots" | "schema_json" | "internal_links",
+                newValue: p.newValue,
+                experimentId: exp.id,
+              });
+            }
+          }
         },
       });
     } catch (e) {

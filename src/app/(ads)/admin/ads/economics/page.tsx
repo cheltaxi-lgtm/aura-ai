@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, StatCard } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
+import AdsErrorBanner from "@/modules/ads/admin/AdsErrorBanner";
 
 type Latest = {
   date: string;
@@ -24,6 +25,7 @@ export default function AdsEconomicsPage() {
   const [latest, setLatest] = useState<Latest | null>(null);
   const [history, setHistory] = useState<Record<string, unknown>[]>([]);
   const [disabled, setDisabled] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     fetch("/api/ads/admin/economics")
@@ -32,12 +34,16 @@ export default function AdsEconomicsPage() {
           setDisabled(true);
           return;
         }
-        if (!r.ok) return;
+        if (!r.ok) {
+          const d = (await r.json().catch(() => ({}))) as { error?: string };
+          setError(d.error || `HTTP ${r.status}`);
+          return;
+        }
         const d = await r.json();
         setLatest(d.latest);
         setHistory(d.history ?? []);
       })
-      .catch(() => {});
+      .catch((e) => setError(e instanceof Error ? e.message : "network"));
   }, []);
 
   if (disabled) return <AdsDisabled />;
@@ -46,6 +52,7 @@ export default function AdsEconomicsPage() {
     <AdminShell>
       <AdminTitle title="Экономика" subtitle="Когорта 30 дней · ARPU / CR / допустимый CPA" />
       <AdsAdminNav />
+      <AdsErrorBanner error={error} />
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard

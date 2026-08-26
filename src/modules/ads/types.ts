@@ -20,7 +20,10 @@ export type ApprovalKind =
   | "new_landing"
   | "new_cluster"
   | "mode_switch"
-  | "optimization_goal_switch";
+  | "optimization_goal_switch"
+  | "seo_safe_fix"
+  | "seo_content_change"
+  | "seo_route_change";
 
 export const OPTIMIZATION_GOALS_ALLOWED = ["registration", "first_payment"] as const;
 export const OPTIMIZATION_GOALS_FORBIDDEN = ["deck_view", "spread_submit"] as const;

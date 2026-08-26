@@ -211,7 +211,10 @@ export function requiresMoneyApproval(input: {
       input.kind === "optimization_goal_switch" ||
       input.kind === "new_landing" ||
       input.kind === "new_cluster" ||
-      input.kind === "mode_switch"
+      input.kind === "mode_switch" ||
+      input.kind === "seo_content_change" ||
+      input.kind === "seo_route_change" ||
+      input.kind === "seo_safe_fix"
     );
   }
   const cur = input.current ?? 0;

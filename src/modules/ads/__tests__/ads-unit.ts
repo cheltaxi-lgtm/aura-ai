@@ -203,6 +203,38 @@ async function main() {
     );
   });
 
+  await test("opportunity score bands and PUSH", async () => {
+    const { computeOpportunityScore, positionBandScore } = await import("../organic/score");
+    assert.equal(positionBandScore(7), 32);
+    assert.equal(positionBandScore(15), 24);
+    assert.equal(positionBandScore(25), 16);
+    const push = computeOpportunityScore({
+      query: "расклад таро онлайн",
+      position: 6,
+      impressions: 400,
+      clicks: 4,
+      ctr: 0.01,
+      frequency: 2000,
+      wordstatRising: true,
+      landingMatch: true,
+      commercial: true,
+    });
+    assert.ok(push.score >= 55);
+    assert.equal(push.status, "PUSH");
+    const ign = computeOpportunityScore({
+      query: "казино",
+      position: 5,
+      impressions: 1000,
+      clicks: 1,
+      ctr: 0.001,
+      frequency: 9000,
+      wordstatRising: true,
+      landingMatch: false,
+      commercial: false,
+    });
+    assert.equal(ign.status, "IGNORE");
+  });
+
   await test("V21 ROMI gated in discovery", () => {
     const r = evaluateRomiRules({
       budget: { ...budget, mode: "discovery" },

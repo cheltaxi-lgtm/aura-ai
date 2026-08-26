@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn, StatCard } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
+import AdsErrorBanner from "@/modules/ads/admin/AdsErrorBanner";
 
 type Alert = {
   id: string;
@@ -19,6 +20,7 @@ export default function AdsAlertsPage() {
   const [unacked, setUnacked] = useState(0);
   const [disabled, setDisabled] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/ads/admin/alerts")
@@ -27,12 +29,16 @@ export default function AdsAlertsPage() {
           setDisabled(true);
           return;
         }
-        if (!r.ok) return;
+        if (!r.ok) {
+          const d = (await r.json().catch(() => ({}))) as { error?: string };
+          setError(d.error || `HTTP ${r.status}`);
+          return;
+        }
         const d = await r.json();
         setItems(d.items ?? []);
         setUnacked(d.unacked ?? 0);
       })
-      .catch(() => {});
+      .catch((e) => setError(e instanceof Error ? e.message : "network"));
   }, []);
 
   useEffect(() => {
@@ -62,6 +68,7 @@ export default function AdsAlertsPage() {
     <AdminShell>
       <AdminTitle title="Алерты" subtitle="Лента ads.alert · подтверждение прочтения" />
       <AdsAdminNav />
+      <AdsErrorBanner error={error} />
 
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <StatCard label="Непрочитанные" value={unacked} accent="text-amber-300" />

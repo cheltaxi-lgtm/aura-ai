@@ -16,7 +16,9 @@ type Analytics = {
   ok: boolean;
   days: PeriodDays;
   fetchedAt: string;
-  error?: string;
+  error?: string | null;
+  metrikaError?: string | null;
+  webmasterError?: string | null;
   metrika: {
     counterId: string | null;
     range: { from: string; to: string };
@@ -56,7 +58,8 @@ type Analytics = {
       reaches: number | null;
       cr: number | null;
     }[];
-  };
+    partialErrors?: string[];
+  } | null;
   webmaster: {
     hostDisplay?: string | null;
     hostId?: string | null;
@@ -76,7 +79,7 @@ type Analytics = {
       position: number | null;
       ctr: number | null;
     }[];
-  };
+  } | null;
 };
 
 const PERIODS: { days: PeriodDays; label: string }[] = [
@@ -121,11 +124,11 @@ export default function AdsSourcesPage() {
         return;
       }
       const json = (await r.json()) as Analytics;
-      if (!r.ok || !json.ok) {
-        setLoadError(json.error || `HTTP ${r.status}`);
-        return;
-      }
       setData(json);
+      const parts = [json.metrikaError, json.webmasterError, !json.metrika && !json.webmaster ? json.error : null]
+        .filter(Boolean)
+        .join(" · ");
+      setLoadError(parts || null);
     } catch {
       setLoadError("Не удалось загрузить аналитику");
     } finally {
@@ -180,6 +183,12 @@ export default function AdsSourcesPage() {
         ) : null}
         {loadError ? <span className="text-xs text-red-400">{loadError}</span> : null}
       </div>
+
+      {data?.metrika?.partialErrors?.length ? (
+        <p className="mb-4 text-xs text-amber-400">
+          Метрика частично: {data.metrika.partialErrors.join(" · ")}
+        </p>
+      ) : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
         <StatCard label="Визиты" value={fmtNum(t?.visits)} accent="text-aura-gold" />
@@ -295,6 +304,9 @@ export default function AdsSourcesPage() {
         <p className="mb-3 text-[11px] text-gray-500">
           Это показы/клики в поиске Яндекса (не обязательно совпадает с визитами Метрики).
         </p>
+        {data?.webmasterError ? (
+          <p className="mb-3 text-sm text-red-400">{data.webmasterError}</p>
+        ) : null}
         <AdminTable
           headers={["Запрос", "Клики", "Показы", "CTR", "Поз."]}
           rows={(w?.queries || []).slice(0, 40).map((q) => [

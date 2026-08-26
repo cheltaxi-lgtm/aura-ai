@@ -10,36 +10,50 @@ export async function GET() {
   const gate = await requireAdsAdmin();
   if (!isAdsAdminAuth(gate)) return gate;
 
-  const [candidates, negatives, queries] = await Promise.all([
-    adsQuery(
-      `SELECT id, phrase, normalized, source, cluster_key, landing_path,
-              freq_exact, freq_phrase, forecast_cpc_rub, status, created_at
-       FROM ads.keyword_candidate
-       ORDER BY created_at DESC
-       LIMIT 200`
-    ),
-    adsQuery(
-      `SELECT id, phrase, scope, scope_id, reason, auto, created_at
-       FROM ads.negative_keyword
-       ORDER BY created_at DESC
-       LIMIT 200`
-    ),
-    adsQuery(
-      `SELECT date, campaign_id, adgroup_id, query, matched_keyword,
-              clicks, cost_rub, deck_views, spread_submits, registrations,
-              decision, decided_at
-       FROM ads.search_query
-       WHERE date >= CURRENT_DATE - 1
-       ORDER BY clicks DESC, cost_rub DESC
-       LIMIT 200`
-    ),
-  ]);
+  try {
+    const [candidates, negatives, queries] = await Promise.all([
+      adsQuery(
+        `SELECT id, phrase, normalized, source, cluster_key, landing_path,
+                freq_exact, freq_phrase, forecast_cpc_rub, status, created_at
+         FROM ads.keyword_candidate
+         ORDER BY created_at DESC
+         LIMIT 200`
+      ),
+      adsQuery(
+        `SELECT id, phrase, scope, scope_id, reason, auto, created_at
+         FROM ads.negative_keyword
+         ORDER BY created_at DESC
+         LIMIT 200`
+      ),
+      adsQuery(
+        `SELECT date, campaign_id, adgroup_id, query, matched_keyword,
+                clicks, cost_rub, deck_views, spread_submits, registrations,
+                decision, decided_at
+         FROM ads.search_query
+         WHERE date >= CURRENT_DATE - 1
+         ORDER BY clicks DESC, cost_rub DESC
+         LIMIT 200`
+      ),
+    ]);
 
-  return NextResponse.json({
-    candidates: candidates.rows,
-    negatives: negatives.rows,
-    searchQueries: queries.rows,
-  });
+    return NextResponse.json({
+      ok: true,
+      candidates: candidates.rows,
+      negatives: negatives.rows,
+      searchQueries: queries.rows,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: e instanceof Error ? e.message : String(e),
+        candidates: [],
+        negatives: [],
+        searchQueries: [],
+      },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {

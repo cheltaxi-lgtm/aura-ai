@@ -62,6 +62,8 @@ export type MetrikaSnapshot = {
   searchPhrases: SearchPhraseRow[];
   topSearchPhrases?: { phrase: string; visits: number }[];
   offlineUploadingsOk: boolean | null;
+  /** Non-fatal Metrika sub-query errors (auth/traffic still required). */
+  partialErrors?: string[];
 };
 
 const MAPPED = [
@@ -95,25 +97,38 @@ async function sleep(ms: number) {
 
 async function metrikaJson(
   pathAndQuery: string
-): Promise<Record<string, unknown> | null> {
+): Promise<Record<string, unknown>> {
   const headers = oauthHeaders();
-  if (!headers) return null;
+  if (!headers) {
+    throw new Error("Metrika credentials missing: METRIKA_TOKEN|YANDEX_METRIKA_OAUTH_TOKEN");
+  }
+  let last = "Metrika request failed";
   for (let attempt = 0; attempt < 4; attempt++) {
     try {
       const res = await fetch(`https://api-metrika.yandex.net${pathAndQuery}`, {
         headers,
       });
       if (res.status === 429 || res.status >= 500) {
+        last = `Metrika ${res.status}`;
         await sleep(400 * (attempt + 1));
         continue;
       }
-      if (!res.ok) return null;
+      if (!res.ok) {
+        const body = await res.text().catch(() => "");
+        throw new Error(
+          `Metrika ${res.status}${body ? `: ${body.slice(0, 160)}` : ""}`
+        );
+      }
       return (await res.json()) as Record<string, unknown>;
-    } catch {
+    } catch (e) {
+      if (e instanceof Error && /^Metrika (401|403|4\d\d)/.test(e.message)) {
+        throw e;
+      }
+      last = e instanceof Error ? e.message : String(e);
       await sleep(300 * (attempt + 1));
     }
   }
-  return null;
+  throw new Error(last);
 }
 
 function num(v: unknown): number {
@@ -132,14 +147,13 @@ async function trafficTotals(
   date1: string,
   date2: string,
   filters?: string
-): Promise<MetrikaTraffic | null> {
+): Promise<MetrikaTraffic> {
   const filterQ = filters ? `&filters=${filters}` : "";
   const json = await metrikaJson(
     `/stat/v1/data?ids=${counter}` +
       `&metrics=ym:s:visits,ym:s:users,ym:s:pageviews,ym:s:bounceRate,ym:s:avgVisitDurationSeconds` +
       `&date1=${date1}&date2=${date2}&accuracy=full${filterQ}`
   );
-  if (!json) return null;
   const totals = (json.totals as unknown[]) || [];
   return {
     visits: num(totals[0]),
@@ -161,7 +175,6 @@ async function goalReaches(
       `&metrics=ym:s:goal${goalId}reaches` +
       `&date1=${date1}&date2=${date2}&accuracy=full`
   );
-  if (!json) return null;
   return num((json.totals as unknown[])?.[0]);
 }
 
@@ -221,7 +234,6 @@ async function byDim(
       `&dimensions=${encodeURIComponent(dimension)}` +
       `&date1=${date1}&date2=${date2}&sort=-ym:s:visits&limit=${limit}&accuracy=full${filterQ}`
   );
-  if (!json) return [];
   const rows = (json.data as { dimensions?: { name?: string }[]; metrics?: unknown[] }[]) || [];
   return rows
     .map((r) => ({
@@ -246,7 +258,6 @@ async function organicSearchPhrases(
       `&date1=${date1}&date2=${date2}&sort=-ym:s:visits&limit=50&accuracy=full` +
       `&filters=${ORGANIC_FILTER}`
   );
-  if (!json) return [];
   const rows =
     (json.data as {
       dimensions?: { name?: string }[];
@@ -299,50 +310,95 @@ export async function fetchMetrikaSnapshot(
   const { from: date1, to: date2 } = range;
 
   let goals: MetrikaGoalRow[] = [];
+  const partialErrors: string[] = [];
   try {
     const res = await fetch(
       `https://api-metrika.yandex.net/management/v1/counter/${counterId}/goals`,
       { headers }
     );
+    if (res.status === 401 || res.status === 403) {
+      const body = await res.text().catch(() => "");
+      throw new Error(
+        `Metrika goals ${res.status}${body ? `: ${body.slice(0, 160)}` : ""}`
+      );
+    }
     if (res.ok) {
       const json = (await res.json()) as {
         goals?: { id: number; name: string; type?: string }[];
       };
       goals = (json.goals || []).map((g) => ({ id: g.id, name: g.name, type: g.type }));
+    } else {
+      const body = await res.text().catch(() => "");
+      partialErrors.push(
+        `goals HTTP ${res.status}${body ? `: ${body.slice(0, 120)}` : ""}`
+      );
     }
-  } catch {
-    /* degrade */
+  } catch (e) {
+    if (e instanceof Error && /Metrika goals (401|403)/.test(e.message)) throw e;
+    partialErrors.push(`goals: ${e instanceof Error ? e.message : String(e)}`);
   }
 
   const r7 = rangeFor(7);
   const r30 = rangeFor(30);
-  // Batch to avoid Metrika 429s (quota ~10 req/s soft limit).
+  async function settle<T>(label: string, fn: () => Promise<T>, fallback: T): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      partialErrors.push(`${label}: ${e instanceof Error ? e.message : String(e)}`);
+      return fallback;
+    }
+  }
+
+  // Traffic totals are required; optional dimensions must not fail the snapshot.
   const traffic = await trafficTotals(counterId, date1, date2);
-  const trafficOrganic = await trafficTotals(counterId, date1, date2, ORGANIC_FILTER);
-  const traffic7d =
-    periodDays === 7 ? traffic : await trafficTotals(counterId, r7.from, r7.to);
-  const traffic30d =
-    periodDays === 30 ? traffic : await trafficTotals(counterId, r30.from, r30.to);
-  const daily = await dailySeries(counterId, date1, date2);
-  const sources = await byDim(counterId, date1, date2, "ym:s:lastTrafficSource", 12);
-  const devices = await byDim(counterId, date1, date2, "ym:s:deviceCategory", 8);
-  const engines = await byDim(
-    counterId,
-    date1,
-    date2,
-    "ym:s:lastSearchEngineRoot",
-    10,
-    ORGANIC_FILTER
+  const trafficOrganic = await settle(
+    "organic",
+    () => trafficTotals(counterId, date1, date2, ORGANIC_FILTER),
+    null
   );
-  const landings = await byDim(counterId, date1, date2, "ym:s:startURLPath", 20);
-  const phrases = await organicSearchPhrases(counterId, date1, date2);
+  const traffic7d =
+    periodDays === 7
+      ? traffic
+      : await settle("traffic7d", () => trafficTotals(counterId, r7.from, r7.to), traffic);
+  const traffic30d =
+    periodDays === 30
+      ? traffic
+      : await settle("traffic30d", () => trafficTotals(counterId, r30.from, r30.to), traffic);
+  const daily = await settle("daily", () => dailySeries(counterId, date1, date2), []);
+  const sources = await settle(
+    "bySource",
+    () => byDim(counterId, date1, date2, "ym:s:lastTrafficSource", 12),
+    []
+  );
+  const devices = await settle(
+    "byDevice",
+    () => byDim(counterId, date1, date2, "ym:s:deviceCategory", 8),
+    []
+  );
+  const engines = await settle(
+    "bySearchEngine",
+    () => byDim(counterId, date1, date2, "ym:s:lastSearchEngineRoot", 10, ORGANIC_FILTER),
+    []
+  );
+  const landings = await settle(
+    "landings",
+    () => byDim(counterId, date1, date2, "ym:s:startURLPath", 20),
+    []
+  );
+  const phrases = await settle(
+    "searchPhrases",
+    () => organicSearchPhrases(counterId, date1, date2),
+    []
+  );
 
   const byId = new Map(goals.map((g) => [g.id, g.name]));
   const visits = traffic?.visits || 0;
   const mappedGoals: MetrikaMappedGoal[] = [];
   for (const m of MAPPED) {
     const id = Number(process.env[m.env]) || null;
-    const reaches = id ? await goalReaches(counterId, id, date1, date2) : null;
+    const reaches = id
+      ? await settle(`goal:${m.env}`, () => goalReaches(counterId, id, date1, date2), null)
+      : null;
     mappedGoals.push({
       env: m.env,
       label: m.label,
@@ -363,8 +419,14 @@ export async function fetchMetrikaSnapshot(
       { headers }
     );
     offlineUploadingsOk = res.ok;
-  } catch {
+    if (!res.ok) {
+      partialErrors.push(`offline_uploadings HTTP ${res.status}`);
+    }
+  } catch (e) {
     offlineUploadingsOk = false;
+    partialErrors.push(
+      `offline_uploadings: ${e instanceof Error ? e.message : String(e)}`
+    );
   }
 
   return {
@@ -405,6 +467,7 @@ export async function fetchMetrikaSnapshot(
     searchPhrases: phrases,
     topSearchPhrases: phrases.map((p) => ({ phrase: p.phrase, visits: p.visits })),
     offlineUploadingsOk,
+    partialErrors: partialErrors.length ? partialErrors : undefined,
   };
 }
 

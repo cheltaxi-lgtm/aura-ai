@@ -68,7 +68,10 @@ export default function AdsOverviewPage() {
         setData(await r.json());
       }),
       fetch("/api/ads/admin/approvals").then(async (r) => {
-        if (!r.ok) return;
+        if (!r.ok) {
+          setLoadError(`approvals HTTP ${r.status}`);
+          return;
+        }
         const d = await r.json();
         setPending(d.pending ?? 0);
       }),
@@ -80,7 +83,7 @@ export default function AdsOverviewPage() {
   return (
     <AdminShell>
       <AdminTitle
-        title="Реклама"
+        title="Продвижение"
         subtitle={
           data?.mode === "discovery"
             ? "Discovery: расход, визиты, регистрации · ROMI скрыт"
@@ -95,7 +98,7 @@ export default function AdsOverviewPage() {
       {data?.schemaOk === false ? (
         <div className="glass-panel mb-6 p-4 text-sm text-amber-400">
           Схема ads не применена. На сервере:{" "}
-          <code className="text-gray-300">npm run migrate</code> (миграции 084–086).
+          <code className="text-gray-300">npm run migrate</code> (миграции 084–088, 139).
           {data.schemaError ? (
             <p className="mt-1 text-xs text-gray-500">{data.schemaError}</p>
           ) : null}

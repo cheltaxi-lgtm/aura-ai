@@ -120,10 +120,22 @@ export async function syncAllSources(): Promise<{
   metrika: { ok: boolean; error?: string };
   webmaster: { ok: boolean; error?: string };
   wordstat: { ok: boolean; error?: string; skipped?: boolean };
+  organic: { ok: boolean; upserted?: number; error?: string };
 }> {
-  const direct = await syncDirectSource();
-  const metrika = await syncMetrikaSource();
-  const webmaster = await syncWebmasterSource();
+  const [directR, metrikaR, webmasterR] = await Promise.allSettled([
+    syncDirectSource(),
+    syncMetrikaSource(),
+    syncWebmasterSource(),
+  ]);
+  const fromSettled = (
+    r: PromiseSettledResult<{ ok: boolean; error?: string }>
+  ): { ok: boolean; error?: string } => {
+    if (r.status === "fulfilled") return r.value;
+    return { ok: false, error: r.reason instanceof Error ? r.reason.message : String(r.reason) };
+  };
+  const direct = fromSettled(directR);
+  const metrika = fromSettled(metrikaR);
+  const webmaster = fromSettled(webmasterR);
 
   let wordstat: { ok: boolean; error?: string; skipped?: boolean } = {
     ok: true,
@@ -163,7 +175,15 @@ export async function syncAllSources(): Promise<{
     webmaster: webmasterPayload,
   });
 
-  return { direct, metrika, webmaster, wordstat };
+  let organic: { ok: boolean; upserted?: number; error?: string } = { ok: true };
+  try {
+    const { refreshOrganicRegistry } = await import("../organic/registry");
+    organic = await refreshOrganicRegistry();
+  } catch (e) {
+    organic = { ok: false, error: e instanceof Error ? e.message : String(e) };
+  }
+
+  return { direct, metrika, webmaster, wordstat, organic };
 }
 
 export async function loadSourceSnapshots() {

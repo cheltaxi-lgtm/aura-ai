@@ -1,6 +1,5 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdsEnabled } from "@/modules/ads/gate";
-import { requireCronOrAdmin } from "@/modules/ads/cron-auth";
+import { NextRequest } from "next/server";
+import { runAdsCronJob } from "@/modules/ads/jobs";
 import { getCampaigns } from "@/modules/ads/direct/campaigns";
 import { adsQuery } from "@/modules/ads/db";
 
@@ -8,12 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const gated = await requireAdsEnabled();
-  if (gated) return gated;
-  const auth = await requireCronOrAdmin(request);
-  if (auth) return auth;
-
-  try {
+  return runAdsCronJob(request, "ads-sync-entities", async () => {
     const { result, units } = await getCampaigns();
     const camps = result?.Campaigns || [];
     for (const c of camps) {
@@ -29,13 +23,8 @@ export async function POST(request: NextRequest) {
         [String(c.Id), c.Name, c.State, c.Status]
       );
     }
-    return NextResponse.json({ ok: true, count: camps.length, units });
-  } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "error" },
-      { status: 502 }
-    );
-  }
+    return { count: camps.length, units };
+  });
 }
 
 export async function GET(request: NextRequest) {

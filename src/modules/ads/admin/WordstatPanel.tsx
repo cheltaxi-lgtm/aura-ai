@@ -74,11 +74,14 @@ export default function WordstatPanel() {
   const load = useCallback(async () => {
     try {
       const r = await fetch("/api/ads/admin/sources/wordstat");
-      if (!r.ok) return;
-      const json = (await r.json()) as WordstatDashboard & { ok?: boolean };
+      const json = (await r.json()) as WordstatDashboard & { ok?: boolean; error?: string };
+      if (!r.ok || json.ok === false) {
+        setNotice(json.error || `Wordstat HTTP ${r.status}`);
+        return;
+      }
       setDash(json);
-    } catch {
-      /* ignore */
+    } catch (e) {
+      setNotice(e instanceof Error ? e.message : "Wordstat: сеть/таймаут");
     }
   }, []);
 
@@ -155,7 +158,9 @@ export default function WordstatPanel() {
             {busy ? "Wordstat… (~30с)" : "Обновить Wordstat"}
           </AdminBtn>
           {notice ? (
-            <span className="text-xs text-aura-gold">{notice}</span>
+            <span className={`text-xs ${/ошиб|HTTP|fail|missing|сеть/i.test(notice) ? "text-red-400" : "text-aura-gold"}`}>
+              {notice}
+            </span>
           ) : null}
         </div>
       </div>

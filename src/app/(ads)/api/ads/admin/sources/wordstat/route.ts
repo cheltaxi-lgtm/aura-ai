@@ -14,11 +14,18 @@ export const maxDuration = 120;
 export async function GET() {
   const gate = await requireAdsAdmin();
   if (!isAdsAdminAuth(gate)) return gate;
-  const dashboard = await loadWordstatDashboard();
-  return NextResponse.json({
-    ok: true,
-    ...dashboard,
-  });
+  try {
+    const dashboard = await loadWordstatDashboard();
+    return NextResponse.json({
+      ok: true,
+      ...dashboard,
+    });
+  } catch (e) {
+    return NextResponse.json(
+      { ok: false, error: e instanceof Error ? e.message : String(e) },
+      { status: 500 }
+    );
+  }
 }
 
 export async function POST(req: NextRequest) {

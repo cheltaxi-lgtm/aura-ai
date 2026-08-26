@@ -52,12 +52,15 @@ export default function AdsApprovalsPage() {
           setDisabled(true);
           return;
         }
-        if (!r.ok) return;
+        if (!r.ok) {
+          setError(`HTTP ${r.status}`);
+          return;
+        }
         const d = await r.json();
         setItems(d.items ?? []);
         setPending(d.pending ?? 0);
       })
-      .catch(() => {});
+      .catch((e) => setError(e instanceof Error ? e.message : "network"));
   }, []);
 
   useEffect(() => {

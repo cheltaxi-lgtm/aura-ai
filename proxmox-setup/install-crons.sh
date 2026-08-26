@@ -25,6 +25,7 @@ chmod 750 "$REPO/proxmox-setup/cron-memory-maintenance.sh" \
          "$REPO/proxmox-setup/cron-hd-payment-reconcile.sh" \
          "$REPO/proxmox-setup/cron-natal-transits.sh" \
          "$REPO/proxmox-setup/cron-ads-weekly-digest.sh" \
+         "$REPO/proxmox-setup/cron-ads-job.sh" \
          "$REPO/proxmox-setup/install-crons.sh" 2>/dev/null || true
 
 CURRENT="$(crontab -l 2>/dev/null || true)"
@@ -60,6 +61,21 @@ CLEANED="$(printf '%s\n' "$CURRENT" | sed "/${MARK_BEGIN}/,/${MARK_END}/d")"
   echo "*/30 * * * * $REPO/proxmox-setup/cron-hd-payment-reconcile.sh >> $LOG_DIR/hd-reconcile.log 2>&1"
   # Natal transit digest — hourly; route selects 09:00 in each birth-place timezone.
   echo "15 * * * * $REPO/proxmox-setup/cron-natal-transits.sh >> $LOG_DIR/natal-transits.log 2>&1"
+  # Ads jobs — frequencies from src/modules/ads/jobs.ts (existing cron routes).
+  echo "*/15 * * * * $REPO/proxmox-setup/cron-ads-job.sh ads-budget-guard 60 >> $LOG_DIR/ads-budget-guard.log 2>&1"
+  echo "5 * * * * $REPO/proxmox-setup/cron-ads-job.sh ads-landing-check 90 >> $LOG_DIR/ads-landing-check.log 2>&1"
+  echo "10 * * * * $REPO/proxmox-setup/cron-ads-job.sh ads-freshness-guard 60 >> $LOG_DIR/ads-freshness-guard.log 2>&1"
+  echo "20 * * * * $REPO/proxmox-setup/cron-ads-job.sh ads-collect-conversions 90 >> $LOG_DIR/ads-collect-conversions.log 2>&1"
+  echo "30 * * * * $REPO/proxmox-setup/cron-ads-job.sh ads-offline-conversions 90 >> $LOG_DIR/ads-offline-conversions.log 2>&1"
+  echo "40 * * * * $REPO/proxmox-setup/cron-ads-job.sh ads-rules 90 >> $LOG_DIR/ads-rules.log 2>&1"
+  echo "0 */6 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-sync-sources 180 >> $LOG_DIR/ads-sync-sources.log 2>&1"
+  echo "5 */6 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-sync-stats 180 >> $LOG_DIR/ads-sync-stats.log 2>&1"
+  echo "15 */6 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-sync-entities 120 >> $LOG_DIR/ads-sync-entities.log 2>&1"
+  echo "0 4 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-semantics 180 >> $LOG_DIR/ads-semantics.log 2>&1"
+  echo "15 4 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-economics 90 >> $LOG_DIR/ads-economics.log 2>&1"
+  echo "30 4 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-funnel-rollup 90 >> $LOG_DIR/ads-funnel-rollup.log 2>&1"
+  echo "45 5 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-search-queries 180 >> $LOG_DIR/ads-search-queries.log 2>&1"
+  echo "0 7 * * * $REPO/proxmox-setup/cron-ads-job.sh ads-max-days-guard 60 >> $LOG_DIR/ads-max-days-guard.log 2>&1"
   # Ads weekly digest (B6) + max-days guard — Sunday 08:00 UTC.
   echo "0 8 * * 0 $REPO/proxmox-setup/cron-ads-weekly-digest.sh >> $LOG_DIR/ads-weekly-digest.log 2>&1"
   echo "$MARK_END"

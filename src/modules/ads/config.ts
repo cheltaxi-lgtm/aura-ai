@@ -109,8 +109,21 @@ export async function isAdsRulesEnabled(): Promise<boolean> {
 }
 
 export async function isAdsAutopilotWrite(): Promise<boolean> {
+  if (process.env.ADS_AUTOPILOT_WRITE === "0" || process.env.ADS_AUTOPILOT_WRITE === "false") {
+    return false;
+  }
+  if (process.env.ADS_AUTOPILOT_WRITE === "1" || process.env.ADS_AUTOPILOT_WRITE === "true") {
+    return true;
+  }
   const v = await getConfigJson<boolean>("ads.autopilot.write");
   return v === true;
+}
+
+/** Direct mutations (pause/negatives/upload) besides safety guards. */
+export async function canMutateDirect(): Promise<boolean> {
+  if (!(await isAdsEnabled())) return false;
+  if (!(await isAdsAutopilotWrite())) return false;
+  return rulesMode() === "apply";
 }
 
 /** Admin UI + read-only Yandex sync without enabling public beacon/spend. */

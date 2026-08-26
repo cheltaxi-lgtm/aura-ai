@@ -3,6 +3,7 @@ import { adsQuery } from "@/modules/ads/db";
 import { getConfigJson } from "@/modules/ads/config";
 import { isAdsAdminAuth, requireAdsAdmin } from "@/modules/ads/admin/guard";
 import { getHardBudgetConfig, sumLedgerAndStats } from "@/modules/ads/guard/budget";
+import { loadAdsJobRuns, ADS_CRON_JOBS } from "@/modules/ads/jobs";
 import {
   hoursSinceLastDailyStats,
   hoursSinceMetrikaHealth,
@@ -16,6 +17,7 @@ export async function GET() {
   if (!isAdsAdminAuth(gate)) return gate;
 
   let checks: unknown[] = [];
+  let checksError: string | null = null;
   try {
     const { rows } = await adsQuery(
       `SELECT DISTINCT ON (kind, target)
@@ -25,8 +27,9 @@ export async function GET() {
        LIMIT 80`
     );
     checks = rows;
-  } catch {
+  } catch (e) {
     checks = [];
+    checksError = e instanceof Error ? e.message : String(e);
   }
 
   const protection =
@@ -50,8 +53,25 @@ export async function GET() {
     /* 086 */
   }
 
+  const jobRows = await loadAdsJobRuns();
+  const jobMap = new Map(jobRows.map((j) => [j.job, j]));
+  const jobs = ADS_CRON_JOBS.map((spec) => {
+    const row = jobMap.get(spec.id);
+    return {
+      id: spec.id,
+      schedule: spec.schedule,
+      access: spec.access,
+      last_run: row?.last_run_at ? new Date(row.last_run_at).toISOString() : null,
+      last_success: row?.last_success_at ? new Date(row.last_success_at).toISOString() : null,
+      last_error: row?.last_error ?? null,
+      duration_ms: row?.last_duration_ms ?? null,
+      last_ok: row?.last_ok ?? null,
+    };
+  });
+
   return NextResponse.json({
     checks,
+    checksError,
     statsHours: await hoursSinceLastDailyStats().catch(() => null),
     metrikaHours: await hoursSinceMetrikaHealth().catch(() => null),
     failStreak,
@@ -59,6 +79,7 @@ export async function GET() {
     cpaPaused,
     protection,
     budget,
+    jobs,
     guards: {
       B1_budget: protection.budget_hard ? "fired" : "active",
       B2_freshness: protection.freshness || protection.sync_stats ? "fired" : "active",

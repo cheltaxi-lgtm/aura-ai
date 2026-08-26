@@ -51,7 +51,7 @@ const NAV_BASE = [
   { href: "/admin/audit", label: "Аудит", icon: ScrollText },
 ] as const;
 
-const ADS_NAV = { href: "/admin/ads", label: "Реклама", icon: Megaphone } as const;
+const ADS_NAV = { href: "/admin/ads", label: "Продвижение", icon: Megaphone } as const;
 
 function AdminNavLinks({
   pathname,

@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn, StatCard } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
+import AdsErrorBanner from "@/modules/ads/admin/AdsErrorBanner";
 
 type Campaign = {
   id: string;
@@ -22,6 +23,7 @@ export default function AdsCampaignPage() {
   const [campaigns, setCampaigns] = useState<Campaign[]>([]);
   const [disabled, setDisabled] = useState(false);
   const [busy, setBusy] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/ads/admin/campaign")
@@ -30,11 +32,15 @@ export default function AdsCampaignPage() {
           setDisabled(true);
           return;
         }
-        if (!r.ok) return;
+        if (!r.ok) {
+          const d = (await r.json().catch(() => ({}))) as { error?: string };
+          setError(d.error || `HTTP ${r.status}`);
+          return;
+        }
         const d = await r.json();
         setCampaigns(d.campaigns ?? []);
       })
-      .catch(() => {});
+      .catch((e) => setError(e instanceof Error ? e.message : "network"));
   }, []);
 
   useEffect(() => {
@@ -64,6 +70,7 @@ export default function AdsCampaignPage() {
     <AdminShell>
       <AdminTitle title="Кампания" subtitle="Статус, модерация, pause / resume" />
       <AdsAdminNav />
+      <AdsErrorBanner error={error} />
 
       {primary && (
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

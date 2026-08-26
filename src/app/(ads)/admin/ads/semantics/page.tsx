@@ -4,6 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
+import AdsErrorBanner from "@/modules/ads/admin/AdsErrorBanner";
 
 type Candidate = {
   id: string;
@@ -39,6 +40,7 @@ export default function AdsSemanticsPage() {
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [disabled, setDisabled] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(() => {
     fetch("/api/ads/admin/semantics")
@@ -47,13 +49,17 @@ export default function AdsSemanticsPage() {
           setDisabled(true);
           return;
         }
-        if (!r.ok) return;
         const d = await r.json();
+        if (!r.ok || d.ok === false) {
+          setError(d.error || `HTTP ${r.status}`);
+          return;
+        }
+        setError(null);
         setCandidates(d.candidates ?? []);
         setNegatives(d.negatives ?? []);
         setQueries(d.searchQueries ?? []);
       })
-      .catch(() => {});
+      .catch((e) => setError(e instanceof Error ? e.message : "network"));
   }, []);
 
   useEffect(() => {
@@ -113,6 +119,7 @@ export default function AdsSemanticsPage() {
     <AdminShell>
       <AdminTitle title="Семантика" subtitle="Кандидаты, минус-слова, поисковые запросы" />
       <AdsAdminNav />
+      <AdsErrorBanner error={error} />
 
       <div className="mb-4 flex flex-wrap gap-2">
         <AdminBtn disabled={busy || !selected.size} onClick={() => void bulk("approve_candidates")}>

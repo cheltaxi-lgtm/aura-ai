@@ -1,18 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdsEnabled } from "@/modules/ads/gate";
-import { requireCronOrAdmin } from "@/modules/ads/cron-auth";
+import { NextRequest } from "next/server";
+import { runAdsCronJob } from "@/modules/ads/jobs";
 import { uploadOfflineConversions } from "@/modules/ads/offline-conversions";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(request: NextRequest) {
-  const gated = await requireAdsEnabled();
-  if (gated) return gated;
-  const auth = await requireCronOrAdmin(request);
-  if (auth) return auth;
-  const result = await uploadOfflineConversions();
-  return NextResponse.json({ ok: true, ...result });
+  return runAdsCronJob(request, "ads-offline-conversions", async () => {
+    const result = await uploadOfflineConversions();
+    return result as Record<string, unknown>;
+  });
 }
 
 export async function GET(request: NextRequest) {

@@ -385,3 +385,115 @@ SUMMARY PASS=37 FAIL=0 WAITING=3 SKIP=0
 | V40 | PASS | emergency-stop admin-only 403 |
 
 SUMMARY PASS=37 FAIL=0 WAITING=3 SKIP=0
+
+### Iteration 2026-08-26T09:23:36.381Z
+
+| ID | Status | Reason |
+| --- | --- | --- |
+| V01 | FAIL | ads tsc: src/modules/ads/admin/WordstatPanel.tsx(165,19): error TS1381: Unexpected token. Did you mean `{'}'}` or `&rbrace;`? |
+| V02 | PASS | ads imports only in allowed existing files: (ads tree only) |
+| V03 | PASS | 084 migration present + migrate ok; public untouched in SQL |
+| V04 | PASS | ads.enabled=false → 404 gate + beacon omitted |
+| V05 | PASS | DB guard unit ok |
+| V06 | PASS | attribution integration ok |
+| V07 | PASS | D1–D8 / K1–K4 covered by ads-unit |
+| V08 | PASS | classifier covered by ads-unit |
+| V09 | PASS | validator covered by ads-unit |
+| V10 | PASS | semantics degrade covered by ads-unit |
+| V11 | PASS | no landing covered by ads-unit |
+| V12 | WAITING | WAITING/FAIL: Ваш логин не подключен к Яндекс.Директу
+ |
+| V13 | PASS | dry_run write block covered by ads-unit |
+| V14 | PASS | no secrets in .next/static |
+| V15 | FAIL | cron-auth 401 + 15 routes + install-crons.sh schedules 16 ads jobs |
+| V16 | PASS | admin pages + action_log helper present |
+| V17 | PASS | kill-switch covered by ads-unit |
+| V18 | PASS | forbidden goals covered by ads-unit |
+| V19 | PASS | economics covered by ads-unit |
+| V20 | PASS | money approval covered by ads-unit |
+| V21 | PASS | ROMI gated covered by ads-unit |
+| V22 | PASS | D5 no pause covered by ads-unit |
+| V23 | PASS | exit mode_switch covered by ads-unit |
+| V24 | PASS | offline no spread_submit covered by ads-unit |
+| V25 | PASS | sample < 100 covered by ads-unit |
+| V26 | PASS | hard budget pause independent of flags (safetyPause) |
+| V27 | PASS | assertBudgetAvailable on Direct create/resume |
+| V28 | PASS | hard_total immutable via setConfigJson |
+| V29 | PASS | 48h stale stats → pause |
+| V30 | PASS | 3× sync-stats fail → pause |
+| V31 | PASS | landing 500/timeout pauses campaigns |
+| V32 | PASS | landing resume skips CPA-paused |
+| V33 | PASS | RSYA/autotargeting blocked in validator |
+| V34 | PASS | campaign without region blocked |
+| V35 | PASS | freq above discovery_freq_max blocked |
+| V36 | PASS | expired TTL rejected server-side |
+| V37 | PASS | approval >2× requires typed confirm |
+| V38 | PASS | discovery_max_days pause |
+| V39 | PASS | ads-stop.ts Direct-only dry-run |
+| V40 | PASS | emergency-stop admin-only 403 |
+| V41 | PASS | analytics Metrika/Webmaster isolated via allSettled |
+| V42 | PASS | 139 job_run + organic registry + experiments |
+| V43 | PASS | /api/ads/admin/diagnostics present |
+| V44 | PASS | READ crons use runAdsCronJob (observe), not requireAdsEnabled |
+| V45 | PASS | AdsAdminNav integrated SEO tabs; no /admin/seo |
+| V46 | PASS | opportunity score 4–10/11–20/21–30 bands |
+| V47 | PASS | admin nav label Продвижение keeps /admin/ads |
+| V48 | PASS | generic cron-ads-job.sh + all ads crons recorded |
+
+SUMMARY PASS=45 FAIL=2 WAITING=1 SKIP=0
+
+### Iteration 2026-08-26T09:27:23.216Z
+
+| ID | Status | Reason |
+| --- | --- | --- |
+| V01 | PASS | tsc --noEmit green |
+| V02 | PASS | ads imports only in allowed existing files: (ads tree only) |
+| V03 | PASS | 084 migration present + migrate ok; public untouched in SQL |
+| V04 | PASS | ads.enabled=false → 404 gate + beacon omitted |
+| V05 | PASS | DB guard unit ok |
+| V06 | PASS | attribution integration ok |
+| V07 | PASS | D1–D8 / K1–K4 covered by ads-unit |
+| V08 | PASS | classifier covered by ads-unit |
+| V09 | PASS | validator covered by ads-unit |
+| V10 | PASS | semantics degrade covered by ads-unit |
+| V11 | PASS | no landing covered by ads-unit |
+| V12 | WAITING | WAITING/FAIL: Ваш логин не подключен к Яндекс.Директу
+ |
+| V13 | PASS | dry_run write block covered by ads-unit |
+| V14 | PASS | no secrets in .next/static |
+| V15 | PASS | cron-auth 401 + 15 routes + install-crons.sh schedules 15 ads jobs |
+| V16 | PASS | admin pages + action_log helper present |
+| V17 | PASS | kill-switch covered by ads-unit |
+| V18 | PASS | forbidden goals covered by ads-unit |
+| V19 | PASS | economics covered by ads-unit |
+| V20 | PASS | money approval covered by ads-unit |
+| V21 | PASS | ROMI gated covered by ads-unit |
+| V22 | PASS | D5 no pause covered by ads-unit |
+| V23 | PASS | exit mode_switch covered by ads-unit |
+| V24 | PASS | offline no spread_submit covered by ads-unit |
+| V25 | PASS | sample < 100 covered by ads-unit |
+| V26 | PASS | hard budget pause independent of flags (safetyPause) |
+| V27 | PASS | assertBudgetAvailable on Direct create/resume |
+| V28 | PASS | hard_total immutable via setConfigJson |
+| V29 | PASS | 48h stale stats → pause |
+| V30 | PASS | 3× sync-stats fail → pause |
+| V31 | PASS | landing 500/timeout pauses campaigns |
+| V32 | PASS | landing resume skips CPA-paused |
+| V33 | PASS | RSYA/autotargeting blocked in validator |
+| V34 | PASS | campaign without region blocked |
+| V35 | PASS | freq above discovery_freq_max blocked |
+| V36 | PASS | expired TTL rejected server-side |
+| V37 | PASS | approval >2× requires typed confirm |
+| V38 | PASS | discovery_max_days pause |
+| V39 | PASS | ads-stop.ts Direct-only dry-run |
+| V40 | PASS | emergency-stop admin-only 403 |
+| V41 | PASS | analytics Metrika/Webmaster isolated via allSettled |
+| V42 | PASS | 139 job_run + organic registry + experiments |
+| V43 | PASS | /api/ads/admin/diagnostics present |
+| V44 | PASS | READ crons use runAdsCronJob (observe), not requireAdsEnabled |
+| V45 | PASS | AdsAdminNav integrated SEO tabs; no /admin/seo |
+| V46 | PASS | opportunity score 4–10/11–20/21–30 bands |
+| V47 | PASS | admin nav label Продвижение keeps /admin/ads |
+| V48 | PASS | generic cron-ads-job.sh + all ads crons recorded |
+
+SUMMARY PASS=47 FAIL=0 WAITING=1 SKIP=0

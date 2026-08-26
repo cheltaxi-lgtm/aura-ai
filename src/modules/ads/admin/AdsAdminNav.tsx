@@ -6,12 +6,14 @@ import { usePathname } from "next/navigation";
 const TABS: { href: string; label: string; exact?: boolean }[] = [
   { href: "/admin/ads", label: "Обзор", exact: true },
   { href: "/admin/ads/sources", label: "Источники" },
-  { href: "/admin/ads/health", label: "Здоровье" },
-  { href: "/admin/ads/campaign", label: "Кампания" },
-  { href: "/admin/ads/approvals", label: "Апрувы" },
+  { href: "/admin/ads/queries", label: "Запросы" },
+  { href: "/admin/ads/opportunities", label: "Возможности" },
+  { href: "/admin/ads/seo", label: "SEO" },
   { href: "/admin/ads/semantics", label: "Семантика" },
+  { href: "/admin/ads/campaign", label: "Кампания" },
   { href: "/admin/ads/economics", label: "Экономика" },
-  { href: "/admin/ads/rules", label: "Правила" },
+  { href: "/admin/ads/autopilot", label: "Автопилот" },
+  { href: "/admin/ads/approvals", label: "Апрувы" },
   { href: "/admin/ads/alerts", label: "Алерты" },
   { href: "/admin/ads/settings", label: "Настройки" },
 ];
@@ -24,7 +26,10 @@ export default function AdsAdminNav({ pendingApprovals = 0 }: { pendingApprovals
       {TABS.map((tab) => {
         const active = tab.exact
           ? pathname === tab.href
-          : pathname === tab.href || pathname.startsWith(`${tab.href}/`);
+          : pathname === tab.href ||
+            pathname.startsWith(`${tab.href}/`) ||
+            (tab.href === "/admin/ads/autopilot" &&
+              (pathname.startsWith("/admin/ads/rules") || pathname.startsWith("/admin/ads/health")));
         return (
           <Link
             key={tab.href}

@@ -18,26 +18,33 @@ export async function GET(request: NextRequest) {
   if (!isAdsAdminAuth(gate)) return gate;
 
   const days = parsePeriodDays(request.nextUrl.searchParams.get("days"));
-  try {
-    const [metrika, webmaster] = await Promise.all([
-      fetchMetrikaSnapshot(days),
-      fetchWebmasterSnapshot(),
-    ]);
-    return NextResponse.json({
-      ok: true,
-      days,
-      fetchedAt: new Date().toISOString(),
-      metrika,
-      webmaster,
-    });
-  } catch (e) {
-    return NextResponse.json(
-      {
-        ok: false,
-        days,
-        error: e instanceof Error ? e.message : "analytics_failed",
-      },
-      { status: 502 }
-    );
-  }
+  const [metrikaR, webmasterR] = await Promise.allSettled([
+    fetchMetrikaSnapshot(days),
+    fetchWebmasterSnapshot(),
+  ]);
+  const metrika = metrikaR.status === "fulfilled" ? metrikaR.value : null;
+  const webmaster = webmasterR.status === "fulfilled" ? webmasterR.value : null;
+  const metrikaError =
+    metrikaR.status === "rejected"
+      ? metrikaR.reason instanceof Error
+        ? metrikaR.reason.message
+        : String(metrikaR.reason)
+      : null;
+  const webmasterError =
+    webmasterR.status === "rejected"
+      ? webmasterR.reason instanceof Error
+        ? webmasterR.reason.message
+        : String(webmasterR.reason)
+      : null;
+
+  return NextResponse.json({
+    ok: Boolean(metrika || webmaster),
+    days,
+    fetchedAt: new Date().toISOString(),
+    metrika,
+    webmaster,
+    metrikaError,
+    webmasterError,
+    error: !metrika && !webmaster ? metrikaError || webmasterError || "analytics_failed" : null,
+  });
 }

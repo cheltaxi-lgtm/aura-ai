@@ -1,26 +1,15 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireCronOrAdmin } from "@/modules/ads/cron-auth";
-import { canAccessAdsAdmin } from "@/modules/ads/config";
+import { NextRequest } from "next/server";
+import { runAdsCronJob } from "@/modules/ads/jobs";
 import { syncAllSources } from "@/modules/ads/sources/sync";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 180;
 
 export async function POST(request: NextRequest) {
-  const auth = await requireCronOrAdmin(request);
-  if (auth) return auth;
-  if (!(await canAccessAdsAdmin())) {
-    return NextResponse.json({ error: "Not found" }, { status: 404 });
-  }
-  try {
-    const result = await syncAllSources();
-    return NextResponse.json({ ok: true, ...result });
-  } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "sync_failed" },
-      { status: 502 }
-    );
-  }
+  return runAdsCronJob(request, "ads-sync-sources", async () => {
+    return syncAllSources();
+  });
 }
 
 export async function GET(request: NextRequest) {

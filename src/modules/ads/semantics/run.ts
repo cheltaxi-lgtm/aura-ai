@@ -58,15 +58,18 @@ function hasBrandTerm(phrase: string): boolean {
   return getCompetitorBrandTerms().some((b) => n.includes(normalizeForMatch(b)));
 }
 
-export async function collectRaw(sources?: KeywordSource[]): Promise<RawKeyword[]> {
+export async function collectRaw(
+  sources?: KeywordSource[],
+  errors?: string[]
+): Promise<RawKeyword[]> {
   const list = sources || defaultSources();
   const out: RawKeyword[] = [];
   for (const s of list) {
     try {
       const rows = await s.collect();
       out.push(...rows);
-    } catch {
-      /* degrade */
+    } catch (e) {
+      errors?.push(`${s.name}: ${e instanceof Error ? e.message : String(e)}`);
     }
   }
   return out;
@@ -180,9 +183,16 @@ export async function persistCandidates(rows: ClusteredKeyword[]): Promise<numbe
 export async function runSemantics(opts?: {
   sources?: KeywordSource[];
   dryRun?: boolean;
-}): Promise<{ collected: number; pending: number; rejected: number; inserted: number }> {
+}): Promise<{
+  collected: number;
+  pending: number;
+  rejected: number;
+  inserted: number;
+  sourceErrors: string[];
+}> {
   const budget = await getBudget();
-  const raw = await collectRaw(opts?.sources);
+  const sourceErrors: string[] = [];
+  const raw = await collectRaw(opts?.sources, sourceErrors);
   const processed = processKeywords(raw, {
     freqMin: budget.discovery_freq_min,
     freqMax: budget.discovery_freq_max,
@@ -216,5 +226,5 @@ export async function runSemantics(opts?: {
       inserted++;
     }
   }
-  return { collected: raw.length, pending, rejected, inserted };
+  return { collected: raw.length, pending, rejected, inserted, sourceErrors };
 }

@@ -1,25 +1,21 @@
-import { NextRequest, NextResponse } from "next/server";
-import { requireAdsEnabled } from "@/modules/ads/gate";
-import { requireCronOrAdmin } from "@/modules/ads/cron-auth";
+import { NextRequest } from "next/server";
+import { runAdsCronJob } from "@/modules/ads/jobs";
 import { fetchSearchQueryReport } from "@/modules/ads/direct/reports";
 import { classifySearchQuery } from "@/modules/ads/rules/search-queries";
 import { adsQuery } from "@/modules/ads/db";
-import { rulesMode } from "@/modules/ads/config";
+import { canMutateDirect, rulesMode } from "@/modules/ads/config";
 import { createApprovalRequest } from "@/modules/ads/approvals";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+export const maxDuration = 180;
 
 export async function POST(request: NextRequest) {
-  const gated = await requireAdsEnabled();
-  if (gated) return gated;
-  const auth = await requireCronOrAdmin(request);
-  if (auth) return auth;
-
-  const day = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
-  const mode = rulesMode();
-  let processed = 0;
-  try {
+  return runAdsCronJob(request, "ads-search-queries", async () => {
+    const day = new Date(Date.now() - 86400000).toISOString().slice(0, 10);
+    const mode = rulesMode();
+    const mutateDirect = await canMutateDirect();
+    let processed = 0;
     const { csv } = await fetchSearchQueryReport(day, day);
     for (const line of csv.split(/\r?\n/)) {
       if (!line.trim() || line.startsWith("Date")) continue;
@@ -59,7 +55,7 @@ export async function POST(request: NextRequest) {
           decision.decision,
         ]
       );
-      if (decision.decision === "negative" && mode === "apply") {
+      if (decision.decision === "negative" && mutateDirect) {
         await adsQuery(
           `INSERT INTO ads.negative_keyword (phrase, scope, reason, auto)
            VALUES ($1, 'account', $2, TRUE)`,
@@ -75,13 +71,8 @@ export async function POST(request: NextRequest) {
       }
       processed++;
     }
-    return NextResponse.json({ ok: true, processed, mode });
-  } catch (e) {
-    return NextResponse.json(
-      { ok: false, error: e instanceof Error ? e.message : "error", processed },
-      { status: 502 }
-    );
-  }
+    return { processed, mode, mutateDirect };
+  });
 }
 
 export async function GET(request: NextRequest) {

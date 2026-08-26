@@ -241,7 +241,7 @@ async function main() {
       join(ROOT, `src/app/(ads)/api/cron/${name}/route.ts`),
       "utf8"
     );
-    return src.includes("requireCronOrAdmin");
+    return src.includes("requireCronOrAdmin") || src.includes("runAdsCronJob");
   });
   const requiredCrons = [
     "ads-sync-sources",
@@ -251,13 +251,26 @@ async function main() {
     "ads-weekly-digest",
     "ads-max-days-guard",
   ];
+  const sharedCronAuth = readFileSync(join(ROOT, "src/lib/cron-auth.ts"), "utf8");
+  const cronAuthOk =
+    cronAuth.includes("requireCronOrAdmin") && sharedCronAuth.includes("401");
   const missingCrons = requiredCrons.filter((c) => !cronRoutes.includes(c));
+  const installCrons = readFileSync(join(ROOT, "proxmox-setup/install-crons.sh"), "utf8");
+  const jobsTs = readFileSync(join(ROOT, "src/modules/ads/jobs.ts"), "utf8");
+  const scheduledInInstall = cronRoutes.filter((c) => installCrons.includes(c));
+  const missingInInstall = cronRoutes.filter((c) => {
+    if (c === "ads-weekly-digest") return !installCrons.includes("cron-ads-weekly-digest.sh");
+    return !installCrons.includes(`cron-ads-job.sh ${c}`);
+  });
+  const weeklyInstalled = installCrons.includes("cron-ads-weekly-digest.sh");
   log(
     "V15",
-    cronAuth.includes("401") && allUseAuth && missingCrons.length === 0 ? "PASS" : "FAIL",
-    missingCrons.length === 0
-      ? `cron-auth 401 + ${cronRoutes.length} ads cron routes guarded`
-      : `missing crons: ${missingCrons.join(",")}`
+    cronAuthOk && allUseAuth && missingCrons.length === 0 && weeklyInstalled && missingInInstall.length === 0 && jobsTs.includes("ADS_CRON_JOBS")
+      ? "PASS"
+      : "FAIL",
+    missingCrons.length === 0 && missingInInstall.length === 0 && cronAuthOk
+      ? `cron-auth 401 + ${cronRoutes.length} routes + install-crons.sh schedules ${scheduledInInstall.length} ads jobs`
+      : `auth=${cronAuthOk} missing routes=${missingCrons.join(",")} missing install=${missingInInstall.join(",")}`
   );
 
   // —— V16 admin pages exist
@@ -270,8 +283,12 @@ async function main() {
     "semantics/page.tsx",
     "economics/page.tsx",
     "rules/page.tsx",
+    "autopilot/page.tsx",
     "alerts/page.tsx",
     "settings/page.tsx",
+    "queries/page.tsx",
+    "opportunities/page.tsx",
+    "seo/page.tsx",
   ];
   const adminOk = adminPages.every((p) =>
     existsSync(join(ROOT, "src/app/(ads)/admin/ads", p))
@@ -426,6 +443,83 @@ async function main() {
       ? "PASS"
       : "FAIL",
     "emergency-stop admin-only 403"
+  );
+
+  const analyticsTs = readFileSync(
+    join(ROOT, "src/app/(ads)/api/ads/admin/sources/analytics/route.ts"),
+    "utf8"
+  );
+  log(
+    "V41",
+    analyticsTs.includes("Promise.allSettled") ? "PASS" : "FAIL",
+    "analytics Metrika/Webmaster isolated via allSettled"
+  );
+  const mig139 = existsSync(join(ROOT, "scripts/migrations/139_migrate_ads_job_run_and_organic.sql"))
+    ? readFileSync(join(ROOT, "scripts/migrations/139_migrate_ads_job_run_and_organic.sql"), "utf8")
+    : "";
+  log(
+    "V42",
+    /ads\.job_run/.test(mig139) && /search_query_organic/.test(mig139) && /seo_experiment/.test(mig139)
+      ? "PASS"
+      : "FAIL",
+    "139 job_run + organic registry + experiments"
+  );
+  log(
+    "V43",
+    existsSync(join(ROOT, "src/app/(ads)/api/ads/admin/diagnostics/route.ts"))
+      ? "PASS"
+      : "FAIL",
+    "/api/ads/admin/diagnostics present"
+  );
+  const syncSourcesCron = readFileSync(
+    join(ROOT, "src/app/(ads)/api/cron/ads-sync-sources/route.ts"),
+    "utf8"
+  );
+  const semanticsCron = readFileSync(
+    join(ROOT, "src/app/(ads)/api/cron/ads-semantics/route.ts"),
+    "utf8"
+  );
+  log(
+    "V44",
+    syncSourcesCron.includes("runAdsCronJob") &&
+      semanticsCron.includes("runAdsCronJob") &&
+      !semanticsCron.includes("requireAdsEnabled")
+      ? "PASS"
+      : "FAIL",
+    "READ crons use runAdsCronJob (observe), not requireAdsEnabled"
+  );
+  const navTs = readFileSync(join(ROOT, "src/modules/ads/admin/AdsAdminNav.tsx"), "utf8");
+  log(
+    "V45",
+    navTs.includes("Запросы") &&
+      navTs.includes("Возможности") &&
+      navTs.includes("SEO") &&
+      navTs.includes("Автопилот") &&
+      !existsSync(join(ROOT, "src/app/admin/seo"))
+      ? "PASS"
+      : "FAIL",
+    "AdsAdminNav integrated SEO tabs; no /admin/seo"
+  );
+  const scoreTs = readFileSync(join(ROOT, "src/modules/ads/organic/score.ts"), "utf8");
+  log(
+    "V46",
+    scoreTs.includes("PUSH") && scoreTs.includes("positionBandScore") ? "PASS" : "FAIL",
+    "opportunity score 4–10/11–20/21–30 bands"
+  );
+  const shellTs = readFileSync(join(ROOT, "src/components/admin/AdminShell.tsx"), "utf8");
+  log(
+    "V47",
+    /label:\s*"Продвижение"/.test(shellTs) ? "PASS" : "FAIL",
+    "admin nav label Продвижение keeps /admin/ads"
+  );
+  const jobsAllGuarded = cronRoutes.every((name) => {
+    const src = readFileSync(join(ROOT, `src/app/(ads)/api/cron/${name}/route.ts`), "utf8");
+    return src.includes("runAdsCronJob") || src.includes("requireCronOrAdmin");
+  });
+  log(
+    "V48",
+    jobsAllGuarded && existsSync(join(ROOT, "proxmox-setup/cron-ads-job.sh")) ? "PASS" : "FAIL",
+    "generic cron-ads-job.sh + all ads crons recorded"
   );
 
   // Summary
