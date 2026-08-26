@@ -13,6 +13,7 @@ import {
   evaluateDiscoveryRules,
   discoveryExitCondition,
 } from "@/modules/ads/rules/discovery";
+import { evaluateRomiRules } from "@/modules/ads/rules/romi";
 import { adsQuery } from "@/modules/ads/db";
 import { pauseCampaigns } from "@/modules/ads/direct/campaigns";
 import { createApprovalRequest } from "@/modules/ads/approvals";
@@ -86,7 +87,36 @@ export async function POST(request: NextRequest) {
 
     const kills = evaluateKillSwitch(killCtx);
     const disc = rulesOn ? evaluateDiscoveryRules(discCtx) : [];
-    const all = [...kills, ...disc];
+
+    let romi: ReturnType<typeof evaluateRomiRules> = [];
+    if (rulesOn) {
+      let romiVal: number | null = null;
+      let drrVal: number | null = null;
+      try {
+        const eco = await adsQuery<{
+          revenue_rub: string | number | null;
+        }>(
+          `SELECT revenue_rub FROM ads.economics_snapshot
+           ORDER BY date DESC LIMIT 1`
+        );
+        const revenue = Number(eco.rows[0]?.revenue_rub || 0);
+        if (spendTotalRub > 0 && revenue > 0) {
+          romiVal = revenue / spendTotalRub;
+          drrVal = spendTotalRub / revenue;
+        }
+      } catch {
+        /* snapshot may be empty */
+      }
+      romi = evaluateRomiRules({
+        budget,
+        mode: budget.mode,
+        romi: romiVal,
+        drr: drrVal,
+        spendTodayRub,
+      });
+    }
+
+    const all = [...kills, ...disc, ...romi];
     const pauseAll = all.some((r) => r.applyPause);
     const applied: string[] = [];
 

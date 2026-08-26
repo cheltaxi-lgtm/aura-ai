@@ -133,6 +133,7 @@ export async function POST(req: NextRequest) {
             const { createSeoExperiment, applySeoOverride } = await import(
               "@/modules/ads/organic/seo-rules"
             );
+            const { isSeoOverrideField } = await import("@/modules/ads/organic/overrides");
             const url = String(p.url || row.target_id || "/");
             const action = String(p.action || "metadata") as
               | "internal_link"
@@ -158,10 +159,15 @@ export async function POST(req: NextRequest) {
               approvalId: body.id,
               newValue: p,
             });
-            if (row.kind === "seo_safe_fix" && typeof p.field === "string" && typeof p.newValue === "string") {
+            if (
+              (row.kind === "seo_safe_fix" || row.kind === "seo_content_change") &&
+              typeof p.field === "string" &&
+              isSeoOverrideField(p.field) &&
+              typeof p.newValue === "string"
+            ) {
               await applySeoOverride({
                 path: url,
-                field: p.field as "title" | "description" | "h1" | "canonical" | "robots" | "schema_json" | "internal_links",
+                field: p.field,
                 newValue: p.newValue,
                 experimentId: exp.id,
               });

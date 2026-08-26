@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
@@ -13,14 +13,16 @@ import {
 } from "@/lib/seo/seasonal";
 import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
 import { SUIT_HUBS } from "@/lib/seo/suit-hubs";
-import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
+import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 
-export const metadata: Metadata = buildSeoMetadata({
-  title: "Таро онлайн — расклады, значения карт и бесплатное гадание",
-  description:
-    "Таро онлайн: расклады на отношения, будущее и карьеру, справочник 78 карт, расшифровка по фото. Три карты бесплатно до регистрации — Zovus.",
-  path: "/taro",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  return buildSeoMetadataWithOverrides("/taro", {
+    title: "Таро онлайн — расклады, значения карт и бесплатное гадание",
+    description:
+      "Таро онлайн: расклады на отношения, будущее и карьеру, справочник 78 карт, расшифровка по фото. Три карты бесплатно до регистрации — Zovus.",
+    path: "/taro",
+  });
+}
 
 const breadcrumbs = [
   { name: "Zovus", path: "/" },
@@ -46,7 +48,7 @@ const faq = [
   },
 ];
 
-export default function TaroPillarPage() {
+export default async function TaroPillarPage() {
   const year = getCurrentForecastYear();
   const month = getCurrentForecastMonth();
 
@@ -55,7 +57,7 @@ export default function TaroPillarPage() {
       <SeoPageTracker goal="taro_hub_view" />
       <SeoBreadcrumbs items={breadcrumbs} />
       <p className="text-sm text-aura-gold/80">Таро · Zovus</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Таро онлайн: расклады и значения карт</h1>
+      <AdsSeoH1 path="/taro">Таро онлайн: расклады и значения карт</AdsSeoH1>
       <p className="mt-4 text-white/70">
         Готовые вопросы, понятные схемы раскладов и разбор с наставником в чате. Можно изучать
         значения арканов, задать свой вопрос или загрузить фото домашнего расклада на расшифровку.
@@ -199,7 +201,8 @@ export default function TaroPillarPage() {
         ))}
       </SeoSection>
 
-      <SeoRelatedTools excludeHrefs={["/taro"]} />
+      <AdsSeoRelatedTools path="/taro" excludeHrefs={["/taro"]} />
+      <AdsSeoJsonLd path="/taro" />
 
       <script
         type="application/ld+json"

@@ -61,12 +61,13 @@ export async function probeDirect(): Promise<Pick<ProviderProbe, "configured" | 
     }
     if (parsed.error?.error_string) {
       const msg = parsed.error.error_string;
-      const authFail = /логин не подключен|access|token|auth/i.test(msg);
+      const blocked = /логин не подключен|не подключен к Яндекс\.Директу/i.test(msg);
+      const authFail = blocked || /access|token|auth/i.test(msg);
       return {
         configured: true,
         auth: authFail ? "fail" : "ok",
         api: "fail",
-        error: redact(msg),
+        error: blocked ? `BLOCKED_EXTERNAL: ${redact(msg)}` : redact(msg),
       };
     }
     if (!ok) {

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { BRAND_NAME, getAppUrl } from "@/lib/brand";
+import { getAppliedSeoOverrides, pinCanonicalToAppOrigin } from "@/modules/ads/organic/overrides";
 
 /**
  * The root layout sets `title.template = "%s | Zovus"`, so any page-level
@@ -56,4 +57,37 @@ export function buildSeoMetadata({
       images: [ogImageUrl],
     },
   };
+}
+
+/** Merge live ads.seo_override onto static hub metadata. Fail-open (no ads DB → base). */
+export async function buildSeoMetadataWithOverrides(
+  path: string,
+  base: {
+    title: string;
+    description: string;
+    path?: string;
+    noIndex?: boolean;
+  }
+): Promise<Metadata> {
+  const ov = await getAppliedSeoOverrides(path);
+  const robots = ov.robots?.toLowerCase() ?? "";
+  const noIndex = robots.includes("noindex")
+    ? true
+    : robots.includes("index")
+      ? false
+      : Boolean(base.noIndex);
+  const meta = buildSeoMetadata({
+    title: ov.title?.trim() || base.title,
+    description: ov.description?.trim() || base.description,
+    path: base.path ?? path,
+    noIndex,
+  });
+  if (ov.canonical?.trim()) {
+    const url = pinCanonicalToAppOrigin(ov.canonical);
+    if (url) {
+      meta.alternates = { ...(meta.alternates ?? {}), canonical: url };
+      if (meta.openGraph) meta.openGraph = { ...meta.openGraph, url };
+    }
+  }
+  return meta;
 }

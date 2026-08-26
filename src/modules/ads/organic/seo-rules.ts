@@ -3,9 +3,20 @@
  * No second autopilot. Auto-safe = metadata/schema/internal links/technical.
  * Body copy, new/deleted routes, bulk changes → approval.
  */
+import { getAppUrl } from "@/lib/brand";
 import { adsQuery } from "../db";
 import { createApprovalRequest } from "../approvals";
 import type { ApprovalKind } from "../types";
+import { isLandingWhitelisted } from "../validator";
+import { runSeoLandingAudit, type LandingAudit } from "./audit";
+import {
+  mergeInternalLinks,
+  normalizeOverridePath,
+  parseInternalLinksJson,
+  pinCanonicalToAppOrigin,
+  sanitizeSchemaJson,
+  type SeoOverrideField,
+} from "./overrides";
 
 export type SeoAction =
   | "internal_link"
@@ -75,11 +86,30 @@ export async function createSeoExperiment(input: {
 
 export async function applySeoOverride(input: {
   path: string;
-  field: "title" | "description" | "h1" | "canonical" | "robots" | "schema_json" | "internal_links";
+  field: SeoOverrideField;
   oldValue?: string | null;
   newValue: string;
   experimentId: string;
 }): Promise<void> {
+  const path = normalizeOverridePath(input.path);
+  let newValue = input.newValue;
+  if (input.field === "internal_links") {
+    const { rows } = await adsQuery<{ new_value: string | null }>(
+      `SELECT new_value FROM ads.seo_override WHERE path = $1 AND field = 'internal_links'`,
+      [path]
+    );
+    newValue = JSON.stringify(
+      mergeInternalLinks(parseInternalLinksJson(rows[0]?.new_value), parseInternalLinksJson(newValue))
+    );
+  } else if (input.field === "schema_json") {
+    const safe = sanitizeSchemaJson(newValue);
+    if (!safe) throw new Error("schema_json_rejected");
+    newValue = safe;
+  } else if (input.field === "canonical") {
+    const pinned = pinCanonicalToAppOrigin(newValue);
+    if (!pinned) throw new Error("canonical_off_site");
+    newValue = pinned;
+  }
   await adsQuery(
     `INSERT INTO ads.seo_override (path, field, old_value, new_value, experiment_id, applied, updated_at)
      VALUES ($1,$2,$3,$4,$5,TRUE,NOW())
@@ -89,12 +119,163 @@ export async function applySeoOverride(input: {
        experiment_id = EXCLUDED.experiment_id,
        applied = TRUE,
        updated_at = NOW()`,
-    [input.path, input.field, input.oldValue ?? null, input.newValue, input.experimentId]
+    [path, input.field, input.oldValue ?? null, newValue, input.experimentId]
   );
   await adsQuery(
     `UPDATE ads.seo_experiment SET applied_at = NOW(), result = 'PENDING' WHERE id = $1::uuid`,
     [input.experimentId]
   );
+}
+
+async function recentOverrideExists(path: string, field: string): Promise<boolean> {
+  const { rows } = await adsQuery<{ n: string }>(
+    `SELECT COUNT(*)::text AS n FROM ads.seo_override
+     WHERE path = $1 AND field = $2 AND updated_at >= NOW() - INTERVAL '14 days'`,
+    [path, field]
+  );
+  return Number(rows[0]?.n || 0) > 0;
+}
+
+function pathLabel(path: string): string {
+  const slug = path.replace(/^\//, "").replace(/\//g, " · ").replace(/-/g, " ").trim();
+  return slug || "Zovus";
+}
+
+async function applyTechnicalAutoSafe(): Promise<{ autoApplied: number; approvals: number }> {
+  let autoApplied = 0;
+  let approvals = 0;
+  let report;
+  try {
+    report = await runSeoLandingAudit();
+  } catch {
+    return { autoApplied: 0, approvals: 0 };
+  }
+  const base = (report.baseUrl || getAppUrl()).replace(/\/$/, "");
+
+  for (const landing of report.landings as LandingAudit[]) {
+    if (!isLandingWhitelisted(landing.path) || !landing.ok) continue;
+    const issues = landing.issues || [];
+
+    if (issues.includes("missing_canonical") && !(await recentOverrideExists(landing.path, "canonical"))) {
+      const canonical = `${base}${landing.path}`;
+      const exp = await createSeoExperiment({
+        url: landing.path,
+        action: "canonical",
+        reason: `S1 auto-safe missing canonical ${landing.path}`,
+        autoSafe: true,
+        oldValue: landing.canonical,
+        newValue: { field: "canonical", newValue: canonical },
+      });
+      await applySeoOverride({
+        path: landing.path,
+        field: "canonical",
+        oldValue: landing.canonical,
+        newValue: canonical,
+        experimentId: exp.id,
+      });
+      autoApplied++;
+    }
+
+    if (issues.includes("noindex") && !(await recentOverrideExists(landing.path, "robots"))) {
+      const exp = await createSeoExperiment({
+        url: landing.path,
+        action: "robots",
+        reason: `S1 auto-safe accidental noindex on whitelist ${landing.path}`,
+        autoSafe: true,
+        oldValue: landing.robots,
+        newValue: { field: "robots", newValue: "index, follow" },
+      });
+      await applySeoOverride({
+        path: landing.path,
+        field: "robots",
+        oldValue: landing.robots,
+        newValue: "index, follow",
+        experimentId: exp.id,
+      });
+      autoApplied++;
+    }
+
+    if (issues.includes("missing_schema") && !(await recentOverrideExists(landing.path, "schema_json"))) {
+      const schema = JSON.stringify({
+        "@context": "https://schema.org",
+        "@type": "WebPage",
+        name: landing.title || landing.h1 || pathLabel(landing.path),
+        url: `${base}${landing.path}`,
+      });
+      const exp = await createSeoExperiment({
+        url: landing.path,
+        action: "schema",
+        reason: `S1 auto-safe missing schema ${landing.path}`,
+        autoSafe: true,
+        newValue: { field: "schema_json", newValue: schema },
+      });
+      await applySeoOverride({
+        path: landing.path,
+        field: "schema_json",
+        newValue: schema,
+        experimentId: exp.id,
+      });
+      autoApplied++;
+    }
+
+    const emptyTitle = issues.includes("missing_title");
+    const emptyDesc = issues.includes("missing_description");
+    if (emptyTitle && !(await recentOverrideExists(landing.path, "title"))) {
+      const title = (landing.h1 || pathLabel(landing.path)).slice(0, 70);
+      const exp = await createSeoExperiment({
+        url: landing.path,
+        action: "metadata",
+        reason: `S1 auto-safe empty title ${landing.path}`,
+        autoSafe: true,
+        newValue: { field: "title", newValue: title },
+      });
+      await applySeoOverride({
+        path: landing.path,
+        field: "title",
+        newValue: title,
+        experimentId: exp.id,
+      });
+      autoApplied++;
+    }
+
+    if (emptyDesc && !(await recentOverrideExists(landing.path, "description"))) {
+      const description = (landing.title || landing.h1 || pathLabel(landing.path)).slice(0, 160);
+      const exp = await createSeoExperiment({
+        url: landing.path,
+        action: "metadata",
+        reason: `S1 auto-safe empty description ${landing.path}`,
+        autoSafe: true,
+        newValue: { field: "description", newValue: description },
+      });
+      await applySeoOverride({
+        path: landing.path,
+        field: "description",
+        newValue: description,
+        experimentId: exp.id,
+      });
+      autoApplied++;
+    }
+
+    if (issues.includes("missing_h1") && !(await recentOverrideExists(landing.path, "h1"))) {
+      await createApprovalRequest({
+        kind: "seo_content_change",
+        targetLevel: "seo",
+        targetId: landing.path,
+        currentValue: { h1: landing.h1 },
+        proposedValue: {
+          action: "metadata",
+          field: "h1",
+          url: landing.path,
+          newValue: landing.title || pathLabel(landing.path),
+          note: "H1 только через approval",
+        },
+        rationale: { rule: "S1", issue: "missing_h1" },
+      });
+      approvals++;
+    }
+  }
+
+  return { autoApplied, approvals };
 }
 
 export async function evaluateSeoRules(): Promise<{
@@ -214,6 +395,11 @@ export async function evaluateSeoRules(): Promise<{
       }
     }
 
+    const tech = await applyTechnicalAutoSafe();
+    autoApplied += tech.autoApplied;
+    approvals += tech.approvals;
+    proposals += tech.autoApplied + tech.approvals;
+
     await adsQuery(
       `INSERT INTO ads.rule_log (rule, decision, reason_json, applied)
        VALUES ('S1', $1, $2::jsonb, $3)`,
@@ -237,7 +423,14 @@ export async function evaluateSeoRules(): Promise<{
 
 export async function listSeoExperiments(limit = 100) {
   const { rows } = await adsQuery(
-    `SELECT * FROM ads.seo_experiment ORDER BY created_at DESC LIMIT $1`,
+    `SELECT e.*,
+            EXISTS (
+              SELECT 1 FROM ads.seo_override o
+              WHERE o.experiment_id = e.id AND o.applied = TRUE
+            ) AS on_site
+     FROM ads.seo_experiment e
+     ORDER BY e.created_at DESC
+     LIMIT $1`,
     [limit]
   );
   return rows;
@@ -254,8 +447,20 @@ export async function decideExperiment(
       [id]
     );
   }
+  if (result === "KEEP") {
+    await adsQuery(
+      `UPDATE ads.search_query_organic o
+       SET status = 'PROTECT'
+       FROM ads.seo_experiment e
+       WHERE e.id = $1::uuid AND o.query = e.query`,
+      [id]
+    );
+  }
   await adsQuery(
     `UPDATE ads.seo_experiment SET result = $2 WHERE id = $1::uuid`,
     [id, result]
   );
+  if (result === "NEXT") {
+    await evaluateSeoRules();
+  }
 }

@@ -5,6 +5,7 @@ import AdminShell, { AdminTitle, AdminBtn } from "@/components/admin/AdminShell"
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
 import AdsErrorBanner from "@/modules/ads/admin/AdsErrorBanner";
+import DirectStatusCard from "@/modules/ads/admin/DirectStatusCard";
 
 type Settings = {
   flags: {
@@ -124,6 +125,11 @@ export default function AdsSettingsPage() {
       <AdminTitle title="Настройки" subtitle="Флаги, капы, whitelist · аварийная остановка" />
       <AdsAdminNav />
       <AdsErrorBanner error={error} />
+      <DirectStatusCard />
+      <p className="mb-4 text-xs text-amber-400/90">
+        ads.observe включает админку и sync источников. Публичный beacon /api/ads/t|e включается
+        только флагом ads.enabled (сейчас обычно выключен): observe ≠ beacon.
+      </p>
 
       <div className="mb-6 grid gap-4 lg:grid-cols-2">
         <div className="glass-panel space-y-3 p-4">

@@ -76,14 +76,33 @@ export async function GET() {
     wordstat_run: null,
     metrika_goal_stat: null,
     search_query_organic: null,
+    overrides_applied: null,
+    experiments_pending: null,
   };
-  for (const table of Object.keys(counts)) {
+  for (const table of ["webmaster_query_daily", "wordstat_run", "metrika_goal_stat", "search_query_organic"]) {
     try {
       const r = await adsQuery<{ n: string }>(`SELECT COUNT(*)::text AS n FROM ads.${table}`);
       counts[table] = Number(r.rows[0]?.n || 0);
     } catch {
       counts[table] = null;
     }
+  }
+  try {
+    const r = await adsQuery<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM ads.seo_override WHERE applied = TRUE`
+    );
+    counts.overrides_applied = Number(r.rows[0]?.n || 0);
+  } catch {
+    counts.overrides_applied = null;
+  }
+  try {
+    const r = await adsQuery<{ n: string }>(
+      `SELECT COUNT(*)::text AS n FROM ads.seo_experiment
+       WHERE result IS NULL OR result = 'PENDING'`
+    );
+    counts.experiments_pending = Number(r.rows[0]?.n || 0);
+  } catch {
+    counts.experiments_pending = null;
   }
 
   const [direct, metrika, webmaster, wordstat] = await Promise.all([
@@ -128,6 +147,10 @@ export async function GET() {
     },
     env: envPresenceFlags(),
     db: { schemaOk, schemaError, tables, counts },
+    organic: {
+      overrides_applied: counts.overrides_applied,
+      experiments_pending: counts.experiments_pending,
+    },
     providers: [
       attach("direct", direct, "direct", null),
       attach("metrika", metrika, "metrika", counts.metrika_goal_stat),

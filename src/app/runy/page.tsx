@@ -1,20 +1,22 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { getCharacterById } from "@/lib/characters";
-import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import { RUNE_MEANINGS } from "@/lib/seo/rune-meanings";
-import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
+import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 
-export const metadata: Metadata = buildSeoMetadata({
-  title: "Гадание на рунах онлайн: значение всех 24 рун | Zovus",
-  description:
-    "Гадание на рунах онлайн с Рагнаром: значение всех 24 рун старшего Футарка, расклад «да или нет» и разбор вопроса по скандинавской традиции.",
-  path: "/runy",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  return buildSeoMetadataWithOverrides("/runy", {
+    title: "Гадание на рунах онлайн: значение всех 24 рун | Zovus",
+    description:
+      "Гадание на рунах онлайн с Рагнаром: значение всех 24 рун старшего Футарка, расклад «да или нет» и разбор вопроса по скандинавской традиции.",
+    path: "/runy",
+  });
+}
 
 const faq = [
   {
@@ -31,7 +33,7 @@ const faq = [
   },
 ];
 
-export default function RunesHubPage() {
+export default async function RunesHubPage() {
   const ragnar = getCharacterById("ragnar");
   const structuredData = buildForecastStructuredData({
     title: "Гадание на рунах онлайн",
@@ -45,7 +47,7 @@ export default function RunesHubPage() {
     <SeoPageShell backHref="/" backLabel="На главную">
       <SeoPageTracker goal="runes_hub_view" />
       <p className="text-sm text-aura-gold/80">Руны</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Гадание на рунах онлайн</h1>
+      <AdsSeoH1 path="/runy">Гадание на рунах онлайн</AdsSeoH1>
       <p className="mt-4 text-white/70">
         {ragnar?.name ?? "Рагнар"} читает руны старшего Футарка — прямой, лаконичный ответ на вопрос
         о деньгах, связи или решении, которое нужно принять сейчас.
@@ -100,7 +102,8 @@ export default function RunesHubPage() {
         ))}
       </SeoSection>
 
-      <SeoRelatedTools />
+      <AdsSeoRelatedTools path="/runy" excludeHrefs={["/runy"]} />
+      <AdsSeoJsonLd path="/runy" />
 
       <script
         type="application/ld+json"

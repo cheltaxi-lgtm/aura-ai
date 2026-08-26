@@ -35,6 +35,7 @@ type Experiment = {
   auto_safe: boolean;
   applied_at: string | null;
   created_at: string;
+  on_site?: boolean;
 };
 
 export default function AdsSeoPage() {
@@ -44,10 +45,12 @@ export default function AdsSeoPage() {
   const [broken, setBroken] = useState<string[]>([]);
   const [orphan, setOrphan] = useState<string[]>([]);
   const [sitemapCount, setSitemapCount] = useState<number | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [busyAudit, setBusyAudit] = useState(false);
+  const [busyS1, setBusyS1] = useState(false);
+  const [busyDecide, setBusyDecide] = useState<string | null>(null);
 
   const load = useCallback(async (audit: boolean) => {
-    setBusy(true);
+    if (audit) setBusyAudit(true);
     try {
       const r = await fetch(`/api/ads/admin/seo${audit ? "?audit=1" : ""}`);
       const d = (await r.json()) as {
@@ -80,7 +83,7 @@ export default function AdsSeoPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "network");
     } finally {
-      setBusy(false);
+      if (audit) setBusyAudit(false);
     }
   }, []);
 
@@ -89,7 +92,7 @@ export default function AdsSeoPage() {
   }, [load]);
 
   const decide = async (id: string, result: "KEEP" | "ROLLBACK" | "NEXT") => {
-    setBusy(true);
+    setBusyDecide(`${id}:${result}`);
     try {
       const r = await fetch("/api/ads/admin/seo", {
         method: "POST",
@@ -102,7 +105,7 @@ export default function AdsSeoPage() {
     } catch (e) {
       setError(e instanceof Error ? e.message : "network");
     } finally {
-      setBusy(false);
+      setBusyDecide(null);
     }
   };
 
@@ -115,9 +118,31 @@ export default function AdsSeoPage() {
       <AdsAdminNav />
       <AdsErrorBanner error={error} />
 
-      <div className="mb-4 flex gap-2">
-        <AdminBtn disabled={busy} onClick={() => void load(true)}>
-          {busy ? "Аудит…" : "Прогнать аудит landing"}
+      <div className="mb-4 flex flex-wrap gap-2">
+        <AdminBtn disabled={busyAudit || busyS1} onClick={() => void load(true)}>
+          {busyAudit ? "Аудит…" : "Прогнать аудит landing"}
+        </AdminBtn>
+        <AdminBtn
+          disabled={busyAudit || busyS1}
+          onClick={async () => {
+            setBusyS1(true);
+            try {
+              const r = await fetch("/api/ads/admin/seo", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ action: "evaluate" }),
+              });
+              const d = (await r.json()) as { error?: string };
+              if (!r.ok) setError(d.error || `HTTP ${r.status}`);
+              else await load(false);
+            } catch (e) {
+              setError(e instanceof Error ? e.message : "network");
+            } finally {
+              setBusyS1(false);
+            }
+          }}
+        >
+          {busyS1 ? "S1…" : "Предложить auto-safe (S1)"}
         </AdminBtn>
       </div>
 
@@ -151,23 +176,33 @@ export default function AdsSeoPage() {
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-white">Эксперименты</h2>
       <AdminTable
-        headers={["Query", "URL", "Action", "Score", "Pos", "3д", "7д", "14д", "30д", "Result", ""]}
+        headers={["", "Query", "URL", "Action", "На сайте", "Result", "Pos 3/7/14/30"]}
         rows={experiments.map((e) => [
+          <span key="act" className="flex flex-wrap gap-1">
+            <AdminBtn disabled={!!busyDecide} onClick={() => void decide(e.id, "KEEP")}>
+              KEEP
+            </AdminBtn>
+            <AdminBtn disabled={!!busyDecide} onClick={() => void decide(e.id, "ROLLBACK")}>
+              ROLLBACK
+            </AdminBtn>
+            <AdminBtn disabled={!!busyDecide} onClick={() => void decide(e.id, "NEXT")}>
+              NEXT
+            </AdminBtn>
+          </span>,
           e.query || "—",
           e.url,
           `${e.action}${e.auto_safe ? " · auto-safe" : ""}`,
-          e.score != null ? String(e.score) : "—",
-          e.position_before != null ? String(e.position_before) : "—",
-          e.position_3d != null ? String(e.position_3d) : "—",
-          e.position_7d != null ? String(e.position_7d) : "—",
-          e.position_14d != null ? String(e.position_14d) : "—",
-          e.position_30d != null ? String(e.position_30d) : "—",
+          e.on_site ? "да" : "—",
           e.result || "PENDING",
-          <span key="act" className="flex gap-1">
-            <AdminBtn disabled={busy} onClick={() => void decide(e.id, "KEEP")}>KEEP</AdminBtn>
-            <AdminBtn disabled={busy} onClick={() => void decide(e.id, "ROLLBACK")}>ROLLBACK</AdminBtn>
-            <AdminBtn disabled={busy} onClick={() => void decide(e.id, "NEXT")}>NEXT</AdminBtn>
-          </span>,
+          [
+            e.position_before,
+            e.position_3d,
+            e.position_7d,
+            e.position_14d,
+            e.position_30d,
+          ]
+            .map((n) => (n != null ? String(n) : "—"))
+            .join(" / "),
         ])}
       />
     </AdminShell>

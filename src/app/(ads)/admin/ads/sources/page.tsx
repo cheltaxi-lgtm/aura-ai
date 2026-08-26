@@ -10,6 +10,7 @@ import AdminShell, {
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import { HorizontalBars, TrafficLineChart } from "@/modules/ads/admin/SourcesCharts";
 import WordstatPanel from "@/modules/ads/admin/WordstatPanel";
+import DirectStatusCard from "@/modules/ads/admin/DirectStatusCard";
 import type { PeriodDays } from "@/modules/ads/sources/metrika";
 
 type Analytics = {
@@ -154,6 +155,7 @@ export default function AdsSourcesPage() {
         subtitle="Метрика · Вебмастер · Wordstat по тематике Zovus"
       />
       <AdsAdminNav />
+      <DirectStatusCard />
 
       <div className="mb-4 flex flex-wrap items-center gap-2">
         <div className="flex rounded-xl border border-white/10 bg-black/30 p-0.5">

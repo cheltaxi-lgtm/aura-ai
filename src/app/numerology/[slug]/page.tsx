@@ -3,11 +3,13 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getCharacterById } from "@/lib/characters";
 import { PRICING } from "@/lib/config/pricing";
-import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
+import { AdsSeoH1, AdsSeoJsonLd } from "@/components/seo/AdsSeoEnhancements";
+import { getAppliedSeoOverrides } from "@/modules/ads/organic/overrides";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import DestinyMatrixPreview from "@/components/numerolog/DestinyMatrixPreview";
@@ -135,7 +137,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const topic = TOPICS[slug as TopicSlug];
   if (!topic) return { title: "Нумерология" };
-  return buildSeoMetadata({
+  return buildSeoMetadataWithOverrides(`/numerology/${slug}`, {
     title: `${topic.title} — нумерология`,
     description: topic.description,
     path: `/numerology/${slug}`,
@@ -158,6 +160,7 @@ export default async function NumerologyTopicPage({
   const isDestinyMatrix = slug === "destiny-matrix";
   const isMatrixPair = slug === "matrica-sovmestimosti";
   const pairCost = PRICING.MATRIX_PAIR_REPORT;
+  const seoOv = await getAppliedSeoOverrides(`/numerology/${slug}`);
 
   const matrixStructuredData = isDestinyMatrix
     ? buildForecastStructuredData({
@@ -207,7 +210,7 @@ export default async function NumerologyTopicPage({
         />
       ) : null}
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">{topic.title}</h1>
+      <AdsSeoH1 path={`/numerology/${slug}`}>{topic.title}</AdsSeoH1>
       <p className="mt-4 text-white/70">{topic.intro}</p>
       {isDestinyMatrix || isMatrixPair ? (
         <ul className="mt-4 space-y-1.5 text-sm text-white/55">
@@ -291,6 +294,7 @@ export default async function NumerologyTopicPage({
 
           <SeoRelatedTools
             title="Смотрите также"
+            extraLinks={seoOv.internal_links}
             links={[
               { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
               { href: "/natalnaya-karta", label: "Натальная карта" },
@@ -442,6 +446,7 @@ export default async function NumerologyTopicPage({
           <SeoRelatedTools
             title="Смотрите также"
             excludeHrefs={["/numerology/destiny-matrix"]}
+            extraLinks={seoOv.internal_links}
             links={[
               { href: "/numerology/matrica-sovmestimosti", label: "Совместимость матриц" },
               { href: "/natalnaya-karta", label: "Натальная карта" },
@@ -467,6 +472,10 @@ export default async function NumerologyTopicPage({
             <p>Эвелина даёт персональную расшифровку с возможностью продолжить в чате.</p>
             <p>Результат сохраняется в истории сеансов.</p>
           </SeoSection>
+          <SeoRelatedTools
+            extraLinks={seoOv.internal_links}
+            excludeHrefs={[`/numerology/${slug}`]}
+          />
         </>
       )}
 
@@ -475,6 +484,7 @@ export default async function NumerologyTopicPage({
           ← Все направления нумерологии
         </Link>
       </p>
+      <AdsSeoJsonLd path={`/numerology/${slug}`} />
     </SeoPageShell>
   );
 }

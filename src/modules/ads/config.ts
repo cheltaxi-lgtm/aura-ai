@@ -119,11 +119,19 @@ export async function isAdsAutopilotWrite(): Promise<boolean> {
   return v === true;
 }
 
-/** Direct mutations (pause/negatives/upload) besides safety guards. */
+/** Direct mutations (pause/negatives/upload) besides safety guards.
+ * Callers: ads-rules cron, ads-search-queries cron, writesAllowed() in direct/client.ts.
+ * rulesMode short-circuits before ads DB so V13 dry_run unit tests need no DB.
+ * ADS_ALLOW_DIRECT_WRITE=1 is the ads-smoke bypass.
+ */
 export async function canMutateDirect(): Promise<boolean> {
+  if (process.env.ADS_AUTOPILOT_WRITE === "0" || process.env.ADS_AUTOPILOT_WRITE === "false") {
+    return false;
+  }
+  if (process.env.ADS_ALLOW_DIRECT_WRITE === "1") return true;
+  if (rulesMode() !== "apply") return false;
   if (!(await isAdsEnabled())) return false;
-  if (!(await isAdsAutopilotWrite())) return false;
-  return rulesMode() === "apply";
+  return isAdsAutopilotWrite();
 }
 
 /** Admin UI + read-only Yandex sync without enabling public beacon/spend. */

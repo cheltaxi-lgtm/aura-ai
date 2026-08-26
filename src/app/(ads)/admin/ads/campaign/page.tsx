@@ -5,6 +5,7 @@ import AdminShell, { AdminTitle, AdminTable, AdminBtn, StatCard } from "@/compon
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
 import AdsErrorBanner from "@/modules/ads/admin/AdsErrorBanner";
+import DirectStatusCard from "@/modules/ads/admin/DirectStatusCard";
 
 type Campaign = {
   id: string;
@@ -56,7 +57,13 @@ export default function AdsCampaignPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ action, ids: id ? [id] : undefined }),
       });
-      if (res.ok) load();
+      const d = (await res.json().catch(() => ({}))) as { error?: string };
+      if (!res.ok) {
+        setError(d.error || `HTTP ${res.status}`);
+        return;
+      }
+      setError(null);
+      load();
     } finally {
       setBusy(null);
     }
@@ -71,6 +78,7 @@ export default function AdsCampaignPage() {
       <AdminTitle title="Кампания" subtitle="Статус, модерация, pause / resume" />
       <AdsAdminNav />
       <AdsErrorBanner error={error} />
+      <DirectStatusCard />
 
       {primary && (
         <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">

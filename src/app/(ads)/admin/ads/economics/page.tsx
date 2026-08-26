@@ -77,7 +77,7 @@ export default function AdsEconomicsPage() {
           value={
             latest?.applyMaxAllowedCpa && latest.maxAllowedCpaRegRub != null
               ? latest.maxAllowedCpaRegRub.toFixed(0)
-              : latest?.cpaNote ?? "—"
+              : "—"
           }
           accent={latest?.applyMaxAllowedCpa ? "text-aura-emerald" : "text-amber-400"}
         />
@@ -85,6 +85,9 @@ export default function AdsEconomicsPage() {
         <StatCard label="Confidence" value={latest?.confidence ?? "—"} />
       </div>
 
+      {!latest && !error && !disabled ? (
+        <p className="mb-4 text-sm text-amber-400/90">Выборка пустая — economics_snapshot ещё нет данных.</p>
+      ) : null}
       {!latest?.applyMaxAllowedCpa && latest && (
         <p className="mb-4 text-sm text-amber-400/90">
           sample_size &lt; 100 — порог CPA не применяется ({latest.cpaNote}).

@@ -5,7 +5,8 @@ import {
   getAllSeoArticleSlugs,
   getSeoArticleBySlug,
 } from "@/lib/seo/articles";
-import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
+import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { buildSpreadStartUrl } from "@/lib/spread-intents/router";
 import { buildArticleStructuredData } from "@/lib/seo/structured-data";
@@ -25,7 +26,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const article = getSeoArticleBySlug(slug);
   if (!article) return { title: "Статья" };
-  return buildSeoMetadata({
+  return buildSeoMetadataWithOverrides(`/statyi/${slug}`, {
     title: `${article.title} | Zovus`,
     description: article.description,
     path: `/statyi/${slug}`,
@@ -55,7 +56,7 @@ export default async function StatyiArticlePage({
     <SeoPageShell backHref="/statyi" backLabel="Все статьи">
       <SeoBreadcrumbs items={breadcrumbs} />
       <article>
-        <h1 className="font-display text-3xl font-bold">{article.title}</h1>
+        <AdsSeoH1 path={`/statyi/${slug}`}>{article.title}</AdsSeoH1>
         <p className="mt-4 text-white/70">{article.intro}</p>
 
         {article.sections.map((section) => (
@@ -122,6 +123,8 @@ export default async function StatyiArticlePage({
         ) : null}
       </article>
 
+      <AdsSeoRelatedTools path={`/statyi/${slug}`} excludeHrefs={[`/statyi/${slug}`]} />
+      <AdsSeoJsonLd path={`/statyi/${slug}`} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{

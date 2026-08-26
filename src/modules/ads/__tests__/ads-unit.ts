@@ -31,7 +31,12 @@ import {
   clearDirectWriteLog,
   getDirectWriteLog,
   directCall,
+  writesAllowed,
 } from "../direct/client";
+import { canMutateDirect } from "../config";
+import { addNegativeKeywords } from "../direct/keywords";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 
 const budget = DEFAULT_BUDGET_FOR_TESTS;
 
@@ -334,6 +339,55 @@ async function main() {
     else delete process.env.ADS_RULES_MODE;
     if (prevW !== undefined) process.env.ADS_AUTOPILOT_WRITE = prevW;
     if (prevA !== undefined) process.env.ADS_ALLOW_DIRECT_WRITE = prevA;
+  });
+
+  await test("writesAllowed ≡ canMutateDirect (dry_run, no ads DB)", async () => {
+    const prev = process.env.ADS_RULES_MODE;
+    const prevW = process.env.ADS_AUTOPILOT_WRITE;
+    const prevA = process.env.ADS_ALLOW_DIRECT_WRITE;
+    process.env.ADS_RULES_MODE = "dry_run";
+    delete process.env.ADS_AUTOPILOT_WRITE;
+    delete process.env.ADS_ALLOW_DIRECT_WRITE;
+    const a = await writesAllowed();
+    const b = await canMutateDirect();
+    assert.equal(a, b);
+    assert.equal(a, false);
+    if (prev !== undefined) process.env.ADS_RULES_MODE = prev;
+    else delete process.env.ADS_RULES_MODE;
+    if (prevW !== undefined) process.env.ADS_AUTOPILOT_WRITE = prevW;
+    else delete process.env.ADS_AUTOPILOT_WRITE;
+    if (prevA !== undefined) process.env.ADS_ALLOW_DIRECT_WRITE = prevA;
+    else delete process.env.ADS_ALLOW_DIRECT_WRITE;
+  });
+
+  await test("negatives do not call Direct API when write=false", async () => {
+    const prev = process.env.ADS_RULES_MODE;
+    const prevW = process.env.ADS_AUTOPILOT_WRITE;
+    const prevA = process.env.ADS_ALLOW_DIRECT_WRITE;
+    process.env.ADS_RULES_MODE = "dry_run";
+    delete process.env.ADS_AUTOPILOT_WRITE;
+    delete process.env.ADS_ALLOW_DIRECT_WRITE;
+    process.env.ADS_DIRECT_TOKEN = process.env.ADS_DIRECT_TOKEN || "dummy";
+    clearDirectWriteLog();
+    try {
+      await addNegativeKeywords(1, ["казино"]);
+      assert.fail("expected block");
+    } catch (e) {
+      assert.ok(String(e).includes("blocked") || String(e).includes("Direct"));
+    }
+    assert.equal(getDirectWriteLog().length, 0);
+    if (prev !== undefined) process.env.ADS_RULES_MODE = prev;
+    else delete process.env.ADS_RULES_MODE;
+    if (prevW !== undefined) process.env.ADS_AUTOPILOT_WRITE = prevW;
+    if (prevA !== undefined) process.env.ADS_ALLOW_DIRECT_WRITE = prevA;
+  });
+
+  await test("ROMI wired in ads-rules cron", () => {
+    const src = readFileSync(
+      join(process.cwd(), "src/app/(ads)/api/cron/ads-rules/route.ts"),
+      "utf8"
+    );
+    assert.ok(src.includes("evaluateRomiRules"));
   });
 
   if (failed) {

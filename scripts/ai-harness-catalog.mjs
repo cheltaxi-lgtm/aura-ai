@@ -80,7 +80,12 @@ export const CHECKS = {
       "tests/invariants/seo-growth-pass.test.ts",
       "tests/invariants/multiproduct-seo-discoverability.test.ts",
       "tests/invariants/spread-intent-match-question.test.ts",
+      "tests/invariants/ads-seo-overrides.test.ts",
     ],
+  },
+  "ads-unit": {
+    title: "ads-unit",
+    cmd: ["npx", "tsx", "src/modules/ads/__tests__/ads-unit.ts"],
   },
 
   "telegram-typecheck": { title: "telegram-typecheck", cmd: ["npm", "run", "typecheck"], cwd: "telegram-bot" },
@@ -164,6 +169,15 @@ export const SCOPES = {
     full: [...CORE_FULL, "seo-ask", "seo-teaser", "seo-unit"],
     production: ["prod-health", "prod-smoke"],
   },
+  ads: {
+    title: "Ads / promotion",
+    paths: /modules\/ads|admin\/ads|cron\/ads|config\/ads|ads-unit/i,
+    smokeUrls: ["https://zovus.ru/taro"],
+    reviews: ["code", "security"],
+    fast: [...CORE_FAST, "ads-unit", "seo-unit"],
+    full: [...CORE_FULL, "ads-unit", "seo-unit"],
+    production: ["prod-health"],
+  },
   telegram: {
     title: "Telegram bot",
     paths: /telegram-bot/i,
@@ -227,6 +241,7 @@ export const PATH_SCOPES = [
   "hd",
   "photo",
   "seo",
+  "ads",
   "tarot",
 ];
 

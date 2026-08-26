@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import {
   FORECAST_MONTHS,
@@ -9,16 +9,18 @@ import {
   getCurrentForecastYear,
 } from "@/lib/seo/seasonal";
 import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
-import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
+import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 
-export const metadata: Metadata = buildSeoMetadata({
-  title: "Прогноз Таро — по месяцам и знакам зодиака | Zovus",
-  description:
-    "Прогнозы Таро на год и месяц, расклады по знакам зодиака. Актуальные периоды — онлайн на Zovus.",
-  path: "/prognoz",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  return buildSeoMetadataWithOverrides("/prognoz", {
+    title: "Прогноз Таро — по месяцам и знакам зодиака | Zovus",
+    description:
+      "Прогнозы Таро на год и месяц, расклады по знакам зодиака. Актуальные периоды — онлайн на Zovus.",
+    path: "/prognoz",
+  });
+}
 
 const faq = [
   {
@@ -31,7 +33,7 @@ const faq = [
   },
 ];
 
-export default function PrognozIndexPage() {
+export default async function PrognozIndexPage() {
   const year = getCurrentForecastYear();
   const month = getCurrentForecastMonth();
   const structuredData = buildForecastStructuredData({
@@ -46,7 +48,7 @@ export default function PrognozIndexPage() {
     <SeoPageShell backHref="/taro" backLabel="Таро онлайн">
       <SeoPageTracker goal="prognoz_hub_view" />
       <p className="text-sm text-aura-gold/80">Прогнозы</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Прогноз Таро</h1>
+      <AdsSeoH1 path="/prognoz">Прогноз Таро</AdsSeoH1>
       <p className="mt-4 text-white/70">
         Годовые и месячные обзоры по картам, а также прогнозы для каждого знака зодиака.
       </p>
@@ -121,7 +123,8 @@ export default function PrognozIndexPage() {
         ))}
       </SeoSection>
 
-      <SeoRelatedTools />
+      <AdsSeoRelatedTools path="/prognoz" excludeHrefs={["/prognoz"]} />
+      <AdsSeoJsonLd path="/prognoz" />
 
       <script
         type="application/ld+json"

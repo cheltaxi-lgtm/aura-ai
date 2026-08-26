@@ -34,9 +34,28 @@ export async function POST(req: NextRequest) {
   if (!isAdsAdminAuth(gate)) return gate;
   const { auth } = gate;
   const body = (await req.json().catch(() => ({}))) as {
+    action?: string;
     experimentId?: string;
     result?: "KEEP" | "ROLLBACK" | "NEXT";
   };
+  if (body.action === "evaluate") {
+    try {
+      const { evaluateSeoRules } = await import("@/modules/ads/organic/seo-rules");
+      const seo = await evaluateSeoRules();
+      await writeAdsAdminAction({
+        adminId: auth.sub,
+        action: "seo_evaluate_s1",
+        payload: seo,
+        entityType: "ads_seo_rules",
+      });
+      return NextResponse.json({ ok: true, seo });
+    } catch (e) {
+      return NextResponse.json(
+        { ok: false, error: e instanceof Error ? e.message : String(e) },
+        { status: 500 }
+      );
+    }
+  }
   if (!body.experimentId || !body.result) {
     return NextResponse.json({ error: "experimentId_and_result_required" }, { status: 400 });
   }

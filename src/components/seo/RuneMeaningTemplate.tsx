@@ -4,10 +4,11 @@ import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 import { buildArticleStructuredData } from "@/lib/seo/structured-data";
 import type { RuneMeaning } from "@/lib/seo/rune-meanings";
 
-export default function RuneMeaningTemplate({
+export default async function RuneMeaningTemplate({
   rune,
   breadcrumbs,
   faq,
@@ -30,7 +31,7 @@ export default function RuneMeaningTemplate({
       <SeoPageTracker goal="rune_meaning_view" params={{ slug: rune.slug }} />
       <SeoBreadcrumbs items={breadcrumbs} />
       <p className="text-sm text-aura-gold/80">Руна</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">{rune.name}</h1>
+      <AdsSeoH1 path={`/runy/${rune.slug}`}>{rune.name}</AdsSeoH1>
       <p className="mt-2 text-sm text-white/50">Ключевое значение: {rune.keyword}</p>
       <p className="mt-4 text-lg text-white/80">{rune.general}</p>
 
@@ -66,6 +67,8 @@ export default function RuneMeaningTemplate({
         </Link>
       </p>
 
+      <AdsSeoRelatedTools path={`/runy/${rune.slug}`} excludeHrefs={[`/runy/${rune.slug}`]} />
+      <AdsSeoJsonLd path={`/runy/${rune.slug}`} />
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}

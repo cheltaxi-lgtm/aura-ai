@@ -3,20 +3,22 @@ import Link from "next/link";
 import { getCharacterById } from "@/lib/characters";
 import { PRICING } from "@/lib/config/pricing";
 import { BRAND_NAME } from "@/lib/brand";
-import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
-import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
+import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 
-export const metadata: Metadata = buildSeoMetadata({
-  title: `Нумерология по дате рождения онлайн | ${BRAND_NAME}`,
-  description:
-    "Нумерология по дате рождения: числа судьбы, совместимость, квадрат Пифагора и благоприятные даты с Эвелиной — в спокойном диалоге.",
-  path: "/numerology",
-});
+export async function generateMetadata(): Promise<Metadata> {
+  return buildSeoMetadataWithOverrides("/numerology", {
+    title: `Нумерология по дате рождения онлайн | ${BRAND_NAME}`,
+    description:
+      "Нумерология по дате рождения: числа судьбы, совместимость, квадрат Пифагора и благоприятные даты с Эвелиной — в спокойном диалоге.",
+    path: "/numerology",
+  });
+}
 
 const NUMEROLOGY_DIRECTIONS = [
   {
@@ -72,7 +74,7 @@ const faq = [
   },
 ];
 
-export default function NumerologyPage() {
+export default async function NumerologyPage() {
   const evelina = getCharacterById("numerolog");
   const sessionCost = PRICING.NUMEROLOGY_SESSION;
   const structuredData = buildForecastStructuredData({
@@ -93,7 +95,7 @@ export default function NumerologyPage() {
         ]}
       />
       <p className="text-sm text-aura-gold/80">Нумерология</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Нумерология по дате рождения онлайн</h1>
+      <AdsSeoH1 path="/numerology">Нумерология по дате рождения онлайн</AdsSeoH1>
       <p className="mt-4 text-white/70">
         {evelina?.name ?? "Эвелина"} считает числа по вашим данным и разбирает их в диалоге — путь,
         циклы, совместимость и матрица. Не случайный выпад карт: только расчёт и спокойный разбор.
@@ -176,7 +178,8 @@ export default function NumerologyPage() {
         ))}
       </SeoSection>
 
-      <SeoRelatedTools excludeHrefs={["/numerology"]} />
+      <AdsSeoRelatedTools path="/numerology" excludeHrefs={["/numerology"]} />
+      <AdsSeoJsonLd path="/numerology" />
 
       <p className="mt-10">
         <Link href="/rasklady" className="text-sm text-aura-gold hover:underline">

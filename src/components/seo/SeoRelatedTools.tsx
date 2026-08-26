@@ -25,6 +25,8 @@ type RelatedLink = { href: string; label: string };
 type SeoRelatedToolsProps = {
   title?: string;
   links?: RelatedLink[];
+  /** Extra crawlable links from ads.seo_override (already whitelist-filtered). */
+  extraLinks?: RelatedLink[];
   /** Drop default links that match these hrefs (current page). */
   excludeHrefs?: string[];
 };
@@ -33,10 +35,17 @@ type SeoRelatedToolsProps = {
 export default function SeoRelatedTools({
   title = "Также на Zovus",
   links = [...DEFAULT_LINKS],
+  extraLinks = [],
   excludeHrefs = [],
 }: SeoRelatedToolsProps) {
   const exclude = new Set(excludeHrefs);
-  const items = links.filter((item) => !exclude.has(item.href));
+  const seen = new Set<string>();
+  const items: RelatedLink[] = [];
+  for (const item of [...links, ...extraLinks]) {
+    if (exclude.has(item.href) || seen.has(item.href)) continue;
+    seen.add(item.href);
+    items.push(item);
+  }
   if (items.length === 0) return null;
 
   return (

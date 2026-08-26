@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { notFound } from "next/navigation";
-import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import RuneMeaningTemplate from "@/components/seo/RuneMeaningTemplate";
 import { getAllRuneMeaningSlugs, getRuneMeaningBySlug } from "@/lib/seo/rune-meanings";
 
@@ -16,7 +16,7 @@ export async function generateMetadata({
   const { slug } = await params;
   const rune = getRuneMeaningBySlug(slug);
   if (!rune) return { title: "Значение руны" };
-  return buildSeoMetadata({
+  return buildSeoMetadataWithOverrides(`/runy/${slug}`, {
     title: `${rune.name}: значение руны — любовь, деньги | Zovus`,
     description: rune.general,
     path: `/runy/${slug}`,

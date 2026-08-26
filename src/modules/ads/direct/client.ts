@@ -1,6 +1,8 @@
 /**
  * Yandex Direct API v5 JSON client with Units throttling and safe logging.
  */
+import { canMutateDirect } from "../config";
+
 type DirectError = {
   error_code?: number;
   error_string?: string;
@@ -32,18 +34,9 @@ export function clearDirectWriteLog() {
   writeCallLog.length = 0;
 }
 
-function writesAllowed(): boolean {
-  // Explicit kill
-  if (process.env.ADS_AUTOPILOT_WRITE === "0" || process.env.ADS_AUTOPILOT_WRITE === "false") {
-    return false;
-  }
-  // Smoke / admin push bypass
-  if (process.env.ADS_ALLOW_DIRECT_WRITE === "1") return true;
-  if (process.env.ADS_AUTOPILOT_WRITE === "1" || process.env.ADS_AUTOPILOT_WRITE === "true") {
-    return true;
-  }
-  // Default ADS_RULES_MODE=dry_run → no Direct mutations (V13)
-  return (process.env.ADS_RULES_MODE || "dry_run").toLowerCase() === "apply";
+/** Same gate as canMutateDirect (enabled + autopilot.write + ADS_RULES_MODE=apply). */
+export async function writesAllowed(): Promise<boolean> {
+  return canMutateDirect();
 }
 
 function baseUrl(): string {
@@ -78,7 +71,7 @@ export async function directCall<T>(
     opts?.safetyPause === true &&
     (method === "suspend" || method === "delete" || service === "campaigns");
 
-  if (opts?.mutate && !safety && !writesAllowed()) {
+  if (opts?.mutate && !safety && !(await writesAllowed())) {
     throw new DirectApiError(
       `Direct write blocked (dry_run or ADS_AUTOPILOT_WRITE off): ${service}.${method}`
     );
