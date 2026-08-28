@@ -168,6 +168,7 @@ describe("retention-optin (source)", () => {
     const parsed = parseNotificationPrefs({});
     expect(parsed.marketingEmail).toBe(true);
     expect(parsed.weeklyDigestEmail).toBe(false);
+    expect(parsed.reminderHourMsk).toBe(9);
     expect(parsed.retentionOptInQuietUntil).toBeNull();
     expect(parseNotificationPrefs({ weeklyDigestEmail: true }).weeklyDigestEmail).toBe(true);
     expect(parseNotificationPrefs({ marketingEmail: false }).marketingEmail).toBe(false);

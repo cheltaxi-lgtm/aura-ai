@@ -10,6 +10,9 @@ import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 /** Authenticated 3-cards-of-the-day flow (not daily energy, not guest redraw). */
 export const DAILY_CARDS_REMINDER_CTA = "/?dailyCards=1";
 
+/** Hour in Europe/Moscow when prefs omit both reminderHourMsk and reminderHourUtc. */
+export const DEFAULT_REMINDER_HOUR_MSK = 9;
+
 export type NotificationPrefs = {
   dailyEmail: boolean;
   dailyInApp: boolean;
@@ -38,7 +41,7 @@ const DEFAULT_PREFS: NotificationPrefs = {
   dailyEmail: true,
   dailyInApp: true,
   dailyTelegram: true,
-  reminderHourMsk: 6,
+  reminderHourMsk: DEFAULT_REMINDER_HOUR_MSK,
   bonusEmail: true,
   marketingEmail: true,
   reportReadyEmail: true,
@@ -54,15 +57,21 @@ function parseIsoOrNull(raw: unknown): string | null {
   return new Date(ms).toISOString();
 }
 
+function parseHour0to23(raw: unknown): number | null {
+  if (typeof raw === "number" && Number.isInteger(raw) && raw >= 0 && raw <= 23) return raw;
+  if (typeof raw === "string" && /^(?:[0-9]|1[0-9]|2[0-3])$/.test(raw.trim())) {
+    return Number(raw.trim());
+  }
+  return null;
+}
+
 export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_PREFS };
   const o = raw as Record<string, unknown>;
-  let reminderHourMsk = DEFAULT_PREFS.reminderHourMsk;
-  if (typeof o.reminderHourMsk === "number" && o.reminderHourMsk >= 0 && o.reminderHourMsk <= 23) {
-    reminderHourMsk = o.reminderHourMsk;
-  } else if (typeof o.reminderHourUtc === "number" && o.reminderHourUtc >= 0 && o.reminderHourUtc <= 23) {
-    reminderHourMsk = (o.reminderHourUtc + 3) % 24;
-  }
+  const fromMsk = parseHour0to23(o.reminderHourMsk);
+  const fromUtc = parseHour0to23(o.reminderHourUtc);
+  const reminderHourMsk =
+    fromMsk ?? (fromUtc != null ? (fromUtc + 3) % 24 : DEFAULT_PREFS.reminderHourMsk);
   return {
     dailyEmail: o.dailyEmail !== false,
     dailyInApp: o.dailyInApp !== false,
@@ -132,7 +141,20 @@ export function resolveDailyCardsReminderDelivery(input: {
   };
 }
 
-/** Opted-in accounts at this MSK hour with at least one channel pref on. */
+/**
+ * Preferred reminder hour in Europe/Moscow.
+ * Legacy reminderHourUtc 6 → 9 MSK. Missing both keys → DEFAULT_REMINDER_HOUR_MSK (9).
+ */
+const PREFERRED_HOUR_MSK_SQL = `COALESCE(
+       (u.notification_prefs->>'reminderHourMsk')::int,
+       CASE
+         WHEN (u.notification_prefs->>'reminderHourUtc') IS NOT NULL
+         THEN ((u.notification_prefs->>'reminderHourUtc')::int + 3) % 24
+         ELSE ${DEFAULT_REMINDER_HOUR_MSK}
+       END
+     )`;
+
+/** Opted-in accounts at this MSK hour with at least one channel pref on. Same-day catch-up after the preferred hour. */
 export async function getDailyReminderCandidates(hourMsk: number): Promise<
   Array<{
     userId: string;
@@ -160,20 +182,25 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
      FROM users u
      INNER JOIN user_accounts ua ON ua.profile_user_id = u.id
      LEFT JOIN user_telegram_identities ti ON ti.user_account_id = ua.id
+     CROSS JOIN LATERAL (
+       SELECT ${PREFERRED_HOUR_MSK_SQL} AS hour_msk
+     ) pref
      WHERE ua.daily_cards_reminder = TRUE
      AND (
        COALESCE((u.notification_prefs->>'dailyEmail')::boolean, true) = true
        OR COALESCE((u.notification_prefs->>'dailyInApp')::boolean, true) = true
        OR ti.telegram_user_id IS NOT NULL
      )
-     AND COALESCE(
-       (u.notification_prefs->>'reminderHourMsk')::int,
-       CASE
-         WHEN (u.notification_prefs->>'reminderHourUtc') IS NOT NULL
-         THEN ((u.notification_prefs->>'reminderHourUtc')::int + 3) % 24
-         ELSE 6
-       END
-     ) = $1`,
+     AND (
+       pref.hour_msk = $1
+       OR (
+         pref.hour_msk < $1
+         AND NOT EXISTS (
+           SELECT 1 FROM daily_reminder_log l
+           WHERE l.user_id = u.id AND l.sent_date = CURRENT_DATE
+         )
+       )
+     )`,
     [hourMsk]
   );
 

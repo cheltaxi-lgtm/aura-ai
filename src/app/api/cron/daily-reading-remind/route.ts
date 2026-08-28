@@ -2,7 +2,10 @@ import { NextRequest, NextResponse } from "next/server";
 import { isCronSecretValid } from "@/lib/cron-auth";
 import { ensureDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
-import { sendDailyRemindersForHour } from "@/lib/daily-reminder-service";
+import {
+  DEFAULT_REMINDER_HOUR_MSK,
+  sendDailyRemindersForHour,
+} from "@/lib/daily-reminder-service";
 
 export async function GET(request: NextRequest) {
   if (!(await ensureDb())) {
@@ -22,7 +25,9 @@ export async function GET(request: NextRequest) {
       ? Math.min(23, Math.max(0, Number(hourParam)))
       : new Date(new Date().toLocaleString("en-US", { timeZone: "Europe/Moscow" })).getHours();
 
-  const result = await sendDailyRemindersForHour(Number.isFinite(hourMsk) ? hourMsk : 6);
+  const result = await sendDailyRemindersForHour(
+    Number.isFinite(hourMsk) ? hourMsk : DEFAULT_REMINDER_HOUR_MSK
+  );
 
   return NextResponse.json({ hourMsk, ...result });
 }

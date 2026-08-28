@@ -1051,7 +1051,7 @@ ALTER TABLE users
   ADD COLUMN IF NOT EXISTS notification_prefs JSONB NOT NULL DEFAULT '{
     "dailyEmail": true,
     "dailyInApp": true,
-    "reminderHourMsk": 6
+    "reminderHourMsk": 9
   }'::jsonb;
 
 CREATE TABLE IF NOT EXISTS daily_reminder_log (

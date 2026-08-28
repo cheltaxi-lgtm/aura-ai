@@ -10,7 +10,9 @@ import {
 } from "@/lib/accounts";
 import {
   DAILY_CARDS_REMINDER_CTA,
+  DEFAULT_REMINDER_HOUR_MSK,
   getDailyReminderCandidates,
+  parseNotificationPrefs,
   resolveDailyCardsReminderDelivery,
   sendDailyRemindersForHour,
   updateNotificationPrefs,
@@ -173,7 +175,19 @@ describe("daily-cards-reminder-delivery (source)", () => {
     expect(src).toMatch(/ON CONFLICT \(user_id, sent_date, channel\) DO NOTHING/);
     expect(src).not.toMatch(/idempotencyKey/);
     expect(src).not.toMatch(/toLocaleDateString/);
+    expect(src).toMatch(/pref\.hour_msk < \$1/);
+    expect(src).toMatch(/NOT EXISTS/);
     expect(DAILY_CARDS_REMINDER_CTA).toBe("/?dailyCards=1");
+    expect(DEFAULT_REMINDER_HOUR_MSK).toBe(9);
+  });
+
+  it("missing hour prefs default to 9:00 MSK, not 6:00", () => {
+    expect(parseNotificationPrefs({}).reminderHourMsk).toBe(9);
+    expect(parseNotificationPrefs({ dailyEmail: true }).reminderHourMsk).toBe(9);
+    expect(parseNotificationPrefs({ reminderHourUtc: 6 }).reminderHourMsk).toBe(9);
+    expect(parseNotificationPrefs({ reminderHourUtc: "6" }).reminderHourMsk).toBe(9);
+    expect(parseNotificationPrefs({ reminderHourMsk: 7 }).reminderHourMsk).toBe(7);
+    expect(parseNotificationPrefs({ reminderHourMsk: "11" }).reminderHourMsk).toBe(11);
   });
 
   it("cron auth is unchanged", () => {
@@ -432,5 +446,62 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     );
     expect(slots.rows).toHaveLength(2);
     expect(slots.rows[0]?.sent_date).not.toBe(slots.rows[1]?.sent_date);
+  });
+
+  it("prefs without hour keys are scheduled at 9 MSK, not 6", async () => {
+    const { profile } = await seedReminderUser({
+      optIn: true,
+      dailyEmail: true,
+      dailyInApp: true,
+    });
+    await query(
+      `UPDATE users
+          SET notification_prefs = '{"dailyEmail": true, "dailyInApp": true}'::jsonb
+        WHERE id = $1`,
+      [profile.id]
+    );
+    const atSix = await getDailyReminderCandidates(6);
+    const atNine = await getDailyReminderCandidates(9);
+    expect(atSix.some((c) => c.userId === profile.id)).toBe(false);
+    expect(atNine.some((c) => c.userId === profile.id)).toBe(true);
+  });
+
+  it("same-day catch-up after preferred hour, not before, and not twice", async () => {
+    const { profile } = await seedReminderUser({
+      optIn: true,
+      dailyEmail: true,
+      dailyInApp: true,
+      hourMsk: 9,
+    });
+    expect((await getDailyReminderCandidates(8)).some((c) => c.userId === profile.id)).toBe(
+      false
+    );
+    expect((await getDailyReminderCandidates(11)).some((c) => c.userId === profile.id)).toBe(
+      true
+    );
+
+    const late = await sendDailyRemindersForHour(11);
+    expect(late.inApp).toBe(1);
+    expect(late.email).toBe(1);
+
+    expect((await getDailyReminderCandidates(12)).some((c) => c.userId === profile.id)).toBe(
+      false
+    );
+    const again = await sendDailyRemindersForHour(12);
+    expect(again).toEqual({ inApp: 0, email: 0, telegram: 0 });
+  });
+
+  it("does not send a later hour's reminder early", async () => {
+    const { profile } = await seedReminderUser({
+      optIn: true,
+      dailyEmail: true,
+      dailyInApp: true,
+      hourMsk: 21,
+    });
+    expect((await getDailyReminderCandidates(9)).some((c) => c.userId === profile.id)).toBe(
+      false
+    );
+    const result = await sendDailyRemindersForHour(9);
+    expect(result).toEqual({ inApp: 0, email: 0, telegram: 0 });
   });
 });
