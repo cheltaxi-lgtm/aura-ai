@@ -2,7 +2,9 @@
 
 import { useEffect, useRef, useState } from "react";
 import {
+  applyLandingSocialProofLiveOffsets,
   getLandingSocialProofStats,
+  landingSocialProofLiveIntervalRange,
   mergeLandingSocialProofWithPublicStats,
   type LandingSocialProofStat,
 } from "@/lib/landing-social-proof";
@@ -13,8 +15,16 @@ type LandingSocialProofStatsProps = {
   className?: string;
 };
 
-const TICK_MS = 20_000;
+const ONLINE_TICK_MS = 10_000;
 const PUBLIC_STATS_MS = 300_000;
+const SESSION_SPREAD_CAP = 5;
+const SESSION_USER_CAP = 3;
+const BUMP_STAGGER_MS = 28_000;
+
+function nextLiveDelayMs(key: "total" | "users"): number {
+  const { min, max } = landingSocialProofLiveIntervalRange(key);
+  return min + Math.floor(Math.random() * (max - min + 1));
+}
 
 function StatItem({
   stat,
@@ -40,15 +50,22 @@ export default function LandingSocialProofStats({
 }: LandingSocialProofStatsProps) {
   const [stats, setStats] = useState<LandingSocialProofStat[]>(() => getLandingSocialProofStats());
   const publicFloorRef = useRef({ sessions: 0, users: 0 });
+  const liveOffsetsRef = useRef({ users: 0, total: 0 });
 
   useEffect(() => {
     let cancelled = false;
+    let spreadTimer = 0;
+    let userTimer = 0;
+    let lastBumpAt = 0;
 
     const apply = () => {
-      const next = mergeLandingSocialProofWithPublicStats(
-        getLandingSocialProofStats(),
-        publicFloorRef.current.sessions,
-        publicFloorRef.current.users
+      const next = applyLandingSocialProofLiveOffsets(
+        mergeLandingSocialProofWithPublicStats(
+          getLandingSocialProofStats(),
+          publicFloorRef.current.sessions,
+          publicFloorRef.current.users
+        ),
+        liveOffsetsRef.current
       );
       if (!cancelled) setStats(next);
     };
@@ -68,9 +85,27 @@ export default function LandingSocialProofStats({
       }
     };
 
+    const scheduleBump = (key: "total" | "users") => {
+      const cap = key === "total" ? SESSION_SPREAD_CAP : SESSION_USER_CAP;
+      const timer = window.setTimeout(() => {
+        if (cancelled) return;
+        const now = Date.now();
+        if (liveOffsetsRef.current[key] < cap && now - lastBumpAt >= BUMP_STAGGER_MS) {
+          liveOffsetsRef.current[key] += 1;
+          lastBumpAt = now;
+          apply();
+        }
+        if (liveOffsetsRef.current[key] < cap) scheduleBump(key);
+      }, nextLiveDelayMs(key));
+      if (key === "total") spreadTimer = timer;
+      else userTimer = timer;
+    };
+
     apply();
     void fetchPublic();
-    const tick = window.setInterval(apply, TICK_MS);
+    scheduleBump("total");
+    scheduleBump("users");
+    const tick = window.setInterval(apply, ONLINE_TICK_MS);
     const publicTimer = window.setInterval(() => {
       void fetchPublic();
     }, PUBLIC_STATS_MS);
@@ -79,6 +114,8 @@ export default function LandingSocialProofStats({
       cancelled = true;
       window.clearInterval(tick);
       window.clearInterval(publicTimer);
+      window.clearTimeout(spreadTimer);
+      window.clearTimeout(userTimer);
     };
   }, []);
 

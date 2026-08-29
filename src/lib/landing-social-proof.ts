@@ -159,13 +159,62 @@ function totalUsersNow(answers: number, parts: MoscowParts): number {
   return Math.max(1, Math.floor(answers * ratio));
 }
 
+const ONLINE_SLOT_SEC = 28;
+
 function onlineNow(parts: MoscowParts): number {
   const daySeed = hash32(dateKey(parts.year, parts.month, parts.day));
   const hourSeed = hash32(daySeed + parts.hour);
-  const minuteSwing = seededInt(hash32(hourSeed + Math.floor(parts.minute / 5)), -1, 1);
   const daySwing = seededInt(daySeed, -1, 1);
-  const base = HOUR_ONLINE_BASE[parts.hour] ?? 4;
-  return clamp(base + daySwing + minuteSwing, 1, 12);
+  let online = (HOUR_ONLINE_BASE[parts.hour] ?? 4) + daySwing;
+  const slotsThisHour = Math.floor((parts.minute * 60 + parts.second) / ONLINE_SLOT_SEC);
+  const quiet = parts.hour < 7 || parts.hour >= 23;
+
+  for (let slot = 0; slot < slotsThisHour; slot += 1) {
+    const roll = seededInt(hash32(hourSeed + slot), 0, 11);
+    if (quiet) {
+      if (roll === 11) online += 1;
+      else if (roll === 0) online -= 1;
+    } else if (roll >= 10) {
+      online += 1;
+    } else if (roll <= 1) {
+      online -= 1;
+    }
+  }
+
+  return clamp(online, 1, 12);
+}
+
+export function applyLandingSocialProofLiveOffsets(
+  stats: LandingSocialProofStat[],
+  offsets: { users: number; total: number }
+): LandingSocialProofStat[] {
+  if (offsets.users <= 0 && offsets.total <= 0) return stats;
+  return stats.map((stat) => {
+    if (stat.key === "users" && offsets.users > 0) {
+      return { ...stat, value: formatGrouped(parseGrouped(stat.value) + offsets.users) };
+    }
+    if (stat.key === "total" && offsets.total > 0) {
+      return { ...stat, value: formatGrouped(parseGrouped(stat.value) + offsets.total) };
+    }
+    return stat;
+  });
+}
+
+/** Sparse, irregular gaps — totals must not tick like a metronome. */
+export function landingSocialProofLiveIntervalRange(
+  key: "total" | "users",
+  now = new Date()
+): { min: number; max: number } {
+  const hour = getMoscowParts(now).hour;
+  const night = hour < 7 || hour >= 23;
+  if (key === "total") {
+    if (night) return { min: 180_000, max: 420_000 };
+    if (hour >= 18 && hour <= 22) return { min: 48_000, max: 140_000 };
+    return { min: 75_000, max: 210_000 };
+  }
+  if (night) return { min: 300_000, max: 540_000 };
+  if (hour >= 18 && hour <= 22) return { min: 110_000, max: 260_000 };
+  return { min: 160_000, max: 360_000 };
 }
 
 function parseGrouped(value: string): number {

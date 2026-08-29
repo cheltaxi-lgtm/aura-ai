@@ -4,7 +4,9 @@
  */
 import { describe, expect, it } from "vitest";
 import {
+  applyLandingSocialProofLiveOffsets,
   getLandingSocialProofStats,
+  landingSocialProofLiveIntervalRange,
   mergeLandingSocialProofWithPublicStats,
 } from "@/lib/landing-social-proof";
 
@@ -63,5 +65,38 @@ describe("landing social proof", () => {
     expect(parseValue(modest.find((s) => s.key === "total")!.value)).toBeGreaterThanOrEqual(
       parseValue(synthetic.find((s) => s.key === "total")!.value)
     );
+  });
+
+  it("online wanders by 1 over a sitting, not every few seconds", () => {
+    const start = new Date("2026-08-29T19:00:00+03:00");
+    const values = new Set<number>();
+    for (let sec = 0; sec <= 12 * 60; sec += 20) {
+      values.add(parseValue(byKey(new Date(start.getTime() + sec * 1000)).online.value));
+    }
+    expect(values.size).toBeGreaterThan(1);
+    const list = [...values].sort((a, b) => a - b);
+    expect(list[list.length - 1] - list[0]).toBeLessThanOrEqual(4);
+  });
+
+  it("live totals tick sparsely so a glance does not look scripted", () => {
+    const peak = landingSocialProofLiveIntervalRange("total", new Date("2026-08-29T20:00:00+03:00"));
+    const users = landingSocialProofLiveIntervalRange("users", new Date("2026-08-29T20:00:00+03:00"));
+    const night = landingSocialProofLiveIntervalRange("total", new Date("2026-08-29T03:00:00+03:00"));
+    expect(peak.min).toBeGreaterThanOrEqual(45_000);
+    expect(peak.max).toBeGreaterThan(peak.min);
+    expect(users.min).toBeGreaterThan(peak.min);
+    expect(night.min).toBeGreaterThan(peak.max);
+  });
+
+  it("session offsets only add, never jump by tens", () => {
+    const base = getLandingSocialProofStats(afternoon);
+    const bumped = applyLandingSocialProofLiveOffsets(base, { users: 1, total: 2 });
+    expect(parseValue(bumped.find((s) => s.key === "total")!.value)).toBe(
+      parseValue(base.find((s) => s.key === "total")!.value) + 2
+    );
+    expect(parseValue(bumped.find((s) => s.key === "users")!.value)).toBe(
+      parseValue(base.find((s) => s.key === "users")!.value) + 1
+    );
+    expect(bumped.find((s) => s.key === "online")!.value).toBe(base.find((s) => s.key === "online")!.value);
   });
 });
