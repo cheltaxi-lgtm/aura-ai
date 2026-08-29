@@ -212,12 +212,12 @@ export function getLandingSocialProofStats(now = new Date()): LandingSocialProof
     {
       key: "users",
       value: formatGrouped(totalUsers),
-      label: "пользователей",
+      label: "зарегистрированы",
     },
     {
       key: "total",
       value: formatGrouped(totalAnswers),
-      label: "получили ответ",
+      label: "раскладов",
     },
     {
       key: "online",

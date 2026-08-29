@@ -38,6 +38,17 @@ describe("guest landing conversion cleanup", () => {
     expect(hero).toContain("expectationSubtitle");
   });
 
+  it("guest conversion hero shows live social-proof counters", () => {
+    const hero = readSrc("src/components/editorial/EditorialHeroSection.tsx");
+    expect(hero).toContain("LandingSocialProofStats");
+    expect(hero).toContain('variant="hero"');
+    expect(hero).toContain("editorial-hero__proof");
+    const landing = readSrc("src/components/AuraSellingLanding.tsx");
+    expect(landing).toMatch(
+      /useLandingSocialProofVisible\(\s*!isLoggedIn && \(isGuestEditorial/
+    );
+  });
+
   it("guest editorial hero receives A/B/C expectation copy", () => {
     const landing = readSrc("src/components/AuraSellingLanding.tsx");
     expect(landing).toContain("landingHeroExpectationCopy(heroVariant)");

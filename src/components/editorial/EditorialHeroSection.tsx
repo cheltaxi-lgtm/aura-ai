@@ -9,6 +9,7 @@ import { GUEST_HERO_PAIN_CHIPS } from "@/lib/landing-offer";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
 import { trackQuickQuestionClick } from "@/lib/seo/metrika";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
+import LandingSocialProofStats from "@/components/seo/LandingSocialProofStats";
 
 type EditorialHeroSectionProps = {
   isLoggedIn: boolean;
@@ -17,7 +18,7 @@ type EditorialHeroSectionProps = {
   onSecondaryCta: () => void;
   onQuestionSubmit: (question: string) => void;
   onPainChip?: (question: string, intentSlug: string) => void;
-  /** Guest conversion funnel: pain chips + no social-proof counters. */
+  /** Guest conversion funnel: pain chips + live social-proof counters. */
   conversionHero?: boolean;
   /** A/B/C expectation copy. Defaults to EDITORIAL_HERO.subtitle (control). */
   expectationSubtitle?: string;
@@ -110,6 +111,11 @@ export default function EditorialHeroSection({
         {guestConversion ? (
           <div className="editorial-hero__gift">
             <StarterRunesValue variant="line" generic product="home_hero" />
+          </div>
+        ) : null}
+        {guestConversion ? (
+          <div className="editorial-hero__proof">
+            <LandingSocialProofStats variant="hero" />
           </div>
         ) : null}
         {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}

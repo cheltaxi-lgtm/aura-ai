@@ -293,7 +293,7 @@ export default function AuraSellingLanding({
   } | null>(null);
   const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub, heroVariant);
   useLandingSocialProofVisible(
-    !isGuestEditorial && (showSellingSections || (showHero && !isLoggedIn))
+    !isLoggedIn && (isGuestEditorial || showSellingSections || showHero)
   );
 
   useEffect(() => {

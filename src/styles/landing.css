@@ -1060,6 +1060,16 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .landing-social-proof__live {
+    animation: none;
+  }
+}
+
+html[data-motion-lite="1"] .landing-social-proof__live {
+  animation: none;
+}
+
 @media (max-width: 479px) {
   .landing-social-proof--hero,
   .landing-social-proof--trust {
