@@ -6,6 +6,7 @@ export const EDITORIAL_SECTION_IDS = {
   practices: "практики",
   guestSpread: "guest-spread",
   partners: "партнёрам",
+  reviews: "отзывы",
 } as const;
 
 export const EDITORIAL_HERO = {
@@ -281,6 +282,7 @@ export type EditorialNavItem =
 export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Практики", hash: EDITORIAL_SECTION_IDS.practices },
   { label: "Мастера", hash: EDITORIAL_SECTION_IDS.masters },
+  { label: "Отзывы", hash: EDITORIAL_SECTION_IDS.reviews },
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Натальная карта", href: "/natalnaya-karta" },
   { label: "Таро", href: "/taro" },

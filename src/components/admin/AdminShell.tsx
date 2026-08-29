@@ -26,6 +26,7 @@ import {
   Megaphone,
   Bot,
   BookOpen,
+  Star,
 } from "lucide-react";
 
 const NAV_BASE = [
@@ -43,6 +44,7 @@ const NAV_BASE = [
   { href: "/admin/support", label: "Поддержка", icon: Headphones },
   { href: "/admin/bot", label: "Бот", icon: Bot },
   { href: "/admin/partners", label: "Партнёры", icon: Handshake },
+  { href: "/admin/reviews", label: "Отзывы", icon: Star },
   { href: "/admin/email", label: "Почта", icon: Mail },
   { href: "/admin/ai", label: "Модели и промпты", icon: Brain },
   { href: "/admin/hd-reports", label: "HD отчёты QA", icon: ScrollText },
@@ -65,7 +67,7 @@ function AdminNavLinks({
   className?: string;
 }) {
   const nav = showAds
-    ? [...NAV_BASE.slice(0, 15), ADS_NAV, ...NAV_BASE.slice(15)]
+    ? [...NAV_BASE.slice(0, 16), ADS_NAV, ...NAV_BASE.slice(16)]
     : [...NAV_BASE];
   return (
     <nav className={className}>

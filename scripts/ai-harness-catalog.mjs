@@ -87,6 +87,8 @@ export const CHECKS = {
       "tests/invariants/spread-intent-match-question.test.ts",
       "tests/invariants/ads-seo-overrides.test.ts",
       "tests/invariants/landing-social-proof.test.ts",
+      "tests/invariants/landing-reviews.test.ts",
+      "tests/invariants/guest-landing-conversion.test.ts",
     ],
   },
   "ads-unit": {
@@ -168,7 +170,7 @@ export const SCOPES = {
   },
   seo: {
     title: "SEO / landings",
-    paths: /\/seo\/|sitemap|robots\.txt|seo-ask|seo-growth|multiproduct-seo/i,
+    paths: /\/seo\/|sitemap|robots\.txt|seo-ask|seo-growth|multiproduct-seo|landing-reviews|EditorialReviews|landing-social-proof/i,
     smokeUrls: ["https://zovus.ru/", "https://zovus.ru/gadanie"],
     reviews: ["code", "visual"],
     fast: [...CORE_FAST, "seo-ask", "seo-unit"],

@@ -60,6 +60,7 @@ import EditorialSessionStepsSection from "@/components/editorial/EditorialSessio
 import EditorialStarterPackSection from "@/components/editorial/EditorialStarterPackSection";
 import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
 import EditorialExtraFeaturesSection from "@/components/editorial/EditorialExtraFeaturesSection";
+import EditorialReviewsSection from "@/components/editorial/EditorialReviewsSection";
 import EditorialDailyCardsSection from "@/components/editorial/EditorialDailyCardsSection";
 import EditorialFreeValueSection from "@/components/editorial/EditorialFreeValueSection";
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
@@ -428,6 +429,7 @@ export default function AuraSellingLanding({
           onGuestCta={() => startGuestSpread()}
         />
         <EditorialExtraFeaturesSection />
+        <EditorialReviewsSection />
         {showTariffs ? (
           <LandingSeoHub
             rubPerRune={config.rubPerRune}

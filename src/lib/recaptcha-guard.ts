@@ -14,6 +14,7 @@ const APP_SHELL_RECAPTCHA_EXEMPT: ReadonlySet<RecaptchaScope> = new Set([
   "chat",
   "payments",
   "share",
+  "reviews",
 ]);
 
 export async function enforceRecaptchaScope(

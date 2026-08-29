@@ -9,6 +9,7 @@ export const RECAPTCHA_SCOPES = [
   "chat",
   "payments",
   "share",
+  "reviews",
 ] as const;
 
 export type RecaptchaScope = (typeof RECAPTCHA_SCOPES)[number];
@@ -28,6 +29,7 @@ export const DEFAULT_RECAPTCHA_SCOPES: RecaptchaScopeSettings = {
   chat: true,
   payments: true,
   share: false,
+  reviews: true,
 };
 
 export const RECAPTCHA_SCOPE_LABELS: Record<RecaptchaScope, string> = {
@@ -41,6 +43,7 @@ export const RECAPTCHA_SCOPE_LABELS: Record<RecaptchaScope, string> = {
   chat: "Чат с мастером",
   payments: "Оплата и покупка рун",
   share: "Создание публичной ссылки (гость)",
+  reviews: "Отзыв на лендинге",
 };
 
 export function mergeRecaptchaScopes(

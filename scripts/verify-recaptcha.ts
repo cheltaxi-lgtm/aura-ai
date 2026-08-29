@@ -51,6 +51,7 @@ const SERVER_SCOPE_FILES: Record<RecaptchaScope, string[]> = {
   payments: ["app/api/payment/create/route.ts", "app/api/runes/purchase/route.ts"],
   // share defaults off; create is auth + rate-limit gated (see check below).
   share: [],
+  reviews: ["app/api/reviews/route.ts"],
 };
 
 /** Client must attach token for each scope somewhere */
@@ -69,6 +70,7 @@ const CLIENT_SCOPE_HINTS: Record<RecaptchaScope, string[]> = {
     "components/RuneShopModal.tsx",
   ],
   share: ["contexts/ShareContext.tsx"],
+  reviews: ["components/editorial/EditorialReviewsSection.tsx"],
 };
 
 function checkStaticWiring() {

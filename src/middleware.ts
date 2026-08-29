@@ -74,6 +74,8 @@ const PUBLIC_API_EXACT = new Set([
   // Background jobs authenticate via x-cron-secret inside the route handler.
   "/api/ritual/remind",
   "/api/ritual/recover-stuck",
+  // Landing reviews: approved GET + pending POST (handler: captcha, honeypot, IP RL).
+  "/api/reviews",
 ]);
 
 const PUBLIC_API_PREFIXES = [
