@@ -260,6 +260,9 @@ const DEFAULTS = {
   photoReading: {
     enabled: true,
   },
+  auraReading: {
+    enabled: true,
+  },
   openrouter: {
     managementKey: "",
   },
@@ -330,6 +333,7 @@ export async function getAllSettings() {
     natalChart,
     humanDesign,
     photoReading,
+    auraReading,
   ] = await Promise.all([
     getSetting("ai"),
     getSetting("aiDelivery"),
@@ -345,6 +349,7 @@ export async function getAllSettings() {
     getSetting("natalChart"),
     getSetting("humanDesign"),
     getSetting("photoReading"),
+    getSetting("auraReading"),
   ]);
   return {
     ai,
@@ -361,6 +366,7 @@ export async function getAllSettings() {
     natalChart,
     humanDesign,
     photoReading,
+    auraReading,
   };
 }
 
@@ -396,6 +402,16 @@ export async function isHumanDesignEnabled(): Promise<boolean> {
 
 export async function isPhotoReadingEnabled(): Promise<boolean> {
   const settings = await getSetting("photoReading");
+  return settings.enabled !== false;
+}
+
+/**
+ * Aura reading ships behind an ENV kill-switch, default OFF (fail-closed).
+ * Both AURA_MODULE_ENABLED=true and the admin toggle must allow it.
+ */
+export async function isAuraReadingEnabled(): Promise<boolean> {
+  if (process.env.AURA_MODULE_ENABLED !== "true") return false;
+  const settings = await getSetting("auraReading");
   return settings.enabled !== false;
 }
 

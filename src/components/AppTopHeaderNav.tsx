@@ -38,6 +38,7 @@ export default function AppTopHeaderNav({ isLoggedIn = false, ...callbacks }: Ap
     jointReadingEnabled,
     ritualsEnabled,
     photoReadingEnabled,
+    auraReadingEnabled,
     featuresLoaded,
   } = usePlatformFeatures();
   const sections = buildHeaderNavSections(callbacks, {
@@ -48,6 +49,8 @@ export default function AppTopHeaderNav({ isLoggedIn = false, ...callbacks }: Ap
     jointReadingEnabled: !featuresLoaded || jointReadingEnabled !== false,
     ritualsEnabled: !featuresLoaded || ritualsEnabled !== false,
     photoReadingEnabled: !featuresLoaded || photoReadingEnabled !== false,
+    // Aura is fail-closed: hidden until the API explicitly enables it.
+    auraReadingEnabled: featuresLoaded && auraReadingEnabled === true,
   });
 
   const close = useCallback(() => setOpen(false), []);

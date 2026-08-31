@@ -54,5 +54,7 @@ export function resolveAsyncReportDestination(input: {
     return caseId ? `/pro/case/${encodeURIComponent(caseId)}` : "/pro";
   }
 
+  if (kind === "aura_reading") return "/cabinet";
+
   return null;
 }

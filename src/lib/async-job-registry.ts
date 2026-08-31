@@ -351,6 +351,23 @@ const PRO_PREMIUM_REPORT: PaidJobKindConfig = {
     hashDedupeParts([userId, "pro_premium_report", payload.caseId, payload.idempotencyKey]),
 };
 
+const AURA_READING: PaidJobKindConfig = {
+  kind: "aura_reading",
+  runeAction: "AURA_READING",
+  maxActivePerUser: 1,
+  timeoutMs: 240_000,
+  waitPolicy: "background_notified",
+  etaRangeSec: { min: 40, max: 180 },
+  productTitle: "Разбор ауры по фото",
+  workerPath: (job) => ({
+    path: "/api/aura/report",
+    body: { ...job.input, async: false },
+  }),
+  matchesWorkerPath: (pathname) => pathname === "/api/aura/report",
+  buildDedupeKey: (userId, payload) =>
+    hashDedupeParts([userId, "aura_reading", payload.auraSnapshotId ?? payload.idempotencyKey]),
+};
+
 export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
   natal_interpretation: NATAL_INTERPRETATION,
   natal_forecast: NATAL_FORECAST,
@@ -368,6 +385,7 @@ export const ASYNC_JOB_REGISTRY: Record<AsyncJobKind, PaidJobKindConfig> = {
   hd_report: HD_REPORT,
   hd_composite_report: HD_COMPOSITE_REPORT,
   pro_premium_report: PRO_PREMIUM_REPORT,
+  aura_reading: AURA_READING,
 };
 
 /** Kinds the durable worker processes by default (others via ASYNC_JOB_KINDS). */
@@ -388,6 +406,7 @@ export const DEFAULT_WORKER_KINDS: AsyncJobKind[] = [
   "hd_report",
   "hd_composite_report",
   "pro_premium_report",
+  "aura_reading",
 ];
 
 export function getJobKindConfig(kind: AsyncJobKind): PaidJobKindConfig {

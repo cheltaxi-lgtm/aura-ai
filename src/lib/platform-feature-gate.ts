@@ -10,6 +10,7 @@ export type PlatformFeatureFlags = {
   jointReadingEnabled: boolean;
   ritualsEnabled: boolean;
   photoReadingEnabled: boolean;
+  auraReadingEnabled: boolean;
 };
 
 const FAIL_OPEN: PlatformFeatureFlags = {
@@ -18,6 +19,8 @@ const FAIL_OPEN: PlatformFeatureFlags = {
   jointReadingEnabled: true,
   ritualsEnabled: true,
   photoReadingEnabled: true,
+  // Aura is fail-closed: ENV kill-switch default off.
+  auraReadingEnabled: false,
 };
 
 let cached: { flags: PlatformFeatureFlags; expiresAt: number } | null = null;
@@ -38,6 +41,8 @@ function parseFlags(data: Record<string, unknown> | null): PlatformFeatureFlags 
     jointReadingEnabled: data.jointReadingEnabled !== false,
     ritualsEnabled: data.ritualsEnabled !== false,
     photoReadingEnabled: data.photoReadingEnabled !== false,
+    // Fail-closed: only explicit true enables aura surfaces.
+    auraReadingEnabled: data.auraReadingEnabled === true,
   };
 }
 

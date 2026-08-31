@@ -9,7 +9,8 @@ export type CrossProductContext =
   | "matrix"
   | "natal"
   | "human_design"
-  | "matrix_compatibility";
+  | "matrix_compatibility"
+  | "aura";
 
 export type CrossProductRec = {
   id: string;
@@ -24,6 +25,7 @@ const PUBLIC = {
   natal: "/natalnaya-karta",
   human_design: "/dizayn-cheloveka/rasschitat",
   matrix_compatibility: "/numerology/matrica-sovmestimosti",
+  aura: "/aura",
 } as const;
 
 const CATALOG: Record<CrossProductContext, readonly CrossProductRec[]> = {
@@ -83,6 +85,20 @@ const CATALOG: Record<CrossProductContext, readonly CrossProductRec[]> = {
       href: PUBLIC.natal,
     },
   ],
+  aura: [
+    {
+      id: "natal",
+      product: "natal",
+      title: "Натальная карта",
+      href: PUBLIC.natal,
+    },
+    {
+      id: "matrix",
+      product: "matrix",
+      title: "Матрица судьбы",
+      href: PUBLIC.matrix,
+    },
+  ],
 };
 
 /** Context → product id used for self-filter. */
@@ -91,6 +107,7 @@ const CONTEXT_PRODUCT: Record<CrossProductContext, ProductFunnelProduct> = {
   natal: "natal",
   human_design: "human_design",
   matrix_compatibility: "matrix_compatibility",
+  aura: "aura",
 };
 
 /**

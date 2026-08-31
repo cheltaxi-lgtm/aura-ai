@@ -136,6 +136,47 @@ export async function updateCabinetPhotoSpreadNote(
   return { ok: (result.rowCount ?? 0) > 0 };
 }
 
+export interface CabinetAuraReadingRow {
+  id: string;
+  characterName: string;
+  createdAt: string;
+  contextData: {
+    report?: string;
+    interpretation?: string;
+    dominantColor?: { key: string; name: string; hex: string; meaning: string };
+    secondaryColors?: { key: string; name: string; hex: string; meaning: string }[];
+    verdict?: "bright" | "mixed" | "heavy";
+    snapshot?: Record<string, unknown>;
+    notes?: string;
+  };
+}
+
+export async function getCabinetAuraReadings(
+  profileUserId: string
+): Promise<CabinetAuraReadingRow[]> {
+  const { rows } = await query<{
+    id: string;
+    character_name: string;
+    context_data: Record<string, unknown>;
+    created_at: Date;
+  }>(
+    `SELECT id, character_name, context_data, created_at
+     FROM history
+     WHERE user_id = $1 AND context_data->>'type' = 'aura_reading'
+     ORDER BY created_at DESC
+     LIMIT 50`,
+    [profileUserId]
+  );
+
+  return rows.map((row) => ({
+    id: row.id,
+    characterName: row.character_name,
+    createdAt:
+      row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
+    contextData: (row.context_data ?? {}) as CabinetAuraReadingRow["contextData"],
+  }));
+}
+
 export interface CabinetDailyReadingRow {
   id: string;
   characterKey: string;

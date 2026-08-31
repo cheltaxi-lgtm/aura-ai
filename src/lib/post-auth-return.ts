@@ -48,6 +48,8 @@ export type RegistrationReturnContext = {
   guestQuestion?: string;
   intentSlug?: string;
   photo?: boolean;
+  /** Aura reading flow — return to /aura after register/login. */
+  aura?: boolean;
   jointToken?: string;
   custom?: string;
 };
@@ -196,6 +198,9 @@ export function resolveRegistrationReturnTo(context: RegistrationReturnContext =
   }
   if (context.photo) {
     return withAppShellIfNeeded("/?photo=1");
+  }
+  if (context.aura) {
+    return withAppShellIfNeeded("/aura");
   }
   if (context.guestSpread) {
     // Clean home — onboarding / claim coordinator owns next step.

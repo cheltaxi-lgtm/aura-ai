@@ -18,6 +18,7 @@ const ANALYTICS_SOURCE: Record<CrossProductContext, string> = {
   natal: "natal",
   human_design: "hd",
   matrix_compatibility: "matrix_pair",
+  aura: "aura",
 };
 
 /**

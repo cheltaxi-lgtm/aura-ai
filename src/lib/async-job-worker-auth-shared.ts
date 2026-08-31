@@ -80,7 +80,8 @@ export function isAsyncJobWorkerEndpoint(pathname: string): boolean {
     /^\/api\/ritual\/[^/]+\/regenerate$/.test(pathname) ||
     pathname === "/api/human-design/report" ||
     pathname === "/api/human-design/composite-report" ||
-    pathname === "/api/pro/jobs/premium-report"
+    pathname === "/api/pro/jobs/premium-report" ||
+    pathname === "/api/aura/report"
   );
 }
 

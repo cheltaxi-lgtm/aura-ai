@@ -33,6 +33,7 @@ import CabinetTabHero from "@/components/cabinet/CabinetTabHero";
 import CabinetRunesPanel, { CabinetRunesPanelSkeleton } from "@/components/cabinet/CabinetRunesPanel";
 import CabinetLegacyAccessPanel from "@/components/cabinet/CabinetLegacyAccessPanel";
 import CabinetPhotoSpreads from "@/components/cabinet/CabinetPhotoSpreads";
+import CabinetAuraReadings from "@/components/cabinet/CabinetAuraReadings";
 import CabinetDailySpreads from "@/components/cabinet/CabinetDailySpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
@@ -59,6 +60,7 @@ import type {
   CabinetRuneTransaction,
   CabinetLegacyAccess,
   CabinetPhotoSpreadRow,
+  CabinetAuraReadingRow,
   CabinetDailyReadingRow,
 } from "@/lib/cabinet-data";
 
@@ -73,6 +75,7 @@ interface CabinetResponse {
   runes: { enabled: boolean; balance: number; transactions: CabinetRuneTransaction[] };
   legacyAccess: CabinetLegacyAccess | null;
   photoSpreads: CabinetPhotoSpreadRow[];
+  auraReadings: CabinetAuraReadingRow[];
   dailyReadings: CabinetDailyReadingRow[];
 }
 
@@ -482,6 +485,7 @@ export default function CabinetPage() {
             ...prev,
             sessionsTotal: 0,
             photoSpreads: [],
+            auraReadings: [],
           }
         : prev
     );
@@ -506,6 +510,7 @@ export default function CabinetPage() {
   const runes = data?.runes;
   const legacyAccess = data?.legacyAccess;
   const photoSpreads = data?.photoSpreads ?? [];
+  const auraReadings = data?.auraReadings ?? [];
   const dailyReadings = data?.dailyReadings ?? [];
   const runesEnabled = Boolean(runes?.enabled);
   const ritualAttentionCount =
@@ -623,6 +628,7 @@ export default function CabinetPage() {
               deletingId={deletingPhotoSpreadId}
               onSaveNote={handleSavePhotoSpreadNote}
             />
+            <CabinetAuraReadings readings={auraReadings} />
             <CabinetDailySpreads readings={dailyReadings} />
           </div>
         );

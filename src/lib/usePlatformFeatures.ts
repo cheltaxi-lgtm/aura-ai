@@ -20,6 +20,8 @@ export interface PlatformFeatures {
   jointReadingEnabled?: boolean;
   ritualsEnabled?: boolean;
   photoReadingEnabled?: boolean;
+  /** Aura reading by photo (ENV kill-switch, fail-closed). */
+  auraReadingEnabled?: boolean;
   /** Zovus Pro practitioner module (ENV kill-switch). */
   proModuleEnabled?: boolean;
   recaptcha: PlatformRecaptchaConfig;
@@ -39,6 +41,7 @@ const FALLBACK: PlatformFeatures = {
   jointReadingEnabled: true,
   ritualsEnabled: true,
   photoReadingEnabled: true,
+  auraReadingEnabled: false,
   proModuleEnabled: false,
   recaptcha: {
     configured: false,
@@ -63,6 +66,7 @@ function parseFeatures(d: Record<string, unknown>): PlatformFeatures {
     jointReadingEnabled: d.jointReadingEnabled !== false,
     ritualsEnabled: d.ritualsEnabled !== false,
     photoReadingEnabled: d.photoReadingEnabled !== false,
+    auraReadingEnabled: d.auraReadingEnabled === true,
     proModuleEnabled: d.proModuleEnabled === true,
     recaptcha: {
       configured: recaptchaRaw.configured === true,

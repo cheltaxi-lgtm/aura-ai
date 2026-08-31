@@ -1,0 +1,729 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion } from "framer-motion";
+import { Camera, ImagePlus, Loader2, RefreshCcw, Sparkles } from "lucide-react";
+import Link from "next/link";
+
+import AuraHalo from "@/components/aura/AuraHalo";
+import CrossProductNextSteps from "@/components/CrossProductNextSteps";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
+import { useAuth } from "@/lib/useAuth";
+import { useRuneConfig } from "@/lib/useRuneConfig";
+import { canAffordRunes } from "@/lib/rune-afford-client";
+import { compressImageForUpload } from "@/lib/compress-image-client";
+import { isAppCameraAvailable, pickPhotoFromApp } from "@/lib/app-camera";
+import { isNativeCapacitorPlatform } from "@/lib/app-shell";
+import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import { parseInsufficientRunes } from "@/lib/api-errors";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
+import {
+  AURA_VERDICT_LABELS,
+  type AuraSnapshot,
+  type AuraTeaserSnapshot,
+} from "@/lib/aura-constants";
+
+type FlowStep =
+  | "capture"
+  | "processing"
+  | "teaser"
+  | "claimed"
+  | "paying"
+  | "report"
+  | "error";
+
+type AuraPricing = {
+  baseCost: number;
+  effectiveCost: number;
+  firstAuraDiscount: boolean;
+};
+
+/** Teaser subset pre-payment; layers/chakras arrive with the paid report. */
+type FlowSnapshot = AuraTeaserSnapshot &
+  Partial<Pick<AuraSnapshot, "layers" | "chakras">>;
+
+const PROCESSING_PHRASES = [
+  "Считываю цветовое поле…",
+  "Сверяю слои и чакры…",
+  "Собираю снимок вашей ауры…",
+] as const;
+
+const JOB_POLL_INTERVAL_MS = 3_000;
+const JOB_POLL_TIMEOUT_MS = 300_000;
+
+function formatRunes(n: number): string {
+  return `${n} ᚢ`;
+}
+
+export default function AuraReadingFlow() {
+  const { isLoggedIn, loading: authLoading, refresh: refreshAuth } = useAuth();
+  const { config } = useRuneConfig();
+
+  const [step, setStep] = useState<FlowStep>("capture");
+  const [error, setError] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<FlowSnapshot | null>(null);
+  const [snapshotId, setSnapshotId] = useState<string | null>(null);
+  const [report, setReport] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<AuraPricing | null>(null);
+  const [runeBalance, setRuneBalance] = useState<number | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [phraseIdx, setPhraseIdx] = useState(0);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const pollAbortRef = useRef<AbortController | null>(null);
+  const claimAttemptedRef = useRef(false);
+
+  const auraCost = pricing?.effectiveCost ?? config.costs.AURA_READING ?? 50;
+  const auraBaseCost = pricing?.baseCost ?? config.costs.AURA_READING ?? 50;
+
+  // Rotate processing phrases.
+  useEffect(() => {
+    if (step !== "processing" && step !== "paying") return;
+    const t = window.setInterval(
+      () => setPhraseIdx((i) => (i + 1) % PROCESSING_PHRASES.length),
+      2600
+    );
+    return () => window.clearInterval(t);
+  }, [step]);
+
+  // Cleanup camera stream + object URL + polling on unmount.
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      pollAbortRef.current?.abort();
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Load pricing + balance once auth state is known.
+  useEffect(() => {
+    if (authLoading) return;
+    void fetch("/api/aura/pricing", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (data && typeof data.effectiveCost === "number") {
+          setPricing({
+            baseCost: data.baseCost,
+            effectiveCost: data.effectiveCost,
+            firstAuraDiscount: data.firstAuraDiscount === true,
+          });
+        }
+      })
+      .catch(() => undefined);
+    if (isLoggedIn) {
+      void fetch("/api/runes/balance", { credentials: "include", cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (typeof data?.balance === "number") setRuneBalance(data.balance);
+        })
+        .catch(() => undefined);
+    }
+  }, [authLoading, isLoggedIn]);
+
+  // Post-auth resume: claim the guest snapshot bound by the HttpOnly cookie.
+  // Idempotent — NO_CLAIM_TOKEN simply means there is nothing to resume.
+  useEffect(() => {
+    if (authLoading || !isLoggedIn || claimAttemptedRef.current) return;
+    claimAttemptedRef.current = true;
+    void fetch("/api/aura/claim", { method: "POST", credentials: "include" })
+      .then(async (r) => {
+        if (!r.ok) return null;
+        return r.json();
+      })
+      .then((data) => {
+        if (data?.ok && data.snapshot && typeof data.snapshotId === "string") {
+          setSnapshot(data.snapshot as FlowSnapshot);
+          setSnapshotId(data.snapshotId);
+          setStep("claimed");
+          trackProductFunnel("claim_complete", { product: "aura", source: "aura_flow" });
+        }
+      })
+      .catch(() => undefined);
+  }, [authLoading, isLoggedIn]);
+
+  const resetAll = useCallback(() => {
+    pollAbortRef.current?.abort();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPhotoUrl(null);
+    setSnapshot(null);
+    setSnapshotId(null);
+    setReport(null);
+    setError(null);
+    setStep("capture");
+  }, [photoUrl]);
+
+  const runTeaser = useCallback(
+    async (file: File | Blob) => {
+      setError(null);
+      setStep("processing");
+      setPhraseIdx(0);
+      trackProductFunnel("free_start", { product: "aura", source: "aura_flow" });
+      try {
+        const compressed = await compressImageForUpload(
+          file instanceof File ? file : new File([file], "aura.jpg", { type: "image/jpeg" }),
+          { maxWidth: 1280, maxHeight: 1280, maxBytes: 2_000_000 }
+        );
+
+        const localUrl = URL.createObjectURL(compressed.blob);
+        if (photoUrl) URL.revokeObjectURL(photoUrl);
+        setPhotoUrl(localUrl);
+
+        const form = new FormData();
+        form.append(
+          "image",
+          new File([compressed.blob], "aura.jpg", { type: compressed.mimeType })
+        );
+
+        const res = await fetch("/api/aura/teaser", {
+          method: "POST",
+          body: form,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => null);
+
+        if (res.status === 422 && data?.error === "NO_FACE") {
+          setError(data.message ?? "Не видно лица крупным планом.");
+          setStep("capture");
+          return;
+        }
+        if (res.status === 403) {
+          setError("Сначала подтвердите возраст на главной странице.");
+          setStep("capture");
+          return;
+        }
+        if (!res.ok || !data?.snapshot) {
+          setError(
+            data?.message ?? "Сервис распознавания временно недоступен. Попробуйте через минуту."
+          );
+          setStep("capture");
+          return;
+        }
+
+        const nextSnapshot = data.snapshot as FlowSnapshot;
+        setSnapshot(nextSnapshot);
+        setSnapshotId(typeof data.snapshotId === "string" ? data.snapshotId : null);
+        trackProductFunnel("free_complete", { product: "aura", source: "aura_flow" });
+
+        if (isLoggedIn) {
+          // Authed user: bind the snapshot immediately, skip the register CTA.
+          const claimRes = await fetch("/api/aura/claim", {
+            method: "POST",
+            credentials: "include",
+          });
+          const claimData = await claimRes.json().catch(() => null);
+          if (claimData?.ok) {
+            if (typeof claimData.snapshotId === "string") setSnapshotId(claimData.snapshotId);
+            setStep("claimed");
+            return;
+          }
+          // Cookie lost (Capacitor) — safe recovery, no token fallback.
+          setError("Не удалось привязать снимок. Снимите ауру снова — это займёт меньше минуты.");
+          setStep("capture");
+          return;
+        }
+
+        setStep("teaser");
+      } catch {
+        setError("Не удалось обработать фото. Попробуйте другое фото при ровном свете.");
+        setStep("capture");
+      }
+    },
+    [isLoggedIn, photoUrl]
+  );
+
+  const onFilePicked = useCallback(
+    (file: File | null) => {
+      if (!file) return;
+      void runTeaser(file);
+    },
+    [runTeaser]
+  );
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    setError(null);
+
+    if (isNativeCapacitorPlatform() && isAppCameraAvailable()) {
+      try {
+        const file = await pickPhotoFromApp("camera");
+        if (file) void runTeaser(file);
+      } catch {
+        setError("Камера недоступна. Разрешите доступ в настройках или загрузите фото.");
+      }
+      return;
+    }
+
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Браузер не поддерживает камеру — загрузите фото из галереи.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "user", width: { ideal: 1080 }, height: { ideal: 1350 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraActive(true);
+      // Wait a tick so the <video> mounts before attaching the stream.
+      window.setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          void videoRef.current.play().catch(() => undefined);
+        }
+      }, 50);
+    } catch {
+      setError("Нет доступа к камере. Разрешите доступ или загрузите фото из галереи.");
+    }
+  }, [runTeaser]);
+
+  const captureFrame = useCallback(() => {
+    const video = videoRef.current;
+    if (!video || !streamRef.current) return;
+    const w = video.videoWidth || 1080;
+    const h = video.videoHeight || 1350;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    // Mirror the selfie frame so the captured photo matches what the user saw.
+    ctx.translate(w, 0);
+    ctx.scale(-1, 1);
+    ctx.drawImage(video, 0, 0, w, h);
+    canvas.toBlob(
+      (blob) => {
+        stopCamera();
+        if (blob) void runTeaser(blob);
+      },
+      "image/jpeg",
+      0.92
+    );
+  }, [runTeaser, stopCamera]);
+
+  const pollJob = useCallback(
+    async (jobId: string) => {
+      pollAbortRef.current?.abort();
+      const abort = new AbortController();
+      pollAbortRef.current = abort;
+      const startedAt = Date.now();
+
+      for (;;) {
+        if (abort.signal.aborted) return;
+        if (Date.now() - startedAt > JOB_POLL_TIMEOUT_MS) {
+          setError("Разбор занял больше времени, чем обычно. Откройте кабинет — отчёт появится там.");
+          setStep("claimed");
+          return;
+        }
+        await new Promise((r) => window.setTimeout(r, JOB_POLL_INTERVAL_MS));
+        try {
+          const res = await fetch(`/api/jobs/${jobId}`, {
+            credentials: "include",
+            cache: "no-store",
+            signal: abort.signal,
+          });
+          const data = await res.json().catch(() => null);
+          if (!data) continue;
+          if (data.status === "completed" && data.result?.report) {
+            setReport(String(data.result.report));
+            // Paid payload carries the full snapshot (layers + chakras).
+            if (data.result.snapshot && typeof data.result.snapshot === "object") {
+              setSnapshot(data.result.snapshot as AuraSnapshot);
+            }
+            if (typeof data.result.runeBalance === "number") {
+              setRuneBalance(data.result.runeBalance);
+            }
+            setStep("report");
+            return;
+          }
+          if (data.status === "failed" || data.status === "needs_regeneration") {
+            setError(
+              "Не удалось получить разбор. Руны возвращены — попробуйте ещё раз."
+            );
+            setStep("claimed");
+            return;
+          }
+        } catch {
+          // Network hiccup — keep polling until timeout.
+        }
+      }
+    },
+    []
+  );
+
+  const startReport = useCallback(async () => {
+    if (!snapshotId) return;
+    setError(null);
+    setStep("paying");
+    setPhraseIdx(0);
+    trackProductFunnel("paid_cta", { product: "aura", source: "aura_flow" });
+    try {
+      const res = await fetch("/api/aura/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ snapshotId, async: true }),
+      });
+      const data = await res.json().catch(() => null);
+
+      const insufficient = parseInsufficientRunes(data);
+      if (insufficient) {
+        setError(
+          `Не хватает рун: нужно ${formatRunes(insufficient.required)}, у вас ${formatRunes(insufficient.balance)}.`
+        );
+        setStep("claimed");
+        return;
+      }
+      if (res.status === 401) {
+        window.location.assign(buildLoginHref("/aura"));
+        return;
+      }
+      if (!res.ok) {
+        setError(data?.message ?? data?.error ?? "Не удалось запустить разбор. Попробуйте ещё раз.");
+        setStep("claimed");
+        return;
+      }
+
+      // Sync fallback (worker not configured): report arrives inline.
+      if (typeof data?.report === "string") {
+        setReport(data.report);
+        if (data.snapshot && typeof data.snapshot === "object") {
+          setSnapshot(data.snapshot as AuraSnapshot);
+        }
+        if (typeof data.runeBalance === "number") setRuneBalance(data.runeBalance);
+        setStep("report");
+        return;
+      }
+      if (typeof data?.jobId === "string") {
+        void pollJob(data.jobId);
+        return;
+      }
+      setError("Неожиданный ответ сервера. Попробуйте ещё раз.");
+      setStep("claimed");
+    } catch {
+      setError("Ошибка сети. Попробуйте ещё раз.");
+      setStep("claimed");
+    }
+  }, [snapshotId, pollJob]);
+
+  const blockedByRunes =
+    isLoggedIn &&
+    config.enabled &&
+    runeBalance !== null &&
+    !canAffordRunes({ enabled: config.enabled, balance: runeBalance, cost: auraCost });
+
+  const palette = snapshot
+    ? [snapshot.dominantColor, ...snapshot.secondaryColors]
+    : [];
+
+  return (
+    <div className="aura-flow mx-auto w-full max-w-xl">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          e.target.value = "";
+          onFilePicked(file);
+        }}
+      />
+
+      <AnimatePresence mode="wait">
+        {step === "capture" && (
+          <motion.div
+            key="capture"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
+          >
+            {cameraActive ? (
+              <div className="space-y-4">
+                <div className="aura-camera-frame">
+                  <video ref={videoRef} playsInline muted autoPlay />
+                  <div className="aura-camera-frame__oval" />
+                </div>
+                <p className="text-center text-sm text-white/60">
+                  Расположите лицо в овале. Ровный свет, без очков и сильных теней.
+                </p>
+                <div className="flex justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={captureFrame}
+                    className="btn-luxe btn-luxe--md btn-luxe--gold"
+                  >
+                    <Camera className="mr-2 h-4 w-4" />
+                    Снять
+                  </button>
+                  <button
+                    type="button"
+                    onClick={stopCamera}
+                    className="btn-luxe btn-luxe--md btn-luxe--ghost"
+                  >
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <div className="aura-stage mx-auto" aria-hidden>
+                  <div className="aura-stage__halo aura-stage__halo--dim" />
+                  <div className="aura-stage__plate" />
+                </div>
+                <p className="text-center text-sm text-white/60">
+                  Портрет крупным планом, при ровном свете. Фото обрабатывается на вашем
+                  устройстве — оригинал не сохраняется.
+                </p>
+                <div className="flex flex-col justify-center gap-3 sm:flex-row">
+                  <button
+                    type="button"
+                    onClick={() => void startCamera()}
+                    className="btn-luxe btn-luxe--md btn-luxe--gold"
+                  >
+                    <Camera className="mr-2 h-4 w-4" />
+                    Снять с камеры
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="btn-luxe btn-luxe--md btn-luxe--ghost"
+                  >
+                    <ImagePlus className="mr-2 h-4 w-4" />
+                    Загрузить фото
+                  </button>
+                </div>
+              </>
+            )}
+          </motion.div>
+        )}
+
+        {(step === "processing" || step === "paying") && (
+          <motion.div
+            key="busy"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="space-y-6 py-8 text-center"
+          >
+            {snapshot && photoUrl ? (
+              <AuraHalo snapshot={snapshot} photoUrl={photoUrl} veiled />
+            ) : (
+              <div className="aura-stage mx-auto" aria-hidden>
+                <div className="aura-stage__halo" />
+                <div className="aura-stage__plate" />
+              </div>
+            )}
+            <div className="flex items-center justify-center gap-2 text-sm text-aura-gold/90">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span>
+                {step === "paying"
+                  ? "Мастер готовит полный разбор вашей ауры…"
+                  : PROCESSING_PHRASES[phraseIdx]}
+              </span>
+            </div>
+            {step === "paying" && (
+              <p className="text-xs text-white/45">
+                Обычно 1–3 минуты. Можно не закрывать страницу.
+              </p>
+            )}
+          </motion.div>
+        )}
+
+        {(step === "teaser" || step === "claimed") && snapshot && (
+          <motion.div
+            key="teaser"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            <AuraHalo snapshot={snapshot} photoUrl={photoUrl} veiled={step === "teaser"} />
+
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-[0.2em] text-aura-gold/70">
+                {AURA_VERDICT_LABELS[snapshot.verdict]}
+              </p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                {palette.map((color) => (
+                  <span key={color.key} className="aura-color-chip">
+                    <span
+                      className="aura-color-chip__dot"
+                      style={{ backgroundColor: color.hex, color: color.hex }}
+                    />
+                    {color.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <p className="text-center text-[15px] leading-relaxed text-white/80">
+              {snapshot.teaser}
+            </p>
+
+            {step === "teaser" ? (
+              <div className="space-y-3 text-center">
+                <p className="text-sm text-white/55">
+                  Полный разбор — семь слоёв поля, чакры и практика — после регистрации.
+                  {pricing?.firstAuraDiscount !== false && (
+                    <> Первый разбор — {formatRunes(auraCost)} вместо {formatRunes(auraBaseCost)}.</>
+                  )}
+                </p>
+                <Link
+                  href={buildRegisterHref("/aura")}
+                  onClick={() =>
+                    trackProductFunnel("auth_cta", { product: "aura", source: "aura_flow" })
+                  }
+                  className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
+                >
+                  <Sparkles className="mr-2 h-4 w-4" />
+                  Продолжить и получить разбор
+                </Link>
+                <p className="text-xs text-white/40">
+                  Снимок сохранится — после входа вы продолжите с того же портрета.
+                </p>
+              </div>
+            ) : (
+              <div className="space-y-3 text-center">
+                {pricing?.firstAuraDiscount && (
+                  <p className="text-sm text-aura-gold/90">
+                    Первый разбор со скидкой 50% — {formatRunes(auraCost)} вместо{" "}
+                    {formatRunes(auraBaseCost)}
+                  </p>
+                )}
+                {blockedByRunes ? (
+                  <div className="space-y-2">
+                    <p className="text-sm text-white/60">
+                      Не хватает рун: нужно {formatRunes(auraCost)}, у вас{" "}
+                      {formatRunes(runeBalance ?? 0)}.
+                    </p>
+                    <Link href="/tariffs" className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex">
+                      Пополнить руны
+                    </Link>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void startReport()}
+                    className="btn-luxe btn-luxe--md btn-luxe--gold"
+                  >
+                    <Sparkles className="mr-2 h-4 w-4" />
+                    Получить полный разбор · {formatRunes(auraCost)}
+                  </button>
+                )}
+                <div>
+                  <button
+                    type="button"
+                    onClick={resetAll}
+                    className="mt-1 inline-flex items-center gap-1 text-xs text-white/45 transition hover:text-white/75"
+                  >
+                    <RefreshCcw className="h-3 w-3" />
+                    Снять другую ауру
+                  </button>
+                </div>
+              </div>
+            )}
+          </motion.div>
+        )}
+
+        {step === "report" && snapshot && report && (
+          <motion.div
+            key="report"
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.3 }}
+            className="space-y-6"
+          >
+            <AuraHalo snapshot={snapshot} photoUrl={photoUrl} />
+
+            <div className="text-center">
+              <p className="text-xs uppercase tracking-[0.2em] text-aura-gold/70">
+                {AURA_VERDICT_LABELS[snapshot.verdict]}
+              </p>
+              <div className="mt-3 flex flex-wrap justify-center gap-2">
+                {palette.map((color) => (
+                  <span key={color.key} className="aura-color-chip">
+                    <span
+                      className="aura-color-chip__dot"
+                      style={{ backgroundColor: color.hex, color: color.hex }}
+                    />
+                    {color.name}
+                  </span>
+                ))}
+              </div>
+            </div>
+
+            <div className="photo-flow-panel">
+              <PremiumReadingBody content={report} className="text-sm text-white/85" />
+            </div>
+
+            <div className="space-y-3 text-center">
+              <div className="flex flex-wrap justify-center gap-2">
+                {(snapshot.layers ?? []).slice(0, 7).map((layer) => (
+                  <div key={layer.key} className="aura-layer-row w-full">
+                    <span className="aura-row__name">{layer.name}</span>
+                    <span className="aura-row__state">{layer.state}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-2 text-left">
+                {(snapshot.chakras ?? []).map((chakra) => (
+                  <div key={chakra.key} className="aura-chakra-row">
+                    <span
+                      className="aura-chakra-dot"
+                      style={{ backgroundColor: chakra.color, color: chakra.color }}
+                    />
+                    <span className="aura-row__name">{chakra.name}</span>
+                    <span className="aura-row__state">
+                      {chakra.openness === "open"
+                        ? "открыта"
+                        : chakra.openness === "blocked"
+                          ? "закрыта"
+                          : "в балансе"}
+                      {chakra.note ? ` — ${chakra.note}` : ""}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            <div className="flex flex-col items-center gap-3 pt-2">
+              <CrossProductNextSteps context="aura" />
+              <Link href="/cabinet" className="btn-luxe btn-luxe--md btn-luxe--ghost">
+                Открыть в кабинете
+              </Link>
+              <button
+                type="button"
+                onClick={resetAll}
+                className="inline-flex items-center gap-1 text-xs text-white/45 transition hover:text-white/75"
+              >
+                <RefreshCcw className="h-3 w-3" />
+                Снять другую ауру
+              </button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {error && (
+        <p className="mt-4 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-center text-sm text-red-200">
+          {error}
+        </p>
+      )}
+    </div>
+  );
+}

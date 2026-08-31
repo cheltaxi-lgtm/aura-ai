@@ -103,7 +103,7 @@ export default function AppHeaderMenu({
     };
   }, [open]);
 
-  const { humanDesignEnabled, proModuleEnabled, featuresLoaded } = usePlatformFeatures();
+  const { humanDesignEnabled, proModuleEnabled, auraReadingEnabled, featuresLoaded } = usePlatformFeatures();
   const sections = buildHeaderNavSections(
     {
       photoNavLabel,
@@ -114,7 +114,11 @@ export default function AppHeaderMenu({
       onNavRitual,
       onStartReading,
     },
-    { isLoggedIn, humanDesignEnabled: !featuresLoaded || humanDesignEnabled }
+    {
+      isLoggedIn,
+      humanDesignEnabled: !featuresLoaded || humanDesignEnabled,
+      auraReadingEnabled: featuresLoaded && auraReadingEnabled === true,
+    }
   );
 
   const accountItems: AccountItem[] = [];

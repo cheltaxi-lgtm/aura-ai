@@ -86,6 +86,8 @@ describe("product-funnel-analytics", () => {
       read("src/app/numerology/[slug]/page.tsx"),
       read("src/app/natalnaya-karta/page.tsx"),
       read("src/app/dizayn-cheloveka/rasschitat/page.tsx"),
+      read("src/app/aura/page.tsx"),
+      read("src/components/aura/AuraReadingFlow.tsx"),
       read("src/components/seo/SeoPageTracker.tsx"),
     ].join("\n");
 

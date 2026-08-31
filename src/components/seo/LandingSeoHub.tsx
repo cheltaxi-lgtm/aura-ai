@@ -13,6 +13,7 @@ import {
   Sun,
 } from "lucide-react";
 import { LANDING_FAQ_ITEMS } from "@/lib/landing-offer";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import RuneIcon, { RuneAmount } from "@/components/RuneIcon";
 
 const SERVICES = [
@@ -21,6 +22,7 @@ const SERVICES = [
   { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/dizayn-cheloveka", label: "Дизайн Человека" },
   { href: "/photo-rasklad", label: "Фото-расклад" },
+  { href: "/aura", label: "Аура по фото" },
   { href: "/numerology", label: "Нумерология" },
   { href: "/cards", label: "Значения карт" },
   { href: "/obryady", label: "Обряды" },
@@ -119,6 +121,11 @@ export default function LandingSeoHub({
   hideFaq = false,
   hidePricingNote = false,
 }: LandingSeoHubProps) {
+  // /aura 404s while the module kill-switch is off — never link to it.
+  const { auraReadingEnabled } = usePlatformFeatures();
+  const services = auraReadingEnabled
+    ? SERVICES
+    : SERVICES.filter((s) => s.href !== "/aura");
   const priceNode =
     typeof readingCost === "number" ? (
       <strong className="text-aura-champagne/90 inline-flex items-baseline gap-1">
@@ -150,7 +157,7 @@ export default function LandingSeoHub({
 
         {compact ? (
           <nav className="landing-seo-hub__link-row" aria-label="Разделы сервиса">
-            {SERVICES.map(({ href, label }) => (
+            {services.map(({ href, label }) => (
               <Link key={href} href={href} className="landing-seo-hub__link">
                 {label}
               </Link>

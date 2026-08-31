@@ -7,6 +7,7 @@ import {
   Hexagon,
   Layers,
   LayoutGrid,
+  Sparkle,
   Sparkles,
   Star,
   Sun,
@@ -71,6 +72,7 @@ export type BuildHeaderNavOptions = {
   jointReadingEnabled?: boolean;
   ritualsEnabled?: boolean;
   photoReadingEnabled?: boolean;
+  auraReadingEnabled?: boolean;
 };
 
 /** Grouped header navigation — shared by desktop dropdown and mobile sheet. */
@@ -85,6 +87,7 @@ export function buildHeaderNavSections(
     jointReadingEnabled = true,
     ritualsEnabled = true,
     photoReadingEnabled = true,
+    auraReadingEnabled = false,
   } = options;
   const appRoutes = resolveAppRouteLinks();
 
@@ -122,6 +125,16 @@ export function buildHeaderNavSections(
                 label: callbacks.photoNavLabel,
                 icon: Camera,
                 onClick: callbacks.onNavPhoto,
+              } satisfies HeaderNavItem,
+            ]
+          : []),
+        ...(auraReadingEnabled
+          ? [
+              {
+                id: "aura",
+                label: "Аура по фото",
+                icon: Sparkle,
+                href: "/aura",
               } satisfies HeaderNavItem,
             ]
           : []),

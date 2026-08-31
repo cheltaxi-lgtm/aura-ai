@@ -59,6 +59,7 @@ export async function deleteUserAccountCompletely(
       profileUserId,
     ]);
     await run(`DELETE FROM natal_guest_charts WHERE claimed_user_id = $1`, [profileUserId]);
+    await run(`DELETE FROM aura_guest_snapshots WHERE claimed_user_id = $1`, [profileUserId]);
 
     // Owned HD charts must not become guest-pool orphans (FK is historically
     // ON DELETE SET NULL). Explicit delete cascades reports/insights/composites.

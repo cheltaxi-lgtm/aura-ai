@@ -33,7 +33,8 @@ CREATE TABLE IF NOT EXISTS async_jobs (
     'natal_forecast', 'natal_compatibility',
     'intention_spread', 'daily_reading', 'daily_extended',
     'joint_reading', 'joint_combined', 'photo_reading', 'ritual_generation',
-    'numerology_reading', 'hd_report', 'hd_composite_report', 'pro_premium_report'
+    'numerology_reading', 'hd_report', 'hd_composite_report', 'pro_premium_report',
+    'aura_reading'
   )),
   status        TEXT NOT NULL DEFAULT 'pending'
     CHECK (status IN ('pending', 'running', 'completed', 'failed', 'needs_regeneration')),
@@ -1128,6 +1129,34 @@ CREATE INDEX IF NOT EXISTS idx_natal_guest_charts_expires_unclaimed
 
 CREATE INDEX IF NOT EXISTS idx_natal_guest_charts_claimed_user
   ON natal_guest_charts (claimed_user_id)
+  WHERE claimed_user_id IS NOT NULL;
+
+-- Guest Aura snapshots (pre-auth). Only the structured vision result is stored —
+-- never the original face photo. Claim via hashed opaque cookie token.
+CREATE TABLE IF NOT EXISTS aura_guest_snapshots (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  snapshot JSONB NOT NULL,
+  engine_version TEXT NOT NULL,
+  claim_token_hash TEXT NOT NULL,
+  claimed_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
+  claimed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMPTZ NOT NULL,
+  CONSTRAINT aura_guest_snapshots_claim_state CHECK (
+    (claimed_user_id IS NULL AND claimed_at IS NULL)
+    OR (claimed_user_id IS NOT NULL AND claimed_at IS NOT NULL)
+  )
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_aura_guest_snapshots_claim_hash
+  ON aura_guest_snapshots (claim_token_hash);
+
+CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_expires_unclaimed
+  ON aura_guest_snapshots (expires_at)
+  WHERE claimed_user_id IS NULL;
+
+CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_claimed_user
+  ON aura_guest_snapshots (claimed_user_id)
   WHERE claimed_user_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS natal_report_history (

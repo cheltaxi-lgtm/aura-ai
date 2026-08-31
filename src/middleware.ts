@@ -47,6 +47,11 @@ const PUBLIC_API_EXACT = new Set([
   // Diagnostic breadcrumb only (camera/upload failures) — must not depend on
   // login state, otherwise failures from logged-out users vanish silently.
   "/api/photo-reading/client-log",
+  // Guest Aura teaser (pre-auth): vision snapshot + claim cookie. IP rate limit
+  // in the handler; claim/report stay auth-gated.
+  "/api/aura/teaser",
+  // Public aura pricing (guest landing shows live rune cost; no PII).
+  "/api/aura/pricing",
   "/api/influencer/register",
   "/api/intention-spread",
   // Human Design public calculator (per-IP rate limits in handlers; chart is
@@ -390,6 +395,7 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/natalnaya-karta") ||
       pathname.startsWith("/obryady") ||
       pathname.startsWith("/joint-reading") ||
+      pathname.startsWith("/aura") ||
       pathname.startsWith("/photo-rasklad");
     if (needsFeatureGate) {
       const flags = await fetchPlatformFeatureFlags();
@@ -398,6 +404,7 @@ export async function middleware(request: NextRequest) {
         (pathname.startsWith("/natalnaya-karta") && !flags.natalChartEnabled) ||
         (pathname.startsWith("/obryady") && !flags.ritualsEnabled) ||
         (pathname.startsWith("/joint-reading") && !flags.jointReadingEnabled) ||
+        (pathname.startsWith("/aura") && !flags.auraReadingEnabled) ||
         (pathname.startsWith("/photo-rasklad") && !flags.photoReadingEnabled);
       if (gatedOff) {
         return withNoStore(

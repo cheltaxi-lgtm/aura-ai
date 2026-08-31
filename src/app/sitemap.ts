@@ -24,6 +24,7 @@ import {
 } from "@/lib/human-design/seo-entities";
 import { HD_PAIR_SLUGS } from "@/lib/human-design/seo-compatibility";
 import {
+  isAuraReadingEnabled,
   isHumanDesignEnabled,
   isJointReadingEnabled,
   isNatalChartEnabled,
@@ -60,12 +61,13 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   // Kill-switch: disabled modules must vanish from the sitemap (crawl budget +
   // noindexed 404s stay consistent with the middleware gate).
-  const [hdEnabled, natalEnabled, jointEnabled, photoEnabled, ritualSettings] =
+  const [hdEnabled, natalEnabled, jointEnabled, photoEnabled, auraEnabled, ritualSettings] =
     await Promise.all([
       isHumanDesignEnabled().catch(() => true),
       isNatalChartEnabled().catch(() => false),
       isJointReadingEnabled().catch(() => true),
       isPhotoReadingEnabled().catch(() => true),
+      isAuraReadingEnabled().catch(() => false),
       getRitualSettings().catch(() => null),
     ]);
   const ritualsEnabled = ritualSettings
@@ -224,6 +226,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPage("/rasklady", 0.85),
     staticPage("/rasklad", 0.7),
     ...(photoEnabled ? [staticPage("/photo-rasklad", 0.7)] : []),
+    ...(auraEnabled ? [staticPage("/aura", 0.7)] : []),
     ...(ritualsEnabled ? [staticPage("/obryady", 0.65)] : []),
     ...(jointEnabled ? [staticPage("/joint-reading", 0.6)] : []),
     staticPage("/numerology", 0.75),

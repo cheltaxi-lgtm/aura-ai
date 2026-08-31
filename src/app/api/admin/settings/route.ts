@@ -61,6 +61,7 @@ export async function PATCH(request: NextRequest) {
       "natalChart",
       "humanDesign",
       "photoReading",
+      "auraReading",
     ].includes(section)
   ) {
     return NextResponse.json({ error: "Invalid section" }, { status: 400 });
@@ -83,6 +84,12 @@ export async function PATCH(request: NextRequest) {
   if (section === "photoReading" && !isValidEnabledOnlySettings(values)) {
     return NextResponse.json(
       { error: "Invalid photoReading settings: enabled must be boolean" },
+      { status: 400 }
+    );
+  }
+  if (section === "auraReading" && !isValidEnabledOnlySettings(values)) {
+    return NextResponse.json(
+      { error: "Invalid auraReading settings: enabled must be boolean" },
       { status: 400 }
     );
   }

@@ -9,6 +9,7 @@ import {
 } from "@/lib/spread-intents/gender-copy";
 import { readStoredProfile } from "@/lib/home-flow-storage";
 import { trackQuickQuestionClick } from "@/lib/seo/metrika";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 
 const QUICK_INTENT_SLUGS = [
@@ -31,6 +32,7 @@ const ENTRY_LINKS = [
   { label: "Дизайн Человека", href: "/dizayn-cheloveka" },
   { label: "Все расклады", href: "/rasklady" },
   { label: "Фото-расклад", href: "/photo-rasklad" },
+  { label: "Аура по фото", href: "/aura" },
   { label: "Таро онлайн", href: "/taro" },
   { label: "Гадание", href: "/gadanie" },
   { label: "Обряды", href: "/obryady" },
@@ -59,6 +61,11 @@ export default function QuickQuestions({
   onCustomQuestionSubmit,
 }: QuickQuestionsProps) {
   const [userGender, setUserGender] = useState<UserGender>(null);
+  // /aura 404s while the module kill-switch is off — never link to it.
+  const { auraReadingEnabled } = usePlatformFeatures();
+  const entryLinks = auraReadingEnabled
+    ? ENTRY_LINKS
+    : ENTRY_LINKS.filter((item) => item.href !== "/aura");
 
   useEffect(() => {
     setUserGender(readUserGender());
@@ -135,7 +142,7 @@ export default function QuickQuestions({
         <div className="quick-questions__entries-wrap">
           <p className="quick-questions__section-label">Разделы</p>
           <div className="quick-questions__entries" aria-label="Разделы Zovus">
-          {ENTRY_LINKS.map((item) => (
+          {entryLinks.map((item) => (
             <a key={item.href} href={item.href} onClick={go(item.href)} className="quick-questions__entry">
               {item.label}
             </a>

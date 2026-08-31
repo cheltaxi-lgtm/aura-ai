@@ -50,6 +50,8 @@ export const PAID_ROUTE_LIMITS = {
   reading: { max: 10, windowMs: 60_000 },
   numerolog_tool: { max: 12, windowMs: 60_000 },
   photo_reading: { max: 5, windowMs: 60_000 },
+  /** Aura full report — paid, worker-driven. */
+  aura_report: { max: 4, windowMs: 60_000 },
   /** Vision recognize is unbilled until interpret; tight caps + balance gate in the route. */
   photo_recognize: { max: 3, windowMs: 60_000 },
   photo_recognize_daily: { max: 24, windowMs: 86_400_000 },

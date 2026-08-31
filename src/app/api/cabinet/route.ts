@@ -14,6 +14,7 @@ import {  getCabinetProfile,
     getCabinetRunes,
     getCabinetLegacyAccess,
     getCabinetPhotoSpreads,
+    getCabinetAuraReadings,
     getCabinetDailyReadings,
   } from "@/lib/cabinet-data";
 
@@ -115,6 +116,7 @@ export async function GET(request: NextRequest) {
     runes,
     legacyAccess,
     photoSpreads,
+    auraReadings,
     dailyReadings,
   ] = await Promise.all([
     safe(
@@ -159,6 +161,7 @@ export async function GET(request: NextRequest) {
     ),
     safe("legacyAccess", () => getCabinetLegacyAccess(profileUserId), null, errors),
     safe("photoSpreads", () => getCabinetPhotoSpreads(profileUserId), [], errors),
+    safe("auraReadings", () => getCabinetAuraReadings(profileUserId), [], errors),
     safe("dailyReadings", () => getCabinetDailyReadings(profileUserId), [], errors),
   ]);
 
@@ -178,6 +181,7 @@ export async function GET(request: NextRequest) {
     runes,
     legacyAccess,
     photoSpreads,
+    auraReadings,
     dailyReadings,
     partial: errors.length > 0,
     errors,
