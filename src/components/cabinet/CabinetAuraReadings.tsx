@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { AnimatePresence, motion } from "framer-motion";
-import { X } from "lucide-react";
+import { Trash2, X } from "lucide-react";
 
 import BodyPortal from "@/components/BodyPortal";
 import AuraMap from "@/components/aura/AuraMap";
@@ -15,6 +16,8 @@ import type { CabinetAuraReadingRow } from "@/lib/cabinet-data";
 
 interface Props {
   readings: CabinetAuraReadingRow[];
+  onDelete?: (row: CabinetAuraReadingRow) => void;
+  deletingId?: string | null;
 }
 
 function formatDate(iso: string): string {
@@ -38,8 +41,9 @@ function snapshotOf(row: CabinetAuraReadingRow): AuraSnapshot | null {
 }
 
 /** Aura readings archive — colors, verdict and the full premium report. */
-export default function CabinetAuraReadings({ readings }: Props) {
+export default function CabinetAuraReadings({ readings, onDelete, deletingId = null }: Props) {
   const [activeId, setActiveId] = useState<string | null>(null);
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null);
   const active = readings.find((r) => r.id === activeId) ?? null;
   const closeButtonRef = useRef<HTMLButtonElement | null>(null);
 
@@ -48,6 +52,12 @@ export default function CabinetAuraReadings({ readings }: Props) {
       setActiveId(null);
     }
   }, [activeId, readings]);
+
+  useEffect(() => {
+    if (!confirmDeleteId) return;
+    const timer = window.setTimeout(() => setConfirmDeleteId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmDeleteId]);
 
   // Dialog semantics: Escape to close, body scroll lock, initial focus.
   useEffect(() => {
@@ -74,12 +84,13 @@ export default function CabinetAuraReadings({ readings }: Props) {
         {readings.map((row) => {
           const dominant = row.contextData.dominantColor;
           const verdict = row.contextData.verdict;
+          const deleting = deletingId === row.id;
           return (
-            <li key={row.id}>
+            <li key={row.id} className="flex items-stretch gap-2">
               <button
                 type="button"
                 onClick={() => setActiveId(row.id)}
-                className="flex w-full items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-aura-gold/30 hover:bg-white/[0.05]"
+                className="flex flex-1 items-center gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-left transition hover:border-aura-gold/30 hover:bg-white/[0.05]"
               >
                 {dominant && (
                   <span
@@ -96,7 +107,41 @@ export default function CabinetAuraReadings({ readings }: Props) {
                     {verdict ? ` · ${AURA_VERDICT_LABELS[verdict]}` : ""}
                   </span>
                 </span>
+                {!row.paid && (
+                  <span className="shrink-0 rounded-full border border-aura-gold/30 bg-aura-gold/10 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-aura-gold/90">
+                    Без разбора
+                  </span>
+                )}
               </button>
+              {onDelete && (
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => {
+                    if (confirmDeleteId === row.id) {
+                      setConfirmDeleteId(null);
+                      onDelete(row);
+                    } else {
+                      setConfirmDeleteId(row.id);
+                    }
+                  }}
+                  className={`shrink-0 rounded-xl border px-3 text-xs transition disabled:opacity-50 ${
+                    confirmDeleteId === row.id
+                      ? "border-red-400/50 bg-red-500/15 text-red-200"
+                      : "border-white/10 text-white/40 hover:border-red-400/30 hover:text-red-300"
+                  }`}
+                  aria-label={confirmDeleteId === row.id ? "Подтвердить удаление" : "Удалить ауру"}
+                  title={confirmDeleteId === row.id ? "Нажмите ещё раз" : "Удалить"}
+                >
+                  {deleting ? (
+                    "…"
+                  ) : confirmDeleteId === row.id ? (
+                    "Точно?"
+                  ) : (
+                    <Trash2 className="h-4 w-4" />
+                  )}
+                </button>
+              )}
             </li>
           );
         })}
@@ -204,10 +249,26 @@ export default function CabinetAuraReadings({ readings }: Props) {
                   );
                 })()}
 
-                <PremiumReadingBody
-                  content={active.contextData.report ?? active.contextData.interpretation ?? ""}
-                  className="text-sm text-white/85"
-                />
+                {active.paid ? (
+                  <PremiumReadingBody
+                    content={active.contextData.report ?? active.contextData.interpretation ?? ""}
+                    className="text-sm text-white/85"
+                  />
+                ) : (
+                  <div className="space-y-4">
+                    {active.contextData.teaser ? (
+                      <p className="text-sm leading-relaxed text-white/80">
+                        {active.contextData.teaser}
+                      </p>
+                    ) : null}
+                    <Link
+                      href="/aura"
+                      className="btn-luxe btn-luxe--md btn-luxe--gold w-full justify-center"
+                    >
+                      Получить полный разбор
+                    </Link>
+                  </div>
+                )}
               </motion.div>
             </motion.div>
           )}

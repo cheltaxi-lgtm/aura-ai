@@ -33,6 +33,14 @@ interface Props {
   onDelete: (sessionId: string) => Promise<void>;
   deletingId?: string | null;
   hideTitle?: boolean;
+  /** Section heading text (default "История сеансов"). */
+  title?: string;
+  /** Insert month headers between groups (long archives read better). */
+  groupByMonth?: boolean;
+  /** True when a tab-level search narrowed an otherwise non-empty list. */
+  filteredOut?: boolean;
+  /** Render a one-line empty note instead of the full CTA empty state. */
+  quietEmpty?: boolean;
 }
 
 function RateModal({
@@ -306,6 +314,13 @@ function SessionCard({
   );
 }
 
+function monthGroupLabel(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  const label = d.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  return label.charAt(0).toUpperCase() + label.slice(1);
+}
+
 export default function CabinetSessionHistory({
   sessions,
   hasMore,
@@ -315,6 +330,10 @@ export default function CabinetSessionHistory({
   onDelete,
   deletingId = null,
   hideTitle = false,
+  title = "История сеансов",
+  groupByMonth = false,
+  filteredOut = false,
+  quietEmpty = false,
 }: Props) {
   const [filter, setFilter] = useState<string>("all");
   const [rateTarget, setRateTarget] = useState<string | null>(null);
@@ -326,6 +345,21 @@ export default function CabinetSessionHistory({
     const list = filter === "all" ? sessions : sessions.filter((s) => s.characterKey === filter);
     return sortCabinetSessionsByDate(list);
   }, [sessions, filter]);
+
+  const groups = useMemo(() => {
+    if (!groupByMonth) return [{ label: "", items: filtered }];
+    const out: { label: string; items: CabinetSessionRow[] }[] = [];
+    for (const session of filtered) {
+      const label = monthGroupLabel(session.sessionDate);
+      const last = out[out.length - 1];
+      if (last && last.label === label) {
+        last.items.push(session);
+      } else {
+        out.push({ label, items: [session] });
+      }
+    }
+    return out;
+  }, [filtered, groupByMonth]);
 
   const handleRate = async (rating: 1 | 2 | 3) => {
     if (!rateTarget) return;
@@ -341,7 +375,7 @@ export default function CabinetSessionHistory({
   return (
     <section id="cabinet-history" className="space-y-4">
       {!hideTitle ? (
-        <h2 className="text-lg font-semibold text-white">История сеансов</h2>
+        <h2 className="text-lg font-semibold text-white">{title}</h2>
       ) : null}
 
       {sessions.length > 0 && (
@@ -367,6 +401,11 @@ export default function CabinetSessionHistory({
       )}
 
       {filtered.length === 0 ? (
+        filteredOut ? (
+          <p className="text-sm text-white/45">По запросу ничего не найдено.</p>
+        ) : quietEmpty ? (
+          <p className="text-sm text-white/45">Раскладов пока нет.</p>
+        ) : (
         <div className="cabinet-empty-state">
           <p className="text-white/60">
             Ваша история сеансов пуста.
@@ -377,20 +416,30 @@ export default function CabinetSessionHistory({
             Начать первый сеанс
           </Link>
         </div>
+        )
       ) : (
-        <div className="space-y-4">
-          <AnimatePresence mode="popLayout">
-            {filtered.map((s, i) => (
-              <SessionCard
-                key={s.id}
-                session={s}
-                index={i}
-                onRateClick={setRateTarget}
-                onDelete={onDelete}
-                deleting={deletingId === s.id}
-              />
-            ))}
-          </AnimatePresence>
+        <div className="space-y-6">
+          {groups.map((group) => (
+            <div key={group.label || "all"} className="space-y-4">
+              {group.label ? (
+                <h3 className="text-xs font-semibold uppercase tracking-[0.18em] text-white/40">
+                  {group.label}
+                </h3>
+              ) : null}
+              <AnimatePresence mode="popLayout">
+                {group.items.map((s, i) => (
+                  <SessionCard
+                    key={s.id}
+                    session={s}
+                    index={i}
+                    onRateClick={setRateTarget}
+                    onDelete={onDelete}
+                    deleting={deletingId === s.id}
+                  />
+                ))}
+              </AnimatePresence>
+            </div>
+          ))}
           {hasMore && filter === "all" && (
             <button
               type="button"

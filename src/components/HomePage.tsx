@@ -30,6 +30,7 @@ import { parseInsufficientRunes } from "@/lib/api-errors";
 import { consumeAccountDeletedHomeArrival } from "@/lib/account-deleted";
 import IntentionPicker from "@/components/IntentionPicker";
 import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
+import HomeAuraBanner from "@/components/editorial/HomeAuraBanner";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread, isDailyOnlySpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
@@ -4200,6 +4201,7 @@ export default function HomePage({
                   afterQuickQuestions={
                     isLoggedIn ? (
                       <div className="home-feature-banners">
+                        <HomeAuraBanner />
                         <PremiumEnergyBlock
                           characterKey={dailyEnergyMasterId}
                           masters={masters}

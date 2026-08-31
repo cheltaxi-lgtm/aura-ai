@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Camera, ImagePlus, Loader2, RefreshCcw, Sparkles } from "lucide-react";
+import { Camera, ImagePlus, Loader2, RefreshCcw, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import AuraHalo from "@/components/aura/AuraHalo";
@@ -43,6 +43,23 @@ type AuraPricing = {
 type FlowSnapshot = AuraTeaserSnapshot &
   Partial<Pick<AuraSnapshot, "layers" | "chakras">>;
 
+/** Light archive row from GET /api/aura/readings. */
+type AuraPastItem = {
+  snapshotId: string | null;
+  historyId: string | null;
+  paid: boolean;
+  createdAt: string;
+  dominantColor: { key: string; name: string; hex: string } | null;
+  verdict: keyof typeof AURA_VERDICT_LABELS | null;
+  teaser: string | null;
+};
+
+function formatPastDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
+
 const PROCESSING_PHRASES = [
   "Считываю цветовое поле…",
   "Сверяю слои и чакры…",
@@ -70,6 +87,10 @@ export default function AuraReadingFlow() {
   const [runeBalance, setRuneBalance] = useState<number | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
   const [phraseIdx, setPhraseIdx] = useState(0);
+  const [pastReadings, setPastReadings] = useState<AuraPastItem[] | null>(null);
+  const [openingPast, setOpeningPast] = useState(false);
+  const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
+  const [confirmPastDeleteId, setConfirmPastDeleteId] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -146,6 +167,30 @@ export default function AuraReadingFlow() {
       .catch(() => undefined);
   }, [authLoading, isLoggedIn]);
 
+  // Past auras archive — loaded whenever the capture step is shown to a
+  // logged-in user (covers initial visit and post-reading reset).
+  useEffect(() => {
+    if (authLoading || !isLoggedIn || step !== "capture") return;
+    let cancelled = false;
+    void fetch("/api/aura/readings", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !Array.isArray(data.readings)) return;
+        setPastReadings(data.readings as AuraPastItem[]);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isLoggedIn, step]);
+
+  // Auto-clear the two-tap delete confirm.
+  useEffect(() => {
+    if (!confirmPastDeleteId) return;
+    const timer = window.setTimeout(() => setConfirmPastDeleteId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmPastDeleteId]);
+
   const resetAll = useCallback(() => {
     pollAbortRef.current?.abort();
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -159,6 +204,64 @@ export default function AuraReadingFlow() {
     setError(null);
     setStep("capture");
   }, [photoUrl]);
+
+  const openPast = useCallback(async (item: AuraPastItem) => {
+    const id = item.historyId ?? item.snapshotId;
+    if (!id) return;
+    setError(null);
+    setOpeningPast(true);
+    try {
+      const res = await fetch(`/api/aura/readings/${encodeURIComponent(id)}`, {
+        credentials: "include",
+        cache: "no-store",
+      });
+      const data = await res.json().catch(() => null);
+      const entry = data?.entry;
+      if (!res.ok || !entry?.snapshot) {
+        setError("Не удалось открыть сохранённую ауру. Попробуйте ещё раз.");
+        return;
+      }
+      setSnapshot(entry.snapshot as FlowSnapshot);
+      setSnapshotId(typeof entry.snapshotId === "string" ? entry.snapshotId : null);
+      setReport(typeof entry.report === "string" ? entry.report : null);
+      setPhotoUrl(null);
+      setStep(entry.report ? "report" : "claimed");
+    } catch {
+      setError("Ошибка сети. Попробуйте ещё раз.");
+    } finally {
+      setOpeningPast(false);
+    }
+  }, []);
+
+  const deletePast = useCallback(
+    async (item: AuraPastItem) => {
+      const id = item.snapshotId ?? item.historyId;
+      if (!id) return;
+      setConfirmPastDeleteId(null);
+      setDeletingPastId(id);
+      try {
+        const res = await fetch(`/api/aura/readings/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("delete failed");
+        setPastReadings((prev) =>
+          (prev ?? []).filter(
+            (p) => p.snapshotId !== item.snapshotId && p.historyId !== item.historyId
+          )
+        );
+        // If the deleted aura is currently loaded in the flow, reset the view.
+        if (item.snapshotId && item.snapshotId === snapshotId) {
+          resetAll();
+        }
+      } catch {
+        setError("Не удалось удалить. Попробуйте ещё раз.");
+      } finally {
+        setDeletingPastId(null);
+      }
+    },
+    [snapshotId, resetAll]
+  );
 
   const runTeaser = useCallback(
     async (file: File | Blob) => {
@@ -507,6 +610,71 @@ export default function AuraReadingFlow() {
                     Загрузить фото
                   </button>
                 </div>
+
+                {isLoggedIn && pastReadings && pastReadings.length > 0 && (
+                  <div className="aura-past">
+                    <p className="aura-past__title">Ваши ауры</p>
+                    <ul className="aura-past__list">
+                      {pastReadings.map((item) => {
+                        const itemId = item.snapshotId ?? item.historyId ?? "";
+                        const deleting = deletingPastId != null && deletingPastId === itemId;
+                        const confirming = confirmPastDeleteId === itemId;
+                        return (
+                          <li key={itemId} className="aura-past__item">
+                            <button
+                              type="button"
+                              disabled={openingPast}
+                              onClick={() => void openPast(item)}
+                              className="aura-past__open"
+                            >
+                              {item.dominantColor && (
+                                <span
+                                  className="aura-chakra-dot h-3 w-3"
+                                  style={{
+                                    backgroundColor: item.dominantColor.hex,
+                                    color: item.dominantColor.hex,
+                                  }}
+                                />
+                              )}
+                              <span className="aura-past__meta">
+                                <span className="aura-past__name">
+                                  {item.dominantColor
+                                    ? `Аура: ${item.dominantColor.name}`
+                                    : "Снимок ауры"}
+                                </span>
+                                <span className="aura-past__date">
+                                  {formatPastDate(item.createdAt)}
+                                  {item.verdict ? ` · ${AURA_VERDICT_LABELS[item.verdict]}` : ""}
+                                </span>
+                              </span>
+                              <span
+                                className={`aura-past__badge ${item.paid ? "" : "aura-past__badge--pending"}`}
+                              >
+                                {item.paid ? "Разбор" : "Снимок"}
+                              </span>
+                            </button>
+                            <button
+                              type="button"
+                              disabled={deleting}
+                              onClick={() => {
+                                if (confirming) {
+                                  void deletePast(item);
+                                } else {
+                                  setConfirmPastDeleteId(itemId);
+                                }
+                              }}
+                              className={`aura-past__delete ${confirming ? "aura-past__delete--confirm" : ""}`}
+                              aria-label={confirming ? "Подтвердить удаление" : "Удалить ауру"}
+                              title={confirming ? "Нажмите ещё раз" : "Удалить"}
+                            >
+                              {deleting ? "…" : confirming ? "Точно?" : <Trash2 className="h-3.5 w-3.5" />}
+                            </button>
+                          </li>
+                        );
+                      })}
+                    </ul>
+                  </div>
+                )}
               </>
             )}
           </motion.div>

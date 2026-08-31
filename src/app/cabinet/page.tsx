@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePaywall } from "@/contexts/PaywallContext";
@@ -130,6 +130,11 @@ export default function CabinetPage() {
   const [balancePulse, setBalancePulse] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deletingPhotoSpreadId, setDeletingPhotoSpreadId] = useState<string | null>(null);
+  const [deletingAuraReadingId, setDeletingAuraReadingId] = useState<string | null>(null);
+  const [historyTypeFilter, setHistoryTypeFilter] = useState<
+    "all" | "sessions" | "photo" | "aura" | "daily" | "joint"
+  >("all");
+  const [historySearch, setHistorySearch] = useState("");
   const [showRitualFlow, setShowRitualFlow] = useState(false);
   const [openRitualId, setOpenRitualId] = useState<string | null>(null);
   const [ritualFlowMaster, setRitualFlowMaster] = useState<RitualMasterKey>("ragnar");
@@ -438,6 +443,31 @@ export default function CabinetPage() {
     }
   };
 
+  const handleDeleteAuraReading = async (row: CabinetAuraReadingRow) => {
+    const targetId = row.snapshotId ?? row.id;
+    setDeletingAuraReadingId(row.id);
+    try {
+      const res = await fetch(
+        `/api/aura/readings/${encodeURIComponent(targetId)}`,
+        { method: "DELETE", credentials: "include" }
+      );
+      if (!res.ok) throw new Error("Не удалось удалить разбор ауры");
+
+      setData((prev) =>
+        prev
+          ? {
+              ...prev,
+              auraReadings: prev.auraReadings.filter((r) => r.id !== row.id),
+            }
+          : prev
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка удаления");
+    } finally {
+      setDeletingAuraReadingId(null);
+    }
+  };
+
   const handleSavePhotoSpreadNote = async (historyId: string, notes: string): Promise<boolean> => {
     try {
       const res = await fetch(
@@ -515,6 +545,66 @@ export default function CabinetPage() {
   const runesEnabled = Boolean(runes?.enabled);
   const ritualAttentionCount =
     (ritualStats?.inProgress ?? 0) + (ritualStats?.pendingReview ?? 0);
+
+  const historyQuery = historySearch.trim().toLowerCase();
+  const sessionsFiltered = useMemo(() => {
+    if (!historyQuery) return sessions;
+    return sessions.filter((s) =>
+      [s.topicSummary, s.customQuestion, s.prediction, ...s.keyCards]
+        .filter(Boolean)
+        .some((text) => String(text).toLowerCase().includes(historyQuery))
+    );
+  }, [sessions, historyQuery]);
+  const photoSpreadsFiltered = useMemo(() => {
+    if (!historyQuery) return photoSpreads;
+    return photoSpreads.filter((s) =>
+      [
+        s.contextData.question,
+        s.contextData.analysis,
+        ...(s.contextData.tarotCards?.map((c) => c.name) ?? []),
+      ]
+        .filter(Boolean)
+        .some((text) => String(text).toLowerCase().includes(historyQuery))
+    );
+  }, [photoSpreads, historyQuery]);
+  const auraReadingsFiltered = useMemo(() => {
+    if (!historyQuery) return auraReadings;
+    return auraReadings.filter((r) =>
+      [
+        r.contextData.teaser,
+        r.contextData.dominantColor?.name,
+        r.contextData.verdict,
+        ...(r.contextData.secondaryColors?.map((c) => c.name) ?? []),
+      ]
+        .filter(Boolean)
+        .some((text) => String(text).toLowerCase().includes(historyQuery))
+    );
+  }, [auraReadings, historyQuery]);
+  const dailyReadingsFiltered = useMemo(() => {
+    if (!historyQuery) return dailyReadings;
+    return dailyReadings.filter((r) =>
+      [r.readingText, ...r.cards.map((c) => c.name)]
+        .filter(Boolean)
+        .some((text) => String(text).toLowerCase().includes(historyQuery))
+    );
+  }, [dailyReadings, historyQuery]);
+
+  const historySections = {
+    joint: historyTypeFilter === "all" || historyTypeFilter === "joint",
+    sessions: historyTypeFilter === "all" || historyTypeFilter === "sessions",
+    photo: historyTypeFilter === "all" || historyTypeFilter === "photo",
+    aura: historyTypeFilter === "all" || historyTypeFilter === "aura",
+    daily: historyTypeFilter === "all" || historyTypeFilter === "daily",
+  };
+  // The sessions section renders its own empty/filtered-out messaging and the
+  // joint section hides itself when empty — the global empty state is only for
+  // the self-hiding sections (photo/aura/daily) when filtered down to nothing.
+  const historyShowGlobalEmpty =
+    !historySections.sessions &&
+    historyTypeFilter !== "joint" &&
+    ((historySections.photo && photoSpreadsFiltered.length === 0) ||
+      (historySections.aura && auraReadingsFiltered.length === 0) ||
+      (historySections.daily && dailyReadingsFiltered.length === 0));
 
   const openRitual = (id: string, characterKey: RitualMasterKey) => {
     setRitualFlowMaster(characterKey);
@@ -608,28 +698,91 @@ export default function CabinetPage() {
           <div className="space-y-8">
             <CabinetTabHero
               kicker="Архив"
-              title="История сеансов"
+              title="История"
               subtitle="Все расклады, карты и расшифровки — в одном месте."
             />
-            <CabinetJointReadings />
-            <CabinetSessionHistory
-              sessions={sessions}
-              hasMore={sessionsHasMore}
-              loadingMore={loadingMore}
-              onLoadMore={handleLoadMore}
-              onRate={handleRate}
-              onDelete={handleDeleteSession}
-              deletingId={deletingSessionId}
-              hideTitle
-            />
-            <CabinetPhotoSpreads
-              spreads={photoSpreads}
-              onDelete={(id) => void handleDeletePhotoSpread(id)}
-              deletingId={deletingPhotoSpreadId}
-              onSaveNote={handleSavePhotoSpreadNote}
-            />
-            <CabinetAuraReadings readings={auraReadings} />
-            <CabinetDailySpreads readings={dailyReadings} />
+
+            <div className="space-y-3">
+              <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+                {(
+                  [
+                    ["all", "Все", null],
+                    ["sessions", "Расклады", data?.sessionsTotal ?? sessions.length],
+                    ["photo", "По фото", photoSpreads.length],
+                    ["aura", "Аура", auraReadings.length],
+                    ["daily", "Карта дня", dailyReadings.length],
+                    ["joint", "Совместные", null],
+                  ] as const
+                ).map(([key, label, count]) => (
+                  <button
+                    key={key}
+                    type="button"
+                    onClick={() => setHistoryTypeFilter(key)}
+                    className={`cabinet-filter-pill ${historyTypeFilter === key ? "cabinet-filter-pill--active" : ""}`}
+                  >
+                    {label}
+                    {count != null && count > 0 ? ` · ${count}` : ""}
+                  </button>
+                ))}
+              </div>
+              <input
+                type="search"
+                value={historySearch}
+                onChange={(e) => setHistorySearch(e.target.value)}
+                placeholder="Поиск по вопросам, картам и текстам…"
+                className="cabinet-history-search"
+                aria-label="Поиск по истории"
+              />
+            </div>
+
+            {historyShowGlobalEmpty && (
+              <div className="cabinet-empty-state">
+                <p className="text-white/60">
+                  {historyQuery
+                    ? `По запросу «${historySearch.trim()}» ничего не найдено.`
+                    : "В этом разделе пока пусто."}
+                </p>
+              </div>
+            )}
+
+            {historySections.joint && !historyQuery && <CabinetJointReadings />}
+            {historySections.sessions && (
+              <CabinetSessionHistory
+                sessions={sessionsFiltered}
+                hasMore={sessionsHasMore && !historyQuery}
+                loadingMore={loadingMore}
+                onLoadMore={handleLoadMore}
+                onRate={handleRate}
+                onDelete={handleDeleteSession}
+                deletingId={deletingSessionId}
+                title="Расклады и сеансы"
+                groupByMonth
+                filteredOut={Boolean(historyQuery) && sessions.length > 0}
+                quietEmpty={
+                  historyTypeFilter === "all" &&
+                  (Boolean(historyQuery) ||
+                    photoSpreads.length > 0 ||
+                    auraReadings.length > 0 ||
+                    dailyReadings.length > 0)
+                }
+              />
+            )}
+            {historySections.photo && (
+              <CabinetPhotoSpreads
+                spreads={photoSpreadsFiltered}
+                onDelete={(id) => void handleDeletePhotoSpread(id)}
+                deletingId={deletingPhotoSpreadId}
+                onSaveNote={handleSavePhotoSpreadNote}
+              />
+            )}
+            {historySections.aura && (
+              <CabinetAuraReadings
+                readings={auraReadingsFiltered}
+                onDelete={(row) => void handleDeleteAuraReading(row)}
+                deletingId={deletingAuraReadingId}
+              />
+            )}
+            {historySections.daily && <CabinetDailySpreads readings={dailyReadingsFiltered} />}
           </div>
         );
 

@@ -29,6 +29,12 @@ export const PERSONAL_ZOVUS_EXPLORE = [
     kind: "action" as const,
   },
   {
+    id: "aura",
+    title: "Аура по фото",
+    href: "/aura",
+    kind: "link" as const,
+  },
+  {
     id: "matrix_pair",
     title: "Совместимость матриц",
     href: "/numerology/matrica-sovmestimosti",

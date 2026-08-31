@@ -21,6 +21,7 @@ import {
 } from "@/lib/achievements";
 import { getUserRitualAchievementStats } from "@/lib/ritual-service";
 import { getUserJointReadingAchievementStats } from "@/lib/joint-reading-service";
+import { listAuraArchive } from "@/lib/aura-reading-archive";
 import type { RedrawSpread } from "@/lib/photo-spread-redraw";
 
 export interface CabinetProfile {
@@ -137,12 +138,17 @@ export async function updateCabinetPhotoSpreadNote(
 }
 
 export interface CabinetAuraReadingRow {
+  /** History id for paid reports, snapshot id for unpaid snapshots. */
   id: string;
+  snapshotId: string | null;
+  /** false = claimed snapshot without a paid report yet (continuable on /aura). */
+  paid: boolean;
   characterName: string;
   createdAt: string;
   contextData: {
     report?: string;
     interpretation?: string;
+    teaser?: string;
     dominantColor?: { key: string; name: string; hex: string; meaning: string };
     secondaryColors?: { key: string; name: string; hex: string; meaning: string }[];
     verdict?: "bright" | "mixed" | "heavy";
@@ -154,26 +160,22 @@ export interface CabinetAuraReadingRow {
 export async function getCabinetAuraReadings(
   profileUserId: string
 ): Promise<CabinetAuraReadingRow[]> {
-  const { rows } = await query<{
-    id: string;
-    character_name: string;
-    context_data: Record<string, unknown>;
-    created_at: Date;
-  }>(
-    `SELECT id, character_name, context_data, created_at
-     FROM history
-     WHERE user_id = $1 AND context_data->>'type' = 'aura_reading'
-     ORDER BY created_at DESC
-     LIMIT 50`,
-    [profileUserId]
-  );
-
-  return rows.map((row) => ({
-    id: row.id,
-    characterName: row.character_name,
-    createdAt:
-      row.created_at instanceof Date ? row.created_at.toISOString() : String(row.created_at),
-    contextData: (row.context_data ?? {}) as CabinetAuraReadingRow["contextData"],
+  const entries = await listAuraArchive(profileUserId);
+  return entries.map((entry) => ({
+    id: entry.historyId ?? entry.snapshotId ?? "",
+    snapshotId: entry.snapshotId,
+    paid: entry.paid,
+    characterName: "numerolog",
+    createdAt: entry.createdAt,
+    contextData: {
+      report: entry.report ?? undefined,
+      interpretation: entry.report ?? undefined,
+      teaser: entry.snapshot.teaser,
+      dominantColor: entry.snapshot.dominantColor,
+      secondaryColors: entry.snapshot.secondaryColors,
+      verdict: entry.snapshot.verdict,
+      snapshot: entry.snapshot as unknown as Record<string, unknown>,
+    },
   }));
 }
 

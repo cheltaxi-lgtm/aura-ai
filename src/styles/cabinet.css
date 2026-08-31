@@ -295,6 +295,26 @@
   color: rgba(255, 247, 232, 0.95);
 }
 
+.cabinet-history-search {
+  width: 100%;
+  border-radius: 0.875rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.25);
+  padding: 0.625rem 1rem;
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.9);
+  outline: none;
+  transition: border-color 0.25s ease;
+}
+
+.cabinet-history-search::placeholder {
+  color: rgba(255, 255, 255, 0.35);
+}
+
+.cabinet-history-search:focus {
+  border-color: rgba(212, 175, 55, 0.45);
+}
+
 .cabinet-session-card {
   border: 1px solid rgba(212, 175, 55, 0.15);
   border-radius: 1rem;

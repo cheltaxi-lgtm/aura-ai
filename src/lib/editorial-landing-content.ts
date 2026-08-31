@@ -53,6 +53,14 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
     href: "/?ask=1&spread=1",
     kind: "action" as const,
   },
+  {
+    id: "aura",
+    title: "Аура по фото",
+    text: "Цвета, слои и чакры поля",
+    cta: "Увидеть ауру",
+    href: "/aura",
+    kind: "link" as const,
+  },
 ] as const;
 
 export const EDITORIAL_DAILY_CARDS = {

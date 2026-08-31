@@ -53,6 +53,7 @@ import LandingSocialProofStats, {
 } from "@/components/seo/LandingSocialProofStats";
 import EditorialHeroSection from "@/components/editorial/EditorialHeroSection";
 import EditorialProductEntries from "@/components/editorial/EditorialProductEntries";
+import HomeAuraBanner from "@/components/editorial/HomeAuraBanner";
 import EditorialStarterGiftSection from "@/components/editorial/EditorialStarterGiftSection";
 import EditorialTopicsSection from "@/components/editorial/EditorialTopicsSection";
 import EditorialBirthToolsSection from "@/components/editorial/EditorialBirthToolsSection";
@@ -400,6 +401,7 @@ export default function AuraSellingLanding({
           }}
         />
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
+        <HomeAuraBanner />
         {/* Same guest-receipt flow; mounted under hero (no full navigation). Idle = null. */}
         <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
         <EditorialStarterGiftSection />

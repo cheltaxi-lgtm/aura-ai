@@ -13,7 +13,7 @@ type EditorialProductEntriesProps = {
  * Compact multiproduct map under the hero — not four full marketing blocks.
  */
 export default function EditorialProductEntries({ onTarotCta }: EditorialProductEntriesProps) {
-  const { humanDesignEnabled } = usePlatformFeatures();
+  const { humanDesignEnabled, auraReadingEnabled } = usePlatformFeatures();
 
   return (
     <section
@@ -21,11 +21,12 @@ export default function EditorialProductEntries({ onTarotCta }: EditorialProduct
       aria-label="Направления Zovus"
     >
       <div className="editorial-landing__inner">
-        <p className="editorial-product-entries__kicker">Четыре направления</p>
+        <p className="editorial-product-entries__kicker">Направления Zovus</p>
         <ul className="editorial-product-entries__grid">
           {EDITORIAL_PRODUCT_ENTRIES.map((entry) => {
             const hdHidden = entry.id === "hd" && !humanDesignEnabled;
-            if (hdHidden) return null;
+            const auraHidden = entry.id === "aura" && !auraReadingEnabled;
+            if (hdHidden || auraHidden) return null;
 
             if (entry.kind === "action") {
               return (
