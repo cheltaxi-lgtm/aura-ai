@@ -10,6 +10,7 @@ import {
   AURA_COLOR_SEO,
   AURA_INTENT_SEO,
   AURA_LAYER_SEO,
+  AURA_SEO_CRUMBS,
   getAllAuraSeoPaths,
 } from "@/lib/seo/aura-content";
 import { getAllSeoArticleSlugs } from "@/lib/seo/articles";
@@ -52,6 +53,23 @@ describe("aura-seo-landings", () => {
     expect(landing).toContain('href="/aura/chakry"');
     expect(landing).toContain('href="/aura/sloi"');
     expect(landing).toContain("не сохраняется");
+    expect(landing).toContain("breadcrumbs={AURA_SEO_CRUMBS}");
+    expect(landing).not.toContain("SeoBreadcrumbs");
+  });
+
+  it("hubs and leaves share the /gadanie trail with the product landing", () => {
+    expect(AURA_SEO_CRUMBS.map((c) => c.path)).toEqual(["/", "/gadanie", "/aura"]);
+    for (const rel of [
+      "src/app/aura/cveta/page.tsx",
+      "src/app/aura/cveta/[slug]/page.tsx",
+      "src/app/aura/chakry/page.tsx",
+      "src/app/aura/chakry/[slug]/page.tsx",
+      "src/app/aura/sloi/page.tsx",
+      "src/app/aura/sloi/[slug]/page.tsx",
+      "src/app/aura/[intent]/page.tsx",
+    ]) {
+      expect(read(rel)).toContain("...AURA_SEO_CRUMBS");
+    }
   });
 
   it("articles and IndexNow include aura pillars", () => {
@@ -71,5 +89,8 @@ describe("aura-seo-landings", () => {
     expect(stats).toContain("aura_guest_snapshots");
     const nav = read("src/components/admin/AdminShell.tsx");
     expect(nav).toContain('href: "/admin/products"');
+    const products = read("src/app/admin/products/page.tsx");
+    expect(products).toContain("data ? spend30 : \"—\"");
+    expect(products).not.toContain("spend30 || \"—\"");
   });
 });

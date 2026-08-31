@@ -89,6 +89,14 @@ export const CHECKS = {
       "tests/invariants/landing-social-proof.test.ts",
       "tests/invariants/landing-reviews.test.ts",
       "tests/invariants/guest-landing-conversion.test.ts",
+      "tests/invariants/aura-seo-landings.test.ts",
+    ],
+  },
+  "aura-unit": {
+    title: "aura-unit",
+    vitest: [
+      "tests/invariants/aura-stability.test.ts",
+      "tests/invariants/aura-seo-landings.test.ts",
     ],
   },
   "ads-unit": {
@@ -166,6 +174,15 @@ export const SCOPES = {
     reviews: ["code", "visual", "security"],
     fast: [...CORE_FAST, "photo-reading", "photo-aliases"],
     full: [...CORE_FULL, "photo-reading", "photo-aliases", "photo-unit"],
+    production: ["prod-health", "prod-smoke"],
+  },
+  aura: {
+    title: "Aura reading",
+    paths: /(^|\/)aura([/-]|$)|aura-reading|aura-viz|aura-guest|aura-flow|aura-stability|aura-seo/i,
+    smokeUrls: ["https://zovus.ru/aura"],
+    reviews: ["code", "visual", "security"],
+    fast: [...CORE_FAST, "aura-unit", "seo-unit"],
+    full: [...CORE_FULL, "aura-unit", "seo-unit"],
     production: ["prod-health", "prod-smoke"],
   },
   seo: {
@@ -248,6 +265,7 @@ export const PATH_SCOPES = [
   "natal",
   "hd",
   "photo",
+  "aura",
   "seo",
   "ads",
   "tarot",

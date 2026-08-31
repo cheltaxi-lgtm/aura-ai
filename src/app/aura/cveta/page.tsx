@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { AuraSeoHubList, AuraSeoPage } from "@/components/aura/AuraSeoPage";
-import { AURA_COLOR_SEO } from "@/lib/seo/aura-content";
+import { AURA_COLOR_SEO, AURA_SEO_CRUMBS } from "@/lib/seo/aura-content";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 const HUB = {
@@ -49,8 +49,7 @@ export default function AuraColorsHubPage() {
       goal="aura_colors_hub_view"
       kicker="Аура · Цвета поля"
       breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Аура по фото", path: "/aura" },
+        ...AURA_SEO_CRUMBS,
         { name: "Цвета", path: "/aura/cveta" },
       ]}
     >

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { AuraSeoHubList, AuraSeoPage } from "@/components/aura/AuraSeoPage";
-import { AURA_CHAKRA_SEO } from "@/lib/seo/aura-content";
+import { AURA_CHAKRA_SEO, AURA_SEO_CRUMBS } from "@/lib/seo/aura-content";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 const HUB = {
@@ -45,8 +45,7 @@ export default function AuraChakraHubPage() {
       goal="aura_chakra_hub_view"
       kicker="Аура · Чакры"
       breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Аура по фото", path: "/aura" },
+        ...AURA_SEO_CRUMBS,
         { name: "Чакры", path: "/aura/chakry" },
       ]}
     >

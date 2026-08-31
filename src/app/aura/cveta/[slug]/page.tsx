@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AuraSeoPage } from "@/components/aura/AuraSeoPage";
-import { AURA_COLOR_SEO, auraColorBySlug } from "@/lib/seo/aura-content";
+import { AURA_COLOR_SEO, AURA_SEO_CRUMBS, auraColorBySlug } from "@/lib/seo/aura-content";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export function generateStaticParams() {
@@ -41,8 +41,7 @@ export default async function AuraColorPage({
       kicker="Аура · Цвет поля"
       swatch={page.hex}
       breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Аура по фото", path: "/aura" },
+        ...AURA_SEO_CRUMBS,
         { name: "Цвета", path: "/aura/cveta" },
         { name: page.h1, path: `/aura/cveta/${page.slug}` },
       ]}

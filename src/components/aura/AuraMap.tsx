@@ -247,10 +247,10 @@ export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
                   <feGaussianBlur stdDeviation={dev} />
                 </filter>
               ))}
-              <radialGradient id={`${uid}-body`} cx="40%" cy="20%" r="78%">
-                <stop offset="0%" stopColor={snapshot.dominantColor.hex} stopOpacity="0.62" />
-                <stop offset="38%" stopColor={mixHex(snapshot.dominantColor.hex, "#2a2438", 0.45)} stopOpacity="0.72" />
-                <stop offset="100%" stopColor="#1c1628" stopOpacity="0.92" />
+              <radialGradient id={`${uid}-body`} cx="38%" cy="16%" r="82%">
+                <stop offset="0%" stopColor={mixHex(snapshot.dominantColor.hex, "#f4eefc", 0.58)} stopOpacity="0.9" />
+                <stop offset="40%" stopColor={mixHex(snapshot.dominantColor.hex, "#6c627c", 0.38)} stopOpacity="0.92" />
+                <stop offset="100%" stopColor="#3d364c" stopOpacity="0.96" />
               </radialGradient>
               <radialGradient id={`${uid}-core`} cx="50%" cy="34%" r="38%">
                 <stop offset="0%" stopColor={snapshot.dominantColor.hex} stopOpacity="0.38" />
@@ -351,16 +351,33 @@ export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
                 rx={AURA_HEAD.rx}
                 ry={AURA_HEAD.ry}
                 fill="none"
+                stroke="#f6f0ff"
+                strokeOpacity="0.42"
+                strokeWidth="2"
+              />
+              <path
+                d={AURA_BODY_PATH}
+                fill="none"
+                stroke="#f6f0ff"
+                strokeOpacity="0.38"
+                strokeWidth="2"
+              />
+              <ellipse
+                cx={AURA_HEAD.cx}
+                cy={AURA_HEAD.cy}
+                rx={AURA_HEAD.rx}
+                ry={AURA_HEAD.ry}
+                fill="none"
                 stroke={snapshot.dominantColor.hex}
-                strokeOpacity="0.58"
-                strokeWidth="1.25"
+                strokeOpacity="0.45"
+                strokeWidth="1.1"
               />
               <path
                 d={AURA_BODY_PATH}
                 fill="none"
                 stroke={snapshot.dominantColor.hex}
-                strokeOpacity="0.42"
-                strokeWidth="1.15"
+                strokeOpacity="0.32"
+                strokeWidth="1"
               />
             </g>
 

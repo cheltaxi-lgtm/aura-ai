@@ -4,14 +4,103 @@ import type { AuraChakraKey } from "@/lib/aura-constants";
 export const AURA_VIZ_VB = { w: 400, h: 680 };
 
 /**
- * Standing luminous body (neck → feet). Head is a separate ellipse
- * so the crown stays smooth. Pose is frontal, gender-neutral.
- * Inner-arm return sits ~20–30 units off the torso; crotch gap ~28 units.
+ * Standing figure waypoints. Inner-arm and crotch points are the
+ * negative-space gate: at ~296px the holes must read as arms and a stride,
+ * not a fused pawn/egg.
  */
-export const AURA_BODY_PATH =
-  "M186 104 C188 114 194 122 200 122 C206 122 212 114 214 104 C240 110 262 128 270 154 C278 176 284 210 288 248 L292 320 C294 336 278 344 268 332 L264 240 C260 204 254 174 246 154 C240 176 236 228 234 278 C232 318 238 336 246 344 L254 568 C256 592 246 608 228 606 C214 604 212 584 210 558 L206 372 C204 356 196 356 194 372 L190 558 C188 584 186 604 172 606 C154 608 144 592 146 568 L154 344 C162 336 168 318 166 278 C164 228 160 176 154 154 C146 174 140 204 136 240 L132 332 C122 344 106 336 108 320 L112 248 C116 210 122 176 130 154 C138 128 160 110 186 104 Z";
+export const AURA_BODY = {
+  neckL: { x: 184, y: 118 },
+  neck: { x: 200, y: 134 },
+  neckR: { x: 216, y: 118 },
 
-export const AURA_HEAD = { cx: 200, cy: 78, rx: 23, ry: 27 };
+  shoulderR: { x: 262, y: 150 },
+  armOuterMidR: { x: 280, y: 230 },
+  wristR: { x: 284, y: 318 },
+  handR: { x: 266, y: 336 },
+  armInnerMidR: { x: 258, y: 228 },
+  armpitR: { x: 236, y: 164 },
+
+  waistR: { x: 222, y: 248 },
+  hipR: { x: 242, y: 340 },
+  ankleOuterR: { x: 250, y: 530 },
+  heelR: { x: 256, y: 578 },
+  toeTipR: { x: 278, y: 586 },
+  toeInnerR: { x: 228, y: 576 },
+  ankleInnerR: { x: 222, y: 528 },
+  crotchR: { x: 226, y: 368 },
+
+  crotch: { x: 200, y: 360 },
+
+  crotchL: { x: 174, y: 368 },
+  ankleInnerL: { x: 178, y: 528 },
+  toeInnerL: { x: 172, y: 576 },
+  toeTipL: { x: 122, y: 586 },
+  heelL: { x: 144, y: 578 },
+  ankleOuterL: { x: 150, y: 530 },
+  hipL: { x: 158, y: 340 },
+  waistL: { x: 178, y: 248 },
+
+  armpitL: { x: 164, y: 164 },
+  armInnerMidL: { x: 142, y: 228 },
+  handL: { x: 134, y: 336 },
+  wristL: { x: 116, y: 318 },
+  armOuterMidL: { x: 120, y: 230 },
+  shoulderL: { x: 138, y: 150 },
+} as const;
+
+/** Minimum holes (viewBox units) so the pose survives the 18.5rem mobile stage. */
+export const AURA_BODY_GAPS = {
+  arm: AURA_BODY.armInnerMidR.x - AURA_BODY.waistR.x,
+  crotch: AURA_BODY.crotchR.x - AURA_BODY.crotchL.x,
+  stride: AURA_BODY.ankleInnerR.x - AURA_BODY.ankleInnerL.x,
+} as const;
+
+function pt(p: { x: number; y: number }): string {
+  return `${p.x} ${p.y}`;
+}
+
+/**
+ * Frontal, gender-neutral body. Outer contours stay cubic; inner-arm and
+ * crotch use hard lines so the negative space does not fill in.
+ */
+export const AURA_BODY_PATH = [
+  `M${pt(AURA_BODY.neckL)}`,
+  `C188 126 194 134 ${pt(AURA_BODY.neck)}`,
+  `C206 134 212 126 ${pt(AURA_BODY.neckR)}`,
+  `C238 124 252 134 ${pt(AURA_BODY.shoulderR)}`,
+  `C272 168 278 196 ${pt(AURA_BODY.armOuterMidR)}`,
+  `C282 268 286 300 ${pt(AURA_BODY.wristR)}`,
+  `C286 330 274 340 ${pt(AURA_BODY.handR)}`,
+  `L${pt(AURA_BODY.armInnerMidR)}`,
+  `L${pt(AURA_BODY.armpitR)}`,
+  `C228 180 224 210 ${pt(AURA_BODY.waistR)}`,
+  `C220 286 226 318 ${pt(AURA_BODY.hipR)}`,
+  `C238 400 246 470 ${pt(AURA_BODY.ankleOuterR)}`,
+  `L${pt(AURA_BODY.heelR)}`,
+  `L${pt(AURA_BODY.toeTipR)}`,
+  `L${pt(AURA_BODY.toeInnerR)}`,
+  `L${pt(AURA_BODY.ankleInnerR)}`,
+  `L${pt(AURA_BODY.crotchR)}`,
+  `L${pt(AURA_BODY.crotch)}`,
+  `L${pt(AURA_BODY.crotchL)}`,
+  `L${pt(AURA_BODY.ankleInnerL)}`,
+  `L${pt(AURA_BODY.toeInnerL)}`,
+  `L${pt(AURA_BODY.toeTipL)}`,
+  `L${pt(AURA_BODY.heelL)}`,
+  `L${pt(AURA_BODY.ankleOuterL)}`,
+  `C154 470 162 400 ${pt(AURA_BODY.hipL)}`,
+  `C174 318 180 286 ${pt(AURA_BODY.waistL)}`,
+  `C176 210 172 180 ${pt(AURA_BODY.armpitL)}`,
+  `L${pt(AURA_BODY.armInnerMidL)}`,
+  `L${pt(AURA_BODY.handL)}`,
+  `C126 340 114 330 ${pt(AURA_BODY.wristL)}`,
+  `C114 300 118 268 ${pt(AURA_BODY.armOuterMidL)}`,
+  `C122 196 128 168 ${pt(AURA_BODY.shoulderL)}`,
+  `C148 134 162 124 ${pt(AURA_BODY.neckL)}`,
+  "Z",
+].join(" ");
+
+export const AURA_HEAD = { cx: 200, cy: 86, rx: 28, ry: 34 };
 
 /**
  * Seven organic field contours, innermost → outermost.

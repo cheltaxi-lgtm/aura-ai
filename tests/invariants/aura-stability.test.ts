@@ -17,6 +17,11 @@ import {
 import { auraSpendBelongsToSnapshot } from "@/lib/aura-reading-billing";
 import type { AuraSnapshot } from "@/lib/aura-constants";
 import { AURA_COLORS } from "@/lib/aura-constants";
+import {
+  AURA_BODY,
+  AURA_BODY_GAPS,
+  AURA_BODY_PATH,
+} from "@/components/aura/aura-viz-geometry";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -119,6 +124,13 @@ describe("aura-stability", () => {
     expect(map).not.toContain("aura-map__layer-n");
     expect(geo).toContain("AURA_BODY_PATH");
     expect(geo).toContain("AURA_LAYER_PATHS");
+    expect(AURA_BODY_GAPS.arm).toBeGreaterThanOrEqual(32);
+    expect(AURA_BODY_GAPS.crotch).toBeGreaterThanOrEqual(44);
+    expect(AURA_BODY_GAPS.stride).toBeGreaterThanOrEqual(36);
+    expect(AURA_BODY_PATH).toContain(`${AURA_BODY.armInnerMidR.x} ${AURA_BODY.armInnerMidR.y}`);
+    expect(AURA_BODY_PATH).toContain(`${AURA_BODY.crotchL.x} ${AURA_BODY.crotchL.y}`);
+    expect(map).toContain("#3d364c");
+    expect(map).toContain("#f6f0ff");
     expect(halo).toContain("if (!photoUrl) return null");
     expect(flow).toContain("{photoUrl ? (");
     expect(flow).toContain("<AuraMap snapshot={snapshot} veiled />");

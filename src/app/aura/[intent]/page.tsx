@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AuraSeoPage } from "@/components/aura/AuraSeoPage";
-import { AURA_INTENT_SEO, auraIntentBySlug } from "@/lib/seo/aura-content";
+import { AURA_INTENT_SEO, AURA_SEO_CRUMBS, auraIntentBySlug } from "@/lib/seo/aura-content";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export function generateStaticParams() {
@@ -40,8 +40,7 @@ export default async function AuraIntentPage({
       goal="aura_intent_view"
       kicker="Аура · Разбор темы"
       breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Аура по фото", path: "/aura" },
+        ...AURA_SEO_CRUMBS,
         { name: page.h1, path: `/aura/${page.slug}` },
       ]}
     />

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 
 import { AuraSeoHubList, AuraSeoPage } from "@/components/aura/AuraSeoPage";
-import { AURA_LAYER_SEO } from "@/lib/seo/aura-content";
+import { AURA_LAYER_SEO, AURA_SEO_CRUMBS } from "@/lib/seo/aura-content";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 const HUB = {
@@ -45,8 +45,7 @@ export default function AuraLayersHubPage() {
       goal="aura_layers_hub_view"
       kicker="Аура · Слои поля"
       breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Аура по фото", path: "/aura" },
+        ...AURA_SEO_CRUMBS,
         { name: "Слои", path: "/aura/sloi" },
       ]}
     >

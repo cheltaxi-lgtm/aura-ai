@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AuraSeoPage } from "@/components/aura/AuraSeoPage";
-import { AURA_CHAKRA_SEO, auraChakraBySlug } from "@/lib/seo/aura-content";
+import { AURA_CHAKRA_SEO, AURA_SEO_CRUMBS, auraChakraBySlug } from "@/lib/seo/aura-content";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export function generateStaticParams() {
@@ -40,8 +40,7 @@ export default async function AuraChakraPage({
       goal="aura_chakra_view"
       kicker="Аура · Чакра"
       breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Аура по фото", path: "/aura" },
+        ...AURA_SEO_CRUMBS,
         { name: "Чакры", path: "/aura/chakry" },
         { name: page.h1, path: `/aura/chakry/${page.slug}` },
       ]}

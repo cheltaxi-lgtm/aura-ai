@@ -30,17 +30,20 @@ export default function AdminProductsPage() {
         subtitle="Списания рун и очередь отчётов по продуктам, которые реально используют"
       />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Списаний за 30 дней" value={spend30 || "—"} />
-        <StatCard label="Рун за 30 дней" value={total30 || "—"} accent="text-aura-gold" />
-        <StatCard label="Активных разделов" value={sections.length || "—"} />
+        <StatCard label="Списаний за 30 дней" value={data ? spend30 : "—"} />
+        <StatCard label="Рун за 30 дней" value={data ? total30 : "—"} accent="text-aura-gold" />
+        <StatCard label="Активных разделов" value={data ? sections.length : "—"} />
         <StatCard
           label="Очередь (pending)"
-          value={sections.reduce((sum, s) => sum + s.jobsPending, 0) || "—"}
+          value={data ? sections.reduce((sum, s) => sum + s.jobsPending, 0) : "—"}
           accent="text-amber-300"
         />
       </div>
 
       <div className="mt-8 space-y-4">
+        {data && sections.length === 0 ? (
+          <p className="text-sm text-white/50">Пока нет списаний по разделам.</p>
+        ) : null}
         {sections.map((section) => (
           <article key={section.id} className="glass-panel p-5">
             <div className="flex flex-wrap items-baseline justify-between gap-2">

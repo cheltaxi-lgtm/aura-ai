@@ -27,6 +27,7 @@ import {
   Bot,
   BookOpen,
   Star,
+  Layers,
 } from "lucide-react";
 
 const NAV_BASE = [
@@ -37,7 +38,7 @@ const NAV_BASE = [
   { href: "/admin/influencers", label: "Блогеры", icon: Share2 },
   { href: "/admin/payments", label: "Платежи", icon: CreditCard },
   { href: "/admin/runes", label: "Руны", icon: Coins },
-  { href: "/admin/products", label: "Разделы", icon: LayoutDashboard },
+  { href: "/admin/products", label: "Разделы", icon: Layers },
   { href: "/admin/rituals", label: "Обряды", icon: Flame },
   { href: "/admin/joint-readings", label: "Совместные расклады", icon: HeartHandshake },
   { href: "/admin/memory", label: "Память", icon: Database },

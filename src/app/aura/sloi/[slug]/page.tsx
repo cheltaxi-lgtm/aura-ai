@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { notFound } from "next/navigation";
 
 import { AuraSeoPage } from "@/components/aura/AuraSeoPage";
-import { AURA_LAYER_SEO, auraLayerBySlug } from "@/lib/seo/aura-content";
+import { AURA_LAYER_SEO, AURA_SEO_CRUMBS, auraLayerBySlug } from "@/lib/seo/aura-content";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export function generateStaticParams() {
@@ -40,8 +40,7 @@ export default async function AuraLayerPage({
       goal="aura_layer_view"
       kicker="Аура · Слой поля"
       breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Аура по фото", path: "/aura" },
+        ...AURA_SEO_CRUMBS,
         { name: "Слои", path: "/aura/sloi" },
         { name: page.h1, path: `/aura/sloi/${page.slug}` },
       ]}

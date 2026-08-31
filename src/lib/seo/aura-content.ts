@@ -9,6 +9,7 @@ import {
   type AuraColorKey,
   type AuraLayerKey,
 } from "@/lib/aura-constants";
+import type { BreadcrumbItem } from "@/lib/seo/breadcrumbs";
 
 export type AuraSeoFaq = { q: string; a: string };
 export type AuraSeoSection = { heading: string; body: string };
@@ -32,6 +33,13 @@ export type AuraColorSeo = AuraSeoEntry & {
 
 export type AuraChakraSeo = AuraSeoEntry & { chakraKey: AuraChakraKey };
 export type AuraLayerSeo = AuraSeoEntry & { layerKey: AuraLayerKey };
+
+/** Shared trail so hubs and leaves match /aura (Zovus → Гадание → Аура). */
+export const AURA_SEO_CRUMBS: BreadcrumbItem[] = [
+  { name: "Zovus", path: "/" },
+  { name: "Гадание", path: "/gadanie" },
+  { name: "Аура по фото", path: "/aura" },
+];
 
 const CTA_RELATED: AuraSeoRelated[] = [
   { href: "/aura", title: "Снять ауру по фото" },

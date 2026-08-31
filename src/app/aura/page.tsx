@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 
 import Link from "next/link";
 import AuraReadingFlow from "@/components/aura/AuraReadingFlow";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
+import { AURA_SEO_CRUMBS } from "@/lib/seo/aura-content";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
@@ -45,15 +45,8 @@ export default function AuraLandingPage() {
   const label = RUNE_ACTION_LABELS.AURA_READING;
 
   return (
-    <SeoPageShell>
+    <SeoPageShell breadcrumbs={AURA_SEO_CRUMBS}>
       <SeoPageTracker goal="aura_landing_view" funnelProduct="aura" />
-      <SeoBreadcrumbs
-        items={[
-          { name: "Zovus", path: "/" },
-          { name: "Гадание", path: "/gadanie" },
-          { name: "Аура по фото", path: "/aura" },
-        ]}
-      />
       <p className="text-sm text-aura-gold/80">Аура и энергетика</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
         Аура по фото онлайн
