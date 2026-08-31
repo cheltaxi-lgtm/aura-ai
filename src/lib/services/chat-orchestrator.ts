@@ -1425,7 +1425,7 @@ export class ChatOrchestrator {
     };
   }
 
-  /** Post-complete: save assistant reply, session memory, achievements, diary. */
+  /** Post-complete: save assistant reply, session memory, achievements. */
   private async persistAssistantOutcome(
     finalReply: string,
     llmFailed: boolean
@@ -1496,8 +1496,8 @@ export class ChatOrchestrator {
               lastAssistantReply: finalReply,
             }).catch((err) => console.warn("Session memory persist failed:", err));
           }
-        } catch (diaryErr) {
-          console.warn("Diary count failed:", diaryErr);
+        } catch (memErr) {
+          console.warn("Session memory block failed:", memErr);
         }
       }
     }

@@ -18,7 +18,6 @@ import {
 import { query } from "@/lib/db";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import { limitSpreadKeyCards, MAX_SPREAD_CARD_COUNT, requiredCardCount } from "@/lib/spreads";
-import { createDiaryEntryForSession } from "@/lib/diary";
 import { decodeNumerologSpreadId, getNumerologTool } from "@/lib/numerology/tools";
 
 export async function PATCH(request: NextRequest) {
@@ -154,14 +153,6 @@ export async function PATCH(request: NextRequest) {
   if (!ok) {
     return NextResponse.json({ error: "Session already completed" }, { status: 409 });
   }
-
-  void createDiaryEntryForSession({
-    userId: profileUserId,
-    characterKey,
-    sessionId,
-    history: messages.map((m) => ({ role: m.role, content: m.content })),
-    cards: cardNames.slice(0, keyCardLimit),
-  }).catch((err) => console.warn("Diary entry after session complete failed:", err));
 
   return NextResponse.json({
     ok: true,

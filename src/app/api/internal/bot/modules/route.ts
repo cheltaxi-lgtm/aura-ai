@@ -76,13 +76,6 @@ export async function POST(request: NextRequest) {
         note: "список-тизер в боте; создание на сайте",
       },
       {
-        id: "diary",
-        title: "Дневник",
-        native: false,
-        url: `${site}/cabinet?${utm}`,
-        note: "только на сайте",
-      },
-      {
         id: "memory",
         title: "Память салона",
         native: false,

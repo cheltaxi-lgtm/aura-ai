@@ -4,7 +4,6 @@
  */
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import {
-  getCabinetDiaryPreview,
   getCabinetPhotoSpreads,
   getCabinetProfile,
   getCabinetStats,
@@ -79,7 +78,6 @@ export async function botCabinetOverview(telegramUserId: number) {
     rituals,
     ritualStats,
     joints,
-    diary,
     facts,
     tickets,
     matrices,
@@ -94,7 +92,6 @@ export async function botCabinetOverview(telegramUserId: number) {
     listUserRituals(pid).catch(() => []),
     getCabinetRitualStats(pid).catch(() => null),
     listJointReadingsForUser(pid, 5).catch(() => []),
-    getCabinetDiaryPreview(pid, 3).catch(() => []),
     listFacts(pid, 5).catch(() => []),
     listUserSupportTickets(aid).catch(() => []),
     listUserMatrixReports(pid, 50).catch(() => []),
@@ -138,7 +135,6 @@ export async function botCabinetOverview(telegramUserId: number) {
       photos: photos.length,
       rituals: rituals.length,
       joints: joints.length,
-      diary: diary.length,
       openTickets: tickets.filter(
         (t) => t.status !== "closed" && t.status !== "resolved"
       ).length,
@@ -178,12 +174,6 @@ export async function botCabinetOverview(telegramUserId: number) {
       })),
       url: `${site}/joint-reading?${utm}`,
     },
-    diary: diary.map((d) => ({
-      id: d.id,
-      characterKey: d.characterKey,
-      text: d.entryText.slice(0, 200),
-      createdAt: d.createdAt,
-    })),
     memory: facts.map((f) => ({
       id: f.id,
       fact: f.fact.slice(0, 180),

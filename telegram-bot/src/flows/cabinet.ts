@@ -191,7 +191,6 @@ export async function showCabinetOverview(ctx: Context): Promise<void> {
         : "Натал: ещё не построен",
       `Обряды: ${data.rituals?.recent?.length ?? 0}`,
       `Совместные: ${data.joint?.items?.length ?? 0}`,
-      `Дневник: ${data.diary?.length ?? 0}`,
       `Память: ${data.memory?.length ?? 0}`,
       `Поддержка: ${data.support?.tickets?.length ?? 0}`,
       `Матрицы: ${data.numerology?.matrices?.length ?? 0}`,
@@ -1058,35 +1057,6 @@ export async function showJoint(ctx: Context): Promise<void> {
   }
 }
 
-export async function showDiary(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
-  if (!linked) return;
-  try {
-    const { data } = await siteCabinet(linked.user.telegram_user_id);
-    if (!data.ok) {
-      await ctx.reply(data.message || copy.siteBridgeDown, {
-        reply_markup: linkKb(data.linkUrl),
-      });
-      return;
-    }
-    const entries = data.diary ?? [];
-    if (!entries.length) {
-      await ctx.reply(copy.diaryEmpty, { reply_markup: linkKb(data.urls?.cabinet) });
-      return;
-    }
-    const lines = entries.map(
-      (d, i) =>
-        `${i + 1}. ${d.characterKey || "запись"} · ${String(d.createdAt).slice(0, 10)}\n${d.text}`
-    );
-    await ctx.reply(lines.join("\n\n").slice(0, 3500), {
-      reply_markup: linkKb(data.urls?.cabinet),
-    });
-  } catch (err) {
-    console.error("[cabinet] diary", err);
-    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
-  }
-}
-
 export async function showMemory(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
@@ -1562,9 +1532,6 @@ export async function routeModuleCallback(ctx: Context, data: string): Promise<b
       return true;
     case CB.modJoint:
       await showJoint(ctx);
-      return true;
-    case CB.modDiary:
-      await showDiary(ctx);
       return true;
     case CB.modMemory:
       await showMemory(ctx);

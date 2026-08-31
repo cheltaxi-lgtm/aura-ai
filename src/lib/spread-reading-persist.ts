@@ -3,7 +3,6 @@ import { ensureDb, query } from "@/lib/db";
 import { saveMessage, updateSessionChatMeta } from "@/lib/session";
 import { ensureChatSession } from "@/lib/session-access";
 import { upsertSessionMemoryFromChat } from "@/lib/session-memory";
-import { createDiaryEntryForSession } from "@/lib/diary";
 import { ClientMemory } from "@/lib/memory/client-memory";
 import { topicLabel, isValidSessionIntention, type SessionTopicId } from "@/lib/session-topics";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
@@ -158,14 +157,6 @@ export async function ensureSpreadReadingInChatMessages(
       formattedReading,
       input.profileUserId
     );
-
-    void createDiaryEntryForSession({
-      userId: input.profileUserId,
-      characterKey: input.characterId,
-      sessionId,
-      history: [{ role: "assistant", content: formattedReading }],
-      cards: resolvedCardNames.length ? resolvedCardNames : cardNames,
-    }).catch((err) => console.warn("Diary entry after spread failed:", err));
   }
 
   const topicSummary =

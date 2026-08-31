@@ -425,7 +425,6 @@ export async function siteCabinet(telegramUserId: number) {
       photos: number;
       rituals: number;
       joints: number;
-      diary: number;
       openTickets: number;
     };
     natal?: {
@@ -443,7 +442,6 @@ export async function siteCabinet(telegramUserId: number) {
       items: Array<{ token: string; status: string; url: string; createdAt: string }>;
       url: string;
     };
-    diary?: Array<{ id: string; characterKey: string; text: string; createdAt: string }>;
     memory?: Array<{ id: string; fact: string; category: string | null }>;
     support?: {
       tickets: Array<{ id: string; subject: string; status: string; preview: string }>;

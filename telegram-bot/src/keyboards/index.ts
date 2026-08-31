@@ -71,7 +71,6 @@ export const CB = {
   modMatrix: "mod:matrix",
   modRituals: "mod:rituals",
   modJoint: "mod:joint",
-  modDiary: "mod:diary",
   modMemory: "mod:memory",
   modPhoto: "mod:photo",
   modSupport: "mod:support",

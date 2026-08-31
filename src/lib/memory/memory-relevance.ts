@@ -3,9 +3,8 @@
  *
  * Keep this module free of Node-only / network dependencies (no
  * "@/lib/memory/embeddings", no "@/lib/db", etc.) — it's imported by
- * "@/lib/prompts", whose barrel export is pulled into at least one client
- * component (src/app/diary/page.tsx just for MASTER_DISPLAY/isCharacterKey),
- * so anything reachable from here ends up in the browser bundle. The
+ * "@/lib/prompts", whose barrel export may be pulled into client bundles,
+ * so anything reachable from here can end up in the browser bundle. The
  * embeddings-based semantic upgrade of this lexical check lives in
  * session-memory-semantic.ts instead, which only server-side callers import.
  */

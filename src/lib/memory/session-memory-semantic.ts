@@ -1,9 +1,9 @@
 /**
  * Embeddings-based semantic upgrade of isTextRelevantToQuery, split into its
- * own server-only module deliberately: memory-relevance.ts is reachable from
- * a client bundle (via @/lib/prompts -> src/app/diary/page.tsx) and must stay
- * free of Node-only deps like "@/lib/memory/embeddings" (which pulls in
- * undici). Only server-side callers (user-memory.ts, API routes) import this.
+ * own server-only module deliberately: memory-relevance.ts may be reachable
+ * from client bundles (via @/lib/prompts) and must stay free of Node-only
+ * deps like "@/lib/memory/embeddings" (which pulls in undici). Only
+ * server-side callers (user-memory.ts, API routes) import this.
  */
 import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
 import { embedTexts } from "@/lib/memory/embeddings";

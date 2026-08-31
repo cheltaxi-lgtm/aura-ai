@@ -28,9 +28,6 @@ import CabinetSessionHistory, {
   CabinetSessionHistorySkeleton,
 } from "@/components/cabinet/CabinetSessionHistory";
 import CabinetActiveReports from "@/components/cabinet/CabinetActiveReports";
-import CabinetDiaryPreview, {
-  CabinetDiaryPreviewSkeleton,
-} from "@/components/cabinet/CabinetDiaryPreview";
 import CabinetBottomNav, { type CabinetTab } from "@/components/cabinet/CabinetBottomNav";
 import CabinetTabHero from "@/components/cabinet/CabinetTabHero";
 import CabinetRunesPanel, { CabinetRunesPanelSkeleton } from "@/components/cabinet/CabinetRunesPanel";
@@ -59,7 +56,6 @@ import type {
   CabinetSessionRow,
   CabinetAchievementEarned,
   CabinetAchievementLocked,
-  CabinetDiaryPreview as DiaryEntry,
   CabinetRuneTransaction,
   CabinetLegacyAccess,
   CabinetPhotoSpreadRow,
@@ -74,7 +70,6 @@ interface CabinetResponse {
   sessions: CabinetSessionRow[];
   sessionsTotal: number;
   sessionsHasMore: boolean;
-  diaryPreview: DiaryEntry[];
   runes: { enabled: boolean; balance: number; transactions: CabinetRuneTransaction[] };
   legacyAccess: CabinetLegacyAccess | null;
   photoSpreads: CabinetPhotoSpreadRow[];
@@ -132,7 +127,6 @@ export default function CabinetPage() {
   const [balancePulse, setBalancePulse] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deletingPhotoSpreadId, setDeletingPhotoSpreadId] = useState<string | null>(null);
-  const [deletingDiaryId, setDeletingDiaryId] = useState<string | null>(null);
   const [showRitualFlow, setShowRitualFlow] = useState(false);
   const [openRitualId, setOpenRitualId] = useState<string | null>(null);
   const [ritualFlowMaster, setRitualFlowMaster] = useState<RitualMasterKey>("ragnar");
@@ -252,7 +246,6 @@ export default function CabinetPage() {
       tab === "profile" ||
       tab === "history" ||
       tab === "rituals" ||
-      tab === "diary" ||
       tab === "memory" ||
       tab === "runes"
     ) {
@@ -475,35 +468,6 @@ export default function CabinetPage() {
     }
   };
 
-  const handleDeleteDiaryEntry = async (entryId: string) => {
-    const confirmed = window.confirm(
-      "Удалить эту запись дневника безвозвратно?"
-    );
-    if (!confirmed) return;
-
-    setDeletingDiaryId(entryId);
-    try {
-      const res = await fetch(`/api/diary/${encodeURIComponent(entryId)}`, {
-        method: "DELETE",
-        credentials: "include",
-      });
-      if (!res.ok) throw new Error("Не удалось удалить запись");
-
-      setData((prev) =>
-        prev
-          ? {
-              ...prev,
-              diaryPreview: prev.diaryPreview.filter((e) => e.id !== entryId),
-            }
-          : prev
-      );
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Ошибка удаления");
-    } finally {
-      setDeletingDiaryId(null);
-    }
-  };
-
   const handlePurgeAll = async () => {
     clearClientActivityState();
     setShowRitualFlow(false);
@@ -517,7 +481,6 @@ export default function CabinetPage() {
         ? {
             ...prev,
             sessionsTotal: 0,
-            diaryPreview: [],
             photoSpreads: [],
           }
         : prev
@@ -540,7 +503,6 @@ export default function CabinetPage() {
   const profile = data?.profile;
   const stats = data?.stats;
   const achievements = data?.achievements;
-  const diary = data?.diaryPreview ?? [];
   const runes = data?.runes;
   const legacyAccess = data?.legacyAccess;
   const photoSpreads = data?.photoSpreads ?? [];
@@ -580,8 +542,6 @@ export default function CabinetPage() {
         return <CabinetSessionHistorySkeleton />;
       case "rituals":
         return <div className="h-48 animate-pulse rounded-2xl bg-white/5" />;
-      case "diary":
-        return <CabinetDiaryPreviewSkeleton />;
       case "memory":
         return <div className="h-64 animate-pulse rounded-2xl bg-white/5" />;
       case "runes":
@@ -690,23 +650,6 @@ export default function CabinetPage() {
                 }
               }}
               onStatsLoaded={setRitualStats}
-            />
-          </div>
-        );
-
-      case "diary":
-        return (
-          <div className="space-y-6">
-            <CabinetTabHero
-              kicker="Личное"
-              title="Дневник судьбы"
-              subtitle="Записи после сеансов — для размышлений и возвращения к инсайтам."
-            />
-            <CabinetDiaryPreview
-              entries={diary}
-              onDelete={(id) => void handleDeleteDiaryEntry(id)}
-              deletingId={deletingDiaryId}
-              hideTitle
             />
           </div>
         );

@@ -5,7 +5,6 @@ import { getRuneBalance, getRuneTransactions } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { getUserSubscription } from "@/lib/accounts";
 import { getLegacyPrices } from "@/lib/yukassa";
-import { listDiaryEntries } from "@/lib/diary";
 import { deleteConsultationSession, getSession } from "@/lib/session";
 import { ensureSessionMemoryStub } from "@/lib/session-memory";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
@@ -83,13 +82,6 @@ export interface CabinetAchievementLocked {
   progress: number;
   progressMax: number;
   progressLabel: string;
-}
-
-export interface CabinetDiaryPreview {
-  id: string;
-  characterKey: string;
-  entryText: string;
-  createdAt: string;
 }
 
 export interface CabinetRuneTransaction {
@@ -699,20 +691,6 @@ export async function getCabinetAchievements(
   }
 
   return { earned, locked };
-}
-
-export async function getCabinetDiaryPreview(
-  userId: string,
-  limit = 3
-): Promise<CabinetDiaryPreview[]> {
-  const entries = await listDiaryEntries(userId, limit);
-  return entries.map((e) => ({
-    id: e.id,
-    characterKey: e.character_key,
-    entryText: e.entry_text,
-    createdAt:
-      e.created_at instanceof Date ? e.created_at.toISOString() : String(e.created_at),
-  }));
 }
 
 export async function getCabinetRunes(userId: string) {
