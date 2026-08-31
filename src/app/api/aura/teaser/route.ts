@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureDb } from "@/lib/db";
-import { AGE_REQUIRED_ERROR } from "@/lib/age-gate";
+import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { isAgeGateCookieConfirmed } from "@/lib/age-gate-cookie";
+import { requireUserAuth } from "@/lib/require-auth";
+import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getUserById } from "@/lib/users";
 import {
   clientIp,
   MAX_IMAGE_BYTES,
@@ -51,7 +54,20 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "disabled" }, { status: 404 });
   }
 
-  if (!(await isAgeGateCookieConfirmed(request))) {
+  // Age gate: authenticated callers are checked at the account/profile level
+  // (same rule as /api/aura/report) — the guest cookie is per-browser and must
+  // not block a logged-in, age-eligible user on a new device.
+  const authed = await requireUserAuth();
+  if (authed) {
+    const profileUserId = await getProfileUserIdForAccount(authed.sub);
+    const profileRow = profileUserId ? await getUserById(profileUserId) : null;
+    if (!profileRow || !isUserAgeEligible(profileRow)) {
+      return NextResponse.json(
+        { error: AGE_REQUIRED_ERROR.error, code: AGE_REQUIRED_ERROR.code },
+        { status: 403 }
+      );
+    }
+  } else if (!(await isAgeGateCookieConfirmed(request))) {
     return NextResponse.json(
       { error: AGE_REQUIRED_ERROR.error, code: AGE_REQUIRED_ERROR.code },
       { status: 403 }

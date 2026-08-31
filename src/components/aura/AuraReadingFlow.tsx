@@ -17,6 +17,7 @@ import { isAppCameraAvailable, pickPhotoFromApp } from "@/lib/app-camera";
 import { isNativeCapacitorPlatform } from "@/lib/app-shell";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
 import { parseInsufficientRunes } from "@/lib/api-errors";
+import { confirmAgeGateOnServer, fetchServerAgeGateConfirmed } from "@/lib/age-gate";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import {
   AURA_VERDICT_LABELS,
@@ -91,12 +92,17 @@ export default function AuraReadingFlow() {
   const [openingPast, setOpeningPast] = useState(false);
   const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
   const [confirmPastDeleteId, setConfirmPastDeleteId] = useState<string | null>(null);
+  // null = still resolving; guests without the consent cookie get the inline
+  // gate BEFORE shooting a photo instead of a failed upload after.
+  const [ageReady, setAgeReady] = useState<boolean | null>(null);
+  const [ageConfirming, setAgeConfirming] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pollAbortRef = useRef<AbortController | null>(null);
   const claimAttemptedRef = useRef(false);
+  const pendingFileRef = useRef<File | Blob | null>(null);
 
   const auraCost = pricing?.effectiveCost ?? config.costs.AURA_READING ?? 50;
   const auraBaseCost = pricing?.baseCost ?? config.costs.AURA_READING ?? 50;
@@ -144,6 +150,24 @@ export default function AuraReadingFlow() {
         })
         .catch(() => undefined);
     }
+  }, [authLoading, isLoggedIn]);
+
+  // Age gate: logged-in users are authorized server-side per profile; guests
+  // need the HttpOnly consent cookie — resolve it upfront so the inline gate
+  // appears before they shoot a photo, not after a rejected upload.
+  useEffect(() => {
+    if (authLoading) return;
+    if (isLoggedIn) {
+      setAgeReady(true);
+      return;
+    }
+    let cancelled = false;
+    void fetchServerAgeGateConfirmed().then((ok) => {
+      if (!cancelled) setAgeReady(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, isLoggedIn]);
 
   // Post-auth resume: claim the guest snapshot bound by the HttpOnly cookie.
@@ -298,7 +322,9 @@ export default function AuraReadingFlow() {
           return;
         }
         if (res.status === 403) {
-          setError("Сначала подтвердите возраст на главной странице.");
+          // Age gate — keep the photo and retry automatically after consent.
+          pendingFileRef.current = file;
+          setAgeReady(false);
           setStep("capture");
           return;
         }
@@ -349,6 +375,22 @@ export default function AuraReadingFlow() {
     },
     [runTeaser]
   );
+
+  const confirmAge = useCallback(async () => {
+    if (ageConfirming) return;
+    setAgeConfirming(true);
+    setError(null);
+    const ok = await confirmAgeGateOnServer();
+    setAgeConfirming(false);
+    if (!ok) {
+      setError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
+      return;
+    }
+    setAgeReady(true);
+    const pending = pendingFileRef.current;
+    pendingFileRef.current = null;
+    if (pending) void runTeaser(pending);
+  }, [ageConfirming, runTeaser]);
 
   const stopCamera = useCallback(() => {
     streamRef.current?.getTracks().forEach((t) => t.stop());
@@ -594,6 +636,24 @@ export default function AuraReadingFlow() {
                     Отмена
                   </button>
                 </div>
+              </div>
+            ) : ageReady === false ? (
+              <div className="mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
+                <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">
+                  Подтверждение возраста
+                </p>
+                <p className="mt-3 text-sm leading-relaxed text-white/70">
+                  Разбор ауры — сервис для взрослых. Подтвердите, что вам есть 18 лет,
+                  и продолжим с того же фото.
+                </p>
+                <button
+                  type="button"
+                  disabled={ageConfirming}
+                  onClick={() => void confirmAge()}
+                  className="btn-luxe btn-luxe--md btn-luxe--gold mt-6 w-full"
+                >
+                  {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — продолжить"}
+                </button>
               </div>
             ) : (
               <>
