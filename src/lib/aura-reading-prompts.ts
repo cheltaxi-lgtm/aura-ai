@@ -8,6 +8,7 @@ import {
   AURA_LAYER_KEYS,
   AURA_LAYER_NAMES,
   normalizeAuraSnapshot,
+  type AuraColor,
   type AuraSnapshot,
 } from "@/lib/aura-constants";
 import { PREMIUM_PAID_READING_HONESTY } from "@/lib/prompts/premium-reading";
@@ -60,14 +61,33 @@ const AURA_SNAPSHOT_ONLY = `
 /**
  * Vision pass: portrait photo → structured AuraSnapshot JSON.
  * Returns null when the model output is unusable or no face is present.
+ *
+ * opts.baseColor — the person's established aura core from recent snapshots.
+ * opts.previous — last stored snapshot: evolve layers/chakras, do not lottery.
  */
 export async function generateAuraSnapshot(
   imageBase64: string,
-  mimeType: string
+  mimeType: string,
+  opts?: { baseColor?: AuraColor | null; previous?: AuraSnapshot | null }
 ): Promise<AuraSnapshot | null> {
   const systemPrompt = await wrapSystemPrompt(
     `${AURA_TRADITION_BASE}\n\n${AURA_SNAPSHOT_ONLY}`
   );
+  const parts: string[] = ["Сделай снимок ауры человека на этом портрете. Только JSON по схеме."];
+  if (opts?.baseColor) {
+    parts.push(
+      `БАЗА ПОЛЯ (обязательно): ядро ауры этого человека — ${opts.baseColor.name} (${opts.baseColor.hex}). Ядро меняется медленно, неделями и месяцами: сохрани его как dominantColor. Не выбирай другой цвет «для разнообразия».`
+    );
+  }
+  if (opts?.previous) {
+    parts.push(
+      [
+        "ПРЕДЫДУЩИЙ СНИМОК (эволюционируй, не бросай кости заново):",
+        snapshotSummaryForPrompt(opts.previous),
+        "Правила эволюции: verdict не прыгай между bright и heavy без явной причины на портрете; openness чакр сдвинь не больше чем у двух, и только на одну ступень; слои развивай из вчерашних формулировок; secondaryColors — максимум одна замена.",
+      ].join("\n")
+    );
+  }
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     {
@@ -75,7 +95,7 @@ export async function generateAuraSnapshot(
       content: [
         {
           type: "text",
-          text: "Сделай снимок ауры человека на этом портрете. Только JSON по схеме.",
+          text: parts.join("\n\n"),
         },
         {
           type: "image_url",
@@ -174,6 +194,7 @@ const AURA_FULL_REPORT_RULES = `
 ${PREMIUM_PAID_READING_HONESTY}
 
 ДОПОЛНИТЕЛЬНО ДЛЯ АУРЫ:
+- Ядро ауры стабильно и меняется медленно (недели и месяцы) — скажи это, когда раскрываешь доминирующий цвет: при повторном снимке база сохранится, а слои и чакры показывают текущее состояние дня.
 - Это символическое чтение по портрету: не ставь диагнозов, не предсказывай болезнь/смерть, не объявляй порчу фактом. Говори языком энергии и качеств.
 - Не оценивай внешность и возраст — только поле.
 - Оставайся в образе Эвелины; на прямой вопрос «ты ИИ?» — честно, в образе мастера.`;

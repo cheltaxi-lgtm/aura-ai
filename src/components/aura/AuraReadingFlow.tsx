@@ -96,6 +96,7 @@ export default function AuraReadingFlow() {
   // gate BEFORE shooting a photo instead of a failed upload after.
   const [ageReady, setAgeReady] = useState<boolean | null>(null);
   const [ageConfirming, setAgeConfirming] = useState(false);
+  const [reusedKind, setReusedKind] = useState<"today" | "photo" | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -225,6 +226,7 @@ export default function AuraReadingFlow() {
     setSnapshot(null);
     setSnapshotId(null);
     setReport(null);
+    setReusedKind(null);
     setError(null);
     setStep("capture");
   }, [photoUrl]);
@@ -339,7 +341,13 @@ export default function AuraReadingFlow() {
         const nextSnapshot = data.snapshot as FlowSnapshot;
         setSnapshot(nextSnapshot);
         setSnapshotId(typeof data.snapshotId === "string" ? data.snapshotId : null);
+        setReusedKind(data.reused === "today" || data.reused === "photo" ? data.reused : null);
         trackProductFunnel("free_complete", { product: "aura", source: "aura_flow" });
+
+        if (data.claimed === true) {
+          setStep("claimed");
+          return;
+        }
 
         if (isLoggedIn) {
           // Authed user: bind the snapshot immediately, skip the register CTA.
@@ -662,8 +670,9 @@ export default function AuraReadingFlow() {
                   <div className="aura-stage__plate" />
                 </div>
                 <p className="text-center text-sm text-white/60">
-                  Портрет крупным планом, при ровном свете. Фото обрабатывается на вашем
-                  устройстве — оригинал не сохраняется.
+                  Портрет крупным планом, при ровном свете. Фото не сохраняется — только
+                  цвета и состояния поля. Один снимок на день: повтор откроет тот же
+                  результат, ядро не прыгает от кадра к кадру.
                 </p>
                 <div className="flex flex-col justify-center gap-3 sm:flex-row">
                   <button
@@ -819,6 +828,14 @@ export default function AuraReadingFlow() {
               {snapshot.teaser}
             </p>
 
+            {reusedKind && (
+              <p role="status" className="text-center text-xs leading-relaxed text-white/60">
+                {reusedKind === "today"
+                  ? "Аура на сегодня уже считана. Ядро поля стабильно — новый снимок будет завтра."
+                  : "Это тот же портрет: возвращаю сохранённый снимок, без нового кручения."}
+              </p>
+            )}
+
             {step === "teaser" ? (
               <div className="space-y-3 text-center">
                 <p className="text-sm text-white/55">
@@ -876,7 +893,7 @@ export default function AuraReadingFlow() {
                     className="mt-1 inline-flex items-center gap-1 text-xs text-white/45 transition hover:text-white/75"
                   >
                     <RefreshCcw className="h-3 w-3" />
-                    Снять другую ауру
+                    Вернуться к съёмке
                   </button>
                 </div>
               </div>

@@ -13,10 +13,24 @@ import {
 } from "@/lib/api-guards";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { isAuraReadingEnabled } from "@/lib/settings";
-import { toAuraTeaserSnapshot } from "@/lib/aura-constants";
+import { toAuraTeaserSnapshot, type AuraSnapshot } from "@/lib/aura-constants";
 import { generateAuraSnapshot } from "@/lib/aura-reading-prompts";
-import { createGuestAuraSnapshot } from "@/lib/services/aura-guest-service";
-import { setAuraGuestClaimCookieOnResponse } from "@/lib/aura-guest-claim-cookie";
+import {
+  createGuestAuraSnapshot,
+  findAuraSnapshotByClaimToken,
+  findScopedSnapshotByPhotoHash,
+  findTodaysAuraSnapshotByClaimToken,
+  findTodaysAuraSnapshotForUser,
+  getAuraBaseColorAnchor,
+  getLatestAuraSnapshotForUser,
+  hashAuraPhoto,
+  lockAuraCoreIfRecent,
+  type AuraStoredSnapshot,
+} from "@/lib/services/aura-guest-service";
+import {
+  readAuraGuestClaimCookie,
+  setAuraGuestClaimCookieOnResponse,
+} from "@/lib/aura-guest-claim-cookie";
 import { reportError } from "@/lib/error-report";
 
 export const runtime = "nodejs";
@@ -40,6 +54,46 @@ async function enforceAuraGuestTeaserRateLimit(
   return null;
 }
 
+function teaserJson(
+  request: NextRequest,
+  opts: {
+    snapshot: AuraSnapshot;
+    snapshotId: string;
+    expiresAt?: string | null;
+    rawClaimToken?: string | null;
+    reused: "today" | "photo" | null;
+    claimed: boolean;
+  }
+) {
+  const response = NextResponse.json({
+    ok: true,
+    snapshotId: opts.snapshotId,
+    expiresAt: opts.expiresAt ?? null,
+    snapshot: toAuraTeaserSnapshot(opts.snapshot),
+    reused: opts.reused,
+    claimed: opts.claimed,
+  });
+  if (opts.rawClaimToken) {
+    setAuraGuestClaimCookieOnResponse(response, opts.rawClaimToken, request);
+  }
+  return response;
+}
+
+function fromStored(
+  request: NextRequest,
+  stored: AuraStoredSnapshot,
+  reused: "today" | "photo",
+  profileUserId: string | null
+) {
+  return teaserJson(request, {
+    snapshot: stored.snapshot,
+    snapshotId: stored.snapshotId,
+    expiresAt: stored.expiresAt,
+    reused,
+    claimed: Boolean(profileUserId && stored.claimedUserId === profileUserId),
+  });
+}
+
 /**
  * Pre-auth Aura: portrait → structured snapshot (colors/layers/chakras + teaser).
  * The original photo is NEVER persisted — only the structured result.
@@ -58,8 +112,9 @@ export async function POST(request: NextRequest) {
   // (same rule as /api/aura/report) — the guest cookie is per-browser and must
   // not block a logged-in, age-eligible user on a new device.
   const authed = await requireUserAuth();
+  let profileUserId: string | null = null;
   if (authed) {
-    const profileUserId = await getProfileUserIdForAccount(authed.sub);
+    profileUserId = await getProfileUserIdForAccount(authed.sub);
     const profileRow = profileUserId ? await getUserById(profileUserId) : null;
     if (!profileRow || !isUserAgeEligible(profileRow)) {
       return NextResponse.json(
@@ -72,6 +127,23 @@ export async function POST(request: NextRequest) {
       { error: AGE_REQUIRED_ERROR.error, code: AGE_REQUIRED_ERROR.code },
       { status: 403 }
     );
+  }
+
+  const claimToken = await readAuraGuestClaimCookie(request);
+  const todaysOwn = profileUserId
+    ? await findTodaysAuraSnapshotForUser(profileUserId)
+    : null;
+  const todaysCookie = todaysOwn
+    ? null
+    : await findTodaysAuraSnapshotByClaimToken(claimToken);
+  const todays =
+    todaysOwn ??
+    (todaysCookie &&
+    (!todaysCookie.claimedUserId || todaysCookie.claimedUserId === profileUserId)
+      ? todaysCookie
+      : null);
+  if (todays) {
+    return fromStored(request, todays, "today", profileUserId);
   }
 
   const limited = await enforceAuraGuestTeaserRateLimit(clientIp(request));
@@ -132,8 +204,45 @@ export async function POST(request: NextRequest) {
 
   const startedAt = Date.now();
   try {
-    const snapshot = await generateAuraSnapshot(trimmed, mimeType);
-    if (!snapshot) {
+    const photoHash = hashAuraPhoto(trimmed);
+    const hashed = await findScopedSnapshotByPhotoHash({
+      photoHash,
+      profileUserId,
+      claimToken,
+    });
+    if (hashed) {
+      const hashSafe =
+        !hashed.claimedUserId || hashed.claimedUserId === profileUserId;
+      if (hashSafe) {
+        console.info("[aura-teaser] reused-photo", {
+          ms: Date.now() - startedAt,
+          imageBytes: rawSize,
+          dominant: hashed.snapshot.dominantColor.key,
+        });
+        return fromStored(request, hashed, "photo", profileUserId);
+      }
+    }
+
+    const cookieStored = await findAuraSnapshotByClaimToken(claimToken);
+    const cookieSafe =
+      cookieStored &&
+      (!cookieStored.claimedUserId || cookieStored.claimedUserId === profileUserId)
+        ? cookieStored
+        : null;
+    const previous =
+      (profileUserId ? await getLatestAuraSnapshotForUser(profileUserId) : null) ??
+      cookieSafe;
+    const anchor =
+      (profileUserId ? await getAuraBaseColorAnchor(profileUserId) : null) ??
+      (previous
+        ? { color: previous.snapshot.dominantColor, createdAt: previous.createdAt }
+        : null);
+
+    const generated = await generateAuraSnapshot(trimmed, mimeType, {
+      baseColor: anchor?.color ?? null,
+      previous: previous?.snapshot ?? null,
+    });
+    if (!generated) {
       return NextResponse.json(
         {
           error: "NO_FACE",
@@ -144,24 +253,28 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const { rawClaimToken, snapshotId, expiresAt } = await createGuestAuraSnapshot(snapshot);
+    const snapshot = lockAuraCoreIfRecent(generated, anchor);
+    const { rawClaimToken, snapshotId, expiresAt } = await createGuestAuraSnapshot(
+      snapshot,
+      { photoHash }
+    );
 
     console.info("[aura-teaser] ok", {
       ms: Date.now() - startedAt,
       imageBytes: rawSize,
       verdict: snapshot.verdict,
       dominant: snapshot.dominantColor.key,
+      anchored: Boolean(anchor),
     });
 
-    const response = NextResponse.json({
-      ok: true,
+    return teaserJson(request, {
+      snapshot,
       snapshotId,
       expiresAt,
-      // Pre-payment subset only — layers/chakras ship with the paid report.
-      snapshot: toAuraTeaserSnapshot(snapshot),
+      rawClaimToken,
+      reused: null,
+      claimed: false,
     });
-    setAuraGuestClaimCookieOnResponse(response, rawClaimToken, request);
-    return response;
   } catch (error) {
     const msg = error instanceof Error ? error.message : "error";
     if (msg === "AURA_DISABLED") {

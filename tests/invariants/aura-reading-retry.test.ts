@@ -50,13 +50,13 @@ describe("aura-reading-retry", () => {
   it("teaser and claim return only the pre-payment subset", () => {
     const teaser = read("src/app/api/aura/teaser/route.ts");
     const claim = read("src/app/api/aura/claim/route.ts");
-    expect(teaser).toContain("toAuraTeaserSnapshot(snapshot)");
+    expect(teaser).toContain("toAuraTeaserSnapshot(opts.snapshot)");
     expect(claim).toContain("toAuraTeaserSnapshot(result.snapshot)");
   });
 
   it("vision call receives the prefix-stripped base64", () => {
     const teaser = read("src/app/api/aura/teaser/route.ts");
-    expect(teaser).toContain("generateAuraSnapshot(trimmed, mimeType)");
+    expect(teaser).toContain("generateAuraSnapshot(trimmed, mimeType");
   });
 
   it("snapshot dedupe never matches a different snapshot via a reused key", () => {

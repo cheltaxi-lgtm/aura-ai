@@ -1138,6 +1138,7 @@ CREATE TABLE IF NOT EXISTS aura_guest_snapshots (
   snapshot JSONB NOT NULL,
   engine_version TEXT NOT NULL,
   claim_token_hash TEXT NOT NULL,
+  photo_hash TEXT,
   claimed_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   claimed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1158,6 +1159,10 @@ CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_expires_unclaimed
 CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_claimed_user
   ON aura_guest_snapshots (claimed_user_id)
   WHERE claimed_user_id IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_photo_hash
+  ON aura_guest_snapshots (photo_hash)
+  WHERE photo_hash IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS natal_report_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
