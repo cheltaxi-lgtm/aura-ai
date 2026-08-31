@@ -108,12 +108,17 @@ describe("aura-stability", () => {
 
   it("saved reading shows a labeled color map and no empty photo plate", () => {
     const map = read("src/components/aura/AuraMap.tsx");
+    const geo = read("src/components/aura/aura-viz-geometry.ts");
     const halo = read("src/components/aura/AuraHalo.tsx");
     const flow = read("src/components/aura/AuraReadingFlow.tsx");
     const cabinet = read("src/components/cabinet/CabinetAuraReadings.tsx");
     expect(map).toContain("aura-map__palette");
     expect(map).toContain("Семь слоёв");
     expect(map).toContain("Чакры");
+    expect(map).toContain("aura-viz__svg");
+    expect(map).not.toContain("aura-map__layer-n");
+    expect(geo).toContain("AURA_BODY_PATH");
+    expect(geo).toContain("AURA_LAYER_PATHS");
     expect(halo).toContain("if (!photoUrl) return null");
     expect(flow).toContain("{photoUrl ? (");
     expect(flow).toContain("<AuraMap snapshot={snapshot} veiled />");
