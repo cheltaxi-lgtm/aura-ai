@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
-import { Camera, ImagePlus, Loader2, RefreshCcw, Sparkles, Trash2 } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import AuraHalo from "@/components/aura/AuraHalo";
@@ -100,6 +100,9 @@ export default function AuraReadingFlow() {
   const [ageReady, setAgeReady] = useState<boolean | null>(null);
   const [ageConfirming, setAgeConfirming] = useState(false);
   const [reusedKind, setReusedKind] = useState<"today" | "photo" | null>(null);
+  /** Today's snapshot already exists — do not offer a new shoot. */
+  const [dayLocked, setDayLocked] = useState(false);
+  const [todayReady, setTodayReady] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -178,6 +181,38 @@ export default function AuraReadingFlow() {
     };
   }, [authLoading, isLoggedIn]);
 
+  // Resume today's snapshot without a new photo (account or guest cookie).
+  useEffect(() => {
+    if (authLoading) return;
+    let cancelled = false;
+    void fetch("/api/aura/today", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled) return;
+        if (data?.snapshot && typeof data.snapshotId === "string") {
+          setSnapshot(data.snapshot as FlowSnapshot);
+          setSnapshotId(data.snapshotId);
+          setDayLocked(true);
+          setReusedKind("today");
+          if (data.paid === true && typeof data.report === "string" && data.report.trim()) {
+            setReport(data.report);
+            setStep("report");
+          } else if (data.claimed === true || isLoggedIn) {
+            setStep("claimed");
+          } else {
+            setStep("teaser");
+          }
+        }
+        setTodayReady(true);
+      })
+      .catch(() => {
+        if (!cancelled) setTodayReady(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [authLoading, isLoggedIn]);
+
   // Post-auth resume: claim the guest snapshot bound by the HttpOnly cookie.
   // Idempotent — NO_CLAIM_TOKEN simply means there is nothing to resume.
   useEffect(() => {
@@ -192,7 +227,7 @@ export default function AuraReadingFlow() {
         if (data?.ok && data.snapshot && typeof data.snapshotId === "string") {
           setSnapshot(data.snapshot as FlowSnapshot);
           setSnapshotId(data.snapshotId);
-          setStep("claimed");
+          setStep((prev) => (prev === "report" ? prev : "claimed"));
           trackProductFunnel("claim_complete", { product: "aura", source: "aura_flow" });
         }
       })
@@ -234,6 +269,7 @@ export default function AuraReadingFlow() {
     setSnapshotId(null);
     setReport(null);
     setReusedKind(null);
+    setDayLocked(false);
     setError(null);
     setStep("capture");
   }, [photoUrl]);
@@ -349,6 +385,7 @@ export default function AuraReadingFlow() {
         setSnapshot(nextSnapshot);
         setSnapshotId(typeof data.snapshotId === "string" ? data.snapshotId : null);
         setReusedKind(data.reused === "today" || data.reused === "photo" ? data.reused : null);
+        if (data.reused === "today") setDayLocked(true);
         trackProductFunnel("free_complete", { product: "aura", source: "aura_flow" });
 
         if (data.claimed === true) {
@@ -365,6 +402,10 @@ export default function AuraReadingFlow() {
           const claimData = await claimRes.json().catch(() => null);
           if (claimData?.ok) {
             if (typeof claimData.snapshotId === "string") setSnapshotId(claimData.snapshotId);
+            setStep("claimed");
+            return;
+          }
+          if (data.reused === "today") {
             setStep("claimed");
             return;
           }
@@ -385,10 +426,10 @@ export default function AuraReadingFlow() {
 
   const onFilePicked = useCallback(
     (file: File | null) => {
-      if (!file) return;
+      if (!file || dayLocked) return;
       void runTeaser(file);
     },
-    [runTeaser]
+    [runTeaser, dayLocked]
   );
 
   const confirmAge = useCallback(async () => {
@@ -414,6 +455,7 @@ export default function AuraReadingFlow() {
   }, []);
 
   const startCamera = useCallback(async () => {
+    if (dayLocked) return;
     setError(null);
 
     if (isNativeCapacitorPlatform() && isAppCameraAvailable()) {
@@ -460,9 +502,10 @@ export default function AuraReadingFlow() {
         setError("Нет доступа к камере. Разрешите доступ или загрузите фото из галереи.");
       }
     }
-  }, [runTeaser]);
+  }, [runTeaser, dayLocked]);
 
   const captureFrame = useCallback(() => {
+    if (dayLocked) return;
     const video = videoRef.current;
     if (!video || !streamRef.current) return;
     const w = video.videoWidth || 1080;
@@ -484,7 +527,7 @@ export default function AuraReadingFlow() {
       "image/jpeg",
       0.92
     );
-  }, [runTeaser, stopCamera]);
+  }, [runTeaser, stopCamera, dayLocked]);
 
   const pollJob = useCallback(
     async (jobId: string) => {
@@ -711,24 +754,34 @@ export default function AuraReadingFlow() {
                   цвета и состояния поля. Один снимок и один полный разбор на день:
                   повтор откроет то же самое, руны повторно не спишутся.
                 </p>
-                <div className="flex flex-col justify-center gap-3 sm:flex-row">
-                  <button
-                    type="button"
-                    onClick={() => void startCamera()}
-                    className="btn-luxe btn-luxe--md btn-luxe--gold"
-                  >
-                    <Camera className="mr-2 h-4 w-4" />
-                    Снять с камеры
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => fileInputRef.current?.click()}
-                    className="btn-luxe btn-luxe--md btn-luxe--ghost"
-                  >
-                    <ImagePlus className="mr-2 h-4 w-4" />
-                    Загрузить фото
-                  </button>
-                </div>
+                {!todayReady ? (
+                  <p className="text-center text-sm text-white/45">
+                    Проверяю снимок на сегодня…
+                  </p>
+                ) : dayLocked ? (
+                  <p className="text-center text-sm text-white/55">
+                    Новый снимок будет доступен завтра. Ядро поля уже считано на сегодня.
+                  </p>
+                ) : (
+                  <div className="flex flex-col justify-center gap-3 sm:flex-row">
+                    <button
+                      type="button"
+                      onClick={() => void startCamera()}
+                      className="btn-luxe btn-luxe--md btn-luxe--gold"
+                    >
+                      <Camera className="mr-2 h-4 w-4" />
+                      Снять с камеры
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="btn-luxe btn-luxe--md btn-luxe--ghost"
+                    >
+                      <ImagePlus className="mr-2 h-4 w-4" />
+                      Загрузить фото
+                    </button>
+                  </div>
+                )}
 
                 {isLoggedIn && pastReadings && pastReadings.length > 0 && (
                   <div className="aura-past">
@@ -938,16 +991,9 @@ export default function AuraReadingFlow() {
                     Получить полный разбор · {formatRunes(auraCost)}
                   </button>
                 )}
-                <div>
-                  <button
-                    type="button"
-                    onClick={resetAll}
-                    className="mt-1 inline-flex items-center gap-1 text-xs text-white/45 transition hover:text-white/75"
-                  >
-                    <RefreshCcw className="h-3 w-3" />
-                    Вернуться к съёмке
-                  </button>
-                </div>
+                <p className="text-xs text-white/40">
+                  Новый снимок будет доступен завтра.
+                </p>
               </div>
             )}
           </motion.div>
@@ -974,14 +1020,9 @@ export default function AuraReadingFlow() {
               <Link href="/cabinet" className="btn-luxe btn-luxe--md btn-luxe--ghost">
                 Открыть в кабинете
               </Link>
-              <button
-                type="button"
-                onClick={resetAll}
-                className="inline-flex items-center gap-1 text-xs text-white/45 transition hover:text-white/75"
-              >
-                <RefreshCcw className="h-3 w-3" />
-                Снять другую ауру
-              </button>
+              <p className="text-xs text-white/40">
+                Новый снимок будет доступен завтра.
+              </p>
             </div>
           </motion.div>
         )}

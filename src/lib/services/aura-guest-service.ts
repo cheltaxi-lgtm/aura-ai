@@ -16,10 +16,11 @@ const AURA_BASE_COLOR_WINDOW = "30 days";
 /** Product day boundary for «one aura per day» — same IANA zone as daily reminders. */
 export const AURA_DAY_TIMEZONE = "Europe/Moscow";
 /**
- * Same-session lock across midnight: a shot at 23:50 and 00:10 must keep the core.
- * Calendar-day reuse already blocks a second vision pass before this fires.
+ * Tradition: the aura core is stable for weeks. A new calendar day may
+ * evolve layers/chakras, but must not lottery a new dominantColor.
+ * Calendar-day reuse still blocks a second vision pass before this fires.
  */
-export const AURA_CORE_LOCK_MS = 24 * 60 * 60 * 1000;
+export const AURA_CORE_LOCK_MS = 30 * 24 * 60 * 60 * 1000;
 
 const AURA_TODAY_PREDICATE = `(created_at AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date = (NOW() AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date`;
 
@@ -245,7 +246,7 @@ export async function getAuraColorAnchorFromClaimToken(
   return { color: stored.snapshot.dominantColor, createdAt: stored.createdAt };
 }
 
-/** Force the tradition rule: core does not flip within a day. */
+/** Force the tradition rule: core does not flip within the lock window. */
 export function lockAuraCoreIfRecent(
   snapshot: AuraSnapshot,
   anchor: AuraColorAnchor | null

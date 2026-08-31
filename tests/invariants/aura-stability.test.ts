@@ -53,6 +53,23 @@ describe("aura-stability", () => {
     const flow = read("src/components/aura/AuraReadingFlow.tsx");
     expect(flow).toContain("data.claimed === true");
     expect(flow).toContain("setReusedKind");
+    expect(flow).toContain("/api/aura/today");
+    expect(flow).toContain("Новый снимок будет доступен завтра");
+    expect(flow).not.toContain("Снять другую ауру");
+    expect(flow).not.toContain("Вернуться к съёмке");
+
+    const today = read("src/app/api/aura/today/route.ts");
+    expect(today).toContain("findTodaysAuraSnapshotForUser");
+    expect(today).toContain("findTodaysAuraSnapshotByClaimToken");
+    expect(today).toContain("toAuraTeaserSnapshot");
+    expect(today).toContain("findTodaysPaidAuraReport");
+    const middleware = read("src/middleware.ts");
+    expect(middleware).toContain('"/api/aura/today"');
+
+    const genAt = teaser.indexOf("await generateAuraSnapshot");
+    const todayAt = teaser.indexOf("if (todays)");
+    expect(todayAt).toBeGreaterThan(-1);
+    expect(genAt).toBeGreaterThan(todayAt);
   });
 
   it("photo-hash reuse is scoped to the account or this browser cookie", () => {
@@ -142,7 +159,7 @@ describe("aura-stability", () => {
     expect(service).toContain("photo_hash");
   });
 
-  it("same-day lock keeps the core, older anchors do not force it", () => {
+  it("core lock holds for weeks; anchors older than the window do not force it", () => {
     const generated = stubSnapshot("gold");
     const recent = lockAuraCoreIfRecent(generated, {
       color: AURA_COLORS.blue,
@@ -150,10 +167,16 @@ describe("aura-stability", () => {
     });
     expect(recent.dominantColor.key).toBe("blue");
 
-    const nextDay = lockAuraCoreIfRecent(generated, {
+    const twoDays = lockAuraCoreIfRecent(generated, {
+      color: AURA_COLORS.blue,
+      createdAt: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000),
+    });
+    expect(twoDays.dominantColor.key).toBe("blue");
+
+    const expired = lockAuraCoreIfRecent(generated, {
       color: AURA_COLORS.blue,
       createdAt: new Date(Date.now() - AURA_CORE_LOCK_MS - 1_000),
     });
-    expect(nextDay.dominantColor.key).toBe("gold");
+    expect(expired.dominantColor.key).toBe("gold");
   });
 });

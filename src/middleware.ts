@@ -50,6 +50,8 @@ const PUBLIC_API_EXACT = new Set([
   // Guest Aura teaser (pre-auth): vision snapshot + claim cookie. IP rate limit
   // in the handler; claim/report stay auth-gated.
   "/api/aura/teaser",
+  // Today's aura resume (pre-auth): cookie-scoped snapshot, no new vision.
+  "/api/aura/today",
   // Public aura pricing (guest landing shows live rune cost; no PII).
   "/api/aura/pricing",
   "/api/influencer/register",
