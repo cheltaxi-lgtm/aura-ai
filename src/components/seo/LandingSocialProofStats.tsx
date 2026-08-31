@@ -122,6 +122,7 @@ export default function LandingSocialProofStats({
   return (
     <div
       className={`landing-social-proof landing-social-proof--${variant} ${className}`.trim()}
+      role="group"
       aria-label="Активность на платформе"
     >
       {stats.map((stat) => (

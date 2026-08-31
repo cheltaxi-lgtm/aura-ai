@@ -970,8 +970,8 @@ select.hd-field__input option {
 }
 
 .hd-generating__bar-fill {
-  @apply h-full rounded-full bg-amber-400/80;
-  transition: width 0.8s ease;
+  @apply h-full w-full origin-left rounded-full bg-amber-400/80;
+  transition: transform 0.8s ease;
 }
 
 .hd-generating__meta {

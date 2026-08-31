@@ -4,6 +4,8 @@ import {
 } from "@/lib/session";
 import { creditInfluencerBalance } from "@/lib/influencers";
 import { reportError } from "@/lib/error-report";
+import { clientIp } from "@/lib/api-guards";
+import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import {
   parseYoomoneyLabel,
   verifyYoomoneyNotification,
@@ -71,6 +73,22 @@ async function handleYoomoneyWebhook(data: YoomoneyNotification & { test_notific
 
 export async function POST(request: NextRequest) {
   try {
+    // Cheap per-IP cap before any outbound work: every forged POST otherwise
+    // triggers one authenticated YuKassa API lookup (amplification noise).
+    // Legit providers retry on non-200, so a transient 429 loses no payment.
+    const ip = clientIp(request);
+    const { allowed, retryAfterSec } = await checkRateLimit(
+      rateLimitKey("payment_webhook", ip),
+      30,
+      60_000
+    );
+    if (!allowed) {
+      return NextResponse.json(
+        { error: "rate_limited" },
+        { status: 429, headers: retryAfterSec ? { "Retry-After": String(retryAfterSec) } : undefined }
+      );
+    }
+
     const contentType = request.headers.get("content-type") ?? "";
 
     if (contentType.includes("application/json")) {

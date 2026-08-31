@@ -1006,6 +1006,8 @@
   font-family: var(--font-display, serif);
   font-weight: 700;
   line-height: 1.1;
+  /* Stable digit widths — live counter bumps must not jitter the layout. */
+  font-variant-numeric: tabular-nums;
   background: var(--aura-gold-gradient);
   -webkit-background-clip: text;
   background-clip: text;
@@ -1029,14 +1031,14 @@
 .landing-social-proof__label {
   display: block;
   margin-top: 0.35rem;
-  font-size: 0.5625rem;
+  font-size: 0.625rem;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  color: rgba(237, 230, 218, 0.45);
+  color: rgba(237, 230, 218, 0.62);
 }
 
 .landing-social-proof--hero .landing-social-proof__label {
-  font-size: 0.5rem;
+  font-size: 0.5625rem;
 }
 
 .landing-social-proof__live {

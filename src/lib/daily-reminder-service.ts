@@ -65,13 +65,44 @@ function parseHour0to23(raw: unknown): number | null {
   return null;
 }
 
+const MSK_TIME_ZONE = "Europe/Moscow";
+
+/**
+ * Whole-hour offset of Europe/Moscow vs UTC at `at`, derived from the IANA tz
+ * database via Intl (never a hardcoded integer). Only used to migrate legacy
+ * `reminderHourUtc` prefs into MSK hours.
+ */
+function mskOffsetHoursUtc(at: Date = new Date()): number {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: MSK_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).formatToParts(at);
+  const part = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? 0);
+  const mskAsUtc = Date.UTC(
+    part("year"),
+    part("month") - 1,
+    part("day"),
+    part("hour") % 24,
+    part("minute"),
+    part("second")
+  );
+  const atSeconds = Math.floor(at.getTime() / 1000) * 1000;
+  return Math.round((mskAsUtc - atSeconds) / 3_600_000);
+}
+
 export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
   if (!raw || typeof raw !== "object") return { ...DEFAULT_PREFS };
   const o = raw as Record<string, unknown>;
   const fromMsk = parseHour0to23(o.reminderHourMsk);
   const fromUtc = parseHour0to23(o.reminderHourUtc);
   const reminderHourMsk =
-    fromMsk ?? (fromUtc != null ? (fromUtc + 3) % 24 : DEFAULT_PREFS.reminderHourMsk);
+    fromMsk ?? (fromUtc != null ? (fromUtc + mskOffsetHoursUtc()) % 24 : DEFAULT_PREFS.reminderHourMsk);
   return {
     dailyEmail: o.dailyEmail !== false,
     dailyInApp: o.dailyInApp !== false,
@@ -149,7 +180,9 @@ const PREFERRED_HOUR_MSK_SQL = `COALESCE(
        (u.notification_prefs->>'reminderHourMsk')::int,
        CASE
          WHEN (u.notification_prefs->>'reminderHourUtc') IS NOT NULL
-         THEN ((u.notification_prefs->>'reminderHourUtc')::int + 3) % 24
+         THEN ((u.notification_prefs->>'reminderHourUtc')::int
+               + (EXTRACT(EPOCH FROM (now() AT TIME ZONE 'Europe/Moscow' - now() AT TIME ZONE 'UTC')) / 3600)::int
+              ) % 24
          ELSE ${DEFAULT_REMINDER_HOUR_MSK}
        END
      )`;

@@ -120,7 +120,7 @@ export default function AppUpdatePrompt({ update, onDismiss, onGraceContinue }: 
         <div className="app-shell-update__progress-bar">
           <span
             className="app-shell-update__progress-fill app-shell-update__progress-fill--shimmer"
-            style={{ width: `${Math.max(4, progress ?? 8)}%` }}
+            style={{ transform: `scaleX(${Math.max(4, progress ?? 8) / 100})` }}
           />
         </div>
         <span className="app-shell-update__progress-label">

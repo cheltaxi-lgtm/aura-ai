@@ -52,6 +52,10 @@ export const metadata = getRootMetadata();
 
 export const viewport: Viewport = {
   themeColor: "#0a0908",
+  // Edge-to-edge Android WebView (MainActivity setDecorFitsSystemWindows(false)):
+  // without "cover", env(safe-area-inset-*) resolves to 0 and the header/tab bar
+  // can slide under system bars.
+  viewportFit: "cover",
 };
 export default function RootLayout({
   children,

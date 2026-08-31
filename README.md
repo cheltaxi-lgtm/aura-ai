@@ -57,21 +57,22 @@ npm run build
 npm run predeploy:check
 ```
 
-Production deploy (Beget VPS, `217.12.37.32`):
+Production deploy (Beget VPS, `217.12.37.32`) — канонический путь:
 
-```powershell
-# From Windows (PuTTY + SSH key recommended; or BEGET_VPS_PASSWORD env)
-.\proxmox-setup\direct_deploy.ps1
-# or
-.\hosting\migrate-to-beget.ps1   # full migrate from old VM (one-time)
+```bash
+# Через Git Bash (не WSL): maintenance-страница → wipe → env → worker → health-gate
+bash scripts/deploy-prod.sh
 ```
+
+Альтернативы: `proxmox-setup\direct_deploy.ps1` (side-tree deploy с traffic-gate и rollback) из Windows.
+`hosting\migrate-to-beget.ps1` — одноразовая миграция со старой VM, не для обычных деплоев.
 
 DNS: Beget panel or `hosting/setup-dns-beget.sh` (A → server IP).  
 SSL: Caddy on the VPS (auto Let's Encrypt).
 
 Legacy Proxmox path (`ubuntu@192.168.1.152`) — deprecated after migration.
 
-GitHub Actions: `.github/workflows/ci.yml` — checks on push.  
+GitHub Actions: `.github/workflows/preflight.yml` — проверки на push (migrate, typecheck, guards, invariants, build).  
 Optional Vercel deploy: `.github/workflows/deploy.yml` (needs `VERCEL_*` secrets).
 
 Production migrations **не** запускаются автоматически из CI/CD. Fresh DB — `src/lib/schema.sql` (Docker init). Существующую БД обновляйте вручную:

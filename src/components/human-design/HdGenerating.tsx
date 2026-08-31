@@ -116,7 +116,7 @@ export default function HdGenerating({
       <p className="hd-generating__phase">{phases[phaseIndex]}</p>
 
       <div className="hd-generating__bar" aria-hidden="true">
-        <div className="hd-generating__bar-fill" style={{ width: `${softPct}%` }} />
+        <div className="hd-generating__bar-fill" style={{ transform: `scaleX(${softPct / 100})` }} />
       </div>
 
       <p className="hd-generating__meta">

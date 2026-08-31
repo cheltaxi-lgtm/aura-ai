@@ -3627,6 +3627,8 @@ html[data-motion-lite="1"] .editorial-hero.salon-reveal--in .editorial-hero__img
   justify-content: center;
   gap: 0.5rem 0.85rem;
   margin: 1.1rem 0 0;
+  /* Reserve one line while loading so the post-load reveal does not shift layout. */
+  min-height: 1.6rem;
   font-size: 0.875rem;
   color: var(--color-text-muted);
 }
@@ -3687,6 +3689,11 @@ button.editorial-reviews__star:focus-visible {
 
 .editorial-reviews__status {
   margin: 0 0 1.5rem;
+  /* Reserve ~one card row: the loading → grid swap must not jump the page. */
+  min-height: 12rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   text-align: center;
   color: var(--color-text-muted);
   font-size: 0.9375rem;

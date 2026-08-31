@@ -55,8 +55,8 @@ function ActiveRow({ item }: { item: ActiveReportItem }) {
       </div>
       <div className="mt-3 h-1 overflow-hidden rounded-full bg-white/10" aria-hidden="true">
         <div
-          className="h-full rounded-full bg-gradient-to-r from-amber-200/70 to-amber-400/70 transition-[width] duration-700"
-          style={{ width: `${pct ?? 18}%` }}
+          className="h-full w-full origin-left rounded-full bg-gradient-to-r from-amber-200/70 to-amber-400/70 transition-transform duration-700"
+          style={{ transform: `scaleX(${(pct ?? 18) / 100})` }}
         />
       </div>
       <p className="mt-2.5 text-[11px] leading-relaxed text-white/40">

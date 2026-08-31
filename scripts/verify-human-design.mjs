@@ -12,7 +12,9 @@
  *  8. Cross-validation vs natalengine calculateHumanDesign (type/profile)
  *  9. Determinism, unknown-time stability probe
  * 10. Optional analyst golden set: scripts/fixtures/human-design-golden.json
- *     (Jovian Archive reference charts — strict equality when present)
+ *     (regression snapshot pinned from the current engine via
+ *     scripts/gen-hd-golden-fixtures.mjs — strict equality when present.
+ *     Independent anchoring comes from blocks 4, 5 and 8, not from this set)
  * 11. Source guardrails: public-payload privacy strip, claim-token hashing,
  *     double-billing dedupe, durable async-job wiring (static asserts)
  *

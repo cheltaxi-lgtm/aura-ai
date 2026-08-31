@@ -50,6 +50,7 @@ telegram-bot/data/
 *.tsbuildinfo
 next-env.d.ts
 build-decks.log
+tsc-output.txt
 
 # local debug artifacts
 .tmp-*

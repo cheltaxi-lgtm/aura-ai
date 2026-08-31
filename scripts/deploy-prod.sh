@@ -122,13 +122,17 @@ bash proxmox-setup/install-crons.sh
 
 # Async worker needs .env.async-jobs — wiped by rm -rf above. Without it,
 # intention/daily/natal jobs stay pending and the client ritual hangs forever.
-sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai-async-jobs.service hosting/install-maintenance-page.sh hosting/zovus-telegram-bot.service 2>/dev/null || true
+sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai.service hosting/aura-ai-async-jobs.service hosting/install-maintenance-page.sh hosting/zovus-telegram-bot.service 2>/dev/null || true
 bash hosting/ensure-async-jobs-user.sh "$APP_DIR"
+# Refresh ALL units on every deploy — otherwise app-unit drift on the server
+# survives the canonical deploy path.
+install -D -m 0644 hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 install -D -m 0644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
 if [ -f hosting/zovus-telegram-bot.service ]; then
   install -D -m 0644 hosting/zovus-telegram-bot.service /etc/systemd/system/zovus-telegram-bot.service
 fi
 systemctl daemon-reload
+systemctl reset-failed aura-ai 2>/dev/null || true
 systemctl reset-failed aura-ai-async-jobs 2>/dev/null || true
 systemctl reset-failed zovus-telegram-bot 2>/dev/null || true
 systemctl enable aura-ai-async-jobs
@@ -172,6 +176,27 @@ if systemctl list-unit-files zovus-telegram-bot.service >/dev/null 2>&1; then
   fi
   systemctl is-active zovus-telegram-bot
 fi
+
+# Enforced HTTP health gate: `is-active` proves process liveness, not serving
+# correctness (a boot-looping / ChunkLoadError release would still be "active").
+echo "Waiting for local /api/health (127.0.0.1:3000)..."
+HEALTH_CODE=""
+for _ in $(seq 1 30); do
+  HEALTH_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 5 http://127.0.0.1:3000/api/health || true)"
+  [ "$HEALTH_CODE" = "200" ] && break
+  sleep 2
+done
+if [ "$HEALTH_CODE" != "200" ]; then
+  echo "ERROR: local /api/health never returned 200 (last: ${HEALTH_CODE:-none}; up to ~3.5min of retries)" >&2
+  exit 1
+fi
+echo "Local health gate: HTTP 200"
 REMOTE
 
-echo "==> Done. Check: curl -s -o /dev/null -w '%{http_code}' https://zovus.ru/api/health"
+echo "==> Public health gate (https://zovus.ru/api/health)..."
+PUB_CODE="$(curl -s -o /dev/null -w '%{http_code}' --max-time 15 https://zovus.ru/api/health || true)"
+if [ "$PUB_CODE" != "200" ]; then
+  echo "ERROR: https://zovus.ru/api/health returned ${PUB_CODE:-none} after deploy" >&2
+  exit 1
+fi
+echo "==> Done. Public health gate: HTTP 200"

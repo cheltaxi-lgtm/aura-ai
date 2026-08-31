@@ -442,7 +442,8 @@ html[data-app-shell="android"] .app-shell-pull-hint__rune {
   .app-shell-splash__stars,
   .app-shell-splash__ring,
   .app-shell-splash__core,
-  .app-shell-splash__progress-bar {
+  .app-shell-splash__progress-bar,
+  .app-shell-update__progress-fill--shimmer {
     animation: none !important;
   }
 }
@@ -591,9 +592,11 @@ html[data-app-shell="android"] .app-shell-splash__ring--inner {
 .app-shell-update__progress-fill {
   display: block;
   height: 100%;
+  width: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, #b8862a, #e8c77e);
-  transition: width 0.2s ease;
+  transform-origin: left center;
+  transition: transform 0.2s ease;
 }
 
 .app-shell-update__progress-label {

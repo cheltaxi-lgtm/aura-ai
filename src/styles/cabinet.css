@@ -265,9 +265,11 @@
 
 .cabinet-achievement-card__progress-fill {
   height: 100%;
+  width: 100%;
   border-radius: inherit;
   background: linear-gradient(90deg, rgba(201, 162, 74, 0.7), rgba(232, 199, 126, 0.95));
-  transition: width 0.3s ease;
+  transform-origin: left center;
+  transition: transform 0.3s ease;
 }
 
 .cabinet-filter-pill {
@@ -279,7 +281,7 @@
   font-size: 0.6875rem;
   font-weight: 600;
   color: rgba(209, 213, 219, 0.65);
-  transition: all 0.25s ease;
+  transition: border-color 0.25s ease, color 0.25s ease, background-color 0.25s ease;
 }
 
 .cabinet-filter-pill:hover {
@@ -370,7 +372,7 @@
   border-radius: 999px;
   border: 1px solid rgba(255, 255, 255, 0.1);
   color: rgba(209, 213, 219, 0.55);
-  transition: all 0.25s ease;
+  transition: border-color 0.25s ease, color 0.25s ease, background-color 0.25s ease;
 }
 
 .cabinet-diary-card__delete:hover:not(:disabled) {

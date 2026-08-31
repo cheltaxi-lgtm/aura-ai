@@ -85,7 +85,7 @@ export default function CabinetAchievementsRow({ earned, locked }: Props) {
                       <div className="cabinet-achievement-card__progress">
                         <div
                           className="cabinet-achievement-card__progress-fill"
-                          style={{ width: `${pct}%` }}
+                          style={{ transform: `scaleX(${pct / 100})` }}
                         />
                       </div>
                     </>
