@@ -1,5 +1,5 @@
 /**
- * P1.2: multiproduct homepage — 4 public entries + root SEO.
+ * P1.2: multiproduct homepage — 5 public entries (aura added) + root SEO.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -13,13 +13,19 @@ describe("multiproduct-homepage", () => {
     expect(EDITORIAL_HERO.title).toBe(
       "Понять себя. Увидеть ситуацию. Выбрать следующий шаг."
     );
-    // Product map lives in EDITORIAL_PRODUCT_ENTRIES — hero no longer lists all four.
-    expect(EDITORIAL_PRODUCT_ENTRIES.map((e) => e.id)).toEqual(["matrix", "natal", "hd", "tarot"]);
+    // Product map lives in EDITORIAL_PRODUCT_ENTRIES — hero no longer lists them.
+    expect(EDITORIAL_PRODUCT_ENTRIES.map((e) => e.id)).toEqual([
+      "matrix",
+      "natal",
+      "hd",
+      "tarot",
+      "aura",
+    ]);
     // Quick Tarot path kept.
     expect(EDITORIAL_HERO.primaryCta.toLowerCase()).toMatch(/3 карты|три карты/);
   });
 
-  it("four product CTAs point to correct public flows", () => {
+  it("product CTAs point to correct public flows", () => {
     const byId = Object.fromEntries(EDITORIAL_PRODUCT_ENTRIES.map((e) => [e.id, e]));
     expect(byId.matrix?.href).toBe("/numerology/destiny-matrix");
     expect(byId.matrix?.cta).toMatch(/бесплатно/i);
@@ -29,6 +35,8 @@ describe("multiproduct-homepage", () => {
     expect(byId.hd?.cta).toMatch(/бодиграф/i);
     expect(byId.tarot?.kind).toBe("action");
     expect(byId.tarot?.cta).toMatch(/3 карты|три карты/i);
+    expect(byId.aura?.href).toBe("/aura");
+    expect(byId.aura?.kind).toBe("link");
   });
 
   it("guest landing mounts product entries before guest spread; Tarot is action not auth redirect", () => {
@@ -45,6 +53,8 @@ describe("multiproduct-homepage", () => {
     );
     expect(entries).toMatch(/onTarotCta/);
     expect(entries).not.toMatch(/buildRegisterHref|\/auth\/user\/register/);
+    // Aura entry stays behind the kill-switch flag.
+    expect(entries).toMatch(/entry\.id === "aura" && !auraReadingEnabled/);
 
     const page = readFileSync(path.join(ROOT, "src/app/page.tsx"), "utf8");
     expect(page).toMatch(/Матрица судьбы, Натальная карта, Дизайн человека и Таро/);

@@ -20,7 +20,7 @@ describe("personal-zovus-home", () => {
       "utf8"
     );
     expect(landing).toMatch(/EditorialProductEntries/);
-    expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(4);
+    expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(5);
   });
 
   it("auth home mounts photo hero without stacking selling CTAs", () => {
