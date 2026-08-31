@@ -99,6 +99,20 @@ const DISPLAY_NAMES = {
   natal_landing_cta_click: "Натальная карта — CTA",
   natal_landing_login_click: "Натальная карта — вход",
   prognoz_hub_view: "Прогноз hub — view",
+  aura_landing_view: "Аура — лендинг",
+  aura_snapshot_start: "Аура — старт снимка",
+  aura_snapshot_complete: "Аура — снимок готов",
+  aura_auth_cta: "Аура — CTA регистрации",
+  aura_guest_claim_complete: "Аура — гостевой claim",
+  aura_paid_cta: "Аура — CTA полного разбора",
+  aura_seo_cta: "Аура — CTA с SEO-страницы",
+  aura_colors_hub_view: "Аура — hub цветов",
+  aura_color_view: "Аура — страница цвета",
+  aura_chakra_hub_view: "Аура — hub чакр",
+  aura_chakra_view: "Аура — страница чакры",
+  aura_layers_hub_view: "Аура — hub слоёв",
+  aura_layer_view: "Аура — страница слоя",
+  aura_intent_view: "Аура — тематическая посадка",
 };
 
 function displayName(id) {

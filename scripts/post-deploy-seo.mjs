@@ -41,6 +41,14 @@ const CORE_PRIORITY = [
   `${base}/lenormand`,
   `${base}/sovmestimost-znakov-zodiaka`,
   `${base}/photo-rasklad`,
+  `${base}/aura`,
+  `${base}/aura/cveta`,
+  `${base}/aura/chakry`,
+  `${base}/aura/sloi`,
+  `${base}/aura/kak-uznat-cvet`,
+  `${base}/aura/chtenie-ili-kirlian`,
+  `${base}/aura/smeshannoe-pole`,
+  `${base}/aura/foto-i-chakry`,
   `${base}/numerology`,
   `${base}/numerology/destiny-matrix`,
   `${base}/numerology/name-compatibility`,
@@ -118,6 +126,9 @@ const ARTICLE_PRIORITY_SLUGS = [
   "chto-takoe-matrica-sudby",
   "matrica-sudby-po-date-rozhdeniya",
   "natal-ili-matrica-chto-vybrat",
+  "kak-uznat-cvet-aury-po-foto",
+  "znachenie-cvetov-aury",
+  "chtenie-aury-i-effekt-kirliana",
 ];
 
 function loadAllArticleUrls() {

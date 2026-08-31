@@ -24,6 +24,12 @@ import {
 } from "@/lib/human-design/seo-entities";
 import { HD_PAIR_SLUGS } from "@/lib/human-design/seo-compatibility";
 import {
+  AURA_CHAKRA_SEO,
+  AURA_COLOR_SEO,
+  AURA_INTENT_SEO,
+  AURA_LAYER_SEO,
+} from "@/lib/seo/aura-content";
+import {
   isAuraReadingEnabled,
   isHumanDesignEnabled,
   isJointReadingEnabled,
@@ -186,6 +192,33 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.6,
   }));
 
+  const auraColorPages: MetadataRoute.Sitemap = auraEnabled
+    ? AURA_COLOR_SEO.map((item) => ({
+        url: `${base}/aura/cveta/${item.slug}`,
+        lastModified: now,
+        changeFrequency: "monthly" as const,
+        priority: 0.65,
+      }))
+    : [];
+
+  const auraChakraPages: MetadataRoute.Sitemap = auraEnabled
+    ? AURA_CHAKRA_SEO.map((item) => ({
+        url: `${base}/aura/chakry/${item.slug}`,
+        lastModified: now,
+        changeFrequency: "monthly" as const,
+        priority: 0.6,
+      }))
+    : [];
+
+  const auraLayerPages: MetadataRoute.Sitemap = auraEnabled
+    ? AURA_LAYER_SEO.map((item) => ({
+        url: `${base}/aura/sloi/${item.slug}`,
+        lastModified: now,
+        changeFrequency: "monthly" as const,
+        priority: 0.6,
+      }))
+    : [];
+
   const hdPairPages: MetadataRoute.Sitemap = HD_PAIR_SLUGS.map((pair) => ({
     url: `${base}/dizayn-cheloveka/sovmestimost/${pair}`,
     lastModified: now,
@@ -226,7 +259,15 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPage("/rasklady", 0.85),
     staticPage("/rasklad", 0.7),
     ...(photoEnabled ? [staticPage("/photo-rasklad", 0.7)] : []),
-    ...(auraEnabled ? [staticPage("/aura", 0.7)] : []),
+    ...(auraEnabled
+      ? [
+          staticPage("/aura", 0.85, "weekly"),
+          staticPage("/aura/cveta", 0.8, "weekly"),
+          staticPage("/aura/chakry", 0.75, "monthly"),
+          staticPage("/aura/sloi", 0.75, "monthly"),
+          ...AURA_INTENT_SEO.map((item) => staticPage(`/aura/${item.slug}`, 0.75, "monthly")),
+        ]
+      : []),
     ...(ritualsEnabled ? [staticPage("/obryady", 0.65)] : []),
     ...(jointEnabled ? [staticPage("/joint-reading", 0.6)] : []),
     staticPage("/numerology", 0.75),
@@ -287,6 +328,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...articlePages,
     ...lenormandCombinationPages,
     ...runeMeaningPages,
+    ...(auraEnabled ? [...auraColorPages, ...auraChakraPages, ...auraLayerPages] : []),
     ...(hdEnabled
       ? [
           ...hdTypePages,

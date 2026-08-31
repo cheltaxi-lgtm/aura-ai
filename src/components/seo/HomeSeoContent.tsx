@@ -20,6 +20,7 @@ const START_LINKS = [
   { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн человека" },
   { href: "/taro#besplatno", label: "Бесплатный расклад Таро" },
+  { href: "/aura", label: "Аура по фото" },
 ] as const;
 
 /**
@@ -47,7 +48,8 @@ export default function HomeSeoContent() {
           </p>
           <p>
             Можно выбрать готовый вопрос в каталоге, загрузить{" "}
-            <Link href="/photo-rasklad">фото домашнего расклада</Link> для расшифровки или начать с{" "}
+            <Link href="/photo-rasklad">фото домашнего расклада</Link> для расшифровки, снять{" "}
+            <Link href="/aura">ауру по фото</Link> или начать с{" "}
             <Link href="/gadanie">гадания онлайн</Link>. Есть <Link href="/lenormand">Ленорман</Link>,{" "}
             <Link href="/telegram">Telegram-бот</Link> и раздел <Link href="/faq">FAQ</Link>. Полные
             сессии и углублённые разборы — по тарифу в рунах ᚢ. Это не медицинская и не юридическая

@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 
+import Link from "next/link";
 import AuraReadingFlow from "@/components/aura/AuraReadingFlow";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
@@ -72,6 +73,46 @@ export default function AuraLandingPage() {
       <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-8">
         <AuraReadingFlow />
       </section>
+
+      <SeoSection title="Карта поля: цвета, слои, чакры" id="karta-polya">
+        <ul className="mt-3 space-y-2 text-white/70">
+          <li>
+            <Link href="/aura/cveta" className="text-aura-gold hover:underline">
+              Значение цветов ауры
+            </Link>
+            {" — "}золотой, синий, красный, дымчатый и остальные тона ядра.
+          </li>
+          <li>
+            <Link href="/aura/sloi" className="text-aura-gold hover:underline">
+              Семь слоёв по Бреннан
+            </Link>
+            {" — "}от эфирного до каузального.
+          </li>
+          <li>
+            <Link href="/aura/chakry" className="text-aura-gold hover:underline">
+              Семь чакр
+            </Link>
+            {" — "}состояние откроется в полном разборе.
+          </li>
+          <li>
+            <Link href="/aura/kak-uznat-cvet" className="text-aura-gold hover:underline">
+              Как узнать цвет ауры
+            </Link>
+            {" · "}
+            <Link href="/aura/chtenie-ili-kirlian" className="text-aura-gold hover:underline">
+              чтение или Кирлиан
+            </Link>
+            {" · "}
+            <Link href="/aura/smeshannoe-pole" className="text-aura-gold hover:underline">
+              смешанное поле
+            </Link>
+            {" · "}
+            <Link href="/aura/foto-i-chakry" className="text-aura-gold hover:underline">
+              фото и чакры
+            </Link>
+          </li>
+        </ul>
+      </SeoSection>
 
       <SeoSection title="Что вы получите" id="chto-vhodit">
         <ul className="mt-3 list-disc space-y-2 pl-5 text-white/70">

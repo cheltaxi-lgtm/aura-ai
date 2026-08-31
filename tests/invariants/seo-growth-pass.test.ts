@@ -200,6 +200,10 @@ describe("seo-growth-pass", () => {
         '"/dizayn-cheloveka/kanaly"',
         '"/dizayn-cheloveka/centry"',
         '"/photo-rasklad"',
+        '"/aura"',
+        '"/aura/cveta"',
+        '"/aura/chakry"',
+        '"/aura/sloi"',
       ]) {
         expect(sitemap, route).toContain(`staticPage(${route}`);
       }

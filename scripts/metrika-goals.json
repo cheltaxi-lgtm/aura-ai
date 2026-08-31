@@ -446,6 +446,76 @@
       "id": "memory_purged",
       "group": "memory",
       "metrikaGoalId": 591836016
+    },
+    {
+      "id": "aura_landing_view",
+      "group": "aura",
+      "metrikaGoalId": 604188531
+    },
+    {
+      "id": "aura_snapshot_start",
+      "group": "aura",
+      "metrikaGoalId": 604188532
+    },
+    {
+      "id": "aura_snapshot_complete",
+      "group": "aura",
+      "metrikaGoalId": 604188533
+    },
+    {
+      "id": "aura_auth_cta",
+      "group": "aura",
+      "metrikaGoalId": 604188534
+    },
+    {
+      "id": "aura_guest_claim_complete",
+      "group": "aura",
+      "metrikaGoalId": 604188535
+    },
+    {
+      "id": "aura_paid_cta",
+      "group": "aura",
+      "metrikaGoalId": 604188552
+    },
+    {
+      "id": "aura_seo_cta",
+      "group": "aura",
+      "metrikaGoalId": 604188553
+    },
+    {
+      "id": "aura_colors_hub_view",
+      "group": "aura",
+      "metrikaGoalId": 604188570
+    },
+    {
+      "id": "aura_color_view",
+      "group": "aura",
+      "metrikaGoalId": 604188571
+    },
+    {
+      "id": "aura_chakra_hub_view",
+      "group": "aura",
+      "metrikaGoalId": 604188573
+    },
+    {
+      "id": "aura_chakra_view",
+      "group": "aura",
+      "metrikaGoalId": 604188588
+    },
+    {
+      "id": "aura_layers_hub_view",
+      "group": "aura",
+      "metrikaGoalId": 604188591
+    },
+    {
+      "id": "aura_layer_view",
+      "group": "aura",
+      "metrikaGoalId": 604188592
+    },
+    {
+      "id": "aura_intent_view",
+      "group": "aura",
+      "metrikaGoalId": 604188593
     }
   ]
 }

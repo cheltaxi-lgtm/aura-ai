@@ -34,6 +34,13 @@ export default function AdminDashboardPage() {
         <StatCard label="Поддержка (открытых)" value={s?.supportOpen ?? "—"} accent="text-amber-300" />
         <StatCard label="Поддержка (непрочит.)" value={s?.supportUnread ?? "—"} accent="text-aura-champagne" />
       </div>
+      <p className="mt-3 text-sm text-white/45">
+        Списания и очередь по продуктам — в{" "}
+        <a href="/admin/products" className="text-aura-gold hover:underline">
+          Разделах
+        </a>
+        .
+      </p>
 
       {data?.chart && data.chart.length > 0 && (
         <div className="mt-8 glass-panel p-6">
