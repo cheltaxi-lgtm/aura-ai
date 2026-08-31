@@ -197,8 +197,55 @@
   border-radius: 50%;
 }
 
+/* ── Aura map (AuraMap): silhouette + seven layers + chakra column ── */
+
+.aura-map {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  margin: 0;
+}
+
+.aura-map__svg {
+  width: min(240px, 62vw);
+  height: auto;
+  display: block;
+}
+
+.aura-map__figure circle,
+.aura-map__figure path {
+  fill: rgba(255, 255, 255, 0.05);
+  stroke: rgba(245, 242, 234, 0.42);
+  stroke-width: 1.2;
+}
+
+.aura-map__layer {
+  animation: aura-map-pulse 7s ease-in-out infinite;
+}
+
+.aura-map__caption {
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: center;
+}
+
+@keyframes aura-map-pulse {
+  0%,
+  100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .aura-stage__halo {
+    animation: none;
+  }
+  .aura-map__layer {
     animation: none;
   }
 }

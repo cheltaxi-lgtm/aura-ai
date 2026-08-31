@@ -6,6 +6,7 @@ import { Camera, ImagePlus, Loader2, RefreshCcw, Sparkles } from "lucide-react";
 import Link from "next/link";
 
 import AuraHalo from "@/components/aura/AuraHalo";
+import AuraMap from "@/components/aura/AuraMap";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { useAuth } from "@/lib/useAuth";
@@ -554,6 +555,8 @@ export default function AuraReadingFlow() {
           >
             <AuraHalo snapshot={snapshot} photoUrl={photoUrl} veiled={step === "teaser"} />
 
+            <AuraMap snapshot={snapshot} veiled />
+
             <div className="text-center">
               <p className="text-xs uppercase tracking-[0.2em] text-aura-gold/70">
                 {AURA_VERDICT_LABELS[snapshot.verdict]}
@@ -649,6 +652,8 @@ export default function AuraReadingFlow() {
             className="space-y-6"
           >
             <AuraHalo snapshot={snapshot} photoUrl={photoUrl} />
+
+            <AuraMap snapshot={snapshot} />
 
             <div className="text-center">
               <p className="text-xs uppercase tracking-[0.2em] text-aura-gold/70">

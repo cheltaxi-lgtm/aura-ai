@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { X } from "lucide-react";
 
 import BodyPortal from "@/components/BodyPortal";
+import AuraMap from "@/components/aura/AuraMap";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import {
   AURA_VERDICT_LABELS,
@@ -167,7 +168,9 @@ export default function CabinetAuraReadings({ readings }: Props) {
                   const snapshot = snapshotOf(active);
                   if (!snapshot) return null;
                   return (
-                    <div className="mb-4 grid gap-1 sm:grid-cols-2">
+                    <div className="mb-4 space-y-4">
+                      <AuraMap snapshot={snapshot} />
+                      <div className="grid gap-1 sm:grid-cols-2">
                       <div>
                         <p className="mb-1 text-xs font-medium text-white/50">Слои поля</p>
                         {snapshot.layers.map((layer) => (
@@ -196,6 +199,7 @@ export default function CabinetAuraReadings({ readings }: Props) {
                           </div>
                         ))}
                       </div>
+                    </div>
                     </div>
                   );
                 })()}
