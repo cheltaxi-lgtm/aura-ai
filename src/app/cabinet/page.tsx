@@ -88,6 +88,9 @@ const TAB_MOTION = {
 
 const FETCH_RETRY_ATTEMPTS = 3;
 const FETCH_RETRY_DELAY_MS = 600;
+// Stable empty-list reference — `data?.x ?? []` in the component body would
+// create a new array every render and churn the filter useMemos below.
+const EMPTY_LIST: never[] = [];
 
 async function sleep(ms: number): Promise<void> {
   await new Promise((resolve) => window.setTimeout(resolve, ms));
@@ -539,9 +542,9 @@ export default function CabinetPage() {
   const achievements = data?.achievements;
   const runes = data?.runes;
   const legacyAccess = data?.legacyAccess;
-  const photoSpreads = data?.photoSpreads ?? [];
-  const auraReadings = data?.auraReadings ?? [];
-  const dailyReadings = data?.dailyReadings ?? [];
+  const photoSpreads = data?.photoSpreads ?? EMPTY_LIST;
+  const auraReadings = data?.auraReadings ?? EMPTY_LIST;
+  const dailyReadings = data?.dailyReadings ?? EMPTY_LIST;
   const runesEnabled = Boolean(runes?.enabled);
   const ritualAttentionCount =
     (ritualStats?.inProgress ?? 0) + (ritualStats?.pendingReview ?? 0);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeft, Plus, CheckCircle2, Circle, Archive, Trash2 } from "lucide-react";
 import { getSessionTopic, topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import { formatCabinetPredictionPreview, stripMarkdownText, truncate } from "@/lib/cabinet-utils";
@@ -286,7 +286,7 @@ export default function SessionList({
   const [deletingRitualId, setDeletingRitualId] = useState<string | null>(null);
   const topRef = useRef<HTMLDivElement>(null);
 
-  const fetchRituals = async () => {
+  const fetchRituals = useCallback(async () => {
     try {
       const res = await fetch(
         `/api/ritual/list?characterKey=${encodeURIComponent(masterId)}`,
@@ -299,12 +299,12 @@ export default function SessionList({
     } catch {
       /* ignore */
     }
-  };
+  }, [masterId]);
 
   useEffect(() => {
     if (!showRituals) return;
     void fetchRituals();
-  }, [masterId, showRituals]);
+  }, [fetchRituals, showRituals]);
 
   // Soft-nav from the masters salon keeps window scroll. Reset on open and
   // again after sessions/rituals paint (list growth used to leave you at the bottom).
