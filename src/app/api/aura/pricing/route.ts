@@ -3,8 +3,10 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import {
   auraReadingPricingFromSettings,
+  hasTodaysUnrefundedAuraSpend,
   resolveAuraReadingPricing,
 } from "@/lib/aura-reading-billing";
+import { findTodaysPaidAuraReport } from "@/lib/aura-reading-persist";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { isAuraReadingEnabled } from "@/lib/settings";
 
@@ -20,6 +22,9 @@ export async function GET() {
     return NextResponse.json({
       ...pricing,
       isLoggedIn: false,
+      todayPaid: false,
+      todayHistoryId: null,
+      todaySnapshotId: null,
     });
   }
 
@@ -28,14 +33,30 @@ export async function GET() {
     const settings = await getRuneSettings();
     const pricing = auraReadingPricingFromSettings(0, settings);
     return NextResponse.json(
-      { ...pricing, isLoggedIn: true },
+      {
+        ...pricing,
+        isLoggedIn: true,
+        todayPaid: false,
+        todayHistoryId: null,
+        todaySnapshotId: null,
+      },
       { headers: { "Cache-Control": "no-store" } }
     );
   }
 
-  const pricing = await resolveAuraReadingPricing(profileUserId);
+  const [pricing, todays, spentToday] = await Promise.all([
+    resolveAuraReadingPricing(profileUserId),
+    findTodaysPaidAuraReport(profileUserId),
+    hasTodaysUnrefundedAuraSpend(profileUserId),
+  ]);
   return NextResponse.json(
-    { ...pricing, isLoggedIn: true },
+    {
+      ...pricing,
+      isLoggedIn: true,
+      todayPaid: Boolean(todays) || spentToday,
+      todayHistoryId: todays?.historyId ?? null,
+      todaySnapshotId: todays?.snapshotId ?? null,
+    },
     { headers: { "Cache-Control": "no-store" } }
   );
 }

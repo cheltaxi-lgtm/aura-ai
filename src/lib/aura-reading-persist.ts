@@ -1,6 +1,67 @@
 import { ensureDb, query } from "@/lib/db";
 import { createHistoryEntry } from "@/lib/users";
 import type { AuraSnapshot } from "@/lib/aura-constants";
+import { AURA_DAY_TIMEZONE } from "@/lib/services/aura-guest-service";
+
+const AURA_TODAY_SQL = `(created_at AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date = (NOW() AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date`;
+
+export function auraCalendarDayKey(at = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: AURA_DAY_TIMEZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(at);
+}
+
+export type TodaysPaidAuraReport = {
+  historyId: string;
+  snapshotId: string | null;
+  snapshot: AuraSnapshot | null;
+  report: string;
+  firstAuraDiscount: boolean;
+};
+
+/** Finished paid/full report written today (Moscow day) — any snapshot. */
+export async function findTodaysPaidAuraReport(
+  userId: string
+): Promise<TodaysPaidAuraReport | null> {
+  if (!(await ensureDb())) return null;
+  const { rows } = await query<{
+    id: string;
+    context_data: Record<string, unknown>;
+  }>(
+    `SELECT id, context_data
+     FROM history
+     WHERE user_id = $1
+       AND context_data->>'type' = 'aura_reading'
+       AND coalesce(context_data->>'report', '') <> ''
+       AND ${AURA_TODAY_SQL}
+     ORDER BY created_at DESC
+     LIMIT 1`,
+    [userId]
+  );
+  const row = rows[0];
+  if (!row) return null;
+  const ctx = row.context_data;
+  const report = typeof ctx.report === "string" ? ctx.report : "";
+  if (!report.trim()) return null;
+  const snapshot =
+    ctx.snapshot && typeof ctx.snapshot === "object" && !Array.isArray(ctx.snapshot)
+      ? (ctx.snapshot as AuraSnapshot)
+      : null;
+  const snapshotId =
+    typeof ctx.auraSnapshotId === "string" && /^[0-9a-f-]{36}$/i.test(ctx.auraSnapshotId)
+      ? ctx.auraSnapshotId
+      : null;
+  return {
+    historyId: row.id,
+    snapshotId,
+    snapshot,
+    report,
+    firstAuraDiscount: ctx.firstAuraDiscount === true,
+  };
+}
 
 export async function persistAuraReadingResult(params: {
   profileUserId: string;

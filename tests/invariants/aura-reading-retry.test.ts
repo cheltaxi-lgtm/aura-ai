@@ -44,7 +44,11 @@ describe("aura-reading-retry", () => {
     expect(ownershipIdx).toBeGreaterThan(-1);
     expect(enqueueIdx).toBeGreaterThan(-1);
     expect(ownershipIdx).toBeLessThan(enqueueIdx);
-    expect(route).toContain("withAuraReadingLock(profileUserId, snapshotId");
+    expect(route).toContain("withAuraReadingLock(profileUserId, `day:${auraCalendarDayKey()}`");
+    expect(route).toContain("findTodaysPaidAuraReport");
+    expect(route).toContain("listTodaysUnrefundedAuraSpends");
+    expect(route).toContain("auraSpendBelongsToSnapshot");
+    expect(route).toContain("ALREADY_PAID_TODAY");
   });
 
   it("teaser and claim return only the pre-payment subset", () => {

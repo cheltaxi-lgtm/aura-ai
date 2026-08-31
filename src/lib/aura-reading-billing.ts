@@ -1,6 +1,9 @@
 import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { query } from "@/lib/db";
+import { AURA_DAY_TIMEZONE } from "@/lib/services/aura-guest-service";
+
+const AURA_TODAY_SQL = `(created_at AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date = (NOW() AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date`;
 
 /** 50% off the first completed aura reading for a user. */
 export const FIRST_AURA_DISCOUNT_RATIO = 0.5;
@@ -91,4 +94,47 @@ export async function getAuraChargeReuseState(
   const row = rows[0];
   if (!row) return null;
   return { amount: Number.parseInt(row.amount, 10) || 0, refunded: row.refunded };
+}
+
+/**
+ * A held (not refunded) AURA_READING spend today — even if the history row
+ * was deleted. Blocks a second charge until the next Moscow calendar day.
+ */
+export async function listTodaysUnrefundedAuraSpends(userId: string): Promise<
+  { transactionId: string; idempotencyKey: string | null }[]
+> {
+  const { rows } = await query<{ id: string; idempotency_key: string | null }>(
+    `SELECT t.id, t.idempotency_key
+     FROM rune_transactions t
+     WHERE t.user_id = $1
+       AND t.type = 'spend'
+       AND t.action_type = 'AURA_READING'
+       AND ${AURA_TODAY_SQL}
+       AND NOT EXISTS (
+         SELECT 1 FROM rune_transactions rf
+         WHERE rf.type = 'refund' AND rf.refund_of_transaction_id = t.id
+       )`,
+    [userId]
+  );
+  return rows.map((row) => ({
+    transactionId: row.id,
+    idempotencyKey: row.idempotency_key,
+  }));
+}
+
+export async function hasTodaysUnrefundedAuraSpend(userId: string): Promise<boolean> {
+  return (await listTodaysUnrefundedAuraSpends(userId)).length > 0;
+}
+
+/** Held spend for this snapshot (stable key or per-attempt retry key). */
+export function auraSpendBelongsToSnapshot(
+  spends: { idempotencyKey: string | null }[],
+  snapshotId: string
+): boolean {
+  const exact = `aura-reading:${snapshotId}`;
+  const prefix = `${exact}:`;
+  return spends.some((s) => {
+    const key = s.idempotencyKey ?? "";
+    return key === exact || key.startsWith(prefix);
+  });
 }

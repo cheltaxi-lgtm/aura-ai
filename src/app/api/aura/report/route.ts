@@ -30,12 +30,16 @@ import {
 import { isAuraReadingEnabled } from "@/lib/settings";
 import { getClaimedAuraSnapshot } from "@/lib/services/aura-guest-service";
 import {
+  auraSpendBelongsToSnapshot,
   getAuraChargeReuseState,
+  listTodaysUnrefundedAuraSpends,
   resolveAuraReadingPricing,
 } from "@/lib/aura-reading-billing";
 import { generateAuraFullReport } from "@/lib/aura-reading-prompts";
 import {
+  auraCalendarDayKey,
   findAuraReadingEntry,
+  findTodaysPaidAuraReport,
   persistAuraReadingResult,
   withAuraReadingLock,
 } from "@/lib/aura-reading-persist";
@@ -149,6 +153,40 @@ export async function POST(request: NextRequest) {
     );
   }
 
+  const todaysPaid = await findTodaysPaidAuraReport(profileUserId);
+  if (todaysPaid) {
+    const payload = auraReportPayload({
+      report: todaysPaid.report,
+      snapshot: todaysPaid.snapshot ?? snapshot,
+      snapshotId: todaysPaid.snapshotId ?? snapshotId,
+      historyId: todaysPaid.historyId,
+      firstAuraDiscount: todaysPaid.firstAuraDiscount,
+      cached: true,
+    });
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
+  }
+
+  const unlimitedEarly = await resolveUnlimitedAccess({ accountId, profileUserId });
+  const runeSettingsEarly = await getRuneSettings();
+  const billingOn = isRuneBillingActive(profileUserId, unlimitedEarly, runeSettingsEarly);
+  const earlySpends = billingOn ? await listTodaysUnrefundedAuraSpends(profileUserId) : [];
+  if (
+    billingOn &&
+    earlySpends.length > 0 &&
+    !auraSpendBelongsToSnapshot(earlySpends, snapshotId)
+  ) {
+    return NextResponse.json(
+      {
+        error: "ALREADY_PAID_TODAY",
+        code: "ALREADY_PAID_TODAY",
+        message:
+          "Разбор на сегодня уже оплачен. Новый будет доступен завтра — руны не спишутся повторно.",
+      },
+      { status: 409 }
+    );
+  }
+
   if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
     return enqueuePaidAsyncJob({
       userId: profileUserId,
@@ -163,7 +201,7 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return withAuraReadingLock(profileUserId, snapshotId, async () => {
+  return withAuraReadingLock(profileUserId, `day:${auraCalendarDayKey()}`, async () => {
   const unlimited = await resolveUnlimitedAccess({ accountId, profileUserId });
   const runeSettings = await getRuneSettings();
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
@@ -187,6 +225,40 @@ export async function POST(request: NextRequest) {
     });
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
+  }
+
+  const todaysInsideLock = await findTodaysPaidAuraReport(profileUserId);
+  if (todaysInsideLock) {
+    const payload = auraReportPayload({
+      report: todaysInsideLock.report,
+      snapshot: todaysInsideLock.snapshot ?? snapshot,
+      snapshotId: todaysInsideLock.snapshotId ?? snapshotId,
+      historyId: todaysInsideLock.historyId,
+      runeBalance,
+      firstAuraDiscount: todaysInsideLock.firstAuraDiscount,
+      cached: true,
+    });
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
+  }
+
+  const spendsInside = useRuneBilling
+    ? await listTodaysUnrefundedAuraSpends(profileUserId)
+    : [];
+  if (
+    useRuneBilling &&
+    spendsInside.length > 0 &&
+    !auraSpendBelongsToSnapshot(spendsInside, snapshotId)
+  ) {
+    return NextResponse.json(
+      {
+        error: "ALREADY_PAID_TODAY",
+        code: "ALREADY_PAID_TODAY",
+        message:
+          "Разбор на сегодня уже оплачен. Новый будет доступен завтра — руны не спишутся повторно.",
+      },
+      { status: 409 }
+    );
   }
 
   if (useRuneBilling) {

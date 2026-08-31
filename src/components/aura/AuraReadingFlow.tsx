@@ -38,6 +38,9 @@ type AuraPricing = {
   baseCost: number;
   effectiveCost: number;
   firstAuraDiscount: boolean;
+  todayPaid?: boolean;
+  todayHistoryId?: string | null;
+  todaySnapshotId?: string | null;
 };
 
 /** Teaser subset pre-payment; layers/chakras arrive with the paid report. */
@@ -139,6 +142,10 @@ export default function AuraReadingFlow() {
             baseCost: data.baseCost,
             effectiveCost: data.effectiveCost,
             firstAuraDiscount: data.firstAuraDiscount === true,
+            todayPaid: data.todayPaid === true,
+            todayHistoryId: typeof data.todayHistoryId === "string" ? data.todayHistoryId : null,
+            todaySnapshotId:
+              typeof data.todaySnapshotId === "string" ? data.todaySnapshotId : null,
           });
         }
       })
@@ -511,6 +518,15 @@ export default function AuraReadingFlow() {
             if (typeof data.result.runeBalance === "number") {
               setRuneBalance(data.result.runeBalance);
             }
+            setPricing((prev) =>
+              prev
+                ? {
+                    ...prev,
+                    todayPaid: true,
+                    todayHistoryId: data.result.historyId ?? prev.todayHistoryId,
+                  }
+                : prev
+            );
             setStep("report");
             return;
           }
@@ -556,6 +572,28 @@ export default function AuraReadingFlow() {
         window.location.assign(buildLoginHref("/aura"));
         return;
       }
+      if (res.status === 409 && data?.code === "ALREADY_PAID_TODAY") {
+        setPricing((prev) => (prev ? { ...prev, todayPaid: true } : prev));
+        setError(
+          typeof data.message === "string"
+            ? data.message
+            : "Разбор на сегодня уже оплачен. Новый будет доступен завтра."
+        );
+        if (pricing?.todayHistoryId || pricing?.todaySnapshotId) {
+          void openPast({
+            snapshotId: pricing.todaySnapshotId ?? null,
+            historyId: pricing.todayHistoryId ?? null,
+            paid: true,
+            createdAt: new Date().toISOString(),
+            dominantColor: null,
+            verdict: null,
+            teaser: null,
+          });
+          return;
+        }
+        setStep("claimed");
+        return;
+      }
       if (!res.ok) {
         setError(data?.message ?? data?.error ?? "Не удалось запустить разбор. Попробуйте ещё раз.");
         setStep("claimed");
@@ -569,6 +607,9 @@ export default function AuraReadingFlow() {
           setSnapshot(data.snapshot as AuraSnapshot);
         }
         if (typeof data.runeBalance === "number") setRuneBalance(data.runeBalance);
+        setPricing((prev) =>
+          prev ? { ...prev, todayPaid: true, todayHistoryId: data.historyId ?? prev.todayHistoryId } : prev
+        );
         setStep("report");
         return;
       }
@@ -582,7 +623,7 @@ export default function AuraReadingFlow() {
       setError("Ошибка сети. Попробуйте ещё раз.");
       setStep("claimed");
     }
-  }, [snapshotId, pollJob]);
+  }, [snapshotId, pollJob, pricing, openPast]);
 
   const blockedByRunes =
     isLoggedIn &&
@@ -671,8 +712,8 @@ export default function AuraReadingFlow() {
                 </div>
                 <p className="text-center text-sm text-white/60">
                   Портрет крупным планом, при ровном свете. Фото не сохраняется — только
-                  цвета и состояния поля. Один снимок на день: повтор откроет тот же
-                  результат, ядро не прыгает от кадра к кадру.
+                  цвета и состояния поля. Один снимок и один полный разбор на день:
+                  повтор откроет то же самое, руны повторно не спишутся.
                 </p>
                 <div className="flex flex-col justify-center gap-3 sm:flex-row">
                   <button
@@ -860,13 +901,47 @@ export default function AuraReadingFlow() {
               </div>
             ) : (
               <div className="space-y-3 text-center">
-                {pricing?.firstAuraDiscount && (
-                  <p className="text-sm text-aura-gold/90">
-                    Первый разбор со скидкой 50% — {formatRunes(auraCost)} вместо{" "}
-                    {formatRunes(auraBaseCost)}
+                {pricing?.todayPaid ? (
+                  <p className="text-sm text-white/60">
+                    Разбор на сегодня уже готов. Повторно руны не спишутся — новый снимок
+                    завтра.
                   </p>
+                ) : (
+                  <>
+                    {pricing?.firstAuraDiscount && (
+                      <p className="text-sm text-aura-gold/90">
+                        Первый разбор со скидкой 50% — {formatRunes(auraCost)} вместо{" "}
+                        {formatRunes(auraBaseCost)}
+                      </p>
+                    )}
+                    <p className="text-sm text-white/55">
+                      Полный разбор — один на день. Повтор сегодня откроет тот же текст,
+                      руны не спишутся.
+                    </p>
+                  </>
                 )}
-                {blockedByRunes ? (
+                {pricing?.todayPaid && (pricing.todayHistoryId || pricing.todaySnapshotId) ? (
+                  <button
+                    type="button"
+                    disabled={openingPast}
+                    onClick={() =>
+                      void openPast({
+                        snapshotId: pricing.todaySnapshotId ?? null,
+                        historyId: pricing.todayHistoryId ?? null,
+                        paid: true,
+                        createdAt: new Date().toISOString(),
+                        dominantColor: snapshot?.dominantColor ?? null,
+                        verdict: snapshot?.verdict ?? null,
+                        teaser: snapshot?.teaser ?? null,
+                      })
+                    }
+                    className="btn-luxe btn-luxe--md btn-luxe--gold"
+                  >
+                    {openingPast ? "Открываю…" : "Разбор на сегодня готов"}
+                  </button>
+                ) : pricing?.todayPaid ? (
+                  <p className="text-sm text-white/50">Новый разбор будет доступен завтра.</p>
+                ) : blockedByRunes ? (
                   <div className="space-y-2">
                     <p className="text-sm text-white/60">
                       Не хватает рун: нужно {formatRunes(auraCost)}, у вас{" "}

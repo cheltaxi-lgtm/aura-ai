@@ -14,6 +14,7 @@ import {
   AURA_DAY_TIMEZONE,
   lockAuraCoreIfRecent,
 } from "@/lib/services/aura-guest-service";
+import { auraSpendBelongsToSnapshot } from "@/lib/aura-reading-billing";
 import type { AuraSnapshot } from "@/lib/aura-constants";
 import { AURA_COLORS } from "@/lib/aura-constants";
 
@@ -74,6 +75,35 @@ describe("aura-stability", () => {
     expect(prompts).toContain("previous?: AuraSnapshot");
     expect(teaser).toContain("previous: previous?.snapshot");
     expect(prompts).toContain("Ядро ауры стабильно");
+  });
+
+  it("held spend for this snapshot is reused, a different snapshot is blocked", () => {
+    const mine = "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee";
+    const other = "11111111-2222-3333-4444-555555555555";
+    expect(
+      auraSpendBelongsToSnapshot([{ idempotencyKey: `aura-reading:${mine}` }], mine)
+    ).toBe(true);
+    expect(
+      auraSpendBelongsToSnapshot(
+        [{ idempotencyKey: `aura-reading:${mine}:${other}` }],
+        mine
+      )
+    ).toBe(true);
+    expect(
+      auraSpendBelongsToSnapshot([{ idempotencyKey: `aura-reading:${other}` }], mine)
+    ).toBe(false);
+  });
+
+  it("paid report is one per Moscow day even after a new snapshot", () => {
+    const report = read("src/app/api/aura/report/route.ts");
+    const pricing = read("src/app/api/aura/pricing/route.ts");
+    const flow = read("src/components/aura/AuraReadingFlow.tsx");
+    expect(report).toContain("findTodaysPaidAuraReport");
+    expect(report).toContain("listTodaysUnrefundedAuraSpends");
+    expect(report).toContain("auraSpendBelongsToSnapshot");
+    expect(pricing).toContain("todayPaid");
+    expect(flow).toContain("Разбор на сегодня готов");
+    expect(flow).toContain("руны не спишутся");
   });
 
   it("teaser never persists the original photo", () => {
