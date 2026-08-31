@@ -1,6 +1,5 @@
 import Link from "next/link";
 import { SeoSection } from "@/components/seo/SeoPageShell";
-import { isAuraReadingEnabled } from "@/lib/settings";
 
 const DEFAULT_LINKS = [
   { href: "/photo-rasklad", label: "Расшифровка по фото" },
@@ -34,16 +33,13 @@ type SeoRelatedToolsProps = {
 };
 
 /** Crawlable “related tools” block for SEO hubs. */
-export default async function SeoRelatedTools({
+export default function SeoRelatedTools({
   title = "Также на Zovus",
   links = [...DEFAULT_LINKS],
   extraLinks = [],
   excludeHrefs = [],
 }: SeoRelatedToolsProps) {
-  // /aura 404s while the module kill-switch is off — never link to it.
-  const auraEnabled = await isAuraReadingEnabled();
   const exclude = new Set(excludeHrefs);
-  if (!auraEnabled) exclude.add("/aura");
   const seen = new Set<string>();
   const items: RelatedLink[] = [];
   for (const item of [...links, ...extraLinks]) {

@@ -8,8 +8,6 @@ import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { BRAND_NAME } from "@/lib/brand";
 import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
-import { isAuraReadingEnabled } from "@/lib/settings";
-import { notFound } from "next/navigation";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Аура по фото онлайн — цвета, слои поля и чакры | ${BRAND_NAME}`,
@@ -37,11 +35,7 @@ const FAQ = [
   },
 ];
 
-export default async function AuraLandingPage() {
-  if (!(await isAuraReadingEnabled())) {
-    notFound();
-  }
-
+export default function AuraLandingPage() {
   const cost = DEFAULT_RUNE_COSTS.AURA_READING;
   const label = RUNE_ACTION_LABELS.AURA_READING;
 

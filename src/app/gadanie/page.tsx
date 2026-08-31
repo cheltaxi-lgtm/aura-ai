@@ -7,7 +7,6 @@ import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
-import { isAuraReadingEnabled } from "@/lib/settings";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Гадание онлайн бесплатно — Таро, руны, нумерология",
@@ -34,7 +33,6 @@ const METHODS = [
     text: "Цвета вашего поля, семь слоёв и чакры по портрету — символическое чтение с мастером.",
     href: "/aura",
     cta: "Узнать свою ауру",
-    feature: "aura",
   },
   {
     title: "Гадание на рунах",
@@ -87,9 +85,7 @@ const faq = [
   },
 ];
 
-export default async function GadaniePage() {
-  const auraEnabled = await isAuraReadingEnabled();
-  const methods = METHODS.filter((m) => !("feature" in m && m.feature === "aura") || auraEnabled);
+export default function GadaniePage() {
   const structuredData = buildForecastStructuredData({
     title: "Гадание онлайн бесплатно",
     description:
@@ -117,7 +113,7 @@ export default async function GadaniePage() {
 
       <SeoSection title="Выберите способ">
         <div className="grid gap-3 sm:grid-cols-2">
-          {methods.map((m) => (
+          {METHODS.map((m) => (
             <Link
               key={m.href}
               href={m.href}
