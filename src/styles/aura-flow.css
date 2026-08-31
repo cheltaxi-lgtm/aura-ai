@@ -300,6 +300,10 @@
   background: rgba(255, 255, 255, 0.05);
 }
 
+.aura-past__open:disabled {
+  opacity: 0.6;
+}
+
 .aura-past__meta {
   flex: 1;
   min-width: 0;
@@ -340,7 +344,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-width: 2.5rem;
+  min-width: 2.75rem;
   border: 1px solid rgba(255, 255, 255, 0.1);
   border-radius: 0.875rem;
   color: rgba(255, 255, 255, 0.4);

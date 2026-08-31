@@ -46,10 +46,20 @@ export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[
   if (!(await ensureDb())) return [];
 
   const [paid, pending] = await Promise.all([
-    query<{ id: string; created_at: Date | string; context_data: Record<string, unknown> }>(
-      `SELECT id, created_at, context_data
-       FROM history
-       WHERE user_id = $1 AND context_data->>'type' = 'aura_reading'
+    query<{
+      id: string;
+      created_at: Date | string;
+      report_created_at: Date | string;
+      context_data: Record<string, unknown>;
+    }>(
+      `SELECT h.id,
+              COALESCE(s.created_at, h.created_at) AS created_at,
+              h.created_at AS report_created_at,
+              h.context_data
+       FROM history h
+       LEFT JOIN aura_guest_snapshots s
+         ON s.id::text = h.context_data->>'auraSnapshotId'
+       WHERE h.user_id = $1 AND h.context_data->>'type' = 'aura_reading'
        ORDER BY created_at DESC
        LIMIT 50`,
       [userId]
@@ -82,7 +92,7 @@ export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[
       historyId: row.id,
       paid: true,
       createdAt: isoOf(row.created_at),
-      reportAt: report ? isoOf(row.created_at) : null,
+      reportAt: report ? isoOf(row.report_created_at) : null,
       snapshot,
       report,
     });
@@ -119,11 +129,17 @@ export async function getAuraArchiveEntry(
   const historyHit = await query<{
     id: string;
     created_at: Date | string;
+    report_created_at: Date | string;
     context_data: Record<string, unknown>;
   }>(
-    `SELECT id, created_at, context_data
-     FROM history
-     WHERE id = $1 AND user_id = $2 AND context_data->>'type' = 'aura_reading'
+    `SELECT h.id,
+            COALESCE(s.created_at, h.created_at) AS created_at,
+            h.created_at AS report_created_at,
+            h.context_data
+     FROM history h
+     LEFT JOIN aura_guest_snapshots s
+       ON s.id::text = h.context_data->>'auraSnapshotId'
+     WHERE h.id = $1 AND h.user_id = $2 AND h.context_data->>'type' = 'aura_reading'
      LIMIT 1`,
     [id, userId]
   );
@@ -138,7 +154,7 @@ export async function getAuraArchiveEntry(
       historyId: historyRow.id,
       paid: true,
       createdAt: isoOf(historyRow.created_at),
-      reportAt: report ? isoOf(historyRow.created_at) : null,
+      reportAt: report ? isoOf(historyRow.report_created_at) : null,
       snapshot,
       report,
     };

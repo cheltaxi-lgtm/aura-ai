@@ -224,6 +224,7 @@ export default function AuraReadingFlow() {
       setSnapshot(entry.snapshot as FlowSnapshot);
       setSnapshotId(typeof entry.snapshotId === "string" ? entry.snapshotId : null);
       setReport(typeof entry.report === "string" ? entry.report : null);
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
       setPhotoUrl(null);
       setStep(entry.report ? "report" : "claimed");
     } catch {
@@ -231,7 +232,7 @@ export default function AuraReadingFlow() {
     } finally {
       setOpeningPast(false);
     }
-  }, []);
+  }, [photoUrl]);
 
   const deletePast = useCallback(
     async (item: AuraPastItem) => {
@@ -245,10 +246,9 @@ export default function AuraReadingFlow() {
           credentials: "include",
         });
         if (!res.ok) throw new Error("delete failed");
+        const deletedId = item.snapshotId ?? item.historyId;
         setPastReadings((prev) =>
-          (prev ?? []).filter(
-            (p) => p.snapshotId !== item.snapshotId && p.historyId !== item.historyId
-          )
+          (prev ?? []).filter((p) => (p.snapshotId ?? p.historyId) !== deletedId)
         );
         // If the deleted aura is currently loaded in the flow, reset the view.
         if (item.snapshotId && item.snapshotId === snapshotId) {

@@ -7,6 +7,7 @@ import { syncRetroactiveAchievements } from "@/lib/achievements";
 import { pruneDuplicateActiveSessions, pruneEmptySessionStubs } from "@/lib/session";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
+import { isAuraReadingEnabled } from "@/lib/settings";
 import {  getCabinetProfile,
     getCabinetStats,
     getCabinetAchievements,
@@ -161,7 +162,11 @@ export async function GET(request: NextRequest) {
     ),
     safe("legacyAccess", () => getCabinetLegacyAccess(profileUserId), null, errors),
     safe("photoSpreads", () => getCabinetPhotoSpreads(profileUserId), [], errors),
-    safe("auraReadings", () => getCabinetAuraReadings(profileUserId), [], errors),
+    safe("auraReadings", async () => {
+      // Kill-switch parity with /api/aura/*: disabled module ships no aura data.
+      if (!(await isAuraReadingEnabled())) return [];
+      return getCabinetAuraReadings(profileUserId);
+    }, [], errors),
     safe("dailyReadings", () => getCabinetDailyReadings(profileUserId), [], errors),
   ]);
 

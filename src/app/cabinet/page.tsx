@@ -596,15 +596,17 @@ export default function CabinetPage() {
     aura: historyTypeFilter === "all" || historyTypeFilter === "aura",
     daily: historyTypeFilter === "all" || historyTypeFilter === "daily",
   };
-  // The sessions section renders its own empty/filtered-out messaging and the
-  // joint section hides itself when empty — the global empty state is only for
-  // the self-hiding sections (photo/aura/daily) when filtered down to nothing.
+  // The sessions section renders its own empty/filtered-out messaging; the
+  // joint section hides itself when empty and is not searchable — the global
+  // empty state covers self-hiding sections (photo/aura/daily) filtered down
+  // to nothing, and the joint filter while a query is active.
   const historyShowGlobalEmpty =
-    !historySections.sessions &&
-    historyTypeFilter !== "joint" &&
-    ((historySections.photo && photoSpreadsFiltered.length === 0) ||
-      (historySections.aura && auraReadingsFiltered.length === 0) ||
-      (historySections.daily && dailyReadingsFiltered.length === 0));
+    (historyTypeFilter === "joint" && Boolean(historyQuery)) ||
+    (!historySections.sessions &&
+      historyTypeFilter !== "joint" &&
+      ((historySections.photo && photoSpreadsFiltered.length === 0) ||
+        (historySections.aura && auraReadingsFiltered.length === 0) ||
+        (historySections.daily && dailyReadingsFiltered.length === 0)));
 
   const openRitual = (id: string, characterKey: RitualMasterKey) => {
     setRitualFlowMaster(characterKey);
@@ -767,7 +769,8 @@ export default function CabinetPage() {
                 }
               />
             )}
-            {historySections.photo && (
+            {historySections.photo &&
+              (photoSpreadsFiltered.length > 0 || !historyQuery) && (
               <CabinetPhotoSpreads
                 spreads={photoSpreadsFiltered}
                 onDelete={(id) => void handleDeletePhotoSpread(id)}
