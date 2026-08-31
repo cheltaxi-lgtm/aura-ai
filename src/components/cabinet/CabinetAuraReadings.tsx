@@ -193,58 +193,12 @@ export default function CabinetAuraReadings({ readings, onDelete, deletingId = n
                   </button>
                 </div>
 
-                {active.contextData.dominantColor && (
-                  <div className="mb-4 flex flex-wrap gap-2">
-                    {[active.contextData.dominantColor, ...(active.contextData.secondaryColors ?? [])].map(
-                      (color) => (
-                        <span key={color.key} className="aura-color-chip">
-                          <span
-                            className="aura-color-chip__dot"
-                            style={{ backgroundColor: color.hex, color: color.hex }}
-                          />
-                          {color.name}
-                        </span>
-                      )
-                    )}
-                  </div>
-                )}
-
                 {(() => {
                   const snapshot = snapshotOf(active);
                   if (!snapshot) return null;
                   return (
-                    <div className="mb-4 space-y-4">
-                      <AuraMap snapshot={snapshot} />
-                      <div className="grid gap-1 sm:grid-cols-2">
-                      <div>
-                        <p className="mb-1 text-xs font-medium text-white/50">Слои поля</p>
-                        {snapshot.layers.map((layer) => (
-                          <div key={layer.key} className="aura-layer-row">
-                            <span className="aura-row__name">{layer.name}</span>
-                            <span className="aura-row__state">{layer.state}</span>
-                          </div>
-                        ))}
-                      </div>
-                      <div>
-                        <p className="mb-1 text-xs font-medium text-white/50">Чакры</p>
-                        {snapshot.chakras.map((chakra) => (
-                          <div key={chakra.key} className="aura-chakra-row">
-                            <span
-                              className="aura-chakra-dot"
-                              style={{ backgroundColor: chakra.color, color: chakra.color }}
-                            />
-                            <span className="aura-row__name">{chakra.name}</span>
-                            <span className="aura-row__state">
-                              {chakra.openness === "open"
-                                ? "открыта"
-                                : chakra.openness === "blocked"
-                                  ? "закрыта"
-                                  : "в балансе"}
-                            </span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    <div className="mb-4">
+                      <AuraMap snapshot={snapshot} veiled={!active.paid} />
                     </div>
                   );
                 })()}

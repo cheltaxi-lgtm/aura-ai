@@ -6,7 +6,7 @@ import type { AuraSnapshot } from "@/lib/aura-constants";
 type AuraHaloProps = {
   /** Teaser subset is enough — only the palette is used. */
   snapshot: Pick<AuraSnapshot, "dominantColor" | "secondaryColors">;
-  /** Object URL of the in-memory photo. When absent, an abstract plate is shown. */
+  /** In-memory object URL. Without it the halo is omitted — we never store photos. */
   photoUrl?: string | null;
   /** Blur the photo (teaser state before payment). */
   veiled?: boolean;
@@ -29,21 +29,18 @@ function cssVarColors(snapshot: AuraHaloProps["snapshot"]): Record<string, strin
  */
 export default function AuraHalo({ snapshot, photoUrl, veiled = false }: AuraHaloProps) {
   const colors = useMemo(() => cssVarColors(snapshot), [snapshot]);
+  if (!photoUrl) return null;
 
   return (
     <div className="aura-stage" style={colors}>
       <div className="aura-stage__halo" aria-hidden />
       <div className="aura-stage__halo aura-stage__halo--outer" aria-hidden />
-      {photoUrl ? (
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={photoUrl}
-          alt="Ваш портрет с аурой"
-          className={`aura-stage__photo${veiled ? " aura-stage__photo--veiled" : ""}`}
-        />
-      ) : (
-        <div className="aura-stage__plate" role="img" aria-label="Пластина вашей ауры" />
-      )}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={photoUrl}
+        alt="Ваш портрет с аурой"
+        className={`aura-stage__photo${veiled ? " aura-stage__photo--veiled" : ""}`}
+      />
     </div>
   );
 }

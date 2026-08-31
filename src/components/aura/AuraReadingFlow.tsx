@@ -631,10 +631,6 @@ export default function AuraReadingFlow() {
     runeBalance !== null &&
     !canAffordRunes({ enabled: config.enabled, balance: runeBalance, cost: auraCost });
 
-  const palette = snapshot
-    ? [snapshot.dominantColor, ...snapshot.secondaryColors]
-    : [];
-
   return (
     <div className="aura-flow mx-auto w-full max-w-xl">
       <input
@@ -844,26 +840,15 @@ export default function AuraReadingFlow() {
             transition={{ duration: 0.3 }}
             className="space-y-6"
           >
-            <AuraHalo snapshot={snapshot} photoUrl={photoUrl} veiled={step === "teaser"} />
+            {photoUrl ? (
+              <AuraHalo snapshot={snapshot} photoUrl={photoUrl} veiled={step === "teaser"} />
+            ) : null}
 
             <AuraMap snapshot={snapshot} veiled />
 
-            <div className="text-center">
-              <p className="text-xs uppercase tracking-[0.2em] text-aura-gold/70">
-                {AURA_VERDICT_LABELS[snapshot.verdict]}
-              </p>
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {palette.map((color) => (
-                  <span key={color.key} className="aura-color-chip">
-                    <span
-                      className="aura-color-chip__dot"
-                      style={{ backgroundColor: color.hex, color: color.hex }}
-                    />
-                    {color.name}
-                  </span>
-                ))}
-              </div>
-            </div>
+            <p className="text-center text-xs uppercase tracking-[0.2em] text-aura-gold/70">
+              {AURA_VERDICT_LABELS[snapshot.verdict]}
+            </p>
 
             <p className="text-center text-[15px] leading-relaxed text-white/80">
               {snapshot.teaser}
@@ -984,59 +969,16 @@ export default function AuraReadingFlow() {
             transition={{ duration: 0.3 }}
             className="space-y-6"
           >
-            <AuraHalo snapshot={snapshot} photoUrl={photoUrl} />
+            {photoUrl ? <AuraHalo snapshot={snapshot} photoUrl={photoUrl} /> : null}
 
             <AuraMap snapshot={snapshot} />
 
-            <div className="text-center">
-              <p className="text-xs uppercase tracking-[0.2em] text-aura-gold/70">
-                {AURA_VERDICT_LABELS[snapshot.verdict]}
-              </p>
-              <div className="mt-3 flex flex-wrap justify-center gap-2">
-                {palette.map((color) => (
-                  <span key={color.key} className="aura-color-chip">
-                    <span
-                      className="aura-color-chip__dot"
-                      style={{ backgroundColor: color.hex, color: color.hex }}
-                    />
-                    {color.name}
-                  </span>
-                ))}
-              </div>
-            </div>
+            <p className="text-center text-xs uppercase tracking-[0.2em] text-aura-gold/70">
+              {AURA_VERDICT_LABELS[snapshot.verdict]}
+            </p>
 
             <div className="photo-flow-panel">
               <PremiumReadingBody content={report} className="text-sm text-white/85" />
-            </div>
-
-            <div className="space-y-3 text-center">
-              <div className="flex flex-wrap justify-center gap-2">
-                {(snapshot.layers ?? []).slice(0, 7).map((layer) => (
-                  <div key={layer.key} className="aura-layer-row w-full">
-                    <span className="aura-row__name">{layer.name}</span>
-                    <span className="aura-row__state">{layer.state}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="pt-2 text-left">
-                {(snapshot.chakras ?? []).map((chakra) => (
-                  <div key={chakra.key} className="aura-chakra-row">
-                    <span
-                      className="aura-chakra-dot"
-                      style={{ backgroundColor: chakra.color, color: chakra.color }}
-                    />
-                    <span className="aura-row__name">{chakra.name}</span>
-                    <span className="aura-row__state">
-                      {chakra.openness === "open"
-                        ? "открыта"
-                        : chakra.openness === "blocked"
-                          ? "закрыта"
-                          : "в балансе"}
-                      {chakra.note ? ` — ${chakra.note}` : ""}
-                    </span>
-                  </div>
-                ))}
-              </div>
             </div>
 
             <div className="flex flex-col items-center gap-3 pt-2">

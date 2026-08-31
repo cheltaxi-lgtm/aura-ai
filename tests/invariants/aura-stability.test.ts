@@ -106,6 +106,20 @@ describe("aura-stability", () => {
     expect(flow).toContain("руны не спишутся");
   });
 
+  it("saved reading shows a labeled color map and no empty photo plate", () => {
+    const map = read("src/components/aura/AuraMap.tsx");
+    const halo = read("src/components/aura/AuraHalo.tsx");
+    const flow = read("src/components/aura/AuraReadingFlow.tsx");
+    const cabinet = read("src/components/cabinet/CabinetAuraReadings.tsx");
+    expect(map).toContain("aura-map__palette");
+    expect(map).toContain("Семь слоёв");
+    expect(map).toContain("Чакры");
+    expect(halo).toContain("if (!photoUrl) return null");
+    expect(flow).toContain("{photoUrl ? (");
+    expect(flow).toContain("<AuraMap snapshot={snapshot} veiled />");
+    expect(cabinet).toContain("veiled={!active.paid}");
+  });
+
   it("teaser never persists the original photo", () => {
     const teaser = read("src/app/api/aura/teaser/route.ts");
     const service = read("src/lib/services/aura-guest-service.ts");
