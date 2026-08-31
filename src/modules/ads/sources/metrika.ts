@@ -51,6 +51,9 @@ export type MetrikaSnapshot = {
   mappedGoals: MetrikaMappedGoal[];
   traffic: MetrikaTraffic | null;
   trafficOrganic: MetrikaTraffic | null;
+  /** Previous equal-length period totals (for period-over-period deltas). */
+  trafficPrev?: MetrikaTraffic | null;
+  trafficOrganicPrev?: MetrikaTraffic | null;
   traffic7d?: MetrikaTraffic | null;
   traffic30d?: MetrikaTraffic | null;
   daily: { date: string; visits: number; users: number; organicVisits: number }[];
@@ -364,6 +367,20 @@ export async function fetchMetrikaSnapshot(
     periodDays === 30
       ? traffic
       : await settle("traffic30d", () => trafficTotals(counterId, r30.from, r30.to), traffic);
+  const prevRange = {
+    from: dayOffset(-(2 * periodDays - 1)),
+    to: dayOffset(-periodDays),
+  };
+  const trafficPrev = await settle(
+    "trafficPrev",
+    () => trafficTotals(counterId, prevRange.from, prevRange.to),
+    null
+  );
+  const trafficOrganicPrev = await settle(
+    "trafficOrganicPrev",
+    () => trafficTotals(counterId, prevRange.from, prevRange.to, ORGANIC_FILTER),
+    null
+  );
   const daily = await settle("daily", () => dailySeries(counterId, date1, date2), []);
   const sources = await settle(
     "bySource",
@@ -439,6 +456,8 @@ export async function fetchMetrikaSnapshot(
     mappedGoals,
     traffic,
     trafficOrganic,
+    trafficPrev,
+    trafficOrganicPrev,
     traffic7d: periodDays === 7 ? traffic : traffic7d,
     traffic30d: periodDays === 30 ? traffic : traffic30d,
     daily,

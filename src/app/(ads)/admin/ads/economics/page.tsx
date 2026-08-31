@@ -5,6 +5,7 @@ import AdminShell, { AdminTitle, AdminTable, StatCard } from "@/components/admin
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
 import AdsDisabled from "@/modules/ads/admin/AdsDisabled";
 import AdsErrorBanner from "@/modules/ads/admin/AdsErrorBanner";
+import { MultiLineChart } from "@/modules/ads/admin/AdminCharts";
 
 type Latest = {
   date: string;
@@ -87,6 +88,47 @@ export default function AdsEconomicsPage() {
 
       {!latest && !error && !disabled ? (
         <p className="mb-4 text-sm text-amber-400/90">Выборка пустая — economics_snapshot ещё нет данных.</p>
+      ) : null}
+
+      {history.length > 1 ? (
+        <div className="mb-6 grid gap-4 xl:grid-cols-2">
+          <div className="glass-panel p-4">
+            <h3 className="mb-2 text-xs font-semibold text-gray-400">Выручка и ARPU30 по дням</h3>
+            <MultiLineChart
+              points={[...history]
+                .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+                .map((h) => ({
+                  date: String(h.date).slice(0, 10),
+                  revenue: Number(h.revenue_rub) || 0,
+                  arpu: Number(h.arpu_per_registration_rub) || 0,
+                }))}
+              series={[
+                { key: "revenue", label: "Выручка, ₽", color: "rgba(212,175,55,0.9)", labels: "stride" },
+                { key: "arpu", label: "ARPU30, ₽", color: "rgba(52,211,153,0.9)", labels: "last", labelPos: "below" },
+              ]}
+            />
+          </div>
+          <div className="glass-panel p-4">
+            <h3 className="mb-2 text-xs font-semibold text-gray-400">CR reg→payer по дням</h3>
+            <MultiLineChart
+              points={[...history]
+                .sort((a, b) => String(a.date).localeCompare(String(b.date)))
+                .map((h) => ({
+                  date: String(h.date).slice(0, 10),
+                  cr: (Number(h.cr_reg_to_payer) || 0) * 100,
+                }))}
+              series={[
+                {
+                  key: "cr",
+                  label: "CR reg→payer",
+                  color: "rgba(96,165,250,0.9)",
+                  labels: "stride",
+                  format: (v) => `${v.toFixed(1)}%`,
+                },
+              ]}
+            />
+          </div>
+        </div>
       ) : null}
       {!latest?.applyMaxAllowedCpa && latest && (
         <p className="mb-4 text-sm text-amber-400/90">

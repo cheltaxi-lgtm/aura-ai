@@ -132,7 +132,7 @@ export function TrafficLineChart({
           ) : null
         )}
       </svg>
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-gray-500">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 bg-aura-gold" />
           Все визиты: <span className="text-gray-300">{totalVisits.toLocaleString("ru-RU")}</span>
@@ -271,7 +271,7 @@ export function DualLineChart({
           ) : null
         )}
       </svg>
-      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1 text-[11px] text-gray-500">
+      <div className="mt-1 flex flex-wrap gap-x-4 gap-y-1.5 text-[11px] text-gray-500">
         <span className="inline-flex items-center gap-1.5">
           <span className="inline-block h-0.5 w-4 bg-aura-gold" />
           В теме · {last.date.slice(5, 10)}: <span className="text-gray-300">{last.a}</span>

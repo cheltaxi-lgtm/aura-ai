@@ -267,11 +267,23 @@ export function AdminTable({
   );
 }
 
-export function StatCard({ label, value, accent }: { label: string; value: string | number; accent?: string }) {
+export function StatCard({
+  label,
+  value,
+  accent,
+  delta,
+}: {
+  label: string;
+  value: string | number;
+  accent?: string;
+  /** Period-over-period hint rendered under the value. */
+  delta?: React.ReactNode;
+}) {
   return (
     <div className="glass-panel p-5">
       <p className="text-xs text-gray-500">{label}</p>
       <p className={`font-display mt-1 text-2xl font-bold ${accent ?? "text-white"}`}>{value}</p>
+      {delta ? <div className="mt-1 text-[11px]">{delta}</div> : null}
     </div>
   );
 }

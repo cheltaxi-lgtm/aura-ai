@@ -2,8 +2,9 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
-import AdminShell, { AdminTitle, AdminTable, StatCard } from "@/components/admin/AdminShell";
+import AdminShell, { AdminTitle, StatCard } from "@/components/admin/AdminShell";
 import AdsAdminNav from "@/modules/ads/admin/AdsAdminNav";
+import { FunnelChart, MultiLineChart, SpendChart } from "@/modules/ads/admin/AdminCharts";
 
 type FunnelRow = {
   key: string;
@@ -49,8 +50,31 @@ function pct(n: number | null): string {
   return `${(n * 100).toFixed(1)}%`;
 }
 
+type Dynamics = {
+  ok: boolean;
+  spend: {
+    date: string;
+    impressions: number;
+    clicks: number;
+    costRub: number;
+    revenueRub: number;
+  }[];
+  funnel: {
+    date: string;
+    clicks: number;
+    deckViews: number;
+    spreadSubmits: number;
+    teaserViews: number;
+    registrations: number;
+    claims: number;
+    firstPayments: number;
+    revenueRub: number;
+  }[];
+};
+
 export default function AdsOverviewPage() {
   const [data, setData] = useState<Overview | null>(null);
+  const [dynamics, setDynamics] = useState<Dynamics | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [pending, setPending] = useState(0);
 
@@ -74,6 +98,10 @@ export default function AdsOverviewPage() {
         }
         const d = await r.json();
         setPending(d.pending ?? 0);
+      }),
+      fetch("/api/ads/admin/dynamics?days=30").then(async (r) => {
+        if (!r.ok) return;
+        setDynamics(await r.json());
       }),
     ]);
   }, []);
@@ -116,7 +144,7 @@ export default function AdsOverviewPage() {
           </div>
           <div className="h-2.5 overflow-hidden rounded-full bg-white/10">
             <div
-              className={`h-full transition-all ${
+              className={`h-full ${
                 data.hardBudget.pct >= 90 ? "bg-red-500" : "bg-aura-gold/80"
               }`}
               style={{ width: `${Math.min(100, data.hardBudget.pct)}%` }}
@@ -186,7 +214,7 @@ export default function AdsOverviewPage() {
           </div>
           <div className="h-2 overflow-hidden rounded-full bg-white/10">
             <div
-              className="h-full rounded-full bg-aura-gold/80 transition-all"
+              className="h-full rounded-full bg-aura-gold/80"
               style={{ width: `${Math.min(100, data.progressPct)}%` }}
             />
           </div>
@@ -194,21 +222,55 @@ export default function AdsOverviewPage() {
       )}
 
       <h2 className="mb-3 text-sm font-semibold text-white">Воронка (атрибуция ads)</h2>
-      <AdminTable
-        headers={["Шаг", "Кол-во", "CR от предыдущего", ""]}
-        rows={(data?.funnel ?? []).map((s) => [
-          s.label,
-          String(s.value),
-          pct(s.cr),
-          data?.worstStep === s.key ? (
-            <span className="text-amber-400">худший переход</span>
-          ) : s.sampleSmall ? (
-            <span className="text-gray-600">выборка мала</span>
-          ) : (
-            ""
-          ),
-        ])}
-      />
+      <div className="glass-panel mb-6 p-4">
+        <FunnelChart
+          steps={(data?.funnel ?? []).map((s) => ({
+            key: s.key,
+            label: s.label,
+            value: s.value,
+            cr: s.cr,
+            worst: data?.worstStep === s.key,
+            sampleSmall: s.sampleSmall,
+          }))}
+        />
+      </div>
+
+      {dynamics?.ok && (dynamics.spend.length > 0 || dynamics.funnel.length > 0) ? (
+        <>
+          <h2 className="mb-3 text-sm font-semibold text-white">Динамика рекламы · 30д</h2>
+          <div className="mb-6 grid gap-4 xl:grid-cols-2">
+            <div className="glass-panel p-4">
+              <h3 className="mb-2 text-xs font-semibold text-gray-400">
+                Расход и клики по дням
+              </h3>
+              <SpendChart
+                points={dynamics.spend.map((p) => ({
+                  date: p.date,
+                  costRub: p.costRub,
+                  clicks: p.clicks,
+                  impressions: p.impressions,
+                  // ROMI скрыт в discovery-режиме — выручку не показываем.
+                  revenueRub: data?.mode === "discovery" ? null : p.revenueRub,
+                }))}
+              />
+            </div>
+            <div className="glass-panel p-4">
+              <h3 className="mb-2 text-xs font-semibold text-gray-400">
+                Воронка по дням
+              </h3>
+              <MultiLineChart
+                points={dynamics.funnel}
+                series={[
+                  { key: "clicks", label: "Клики", color: "rgba(156,163,175,0.8)", dash: true, labels: "none" },
+                  { key: "spreadSubmits", label: "Расклады", color: "rgba(96,165,250,0.9)", labels: "none" },
+                  { key: "registrations", label: "Регистрации", color: "rgba(212,175,55,0.9)", labels: "last" },
+                  { key: "firstPayments", label: "Первые оплаты", color: "rgba(52,211,153,0.9)", labels: "last" },
+                ]}
+              />
+            </div>
+          </div>
+        </>
+      ) : null}
 
       <h2 className="mb-3 mt-8 text-sm font-semibold text-white">Что мы узнали</h2>
       <div className="glass-panel space-y-2 p-4">

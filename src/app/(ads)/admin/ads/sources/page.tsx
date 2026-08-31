@@ -35,6 +35,17 @@ type Analytics = {
       users: number;
       bounceRate: number | null;
     } | null;
+    trafficPrev?: {
+      visits: number;
+      users: number;
+      bounceRate: number | null;
+      avgDurationSec: number | null;
+    } | null;
+    trafficOrganicPrev?: {
+      visits: number;
+      users: number;
+      bounceRate: number | null;
+    } | null;
     daily: { date: string; visits: number; users: number; organicVisits: number }[];
     bySource: { source: string; visits: number; users: number; bounceRate: number | null }[];
     byDevice: { device: string; visits: number; users: number }[];
@@ -109,6 +120,49 @@ function fmtNum(n: number | null | undefined): string {
   return Math.round(n).toLocaleString("ru-RU");
 }
 
+/** Period-over-period delta chip for StatCard. pp = percentage-points mode. */
+function Delta({
+  cur,
+  prev,
+  invert = false,
+  pp = false,
+}: {
+  cur: number | null | undefined;
+  prev: number | null | undefined;
+  invert?: boolean;
+  pp?: boolean;
+}) {
+  if (cur == null || prev == null || !Number.isFinite(cur) || !Number.isFinite(prev)) {
+    return null;
+  }
+  if (pp) {
+    const norm = (v: number) => (v > 1 ? v : v * 100);
+    const diff = norm(cur) - norm(prev);
+    if (Math.abs(diff) < 0.05) {
+      return <span className="text-gray-600">±0 п.п. к пред. периоду</span>;
+    }
+    const good = invert ? diff < 0 : diff > 0;
+    return (
+      <span className={good ? "text-emerald-400" : "text-red-400"}>
+        {diff > 0 ? "+" : "−"}
+        {Math.abs(diff).toFixed(1)} п.п. к пред. периоду
+      </span>
+    );
+  }
+  if (prev <= 0) return null;
+  const ratio = (cur - prev) / prev;
+  if (Math.abs(ratio) < 0.005) {
+    return <span className="text-gray-600">±0% к пред. периоду</span>;
+  }
+  const good = invert ? ratio < 0 : ratio > 0;
+  return (
+    <span className={good ? "text-emerald-400" : "text-red-400"}>
+      {ratio > 0 ? "+" : "−"}
+      {Math.abs(ratio * 100).toFixed(0)}% к пред. периоду
+    </span>
+  );
+}
+
 export default function AdsSourcesPage() {
   const [days, setDays] = useState<PeriodDays>(30);
   const [data, setData] = useState<Analytics | null>(null);
@@ -145,8 +199,12 @@ export default function AdsSourcesPage() {
   const w = data?.webmaster;
   const t = m?.traffic;
   const org = m?.trafficOrganic;
+  const prev = m?.trafficPrev;
+  const orgPrev = m?.trafficOrganicPrev;
   const organicShare =
     t && t.visits > 0 && org ? org.visits / t.visits : null;
+  const organicSharePrev =
+    prev && prev.visits > 0 && orgPrev ? orgPrev.visits / prev.visits : null;
 
   return (
     <AdminShell>
@@ -165,7 +223,7 @@ export default function AdsSourcesPage() {
               type="button"
               disabled={busy}
               onClick={() => setDays(p.days)}
-              className={`rounded-lg px-3 py-1.5 text-xs transition ${
+              className={`rounded-lg px-3 py-1.5 text-xs transition-colors ${
                 days === p.days
                   ? "bg-aura-gold/20 text-aura-gold"
                   : "text-gray-400 hover:text-white"
@@ -193,12 +251,38 @@ export default function AdsSourcesPage() {
       ) : null}
 
       <div className="mb-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-6">
-        <StatCard label="Визиты" value={fmtNum(t?.visits)} accent="text-aura-gold" />
-        <StatCard label="Пользователи" value={fmtNum(t?.users)} />
-        <StatCard label="Из поиска" value={fmtNum(org?.visits)} accent="text-aura-emerald" />
-        <StatCard label="Доля поиска" value={fmtPct(organicShare)} />
-        <StatCard label="Отказы" value={fmtPct(t?.bounceRate)} />
-        <StatCard label="Ср. время" value={fmtDur(t?.avgDurationSec)} />
+        <StatCard
+          label="Визиты"
+          value={fmtNum(t?.visits)}
+          accent="text-aura-gold"
+          delta={<Delta cur={t?.visits} prev={prev?.visits} />}
+        />
+        <StatCard
+          label="Пользователи"
+          value={fmtNum(t?.users)}
+          delta={<Delta cur={t?.users} prev={prev?.users} />}
+        />
+        <StatCard
+          label="Из поиска"
+          value={fmtNum(org?.visits)}
+          accent="text-aura-emerald"
+          delta={<Delta cur={org?.visits} prev={orgPrev?.visits} />}
+        />
+        <StatCard
+          label="Доля поиска"
+          value={fmtPct(organicShare)}
+          delta={<Delta cur={organicShare} prev={organicSharePrev} pp />}
+        />
+        <StatCard
+          label="Отказы"
+          value={fmtPct(t?.bounceRate)}
+          delta={<Delta cur={t?.bounceRate} prev={prev?.bounceRate} invert pp />}
+        />
+        <StatCard
+          label="Ср. время"
+          value={fmtDur(t?.avgDurationSec)}
+          delta={<Delta cur={t?.avgDurationSec} prev={prev?.avgDurationSec} />}
+        />
       </div>
 
       <div className="glass-panel mb-6 p-4">
@@ -270,25 +354,22 @@ export default function AdsSourcesPage() {
           />
         </div>
         <div className="glass-panel p-4">
-          <h2 className="mb-3 text-sm font-semibold text-white">Устройства · цели</h2>
-          <AdminTable
-            headers={["Устройство", "Визиты", "Польз."]}
-            rows={(m?.byDevice || []).map((d) => [
-              d.device,
-              fmtNum(d.visits),
-              fmtNum(d.users),
-            ])}
+          <h2 className="mb-3 text-sm font-semibold text-white">Устройства</h2>
+          <HorizontalBars
+            items={(m?.byDevice || []).map((d) => ({
+              label: d.device,
+              value: d.visits,
+              hint: `${fmtNum(d.users)} польз.`,
+            }))}
           />
-          <div className="mt-4">
-            <AdminTable
-              headers={["Цель", "Достижения", "CR"]}
-              rows={(m?.mappedGoals || []).map((g) => [
-                g.name || g.label,
-                g.id == null ? "нет ID" : fmtNum(g.reaches),
-                fmtPct(g.cr),
-              ])}
-            />
-          </div>
+          <h2 className="mb-3 mt-5 text-sm font-semibold text-white">Цели Метрики</h2>
+          <HorizontalBars
+            items={(m?.mappedGoals || []).map((g) => ({
+              label: g.name || g.label,
+              value: g.id == null ? 0 : g.reaches ?? 0,
+              hint: g.id == null ? "нет ID" : `CR ${fmtPct(g.cr)}`,
+            }))}
+          />
         </div>
       </div>
 
