@@ -8,20 +8,20 @@ import {
   AURA_LAYER_NAMES,
   AURA_VERDICT_LABELS,
   type AuraChakraKey,
+  type AuraChakraOpenness,
   type AuraSnapshot,
   type AuraTeaserSnapshot,
 } from "@/lib/aura-constants";
 import {
-  AURA_BODY_PATH,
   AURA_CHAKRA_POS,
-  AURA_HEAD,
-  AURA_LAYER_BLUR,
-  AURA_LAYER_PATHS,
+  AURA_FIELD_MASSES,
+  AURA_LIGHT,
+  AURA_PRESENCE_PATH,
   AURA_VIZ_VB,
 } from "@/components/aura/aura-viz-geometry";
 
 /**
- * Premium field visualization. Reads only the structured snapshot —
+ * Human-made-of-light field. Reads only the structured snapshot —
  * the original photo is never shown.
  */
 
@@ -70,17 +70,29 @@ function mixHex(a: string, b: string, t: number): string {
   return `#${((1 << 24) + (r << 16) + (g << 8) + bl).toString(16).slice(1)}`;
 }
 
-function layerPalette(snapshot: AuraMapSnapshot): string[] {
-  const c1 = snapshot.dominantColor.hex;
-  const c2 = snapshot.secondaryColors[0]?.hex ?? c1;
-  const c3 = snapshot.secondaryColors[1]?.hex ?? c2;
-  const outer = mixHex(c3, "#1a1224", 0.25);
-  return Array.from({ length: 7 }, (_, i) => {
-    const t = i / 6;
-    if (t <= 1 / 3) return mixHex(c1, c2, t * 3);
-    if (t <= 2 / 3) return mixHex(c2, c3, (t - 1 / 3) * 3);
-    return mixHex(c3, outer, (t - 2 / 3) * 3);
-  });
+function luminance(hex: string): number {
+  const [r, g, b] = hexToRgb(hex);
+  return (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+}
+
+/** Semantic hex → cinematic inner / mid / rim. Meaning stays the same hue. */
+function cinematic(hex: string): { deep: string; mid: string; rim: string } {
+  const lum = luminance(hex);
+  const [r, g, b] = hexToRgb(hex);
+  const chroma = Math.max(r, g, b) - Math.min(r, g, b);
+  if (chroma < 28) {
+    return {
+      deep: mixHex(hex, "#16141c", 0.42),
+      mid: mixHex(hex, "#d9d3cb", 0.38),
+      rim: mixHex(hex, "#f3ece4", 0.5),
+    };
+  }
+  const lift = lum < 0.34 ? mixHex(hex, "#d8d2c6", 0.28) : hex;
+  return {
+    deep: mixHex(hex, "#0c1020", 0.48),
+    mid: lift,
+    rim: mixHex(lift, "#f4f1ea", lum > 0.78 ? 0.12 : 0.32),
+  };
 }
 
 function firstClause(text: string): string {
@@ -127,51 +139,41 @@ function useFineHover(): boolean {
   return ok;
 }
 
-const LAYER_ORIGINS = [
-  { cx: "50%", cy: "42%" },
-  { cx: "40%", cy: "36%" },
-  { cx: "58%", cy: "28%" },
-  { cx: "44%", cy: "46%" },
-  { cx: "56%", cy: "38%" },
-  { cx: "38%", cy: "50%" },
-  { cx: "52%", cy: "40%" },
-] as const;
-
-function layerFillOpacity(index: number, hex: string): { inner: number; mid: number } {
-  const [r, g, b] = hexToRgb(hex);
-  const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
-  const lift = lum < 0.32 ? 0.18 : lum > 0.82 ? -0.12 : 0;
-  const inner = Math.min(0.92, Math.max(0.42, 0.78 - index * 0.06 + lift));
-  const mid = Math.min(0.55, Math.max(0.16, 0.4 - index * 0.04 + lift * 0.5));
-  return { inner, mid };
+function chakraScale(openness: AuraChakraOpenness, veiled: boolean) {
+  if (veiled) return { halo: 16, nucleus: 1.8, haloOp: 0.05, nucOp: 0.28 };
+  if (openness === "blocked") return { halo: 22, nucleus: 1.6, haloOp: 0.045, nucOp: 0.28 };
+  if (openness === "open") return { halo: 20, nucleus: 2.5, haloOp: 0.09, nucOp: 0.62 };
+  return { halo: 18, nucleus: 2.1, haloOp: 0.07, nucOp: 0.48 };
 }
 
 export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
   const uid = useId().replace(/:/g, "");
-  const layers = useMemo(() => layerPalette(snapshot), [snapshot]);
   const chakras = snapshot.chakras ?? [];
   const outer = snapshot.secondaryColors[0] ?? snapshot.dominantColor;
+  const coreLook = useMemo(() => cinematic(snapshot.dominantColor.hex), [snapshot.dominantColor.hex]);
+  const outerLook = useMemo(() => cinematic(outer.hex), [outer.hex]);
   const copy = headlineOf(snapshot);
+  const [explore, setExplore] = useState(false);
   const [focusLayer, setFocusLayer] = useState<number | null>(null);
   const [focusChakra, setFocusChakra] = useState<AuraChakraKey | null>(null);
   const [locked, setLocked] = useState(false);
   const fineHover = useFineHover();
 
-  const chakraCounts = veiled
-    ? null
-    : chakras.reduce(
-        (acc, c) => {
-          acc[c.openness] += 1;
-          return acc;
-        },
-        { open: 0, balanced: 0, blocked: 0 }
-      );
+  const layerColors = useMemo(() => {
+    const c1 = snapshot.dominantColor.hex;
+    const c2 = snapshot.secondaryColors[0]?.hex ?? c1;
+    const c3 = snapshot.secondaryColors[1]?.hex ?? c2;
+    return AURA_FIELD_MASSES.map((_, i) => {
+      const t = i / 6;
+      if (t <= 0.5) return mixHex(c1, c2, t * 2);
+      return mixHex(c2, c3, (t - 0.5) * 2);
+    });
+  }, [snapshot.dominantColor.hex, snapshot.secondaryColors]);
 
   const focusedChakra = focusChakra
     ? chakras.find((c) => c.key === focusChakra) ?? null
     : null;
-  const focusedLayerKey =
-    focusLayer !== null ? AURA_LAYER_KEYS[focusLayer] : null;
+  const focusedLayerKey = focusLayer !== null ? AURA_LAYER_KEYS[focusLayer] : null;
   const focusedLayer = focusedLayerKey
     ? snapshot.layers?.find((l) => l.key === focusedLayerKey)
     : undefined;
@@ -188,7 +190,10 @@ export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
   }
 
   function toggleChakra(key: AuraChakraKey) {
-    setFocusLayer(null);
+    if (explore) {
+      setFocusLayer(null);
+      setLocked(false);
+    }
     if (focusChakra === key && locked) {
       setFocusChakra(null);
       setLocked(false);
@@ -198,15 +203,8 @@ export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
     setLocked(true);
   }
 
-  function hoverLayer(i: number | null) {
-    if (!fineHover || locked) return;
-    setFocusChakra(null);
-    setFocusLayer(i);
-  }
-
   function hoverChakra(key: AuraChakraKey | null) {
     if (!fineHover || locked) return;
-    setFocusLayer(null);
     setFocusChakra(key);
   }
 
@@ -218,315 +216,319 @@ export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
           <span> · {AURA_VERDICT_LABELS[snapshot.verdict]}</span>
         </p>
         <h2 className="aura-map__headline">{copy.title}</h2>
-        <p className="aura-map__lead">{copy.sub}</p>
+        {copy.sub ? <p className="aura-map__lead">{copy.sub}</p> : null}
       </header>
 
-      <div className="aura-map__stage">
-        <div className="aura-viz">
-          <svg
-            viewBox={`0 0 ${AURA_VIZ_VB.w} ${AURA_VIZ_VB.h}`}
-            className="aura-viz__svg"
-            role="img"
-            aria-labelledby={`${uid}-title`}
-          >
-            <title id={`${uid}-title`}>
-              {veiled
-                ? "Энергетическое поле вокруг фигуры: цвета ядра и внешнего слоя. Состояния чакр — в полном разборе."
-                : "Энергетическая аура вокруг человеческого тела: семь слоёв поля и чакры."}
-            </title>
-            <defs>
-              {AURA_LAYER_BLUR.map((dev, i) => (
-                <filter
-                  key={i}
-                  id={`${uid}-blur-${i}`}
-                  x="-30%"
-                  y="-30%"
-                  width="160%"
-                  height="160%"
-                >
-                  <feGaussianBlur stdDeviation={dev} />
-                </filter>
-              ))}
-              <radialGradient id={`${uid}-body`} cx="38%" cy="16%" r="82%">
-                <stop offset="0%" stopColor={mixHex(snapshot.dominantColor.hex, "#f4eefc", 0.58)} stopOpacity="0.9" />
-                <stop offset="40%" stopColor={mixHex(snapshot.dominantColor.hex, "#6c627c", 0.38)} stopOpacity="0.92" />
-                <stop offset="100%" stopColor="#3d364c" stopOpacity="0.96" />
-              </radialGradient>
-              <radialGradient id={`${uid}-core`} cx="50%" cy="34%" r="38%">
-                <stop offset="0%" stopColor={snapshot.dominantColor.hex} stopOpacity="0.38" />
-                <stop offset="100%" stopColor={snapshot.dominantColor.hex} stopOpacity="0" />
-              </radialGradient>
-              {layers.map((color, i) => {
-                const op = layerFillOpacity(i, color);
-                const origin = LAYER_ORIGINS[i];
-                return (
-                  <radialGradient
-                    key={i}
-                    id={`${uid}-lg-${i}`}
-                    cx={origin.cx}
-                    cy={origin.cy}
-                    r="70%"
-                  >
-                    <stop offset="0%" stopColor={color} stopOpacity={op.inner} />
-                    <stop offset="62%" stopColor={color} stopOpacity={op.mid} />
-                    <stop offset="100%" stopColor={color} stopOpacity="0" />
-                  </radialGradient>
-                );
-              })}
-            </defs>
+      <div className="aura-map__scene">
+        <svg
+          viewBox={`0 0 ${AURA_VIZ_VB.w} ${AURA_VIZ_VB.h}`}
+          className="aura-viz__svg"
+          role="img"
+          aria-labelledby={`${uid}-title`}
+        >
+          <title id={`${uid}-title`}>
+            {veiled
+              ? "Световое присутствие и поле вокруг него: цвет ядра и внешнего слоя. Состояния чакр — в полном разборе."
+              : "Световая человеческая фигура и органическое поле ауры."}
+          </title>
+          <defs>
+            <filter
+              id={`${uid}-soft`}
+              x="-28%"
+              y="-28%"
+              width="156%"
+              height="156%"
+              filterUnits="objectBoundingBox"
+            >
+              <feGaussianBlur stdDeviation="10" />
+            </filter>
+            <filter
+              id={`${uid}-haze`}
+              x="-36%"
+              y="-36%"
+              width="172%"
+              height="172%"
+              filterUnits="objectBoundingBox"
+            >
+              <feGaussianBlur stdDeviation="18" />
+            </filter>
+            <filter
+              id={`${uid}-bloom`}
+              x="-70%"
+              y="-70%"
+              width="240%"
+              height="240%"
+              filterUnits="objectBoundingBox"
+            >
+              <feGaussianBlur stdDeviation="6" />
+            </filter>
+            <filter
+              id={`${uid}-mask-soft`}
+              x="-8%"
+              y="-6%"
+              width="116%"
+              height="118%"
+              filterUnits="objectBoundingBox"
+            >
+              <feGaussianBlur stdDeviation="8" />
+            </filter>
+            <linearGradient id={`${uid}-mask-fade`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="#fff" stopOpacity="0.96" />
+              <stop offset="58%" stopColor="#fff" stopOpacity="0.78" />
+              <stop offset="100%" stopColor="#fff" stopOpacity="0" />
+            </linearGradient>
+            <mask
+              id={`${uid}-presence`}
+              maskUnits="userSpaceOnUse"
+              x="0"
+              y="0"
+              width={AURA_VIZ_VB.w}
+              height={AURA_VIZ_VB.h}
+            >
+              <rect width={AURA_VIZ_VB.w} height={AURA_VIZ_VB.h} fill="#000" />
+              <path
+                d={AURA_PRESENCE_PATH}
+                fill={`url(#${uid}-mask-fade)`}
+                filter={`url(#${uid}-mask-soft)`}
+              />
+            </mask>
+            <linearGradient id={`${uid}-column`} x1="0.42" y1="0.08" x2="0.58" y2="1">
+              <stop offset="0%" stopColor={mixHex(coreLook.rim, "#f7f3ea", 0.18)} stopOpacity="0.38" />
+              <stop offset="26%" stopColor={coreLook.mid} stopOpacity="0.72" />
+              <stop offset="58%" stopColor={coreLook.deep} stopOpacity="0.28" />
+              <stop offset="100%" stopColor={coreLook.deep} stopOpacity="0" />
+            </linearGradient>
+            <radialGradient id={`${uid}-core`} cx="48%" cy="38%" r="62%">
+              <stop offset="0%" stopColor={coreLook.rim} stopOpacity="0.95" />
+              <stop offset="34%" stopColor={coreLook.mid} stopOpacity="0.72" />
+              <stop offset="100%" stopColor={coreLook.deep} stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id={`${uid}-head`} cx="42%" cy="28%" r="70%">
+              <stop offset="0%" stopColor={mixHex(coreLook.rim, "#f7f3ea", 0.4)} stopOpacity="0.7" />
+              <stop offset="55%" stopColor={coreLook.mid} stopOpacity="0.28" />
+              <stop offset="100%" stopColor={coreLook.deep} stopOpacity="0" />
+            </radialGradient>
+            <radialGradient id={`${uid}-outer`} cx="42%" cy="34%" r="78%">
+              <stop offset="0%" stopColor={outerLook.mid} stopOpacity="0.4" />
+              <stop offset="52%" stopColor={outerLook.rim} stopOpacity="0.16" />
+              <stop offset="100%" stopColor={outerLook.deep} stopOpacity="0" />
+            </radialGradient>
+            {layerColors.map((color, i) => {
+              const look = cinematic(color);
+              return (
+                <radialGradient key={i} id={`${uid}-m-${i}`} cx={`${40 + (i % 3) * 8}%`} cy={`${32 + i * 4}%`} r="72%">
+                  <stop offset="0%" stopColor={look.mid} stopOpacity={0.36 - i * 0.028} />
+                  <stop offset="68%" stopColor={look.rim} stopOpacity={0.14} />
+                  <stop offset="100%" stopColor={look.deep} stopOpacity="0" />
+                </radialGradient>
+              );
+            })}
+          </defs>
 
+          <g className="aura-viz__field" aria-hidden>
+            {AURA_FIELD_MASSES.map((mass, i) => {
+              const isolated = explore && focusLayer !== null;
+              const dimmed = isolated && focusLayer !== i;
+              const hot = isolated && focusLayer === i;
+              const isOuter = i >= 5;
+              return (
+                <path
+                  key={mass.key}
+                  className={`aura-viz__mass${dimmed ? " is-dim" : ""}${hot ? " is-hot" : ""}`}
+                  d={mass.d}
+                  fill={isOuter ? `url(#${uid}-outer)` : `url(#${uid}-m-${i})`}
+                  filter={`url(#${uid}-${isOuter ? "haze" : "soft"})`}
+                  style={{ animationDelay: `${i * 1.4}s` }}
+                />
+              );
+            })}
+          </g>
+
+          <g className="aura-viz__presence" aria-hidden mask={`url(#${uid}-presence)`}>
+            <rect
+              width={AURA_VIZ_VB.w}
+              height={AURA_VIZ_VB.h}
+              fill={`url(#${uid}-column)`}
+            />
             <ellipse
-              className="aura-viz__core-glow"
-              cx="200"
-              cy="210"
-              rx="46"
-              ry="88"
+              className="aura-viz__breath"
+              cx={AURA_LIGHT.chest.cx}
+              cy={AURA_LIGHT.chest.cy}
+              rx={AURA_LIGHT.chest.rx}
+              ry={AURA_LIGHT.chest.ry}
               fill={`url(#${uid}-core)`}
             />
-
-            {[...AURA_LAYER_PATHS].reverse().map((d, rev) => {
-              const i = AURA_LAYER_PATHS.length - 1 - rev;
-              const dimmed = focusLayer !== null && focusLayer !== i;
-              const hot = focusLayer === i;
-              const name = snapshot.layers?.[i]?.name ?? AURA_LAYER_NAMES[AURA_LAYER_KEYS[i]];
-              const state =
-                !veiled && snapshot.layers?.[i]?.state
-                  ? snapshot.layers[i].state
-                  : LAYER_ROLE[AURA_LAYER_KEYS[i]];
-              return (
-                <g
-                  key={AURA_LAYER_KEYS[i]}
-                  className={`aura-viz__layer${dimmed ? " is-dim" : ""}${hot ? " is-hot" : ""}`}
-                  style={{ animationDelay: `${i * 0.7}s` }}
-                >
-                  <path
-                    className="aura-viz__layer-fill"
-                    d={d}
-                    fill={`url(#${uid}-lg-${i})`}
-                    filter={`url(#${uid}-blur-${i})`}
-                    pointerEvents="none"
-                  />
-                  <path
-                    d={d}
-                    fill="none"
-                    stroke={layers[i]}
-                    strokeOpacity={hot ? 0.5 : i >= 5 ? 0.08 : i >= 3 ? 0.16 : 0.28}
-                    strokeWidth={hot ? 1.55 : 1}
-                    pointerEvents="none"
-                  />
-                  <path
-                    d={d}
-                    className="aura-viz__layer-hit"
-                    fill="transparent"
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${name}: ${state}`}
-                    aria-pressed={hot}
-                    onClick={() => toggleLayer(i)}
-                    onPointerEnter={() => hoverLayer(i)}
-                    onPointerLeave={() => hoverLayer(null)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleLayer(i);
-                      }
-                    }}
-                  />
-                </g>
-              );
-            })}
-
-            <g className="aura-viz__body" aria-hidden>
-              <ellipse
-                cx={AURA_HEAD.cx}
-                cy={AURA_HEAD.cy}
-                rx={AURA_HEAD.rx}
-                ry={AURA_HEAD.ry}
-                fill={`url(#${uid}-body)`}
-              />
-              <path d={AURA_BODY_PATH} fill={`url(#${uid}-body)`} />
-              <ellipse
-                cx={AURA_HEAD.cx}
-                cy={AURA_HEAD.cy}
-                rx={AURA_HEAD.rx}
-                ry={AURA_HEAD.ry}
-                fill="none"
-                stroke="#f6f0ff"
-                strokeOpacity="0.42"
-                strokeWidth="2"
-              />
-              <path
-                d={AURA_BODY_PATH}
-                fill="none"
-                stroke="#f6f0ff"
-                strokeOpacity="0.38"
-                strokeWidth="2"
-              />
-              <ellipse
-                cx={AURA_HEAD.cx}
-                cy={AURA_HEAD.cy}
-                rx={AURA_HEAD.rx}
-                ry={AURA_HEAD.ry}
-                fill="none"
-                stroke={snapshot.dominantColor.hex}
-                strokeOpacity="0.45"
-                strokeWidth="1.1"
-              />
-              <path
-                d={AURA_BODY_PATH}
-                fill="none"
-                stroke={snapshot.dominantColor.hex}
-                strokeOpacity="0.32"
-                strokeWidth="1"
-              />
-            </g>
-
-            {(veiled ? AURA_CHAKRA_KEYS : chakras.map((c) => c.key)).map((key) => {
-              const pos = AURA_CHAKRA_POS[key];
-              const found = chakras.find((c) => c.key === key);
-              const color = veiled ? VEILED_DOT : found?.color ?? VEILED_DOT;
-              const openness = found?.openness ?? "balanced";
-              const open = !veiled && openness === "open";
-              const blocked = !veiled && openness === "blocked";
-              const label = found?.name ?? AURA_CHAKRA_NAMES[key];
-              const hint = veiled
-                ? "состояние откроется в полном разборе"
-                : `${OPENNESS_RU[openness]}${found?.note ? ` — ${found.note}` : ""}`;
-              return (
-                <g key={key} className="aura-viz__chakra">
-                  {open ? (
-                    <circle cx={pos.x} cy={pos.y} r={18} fill={color} fillOpacity={0.22} />
-                  ) : null}
-                  {!veiled && !blocked ? (
-                    <circle
-                      cx={pos.x}
-                      cy={pos.y}
-                      r={9}
-                      fill="none"
-                      stroke={color}
-                      strokeOpacity={open ? 0.45 : 0.28}
-                      strokeWidth="1.1"
-                      pointerEvents="none"
-                    />
-                  ) : null}
-                  <circle
-                    cx={pos.x}
-                    cy={pos.y}
-                    r={28}
-                    className="aura-viz__chakra-hit"
-                    fill="transparent"
-                    role="button"
-                    tabIndex={0}
-                    aria-label={`${label}: ${hint}`}
-                    aria-pressed={focusChakra === key}
-                    onClick={() => toggleChakra(key)}
-                    onPointerEnter={() => hoverChakra(key)}
-                    onPointerLeave={() => hoverChakra(null)}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter" || e.key === " ") {
-                        e.preventDefault();
-                        toggleChakra(key);
-                      }
-                    }}
-                  />
-                  <circle
-                    cx={pos.x}
-                    cy={pos.y}
-                    r={open ? 6.5 : blocked ? 4.2 : 5.4}
-                    fill={color}
-                    fillOpacity={veiled ? 0.4 : blocked ? 0.55 : 1}
-                    stroke={blocked ? color : "none"}
-                    strokeDasharray={blocked ? "2 3" : undefined}
-                    strokeOpacity={0.7}
-                    pointerEvents="none"
-                  />
-                </g>
-              );
-            })}
-          </svg>
-
-          {focusLayer !== null && focusedLayerKey ? (
-            <div className="aura-viz__tip" role="status">
-              <p className="aura-viz__tip-kicker">Слой</p>
-              <p className="aura-viz__tip-title">
-                {focusedLayer?.name ?? AURA_LAYER_NAMES[focusedLayerKey]}
-              </p>
-              <p className="aura-viz__tip-body">
-                {!veiled && focusedLayer?.state
-                  ? focusedLayer.state
-                  : LAYER_ROLE[focusedLayerKey]}
-              </p>
-            </div>
-          ) : null}
-
-          {focusChakra ? (
-            <div className="aura-viz__tip" role="status">
-              <p className="aura-viz__tip-kicker">Чакра</p>
-              <p className="aura-viz__tip-title">
-                {focusedChakra?.name ?? AURA_CHAKRA_NAMES[focusChakra]}
-              </p>
-              <p className="aura-viz__tip-body">
-                {veiled
-                  ? "Состояние откроется в полном разборе."
-                  : `${OPENNESS_RU[focusedChakra?.openness ?? "balanced"]}${
-                      focusedChakra?.note ? ` — ${focusedChakra.note}` : ""
-                    }`}
-              </p>
-            </div>
-          ) : null}
-        </div>
-
-        <ul className="aura-map__palette">
-          <li className="aura-map__card">
-            <span
-              className="aura-map__orb"
-              style={{
-                backgroundColor: snapshot.dominantColor.hex,
-                color: snapshot.dominantColor.hex,
-              }}
+            <ellipse
+              className="aura-viz__breath"
+              cx={AURA_LIGHT.head.cx}
+              cy={AURA_LIGHT.head.cy}
+              rx={AURA_LIGHT.head.rx}
+              ry={AURA_LIGHT.head.ry}
+              fill={`url(#${uid}-head)`}
             />
-            <span>
-              <span className="aura-map__card-kicker">Ядро</span>
-              <span className="aura-map__swatch-name">{snapshot.dominantColor.name}</span>
-              <span className="aura-map__swatch-meaning">{snapshot.dominantColor.meaning}</span>
-            </span>
-          </li>
-          <li className="aura-map__card">
-            <span
-              className="aura-map__orb"
-              style={{ backgroundColor: outer.hex, color: outer.hex }}
-            />
-            <span>
-              <span className="aura-map__card-kicker">Внешнее поле</span>
-              <span className="aura-map__swatch-name">{outer.name}</span>
-              <span className="aura-map__swatch-meaning">{outer.meaning}</span>
-            </span>
-          </li>
-          <li className="aura-map__card">
-            <span className="aura-map__orb aura-map__orb--ghost" />
-            <span>
-              <span className="aura-map__card-kicker">Чакры</span>
-              <span className="aura-map__swatch-name">
-                {veiled || !chakraCounts || chakras.length === 0
-                  ? "В полном разборе"
-                  : `${chakraCounts.balanced} в балансе`}
-              </span>
-              <span className="aura-map__swatch-meaning">
-                {veiled || !chakraCounts || chakras.length === 0
-                  ? "Семь центров откроются после разбора."
-                  : [
-                      chakraCounts.open ? `${chakraCounts.open} открыты` : null,
-                      chakraCounts.blocked ? `${chakraCounts.blocked} требуют внимания` : null,
-                    ]
-                      .filter(Boolean)
-                      .join(" · ") || "Все в балансе."}
-              </span>
-            </span>
-          </li>
-        </ul>
+          </g>
+
+          {(veiled ? AURA_CHAKRA_KEYS : chakras.map((c) => c.key)).map((key) => {
+            const pos = AURA_CHAKRA_POS[key];
+            const found = chakras.find((c) => c.key === key);
+            const color = veiled ? VEILED_DOT : found?.color ?? VEILED_DOT;
+            const openness = found?.openness ?? "balanced";
+            const scale = chakraScale(openness, veiled);
+            const label = found?.name ?? AURA_CHAKRA_NAMES[key];
+            const hint = veiled
+              ? "состояние откроется в полном разборе"
+              : `${OPENNESS_RU[openness]}${found?.note ? ` — ${found.note}` : ""}`;
+            return (
+              <g key={key} className="aura-viz__chakra">
+                <circle
+                  cx={pos.x}
+                  cy={pos.y}
+                  r={scale.halo}
+                  fill={color}
+                  fillOpacity={scale.haloOp}
+                  filter={`url(#${uid}-bloom)`}
+                  pointerEvents="none"
+                />
+                <circle
+                  cx={pos.x}
+                  cy={pos.y}
+                  r={scale.nucleus}
+                  fill={mixHex(color, "#fff6e8", 0.28)}
+                  fillOpacity={scale.nucOp}
+                  pointerEvents="none"
+                />
+                <circle
+                  cx={pos.x}
+                  cy={pos.y}
+                  r={22}
+                  className="aura-viz__chakra-hit"
+                  fill="transparent"
+                  role="button"
+                  tabIndex={0}
+                  aria-label={`${label}: ${hint}`}
+                  aria-pressed={focusChakra === key}
+                  onClick={() => toggleChakra(key)}
+                  onPointerEnter={() => hoverChakra(key)}
+                  onPointerLeave={() => hoverChakra(null)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" || e.key === " ") {
+                      e.preventDefault();
+                      toggleChakra(key);
+                    }
+                  }}
+                />
+              </g>
+            );
+          })}
+        </svg>
+
+        {focusChakra ? (
+          <div className="aura-viz__tip" role="status">
+            <p className="aura-viz__tip-kicker">Чакра</p>
+            <p className="aura-viz__tip-title">
+              {focusedChakra?.name ?? AURA_CHAKRA_NAMES[focusChakra]}
+            </p>
+            <p className="aura-viz__tip-body">
+              {veiled
+                ? "Состояние откроется в полном разборе."
+                : `${OPENNESS_RU[focusedChakra?.openness ?? "balanced"]}${
+                    focusedChakra?.note ? ` — ${focusedChakra.note}` : ""
+                  }`}
+            </p>
+          </div>
+        ) : null}
+
+        {explore && focusLayer !== null && focusedLayerKey ? (
+          <div className="aura-viz__tip" role="status">
+            <p className="aura-viz__tip-kicker">
+              Слой {String(focusLayer + 1).padStart(2, "0")}
+            </p>
+            <p className="aura-viz__tip-title">
+              {focusedLayer?.name ?? AURA_LAYER_NAMES[focusedLayerKey]}
+            </p>
+            <p className="aura-viz__tip-body">
+              {!veiled && focusedLayer?.state
+                ? focusedLayer.state
+                : LAYER_ROLE[focusedLayerKey]}
+            </p>
+          </div>
+        ) : null}
       </div>
 
+      <ul className="aura-map__palette">
+        <li className="aura-map__card">
+          <span
+            className="aura-map__orb"
+            style={{
+              backgroundColor: snapshot.dominantColor.hex,
+              color: snapshot.dominantColor.hex,
+            }}
+          />
+          <span>
+            <span className="aura-map__card-kicker">Ядро</span>
+            <span className="aura-map__swatch-name">{snapshot.dominantColor.name}</span>
+            <span className="aura-map__swatch-meaning">{snapshot.dominantColor.meaning}</span>
+          </span>
+        </li>
+        <li className="aura-map__card">
+          <span
+            className="aura-map__orb"
+            style={{ backgroundColor: outer.hex, color: outer.hex }}
+          />
+          <span>
+            <span className="aura-map__card-kicker">Внешнее поле</span>
+            <span className="aura-map__swatch-name">{outer.name}</span>
+            <span className="aura-map__swatch-meaning">{outer.meaning}</span>
+          </span>
+        </li>
+      </ul>
+
       <div className="aura-map__details">
+        <button
+          type="button"
+          className="aura-map__explore"
+          aria-expanded={explore}
+          onClick={() => {
+            setExplore((v) => !v);
+            setFocusLayer(null);
+            setLocked(false);
+          }}
+        >
+          {explore ? "Скрыть слои ауры" : "Исследовать слои ауры"}
+        </button>
+
+        {explore ? (
+          <ol className="aura-map__layer-nav">
+            {AURA_LAYER_KEYS.map((key, i) => {
+              const found = snapshot.layers?.find((l) => l.key === key);
+              const name = found?.name ?? AURA_LAYER_NAMES[key];
+              const state = !veiled && found?.state ? found.state : LAYER_ROLE[key];
+              return (
+                <li key={key}>
+                  <button
+                    type="button"
+                    className={`aura-map__layer-btn${focusLayer === i ? " is-on" : ""}`}
+                    aria-pressed={focusLayer === i}
+                    onClick={() => toggleLayer(i)}
+                  >
+                    <span
+                      className="aura-map__orb aura-map__orb--sm"
+                      style={{ backgroundColor: layerColors[i], color: layerColors[i] }}
+                    />
+                    <span>
+                      <span className="aura-map__key-name">
+                        <span className="aura-map__idx">{String(i + 1).padStart(2, "0")}</span>
+                        {name}
+                      </span>
+                      <span className="aura-map__key-state">{state}</span>
+                    </span>
+                  </button>
+                </li>
+              );
+            })}
+          </ol>
+        ) : null}
+
         <details className="aura-acc">
           <summary>Семь слоёв</summary>
           <ol className="aura-acc__list">
@@ -538,7 +540,7 @@ export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
                 <li key={key}>
                   <span
                     className="aura-map__orb aura-map__orb--sm"
-                    style={{ backgroundColor: layers[i], color: layers[i] }}
+                    style={{ backgroundColor: layerColors[i], color: layerColors[i] }}
                   />
                   <span>
                     <span className="aura-map__key-name">

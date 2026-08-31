@@ -217,20 +217,22 @@
   border-radius: 50%;
 }
 
-/* ── Aura map: luminous body + organic field ── */
+/* ── Aura map: human made of light, no framed plate ── */
+
+.aura-flow-host {
+  margin-inline: -0.25rem;
+}
 
 .aura-map {
   display: flex;
   flex-direction: column;
-  gap: 1.25rem;
+  gap: 1.1rem;
   margin: 0;
   width: 100%;
   max-width: 100%;
   overflow-x: hidden;
-  padding: 0.25rem 0 0.5rem;
-  background:
-    radial-gradient(ellipse 55% 40% at 50% 28%, rgba(120, 90, 180, 0.08), transparent 62%),
-    radial-gradient(ellipse 40% 30% at 50% 70%, rgba(40, 28, 60, 0.35), transparent 70%);
+  padding: 0;
+  background: none;
 }
 
 .aura-map__intro {
@@ -258,7 +260,7 @@
   font-family: inherit;
   font-size: clamp(1.35rem, 4vw, 1.85rem);
   font-weight: 600;
-  line-height: 1.25;
+  line-height: 1.28;
   color: rgba(245, 242, 234, 0.96);
 }
 
@@ -269,78 +271,74 @@
   color: rgba(255, 255, 255, 0.68);
 }
 
-.aura-map__stage {
-  display: flex;
-  flex-direction: column;
-  gap: 1.15rem;
-}
-
-.aura-viz {
+.aura-map__scene {
   position: relative;
-  margin-inline: auto;
-  width: min(92%, 18.5rem);
-  overflow: hidden;
-  border-radius: 1.5rem;
-  background:
-    radial-gradient(ellipse 52% 42% at 50% 36%, rgba(90, 60, 140, 0.14), transparent 68%),
-    radial-gradient(ellipse 40% 28% at 50% 78%, rgba(20, 14, 32, 0.55), transparent 70%),
-    #08060e;
-}
-
-.aura-viz::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  opacity: 0.045;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='2' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-}
-
-@media (min-width: 768px) {
-  .aura-viz {
-    width: min(100%, 23.5rem);
-  }
-}
-
-.aura-viz__svg {
-  display: block;
+  isolation: isolate;
   width: 100%;
-  height: auto;
+  margin: 0.15rem 0 0;
   overflow: visible;
 }
 
-.aura-viz__core-glow {
-  animation: aura-field-breathe 10s ease-in-out infinite;
+.aura-map__scene::before {
+  content: "";
+  position: absolute;
+  inset: -6% -8%;
+  pointer-events: none;
+  z-index: 0;
+  background: radial-gradient(
+    ellipse 64% 56% at 50% 38%,
+    rgba(8, 6, 14, 0.72) 0%,
+    rgba(8, 6, 14, 0.42) 58%,
+    transparent 78%
+  );
 }
 
-.aura-viz__layer {
-  animation: aura-field-breathe 11s ease-in-out infinite;
-  transform-origin: 200px 300px;
+.aura-viz__svg {
+  position: relative;
+  z-index: 1;
+  display: block;
+  width: 100%;
+  max-width: 26.5rem;
+  height: auto;
+  min-height: 500px;
+  margin-inline: auto;
+  overflow: visible;
+}
+
+.aura-viz__mass {
+  mix-blend-mode: screen;
+}
+
+@media (min-width: 768px) {
+  .aura-viz__svg {
+    max-width: 31.25rem;
+    min-height: 560px;
+  }
+}
+
+.aura-viz__mass,
+.aura-viz__breath {
+  animation: aura-field-breathe 12s ease-in-out infinite;
+  transform-origin: center;
   transform-box: fill-box;
 }
 
-.aura-viz__layer-fill {
-  mix-blend-mode: normal;
+.aura-viz__mass.is-dim {
+  opacity: 0.18;
 }
 
-.aura-viz__layer.is-dim {
-  opacity: 0.28;
-}
-
-.aura-viz__layer.is-hot {
+.aura-viz__mass.is-hot {
   opacity: 1;
 }
 
-.aura-viz__layer-hit,
 .aura-viz__chakra-hit {
   cursor: pointer;
   outline: none;
 }
 
-.aura-viz__layer-hit:focus-visible,
 .aura-viz__chakra-hit:focus-visible {
-  stroke: rgba(245, 242, 234, 0.55);
-  stroke-width: 2;
+  stroke: rgba(245, 242, 234, 0.4);
+  stroke-width: 1.5;
 }
 
 .aura-viz__tip {
@@ -384,7 +382,7 @@
 
 @media (min-width: 560px) {
   .aura-map__palette {
-    grid-template-columns: repeat(3, 1fr);
+    grid-template-columns: 1fr 1fr;
   }
 }
 
@@ -465,6 +463,47 @@
   gap: 0.55rem;
 }
 
+.aura-map__explore {
+  display: block;
+  width: 100%;
+  padding: 0.85rem 1rem;
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  font-size: 0.75rem;
+  font-weight: 600;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: rgba(245, 242, 234, 0.78);
+}
+
+.aura-map__layer-nav {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+}
+
+.aura-map__layer-btn {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 0.65rem;
+  text-align: left;
+  padding: 0.7rem 0.8rem;
+  border-radius: 0.9rem;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.02);
+  min-height: 2.75rem;
+}
+
+.aura-map__layer-btn.is-on {
+  border-color: rgba(255, 255, 255, 0.14);
+  background: rgba(255, 255, 255, 0.05);
+}
+
 .aura-acc {
   border-radius: 1rem;
   border: 1px solid rgba(255, 255, 255, 0.07);
@@ -505,19 +544,19 @@
 @keyframes aura-field-breathe {
   0%,
   100% {
-    opacity: 0.78;
+    opacity: 0.82;
     transform: scale(1);
   }
   50% {
     opacity: 1;
-    transform: scale(1.018);
+    transform: scale(1.012);
   }
 }
 
 @media (prefers-reduced-motion: reduce) {
   .aura-stage__halo,
-  .aura-viz__layer,
-  .aura-viz__core-glow {
+  .aura-viz__mass,
+  .aura-viz__breath {
     animation: none;
   }
 }

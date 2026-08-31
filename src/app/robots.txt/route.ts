@@ -33,6 +33,7 @@ const DISALLOW = [
   "/tg",
   "/diary/",
   "/maintenance",
+  "/dev/",
   "/reports/",
   "/photo-rasklad/result",
   "/dizayn-cheloveka/karta/",

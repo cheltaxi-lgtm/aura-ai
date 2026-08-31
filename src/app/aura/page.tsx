@@ -63,7 +63,7 @@ export default function AuraLandingPage() {
         {label} · {cost} ᚢ · первый разбор −50%
       </p>
 
-      <section className="mt-10 rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-8">
+      <section className="aura-flow-host mt-8 sm:mt-10">
         <AuraReadingFlow />
       </section>
 

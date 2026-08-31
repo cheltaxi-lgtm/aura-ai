@@ -846,14 +846,6 @@ export default function AuraReadingFlow() {
 
             <AuraMap snapshot={snapshot} veiled />
 
-            <p className="text-center text-xs uppercase tracking-[0.2em] text-aura-gold/70">
-              {AURA_VERDICT_LABELS[snapshot.verdict]}
-            </p>
-
-            <p className="text-center text-[15px] leading-relaxed text-white/80">
-              {snapshot.teaser}
-            </p>
-
             {reusedKind && (
               <p role="status" className="text-center text-xs leading-relaxed text-white/60">
                 {reusedKind === "today"
@@ -972,10 +964,6 @@ export default function AuraReadingFlow() {
             {photoUrl ? <AuraHalo snapshot={snapshot} photoUrl={photoUrl} /> : null}
 
             <AuraMap snapshot={snapshot} />
-
-            <p className="text-center text-xs uppercase tracking-[0.2em] text-aura-gold/70">
-              {AURA_VERDICT_LABELS[snapshot.verdict]}
-            </p>
 
             <div className="photo-flow-panel">
               <PremiumReadingBody content={report} className="text-sm text-white/85" />
