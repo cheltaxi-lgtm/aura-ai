@@ -42,7 +42,10 @@ const nextConfig: NextConfig = {
       { key: "Referrer-Policy", value: "strict-origin-when-cross-origin" },
       {
         key: "Permissions-Policy",
-        value: "camera=(), microphone=(self), geolocation=(), payment=(self)",
+        // camera=(self): /aura webcam capture — same-origin only, the browser
+        // still shows its own permission prompt. () would hard-block
+        // getUserMedia with NotAllowedError before any prompt.
+        value: "camera=(self), microphone=(self), geolocation=(), payment=(self)",
       },
       {
         key: "Content-Security-Policy",

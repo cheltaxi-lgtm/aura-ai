@@ -387,8 +387,21 @@ export default function AuraReadingFlow() {
           void videoRef.current.play().catch(() => undefined);
         }
       }, 50);
-    } catch {
-      setError("Нет доступа к камере. Разрешите доступ или загрузите фото из галереи.");
+    } catch (err) {
+      const name = err instanceof DOMException ? err.name : "";
+      if (name === "NotAllowedError") {
+        setError(
+          "Браузер заблокировал доступ к камере. Нажмите на значок камеры в адресной строке и разрешите доступ, затем попробуйте снова — или загрузите фото из галереи."
+        );
+      } else if (name === "NotFoundError" || name === "OverconstrainedError") {
+        setError("Камера не найдена на этом устройстве — загрузите фото из галереи.");
+      } else if (name === "NotReadableError") {
+        setError(
+          "Камера занята другим приложением (Zoom, Teams, Skype). Закройте его и попробуйте снова — или загрузите фото."
+        );
+      } else {
+        setError("Нет доступа к камере. Разрешите доступ или загрузите фото из галереи.");
+      }
     }
   }, [runTeaser]);
 
