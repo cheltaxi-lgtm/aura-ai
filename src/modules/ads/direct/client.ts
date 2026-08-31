@@ -2,6 +2,7 @@
  * Yandex Direct API v5 JSON client with Units throttling and safe logging.
  */
 import { canMutateDirect } from "../config";
+import { directApiUrl, isDirectSandbox } from "./endpoint";
 
 type DirectError = {
   error_code?: number;
@@ -40,11 +41,7 @@ export async function writesAllowed(): Promise<boolean> {
 }
 
 function baseUrl(): string {
-  const sandbox =
-    process.env.ADS_DIRECT_SANDBOX === "1" || process.env.ADS_DIRECT_SANDBOX === "true";
-  return sandbox
-    ? "https://api-sandbox.direct.yandex.com/json/v5"
-    : "https://api.direct.yandex.com/json/v5";
+  return directApiUrl();
 }
 
 function sleep(ms: number) {
@@ -121,5 +118,5 @@ export async function directCall<T>(
 }
 
 export function isSandbox(): boolean {
-  return process.env.ADS_DIRECT_SANDBOX === "1" || process.env.ADS_DIRECT_SANDBOX === "true";
+  return isDirectSandbox();
 }

@@ -1,6 +1,7 @@
 /**
  * Live provider probes for diagnostics. Never returns secret values.
  */
+import { directApiUrl } from "../direct/endpoint";
 import { adsSourceTokenFlags, metrikaCounterId, metrikaToken, webmasterHostId, webmasterToken } from "./env";
 
 export type ProviderProbe = {
@@ -37,7 +38,9 @@ export async function probeDirect(): Promise<Pick<ProviderProbe, "configured" | 
     return { configured: false, auth: "fail", api: "skipped", error: "ADS_DIRECT_TOKEN missing" };
   }
   try {
-    const { status, ok, body } = await httpJson("https://api.direct.yandex.com/json/v5/campaigns", {
+    // Probe the endpoint the app is actually configured for — probing production
+    // while ADS_DIRECT_SANDBOX=1 would report PASS while every sync fails (513).
+    const { status, ok, body } = await httpJson(`${directApiUrl()}/campaigns`, {
       method: "POST",
       headers: {
         Authorization: `Bearer ${process.env.ADS_DIRECT_TOKEN}`,

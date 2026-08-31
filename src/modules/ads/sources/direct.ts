@@ -2,6 +2,7 @@
  * Read-only Direct account snapshot (works with balance 0).
  */
 import { directCall } from "../direct/client";
+import { isDirectSandbox } from "../direct/endpoint";
 import { getCampaigns } from "../direct/campaigns";
 
 export type DirectSnapshot = {
@@ -55,8 +56,7 @@ async function tryBalanceV4(): Promise<number | null> {
 
 export async function fetchDirectSnapshot(): Promise<DirectSnapshot> {
   const login = process.env.ADS_DIRECT_LOGIN || null;
-  const sandbox =
-    process.env.ADS_DIRECT_SANDBOX === "1" || process.env.ADS_DIRECT_SANDBOX === "true";
+  const sandbox = isDirectSandbox();
 
   let currency: string | null = null;
   try {

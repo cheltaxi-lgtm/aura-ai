@@ -1,9 +1,7 @@
-import { isSandbox } from "./client";
+import { directApiUrl } from "./endpoint";
 
 function reportsUrl(): string {
-  return isSandbox()
-    ? "https://api-sandbox.direct.yandex.com/json/v5/reports"
-    : "https://api.direct.yandex.com/json/v5/reports";
+  return `${directApiUrl()}/reports`;
 }
 
 export async function fetchCustomReport(params: {
