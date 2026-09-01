@@ -39,12 +39,13 @@ describe("aura-reading-retry", () => {
 
   it("ownership is checked before enqueue and generation is serialized", () => {
     const route = read("src/app/api/aura/report/route.ts");
-    const ownershipIdx = route.indexOf("getClaimedAuraSnapshot({ snapshotId, profileUserId })");
+    const ownershipIdx = route.indexOf("getClaimedAuraSnapshotRow({ snapshotId, profileUserId })");
     const enqueueIdx = route.indexOf("enqueuePaidAsyncJob({");
     expect(ownershipIdx).toBeGreaterThan(-1);
     expect(enqueueIdx).toBeGreaterThan(-1);
     expect(ownershipIdx).toBeLessThan(enqueueIdx);
-    expect(route).toContain("withAuraReadingLock(profileUserId, `day:${auraCalendarDayKey()}`");
+    expect(route).toContain("withAuraReadingLock(");
+    expect(route).toContain("day:${auraCalendarDayKey()}");
     expect(route).toContain("findTodaysPaidAuraReport");
     expect(route).toContain("listTodaysUnrefundedAuraSpends");
     expect(route).toContain("auraSpendBelongsToSnapshot");

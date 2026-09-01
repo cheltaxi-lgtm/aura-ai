@@ -20,6 +20,9 @@ export interface AuraArchiveEntry {
   reportAt: string | null;
   snapshot: AuraSnapshot;
   report: string | null;
+  subjectId: string | null;
+  subjectKind: "self" | "other" | null;
+  subjectName: string | null;
 }
 
 function asAuraSnapshot(value: unknown): AuraSnapshot | null {
@@ -40,6 +43,24 @@ function isoOf(value: Date | string): string {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
+function asSubjectKind(value: unknown): "self" | "other" | null {
+  return value === "other" ? "other" : value === "self" ? "self" : null;
+}
+
+function subjectFromCtx(ctx: Record<string, unknown>): {
+  subjectId: string | null;
+  subjectKind: "self" | "other" | null;
+  subjectName: string | null;
+} {
+  const id = typeof ctx.subjectId === "string" ? ctx.subjectId : null;
+  const name = typeof ctx.subjectName === "string" ? ctx.subjectName : null;
+  return {
+    subjectId: id,
+    subjectKind: asSubjectKind(ctx.subjectKind),
+    subjectName: name,
+  };
+}
+
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[]> {
@@ -51,11 +72,17 @@ export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[
       created_at: Date | string;
       report_created_at: Date | string;
       context_data: Record<string, unknown>;
+      subject_id: string | null;
+      subject_kind: string | null;
+      subject_name: string | null;
     }>(
       `SELECT h.id,
               COALESCE(s.created_at, h.created_at) AS created_at,
               h.created_at AS report_created_at,
-              h.context_data
+              h.context_data,
+              s.subject_id,
+              s.subject_kind,
+              COALESCE(s.subject_name, h.context_data->>'subjectName') AS subject_name
        FROM history h
        LEFT JOIN aura_guest_snapshots s
          ON s.id::text = h.context_data->>'auraSnapshotId'
@@ -64,8 +91,15 @@ export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[
        LIMIT 50`,
       [userId]
     ),
-    query<{ id: string; created_at: Date | string; snapshot: unknown }>(
-      `SELECT s.id, s.created_at, s.snapshot
+    query<{
+      id: string;
+      created_at: Date | string;
+      snapshot: unknown;
+      subject_id: string | null;
+      subject_kind: string | null;
+      subject_name: string | null;
+    }>(
+      `SELECT s.id, s.created_at, s.snapshot, s.subject_id, s.subject_kind, s.subject_name
        FROM aura_guest_snapshots s
        WHERE s.claimed_user_id = $1
          AND NOT EXISTS (
@@ -87,6 +121,7 @@ export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[
     const snapshot = asAuraSnapshot(ctx.snapshot);
     if (!snapshot) continue;
     const report = typeof ctx.report === "string" && ctx.report.trim() ? ctx.report : null;
+    const fromCtx = subjectFromCtx(ctx);
     entries.push({
       snapshotId: typeof ctx.auraSnapshotId === "string" ? ctx.auraSnapshotId : null,
       historyId: row.id,
@@ -95,6 +130,9 @@ export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[
       reportAt: report ? isoOf(row.report_created_at) : null,
       snapshot,
       report,
+      subjectId: row.subject_id ?? fromCtx.subjectId,
+      subjectKind: asSubjectKind(row.subject_kind) ?? fromCtx.subjectKind,
+      subjectName: row.subject_name ?? fromCtx.subjectName,
     });
   }
 
@@ -109,6 +147,9 @@ export async function listAuraArchive(userId: string): Promise<AuraArchiveEntry[
       reportAt: null,
       snapshot,
       report: null,
+      subjectId: row.subject_id,
+      subjectKind: asSubjectKind(row.subject_kind),
+      subjectName: row.subject_name,
     });
   }
 
@@ -131,11 +172,17 @@ export async function getAuraArchiveEntry(
     created_at: Date | string;
     report_created_at: Date | string;
     context_data: Record<string, unknown>;
+    subject_id: string | null;
+    subject_kind: string | null;
+    subject_name: string | null;
   }>(
     `SELECT h.id,
             COALESCE(s.created_at, h.created_at) AS created_at,
             h.created_at AS report_created_at,
-            h.context_data
+            h.context_data,
+            s.subject_id,
+            s.subject_kind,
+            COALESCE(s.subject_name, h.context_data->>'subjectName') AS subject_name
      FROM history h
      LEFT JOIN aura_guest_snapshots s
        ON s.id::text = h.context_data->>'auraSnapshotId'
@@ -149,6 +196,7 @@ export async function getAuraArchiveEntry(
     const snapshot = asAuraSnapshot(ctx.snapshot);
     if (!snapshot) return null;
     const report = typeof ctx.report === "string" && ctx.report.trim() ? ctx.report : null;
+    const fromCtx = subjectFromCtx(ctx);
     return {
       snapshotId: typeof ctx.auraSnapshotId === "string" ? ctx.auraSnapshotId : null,
       historyId: historyRow.id,
@@ -157,6 +205,9 @@ export async function getAuraArchiveEntry(
       reportAt: report ? isoOf(historyRow.report_created_at) : null,
       snapshot,
       report,
+      subjectId: historyRow.subject_id ?? fromCtx.subjectId,
+      subjectKind: asSubjectKind(historyRow.subject_kind) ?? fromCtx.subjectKind,
+      subjectName: historyRow.subject_name ?? fromCtx.subjectName,
     };
   }
 
@@ -167,11 +218,15 @@ export async function getAuraArchiveEntry(
     history_id: string | null;
     report: string | null;
     report_at: Date | string | null;
+    subject_id: string | null;
+    subject_kind: string | null;
+    subject_name: string | null;
   }>(
     `SELECT s.id, s.created_at, s.snapshot,
             h.id AS history_id,
             h.context_data->>'report' AS report,
-            h.created_at AS report_at
+            h.created_at AS report_at,
+            s.subject_id, s.subject_kind, s.subject_name
      FROM aura_guest_snapshots s
      LEFT JOIN LATERAL (
        SELECT h.id, h.context_data, h.created_at
@@ -202,6 +257,9 @@ export async function getAuraArchiveEntry(
     reportAt: snapshotRow.report_at ? isoOf(snapshotRow.report_at) : null,
     snapshot,
     report,
+    subjectId: snapshotRow.subject_id,
+    subjectKind: asSubjectKind(snapshotRow.subject_kind),
+    subjectName: snapshotRow.subject_name,
   };
 }
 

@@ -65,6 +65,9 @@ export async function GET(
       reportAt: entry.reportAt,
       snapshot: entry.snapshot,
       report: entry.report,
+      subjectId: entry.subjectId,
+      subjectKind: entry.subjectKind,
+      subjectName: entry.subjectName,
     },
   });
 }

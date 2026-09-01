@@ -4,18 +4,18 @@ import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { isAuraReadingEnabled } from "@/lib/settings";
-import { listAuraArchive } from "@/lib/aura-reading-archive";
+import { isAuraOtherSubjectsEnabled, isAuraReadingEnabled } from "@/lib/settings";
+import { listAuraSubjects } from "@/lib/services/aura-subject-service";
 
 export const runtime = "nodejs";
 
-/**
- * The user's aura archive: paid reports + claimed snapshots awaiting a report.
- * Light DTO (no report bodies, no layer/chakra grids) — detail via [id] route.
- */
+/** Slot list for the «чья аура» picker. Auth required — not a public guest API. */
 export async function GET() {
   if (!(await isAuraReadingEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
+  }
+  if (!(await isAuraOtherSubjectsEnabled())) {
+    return NextResponse.json({ subjects: [], enabled: false }, { headers: { "Cache-Control": "no-store" } });
   }
   const auth = await requireUserAuth();
   if (!auth) {
@@ -34,21 +34,9 @@ export async function GET() {
     return NextResponse.json({ error: "Profile not found" }, { status: 404 });
   }
 
-  const entries = await listAuraArchive(profileUserId);
-  return NextResponse.json({
-    readings: entries.map((entry) => ({
-      snapshotId: entry.snapshotId,
-      historyId: entry.historyId,
-      paid: entry.paid,
-      createdAt: entry.createdAt,
-      reportAt: entry.reportAt,
-      dominantColor: entry.snapshot.dominantColor ?? null,
-      secondaryColors: entry.snapshot.secondaryColors ?? [],
-      verdict: entry.snapshot.verdict ?? null,
-      teaser: entry.snapshot.teaser ?? null,
-      subjectId: entry.subjectId,
-      subjectKind: entry.subjectKind,
-      subjectName: entry.subjectName,
-    })),
-  });
+  const subjects = await listAuraSubjects(profileUserId);
+  return NextResponse.json(
+    { enabled: true, subjects },
+    { headers: { "Cache-Control": "no-store" } }
+  );
 }

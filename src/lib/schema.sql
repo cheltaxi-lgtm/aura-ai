@@ -1133,12 +1133,35 @@ CREATE INDEX IF NOT EXISTS idx_natal_guest_charts_claimed_user
 
 -- Guest Aura snapshots (pre-auth). Only the structured vision result is stored —
 -- never the original face photo. Claim via hashed opaque cookie token.
+CREATE TABLE IF NOT EXISTS aura_subjects (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL CHECK (kind IN ('self', 'other')),
+  display_name TEXT NOT NULL,
+  name_key TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_aura_subjects_one_self
+  ON aura_subjects (user_id)
+  WHERE kind = 'self';
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_aura_subjects_other_name
+  ON aura_subjects (user_id, name_key)
+  WHERE kind = 'other';
+
+CREATE INDEX IF NOT EXISTS idx_aura_subjects_user
+  ON aura_subjects (user_id, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS aura_guest_snapshots (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   snapshot JSONB NOT NULL,
   engine_version TEXT NOT NULL,
   claim_token_hash TEXT NOT NULL,
   photo_hash TEXT,
+  subject_id UUID REFERENCES aura_subjects(id) ON DELETE SET NULL,
+  subject_kind TEXT CHECK (subject_kind IN ('self', 'other')),
+  subject_name TEXT,
   claimed_user_id UUID REFERENCES users(id) ON DELETE SET NULL,
   claimed_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
@@ -1163,6 +1186,10 @@ CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_claimed_user
 CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_photo_hash
   ON aura_guest_snapshots (photo_hash)
   WHERE photo_hash IS NOT NULL;
+
+CREATE INDEX IF NOT EXISTS idx_aura_guest_snapshots_subject
+  ON aura_guest_snapshots (subject_id)
+  WHERE subject_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS natal_report_history (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),

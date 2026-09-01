@@ -32,6 +32,9 @@ type AuraMapProps = {
   snapshot: AuraMapSnapshot;
   /** Teaser: colors and layer names only — chakra states stay paid. */
   veiled?: boolean;
+  /** Other-person slot: show their name instead of «Ваша аура». */
+  subjectName?: string | null;
+  subjectKind?: "self" | "other" | null;
 };
 
 const LAYER_ROLE: Record<(typeof AURA_LAYER_KEYS)[number], string> = {
@@ -146,7 +149,12 @@ function chakraScale(openness: AuraChakraOpenness, veiled: boolean) {
   return { halo: 18, nucleus: 2.1, haloOp: 0.07, nucOp: 0.48 };
 }
 
-export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
+export default function AuraMap({
+  snapshot,
+  veiled = false,
+  subjectName = null,
+  subjectKind = null,
+}: AuraMapProps) {
   const uid = useId().replace(/:/g, "");
   const chakras = snapshot.chakras ?? [];
   const outer = snapshot.secondaryColors[0] ?? snapshot.dominantColor;
@@ -212,7 +220,9 @@ export default function AuraMap({ snapshot, veiled = false }: AuraMapProps) {
     <figure className="aura-map">
       <header className="aura-map__intro">
         <p className="aura-map__eyebrow">
-          Ваша аура
+          {subjectKind === "other" && subjectName?.trim()
+            ? `Аура ${subjectName.trim()}`
+            : "Ваша аура"}
           <span> · {AURA_VERDICT_LABELS[snapshot.verdict]}</span>
         </p>
         <h2 className="aura-map__headline">{copy.title}</h2>

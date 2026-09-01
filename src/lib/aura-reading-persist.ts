@@ -2,6 +2,7 @@ import { ensureDb, query } from "@/lib/db";
 import { createHistoryEntry } from "@/lib/users";
 import type { AuraSnapshot } from "@/lib/aura-constants";
 import { AURA_DAY_TIMEZONE } from "@/lib/services/aura-guest-service";
+import { isAuraOtherSubjectsEnabled } from "@/lib/settings";
 
 const AURA_TODAY_SQL = `(created_at AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date = (NOW() AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date`;
 
@@ -22,11 +23,38 @@ export type TodaysPaidAuraReport = {
   firstAuraDiscount: boolean;
 };
 
-/** Finished paid/full report written today (Moscow day) — any snapshot. */
+/** Finished paid/full report written today (Moscow day) — scoped to a subject when set. */
 export async function findTodaysPaidAuraReport(
-  userId: string
+  userId: string,
+  subjectId?: string | null
 ): Promise<TodaysPaidAuraReport | null> {
   if (!(await ensureDb())) return null;
+  const othersOn = await isAuraOtherSubjectsEnabled();
+  const params: unknown[] = [userId];
+  let subjectSql = "";
+  if (othersOn && subjectId) {
+    params.push(subjectId);
+    subjectSql = `AND (
+      context_data->>'subjectId' = $2
+      OR (
+        $2::text IS NOT NULL
+        AND context_data->>'auraSnapshotId' IN (
+          SELECT id::text FROM aura_guest_snapshots
+          WHERE claimed_user_id = $1 AND subject_id = $2::uuid
+        )
+      )
+    )`;
+  } else {
+    subjectSql = `AND (
+      context_data->>'subjectKind' IS NULL
+      OR context_data->>'subjectKind' = 'self'
+      OR context_data->>'auraSnapshotId' IN (
+        SELECT id::text FROM aura_guest_snapshots
+        WHERE claimed_user_id = $1
+          AND (subject_kind IS NULL OR subject_kind = 'self')
+      )
+    )`;
+  }
   const { rows } = await query<{
     id: string;
     context_data: Record<string, unknown>;
@@ -37,9 +65,10 @@ export async function findTodaysPaidAuraReport(
        AND context_data->>'type' = 'aura_reading'
        AND coalesce(context_data->>'report', '') <> ''
        AND ${AURA_TODAY_SQL}
+       ${subjectSql}
      ORDER BY created_at DESC
      LIMIT 1`,
-    [userId]
+    params
   );
   const row = rows[0];
   if (!row) return null;
@@ -73,6 +102,9 @@ export async function persistAuraReadingResult(params: {
   spentRunes: number;
   idempotencyKey?: string;
   firstAuraDiscount: boolean;
+  subjectId?: string | null;
+  subjectKind?: string | null;
+  subjectName?: string | null;
 }): Promise<string | undefined> {
   if (!(await ensureDb())) return undefined;
 
@@ -92,6 +124,9 @@ export async function persistAuraReadingResult(params: {
       userName: params.userName,
       idempotencyKey: params.idempotencyKey,
       firstAuraDiscount: params.firstAuraDiscount,
+      subjectId: params.subjectId ?? undefined,
+      subjectKind: params.subjectKind ?? undefined,
+      subjectName: params.subjectName ?? undefined,
     },
     isPaid: params.isPaid || params.spentRunes > 0,
   });

@@ -154,7 +154,8 @@ describe("aura-stability", () => {
     expect(landing).not.toContain("rounded-2xl border border-white/10 bg-white/[0.03] p-5 sm:p-8");
     expect(halo).toContain("if (!photoUrl) return null");
     expect(flow).toContain("{photoUrl ? (");
-    expect(flow).toContain("<AuraMap snapshot={snapshot} veiled />");
+    expect(flow).toContain("<AuraMap");
+    expect(flow).toContain("veiled");
     expect(cabinet).toContain("veiled={!active.paid}");
   });
 

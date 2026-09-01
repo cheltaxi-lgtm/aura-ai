@@ -27,8 +27,11 @@ import {
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
-import { isAuraReadingEnabled } from "@/lib/settings";
-import { getClaimedAuraSnapshot } from "@/lib/services/aura-guest-service";
+import { isAuraOtherSubjectsEnabled, isAuraReadingEnabled } from "@/lib/settings";
+import {
+  getClaimedAuraSnapshotRow,
+  listTodaysSnapshotIdsForSubject,
+} from "@/lib/services/aura-guest-service";
 import {
   auraSpendBelongsToSnapshot,
   getAuraChargeReuseState,
@@ -142,8 +145,9 @@ export async function POST(request: NextRequest) {
 
   // Ownership BEFORE enqueue: a foreign or unclaimed snapshot id can never
   // mint a reading — and must not even queue a job.
-  const snapshot = await getClaimedAuraSnapshot({ snapshotId, profileUserId });
-  if (!snapshot) {
+  const stored = await getClaimedAuraSnapshotRow({ snapshotId, profileUserId });
+  const snapshot = stored?.snapshot ?? null;
+  if (!stored || !snapshot) {
     return NextResponse.json(
       {
         error: "SNAPSHOT_NOT_FOUND",
@@ -153,7 +157,9 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const todaysPaid = await findTodaysPaidAuraReport(profileUserId);
+  const othersOn = await isAuraOtherSubjectsEnabled();
+  const subjectId = othersOn ? stored.subjectId : null;
+  const todaysPaid = await findTodaysPaidAuraReport(profileUserId, subjectId);
   if (todaysPaid) {
     const payload = auraReportPayload({
       report: todaysPaid.report,
@@ -171,10 +177,18 @@ export async function POST(request: NextRequest) {
   const runeSettingsEarly = await getRuneSettings();
   const billingOn = isRuneBillingActive(profileUserId, unlimitedEarly, runeSettingsEarly);
   const earlySpends = billingOn ? await listTodaysUnrefundedAuraSpends(profileUserId) : [];
+  const subjectTodayIds = othersOn
+    ? await listTodaysSnapshotIdsForSubject(profileUserId, subjectId)
+    : [];
+  const relevantEarly = othersOn
+    ? earlySpends.filter((s) =>
+        subjectTodayIds.some((id) => auraSpendBelongsToSnapshot([s], id))
+      )
+    : earlySpends;
   if (
     billingOn &&
-    earlySpends.length > 0 &&
-    !auraSpendBelongsToSnapshot(earlySpends, snapshotId)
+    relevantEarly.length > 0 &&
+    !auraSpendBelongsToSnapshot(relevantEarly, snapshotId)
   ) {
     return NextResponse.json(
       {
@@ -201,7 +215,12 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return withAuraReadingLock(profileUserId, `day:${auraCalendarDayKey()}`, async () => {
+  return withAuraReadingLock(
+    profileUserId,
+    othersOn
+      ? `day:${auraCalendarDayKey()}:${subjectId ?? "self"}`
+      : `day:${auraCalendarDayKey()}`,
+    async () => {
   const unlimited = await resolveUnlimitedAccess({ accountId, profileUserId });
   const runeSettings = await getRuneSettings();
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
@@ -227,7 +246,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   }
 
-  const todaysInsideLock = await findTodaysPaidAuraReport(profileUserId);
+  const todaysInsideLock = await findTodaysPaidAuraReport(profileUserId, subjectId);
   if (todaysInsideLock) {
     const payload = auraReportPayload({
       report: todaysInsideLock.report,
@@ -245,10 +264,15 @@ export async function POST(request: NextRequest) {
   const spendsInside = useRuneBilling
     ? await listTodaysUnrefundedAuraSpends(profileUserId)
     : [];
+  const relevantInside = othersOn
+    ? spendsInside.filter((s) =>
+        subjectTodayIds.some((id) => auraSpendBelongsToSnapshot([s], id))
+      )
+    : spendsInside;
   if (
     useRuneBilling &&
-    spendsInside.length > 0 &&
-    !auraSpendBelongsToSnapshot(spendsInside, snapshotId)
+    relevantInside.length > 0 &&
+    !auraSpendBelongsToSnapshot(relevantInside, snapshotId)
   ) {
     return NextResponse.json(
       {
@@ -382,7 +406,12 @@ export async function POST(request: NextRequest) {
     );
   };
 
-  const userName = normalizePersonDisplayNameOr(profile?.name ?? accountName, "друг");
+  const userName = normalizePersonDisplayNameOr(
+    (othersOn && stored.subjectKind === "other" && stored.subjectName
+      ? stored.subjectName
+      : profile?.name ?? accountName) ?? "",
+    "друг"
+  );
 
   let report: string | null;
   try {
@@ -415,6 +444,9 @@ export async function POST(request: NextRequest) {
     spentRunes,
     idempotencyKey,
     firstAuraDiscount,
+    subjectId: stored.subjectId,
+    subjectKind: stored.subjectKind,
+    subjectName: stored.subjectName,
   });
 
   const payload = auraReportPayload({

@@ -5,15 +5,17 @@ import { useEffect, useState } from "react";
 import { formatAuraWaitRu } from "@/lib/aura-cadence";
 
 type AuraCadenceHintProps = {
-  /** True after today's snapshot exists — show the wait until midnight Moscow. */
+  /** True after today's snapshot exists for the selected slot. */
   locked: boolean;
+  /** Self keeps the one-shot-a-day copy; other slots are per person. */
+  slot?: "self" | "other";
 };
 
 /**
  * Honest cadence copy. No fake scores. Core stays weeks; layers may shift
- * on a new Moscow day. Same-day reshoot returns the stored snapshot.
+ * on a new Moscow day. Same-day reshoot of the same slot returns the stored snapshot.
  */
-export default function AuraCadenceHint({ locked }: AuraCadenceHintProps) {
+export default function AuraCadenceHint({ locked, slot = "self" }: AuraCadenceHintProps) {
   const [wait, setWait] = useState<string | null>(null);
 
   useEffect(() => {
@@ -23,11 +25,33 @@ export default function AuraCadenceHint({ locked }: AuraCadenceHintProps) {
     return () => window.clearInterval(id);
   }, []);
 
+  if (slot === "other" && !locked) {
+    return (
+      <aside className="aura-cadence">
+        <p>
+          Этого человека ещё можно снять сегодня. Ядро возьмётся из его прошлого
+          снимка, если он уже был — не из вашей ауры.
+        </p>
+      </aside>
+    );
+  }
+
+  if (slot === "other" && locked) {
+    return (
+      <aside className="aura-cadence" role="status">
+        <p>
+          Новая съёмка этого человека откроется <strong>{wait ?? "завтра"}</strong> —
+          ядро то же. Слои и чакры могут сдвинуться на следующий день.
+        </p>
+      </aside>
+    );
+  }
+
   if (!locked) {
     return (
       <aside className="aura-cadence">
         <p>
-          Один снимок в сутки. Ядро цвета стабильно неделями; слои и чакры могут
+          Один снимок себя в сутки. Ядро цвета стабильно неделями; слои и чакры могут
           сдвинуться на следующий день.
         </p>
         <p>Снимать чаще не нужно — вернётся тот же результат.</p>

@@ -97,6 +97,9 @@ export async function POST(request: NextRequest) {
     snapshotId: result.snapshotId,
     // Pre-payment subset only — layers/chakras ship with the paid report.
     snapshot: toAuraTeaserSnapshot(result.snapshot),
+    subjectId: result.subjectId,
+    subjectKind: result.subjectKind,
+    subjectName: result.subjectName,
   });
   clearAuraGuestClaimCookieOnResponse(response, request);
   return response;

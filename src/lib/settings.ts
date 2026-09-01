@@ -415,6 +415,27 @@ export async function isAuraReadingEnabled(): Promise<boolean> {
   return settings.enabled !== false;
 }
 
+/**
+ * Other-person aura slots. ENV kill-switch, default OFF.
+ * Requires the aura module itself to be enabled.
+ */
+export function isAuraOtherSubjectsEnvOn(): boolean {
+  const raw = process.env.AURA_OTHER_SUBJECTS?.trim().toLowerCase();
+  return raw === "true" || raw === "1";
+}
+
+export async function isAuraOtherSubjectsEnabled(): Promise<boolean> {
+  if (!isAuraOtherSubjectsEnvOn()) return false;
+  return isAuraReadingEnabled();
+}
+
+/** Daily free teasers for «other» slots per account. */
+export function auraOtherTeaserDayLimit(): number {
+  const n = Number.parseInt(process.env.AURA_OTHER_TEASER_DAY_LIMIT ?? "20", 10);
+  if (!Number.isFinite(n) || n < 1) return 20;
+  return Math.min(n, 200);
+}
+
 export async function isExpertRegistrationEnabled(): Promise<boolean> {
   const features = await getSetting("features");
   return features.expertRegistrationEnabled !== false;

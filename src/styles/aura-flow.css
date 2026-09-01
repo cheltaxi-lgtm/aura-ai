@@ -579,6 +579,104 @@
   }
 }
 
+/* ── Whose aura picker ── */
+
+.aura-picker {
+  margin: 0 auto;
+  max-width: 28rem;
+}
+
+.aura-picker__title {
+  margin: 0 0 0.625rem;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: rgba(212, 175, 55, 0.7);
+  text-align: center;
+}
+
+.aura-picker__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.aura-picker__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.72);
+  border-radius: 0.75rem;
+  padding: 0.45rem 0.8rem;
+  font-size: 0.875rem;
+  transition: opacity 0.2s ease;
+}
+
+.aura-picker__chip:hover:not(:disabled) {
+  border-color: rgba(212, 175, 55, 0.35);
+}
+
+.aura-picker__chip--on {
+  border-color: rgba(212, 175, 55, 0.55);
+  background: rgba(80, 55, 10, 0.4);
+  color: rgb(232, 197, 99);
+}
+
+.aura-picker__chip:disabled {
+  opacity: 0.5;
+}
+
+.aura-picker__dot {
+  width: 0.4rem;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: rgb(232, 197, 99);
+}
+
+.aura-picker__create {
+  margin-top: 0.85rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+}
+
+.aura-picker__warn,
+.aura-picker__recent p,
+.aura-picker__clash p {
+  margin: 0;
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.aura-picker__name {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.5);
+}
+
+.aura-picker__name input {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(0, 0, 0, 0.28);
+  color: rgba(255, 255, 255, 0.88);
+  border-radius: 0.75rem;
+  padding: 0.6rem 0.8rem;
+  font-size: 0.9375rem;
+}
+
+.aura-picker__clash {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+}
+
 /* ── Past auras archive (capture step) ── */
 
 .aura-past {

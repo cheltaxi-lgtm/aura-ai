@@ -100,7 +100,13 @@ export default function CabinetAuraReadings({ readings, onDelete, deletingId = n
                 )}
                 <span className="flex-1">
                   <span className="block text-sm text-white/85">
-                    {dominant ? `Аура: ${dominant.name}` : "Разбор ауры"}
+                    {row.contextData.subjectKind === "other" && row.contextData.subjectName
+                      ? dominant
+                        ? `${row.contextData.subjectName}: ${dominant.name}`
+                        : `Аура ${row.contextData.subjectName}`
+                      : dominant
+                        ? `Аура: ${dominant.name}`
+                        : "Разбор ауры"}
                   </span>
                   <span className="block text-xs text-white/45">
                     {formatDate(row.createdAt)}
@@ -174,9 +180,12 @@ export default function CabinetAuraReadings({ readings, onDelete, deletingId = n
                       id="cabinet-aura-reading-title"
                       className="text-xs uppercase tracking-[0.2em] text-aura-gold/70"
                     >
-                      {active.contextData.verdict
-                        ? AURA_VERDICT_LABELS[active.contextData.verdict]
-                        : "Разбор ауры"}
+                      {active.contextData.subjectKind === "other" &&
+                      active.contextData.subjectName
+                        ? active.contextData.subjectName
+                        : active.contextData.verdict
+                          ? AURA_VERDICT_LABELS[active.contextData.verdict]
+                          : "Разбор ауры"}
                     </p>
                     <p className="mt-1 text-xs text-white/45">
                       {formatDate(active.createdAt)}
@@ -198,7 +207,12 @@ export default function CabinetAuraReadings({ readings, onDelete, deletingId = n
                   if (!snapshot) return null;
                   return (
                     <div className="mb-4">
-                      <AuraMap snapshot={snapshot} veiled={!active.paid} />
+                      <AuraMap
+                        snapshot={snapshot}
+                        veiled={!active.paid}
+                        subjectKind={active.contextData.subjectKind}
+                        subjectName={active.contextData.subjectName}
+                      />
                     </div>
                   );
                 })()}

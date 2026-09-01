@@ -98,6 +98,9 @@ export const CHECKS = {
     vitest: [
       "tests/invariants/aura-stability.test.ts",
       "tests/invariants/aura-seo-landings.test.ts",
+      "tests/invariants/aura-archive.test.ts",
+      "tests/invariants/aura-reading-retry.test.ts",
+      "tests/invariants/aura-subjects.test.ts",
     ],
   },
   "ads-unit": {

@@ -3,14 +3,17 @@ import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount } from "@/lib/accounts";
 import {
   auraReadingPricingFromSettings,
+  auraSpendBelongsToSnapshot,
   hasTodaysUnrefundedAuraSpend,
+  listTodaysUnrefundedAuraSpends,
   resolveAuraReadingPricing,
 } from "@/lib/aura-reading-billing";
 import { findTodaysPaidAuraReport } from "@/lib/aura-reading-persist";
+import { listTodaysSnapshotIdsForSubject } from "@/lib/services/aura-guest-service";
 import { getRuneSettings } from "@/lib/rune-settings";
-import { isAuraReadingEnabled } from "@/lib/settings";
+import { isAuraOtherSubjectsEnabled, isAuraReadingEnabled } from "@/lib/settings";
 
-export async function GET() {
+export async function GET(request: Request) {
   if (!(await isAuraReadingEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
@@ -44,10 +47,23 @@ export async function GET() {
     );
   }
 
+  const othersOn = await isAuraOtherSubjectsEnabled();
+  const subjectParam = othersOn ? new URL(request.url).searchParams.get("subject") : null;
+  const subjectId =
+    subjectParam && /^[0-9a-f-]{36}$/i.test(subjectParam) ? subjectParam : null;
+
   const [pricing, todays, spentToday] = await Promise.all([
     resolveAuraReadingPricing(profileUserId),
-    findTodaysPaidAuraReport(profileUserId),
-    hasTodaysUnrefundedAuraSpend(profileUserId),
+    findTodaysPaidAuraReport(profileUserId, othersOn ? subjectId : undefined),
+    othersOn
+      ? (async () => {
+          const [spends, snapshotIds] = await Promise.all([
+            listTodaysUnrefundedAuraSpends(profileUserId),
+            listTodaysSnapshotIdsForSubject(profileUserId, subjectId),
+          ]);
+          return snapshotIds.some((id) => auraSpendBelongsToSnapshot(spends, id));
+        })()
+      : hasTodaysUnrefundedAuraSpend(profileUserId),
   ]);
   return NextResponse.json(
     {

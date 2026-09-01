@@ -3,6 +3,7 @@ import { getRecaptchaScopesConfig } from "@/lib/recaptcha";
 import { listEnabledOAuthProviders } from "@/lib/oauth/config";
 import {
   getSetting,
+  isAuraOtherSubjectsEnabled,
   isAuraReadingEnabled,
   isHumanDesignEnabled,
   isJointReadingEnabled,
@@ -22,6 +23,7 @@ export async function GET() {
     humanDesignEnabled,
     photoReadingEnabled,
     auraReadingEnabled,
+    auraOtherSubjectsEnabled,
     ritualSettings,
   ] = await Promise.all([
     getSetting("features"),
@@ -32,6 +34,7 @@ export async function GET() {
     isHumanDesignEnabled(),
     isPhotoReadingEnabled(),
     isAuraReadingEnabled(),
+    isAuraOtherSubjectsEnabled(),
     getRitualSettings(),
   ]);
 
@@ -42,6 +45,7 @@ export async function GET() {
     humanDesignEnabled,
     photoReadingEnabled,
     auraReadingEnabled,
+    auraOtherSubjectsEnabled,
     ritualsEnabled: isRitualCatalogEnabled(ritualSettings),
     proModuleEnabled: isProModuleEnabled(),
     oauthProviders,

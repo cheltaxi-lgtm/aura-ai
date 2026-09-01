@@ -57,5 +57,6 @@ describe("aura-archive", () => {
   it("cabinet aura rows come from the shared archive (paid + unpaid)", () => {
     const cabinet = read("src/lib/cabinet-data.ts");
     expect(cabinet).toContain("listAuraArchive(profileUserId)");
+    expect(cabinet).toContain("subjectName: entry.subjectName");
   });
 });

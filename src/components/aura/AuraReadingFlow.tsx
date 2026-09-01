@@ -8,10 +8,15 @@ import Link from "next/link";
 import AuraCadenceHint from "@/components/aura/AuraCadenceHint";
 import AuraHalo from "@/components/aura/AuraHalo";
 import AuraMap from "@/components/aura/AuraMap";
+import AuraSubjectPicker, {
+  type AuraPickerSubject,
+} from "@/components/aura/AuraSubjectPicker";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { useAuth } from "@/lib/useAuth";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { auraSubjectNameKey } from "@/lib/aura-subject-name";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { compressImageForUpload } from "@/lib/compress-image-client";
 import { isAppCameraAvailable, pickPhotoFromApp } from "@/lib/app-camera";
@@ -57,6 +62,9 @@ type AuraPastItem = {
   dominantColor: { key: string; name: string; hex: string } | null;
   verdict: keyof typeof AURA_VERDICT_LABELS | null;
   teaser: string | null;
+  subjectId?: string | null;
+  subjectKind?: "self" | "other" | null;
+  subjectName?: string | null;
 };
 
 function formatPastDate(iso: string): string {
@@ -80,7 +88,9 @@ function formatRunes(n: number): string {
 
 export default function AuraReadingFlow() {
   const { isLoggedIn, loading: authLoading, refresh: refreshAuth } = useAuth();
+  const { auraOtherSubjectsEnabled, featuresLoaded } = usePlatformFeatures();
   const { config } = useRuneConfig();
+  const othersOn = featuresLoaded && auraOtherSubjectsEnabled === true;
 
   const [step, setStep] = useState<FlowStep>("capture");
   const [error, setError] = useState<string | null>(null);
@@ -104,6 +114,14 @@ export default function AuraReadingFlow() {
   /** Today's snapshot already exists — do not offer a new shoot. */
   const [dayLocked, setDayLocked] = useState(false);
   const [todayReady, setTodayReady] = useState(false);
+  const [subjects, setSubjects] = useState<AuraPickerSubject[]>([]);
+  const [selectedSubjectId, setSelectedSubjectId] = useState<string | null>(null);
+  const [subjectKind, setSubjectKind] = useState<"self" | "other">("self");
+  const [creatingOther, setCreatingOther] = useState(false);
+  const [draftName, setDraftName] = useState("");
+  const [recentAck, setRecentAck] = useState<false | "new">(false);
+  const [nameClash, setNameClash] = useState<AuraPickerSubject | null>(null);
+  const [similarColorHint, setSimilarColorHint] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -135,10 +153,30 @@ export default function AuraReadingFlow() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  const refreshSubjects = useCallback(() => {
+    if (!isLoggedIn || !othersOn) return;
+    void fetch("/api/aura/subjects", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!data || !Array.isArray(data.subjects)) return;
+        setSubjects(data.subjects as AuraPickerSubject[]);
+      })
+      .catch(() => undefined);
+  }, [isLoggedIn, othersOn]);
+
+  useEffect(() => {
+    if (authLoading || !featuresLoaded) return;
+    refreshSubjects();
+  }, [authLoading, featuresLoaded, refreshSubjects]);
+
   // Load pricing + balance once auth state is known.
   useEffect(() => {
-    if (authLoading) return;
-    void fetch("/api/aura/pricing", { credentials: "include", cache: "no-store" })
+    if (authLoading || !featuresLoaded) return;
+    const qs =
+      othersOn && selectedSubjectId
+        ? `?subject=${encodeURIComponent(selectedSubjectId)}`
+        : "";
+    void fetch(`/api/aura/pricing${qs}`, { credentials: "include", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (data && typeof data.effectiveCost === "number") {
@@ -162,7 +200,7 @@ export default function AuraReadingFlow() {
         })
         .catch(() => undefined);
     }
-  }, [authLoading, isLoggedIn]);
+  }, [authLoading, isLoggedIn, featuresLoaded, othersOn, selectedSubjectId]);
 
   // Age gate: logged-in users are authorized server-side per profile; guests
   // need the HttpOnly consent cookie — resolve it upfront so the inline gate
@@ -184,9 +222,18 @@ export default function AuraReadingFlow() {
 
   // Resume today's snapshot without a new photo (account or guest cookie).
   useEffect(() => {
-    if (authLoading) return;
+    if (authLoading || !featuresLoaded) return;
+    if (othersOn && creatingOther && !selectedSubjectId) {
+      setDayLocked(false);
+      setTodayReady(true);
+      return;
+    }
     let cancelled = false;
-    void fetch("/api/aura/today", { credentials: "include", cache: "no-store" })
+    const qs =
+      othersOn && selectedSubjectId
+        ? `?subject=${encodeURIComponent(selectedSubjectId)}`
+        : "";
+    void fetch(`/api/aura/today${qs}`, { credentials: "include", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
       .then((data) => {
         if (cancelled) return;
@@ -195,6 +242,11 @@ export default function AuraReadingFlow() {
           setSnapshotId(data.snapshotId);
           setDayLocked(true);
           setReusedKind("today");
+          if (typeof data.subjectId === "string") setSelectedSubjectId(data.subjectId);
+          if (data.subjectKind === "other" || data.subjectKind === "self") {
+            setSubjectKind(data.subjectKind);
+          }
+          if (typeof data.subjectName === "string") setDraftName(data.subjectName);
           if (data.paid === true && typeof data.report === "string" && data.report.trim()) {
             setReport(data.report);
             setStep("report");
@@ -202,6 +254,15 @@ export default function AuraReadingFlow() {
             setStep("claimed");
           } else {
             setStep("teaser");
+          }
+        } else {
+          setDayLocked(false);
+          if (othersOn && (selectedSubjectId || creatingOther)) {
+            setSnapshot(null);
+            setSnapshotId(null);
+            setReport(null);
+            setReusedKind(null);
+            setStep("capture");
           }
         }
         setTodayReady(true);
@@ -212,7 +273,7 @@ export default function AuraReadingFlow() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isLoggedIn]);
+  }, [authLoading, isLoggedIn, featuresLoaded, othersOn, selectedSubjectId, creatingOther]);
 
   // Post-auth resume: claim the guest snapshot bound by the HttpOnly cookie.
   // Idempotent — NO_CLAIM_TOKEN simply means there is nothing to resume.
@@ -228,7 +289,14 @@ export default function AuraReadingFlow() {
         if (data?.ok && data.snapshot && typeof data.snapshotId === "string") {
           setSnapshot(data.snapshot as FlowSnapshot);
           setSnapshotId(data.snapshotId);
+          setDayLocked(true);
           setStep((prev) => (prev === "report" ? prev : "claimed"));
+          if (typeof data.subjectId === "string") setSelectedSubjectId(data.subjectId);
+          if (data.subjectKind === "other" || data.subjectKind === "self") {
+            setSubjectKind(data.subjectKind);
+          }
+          if (typeof data.subjectName === "string") setDraftName(data.subjectName);
+          refreshSubjects();
           trackProductFunnel("claim_complete", { product: "aura", source: "aura_flow" });
         }
       })
@@ -271,9 +339,66 @@ export default function AuraReadingFlow() {
     setReport(null);
     setReusedKind(null);
     setDayLocked(false);
+    setSimilarColorHint(null);
     setError(null);
     setStep("capture");
   }, [photoUrl]);
+
+  const selectSelf = useCallback(() => {
+    const self = subjects.find((s) => s.kind === "self");
+    setCreatingOther(false);
+    setRecentAck(false);
+    setNameClash(null);
+    setSubjectKind("self");
+    setSelectedSubjectId(self?.id ?? null);
+    setDraftName("");
+    setSimilarColorHint(null);
+    setError(null);
+    setDayLocked(self?.shotToday === true);
+    setTodayReady(false);
+  }, [subjects]);
+
+  const selectExisting = useCallback((id: string) => {
+    const found = subjects.find((s) => s.id === id);
+    setCreatingOther(false);
+    setRecentAck(false);
+    setNameClash(null);
+    setSubjectKind(found?.kind === "other" ? "other" : "self");
+    setSelectedSubjectId(id);
+    setDraftName(found?.displayName ?? "");
+    setSimilarColorHint(null);
+    setError(null);
+    setDayLocked(found?.shotToday === true);
+    setTodayReady(false);
+  }, [subjects]);
+
+  const startCreateOther = useCallback(() => {
+    setCreatingOther(true);
+    setSelectedSubjectId(null);
+    setSubjectKind("other");
+    setDraftName("");
+    setRecentAck(false);
+    setNameClash(null);
+    setDayLocked(false);
+    setSnapshot(null);
+    setSnapshotId(null);
+    setReport(null);
+    setReusedKind(null);
+    setSimilarColorHint(null);
+    setError(null);
+    setTodayReady(true);
+    setStep("capture");
+  }, []);
+
+  const canOpenCamera = !othersOn
+    ? !dayLocked
+    : !dayLocked &&
+      (subjectKind === "self" ||
+        Boolean(selectedSubjectId) ||
+        (creatingOther &&
+          draftName.trim().length > 0 &&
+          (subjects.filter((s) => s.kind === "other").length === 0 || recentAck === "new") &&
+          !nameClash));
 
   const openPast = useCallback(async (item: AuraPastItem) => {
     const id = item.historyId ?? item.snapshotId;
@@ -294,6 +419,12 @@ export default function AuraReadingFlow() {
       setSnapshot(entry.snapshot as FlowSnapshot);
       setSnapshotId(typeof entry.snapshotId === "string" ? entry.snapshotId : null);
       setReport(typeof entry.report === "string" ? entry.report : null);
+      if (entry.subjectKind === "other" || entry.subjectKind === "self") {
+        setSubjectKind(entry.subjectKind);
+        setCreatingOther(false);
+      }
+      if (typeof entry.subjectName === "string") setDraftName(entry.subjectName);
+      if (typeof entry.subjectId === "string") setSelectedSubjectId(entry.subjectId);
       if (photoUrl) URL.revokeObjectURL(photoUrl);
       setPhotoUrl(null);
       setStep(entry.report ? "report" : "claimed");
@@ -354,6 +485,13 @@ export default function AuraReadingFlow() {
           "image",
           new File([compressed.blob], "aura.jpg", { type: compressed.mimeType })
         );
+        if (othersOn) {
+          form.append("kind", subjectKind);
+          if (selectedSubjectId) form.append("subjectId", selectedSubjectId);
+          if (subjectKind === "other" && draftName.trim()) {
+            form.append("subjectName", draftName.trim());
+          }
+        }
 
         const res = await fetch("/api/aura/teaser", {
           method: "POST",
@@ -374,6 +512,12 @@ export default function AuraReadingFlow() {
           setStep("capture");
           return;
         }
+        if (res.status === 409 && data?.code === "NAME_EXISTS" && data.subject) {
+          setNameClash(data.subject as AuraPickerSubject);
+          setError(data.message ?? "Такое имя уже есть — откройте существующий слот.");
+          setStep("capture");
+          return;
+        }
         if (!res.ok || !data?.snapshot) {
           setError(
             data?.message ?? "Сервис распознавания временно недоступен. Попробуйте через минуту."
@@ -387,6 +531,16 @@ export default function AuraReadingFlow() {
         setSnapshotId(typeof data.snapshotId === "string" ? data.snapshotId : null);
         setReusedKind(data.reused === "today" || data.reused === "photo" ? data.reused : null);
         setDayLocked(true);
+        setCreatingOther(false);
+        if (typeof data.subjectId === "string") setSelectedSubjectId(data.subjectId);
+        if (data.subjectKind === "other" || data.subjectKind === "self") {
+          setSubjectKind(data.subjectKind);
+        }
+        if (typeof data.subjectName === "string") setDraftName(data.subjectName);
+        setSimilarColorHint(
+          typeof data.similarColorHint === "string" ? data.similarColorHint : null
+        );
+        refreshSubjects();
         trackProductFunnel("free_complete", { product: "aura", source: "aura_flow" });
 
         if (data.claimed === true) {
@@ -422,15 +576,15 @@ export default function AuraReadingFlow() {
         setStep("capture");
       }
     },
-    [isLoggedIn, photoUrl]
+    [isLoggedIn, photoUrl, othersOn, subjectKind, selectedSubjectId, draftName, refreshSubjects]
   );
 
   const onFilePicked = useCallback(
     (file: File | null) => {
-      if (!file || dayLocked) return;
+      if (!file || !canOpenCamera) return;
       void runTeaser(file);
     },
-    [runTeaser, dayLocked]
+    [runTeaser, canOpenCamera]
   );
 
   const confirmAge = useCallback(async () => {
@@ -456,7 +610,7 @@ export default function AuraReadingFlow() {
   }, []);
 
   const startCamera = useCallback(async () => {
-    if (dayLocked) return;
+    if (!canOpenCamera) return;
     setError(null);
 
     if (isNativeCapacitorPlatform() && isAppCameraAvailable()) {
@@ -503,10 +657,10 @@ export default function AuraReadingFlow() {
         setError("Нет доступа к камере. Разрешите доступ или загрузите фото из галереи.");
       }
     }
-  }, [runTeaser, dayLocked]);
+  }, [runTeaser, canOpenCamera]);
 
   const captureFrame = useCallback(() => {
-    if (dayLocked) return;
+    if (!canOpenCamera) return;
     const video = videoRef.current;
     if (!video || !streamRef.current) return;
     const w = video.videoWidth || 1080;
@@ -528,7 +682,7 @@ export default function AuraReadingFlow() {
       "image/jpeg",
       0.92
     );
-  }, [runTeaser, stopCamera, dayLocked]);
+  }, [runTeaser, stopCamera, canOpenCamera]);
 
   const pollJob = useCallback(
     async (jobId: string) => {
@@ -754,12 +908,53 @@ export default function AuraReadingFlow() {
                   Портрет крупным планом, при ровном свете. Фото не сохраняется — только
                   цвета и состояния поля.
                 </p>
-                <AuraCadenceHint locked={dayLocked} />
+                {othersOn ? (
+                  <AuraSubjectPicker
+                    subjects={subjects}
+                    selectedId={selectedSubjectId}
+                    creating={creatingOther}
+                    draftName={draftName}
+                    recentAck={recentAck}
+                    nameClash={nameClash}
+                    loggedIn={isLoggedIn}
+                    disabled={!todayReady}
+                    onSelectSelf={selectSelf}
+                    onSelectExisting={selectExisting}
+                    onStartCreate={startCreateOther}
+                    onDraftName={(name) => {
+                      setDraftName(name);
+                      const key = auraSubjectNameKey(name);
+                      const hit =
+                        key.length > 0
+                          ? subjects.find(
+                              (s) =>
+                                s.kind === "other" && auraSubjectNameKey(s.displayName) === key
+                            )
+                          : undefined;
+                      setNameClash(hit ?? null);
+                    }}
+                    onAckNewPerson={() => {
+                      setRecentAck("new");
+                      setNameClash(null);
+                    }}
+                    onConfirmClash={() => {
+                      if (nameClash) selectExisting(nameClash.id);
+                    }}
+                    onDismissClash={() => {
+                      setNameClash(null);
+                      setDraftName("");
+                    }}
+                  />
+                ) : null}
+                <AuraCadenceHint
+                  locked={dayLocked}
+                  slot={othersOn && subjectKind === "other" ? "other" : "self"}
+                />
                 {!todayReady ? (
                   <p className="text-center text-sm text-white/45">
                     Проверяю снимок на сегодня…
                   </p>
-                ) : dayLocked ? null : (
+                ) : canOpenCamera ? (
                   <div className="flex flex-col justify-center gap-3 sm:flex-row">
                     <button
                       type="button"
@@ -778,7 +973,21 @@ export default function AuraReadingFlow() {
                       Загрузить фото
                     </button>
                   </div>
-                )}
+                ) : dayLocked && othersOn && subjectKind === "self" ? (
+                  <div className="flex justify-center">
+                    <button
+                      type="button"
+                      onClick={startCreateOther}
+                      className="btn-luxe btn-luxe--md btn-luxe--ghost"
+                    >
+                      Снять другому человеку
+                    </button>
+                  </div>
+                ) : othersOn && creatingOther && !canOpenCamera ? (
+                  <p className="text-center text-sm text-white/45">
+                    Напишите имя и подтвердите, что это новый человек — камера откроется после этого.
+                  </p>
+                ) : null}
 
                 {isLoggedIn && pastReadings && pastReadings.length > 0 && (
                   <div className="aura-past">
@@ -807,9 +1016,13 @@ export default function AuraReadingFlow() {
                               )}
                               <span className="aura-past__meta">
                                 <span className="aura-past__name">
-                                  {item.dominantColor
-                                    ? `Аура: ${item.dominantColor.name}`
-                                    : "Снимок ауры"}
+                                  {item.subjectKind === "other" && item.subjectName
+                                    ? item.dominantColor
+                                      ? `${item.subjectName}: ${item.dominantColor.name}`
+                                      : `Аура ${item.subjectName}`
+                                    : item.dominantColor
+                                      ? `Аура: ${item.dominantColor.name}`
+                                      : "Снимок ауры"}
                                 </span>
                                 <span className="aura-past__date">
                                   {formatPastDate(item.createdAt)}
@@ -894,14 +1107,27 @@ export default function AuraReadingFlow() {
               <AuraHalo snapshot={snapshot} photoUrl={photoUrl} veiled={step === "teaser"} />
             ) : null}
 
-            <AuraMap snapshot={snapshot} veiled />
+            <AuraMap
+              snapshot={snapshot}
+              veiled
+              subjectKind={othersOn ? subjectKind : "self"}
+              subjectName={othersOn && subjectKind === "other" ? draftName : null}
+            />
 
             {reusedKind === "photo" ? (
               <p role="status" className="text-center text-xs leading-relaxed text-white/60">
                 Это тот же портрет: возвращаю сохранённый снимок, без нового кручения.
               </p>
             ) : null}
-            <AuraCadenceHint locked={dayLocked} />
+            <AuraCadenceHint
+              locked={dayLocked}
+              slot={othersOn && subjectKind === "other" ? "other" : "self"}
+            />
+            {similarColorHint ? (
+              <p role="status" className="text-center text-xs leading-relaxed text-white/60">
+                {similarColorHint}
+              </p>
+            ) : null}
 
             {step === "teaser" ? (
               <div className="space-y-3 text-center">
@@ -941,8 +1167,8 @@ export default function AuraReadingFlow() {
                       </p>
                     )}
                     <p className="text-sm text-white/55">
-                      Полный разбор — один на день. Повтор сегодня откроет тот же текст,
-                      руны не спишутся.
+                      Полный разбор — один на этого человека в сутки. Повтор сегодня откроет
+                      тот же текст, руны не спишутся.
                     </p>
                   </>
                 )}
@@ -987,6 +1213,15 @@ export default function AuraReadingFlow() {
                     Получить полный разбор · {formatRunes(auraCost)}
                   </button>
                 )}
+                {othersOn && isLoggedIn && subjectKind === "self" ? (
+                  <button
+                    type="button"
+                    onClick={startCreateOther}
+                    className="btn-luxe btn-luxe--md btn-luxe--ghost"
+                  >
+                    Снять другому человеку
+                  </button>
+                ) : null}
               </div>
             )}
           </motion.div>
@@ -1002,9 +1237,16 @@ export default function AuraReadingFlow() {
           >
             {photoUrl ? <AuraHalo snapshot={snapshot} photoUrl={photoUrl} /> : null}
 
-            <AuraMap snapshot={snapshot} />
+            <AuraMap
+              snapshot={snapshot}
+              subjectKind={othersOn ? subjectKind : "self"}
+              subjectName={othersOn && subjectKind === "other" ? draftName : null}
+            />
 
-            <AuraCadenceHint locked={dayLocked} />
+            <AuraCadenceHint
+              locked={dayLocked}
+              slot={othersOn && subjectKind === "other" ? "other" : "self"}
+            />
 
             <div className="photo-flow-panel">
               <PremiumReadingBody content={report} className="text-sm text-white/85" />
@@ -1012,6 +1254,15 @@ export default function AuraReadingFlow() {
 
             <div className="flex flex-col items-center gap-3 pt-2">
               <CrossProductNextSteps context="aura" />
+              {othersOn && isLoggedIn && subjectKind === "self" ? (
+                <button
+                  type="button"
+                  onClick={startCreateOther}
+                  className="btn-luxe btn-luxe--md btn-luxe--ghost"
+                >
+                  Снять другому человеку
+                </button>
+              ) : null}
               <Link href="/cabinet" className="btn-luxe btn-luxe--md btn-luxe--ghost">
                 Открыть в кабинете
               </Link>

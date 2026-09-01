@@ -7,7 +7,12 @@ import {
   type AuraColor,
   type AuraSnapshot,
 } from "@/lib/aura-constants";
-import { isAuraReadingEnabled } from "@/lib/settings";
+import { isAuraOtherSubjectsEnabled, isAuraReadingEnabled } from "@/lib/settings";
+import {
+  ensureAuraOtherSubject,
+  ensureAuraSelfSubject,
+  type AuraSubjectKind,
+} from "@/lib/services/aura-subject-service";
 
 /** Same portrait re-uploaded within this window returns the stored snapshot. */
 const AURA_PHOTO_DEDUP_WINDOW = "30 days";
@@ -35,6 +40,9 @@ export type AuraStoredSnapshot = {
   claimedUserId: string | null;
   createdAt: Date;
   expiresAt: string;
+  subjectId: string | null;
+  subjectKind: AuraSubjectKind | null;
+  subjectName: string | null;
 };
 
 function asDate(value: Date | string): Date {
@@ -47,6 +55,9 @@ function asStored(row: {
   claimed_user_id: string | null;
   created_at: Date | string;
   expires_at: Date | string;
+  subject_id?: string | null;
+  subject_kind?: string | null;
+  subject_name?: string | null;
 }): AuraStoredSnapshot | null {
   if (!row.snapshot?.dominantColor) return null;
   return {
@@ -55,6 +66,9 @@ function asStored(row: {
     claimedUserId: row.claimed_user_id,
     createdAt: asDate(row.created_at),
     expiresAt: asDate(row.expires_at).toISOString(),
+    subjectId: row.subject_id ?? null,
+    subjectKind: row.subject_kind === "other" ? "other" : row.subject_kind === "self" ? "self" : null,
+    subjectName: row.subject_name ?? null,
   };
 }
 
@@ -75,6 +89,9 @@ export type AuraGuestClaimResult =
       status: "claimed" | "idempotent";
       snapshotId: string;
       snapshot: AuraSnapshot;
+      subjectId: string | null;
+      subjectKind: AuraSubjectKind | null;
+      subjectName: string | null;
     }
   | {
       ok: false;
@@ -106,7 +123,17 @@ type AuraStoredRow = {
   claimed_user_id: string | null;
   created_at: Date | string;
   expires_at: Date | string;
+  subject_id: string | null;
+  subject_kind: string | null;
+  subject_name: string | null;
 };
+
+const SNAPSHOT_COLS = `id, snapshot, claimed_user_id, created_at, expires_at, subject_id, subject_kind, subject_name`;
+
+function selfOrLegacyPredicate(alias = ""): string {
+  const p = alias ? `${alias}.` : "";
+  return `(${p}subject_kind IS NULL OR ${p}subject_kind = 'self')`;
+}
 
 function claimTokenHashOf(rawToken: string | null | undefined): string | null {
   const raw = typeof rawToken === "string" ? rawToken.trim() : "";
@@ -115,16 +142,25 @@ function claimTokenHashOf(rawToken: string | null | undefined): string | null {
 }
 
 export async function findTodaysAuraSnapshotForUser(
-  profileUserId: string
+  profileUserId: string,
+  subjectId?: string | null
 ): Promise<AuraStoredSnapshot | null> {
+  const othersOn = await isAuraOtherSubjectsEnabled();
+  const params: unknown[] = [profileUserId];
+  let subjectSql = `AND ${selfOrLegacyPredicate()}`;
+  if (othersOn && subjectId) {
+    params.push(subjectId);
+    subjectSql = `AND subject_id = $2`;
+  }
   const { rows } = await query<AuraStoredRow>(
-    `SELECT id, snapshot, claimed_user_id, created_at, expires_at
+    `SELECT ${SNAPSHOT_COLS}
      FROM aura_guest_snapshots
      WHERE claimed_user_id = $1
        AND ${AURA_TODAY_PREDICATE}
+       ${subjectSql}
      ORDER BY created_at DESC
      LIMIT 1`,
-    [profileUserId]
+    params
   );
   return rows[0] ? asStored(rows[0]) : null;
 }
@@ -135,7 +171,7 @@ export async function findAuraSnapshotByClaimToken(
   const claimHash = claimTokenHashOf(rawToken);
   if (!claimHash) return null;
   const { rows } = await query<AuraStoredRow>(
-    `SELECT id, snapshot, claimed_user_id, created_at, expires_at
+    `SELECT ${SNAPSHOT_COLS}
      FROM aura_guest_snapshots
      WHERE claim_token_hash = $1
      LIMIT 1`,
@@ -177,7 +213,7 @@ export async function findScopedSnapshotByPhotoHash(opts: {
   const claimHash = claimTokenHashOf(opts.claimToken);
   if (!opts.profileUserId && !claimHash) return null;
   const { rows } = await query<AuraStoredRow>(
-    `SELECT id, snapshot, claimed_user_id, created_at, expires_at
+    `SELECT ${SNAPSHOT_COLS}
      FROM aura_guest_snapshots
      WHERE photo_hash = $1
        AND created_at > NOW() - $2::interval
@@ -203,16 +239,27 @@ export async function findScopedSnapshotByPhotoHash(opts: {
  * traditions; layers/chakras carry the day-to-day variance instead.
  */
 export async function getAuraBaseColorAnchor(
-  profileUserId: string
+  profileUserId: string,
+  subjectId?: string | null
 ): Promise<AuraColorAnchor | null> {
+  const othersOn = await isAuraOtherSubjectsEnabled();
+  const params: unknown[] = [profileUserId, AURA_BASE_COLOR_WINDOW];
+  let subjectSql = "";
+  if (othersOn && subjectId) {
+    params.push(subjectId);
+    subjectSql = `AND subject_id = $3`;
+  } else {
+    subjectSql = `AND ${selfOrLegacyPredicate()}`;
+  }
   const { rows } = await query<{ snapshot: AuraSnapshot; created_at: Date | string }>(
     `SELECT snapshot, created_at
      FROM aura_guest_snapshots
      WHERE claimed_user_id = $1
        AND created_at > NOW() - $2::interval
+       ${subjectSql}
      ORDER BY created_at DESC
      LIMIT 1`,
-    [profileUserId, AURA_BASE_COLOR_WINDOW]
+    params
   );
   const color = rows[0]?.snapshot?.dominantColor;
   if (!color) return null;
@@ -220,16 +267,27 @@ export async function getAuraBaseColorAnchor(
 }
 
 export async function getLatestAuraSnapshotForUser(
-  profileUserId: string
+  profileUserId: string,
+  subjectId?: string | null
 ): Promise<AuraStoredSnapshot | null> {
+  const othersOn = await isAuraOtherSubjectsEnabled();
+  const params: unknown[] = [profileUserId, AURA_BASE_COLOR_WINDOW];
+  let subjectSql = "";
+  if (othersOn && subjectId) {
+    params.push(subjectId);
+    subjectSql = `AND subject_id = $3`;
+  } else {
+    subjectSql = `AND ${selfOrLegacyPredicate()}`;
+  }
   const { rows } = await query<AuraStoredRow>(
-    `SELECT id, snapshot, claimed_user_id, created_at, expires_at
+    `SELECT ${SNAPSHOT_COLS}
      FROM aura_guest_snapshots
      WHERE claimed_user_id = $1
        AND created_at > NOW() - $2::interval
+       ${subjectSql}
      ORDER BY created_at DESC
      LIMIT 1`,
-    [profileUserId, AURA_BASE_COLOR_WINDOW]
+    params
   );
   return rows[0] ? asStored(rows[0]) : null;
 }
@@ -274,7 +332,12 @@ async function sweepExpiredGuestSnapshots(client?: PoolClient): Promise<number> 
  */
 export async function createGuestAuraSnapshot(
   snapshot: AuraSnapshot,
-  opts?: { photoHash?: string | null }
+  opts?: {
+    photoHash?: string | null;
+    subjectId?: string | null;
+    subjectKind?: AuraSubjectKind | null;
+    subjectName?: string | null;
+  }
 ): Promise<{
   rawClaimToken: string;
   snapshotId: string;
@@ -292,10 +355,20 @@ export async function createGuestAuraSnapshot(
 
   const { rows } = await query<{ id: string; expires_at: string }>(
     `INSERT INTO aura_guest_snapshots (
-       snapshot, engine_version, claim_token_hash, photo_hash, expires_at
-     ) VALUES ($1::jsonb, $2, $3, $4, $5::timestamptz)
+       snapshot, engine_version, claim_token_hash, photo_hash, expires_at,
+       subject_id, subject_kind, subject_name
+     ) VALUES ($1::jsonb, $2, $3, $4, $5::timestamptz, $6::uuid, $7, $8)
      RETURNING id, expires_at::text`,
-    [JSON.stringify(snapshot), AURA_ENGINE_VERSION, claimHash, opts?.photoHash ?? null, expiresAt]
+    [
+      JSON.stringify(snapshot),
+      AURA_ENGINE_VERSION,
+      claimHash,
+      opts?.photoHash ?? null,
+      expiresAt,
+      opts?.subjectId ?? null,
+      opts?.subjectKind ?? null,
+      opts?.subjectName ?? null,
+    ]
   );
 
   const row = rows[0];
@@ -328,10 +401,17 @@ export async function claimGuestAuraSnapshot(opts: {
       `aura-guest-claim:${opts.profileUserId}`,
     ]);
 
-    const { rows } = await queryClient<AuraGuestRow>(
+    const { rows } = await queryClient<
+      AuraGuestRow & {
+        subject_id: string | null;
+        subject_kind: string | null;
+        subject_name: string | null;
+      }
+    >(
       client,
       `SELECT id, snapshot, engine_version, claim_token_hash,
-              claimed_user_id, claimed_at::text, created_at::text, expires_at::text
+              claimed_user_id, claimed_at::text, created_at::text, expires_at::text,
+              subject_id, subject_kind, subject_name
        FROM aura_guest_snapshots
        WHERE claim_token_hash = $1
        FOR UPDATE`,
@@ -350,6 +430,9 @@ export async function claimGuestAuraSnapshot(opts: {
           status: "idempotent",
           snapshotId: guest.id,
           snapshot: guest.snapshot,
+          subjectId: guest.subject_id,
+          subjectKind: guest.subject_kind === "other" ? "other" : guest.subject_kind === "self" ? "self" : null,
+          subjectName: guest.subject_name,
         };
       }
       return { ok: false, code: "ALREADY_CLAIMED" };
@@ -361,12 +444,41 @@ export async function claimGuestAuraSnapshot(opts: {
       return { ok: false, code: "EXPIRED" };
     }
 
+    let subjectId = guest.subject_id;
+    let subjectKind: AuraSubjectKind =
+      guest.subject_kind === "other" && (await isAuraOtherSubjectsEnabled()) ? "other" : "self";
+    let subjectName = guest.subject_name;
+    if (subjectId) {
+      const owned = await queryClient<{ id: string }>(
+        client,
+        `SELECT id FROM aura_subjects WHERE id = $1 AND user_id = $2 LIMIT 1`,
+        [subjectId, opts.profileUserId]
+      );
+      if (!owned.rows[0]) subjectId = null;
+    }
+    if (!subjectId) {
+      if (subjectKind === "other" && subjectName) {
+        const other = await ensureAuraOtherSubject(opts.profileUserId, subjectName, client);
+        subjectId = other.id;
+        subjectName = other.displayName;
+      } else {
+        const self = await ensureAuraSelfSubject(opts.profileUserId, client);
+        subjectId = self.id;
+        subjectKind = "self";
+        subjectName = self.displayName;
+      }
+    }
+
     const { rowCount } = await queryClient(
       client,
       `UPDATE aura_guest_snapshots
-       SET claimed_user_id = $2, claimed_at = NOW()
+       SET claimed_user_id = $2,
+           claimed_at = NOW(),
+           subject_id = $3::uuid,
+           subject_kind = $4,
+           subject_name = $5
        WHERE id = $1 AND claimed_user_id IS NULL`,
-      [guest.id, opts.profileUserId]
+      [guest.id, opts.profileUserId, subjectId, subjectKind, subjectName]
     );
     if (!rowCount) {
       return { ok: false, code: "ALREADY_CLAIMED" };
@@ -377,8 +489,32 @@ export async function claimGuestAuraSnapshot(opts: {
       status: "claimed",
       snapshotId: guest.id,
       snapshot: guest.snapshot,
+      subjectId,
+      subjectKind,
+      subjectName,
     };
   });
+}
+
+export async function listTodaysSnapshotIdsForSubject(
+  profileUserId: string,
+  subjectId?: string | null
+): Promise<string[]> {
+  const othersOn = await isAuraOtherSubjectsEnabled();
+  const params: unknown[] = [profileUserId];
+  let subjectSql = `AND ${selfOrLegacyPredicate()}`;
+  if (othersOn && subjectId) {
+    params.push(subjectId);
+    subjectSql = `AND subject_id = $2`;
+  }
+  const { rows } = await query<{ id: string }>(
+    `SELECT id FROM aura_guest_snapshots
+     WHERE claimed_user_id = $1
+       AND ${AURA_TODAY_PREDICATE}
+       ${subjectSql}`,
+    params
+  );
+  return rows.map((row) => row.id);
 }
 
 /** Load a claimed snapshot owned by the user (for the paid report pass). */
@@ -386,13 +522,21 @@ export async function getClaimedAuraSnapshot(opts: {
   snapshotId: string;
   profileUserId: string;
 }): Promise<AuraSnapshot | null> {
-  const { rows } = await query<{ snapshot: AuraSnapshot }>(
-    `SELECT snapshot
+  const row = await getClaimedAuraSnapshotRow(opts);
+  return row?.snapshot ?? null;
+}
+
+export async function getClaimedAuraSnapshotRow(opts: {
+  snapshotId: string;
+  profileUserId: string;
+}): Promise<AuraStoredSnapshot | null> {
+  const { rows } = await query<AuraStoredRow>(
+    `SELECT ${SNAPSHOT_COLS}
      FROM aura_guest_snapshots
      WHERE id = $1 AND claimed_user_id = $2`,
     [opts.snapshotId, opts.profileUserId]
   );
-  return rows[0]?.snapshot ?? null;
+  return rows[0] ? asStored(rows[0]) : null;
 }
 
 /** Latest claimed snapshot without a finished paid report — resume target. */

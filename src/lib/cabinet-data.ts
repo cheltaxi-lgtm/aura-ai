@@ -154,6 +154,9 @@ export interface CabinetAuraReadingRow {
     verdict?: "bright" | "mixed" | "heavy";
     snapshot?: Record<string, unknown>;
     notes?: string;
+    subjectId?: string | null;
+    subjectKind?: "self" | "other" | null;
+    subjectName?: string | null;
   };
 }
 
@@ -175,6 +178,9 @@ export async function getCabinetAuraReadings(
       secondaryColors: entry.snapshot.secondaryColors,
       verdict: entry.snapshot.verdict,
       snapshot: entry.snapshot as unknown as Record<string, unknown>,
+      subjectId: entry.subjectId,
+      subjectKind: entry.subjectKind,
+      subjectName: entry.subjectName,
     },
   }));
 }
