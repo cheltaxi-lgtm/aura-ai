@@ -371,11 +371,11 @@ const SEEDS: IntentSeed[] = [
   },
   {
     slug: "rabota-ili-svoy-biznes",
-    title: "Фриланс или найм",
+    title: "Работа или свой бизнес",
     category: "career",
     spreadId: "situation-5",
     question: "Какой путь мне ближе — найм или своё дело?",
-    intro: "Два сценария и совет карт для карьерного выбора.",
+    intro: "Найм или своё дело: два сценария и совет карт для карьерного выбора.",
     positions: S5,
     related: ["na-biznes", "stoit-li-menyat-rabotu", "novyy-istochnik-dohoda"],
   },

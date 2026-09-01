@@ -10,6 +10,8 @@ describe("indexability", () => {
     expect(isThinDaNetIntentSlug("da-net-komandirovka")).toBe(true);
     expect(isSearchIndexableIntentSlug("da-net-komandirovka")).toBe(false);
     expect(isSearchIndexableIntentSlug("na-vernost")).toBe(true);
+    expect(isSearchIndexableIntentSlug("chto-ona-chuvstvuet")).toBe(true);
+    expect(isSearchIndexableIntentSlug("chto-chuvstvuet-ona")).toBe(false);
   });
 
   it("detects major search bots", () => {

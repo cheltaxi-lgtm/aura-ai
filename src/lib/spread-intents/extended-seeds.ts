@@ -3277,7 +3277,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Почему он злится",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему он злится?",
-    "intro": "Источник гнева.",
+    "intro": "Источник его гнева и что стоит за вспышкой.",
     "spreadId": "situation-5" as SpreadId,
     "positions": [
       "Его мысли",
@@ -3293,7 +3293,7 @@ export const EXTENDED_INTENT_SEEDS: ExtendedSeed[] = [
     "title": "Почему она злится",
     "category": "love" as SpreadIntentCategory,
     "question": "Почему она злится?",
-    "intro": "Источник гнева.",
+    "intro": "Источник её гнева и что стоит за вспышкой.",
     "spreadId": "situation-5" as SpreadId,
     "positions": [
       "Его мысли",

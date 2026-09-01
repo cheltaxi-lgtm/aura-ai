@@ -21,6 +21,8 @@ export function isThinDaNetIntentSlug(slug: string): boolean {
 const SEMANTIC_DUPLICATE_INTENT_SLUGS = new Set([
   "lyubov-kak-otpustit-ego",
   "lyubov-kak-otpustit-ee",
+  // Word-order clone of /rasklady/chto-ona-chuvstvuet (same title in Webmaster).
+  "chto-chuvstvuet-ona",
 ]);
 
 /** Whether `/rasklady/{slug}` should be offered to search engines. */

@@ -1,6 +1,8 @@
 import { describe, expect, it } from "vitest";
 import { isRobotsPathAllowed } from "@/lib/seo/robots-policy";
 import { CANONICAL_ALIASES } from "@/lib/seo/canonical-aliases";
+import { getSpreadIntentBySlug } from "@/lib/spread-intents";
+import { getSeoArticleBySlug } from "@/lib/seo/articles";
 
 describe("robots prefix hygiene", () => {
   it("allows public product and forecast URLs", () => {
@@ -56,5 +58,32 @@ describe("canonical alias consolidation", () => {
     expect(CANONICAL_ALIASES["/bodigraf"]).toBe("/dizayn-cheloveka/rasschitat");
     expect(CANONICAL_ALIASES["/taro-po-foto"]).toBe("/photo-rasklad");
     expect(CANONICAL_ALIASES["/aura-po-foto"]).toBe("/aura");
+    expect(CANONICAL_ALIASES["/rasklady/chto-chuvstvuet-ona"]).toBe(
+      "/rasklady/chto-ona-chuvstvuet"
+    );
+  });
+});
+
+describe("webmaster title/description doubles", () => {
+  it("splits freelance vs own-business titles", () => {
+    const freelance = getSpreadIntentBySlug("frilans-ili-naym")!;
+    const business = getSpreadIntentBySlug("rabota-ili-svoy-biznes")!;
+    expect(freelance.seoTitle).toMatch(/Фриланс или найм/);
+    expect(business.seoTitle).toMatch(/Работа или свой бизнес/);
+    expect(freelance.seoTitle).not.toBe(business.seoTitle);
+  });
+
+  it("keeps joint-reading product title off the guide article", () => {
+    const article = getSeoArticleBySlug("sovmestnyy-rasklad-dlya-dvoih")!;
+    expect(article.title).not.toBe("Совместный расклад для двоих");
+    expect(`${article.title} | Zovus`).not.toBe("Совместный расклад для двоих | Zovus");
+  });
+
+  it("gives his/her anger pages unique descriptions", () => {
+    const his = getSpreadIntentBySlug("lyubov-pochemu-on-zlitsya")!;
+    const hers = getSpreadIntentBySlug("lyubov-pochemu-ona-zlitsya")!;
+    expect(his.seoDescription).not.toBe(hers.seoDescription);
+    expect(his.seoDescription).toMatch(/его гнева/i);
+    expect(hers.seoDescription).toMatch(/её гнева|ее гнева/i);
   });
 });

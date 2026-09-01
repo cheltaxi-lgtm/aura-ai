@@ -41,6 +41,7 @@ export const CANONICAL_ALIASES: Record<string, string> = {
   "/rasshifrovka-taro-po-foto": "/photo-rasklad",
   "/aura-po-foto": "/aura",
   "/cvet-aury": "/aura/cveta",
+  "/rasklady/chto-chuvstvuet-ona": "/rasklady/chto-ona-chuvstvuet",
 };
 
 export function resolveCanonicalPath(path: string): string {

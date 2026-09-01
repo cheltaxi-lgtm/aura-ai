@@ -183,6 +183,7 @@ describe("seo-growth-pass", () => {
       const idx = read("src/lib/seo/indexability.ts");
       expect(idx).toContain('"lyubov-kak-otpustit-ego"');
       expect(idx).toContain('"lyubov-kak-otpustit-ee"');
+      expect(idx).toContain('"chto-chuvstvuet-ona"');
     });
   });
 
