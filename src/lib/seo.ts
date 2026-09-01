@@ -23,6 +23,11 @@ export const SEO_KEYWORDS = [
   "духовные практики",
   "гадание онлайн",
   "расклад таро",
+  "матрица судьбы",
+  "натальная карта",
+  "дизайн человека",
+  "бодиграф",
+  "аура по фото",
 ] as const;
 
 export const SEO_FAQ_ITEMS = LANDING_FAQ_ITEMS;
@@ -121,8 +126,9 @@ export function getHomeStructuredData() {
       {
         "@type": "Service",
         "@id": `${BRAND_URL}/#service`,
-        name: "Расклад Таро онлайн бесплатно",
-        serviceType: "Онлайн-гадание на картах Таро",
+        name: "Персональные AI-разборы Zovus",
+        serviceType:
+          "Матрица судьбы, натальная карта, Дизайн человека, Таро и аура по фото",
         provider: { "@id": `${BRAND_URL}/#organization` },
         areaServed: {
           "@type": "Country",
@@ -130,13 +136,54 @@ export function getHomeStructuredData() {
         },
         url: BRAND_URL,
         description:
-          "Расклад Таро онлайн бесплатно: три карты без регистрации, каталог вопросов и расшифровка расклада по фото с наставником в чате.",
-        offers: {
-          "@type": "Offer",
-          price: "0",
-          priceCurrency: "RUB",
-          description: "Три карты бесплатно до регистрации",
-          url: `${BRAND_URL}/?spread=triplet`,
+          "Zovus — персональные AI-разборы: матрица судьбы, натальная карта, дизайн человека, Таро и аура по фото. Три карты бесплатно до регистрации, калькуляторы без аккаунта.",
+        hasOfferCatalog: {
+          "@type": "OfferCatalog",
+          name: "Публичные практики Zovus",
+          itemListElement: [
+            {
+              "@type": "Offer",
+              itemOffered: { "@type": "Service", name: "Расклад Таро", url: `${BRAND_URL}/taro` },
+              price: "0",
+              priceCurrency: "RUB",
+            },
+            {
+              "@type": "Offer",
+              itemOffered: {
+                "@type": "Service",
+                name: "Матрица судьбы",
+                url: `${BRAND_URL}/numerology/destiny-matrix`,
+              },
+              price: "0",
+              priceCurrency: "RUB",
+            },
+            {
+              "@type": "Offer",
+              itemOffered: {
+                "@type": "Service",
+                name: "Натальная карта",
+                url: `${BRAND_URL}/natalnaya-karta`,
+              },
+              price: "0",
+              priceCurrency: "RUB",
+            },
+            {
+              "@type": "Offer",
+              itemOffered: {
+                "@type": "Service",
+                name: "Дизайн человека",
+                url: `${BRAND_URL}/dizayn-cheloveka/rasschitat`,
+              },
+              price: "0",
+              priceCurrency: "RUB",
+            },
+            {
+              "@type": "Offer",
+              itemOffered: { "@type": "Service", name: "Аура по фото", url: `${BRAND_URL}/aura` },
+              price: "0",
+              priceCurrency: "RUB",
+            },
+          ],
         },
       },
       {

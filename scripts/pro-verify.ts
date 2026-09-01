@@ -182,13 +182,14 @@ async function main() {
 
   // —— 6. /r/** /pro/f/** not in sitemap; robots disallow; pages noindex
   const sitemap = readFileSync(join(ROOT, "src/app/sitemap.ts"), "utf8");
-  const robots = readFileSync(join(ROOT, "src/app/robots.txt/route.ts"), "utf8");
+  const robots = readFileSync(join(ROOT, "src/lib/seo/robots-policy.ts"), "utf8");
   // Avoid false positives on /prognoz, /rasklad, etc.
   const sitemapClean =
     !/["'`]\/pro(?:\/|["'`])/i.test(sitemap) &&
     !/["'`]\/r\/[^"'`]+["'`]/i.test(sitemap);
   const robotsOk =
-    robots.includes('"/pro"') &&
+    robots.includes('"/pro$"') &&
+    robots.includes('"/pro/"') &&
     robots.includes('"/r/"') &&
     robots.includes('"/p/"');
   const deliveryMeta = readFileSync(join(ROOT, "src/app/(pro)/r/layout.tsx"), "utf8");

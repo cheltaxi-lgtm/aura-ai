@@ -231,14 +231,26 @@ describe("seo-growth-pass", () => {
     });
 
     it("robots keeps user-specific HD/photo routes disallowed and clean-params set", () => {
-      const robots = read("src/app/robots.txt/route.ts");
+      const robots = read("src/lib/seo/robots-policy.ts");
       expect(robots).toContain('"/dizayn-cheloveka/karta/"');
       expect(robots).toContain('"/photo-rasklad/result"');
-      // Clean-param line is built from CLEAN_PARAMS — assert the keys are listed.
-      expect(robots).toMatch(/Clean-param: \$\{CLEAN_PARAMS\.join/);
+      expect(robots).toMatch(/ROBOTS_CLEAN_PARAMS/);
       for (const key of ['"utm_source"', '"yclid"', '"ask"', '"spread"']) {
         expect(robots, key).toContain(key);
       }
+      const route = read("src/app/robots.txt/route.ts");
+      expect(route).toMatch(/Clean-param: \$\{ROBOTS_CLEAN_PARAMS\.join/);
+    });
+
+    it("robots prefix rules do not block public /prognoz and /telegram", () => {
+      const policy = read("src/lib/seo/robots-policy.ts");
+      expect(policy).not.toMatch(/"\/pro"(?!\s*\$)/);
+      expect(policy).not.toMatch(/"\/tg"(?!\s*\$)/);
+      expect(policy).not.toMatch(/"\/app"(?!\s*\$)/);
+      expect(policy).toContain('"/pro$"');
+      expect(policy).toContain('"/tg$"');
+      expect(policy).toContain('"/prognoz"');
+      expect(policy).toContain('"/telegram"');
     });
   });
 });

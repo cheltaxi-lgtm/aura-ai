@@ -28,13 +28,17 @@ describe("multiproduct-seo-discoverability", () => {
   });
 
   it("robots allows crawl and points to sitemap; product paths not disallowed", () => {
-    const robots = read("src/app/robots.txt/route.ts");
-    expect(robots).toMatch(/Allow: \//);
-    expect(robots).toMatch(/Sitemap:.*\/sitemap\.xml/);
-    expect(robots).not.toMatch(/Disallow: \/numerology/);
-    expect(robots).not.toMatch(/Disallow: \/natalnaya/);
-    expect(robots).not.toMatch(/Disallow: \/dizayn-cheloveka\/rasschitat/);
-    expect(robots).not.toMatch(/Disallow: \/taro/);
+    const route = read("src/app/robots.txt/route.ts");
+    const policy = read("src/lib/seo/robots-policy.ts");
+    expect(route).toMatch(/Allow: \$\{path\}/);
+    expect(route).toMatch(/Sitemap:.*\/sitemap\.xml/);
+    expect(policy).toContain('"/"');
+    expect(policy).not.toMatch(/Disallow: \/numerology/);
+    expect(policy).not.toMatch(/Disallow: \/natalnaya/);
+    expect(policy).not.toMatch(/Disallow: \/dizayn-cheloveka\/rasschitat/);
+    expect(policy).not.toMatch(/Disallow: \/taro/);
+    expect(policy).not.toMatch(/"\/pro"(?!\s*\$)/);
+    expect(policy).not.toMatch(/"\/tg"(?!\s*\$)/);
   });
 
   it("product pages have unique titles/descriptions and indexable canonicals", () => {
@@ -125,6 +129,12 @@ describe("multiproduct-seo-discoverability", () => {
     const homePage = read("src/components/HomePage.tsx");
     expect(homePage).toMatch(/HOME_CUSTOM_QUESTION_EVENT/);
     expect(homePage).toMatch(/if \(authLoading\) return/);
+    const homeSchema = read("src/lib/seo.ts");
+    expect(homeSchema).toMatch(/Персональные AI-разборы Zovus/);
+    expect(homeSchema).toMatch(/\/numerology\/destiny-matrix/);
+    expect(homeSchema).toMatch(/\/dizayn-cheloveka\/rasschitat/);
+    expect(homeSchema).toMatch(/\/aura/);
+    expect(homeSchema).not.toMatch(/name: "Расклад Таро онлайн бесплатно"/);
   });
 
   it("internal product links are present (Matrix↔Pair, Matrix↔Natal, Natal↔HD)", () => {

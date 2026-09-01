@@ -32,6 +32,15 @@ export const CANONICAL_ALIASES: Record<string, string> = {
   "/matrica-sudby-po-date-rozhdeniya": "/numerology/destiny-matrix",
   "/matrica-sudby-besplatno": "/numerology/destiny-matrix",
   "/raschet-matricy-sudby": "/numerology/destiny-matrix",
+  "/matrix-destiny": "/numerology/destiny-matrix",
+  "/astrology": "/natalnaya-karta",
+  "/bodigraf": "/dizayn-cheloveka/rasschitat",
+  "/bodigraf-onlayn": "/dizayn-cheloveka/rasschitat",
+  "/bodygraph": "/dizayn-cheloveka/rasschitat",
+  "/taro-po-foto": "/photo-rasklad",
+  "/rasshifrovka-taro-po-foto": "/photo-rasklad",
+  "/aura-po-foto": "/aura",
+  "/cvet-aury": "/aura/cveta",
 };
 
 export function resolveCanonicalPath(path: string): string {

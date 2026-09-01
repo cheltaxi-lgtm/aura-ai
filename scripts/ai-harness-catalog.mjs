@@ -90,6 +90,7 @@ export const CHECKS = {
       "tests/invariants/landing-reviews.test.ts",
       "tests/invariants/guest-landing-conversion.test.ts",
       "tests/invariants/aura-seo-landings.test.ts",
+      "tests/invariants/robots-prefix-hygiene.test.ts",
     ],
   },
   "aura-unit": {
