@@ -36,6 +36,7 @@ export const PRODUCT_FUNNEL_PRODUCTS = [
   "human_design",
   "matrix_compatibility",
   "aura",
+  "palm",
 ] as const;
 
 export type ProductFunnelProduct = (typeof PRODUCT_FUNNEL_PRODUCTS)[number];
@@ -167,6 +168,15 @@ export function inferProductFunnelFromPath(pathname: string): ProductFunnelProdu
   }
   if (p.includes("matrica-sovmestimosti")) return "matrix_compatibility";
   if (p.startsWith("/aura")) return "aura";
+  if (
+    p.startsWith("/gadanie-po-ladoni") ||
+    p.startsWith("/khiromantiya") ||
+    p.startsWith("/chiromantiya") ||
+    p.startsWith("/ladon") ||
+    p.startsWith("/gadanie-po-ruke")
+  ) {
+    return "palm";
+  }
   if (p.includes("destiny-matrix") || p === "/matrix-destiny") return "matrix";
   if (
     p === "/" ||
@@ -228,6 +238,14 @@ export const PRODUCT_FUNNEL_LEGACY_GOALS: Record<
     auth_cta: ["aura_auth_cta"],
     claim_complete: ["aura_guest_claim_complete"],
     paid_cta: ["aura_paid_cta"],
+  },
+  palm: {
+    product_view: ["palm_landing_view"],
+    free_start: ["palm_snapshot_start"],
+    free_complete: ["palm_snapshot_complete"],
+    auth_cta: ["palm_auth_cta"],
+    claim_complete: ["palm_guest_claim_complete"],
+    paid_cta: ["palm_paid_cta"],
   },
 };
 

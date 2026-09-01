@@ -23,6 +23,7 @@ const SERVICES = [
   { href: "/dizayn-cheloveka", label: "Дизайн Человека" },
   { href: "/photo-rasklad", label: "Фото-расклад" },
   { href: "/aura", label: "Аура по фото" },
+  { href: "/gadanie-po-ladoni", label: "Гадание по ладони" },
   { href: "/numerology", label: "Нумерология" },
   { href: "/cards", label: "Значения карт" },
   { href: "/obryady", label: "Обряды" },
@@ -122,10 +123,12 @@ export default function LandingSeoHub({
   hidePricingNote = false,
 }: LandingSeoHubProps) {
   // /aura 404s while the module kill-switch is off — never link to it.
-  const { auraReadingEnabled } = usePlatformFeatures();
-  const services = auraReadingEnabled
-    ? SERVICES
-    : SERVICES.filter((s) => s.href !== "/aura");
+  const { auraReadingEnabled, palmReadingEnabled } = usePlatformFeatures();
+  const services = SERVICES.filter(
+    (s) =>
+      (s.href !== "/aura" || auraReadingEnabled) &&
+      (s.href !== "/gadanie-po-ladoni" || palmReadingEnabled)
+  );
   const priceNode =
     typeof readingCost === "number" ? (
       <strong className="text-aura-champagne/90 inline-flex items-baseline gap-1">

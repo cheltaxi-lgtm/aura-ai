@@ -4,6 +4,7 @@ import {
   parseTelegramUserId,
 } from "@/lib/telegram/bot-internal-auth";
 import { botRunesShopUrl, resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { isPalmReadingEnabled } from "@/lib/settings";
 
 export const runtime = "nodejs";
 
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
   const resolved = await resolveBotUser(telegramUserId);
   const site = (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
   const utm = "utm_source=telegram&utm_medium=bot&utm_campaign=modules";
+  const palmOn = await isPalmReadingEnabled();
 
   return NextResponse.json({
     ok: true,
@@ -89,6 +91,17 @@ export async function POST(request: NextRequest) {
         url: `${site}/photo-rasklad?${utm}`,
         note: "полный native flow в боте; сайт — запасной deep-link",
       },
+      ...(palmOn
+        ? [
+            {
+              id: "palm",
+              title: "Гадание по ладони",
+              native: false,
+              url: `${site}/gadanie-po-ladoni?${utm}`,
+              note: "снимок на сайте; фото не хранится",
+            },
+          ]
+        : []),
       { id: "support", title: "Поддержка", native: true, url: `${site}/cabinet/support?${utm}` },
     ],
   });

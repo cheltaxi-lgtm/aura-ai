@@ -6,6 +6,7 @@ import {
   isAuraOtherSubjectsEnabled,
   isAuraReadingEnabled,
   isHumanDesignEnabled,
+  isPalmReadingEnabled,
   isJointReadingEnabled,
   isNatalChartEnabled,
   isPhotoReadingEnabled,
@@ -24,6 +25,7 @@ export async function GET() {
     photoReadingEnabled,
     auraReadingEnabled,
     auraOtherSubjectsEnabled,
+    palmReadingEnabled,
     ritualSettings,
   ] = await Promise.all([
     getSetting("features"),
@@ -35,6 +37,7 @@ export async function GET() {
     isPhotoReadingEnabled(),
     isAuraReadingEnabled(),
     isAuraOtherSubjectsEnabled(),
+    isPalmReadingEnabled(),
     getRitualSettings(),
   ]);
 
@@ -46,6 +49,7 @@ export async function GET() {
     photoReadingEnabled,
     auraReadingEnabled,
     auraOtherSubjectsEnabled,
+    palmReadingEnabled,
     ritualsEnabled: isRitualCatalogEnabled(ritualSettings),
     proModuleEnabled: isProModuleEnabled(),
     oauthProviders,

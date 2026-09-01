@@ -8,6 +8,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 import { auraAbsoluteUrls } from "./lib/aura-seo-urls.mjs";
+import { palmAbsoluteUrls } from "./lib/palm-seo-urls.mjs";
 
 const base = (process.argv[2] || "https://zovus.ru").replace(/\/$/, "");
 const INDEXNOW_KEY = "107274032904532db6ae0e4b2f39c4b3";
@@ -44,6 +45,7 @@ const CORE_PRIORITY = [
   `${base}/sovmestimost-znakov-zodiaka`,
   `${base}/photo-rasklad`,
   ...auraAbsoluteUrls(base),
+  ...palmAbsoluteUrls(base),
   `${base}/numerology`,
   `${base}/numerology/destiny-matrix`,
   `${base}/numerology/name-compatibility`,

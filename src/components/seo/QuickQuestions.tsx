@@ -33,6 +33,7 @@ const ENTRY_LINKS = [
   { label: "Все расклады", href: "/rasklady" },
   { label: "Фото-расклад", href: "/photo-rasklad" },
   { label: "Аура по фото", href: "/aura" },
+  { label: "Гадание по ладони", href: "/gadanie-po-ladoni" },
   { label: "Таро онлайн", href: "/taro" },
   { label: "Гадание", href: "/gadanie" },
   { label: "Обряды", href: "/obryady" },
@@ -62,10 +63,12 @@ export default function QuickQuestions({
 }: QuickQuestionsProps) {
   const [userGender, setUserGender] = useState<UserGender>(null);
   // /aura 404s while the module kill-switch is off — never link to it.
-  const { auraReadingEnabled } = usePlatformFeatures();
-  const entryLinks = auraReadingEnabled
-    ? ENTRY_LINKS
-    : ENTRY_LINKS.filter((item) => item.href !== "/aura");
+  const { auraReadingEnabled, palmReadingEnabled } = usePlatformFeatures();
+  const entryLinks = ENTRY_LINKS.filter(
+    (item) =>
+      (item.href !== "/aura" || auraReadingEnabled) &&
+      (item.href !== "/gadanie-po-ladoni" || palmReadingEnabled)
+  );
 
   useEffect(() => {
     setUserGender(readUserGender());

@@ -73,6 +73,9 @@ describe("product-funnel-analytics", () => {
     expect(
       inferProductFunnelFromPath("/numerology/matrica-sovmestimosti")
     ).toBe("matrix_compatibility");
+    expect(inferProductFunnelFromPath("/aura")).toBe("aura");
+    expect(inferProductFunnelFromPath("/gadanie-po-ladoni")).toBe("palm");
+    expect(inferProductFunnelFromPath("/khiromantiya")).toBe("palm");
   });
 
   it("all 5 products emit core funnel stages in code", () => {
@@ -88,6 +91,8 @@ describe("product-funnel-analytics", () => {
       read("src/app/dizayn-cheloveka/rasschitat/page.tsx"),
       read("src/app/aura/page.tsx"),
       read("src/components/aura/AuraReadingFlow.tsx"),
+      read("src/app/gadanie-po-ladoni/page.tsx"),
+      read("src/components/palm/PalmReadingFlow.tsx"),
       read("src/components/seo/SeoPageTracker.tsx"),
     ].join("\n");
 

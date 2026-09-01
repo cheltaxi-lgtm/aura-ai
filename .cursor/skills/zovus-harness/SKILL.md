@@ -26,6 +26,7 @@ Do not load this file's siblings until the matching product is in scope.
 | human-design / dizayn-cheloveka | `hd` |
 | tarot / rasklad / guest | `tarot` |
 | photo-rasklad | `photo` |
+| gadanie-po-ladoni / palm | `palm` |
 | seo / sitemap | `seo` |
 | telegram-bot | `telegram` |
 | hosting / deploy | `production` |
@@ -33,6 +34,6 @@ Do not load this file's siblings until the matching product is in scope.
 
 ## Commands
 
-`/audit-matrix` `/audit-natal` `/audit-hd` `/audit-tarot` `/audit-photo` `/audit-seo` `/audit-production` `/full-audit`
+`/audit-matrix` `/audit-natal` `/audit-hd` `/audit-tarot` `/audit-photo` `/audit-palm` `/audit-seo` `/audit-production` `/full-audit`
 
 Details: [docs/AI_HARNESS.md](../../../docs/AI_HARNESS.md)

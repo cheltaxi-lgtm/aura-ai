@@ -27,6 +27,7 @@ Existing preflight, guards, invariants, Playwright, and `scripts/deploy-prod.sh`
 | `/audit-hd` | Human Design |
 | `/audit-tarot` | Tarot / guest triplet |
 | `/audit-photo` | Photo reading |
+| `/audit-palm` | Palm reading |
 | `/audit-seo` | SEO landings |
 | `/audit-production` | Live health + smoke |
 | `/full-audit` | All local products |

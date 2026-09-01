@@ -24,6 +24,8 @@ export interface PlatformFeatures {
   auraReadingEnabled?: boolean;
   /** Other-person aura slots (ENV kill-switch, default off). */
   auraOtherSubjectsEnabled?: boolean;
+  /** Palm reading by photo (ENV kill-switch, fail-closed). */
+  palmReadingEnabled?: boolean;
   /** Zovus Pro practitioner module (ENV kill-switch). */
   proModuleEnabled?: boolean;
   recaptcha: PlatformRecaptchaConfig;
@@ -45,6 +47,7 @@ const FALLBACK: PlatformFeatures = {
   photoReadingEnabled: true,
   auraReadingEnabled: false,
   auraOtherSubjectsEnabled: false,
+  palmReadingEnabled: false,
   proModuleEnabled: false,
   recaptcha: {
     configured: false,
@@ -71,6 +74,7 @@ function parseFeatures(d: Record<string, unknown>): PlatformFeatures {
     photoReadingEnabled: d.photoReadingEnabled !== false,
     auraReadingEnabled: d.auraReadingEnabled === true,
     auraOtherSubjectsEnabled: d.auraOtherSubjectsEnabled === true,
+    palmReadingEnabled: d.palmReadingEnabled === true,
     proModuleEnabled: d.proModuleEnabled === true,
     recaptcha: {
       configured: recaptchaRaw.configured === true,

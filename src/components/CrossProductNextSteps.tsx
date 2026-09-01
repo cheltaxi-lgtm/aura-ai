@@ -6,6 +6,7 @@ import {
   type CrossProductContext,
 } from "@/lib/cross-product-recommendations";
 import { trackCrossProductClick } from "@/lib/seo/product-funnel";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 type CrossProductNextStepsProps = {
   context: CrossProductContext;
@@ -19,6 +20,7 @@ const ANALYTICS_SOURCE: Record<CrossProductContext, string> = {
   human_design: "hd",
   matrix_compatibility: "matrix_pair",
   aura: "aura",
+  palm: "palm",
 };
 
 /**
@@ -29,7 +31,12 @@ export default function CrossProductNextSteps({
   context,
   className,
 }: CrossProductNextStepsProps) {
-  const items = resolveCrossProductRecommendations(context);
+  const { auraReadingEnabled, palmReadingEnabled, featuresLoaded } = usePlatformFeatures();
+  const items = resolveCrossProductRecommendations(context).filter((item) => {
+    if (item.product === "aura") return featuresLoaded && auraReadingEnabled === true;
+    if (item.product === "palm") return featuresLoaded && palmReadingEnabled === true;
+    return true;
+  });
   if (!items.length) return null;
 
   return (

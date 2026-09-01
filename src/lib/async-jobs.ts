@@ -18,7 +18,8 @@ export type AsyncJobKind =
   | "hd_report"
   | "hd_composite_report"
   | "pro_premium_report"
-  | "aura_reading";
+  | "aura_reading"
+  | "palm_reading";
 export type AsyncJobStatus =
   | "pending"
   | "running"

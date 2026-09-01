@@ -52,6 +52,7 @@ export default function AdminSettingsPage() {
   const [auraReading, setAuraReading] = useState<EnabledOnlySettings>(
     DEFAULT_ENABLED_MODULE
   );
+  const [palmReading, setPalmReading] = useState<EnabledOnlySettings>({ enabled: false });
   const [aiDelivery, setAiDelivery] = useState<{
     enabledKinds: string[];
     pilotAccountIds: string[];
@@ -124,6 +125,10 @@ export default function AdminSettingsPage() {
         setAuraReading({
           enabled: typeof aura?.enabled === "boolean" ? aura.enabled : true,
         });
+        const palm = d.palmReading as Partial<EnabledOnlySettings> | undefined;
+        setPalmReading({
+          enabled: typeof palm?.enabled === "boolean" ? palm.enabled : true,
+        });
         const delivery = d.aiDelivery as Partial<typeof aiDelivery> | undefined;
         setAiDelivery({
           enabledKinds: Array.isArray(delivery?.enabledKinds)
@@ -149,6 +154,7 @@ export default function AdminSettingsPage() {
       { section: "humanDesign", values: humanDesign },
       { section: "photoReading", values: photoReading },
       { section: "auraReading", values: auraReading },
+      { section: "palmReading", values: palmReading },
       { section: "aiDelivery", values: aiDelivery },
     ];
     for (const patch of patches) {
@@ -376,6 +382,26 @@ export default function AdminSettingsPage() {
               checked={auraReading.enabled}
               onChange={() =>
                 setAuraReading((current) => ({ ...current, enabled: !current.enabled }))
+              }
+              className="h-4 w-4 accent-aura-gold"
+            />
+          </label>
+        </div>
+
+        <div className="glass-panel space-y-4 p-6">
+          <h2 className="font-display text-lg text-white">Гадание по ладони</h2>
+          <p className="text-xs text-gray-500">
+            Публичная страница /gadanie-po-ladoni, гостевой снимок ладони и платный разбор.
+            Жёсткий kill-switch: ENV PALM_MODULE_ENABLED=true (без него модуль всегда выключен).
+            Выключение — 404 на страницу и Feature disabled на API.
+          </p>
+          <label className="flex cursor-pointer items-center justify-between">
+            <span className="text-sm text-gray-300">Включить модуль</span>
+            <input
+              type="checkbox"
+              checked={palmReading.enabled}
+              onChange={() =>
+                setPalmReading((current) => ({ ...current, enabled: !current.enabled }))
               }
               className="h-4 w-4 accent-aura-gold"
             />

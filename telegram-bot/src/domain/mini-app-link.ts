@@ -67,6 +67,7 @@ export function encodeMiniAppStartParam(pathOrUrl: string): string {
     }
     if (u.pathname === "/" && ![...u.searchParams.keys()].length) return "home";
     if (u.pathname === "/photo-rasklad") return "photo";
+    if (u.pathname === "/gadanie-po-ladoni") return "palm";
   } catch {
     /* fall through */
   }
@@ -83,6 +84,7 @@ export function decodeMiniAppStartParam(raw: string | null | undefined): string 
   if (param === "shop") return "/cabinet?shop=1";
   if (param === "home") return "/";
   if (param === "photo") return "/photo-rasklad";
+  if (param === "palm") return "/gadanie-po-ladoni";
   if (param === "link") return "/cabinet";
   if (param.startsWith("chat_")) {
     const hex = param.slice("chat_".length);

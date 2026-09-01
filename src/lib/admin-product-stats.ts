@@ -3,6 +3,7 @@ import { RUNE_ACTION_LABELS, type RuneActionType } from "@/lib/rune-costs";
 
 export type ProductSectionId =
   | "aura"
+  | "palm"
   | "photo"
   | "natal"
   | "matrix"
@@ -29,6 +30,7 @@ export type ProductSectionStats = {
 
 const SECTION_ACTIONS: { id: ProductSectionId; label: string; actions: RuneActionType[] }[] = [
   { id: "aura", label: "Аура по фото", actions: ["AURA_READING"] },
+  { id: "palm", label: "Гадание по ладони", actions: ["PALM_READING"] },
   { id: "photo", label: "Фото-расклад", actions: ["VISION_ANALYSIS"] },
   {
     id: "natal",
@@ -66,6 +68,7 @@ const SECTION_ACTIONS: { id: ProductSectionId; label: string; actions: RuneActio
 
 const JOB_KINDS: Record<ProductSectionId, string[]> = {
   aura: ["aura_reading"],
+  palm: ["palm_reading"],
   photo: ["photo_reading"],
   natal: ["natal_interpretation", "natal_forecast", "natal_compatibility"],
   matrix: ["numerology_reading"],
@@ -236,6 +239,12 @@ export async function getProductSectionStats(): Promise<{
   for (const row of history.rows) {
     if (row.typ === "aura_reading") {
       aura?.extras.push({
+        label: "Записей в истории за 30 дней",
+        value: parseInt(row.n30, 10) || 0,
+      });
+    }
+    if (row.typ === "palm_reading") {
+      byId.get("palm")?.extras.push({
         label: "Записей в истории за 30 дней",
         value: parseInt(row.n30, 10) || 0,
       });

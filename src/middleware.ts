@@ -54,6 +54,9 @@ const PUBLIC_API_EXACT = new Set([
   "/api/aura/today",
   // Public aura pricing (guest landing shows live rune cost; no PII).
   "/api/aura/pricing",
+  "/api/palm/teaser",
+  "/api/palm/today",
+  "/api/palm/pricing",
   "/api/influencer/register",
   "/api/intention-spread",
   // Human Design public calculator (per-IP rate limits in handlers; chart is
@@ -398,7 +401,11 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/obryady") ||
       pathname.startsWith("/joint-reading") ||
       pathname.startsWith("/aura") ||
-      pathname.startsWith("/photo-rasklad");
+      pathname.startsWith("/photo-rasklad") ||
+      pathname.startsWith("/gadanie-po-ladoni") ||
+      pathname.startsWith("/khiromantiya") ||
+      pathname.startsWith("/chiromantiya") ||
+      pathname.startsWith("/ladon");
     if (needsFeatureGate) {
       const flags = await fetchPlatformFeatureFlags();
       const gatedOff =
@@ -407,7 +414,12 @@ export async function middleware(request: NextRequest) {
         (pathname.startsWith("/obryady") && !flags.ritualsEnabled) ||
         (pathname.startsWith("/joint-reading") && !flags.jointReadingEnabled) ||
         (pathname.startsWith("/aura") && !flags.auraReadingEnabled) ||
-        (pathname.startsWith("/photo-rasklad") && !flags.photoReadingEnabled);
+        (pathname.startsWith("/photo-rasklad") && !flags.photoReadingEnabled) ||
+        ((pathname.startsWith("/gadanie-po-ladoni") ||
+          pathname.startsWith("/khiromantiya") ||
+          pathname.startsWith("/chiromantiya") ||
+          pathname.startsWith("/ladon")) &&
+          !flags.palmReadingEnabled);
       if (gatedOff) {
         return withNoStore(
           new NextResponse("<!doctype html><title>404</title><h1>Страница не найдена</h1>", {

@@ -107,7 +107,7 @@ describe("guest-claim-binding", () => {
     );
     expect(resume).toContain('body: "{}"');
     expect(resume).not.toContain("localStorage.setItem");
-    expect(ui).not.toMatch(/\b(zovus_guest_resume|aura_session_claim|aura_guest_claim)\b/);
+    expect(ui).not.toMatch(/\b(zovus_guest_resume|aura_session_claim|aura_guest_claim|zovus_palm_guest_claim)\b/);
     expect(ui).not.toMatch(/GUEST_RESUME.*TOKEN|token_hash|resume_token/i);
     expect(complete).not.toMatch(/NextResponse\.json\(\s*\{[^}]*token/);
   });

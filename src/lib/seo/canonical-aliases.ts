@@ -41,6 +41,12 @@ export const CANONICAL_ALIASES: Record<string, string> = {
   "/rasshifrovka-taro-po-foto": "/photo-rasklad",
   "/aura-po-foto": "/aura",
   "/cvet-aury": "/aura/cveta",
+  "/khiromantiya": "/gadanie-po-ladoni",
+  "/chiromantiya": "/gadanie-po-ladoni",
+  "/ladon": "/gadanie-po-ladoni",
+  "/gadanie-po-ruke": "/gadanie-po-ladoni",
+  "/gadanie-po-ladoni-online": "/gadanie-po-ladoni",
+  "/gadanie-po-ladoni-onlayn": "/gadanie-po-ladoni",
   "/rasklady/chto-chuvstvuet-ona": "/rasklady/chto-ona-chuvstvuet",
 };
 

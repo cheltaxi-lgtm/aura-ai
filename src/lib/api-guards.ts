@@ -54,6 +54,10 @@ export const PAID_ROUTE_LIMITS = {
   aura_report: { max: 4, windowMs: 60_000 },
   /** Aura archive list/detail/delete — reads are cheap, deletes are ownership-scoped. */
   aura_readings: { max: 30, windowMs: 60_000 },
+  /** Palm full report — paid, worker-driven. */
+  palm_report: { max: 4, windowMs: 60_000 },
+  /** Palm archive list/detail/delete. */
+  palm_readings: { max: 30, windowMs: 60_000 },
   /** Vision recognize is unbilled until interpret; tight caps + balance gate in the route. */
   photo_recognize: { max: 3, windowMs: 60_000 },
   photo_recognize_daily: { max: 24, windowMs: 86_400_000 },

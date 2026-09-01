@@ -22,6 +22,8 @@ import {
 import { getUserRitualAchievementStats } from "@/lib/ritual-service";
 import { getUserJointReadingAchievementStats } from "@/lib/joint-reading-service";
 import { listAuraArchive } from "@/lib/aura-reading-archive";
+import { listPalmArchive } from "@/lib/palm-reading-archive";
+import { palmSnapshotForClient } from "@/lib/palm-constants";
 import type { RedrawSpread } from "@/lib/photo-spread-redraw";
 
 export interface CabinetProfile {
@@ -158,6 +160,48 @@ export interface CabinetAuraReadingRow {
     subjectKind?: "self" | "other" | null;
     subjectName?: string | null;
   };
+}
+
+export interface CabinetPalmReadingRow {
+  id: string;
+  snapshotId: string | null;
+  paid: boolean;
+  characterName: string;
+  createdAt: string;
+  contextData: {
+    report?: string;
+    interpretation?: string;
+    teaser?: string;
+    whichHand?: "left" | "right";
+    handShape?: "earth" | "air" | "fire" | "water";
+    verdict?: "love" | "path" | "mind" | "vitality" | "mixed";
+    snapshot?: Record<string, unknown>;
+  };
+}
+
+export async function getCabinetPalmReadings(
+  profileUserId: string
+): Promise<CabinetPalmReadingRow[]> {
+  const entries = await listPalmArchive(profileUserId);
+  return entries.map((entry) => {
+    const snapshot = palmSnapshotForClient(entry.snapshot, entry.paid, entry.report);
+    return {
+      id: entry.historyId ?? entry.snapshotId ?? "",
+      snapshotId: entry.snapshotId,
+      paid: entry.paid,
+      characterName: "numerolog",
+      createdAt: entry.createdAt,
+      contextData: {
+        report: entry.report ?? undefined,
+        interpretation: entry.report ?? undefined,
+        teaser: snapshot.teaser,
+        whichHand: snapshot.whichHand,
+        handShape: snapshot.handShape,
+        verdict: snapshot.verdict,
+        snapshot: snapshot as unknown as Record<string, unknown>,
+      },
+    };
+  });
 }
 
 export async function getCabinetAuraReadings(

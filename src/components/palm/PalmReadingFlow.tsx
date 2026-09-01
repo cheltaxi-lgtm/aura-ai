@@ -1,0 +1,790 @@
+"use client";
+
+import { useCallback, useEffect, useRef, useState } from "react";
+import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
+import { Camera, ImagePlus, Loader2 } from "lucide-react";
+import Link from "next/link";
+
+import CrossProductNextSteps from "@/components/CrossProductNextSteps";
+import PremiumReadingBody from "@/components/PremiumReadingBody";
+import PalmSilhouette from "@/components/palm/PalmSilhouette";
+import { useAuth } from "@/lib/useAuth";
+import { useRuneConfig } from "@/lib/useRuneConfig";
+import { canAffordRunes } from "@/lib/rune-afford-client";
+import { compressImageForUpload } from "@/lib/compress-image-client";
+import { isAppCameraAvailable, pickPhotoFromApp } from "@/lib/app-camera";
+import { isNativeCapacitorPlatform } from "@/lib/app-shell";
+import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
+import { parseInsufficientRunes } from "@/lib/api-errors";
+import { confirmAgeGateOnServer, fetchServerAgeGateConfirmed } from "@/lib/age-gate";
+import { trackSeoEvent } from "@/lib/seo/metrika";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
+import { parseAcceptedAsyncReport } from "@/lib/client/wait-for-async-job";
+import { formatPalmWaitRu } from "@/lib/palm-cadence";
+import {
+  PALM_HAND_LABELS,
+  PALM_HAND_SHAPE_LABELS,
+  PALM_HAND_SHAPE_MEANINGS,
+  PALM_VERDICT_LABELS,
+  type PalmHand,
+  type PalmSnapshot,
+  type PalmTeaserSnapshot,
+} from "@/lib/palm-constants";
+
+type FlowStep =
+  | "capture"
+  | "processing"
+  | "teaser"
+  | "claimed"
+  | "paying"
+  | "accepted"
+  | "report"
+  | "error";
+
+type PalmPricing = {
+  baseCost: number;
+  effectiveCost: number;
+  firstPalmDiscount: boolean;
+  todayPaid?: boolean;
+  todayHistoryId?: string | null;
+  todaySnapshotId?: string | null;
+};
+
+type FlowSnapshot = PalmTeaserSnapshot &
+  Partial<Pick<PalmSnapshot, "majorLines" | "mounts" | "marks">>;
+
+const PROCESSING_PHRASES = [
+  "Считываю рисунок ладони…",
+  "Сверяю линии и холмы…",
+  "Собираю снимок вашей руки…",
+] as const;
+
+const PAYING_PHRASES = [
+  "Мастер читает линии и холмы…",
+  "Собираю полный разбор…",
+  "Проверяю текст перед отправкой…",
+] as const;
+
+const JOB_POLL_INTERVAL_MS = 3_000;
+const JOB_POLL_TIMEOUT_MS = 300_000;
+
+function formatRunes(n: number): string {
+  return `${n} ᚢ`;
+}
+
+export default function PalmReadingFlow() {
+  const { isLoggedIn, refresh: refreshAuth } = useAuth();
+  const { config } = useRuneConfig();
+  const reduceMotion = useReducedMotion();
+  const fadeUp = reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 };
+
+  const [step, setStep] = useState<FlowStep>("capture");
+  const [error, setError] = useState<string | null>(null);
+  const [photoUrl, setPhotoUrl] = useState<string | null>(null);
+  const [snapshot, setSnapshot] = useState<FlowSnapshot | null>(null);
+  const [snapshotId, setSnapshotId] = useState<string | null>(null);
+  const [report, setReport] = useState<string | null>(null);
+  const [pricing, setPricing] = useState<PalmPricing | null>(null);
+  const [runeBalance, setRuneBalance] = useState<number | null>(null);
+  const [cameraActive, setCameraActive] = useState(false);
+  const [phraseIdx, setPhraseIdx] = useState(0);
+  const [ageReady, setAgeReady] = useState<boolean | null>(null);
+  const [ageConfirming, setAgeConfirming] = useState(false);
+  const [reusedKind, setReusedKind] = useState<"today" | "photo" | null>(null);
+  const [dayLocked, setDayLocked] = useState(false);
+  const [whichHand, setWhichHand] = useState<PalmHand>("right");
+  const [acceptedEta, setAcceptedEta] = useState<string | null>(null);
+
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+  const pollAbortRef = useRef<AbortController | null>(null);
+  const pendingFileRef = useRef<File | Blob | null>(null);
+
+  const palmCost = pricing?.effectiveCost ?? config.costs.PALM_READING ?? 100;
+  const palmBaseCost = pricing?.baseCost ?? config.costs.PALM_READING ?? 100;
+  const canOpenCamera = ageReady === true;
+
+  useEffect(() => {
+    if (step !== "processing" && step !== "paying") return;
+    const phrases = step === "paying" ? PAYING_PHRASES : PROCESSING_PHRASES;
+    const t = window.setInterval(() => setPhraseIdx((i) => (i + 1) % phrases.length), 2600);
+    return () => window.clearInterval(t);
+  }, [step]);
+
+  useEffect(() => {
+    return () => {
+      streamRef.current?.getTracks().forEach((t) => t.stop());
+      pollAbortRef.current?.abort();
+      if (photoUrl) URL.revokeObjectURL(photoUrl);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- unmount cleanup only
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetchServerAgeGateConfirmed().then((ok) => {
+      if (!cancelled) setAgeReady(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/palm/pricing", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data) return;
+        setPricing({
+          baseCost: Number(data.baseCost) || 100,
+          effectiveCost: Number(data.effectiveCost) || 100,
+          firstPalmDiscount: data.firstPalmDiscount === true,
+          todayPaid: data.todayPaid === true,
+          todayHistoryId: data.todayHistoryId ?? null,
+          todaySnapshotId: data.todaySnapshotId ?? null,
+        });
+      })
+      .catch(() => undefined);
+    void fetch("/api/runes/balance", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && typeof data?.balance === "number") setRuneBalance(data.balance);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn]);
+
+  useEffect(() => {
+    let cancelled = false;
+    void fetch("/api/palm/today", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data?.snapshot) return;
+        setSnapshot(data.snapshot as FlowSnapshot);
+        setSnapshotId(typeof data.snapshotId === "string" ? data.snapshotId : null);
+        setDayLocked(true);
+        if (data.paid && typeof data.report === "string") {
+          setReport(data.report);
+          setStep("report");
+          return;
+        }
+        setStep(data.claimed || isLoggedIn ? "claimed" : "teaser");
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn]);
+
+  const resetAll = useCallback(() => {
+    pollAbortRef.current?.abort();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPhotoUrl(null);
+    setSnapshot(null);
+    setSnapshotId(null);
+    setReport(null);
+    setError(null);
+    setReusedKind(null);
+    setDayLocked(false);
+    setAcceptedEta(null);
+    setStep("capture");
+  }, [photoUrl]);
+
+  const runTeaser = useCallback(
+    async (file: File | Blob) => {
+      setError(null);
+      setStep("processing");
+      setPhraseIdx(0);
+      trackProductFunnel("free_start", { product: "palm", source: "palm_flow" });
+      trackSeoEvent("palm_snapshot_start");
+      try {
+        const compressed = await compressImageForUpload(
+          file instanceof File ? file : new File([file], "palm.jpg", { type: "image/jpeg" }),
+          { maxWidth: 1280, maxHeight: 1280, maxBytes: 2_000_000 }
+        );
+        const localUrl = URL.createObjectURL(compressed.blob);
+        if (photoUrl) URL.revokeObjectURL(photoUrl);
+        setPhotoUrl(localUrl);
+
+        const form = new FormData();
+        form.append(
+          "image",
+          new File([compressed.blob], "palm.jpg", { type: compressed.mimeType })
+        );
+        form.append("whichHand", whichHand);
+
+        const res = await fetch("/api/palm/teaser", {
+          method: "POST",
+          body: form,
+          credentials: "include",
+        });
+        const data = await res.json().catch(() => null);
+
+        if (res.status === 422 && data?.error === "NO_HAND") {
+          setError(data.message ?? "Не видно раскрытой ладони.");
+          setStep("capture");
+          return;
+        }
+        if (res.status === 403) {
+          pendingFileRef.current = file;
+          setAgeReady(false);
+          setStep("capture");
+          return;
+        }
+        if (!res.ok || !data?.snapshot) {
+          setError(
+            data?.message ?? "Сервис распознавания временно недоступен. Попробуйте через минуту."
+          );
+          setStep("capture");
+          return;
+        }
+
+        setSnapshot(data.snapshot as FlowSnapshot);
+        setSnapshotId(typeof data.snapshotId === "string" ? data.snapshotId : null);
+        setReusedKind(data.reused === "today" || data.reused === "photo" ? data.reused : null);
+        setDayLocked(true);
+        trackProductFunnel("free_complete", { product: "palm", source: "palm_flow" });
+        trackSeoEvent("palm_snapshot_complete");
+
+        if (data.claimed === true) {
+          setStep("claimed");
+          return;
+        }
+
+        if (isLoggedIn) {
+          const claimRes = await fetch("/api/palm/claim", {
+            method: "POST",
+            credentials: "include",
+          });
+          const claimData = await claimRes.json().catch(() => null);
+          if (claimData?.ok) {
+            if (typeof claimData.snapshotId === "string") setSnapshotId(claimData.snapshotId);
+            trackProductFunnel("claim_complete", { product: "palm", source: "palm_flow" });
+            trackSeoEvent("palm_guest_claim_complete");
+            setStep("claimed");
+            return;
+          }
+          if (data.reused === "today") {
+            setStep("claimed");
+            return;
+          }
+          setError("Не удалось привязать снимок. Снимите ладонь снова — это займёт меньше минуты.");
+          setStep("capture");
+          return;
+        }
+
+        setStep("teaser");
+      } catch {
+        setError("Не удалось обработать фото. Попробуйте другое фото при ровном свете.");
+        setStep("capture");
+      }
+    },
+    [isLoggedIn, photoUrl, whichHand]
+  );
+
+  const confirmAge = useCallback(async () => {
+    if (ageConfirming) return;
+    setAgeConfirming(true);
+    setError(null);
+    const ok = await confirmAgeGateOnServer();
+    setAgeConfirming(false);
+    if (!ok) {
+      setError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
+      return;
+    }
+    setAgeReady(true);
+    const pending = pendingFileRef.current;
+    pendingFileRef.current = null;
+    if (pending) void runTeaser(pending);
+  }, [ageConfirming, runTeaser]);
+
+  const stopCamera = useCallback(() => {
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+  }, []);
+
+  const startCamera = useCallback(async () => {
+    if (!canOpenCamera) return;
+    setError(null);
+    if (isNativeCapacitorPlatform() && isAppCameraAvailable()) {
+      try {
+        const file = await pickPhotoFromApp("camera");
+        if (file) void runTeaser(file);
+      } catch {
+        setError("Камера недоступна. Разрешите доступ в настройках или загрузите фото.");
+      }
+      return;
+    }
+    if (!navigator.mediaDevices?.getUserMedia) {
+      setError("Браузер не поддерживает камеру — загрузите фото из галереи.");
+      return;
+    }
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: "environment", width: { ideal: 1080 }, height: { ideal: 1350 } },
+        audio: false,
+      });
+      streamRef.current = stream;
+      setCameraActive(true);
+      window.setTimeout(() => {
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          void videoRef.current.play().catch(() => undefined);
+        }
+      }, 50);
+    } catch {
+      setError("Нет доступа к камере. Разрешите доступ или загрузите фото из галереи.");
+    }
+  }, [runTeaser, canOpenCamera]);
+
+  const captureFrame = useCallback(() => {
+    if (!canOpenCamera) return;
+    const video = videoRef.current;
+    if (!video || !streamRef.current) return;
+    const w = video.videoWidth || 1080;
+    const h = video.videoHeight || 1350;
+    const canvas = document.createElement("canvas");
+    canvas.width = w;
+    canvas.height = h;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.drawImage(video, 0, 0, w, h);
+    canvas.toBlob(
+      (blob) => {
+        stopCamera();
+        if (blob) void runTeaser(blob);
+      },
+      "image/jpeg",
+      0.92
+    );
+  }, [runTeaser, stopCamera, canOpenCamera]);
+
+  const pollJob = useCallback(async (jobId: string) => {
+    pollAbortRef.current?.abort();
+    const abort = new AbortController();
+    pollAbortRef.current = abort;
+    const startedAt = Date.now();
+    for (;;) {
+      if (abort.signal.aborted) return;
+      if (Date.now() - startedAt > JOB_POLL_TIMEOUT_MS) {
+        setError("Разбор занял больше времени, чем обычно. Откройте кабинет — отчёт появится там.");
+        setStep("claimed");
+        return;
+      }
+      await new Promise((r) => window.setTimeout(r, JOB_POLL_INTERVAL_MS));
+      try {
+        const res = await fetch(`/api/jobs/${jobId}`, {
+          credentials: "include",
+          cache: "no-store",
+          signal: abort.signal,
+        });
+        const data = await res.json().catch(() => null);
+        if (!data) continue;
+        if (data.status === "completed" && data.result?.report) {
+          setReport(String(data.result.report));
+          if (data.result.snapshot && typeof data.result.snapshot === "object") {
+            setSnapshot(data.result.snapshot as PalmSnapshot);
+          }
+          if (typeof data.result.runeBalance === "number") {
+            setRuneBalance(data.result.runeBalance);
+          }
+          setPricing((prev) =>
+            prev
+              ? {
+                  ...prev,
+                  todayPaid: true,
+                  todayHistoryId: data.result.historyId ?? prev.todayHistoryId,
+                }
+              : prev
+          );
+          setStep("report");
+          return;
+        }
+        if (data.status === "failed" || data.status === "needs_regeneration") {
+          setError("Не удалось получить разбор. Руны возвращены — попробуйте ещё раз.");
+          setStep("claimed");
+          return;
+        }
+      } catch {
+        /* keep polling */
+      }
+    }
+  }, []);
+
+  const startReport = useCallback(async () => {
+    if (!snapshotId) return;
+    setError(null);
+    setStep("paying");
+    setPhraseIdx(0);
+    trackProductFunnel("paid_cta", { product: "palm", source: "palm_flow" });
+    trackSeoEvent("palm_paid_cta");
+    try {
+      const res = await fetch("/api/palm/report", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ snapshotId, async: true }),
+      });
+      const data = await res.json().catch(() => null);
+      const insufficient = parseInsufficientRunes(data);
+      if (insufficient) {
+        setError(
+          `Не хватает рун: нужно ${formatRunes(insufficient.required)}, у вас ${formatRunes(insufficient.balance)}.`
+        );
+        setStep("claimed");
+        return;
+      }
+      if (res.status === 401) {
+        window.location.assign(buildLoginHref("/gadanie-po-ladoni"));
+        return;
+      }
+      if (res.status === 409 && data?.code === "ALREADY_PAID_TODAY") {
+        setPricing((prev) => (prev ? { ...prev, todayPaid: true } : prev));
+        setError(
+          typeof data.message === "string"
+            ? data.message
+            : "Разбор на сегодня уже оплачен. Новый будет доступен завтра."
+        );
+        setStep("claimed");
+        return;
+      }
+      if (!res.ok) {
+        setError(data?.message ?? data?.error ?? "Не удалось запустить разбор. Попробуйте ещё раз.");
+        setStep("claimed");
+        return;
+      }
+      if (typeof data?.report === "string") {
+        setReport(data.report);
+        if (data.snapshot && typeof data.snapshot === "object") {
+          setSnapshot(data.snapshot as PalmSnapshot);
+        }
+        if (typeof data.runeBalance === "number") setRuneBalance(data.runeBalance);
+        setPricing((prev) =>
+          prev ? { ...prev, todayPaid: true, todayHistoryId: data.historyId ?? prev.todayHistoryId } : prev
+        );
+        setStep("report");
+        return;
+      }
+      const accepted = parseAcceptedAsyncReport(data);
+      if (accepted) {
+        const min = accepted.etaRangeSec?.min ?? 60;
+        const max = accepted.etaRangeSec?.max ?? 180;
+        setAcceptedEta(`${Math.round(min / 60)}–${Math.round(max / 60)} мин`);
+        setStep("accepted");
+        void pollJob(accepted.jobId);
+        return;
+      }
+      if (typeof data?.jobId === "string") {
+        void pollJob(data.jobId);
+        return;
+      }
+      setError("Неожиданный ответ сервера. Попробуйте ещё раз.");
+      setStep("claimed");
+    } catch {
+      setError("Ошибка сети. Попробуйте ещё раз.");
+      setStep("claimed");
+    }
+  }, [snapshotId, pollJob]);
+
+  useEffect(() => {
+    if (!isLoggedIn || step !== "teaser" || !snapshotId) return;
+    void (async () => {
+      const claimRes = await fetch("/api/palm/claim", {
+        method: "POST",
+        credentials: "include",
+      });
+      const claimData = await claimRes.json().catch(() => null);
+      if (claimData?.ok) {
+        if (typeof claimData.snapshotId === "string") setSnapshotId(claimData.snapshotId);
+        trackProductFunnel("claim_complete", { product: "palm", source: "palm_flow" });
+        trackSeoEvent("palm_guest_claim_complete");
+        await refreshAuth();
+        setStep("claimed");
+      }
+    })();
+  }, [isLoggedIn, step, snapshotId, refreshAuth]);
+
+  const blockedByRunes =
+    isLoggedIn &&
+    config.enabled &&
+    runeBalance !== null &&
+    !canAffordRunes({ enabled: config.enabled, balance: runeBalance, cost: palmCost });
+
+  return (
+    <div className="mx-auto w-full max-w-xl">
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          e.target.value = "";
+          if (file && canOpenCamera) void runTeaser(file);
+        }}
+      />
+
+      <AnimatePresence mode="wait">
+        {step === "capture" && (
+          <motion.div
+            key="capture"
+            initial={fadeUp}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: -8 }}
+            transition={{ duration: 0.25 }}
+            className="space-y-6"
+          >
+            {ageReady === null && (
+              <p className="text-center text-sm text-white/55">Проверяю доступ…</p>
+            )}
+
+            {ageReady === false && (
+              <div className="glass-panel space-y-3 p-5">
+                <p className="text-sm text-white/80">
+                  Гадание по ладони доступно с 18 лет. Подтвердите возраст, чтобы снять или
+                  загрузить фото.
+                </p>
+                <button
+                  type="button"
+                  onClick={() => void confirmAge()}
+                  disabled={ageConfirming}
+                  className="btn-luxe btn-luxe--md btn-luxe--gold"
+                >
+                  {ageConfirming ? "Подтверждаем…" : "Мне есть 18"}
+                </button>
+              </div>
+            )}
+
+            {cameraActive ? (
+              <div className="space-y-4">
+                <div className="relative mx-auto aspect-[4/5] w-full max-w-xs overflow-hidden rounded-3xl border border-white/15 bg-black/40">
+                  <video
+                    ref={videoRef}
+                    playsInline
+                    muted
+                    autoPlay
+                    className="h-full w-full object-cover"
+                  />
+                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40">
+                    <PalmSilhouette whichHand={whichHand} handShape="earth" verdict="mixed" />
+                  </div>
+                </div>
+                <p className="text-center text-sm text-white/60">
+                  Раскройте ладонь пальцами вверх, ровный свет, без сильных теней.
+                </p>
+                <div className="flex justify-center gap-3">
+                  <button
+                    type="button"
+                    onClick={captureFrame}
+                    className="btn-luxe btn-luxe--md btn-luxe--gold"
+                  >
+                    <Camera className="mr-2 h-4 w-4" />
+                    Снять
+                  </button>
+                  <button type="button" onClick={stopCamera} className="btn-luxe btn-luxe--md">
+                    Отмена
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <>
+                <PalmSilhouette whichHand={whichHand} handShape="earth" verdict="mixed" />
+                <div className="flex justify-center gap-2">
+                  {(["right", "left"] as const).map((hand) => (
+                    <button
+                      key={hand}
+                      type="button"
+                      onClick={() => setWhichHand(hand)}
+                      className={`rounded-full px-4 py-2 text-sm ${
+                        whichHand === hand
+                          ? "bg-aura-gold/20 text-aura-gold"
+                          : "bg-white/5 text-white/60"
+                      }`}
+                    >
+                      {PALM_HAND_LABELS[hand]}
+                    </button>
+                  ))}
+                </div>
+                {dayLocked ? (
+                  <p className="text-center text-sm text-white/55">
+                    Снимок на сегодня уже есть. Новый будет доступен {formatPalmWaitRu()}.
+                  </p>
+                ) : ageReady === true ? (
+                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+                    <button
+                      type="button"
+                      onClick={() => void startCamera()}
+                      className="btn-luxe btn-luxe--md btn-luxe--gold"
+                    >
+                      <Camera className="mr-2 h-4 w-4" />
+                      Снять ладонь
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      className="btn-luxe btn-luxe--md"
+                    >
+                      <ImagePlus className="mr-2 h-4 w-4" />
+                      Загрузить фото
+                    </button>
+                  </div>
+                ) : null}
+              </>
+            )}
+            {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
+          </motion.div>
+        )}
+
+        {(step === "processing" || step === "paying") && (
+          <motion.div
+            key={step}
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="flex flex-col items-center gap-4 py-10"
+          >
+            <Loader2
+              className={`h-8 w-8 text-aura-gold${reduceMotion ? "" : " animate-spin"}`}
+            />
+            {photoUrl && step === "processing" ? (
+              <div
+                aria-hidden
+                className="h-28 w-20 rounded-xl border border-white/10 bg-cover bg-center opacity-80"
+                style={{ backgroundImage: `url("${photoUrl}")` }}
+              />
+            ) : null}
+            <p className="text-sm text-white/70">
+              {(step === "paying" ? PAYING_PHRASES : PROCESSING_PHRASES)[
+                phraseIdx % (step === "paying" ? PAYING_PHRASES.length : PROCESSING_PHRASES.length)
+              ]}
+            </p>
+          </motion.div>
+        )}
+
+        {(step === "teaser" || step === "claimed") && snapshot && (
+          <motion.div
+            key="teaser"
+            initial={fadeUp}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="space-y-5"
+          >
+            <PalmSilhouette
+              whichHand={snapshot.whichHand}
+              handShape={snapshot.handShape}
+              verdict={snapshot.verdict}
+            />
+            <div className="space-y-2 text-center">
+              <p className="text-xs uppercase tracking-[0.18em] text-aura-gold/80">
+                {PALM_HAND_LABELS[snapshot.whichHand]}
+              </p>
+              <h2 className="font-display text-2xl text-white">
+                Тип руки — {PALM_HAND_SHAPE_LABELS[snapshot.handShape]}
+              </h2>
+              <p className="text-sm text-white/60">
+                {PALM_HAND_SHAPE_MEANINGS[snapshot.handShape]}. Акцент:{" "}
+                {PALM_VERDICT_LABELS[snapshot.verdict].toLowerCase()}.
+              </p>
+              <p className="text-white/75">{snapshot.teaser}</p>
+              {reusedKind === "today" && (
+                <p className="text-xs text-white/45">Повтор сегодня открывает тот же снимок.</p>
+              )}
+            </div>
+
+            {step === "teaser" && (
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-sm text-white/60">
+                  Чтобы открыть полный разбор линий и холмов, войдите в аккаунт.
+                </p>
+                <Link
+                  href={buildRegisterHref("/gadanie-po-ladoni")}
+                  onClick={() => {
+                    trackProductFunnel("auth_cta", { product: "palm", source: "palm_flow" });
+                    trackSeoEvent("palm_auth_cta");
+                  }}
+                  className="btn-luxe btn-luxe--md btn-luxe--gold"
+                >
+                  Продолжить и получить разбор
+                </Link>
+              </div>
+            )}
+
+            {step === "claimed" && (
+              <div className="flex flex-col items-center gap-3">
+                <p className="text-sm text-white/60">
+                  Полный разбор — {formatRunes(palmCost)}
+                  {pricing?.firstPalmDiscount ? ` (обычно ${formatRunes(palmBaseCost)})` : ""}.
+                </p>
+                {blockedByRunes ? (
+                  <Link href="/cabinet?shop=1" className="btn-luxe btn-luxe--md btn-luxe--gold">
+                    Пополнить руны
+                  </Link>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => void startReport()}
+                    className="btn-luxe btn-luxe--md btn-luxe--gold"
+                  >
+                    Открыть полный разбор
+                  </button>
+                )}
+              </div>
+            )}
+            {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
+          </motion.div>
+        )}
+
+        {step === "accepted" && (
+          <motion.div
+            key="accepted"
+            role="status"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            className="space-y-4 py-8 text-center"
+          >
+            <p className="font-display text-2xl text-white">Отчёт принят</p>
+            <p className="text-sm text-white/65">
+              Мастер готовит разбор ладони
+              {acceptedEta ? ` · обычно ${acceptedEta}` : ""}. Можно закрыть страницу — готовый
+              текст придёт в кабинет.
+            </p>
+            <Link href="/cabinet" className="btn-luxe btn-luxe--md">
+              В кабинет
+            </Link>
+          </motion.div>
+        )}
+
+        {step === "report" && report && snapshot && (
+          <motion.div
+            key="report"
+            initial={fadeUp}
+            animate={{ opacity: 1, y: 0 }}
+            className="space-y-6"
+          >
+            <PalmSilhouette
+              whichHand={snapshot.whichHand}
+              handShape={snapshot.handShape}
+              verdict={snapshot.verdict}
+            />
+            <PremiumReadingBody content={report} className="text-sm text-white/85" />
+            <CrossProductNextSteps context="palm" />
+            <p className="text-center text-sm text-white/50">
+              Новый снимок будет доступен {formatPalmWaitRu()}.
+            </p>
+            <Link href="/cabinet" className="btn-luxe btn-luxe--md mx-auto block">
+              В кабинет
+            </Link>
+          </motion.div>
+        )}
+      </AnimatePresence>
+    </div>
+  );
+}

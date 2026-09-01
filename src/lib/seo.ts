@@ -28,6 +28,8 @@ export const SEO_KEYWORDS = [
   "дизайн человека",
   "бодиграф",
   "аура по фото",
+  "хиромантия",
+  "гадание по ладони",
 ] as const;
 
 export const SEO_FAQ_ITEMS = LANDING_FAQ_ITEMS;

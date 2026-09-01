@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { SeoSection } from "@/components/seo/SeoPageShell";
+import { isAuraReadingEnabled, isPalmReadingEnabled } from "@/lib/settings";
 
 const DEFAULT_LINKS = [
   { href: "/photo-rasklad", label: "Расшифровка по фото" },
   { href: "/aura", label: "Аура по фото" },
+  { href: "/gadanie-po-ladoni", label: "Гадание по ладони" },
   { href: "/gadanie", label: "Гадание онлайн" },
   { href: "/taro", label: "Таро онлайн" },
   { href: "/rasklady", label: "Каталог раскладов" },
@@ -33,17 +35,24 @@ type SeoRelatedToolsProps = {
 };
 
 /** Crawlable “related tools” block for SEO hubs. */
-export default function SeoRelatedTools({
+export default async function SeoRelatedTools({
   title = "Также на Zovus",
   links = [...DEFAULT_LINKS],
   extraLinks = [],
   excludeHrefs = [],
 }: SeoRelatedToolsProps) {
+  const [auraOn, palmOn] = await Promise.all([isAuraReadingEnabled(), isPalmReadingEnabled()]);
   const exclude = new Set(excludeHrefs);
   const seen = new Set<string>();
   const items: RelatedLink[] = [];
   for (const item of [...links, ...extraLinks]) {
     if (exclude.has(item.href) || seen.has(item.href)) continue;
+    if (item.href === "/aura" || item.href.startsWith("/aura/")) {
+      if (!auraOn) continue;
+    }
+    if (item.href === "/gadanie-po-ladoni" || item.href.startsWith("/gadanie-po-ladoni/")) {
+      if (!palmOn) continue;
+    }
     seen.add(item.href);
     items.push(item);
   }

@@ -61,6 +61,14 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
     href: "/aura",
     kind: "link" as const,
   },
+  {
+    id: "palm",
+    title: "Гадание по ладони",
+    text: "Линии, холмы, тип руки",
+    cta: "Снять ладонь",
+    href: "/gadanie-po-ladoni",
+    kind: "link" as const,
+  },
 ] as const;
 
 export const EDITORIAL_DAILY_CARDS = {
@@ -296,6 +304,7 @@ export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Таро", href: "/taro" },
   { label: "Гадание", href: "/gadanie" },
   { label: "Фото-расклад", href: "/photo-rasklad" },
+  { label: "Гадание по ладони", href: "/gadanie-po-ladoni" },
   { label: "Расклады", href: "/rasklady" },
   { label: "Руны", href: "/runy" },
   { label: "Ленорман", href: "/lenormand" },

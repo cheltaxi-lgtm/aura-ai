@@ -30,6 +30,8 @@ export const DEFAULT_RUNE_COSTS = {
   HD_ASK: 10,
   /** Aura reading by photo — full premium report (~250 ₽ at prod 5 ₽/ᚢ). */
   AURA_READING: 50,
+  /** Palm reading by photo — full chiromancy report (~500 RUB at prod 5 RUB/rune). */
+  PALM_READING: 100,
   /** Per TTS request; long texts scale by VOICE_TTS_CHARS_PER_UNIT below. */
   VOICE_TTS: 2,
 } as const;
@@ -69,6 +71,7 @@ export const RUNE_ACTION_LABELS: Record<RuneActionType, string> = {
   HD_COMPOSITE_REPORT: "Дизайн Человека — карта связи",
   HD_ASK: "Дизайн Человека — вопрос",
   AURA_READING: "Аура по фото — полный разбор",
+  PALM_READING: "Гадание по ладони — полный разбор",
   VOICE_TTS: "Озвучка ответа",
 };
 
@@ -96,6 +99,7 @@ export const RUNE_ACTION_DESCRIPTIONS: Record<RuneActionType, string> = {
   HD_COMPOSITE_REPORT: "Полный премиальный разбор карты связи (Connection Chart) от Эвелины + печать/PDF",
   HD_ASK: "Дополнительный вопрос по разбору после включённых в покупку",
   AURA_READING: "Полный премиальный разбор ауры по фото: цвета, слои поля, чакры и практика",
+  PALM_READING: "Полный премиальный разбор ладони по фото: тип руки, линии, холмы и практика",
   VOICE_TTS: "Озвучка одного ответа наставника (длинный текст — несколько единиц)",
 };
 

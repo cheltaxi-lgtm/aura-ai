@@ -1,6 +1,7 @@
 import type { SeoArticle } from "./articles-types";
 import { SEO_ARTICLES_EXTRA } from "./articles-extra";
 import { SEO_ARTICLES_AURA } from "./articles-aura";
+import { SEO_ARTICLES_PALM } from "./articles-palm";
 
 export type { SeoArticle } from "./articles-types";
 
@@ -458,6 +459,7 @@ export const SEO_ARTICLES: SeoArticle[] = [
   ...SEO_ARTICLES_CORE,
   ...SEO_ARTICLES_EXTRA,
   ...SEO_ARTICLES_AURA,
+  ...SEO_ARTICLES_PALM,
 ];
 
 export function getSeoArticleBySlug(slug: string): SeoArticle | undefined {

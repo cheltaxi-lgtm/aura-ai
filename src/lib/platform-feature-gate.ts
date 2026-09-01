@@ -11,6 +11,7 @@ export type PlatformFeatureFlags = {
   ritualsEnabled: boolean;
   photoReadingEnabled: boolean;
   auraReadingEnabled: boolean;
+  palmReadingEnabled: boolean;
 };
 
 const FAIL_OPEN: PlatformFeatureFlags = {
@@ -21,6 +22,7 @@ const FAIL_OPEN: PlatformFeatureFlags = {
   photoReadingEnabled: true,
   // Aura is fail-closed: ENV kill-switch default off.
   auraReadingEnabled: false,
+  palmReadingEnabled: false,
 };
 
 let cached: { flags: PlatformFeatureFlags; expiresAt: number } | null = null;
@@ -43,6 +45,7 @@ function parseFlags(data: Record<string, unknown> | null): PlatformFeatureFlags 
     photoReadingEnabled: data.photoReadingEnabled !== false,
     // Fail-closed: only explicit true enables aura surfaces.
     auraReadingEnabled: data.auraReadingEnabled === true,
+    palmReadingEnabled: data.palmReadingEnabled === true,
   };
 }
 

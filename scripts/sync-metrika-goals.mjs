@@ -113,6 +113,16 @@ const DISPLAY_NAMES = {
   aura_layers_hub_view: "Аура — hub слоёв",
   aura_layer_view: "Аура — страница слоя",
   aura_intent_view: "Аура — тематическая посадка",
+  palm_landing_view: "Ладонь — лендинг",
+  palm_snapshot_start: "Ладонь — старт снимка",
+  palm_snapshot_complete: "Ладонь — снимок готов",
+  palm_auth_cta: "Ладонь — CTA регистрации",
+  palm_guest_claim_complete: "Ладонь — гостевой claim",
+  palm_paid_cta: "Ладонь — CTA полного разбора",
+  palm_seo_cta: "Ладонь — CTA с SEO-страницы",
+  palm_lines_hub: "Ладонь — hub линий",
+  palm_mounts_hub: "Ладонь — hub холмов",
+  palm_shapes_hub: "Ладонь — hub типов рук",
 };
 
 function displayName(id) {

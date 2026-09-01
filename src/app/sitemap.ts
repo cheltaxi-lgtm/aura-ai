@@ -30,8 +30,14 @@ import {
   AURA_LAYER_SEO,
 } from "@/lib/seo/aura-content";
 import {
+  PALM_LINE_SEO,
+  PALM_MOUNT_SEO,
+  PALM_SHAPE_SEO,
+} from "@/lib/seo/palm-content";
+import {
   isAuraReadingEnabled,
   isHumanDesignEnabled,
+  isPalmReadingEnabled,
   isJointReadingEnabled,
   isNatalChartEnabled,
   isPhotoReadingEnabled,
@@ -67,13 +73,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
   const now = new Date();
   // Kill-switch: disabled modules must vanish from the sitemap (crawl budget +
   // noindexed 404s stay consistent with the middleware gate).
-  const [hdEnabled, natalEnabled, jointEnabled, photoEnabled, auraEnabled, ritualSettings] =
+  const [hdEnabled, natalEnabled, jointEnabled, photoEnabled, auraEnabled, palmEnabled, ritualSettings] =
     await Promise.all([
       isHumanDesignEnabled().catch(() => true),
       isNatalChartEnabled().catch(() => false),
       isJointReadingEnabled().catch(() => true),
       isPhotoReadingEnabled().catch(() => true),
       isAuraReadingEnabled().catch(() => false),
+      isPalmReadingEnabled().catch(() => false),
       getRitualSettings().catch(() => null),
     ]);
   const ritualsEnabled = ritualSettings
@@ -266,6 +273,23 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           staticPage("/aura/chakry", 0.75, "monthly"),
           staticPage("/aura/sloi", 0.75, "monthly"),
           ...AURA_INTENT_SEO.map((item) => staticPage(`/aura/${item.slug}`, 0.75, "monthly")),
+        ]
+      : []),
+    ...(palmEnabled
+      ? [
+          staticPage("/gadanie-po-ladoni", 0.85, "weekly"),
+          staticPage("/gadanie-po-ladoni/linii", 0.8, "weekly"),
+          staticPage("/gadanie-po-ladoni/kholmy", 0.75, "monthly"),
+          staticPage("/gadanie-po-ladoni/tipy-ruk", 0.75, "monthly"),
+          ...PALM_LINE_SEO.map((item) =>
+            staticPage(`/gadanie-po-ladoni/linii/${item.slug}`, 0.7, "monthly")
+          ),
+          ...PALM_MOUNT_SEO.map((item) =>
+            staticPage(`/gadanie-po-ladoni/kholmy/${item.slug}`, 0.65, "monthly")
+          ),
+          ...PALM_SHAPE_SEO.map((item) =>
+            staticPage(`/gadanie-po-ladoni/tipy-ruk/${item.slug}`, 0.65, "monthly")
+          ),
         ]
       : []),
     ...(ritualsEnabled ? [staticPage("/obryady", 0.65)] : []),

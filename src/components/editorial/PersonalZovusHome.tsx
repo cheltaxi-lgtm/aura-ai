@@ -74,7 +74,7 @@ export default function PersonalZovusHome({
 }: PersonalZovusHomeProps) {
   const greetingName = userName?.trim().replace(/\s+/g, " ").split(/\s+/)[0] || "";
   const { owned: matrixOwned, loading: matrixLoading } = useMatrixOwnership({ enabled: true });
-  const { humanDesignEnabled, auraReadingEnabled } = usePlatformFeatures();
+  const { humanDesignEnabled, auraReadingEnabled, palmReadingEnabled } = usePlatformFeatures();
   const [natalChartReady, setNatalChartReady] = useState(false);
   const [hdChartId, setHdChartId] = useState<string | null>(null);
   const [continueReady, setContinueReady] = useState(false);
@@ -261,7 +261,8 @@ export default function PersonalZovusHome({
   const explore = PERSONAL_ZOVUS_EXPLORE.filter(
     (e) =>
       (e.id !== "hd" || humanDesignEnabled) &&
-      (e.id !== "aura" || auraReadingEnabled)
+      (e.id !== "aura" || auraReadingEnabled) &&
+      (e.id !== "palm" || palmReadingEnabled)
   );
 
   const handleContinue = (item: PersonalContinueItem) => {

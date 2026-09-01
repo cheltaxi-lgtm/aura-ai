@@ -62,6 +62,7 @@ export async function PATCH(request: NextRequest) {
       "humanDesign",
       "photoReading",
       "auraReading",
+      "palmReading",
     ].includes(section)
   ) {
     return NextResponse.json({ error: "Invalid section" }, { status: 400 });
@@ -90,6 +91,12 @@ export async function PATCH(request: NextRequest) {
   if (section === "auraReading" && !isValidEnabledOnlySettings(values)) {
     return NextResponse.json(
       { error: "Invalid auraReading settings: enabled must be boolean" },
+      { status: 400 }
+    );
+  }
+  if (section === "palmReading" && !isValidEnabledOnlySettings(values)) {
+    return NextResponse.json(
+      { error: "Invalid palmReading settings: enabled must be boolean" },
       { status: 400 }
     );
   }

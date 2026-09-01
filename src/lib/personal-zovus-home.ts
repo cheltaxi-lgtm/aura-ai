@@ -35,6 +35,12 @@ export const PERSONAL_ZOVUS_EXPLORE = [
     kind: "link" as const,
   },
   {
+    id: "palm",
+    title: "Гадание по ладони",
+    href: "/gadanie-po-ladoni",
+    kind: "link" as const,
+  },
+  {
     id: "matrix_pair",
     title: "Совместимость матриц",
     href: "/numerology/matrica-sovmestimosti",

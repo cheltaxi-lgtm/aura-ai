@@ -7,7 +7,7 @@ import { syncRetroactiveAchievements } from "@/lib/achievements";
 import { pruneDuplicateActiveSessions, pruneEmptySessionStubs } from "@/lib/session";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
-import { isAuraReadingEnabled } from "@/lib/settings";
+import { isAuraReadingEnabled, isPalmReadingEnabled } from "@/lib/settings";
 import {  getCabinetProfile,
     getCabinetStats,
     getCabinetAchievements,
@@ -16,6 +16,7 @@ import {  getCabinetProfile,
     getCabinetLegacyAccess,
     getCabinetPhotoSpreads,
     getCabinetAuraReadings,
+    getCabinetPalmReadings,
     getCabinetDailyReadings,
   } from "@/lib/cabinet-data";
 
@@ -118,6 +119,7 @@ export async function GET(request: NextRequest) {
     legacyAccess,
     photoSpreads,
     auraReadings,
+    palmReadings,
     dailyReadings,
   ] = await Promise.all([
     safe(
@@ -167,6 +169,10 @@ export async function GET(request: NextRequest) {
       if (!(await isAuraReadingEnabled())) return [];
       return getCabinetAuraReadings(profileUserId);
     }, [], errors),
+    safe("palmReadings", async () => {
+      if (!(await isPalmReadingEnabled())) return [];
+      return getCabinetPalmReadings(profileUserId);
+    }, [], errors),
     safe("dailyReadings", () => getCabinetDailyReadings(profileUserId), [], errors),
   ]);
 
@@ -187,6 +193,7 @@ export async function GET(request: NextRequest) {
     legacyAccess,
     photoSpreads,
     auraReadings,
+    palmReadings,
     dailyReadings,
     partial: errors.length > 0,
     errors,

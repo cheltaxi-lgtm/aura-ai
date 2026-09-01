@@ -90,6 +90,7 @@ export const CHECKS = {
       "tests/invariants/landing-reviews.test.ts",
       "tests/invariants/guest-landing-conversion.test.ts",
       "tests/invariants/aura-seo-landings.test.ts",
+      "tests/invariants/palm-seo-landings.test.ts",
       "tests/invariants/robots-prefix-hygiene.test.ts",
     ],
   },
@@ -101,6 +102,15 @@ export const CHECKS = {
       "tests/invariants/aura-archive.test.ts",
       "tests/invariants/aura-reading-retry.test.ts",
       "tests/invariants/aura-subjects.test.ts",
+    ],
+  },
+  "palm-unit": {
+    title: "palm-unit",
+    vitest: [
+      "tests/invariants/palm-snapshot.test.ts",
+      "tests/invariants/palm-seo-landings.test.ts",
+      "tests/invariants/palm-archive.test.ts",
+      "tests/invariants/palm-reading-retry.test.ts",
     ],
   },
   "ads-unit": {
@@ -189,6 +199,15 @@ export const SCOPES = {
     full: [...CORE_FULL, "aura-unit", "seo-unit"],
     production: ["prod-health", "prod-smoke"],
   },
+  palm: {
+    title: "Palm reading",
+    paths: /gadanie-po-ladoni|khiromantiya|chiromantiya|palm-reading|palm-guest|palm-constants|palm-seo|articles-palm/i,
+    smokeUrls: ["https://zovus.ru/gadanie-po-ladoni"],
+    reviews: ["code", "visual", "security"],
+    fast: [...CORE_FAST, "palm-unit", "seo-unit"],
+    full: [...CORE_FULL, "palm-unit", "seo-unit", "telegram-typecheck"],
+    production: ["prod-health", "prod-smoke"],
+  },
   seo: {
     title: "SEO / landings",
     paths: /\/seo\/|sitemap|robots\.txt|seo-ask|seo-growth|multiproduct-seo|landing-reviews|EditorialReviews|landing-social-proof/i,
@@ -270,6 +289,7 @@ export const PATH_SCOPES = [
   "hd",
   "photo",
   "aura",
+  "palm",
   "seo",
   "ads",
   "tarot",

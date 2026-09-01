@@ -263,6 +263,9 @@ const DEFAULTS = {
   auraReading: {
     enabled: true,
   },
+  palmReading: {
+    enabled: false,
+  },
   openrouter: {
     managementKey: "",
   },
@@ -334,6 +337,7 @@ export async function getAllSettings() {
     humanDesign,
     photoReading,
     auraReading,
+    palmReading,
   ] = await Promise.all([
     getSetting("ai"),
     getSetting("aiDelivery"),
@@ -350,6 +354,7 @@ export async function getAllSettings() {
     getSetting("humanDesign"),
     getSetting("photoReading"),
     getSetting("auraReading"),
+    getSetting("palmReading"),
   ]);
   return {
     ai,
@@ -367,6 +372,7 @@ export async function getAllSettings() {
     humanDesign,
     photoReading,
     auraReading,
+    palmReading,
   };
 }
 
@@ -413,6 +419,16 @@ export async function isAuraReadingEnabled(): Promise<boolean> {
   if (process.env.AURA_MODULE_ENABLED !== "true") return false;
   const settings = await getSetting("auraReading");
   return settings.enabled !== false;
+}
+
+/**
+ * Palm reading ships behind an ENV kill-switch, default OFF (fail-closed).
+ * Both PALM_MODULE_ENABLED=true and the admin toggle must allow it.
+ */
+export async function isPalmReadingEnabled(): Promise<boolean> {
+  if (process.env.PALM_MODULE_ENABLED !== "true") return false;
+  const settings = await getSetting("palmReading");
+  return settings.enabled === true;
 }
 
 /**

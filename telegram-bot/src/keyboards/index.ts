@@ -73,6 +73,7 @@ export const CB = {
   modJoint: "mod:joint",
   modMemory: "mod:memory",
   modPhoto: "mod:photo",
+  modPalm: "mod:palm",
   modSupport: "mod:support",
   modCabinet: "mod:cabinet",
   /** Destiny matrix album / actions */
@@ -369,6 +370,7 @@ export function profileKeyboard(opts: {
   const kb = new InlineKeyboard();
   kb.text("📚 История", CB.profHist).row();
   kb.text("🧬 Дизайн Человека", CB.modHd).row();
+  kb.text("✋ Ладонь", CB.modPalm).row();
   kb.text("🪙 Руны", CB.profRunes).text("⚙️ Настройки", CB.profSettings).row();
   if (!opts.linked && opts.linkUrl) {
     webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, opts.linkUrl).row();

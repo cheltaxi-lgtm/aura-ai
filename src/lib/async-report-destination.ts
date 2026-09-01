@@ -55,6 +55,7 @@ export function resolveAsyncReportDestination(input: {
   }
 
   if (kind === "aura_reading") return "/cabinet";
+  if (kind === "palm_reading") return "/gadanie-po-ladoni";
 
   return null;
 }

@@ -7,6 +7,7 @@ import {
   Hexagon,
   Layers,
   LayoutGrid,
+  Hand,
   Sparkle,
   Sparkles,
   Star,
@@ -73,6 +74,7 @@ export type BuildHeaderNavOptions = {
   ritualsEnabled?: boolean;
   photoReadingEnabled?: boolean;
   auraReadingEnabled?: boolean;
+  palmReadingEnabled?: boolean;
 };
 
 /** Grouped header navigation — shared by desktop dropdown and mobile sheet. */
@@ -88,6 +90,7 @@ export function buildHeaderNavSections(
     ritualsEnabled = true,
     photoReadingEnabled = true,
     auraReadingEnabled = false,
+    palmReadingEnabled = false,
   } = options;
   const appRoutes = resolveAppRouteLinks();
 
@@ -135,6 +138,16 @@ export function buildHeaderNavSections(
                 label: "Аура по фото",
                 icon: Sparkle,
                 href: "/aura",
+              } satisfies HeaderNavItem,
+            ]
+          : []),
+        ...(palmReadingEnabled
+          ? [
+              {
+                id: "palm",
+                label: "Гадание по ладони",
+                icon: Hand,
+                href: "/gadanie-po-ladoni",
               } satisfies HeaderNavItem,
             ]
           : []),

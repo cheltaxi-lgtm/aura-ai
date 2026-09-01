@@ -8,6 +8,7 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { auraAbsoluteUrls } from "./lib/aura-seo-urls.mjs";
+import { palmAbsoluteUrls } from "./lib/palm-seo-urls.mjs";
 
 const __dir = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dir, "..");
@@ -72,7 +73,9 @@ const RECRAWL_HUBS = [
 ];
 
 /** Aura family first so a tight recrawl quota still covers the new product. */
-const RECRAWL_URLS = [...new Set([...auraAbsoluteUrls(base), ...RECRAWL_HUBS])];
+const RECRAWL_URLS = [
+  ...new Set([...auraAbsoluteUrls(base), ...palmAbsoluteUrls(base), ...RECRAWL_HUBS]),
+];
 
 const report = {
   at: new Date().toISOString(),

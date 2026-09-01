@@ -207,6 +207,13 @@ export async function showCabinetOverview(ctx: Context): Promise<void> {
   }
 }
 
+export async function showPalm(ctx: Context): Promise<void> {
+  await ctx.reply(
+    "Гадание по ладони. Снимите свою руку — тизер сразу, полный разбор после входа. Фото не хранится.",
+    { reply_markup: continueOnSiteKeyboard("/gadanie-po-ladoni", "Снять ладонь") }
+  );
+}
+
 export async function showHd(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
@@ -1538,6 +1545,9 @@ export async function routeModuleCallback(ctx: Context, data: string): Promise<b
       return true;
     case CB.modPhoto:
       await showPhoto(ctx);
+      return true;
+    case CB.modPalm:
+      await showPalm(ctx);
       return true;
     case CB.modSupport:
       await showSupport(ctx);

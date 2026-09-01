@@ -34,6 +34,7 @@ import CabinetRunesPanel, { CabinetRunesPanelSkeleton } from "@/components/cabin
 import CabinetLegacyAccessPanel from "@/components/cabinet/CabinetLegacyAccessPanel";
 import CabinetPhotoSpreads from "@/components/cabinet/CabinetPhotoSpreads";
 import CabinetAuraReadings from "@/components/cabinet/CabinetAuraReadings";
+import CabinetPalmReadings from "@/components/cabinet/CabinetPalmReadings";
 import CabinetDailySpreads from "@/components/cabinet/CabinetDailySpreads";
 import CabinetRitualsPanel from "@/components/cabinet/CabinetRitualsPanel";
 import CabinetRitualReviewBanner from "@/components/cabinet/CabinetRitualReviewBanner";
@@ -61,6 +62,7 @@ import type {
   CabinetLegacyAccess,
   CabinetPhotoSpreadRow,
   CabinetAuraReadingRow,
+  CabinetPalmReadingRow,
   CabinetDailyReadingRow,
 } from "@/lib/cabinet-data";
 
@@ -76,6 +78,7 @@ interface CabinetResponse {
   legacyAccess: CabinetLegacyAccess | null;
   photoSpreads: CabinetPhotoSpreadRow[];
   auraReadings: CabinetAuraReadingRow[];
+  palmReadings: CabinetPalmReadingRow[];
   dailyReadings: CabinetDailyReadingRow[];
 }
 
@@ -134,8 +137,9 @@ export default function CabinetPage() {
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deletingPhotoSpreadId, setDeletingPhotoSpreadId] = useState<string | null>(null);
   const [deletingAuraReadingId, setDeletingAuraReadingId] = useState<string | null>(null);
+  const [deletingPalmReadingId, setDeletingPalmReadingId] = useState<string | null>(null);
   const [historyTypeFilter, setHistoryTypeFilter] = useState<
-    "all" | "sessions" | "photo" | "aura" | "daily" | "joint"
+    "all" | "sessions" | "photo" | "aura" | "palm" | "daily" | "joint"
   >("all");
   const [historySearch, setHistorySearch] = useState("");
   const [showRitualFlow, setShowRitualFlow] = useState(false);
@@ -446,6 +450,27 @@ export default function CabinetPage() {
     }
   };
 
+  const handleDeletePalmReading = async (row: CabinetPalmReadingRow) => {
+    const targetId = row.snapshotId ?? row.id;
+    setDeletingPalmReadingId(row.id);
+    try {
+      const res = await fetch(`/api/palm/readings/${encodeURIComponent(targetId)}`, {
+        method: "DELETE",
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Не удалось удалить разбор ладони");
+      setData((prev) =>
+        prev
+          ? { ...prev, palmReadings: prev.palmReadings.filter((r) => r.id !== row.id) }
+          : prev
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Ошибка удаления");
+    } finally {
+      setDeletingPalmReadingId(null);
+    }
+  };
+
   const handleDeleteAuraReading = async (row: CabinetAuraReadingRow) => {
     const targetId = row.snapshotId ?? row.id;
     setDeletingAuraReadingId(row.id);
@@ -519,6 +544,7 @@ export default function CabinetPage() {
             sessionsTotal: 0,
             photoSpreads: [],
             auraReadings: [],
+            palmReadings: [],
           }
         : prev
     );
@@ -544,6 +570,7 @@ export default function CabinetPage() {
   const legacyAccess = data?.legacyAccess;
   const photoSpreads = data?.photoSpreads ?? EMPTY_LIST;
   const auraReadings = data?.auraReadings ?? EMPTY_LIST;
+  const palmReadings = data?.palmReadings ?? EMPTY_LIST;
   const dailyReadings = data?.dailyReadings ?? EMPTY_LIST;
   const runesEnabled = Boolean(runes?.enabled);
   const ritualAttentionCount =
@@ -583,6 +610,14 @@ export default function CabinetPage() {
         .some((text) => String(text).toLowerCase().includes(historyQuery))
     );
   }, [auraReadings, historyQuery]);
+  const palmReadingsFiltered = useMemo(() => {
+    if (!historyQuery) return palmReadings;
+    return palmReadings.filter((r) =>
+      [r.contextData.teaser, r.contextData.handShape, r.contextData.verdict]
+        .filter(Boolean)
+        .some((text) => String(text).toLowerCase().includes(historyQuery))
+    );
+  }, [palmReadings, historyQuery]);
   const dailyReadingsFiltered = useMemo(() => {
     if (!historyQuery) return dailyReadings;
     return dailyReadings.filter((r) =>
@@ -597,6 +632,7 @@ export default function CabinetPage() {
     sessions: historyTypeFilter === "all" || historyTypeFilter === "sessions",
     photo: historyTypeFilter === "all" || historyTypeFilter === "photo",
     aura: historyTypeFilter === "all" || historyTypeFilter === "aura",
+    palm: historyTypeFilter === "all" || historyTypeFilter === "palm",
     daily: historyTypeFilter === "all" || historyTypeFilter === "daily",
   };
   // The sessions section renders its own empty/filtered-out messaging; the
@@ -609,6 +645,7 @@ export default function CabinetPage() {
       historyTypeFilter !== "joint" &&
       ((historySections.photo && photoSpreadsFiltered.length === 0) ||
         (historySections.aura && auraReadingsFiltered.length === 0) ||
+        (historySections.palm && palmReadingsFiltered.length === 0) ||
         (historySections.daily && dailyReadingsFiltered.length === 0)));
 
   const openRitual = (id: string, characterKey: RitualMasterKey) => {
@@ -715,6 +752,7 @@ export default function CabinetPage() {
                     ["sessions", "Расклады", data?.sessionsTotal ?? sessions.length],
                     ["photo", "По фото", photoSpreads.length],
                     ["aura", "Аура", auraReadings.length],
+                    ["palm", "Ладонь", palmReadings.length],
                     ["daily", "Карта дня", dailyReadings.length],
                     ["joint", "Совместные", null],
                   ] as const
@@ -768,6 +806,7 @@ export default function CabinetPage() {
                   (Boolean(historyQuery) ||
                     photoSpreads.length > 0 ||
                     auraReadings.length > 0 ||
+                    palmReadings.length > 0 ||
                     dailyReadings.length > 0)
                 }
               />
@@ -786,6 +825,13 @@ export default function CabinetPage() {
                 readings={auraReadingsFiltered}
                 onDelete={(row) => void handleDeleteAuraReading(row)}
                 deletingId={deletingAuraReadingId}
+              />
+            )}
+            {historySections.palm && (
+              <CabinetPalmReadings
+                readings={palmReadingsFiltered}
+                onDelete={(row) => void handleDeletePalmReading(row)}
+                deletingId={deletingPalmReadingId}
               />
             )}
             {historySections.daily && <CabinetDailySpreads readings={dailyReadingsFiltered} />}
