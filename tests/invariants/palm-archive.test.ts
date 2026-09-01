@@ -55,6 +55,28 @@ describe("palm-archive", () => {
     expect(flow).toContain('method: "DELETE"');
     expect(flow).toContain("resetAll()");
     expect(flow).toContain("Ваши ладони");
+    expect(flow).toContain("aura-past__delete");
+    expect(flow).toContain("К ладоням");
+  });
+
+  it("delete of a history row also removes the linked snapshot", () => {
+    const archive = read("src/lib/palm-reading-archive.ts");
+    expect(archive).toContain("RETURNING context_data");
+    expect(archive).toContain("linkedSnapshotId");
+  });
+
+  it("today reuse and paid cache are scoped per hand", () => {
+    const guest = read("src/lib/services/palm-guest-service.ts");
+    const persist = read("src/lib/palm-reading-persist.ts");
+    const teaser = read("src/app/api/palm/teaser/route.ts");
+    const report = read("src/app/api/palm/report/route.ts");
+    expect(guest).toContain("snapshot->>'whichHand' = $2");
+    expect(persist).toContain("context_data->'snapshot'->>'whichHand' = $2");
+    expect(teaser).toContain("findTodaysPalmSnapshotForUser(profileUserId, whichHand)");
+    expect(teaser).toContain("findTodaysPalmSnapshotByClaimToken(claimToken, whichHand)");
+    expect(guest).toContain("stored.snapshot.whichHand !== whichHand");
+    expect(report).toContain("findTodaysPaidPalmReport(profileUserId, snapshot.whichHand)");
+    expect(report).toContain("`day:${palmCalendarDayKey()}:${snapshot.whichHand}`");
   });
 
   it("cabinet palm rows come from the shared archive", () => {

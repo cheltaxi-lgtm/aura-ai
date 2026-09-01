@@ -61,12 +61,12 @@ describe("palm-photo-first", () => {
     expect(existsSync(path.join(ROOT, "src/components/palm/PalmSilhouette.tsx"))).toBe(false);
     expect(flow).toContain('step === "preview"');
     expect(flow).toContain("palm-capture-surface");
-    expect(flow).toContain("PALM_GUIDE_PHOTO");
-    expect(flow).toContain("Новый снимок ладони");
-    expect(flow).toContain("newReadingBlock");
+    expect(flow).not.toContain("PALM_GUIDE_PHOTO");
+    expect(flow).not.toContain("guide-open-hand");
+    expect(flow).toContain("captureActions");
     expect(flow).toContain("palm-result-hero");
-    expect(flow).toContain("Сегодняшний разбор уже открыт");
-    expect(flow).toContain("Чтобы снять заново, удалите запись ниже");
+    expect(flow).toContain("К ладоням");
+    expect(flow).toContain("Ваши ладони");
     expect(flow).toContain("PalmInsightCards");
     expect(stage).toContain("palm-photo-stage");
     expect(read("src/styles/palm-flow.css")).toContain("object-fit: contain");
@@ -86,6 +86,7 @@ describe("palm-photo-first", () => {
     const css = read("src/styles/palm-flow.css");
     expect(css).toContain("grid-template-columns: 1fr 1fr");
     expect(css).toContain("grid-template-columns: 1fr 1fr 1fr");
+    expect(css).not.toContain("minmax(15rem, 0.85fr)");
   });
 
   it("browser preview cache never grants entitlement", () => {

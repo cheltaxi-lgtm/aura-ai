@@ -18,9 +18,10 @@ export type PalmReadingPricing = {
 export async function countUserPalmReadings(userId: string): Promise<number> {
   const { rows } = await query<{ count: string }>(
     `SELECT COUNT(*)::text AS count
-     FROM history
+     FROM rune_transactions
      WHERE user_id = $1
-       AND context_data->>'type' = 'palm_reading'`,
+       AND type = 'spend'
+       AND action_type = 'PALM_READING'`,
     [userId]
   );
   return Number.parseInt(rows[0]?.count ?? "0", 10) || 0;

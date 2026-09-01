@@ -168,8 +168,12 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  const todaysOwn = profileUserId ? await findTodaysPalmSnapshotForUser(profileUserId) : null;
-  const todaysCookie = todaysOwn ? null : await findTodaysPalmSnapshotByClaimToken(claimToken);
+  const todaysOwn = profileUserId
+    ? await findTodaysPalmSnapshotForUser(profileUserId, whichHand)
+    : null;
+  const todaysCookie = todaysOwn
+    ? null
+    : await findTodaysPalmSnapshotByClaimToken(claimToken, whichHand);
   const todays =
     todaysOwn ??
     (todaysCookie &&

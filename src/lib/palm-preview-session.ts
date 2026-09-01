@@ -3,8 +3,6 @@
 const STORAGE_KEY = "zovus_palm_preview_v1";
 const MAX_DATA_URL_CHARS = 900_000;
 
-export const PALM_GUIDE_PHOTO = "/palm/guide-open-hand.webp";
-
 type PalmPreviewStore = {
   snapshotId: string;
   dataUrl: string;

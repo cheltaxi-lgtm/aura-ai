@@ -196,11 +196,20 @@ export async function deletePalmArchiveEntry(
   if (!(await ensureDb()) || !UUID_RE.test(id)) return { ok: false };
 
   return withTransaction(async (client) => {
-    const historyDel = await client.query(
+    const historyDel = await client.query<{ context_data: Record<string, unknown> }>(
       `DELETE FROM history
-       WHERE id = $1 AND user_id = $2 AND context_data->>'type' = 'palm_reading'`,
+       WHERE id = $1 AND user_id = $2 AND context_data->>'type' = 'palm_reading'
+       RETURNING context_data`,
       [id, userId]
     );
+    const linkedSnapshotId = historyDel.rows[0]?.context_data?.palmSnapshotId;
+    if (typeof linkedSnapshotId === "string" && UUID_RE.test(linkedSnapshotId)) {
+      await client.query(
+        `DELETE FROM palm_guest_snapshots
+         WHERE id = $1 AND claimed_user_id = $2`,
+        [linkedSnapshotId, userId]
+      );
+    }
 
     const snapshotDel = await client.query(
       `DELETE FROM palm_guest_snapshots

@@ -5,6 +5,7 @@ import {
   PALM_ENGINE_VERSION,
   PALM_GUEST_CLAIM_TTL_MS,
   alignPalmSnapshot,
+  type PalmHand,
   type PalmHandShape,
   type PalmSnapshot,
 } from "@/lib/palm-constants";
@@ -110,16 +111,18 @@ function claimTokenHashOf(rawToken: string | null | undefined): string | null {
 }
 
 export async function findTodaysPalmSnapshotForUser(
-  profileUserId: string
+  profileUserId: string,
+  whichHand?: PalmHand
 ): Promise<PalmStoredSnapshot | null> {
   const { rows } = await query<PalmStoredRow>(
     `SELECT ${SNAPSHOT_COLS}
      FROM palm_guest_snapshots
      WHERE claimed_user_id = $1
        AND ${PALM_TODAY_PREDICATE}
+       AND ($2::text IS NULL OR snapshot->>'whichHand' = $2)
      ORDER BY created_at DESC
      LIMIT 1`,
-    [profileUserId]
+    [profileUserId, whichHand ?? null]
   );
   return rows[0] ? asStored(rows[0]) : null;
 }
@@ -140,7 +143,8 @@ export async function findPalmSnapshotByClaimToken(
 }
 
 export async function findTodaysPalmSnapshotByClaimToken(
-  rawToken: string | null | undefined
+  rawToken: string | null | undefined,
+  whichHand?: PalmHand
 ): Promise<PalmStoredSnapshot | null> {
   const stored = await findPalmSnapshotByClaimToken(rawToken);
   if (!stored) return null;
@@ -156,7 +160,9 @@ export async function findTodaysPalmSnapshotByClaimToken(
     month: "2-digit",
     day: "2-digit",
   }).format(stored.createdAt);
-  return moscowToday === rowDay ? stored : null;
+  if (moscowToday !== rowDay) return null;
+  if (whichHand && stored.snapshot.whichHand !== whichHand) return null;
+  return stored;
 }
 
 export async function findScopedPalmSnapshotByPhotoHash(opts: {

@@ -1,6 +1,6 @@
 import { ensureDb, query } from "@/lib/db";
 import { createHistoryEntry } from "@/lib/users";
-import { alignPalmSnapshot, type PalmSnapshot } from "@/lib/palm-constants";
+import { alignPalmSnapshot, type PalmHand, type PalmSnapshot } from "@/lib/palm-constants";
 import { PALM_DAY_TIMEZONE } from "@/lib/services/palm-guest-service";
 import { palmSpendKeyBelongsToSnapshot } from "@/lib/palm-reading-billing";
 
@@ -24,7 +24,8 @@ export type TodaysPaidPalmReport = {
 };
 
 export async function findTodaysPaidPalmReport(
-  userId: string
+  userId: string,
+  whichHand?: PalmHand
 ): Promise<TodaysPaidPalmReport | null> {
   if (!(await ensureDb())) return null;
   const { rows } = await query<{
@@ -37,9 +38,10 @@ export async function findTodaysPaidPalmReport(
        AND context_data->>'type' = 'palm_reading'
        AND coalesce(context_data->>'report', '') <> ''
        AND ${PALM_TODAY_SQL}
+       AND ($2::text IS NULL OR context_data->'snapshot'->>'whichHand' = $2)
      ORDER BY created_at DESC
      LIMIT 1`,
-    [userId]
+    [userId, whichHand ?? null]
   );
   const row = rows[0];
   if (!row) return null;

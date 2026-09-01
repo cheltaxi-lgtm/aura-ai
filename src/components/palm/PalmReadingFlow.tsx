@@ -21,9 +21,8 @@ import { confirmAgeGateOnServer, fetchServerAgeGateConfirmed } from "@/lib/age-g
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { parseAcceptedAsyncReport } from "@/lib/client/wait-for-async-job";
-import { formatPalmWaitRu } from "@/lib/palm-cadence";
+import { isPalmMoscowToday } from "@/lib/palm-cadence";
 import {
-  PALM_GUIDE_PHOTO,
   blobToPalmDataUrl,
   clearPalmPreview,
   readPalmPreview,
@@ -122,7 +121,6 @@ export default function PalmReadingFlow() {
   const [ageReady, setAgeReady] = useState<boolean | null>(null);
   const [ageConfirming, setAgeConfirming] = useState(false);
   const [reusedKind, setReusedKind] = useState<"today" | "photo" | null>(null);
-  const [dayLocked, setDayLocked] = useState(false);
   const [whichHand, setWhichHand] = useState<PalmHand>("right");
   const [acceptedEta, setAcceptedEta] = useState<string | null>(null);
   const [pastReadings, setPastReadings] = useState<PalmPastItem[] | null>(null);
@@ -197,6 +195,7 @@ export default function PalmReadingFlow() {
   }, [isLoggedIn]);
 
   useEffect(() => {
+    if (isLoggedIn) return;
     let cancelled = false;
     void fetch("/api/palm/today", { credentials: "include", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -207,13 +206,7 @@ export default function PalmReadingFlow() {
         setSnapshotId(nextId);
         const stored = readPalmPreview(nextId);
         if (stored) setPhotoUrl(stored);
-        setDayLocked(true);
-        if (data.paid && typeof data.report === "string") {
-          setReport(data.report);
-          setStep("report");
-          return;
-        }
-        setStep(data.claimed || isLoggedIn ? "claimed" : "teaser");
+        setStep("teaser");
       })
       .catch(() => undefined);
     return () => {
@@ -235,18 +228,22 @@ export default function PalmReadingFlow() {
     setReport(null);
     setError(null);
     setReusedKind(null);
-    setDayLocked(false);
     setAcceptedEta(null);
     setStep("capture");
   }, [photoUrl, snapshotId]);
 
+  const goHome = useCallback(() => {
+    pollAbortRef.current?.abort();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+    streamRef.current = null;
+    setCameraActive(false);
+    setError(null);
+    setAcceptedEta(null);
+    setStep("capture");
+  }, []);
+
   useEffect(() => {
-    if (
-      !isLoggedIn ||
-      (step !== "capture" && step !== "teaser" && step !== "claimed" && step !== "report")
-    ) {
-      return;
-    }
+    if (!isLoggedIn) return;
     let cancelled = false;
     void fetch("/api/palm/readings", { credentials: "include", cache: "no-store" })
       .then((r) => (r.ok ? r.json() : null))
@@ -318,7 +315,10 @@ export default function PalmReadingFlow() {
         setPastReadings((prev) =>
           (prev ?? []).filter((p) => pastItemId(p) !== id)
         );
-        if (item.snapshotId && item.snapshotId === snapshotId) {
+        if (
+          (item.snapshotId && item.snapshotId === snapshotId) ||
+          (item.historyId && item.historyId === snapshotId)
+        ) {
           resetAll();
         }
       } catch {
@@ -424,18 +424,11 @@ export default function PalmReadingFlow() {
           return;
         }
 
-        if ((data.reused === "today" || data.reused === "photo") && report) {
-          setError("Сегодняшний разбор уже открыт. Удалите его ниже, чтобы снять заново.");
-          setStep("report");
-          return;
-        }
-
         setSnapshot(data.snapshot as FlowSnapshot);
         const nextId = typeof data.snapshotId === "string" ? data.snapshotId : null;
         setSnapshotId(nextId);
         if (nextId && previewDataRef.current) writePalmPreview(nextId, previewDataRef.current);
         setReusedKind(data.reused === "today" || data.reused === "photo" ? data.reused : null);
-        setDayLocked(true);
         trackProductFunnel("free_complete", { product: "palm", source: "palm_flow" });
         trackSeoEvent("palm_snapshot_complete");
 
@@ -477,7 +470,7 @@ export default function PalmReadingFlow() {
         setStep("capture");
       }
     },
-    [isLoggedIn, photoUrl, whichHand, report]
+    [isLoggedIn, photoUrl, whichHand]
   );
 
   const confirmAge = useCallback(async () => {
@@ -642,7 +635,7 @@ export default function PalmReadingFlow() {
         setError(
           typeof data.message === "string"
             ? data.message
-            : "Разбор на сегодня уже оплачен. Новый будет доступен завтра."
+            : "Разбор этой ладони на сегодня уже открыт. Другую можно снять отдельно."
         );
         setStep("claimed");
         return;
@@ -709,35 +702,41 @@ export default function PalmReadingFlow() {
     runeBalance !== null &&
     !canAffordRunes({ enabled: config.enabled, balance: runeBalance, cost: palmCost });
 
+  const selectedHandTakenToday = (pastReadings ?? []).some(
+    (item) => item.whichHand === whichHand && isPalmMoscowToday(item.createdAt)
+  );
+
   const pastArchive =
     isLoggedIn && pastReadings && pastReadings.length > 0 ? (
-      <div className="space-y-2 pt-2">
-        <p className="text-center text-xs uppercase tracking-[0.16em] text-white/40">
-          Ваши ладони
-        </p>
-        <ul className="space-y-2">
+      <div className="aura-past">
+        <p className="aura-past__title">Ваши ладони</p>
+        <ul className="aura-past__list">
           {pastReadings.map((item) => {
             const itemId = pastItemId(item);
             const deleting = deletingPastId === itemId;
             const confirming = confirmPastDeleteId === itemId;
             return (
-              <li
-                key={itemId}
-                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2"
-              >
+              <li key={itemId} className="aura-past__item">
                 <button
                   type="button"
                   disabled={openingPast}
                   onClick={() => void openPast(item)}
-                  className="min-w-0 flex-1 text-left"
+                  className="aura-past__open"
                 >
-                  <span className="block text-sm text-white">
-                    {PALM_HAND_SHAPE_LABELS[item.handShape]}
-                    {item.verdict ? ` · ${PALM_VERDICT_LABELS[item.verdict]}` : ""}
+                  <span className="aura-past__meta">
+                    <span className="aura-past__name">
+                      {PALM_HAND_LABELS[item.whichHand]}
+                      {item.handShape ? ` · ${PALM_HAND_SHAPE_LABELS[item.handShape]}` : ""}
+                    </span>
+                    <span className="aura-past__date">
+                      {formatPastDate(item.createdAt)}
+                      {item.verdict ? ` · ${PALM_VERDICT_LABELS[item.verdict]}` : ""}
+                    </span>
                   </span>
-                  <span className="text-xs text-white/45">
-                    {formatPastDate(item.createdAt)}
-                    {item.paid ? " · Отчёт" : " · Тизер"}
+                  <span
+                    className={`aura-past__badge ${item.paid ? "" : "aura-past__badge--pending"}`}
+                  >
+                    {item.paid ? "Разбор" : "Снимок"}
                   </span>
                 </button>
                 <button
@@ -747,9 +746,7 @@ export default function PalmReadingFlow() {
                     if (confirming) void deletePast(item);
                     else setConfirmPastDeleteId(itemId);
                   }}
-                  className={`inline-flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2 text-xs ${
-                    confirming ? "bg-rose-400/20 text-rose-100" : "text-rose-300/80"
-                  }`}
+                  className={`aura-past__delete ${confirming ? "aura-past__delete--confirm" : ""}`}
                   aria-label={confirming ? "Подтвердить удаление" : "Удалить снимок ладони"}
                   title={confirming ? "Нажмите ещё раз" : "Удалить"}
                 >
@@ -762,53 +759,39 @@ export default function PalmReadingFlow() {
       </div>
     ) : null;
 
-  const newReadingBlock =
+  const captureActions =
     ageReady === true ? (
-      <div className="space-y-3">
-        <p className="text-center text-xs uppercase tracking-[0.16em] text-white/45">
-          Новый снимок ладони
+      <div className="palm-capture-surface">
+        <p className="palm-capture-surface__hint">
+          Раскройте ладонь пальцами вверх. Снимок не сохраняется — только линии и тип руки.
         </p>
-        <div className="palm-capture-surface">
-          {/* eslint-disable-next-line @next/next/no-img-element */}
-          <img
-            src={PALM_GUIDE_PHOTO}
-            alt="Пример: открытая ладонь в кадре"
-            className="palm-capture-surface__photo"
-          />
-          <div className="palm-capture-surface__scrim" aria-hidden />
-          <p className="palm-capture-surface__badge">Пример кадра</p>
-          <p className="palm-capture-surface__hint">
-            Открытая ладонь полностью в кадре — это фото и будет разобрано.
-          </p>
-          {!dayLocked ? (
-            <div className="palm-capture-actions">
-              <button
-                type="button"
-                onClick={() => void startCamera()}
-                className="btn-luxe btn-luxe--md btn-luxe--gold order-1 sm:order-2"
-              >
-                <Camera className="mr-2 h-4 w-4" />
-                Сфотографировать ладонь
-              </button>
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="btn-luxe btn-luxe--md btn-luxe--ghost order-2 sm:order-1"
-              >
-                <ImagePlus className="mr-2 h-4 w-4" />
-                Загрузить фото
-              </button>
-            </div>
-          ) : null}
-          <ul className="palm-guide">
-            <li>Ладонь целиком, пальцы расправлены</li>
-            <li>Ровный свет, без сильных теней</li>
-            <li>Одна ладонь на снимке</li>
-          </ul>
+        <div className="palm-capture-actions">
+          <button
+            type="button"
+            onClick={() => void startCamera()}
+            className="btn-luxe btn-luxe--md btn-luxe--gold order-1 sm:order-2"
+          >
+            <Camera className="mr-2 h-4 w-4" />
+            Сфотографировать ладонь
+          </button>
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            className="btn-luxe btn-luxe--md btn-luxe--ghost order-2 sm:order-1"
+          >
+            <ImagePlus className="mr-2 h-4 w-4" />
+            Загрузить фото
+          </button>
         </div>
-        {dayLocked ? (
-          <p className="text-center text-sm text-white/55">
-            Чтобы снять заново, удалите запись ниже. Новый день — {formatPalmWaitRu()}.
+        <ul className="palm-guide">
+          <li>Ладонь целиком, пальцы расправлены</li>
+          <li>Ровный свет, без сильных теней</li>
+          <li>Одна ладонь на снимке</li>
+        </ul>
+        {selectedHandTakenToday ? (
+          <p className="text-center text-sm text-white/50">
+            {PALM_HAND_LABELS[whichHand]} уже есть в списке — откройте или удалите. Другую ладонь
+            можно снять отдельно.
           </p>
         ) : null}
       </div>
@@ -912,7 +895,7 @@ export default function PalmReadingFlow() {
                     </button>
                   ))}
                 </div>
-                {newReadingBlock}
+                {captureActions}
                 {pricing ? (
                   <div className="palm-price">
                     {pricing.firstPalmDiscount && palmCost < palmBaseCost ? (
@@ -1018,13 +1001,7 @@ export default function PalmReadingFlow() {
             exit={{ opacity: 0 }}
             className="space-y-5"
           >
-            {photoUrl ? (
-              <PalmPhotoStage src={photoUrl} alt="Ваша ладонь" />
-            ) : (
-              <p className="text-center text-xs text-white/40">
-                Фото не хранится — остаётся тип руки и тизер.
-              </p>
-            )}
+            {photoUrl ? <PalmPhotoStage src={photoUrl} alt="Ваша ладонь" /> : null}
             <div className="space-y-2 text-center">
               <p className="text-xs uppercase tracking-[0.18em] text-aura-gold/80">
                 {PALM_HAND_LABELS[snapshot.whichHand]}
@@ -1091,12 +1068,9 @@ export default function PalmReadingFlow() {
               </div>
             )}
             {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
-            {isLoggedIn && snapshotId ? (
-              <p className="text-center text-xs text-white/40">
-                Можно удалить этот снимок в списке ниже и снять ладонь заново.
-              </p>
-            ) : null}
-            {newReadingBlock}
+            <button type="button" onClick={goHome} className="btn-luxe btn-luxe--md btn-luxe--ghost mx-auto block">
+              К ладоням
+            </button>
             {pastArchive}
           </motion.div>
         )}
@@ -1136,28 +1110,18 @@ export default function PalmReadingFlow() {
               </h2>
             </div>
             <div className="palm-result-hero">
-              {photoUrl ? (
-                <PalmPhotoStage src={photoUrl} alt="Ваша ладонь" />
-              ) : (
-                <div>
-                  <PalmPhotoStage src={PALM_GUIDE_PHOTO} alt="Пример открытой ладони" />
-                  <p className="mt-2 text-center text-xs text-white/50">
-                    Снимок сессии на сервере не хранится. Новый кадр — в блоке ниже.
-                  </p>
-                </div>
-              )}
+              {photoUrl ? <PalmPhotoStage src={photoUrl} alt="Ваша ладонь" /> : null}
               {snapshot.majorLines ? <PalmInsightCards snapshot={snapshot as PalmSnapshot} /> : null}
             </div>
-            {newReadingBlock}
             <details className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
               <summary className="cursor-pointer text-sm text-white/80">Полный разбор</summary>
               <PremiumReadingBody content={report} className="mt-3 text-sm text-white/85" />
             </details>
-            <CrossProductNextSteps context="palm" />
-            <p className="text-center text-sm text-white/50">
-              Новый снимок будет доступен {formatPalmWaitRu()}.
-            </p>
+            <button type="button" onClick={goHome} className="btn-luxe btn-luxe--md btn-luxe--ghost mx-auto block">
+              К ладоням
+            </button>
             {pastArchive}
+            <CrossProductNextSteps context="palm" />
             <Link href="/cabinet" className="btn-luxe btn-luxe--md mx-auto block">
               В кабинет
             </Link>

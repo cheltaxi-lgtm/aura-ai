@@ -32,8 +32,6 @@ import { getClaimedPalmSnapshotRow } from "@/lib/services/palm-guest-service";
 import {
   bindPalmChargeIdempotencyKey,
   getPalmChargeReuseState,
-  listTodaysUnrefundedPalmSpends,
-  palmSpendBelongsToSnapshot,
   palmSpendKeyForSnapshot,
   resolvePalmReadingPricing,
 } from "@/lib/palm-reading-billing";
@@ -151,7 +149,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const todaysPaid = await findTodaysPaidPalmReport(profileUserId);
+  const todaysPaid = await findTodaysPaidPalmReport(profileUserId, snapshot.whichHand);
   if (todaysPaid) {
     const payload = palmReportPayload({
       report: todaysPaid.report,
@@ -163,22 +161,6 @@ export async function POST(request: NextRequest) {
     });
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
-  }
-
-  const unlimitedEarly = await resolveUnlimitedAccess({ accountId, profileUserId });
-  const runeSettingsEarly = await getRuneSettings();
-  const billingOn = isRuneBillingActive(profileUserId, unlimitedEarly, runeSettingsEarly);
-  const earlySpends = billingOn ? await listTodaysUnrefundedPalmSpends(profileUserId) : [];
-  if (billingOn && earlySpends.length > 0 && !palmSpendBelongsToSnapshot(earlySpends, snapshotId)) {
-    return NextResponse.json(
-      {
-        error: "ALREADY_PAID_TODAY",
-        code: "ALREADY_PAID_TODAY",
-        message:
-          "Разбор на сегодня уже оплачен. Новый будет доступен завтра — руны не спишутся повторно.",
-      },
-      { status: 409 }
-    );
   }
 
   if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
@@ -196,7 +178,10 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  return withPalmReadingLock(profileUserId, `day:${palmCalendarDayKey()}`, async () => {
+  return withPalmReadingLock(
+    profileUserId,
+    `day:${palmCalendarDayKey()}:${snapshot.whichHand}`,
+    async () => {
     const unlimited = await resolveUnlimitedAccess({ accountId, profileUserId });
     const runeSettings = await getRuneSettings();
     const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
@@ -221,7 +206,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(payload);
     }
 
-    const todaysInsideLock = await findTodaysPaidPalmReport(profileUserId);
+    const todaysInsideLock = await findTodaysPaidPalmReport(profileUserId, snapshot.whichHand);
     if (todaysInsideLock) {
       const payload = palmReportPayload({
         report: todaysInsideLock.report,
@@ -234,25 +219,6 @@ export async function POST(request: NextRequest) {
       });
       await trackWorkerJobCompleted(request, payload);
       return NextResponse.json(payload);
-    }
-
-    const spendsInside = useRuneBilling
-      ? await listTodaysUnrefundedPalmSpends(profileUserId)
-      : [];
-    if (
-      useRuneBilling &&
-      spendsInside.length > 0 &&
-      !palmSpendBelongsToSnapshot(spendsInside, snapshotId)
-    ) {
-      return NextResponse.json(
-        {
-          error: "ALREADY_PAID_TODAY",
-          code: "ALREADY_PAID_TODAY",
-          message:
-            "Разбор на сегодня уже оплачен. Новый будет доступен завтра — руны не спишутся повторно.",
-        },
-        { status: 409 }
-      );
     }
 
     if (useRuneBilling) {

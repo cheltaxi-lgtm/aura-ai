@@ -34,6 +34,13 @@ describe("palm-reading-retry", () => {
     expect(registry).toContain('path: "/api/palm/report"');
   });
 
+  it("first-palm discount survives archive delete", () => {
+    const billing = read("src/lib/palm-reading-billing.ts");
+    expect(billing).toContain("action_type = 'PALM_READING'");
+    expect(billing).toContain("FROM rune_transactions");
+    expect(billing).not.toContain("context_data->>'type' = 'palm_reading'");
+  });
+
   it("unpaid archive/cabinet stay on the teaser subset", () => {
     const detail = read("src/app/api/palm/readings/[id]/route.ts");
     const cabinet = read("src/lib/cabinet-data.ts");

@@ -1,6 +1,12 @@
 /** Same IANA zone as PALM_DAY_TIMEZONE — kept here so the client never imports the DB service. */
 export const PALM_CADENCE_TZ = "Europe/Moscow";
 
+export function isPalmMoscowToday(iso: string, now = new Date()): boolean {
+  const at = new Date(iso);
+  if (Number.isNaN(at.getTime())) return false;
+  return moscowDayKey(at) === moscowDayKey(now);
+}
+
 function moscowDayKey(at: Date): string {
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: PALM_CADENCE_TZ,
