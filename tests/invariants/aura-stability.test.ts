@@ -9,6 +9,7 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
+import { AURA_CADENCE_TZ, formatAuraWaitRu, nextAuraShotAt } from "@/lib/aura-cadence";
 import {
   AURA_CORE_LOCK_MS,
   AURA_DAY_TIMEZONE,
@@ -54,9 +55,15 @@ describe("aura-stability", () => {
     expect(flow).toContain("data.claimed === true");
     expect(flow).toContain("setReusedKind");
     expect(flow).toContain("/api/aura/today");
-    expect(flow).toContain("Новый снимок будет доступен завтра");
+    expect(flow).toContain("AuraCadenceHint");
     expect(flow).not.toContain("Снять другую ауру");
     expect(flow).not.toContain("Вернуться к съёмке");
+
+    const hint = read("src/components/aura/AuraCadenceHint.tsx");
+    expect(hint).toContain("00:00 по Москве");
+    expect(hint).toContain("Ядро (основной цвет)");
+    expect(hint).toContain("раз в несколько дней");
+    expect(hint).toContain("formatAuraWaitRu");
 
     const today = read("src/app/api/aura/today/route.ts");
     expect(today).toContain("findTodaysAuraSnapshotForUser");
@@ -178,5 +185,19 @@ describe("aura-stability", () => {
       createdAt: new Date(Date.now() - AURA_CORE_LOCK_MS - 1_000),
     });
     expect(expired.dominantColor.key).toBe("gold");
+  });
+
+  it("next shot is the following Moscow midnight and wait copy stays human", () => {
+    const now = new Date();
+    const next = nextAuraShotAt(now);
+    expect(next.getTime()).toBeGreaterThan(now.getTime());
+    expect(next.getTime() - now.getTime()).toBeLessThanOrEqual(36 * 60 * 60 * 1000);
+    const wait = formatAuraWaitRu(now);
+    expect(wait === "меньше чем через минуту" || wait.startsWith("через ")).toBe(true);
+    expect(AURA_CADENCE_TZ).toBe(AURA_DAY_TIMEZONE);
+    const cadence = read("src/lib/aura-cadence.ts");
+    expect(cadence).toContain("Europe/Moscow");
+    expect(cadence).not.toContain("aura-guest-service");
+    expect(cadence).not.toContain("getTimezoneOffset");
   });
 });

@@ -223,6 +223,24 @@
   margin-inline: -0.25rem;
 }
 
+.aura-cadence {
+  margin: 0 auto;
+  max-width: 28rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: rgba(255, 255, 255, 0.58);
+}
+
+.aura-cadence p + p {
+  margin-top: 0.45rem;
+}
+
+.aura-cadence strong {
+  font-weight: 600;
+  color: rgba(245, 242, 234, 0.88);
+}
+
 .aura-map {
   display: flex;
   flex-direction: column;

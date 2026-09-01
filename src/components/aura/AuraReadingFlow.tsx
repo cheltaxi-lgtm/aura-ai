@@ -5,6 +5,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Camera, ImagePlus, Loader2, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
 
+import AuraCadenceHint from "@/components/aura/AuraCadenceHint";
 import AuraHalo from "@/components/aura/AuraHalo";
 import AuraMap from "@/components/aura/AuraMap";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
@@ -385,7 +386,7 @@ export default function AuraReadingFlow() {
         setSnapshot(nextSnapshot);
         setSnapshotId(typeof data.snapshotId === "string" ? data.snapshotId : null);
         setReusedKind(data.reused === "today" || data.reused === "photo" ? data.reused : null);
-        if (data.reused === "today") setDayLocked(true);
+        setDayLocked(true);
         trackProductFunnel("free_complete", { product: "aura", source: "aura_flow" });
 
         if (data.claimed === true) {
@@ -751,18 +752,14 @@ export default function AuraReadingFlow() {
                 </div>
                 <p className="text-center text-sm text-white/60">
                   Портрет крупным планом, при ровном свете. Фото не сохраняется — только
-                  цвета и состояния поля. Один снимок и один полный разбор на день:
-                  повтор откроет то же самое, руны повторно не спишутся.
+                  цвета и состояния поля.
                 </p>
+                <AuraCadenceHint locked={dayLocked} />
                 {!todayReady ? (
                   <p className="text-center text-sm text-white/45">
                     Проверяю снимок на сегодня…
                   </p>
-                ) : dayLocked ? (
-                  <p className="text-center text-sm text-white/55">
-                    Новый снимок будет доступен завтра. Ядро поля уже считано на сегодня.
-                  </p>
-                ) : (
+                ) : dayLocked ? null : (
                   <div className="flex flex-col justify-center gap-3 sm:flex-row">
                     <button
                       type="button"
@@ -899,13 +896,12 @@ export default function AuraReadingFlow() {
 
             <AuraMap snapshot={snapshot} veiled />
 
-            {reusedKind && (
+            {reusedKind === "photo" ? (
               <p role="status" className="text-center text-xs leading-relaxed text-white/60">
-                {reusedKind === "today"
-                  ? "Аура на сегодня уже считана. Ядро поля стабильно — новый снимок будет завтра."
-                  : "Это тот же портрет: возвращаю сохранённый снимок, без нового кручения."}
+                Это тот же портрет: возвращаю сохранённый снимок, без нового кручения.
               </p>
-            )}
+            ) : null}
+            <AuraCadenceHint locked={dayLocked} />
 
             {step === "teaser" ? (
               <div className="space-y-3 text-center">
@@ -991,9 +987,6 @@ export default function AuraReadingFlow() {
                     Получить полный разбор · {formatRunes(auraCost)}
                   </button>
                 )}
-                <p className="text-xs text-white/40">
-                  Новый снимок будет доступен завтра.
-                </p>
               </div>
             )}
           </motion.div>
@@ -1011,6 +1004,8 @@ export default function AuraReadingFlow() {
 
             <AuraMap snapshot={snapshot} />
 
+            <AuraCadenceHint locked={dayLocked} />
+
             <div className="photo-flow-panel">
               <PremiumReadingBody content={report} className="text-sm text-white/85" />
             </div>
@@ -1020,9 +1015,6 @@ export default function AuraReadingFlow() {
               <Link href="/cabinet" className="btn-luxe btn-luxe--md btn-luxe--ghost">
                 Открыть в кабинете
               </Link>
-              <p className="text-xs text-white/40">
-                Новый снимок будет доступен завтра.
-              </p>
             </div>
           </motion.div>
         )}
