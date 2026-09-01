@@ -1,29 +1,71 @@
 /* Palm reading — photo-first surface. Tokens only; no new palette. */
 
 .palm-capture-surface {
+  position: relative;
   display: flex;
-  min-height: 17.5rem;
+  min-height: 26rem;
   flex-direction: column;
   align-items: center;
-  justify-content: center;
-  gap: 1.25rem;
+  justify-content: flex-end;
+  gap: 1rem;
+  overflow: hidden;
   border-radius: 1.5rem;
-  border: 1px dashed rgba(232, 199, 126, 0.28);
-  background:
-    radial-gradient(ellipse 70% 55% at 50% 38%, rgba(232, 199, 126, 0.07), transparent 70%),
-    rgba(255, 255, 255, 0.02);
-  padding: 1.5rem 1.15rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0a0810;
+  padding: 1.15rem;
+}
+
+.palm-capture-surface__photo {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  min-height: 22rem;
+  object-fit: cover;
+  object-position: center 30%;
+  opacity: 0.92;
+}
+
+.palm-capture-surface__scrim {
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    180deg,
+    rgba(10, 8, 16, 0.15) 20%,
+    rgba(10, 8, 16, 0.72) 72%,
+    rgba(10, 8, 16, 0.92) 100%
+  );
+}
+
+.palm-capture-surface__badge {
+  position: relative;
+  z-index: 1;
+  margin: 0;
+  align-self: flex-start;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: rgba(10, 8, 16, 0.55);
+  padding: 0.2rem 0.65rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: rgba(255, 255, 255, 0.7);
 }
 
 .palm-capture-surface__hint {
-  max-width: 18rem;
+  position: relative;
+  z-index: 1;
+  max-width: 20rem;
   text-align: center;
   font-size: 0.8125rem;
   line-height: 1.45;
-  color: rgba(255, 255, 255, 0.55);
+  color: rgba(255, 255, 255, 0.78);
 }
 
 .palm-capture-actions {
+  position: relative;
+  z-index: 1;
   display: flex;
   width: 100%;
   max-width: 22rem;
@@ -163,6 +205,8 @@
 }
 
 .palm-guide {
+  position: relative;
+  z-index: 1;
   margin: 0;
   padding: 0;
   list-style: none;
@@ -170,12 +214,37 @@
   gap: 0.35rem;
   text-align: center;
   font-size: 0.75rem;
-  color: rgba(255, 255, 255, 0.45);
+  color: rgba(255, 255, 255, 0.62);
+}
+
+.palm-result-hero {
+  display: grid;
+  gap: 1rem;
+}
+
+@media (min-width: 768px) {
+  .palm-result-hero {
+    grid-template-columns: minmax(15rem, 0.85fr) minmax(0, 1.15fr);
+    align-items: start;
+  }
 }
 
 .palm-insights {
   display: grid;
+  grid-template-columns: 1fr 1fr;
   gap: 0.65rem;
+}
+
+@media (min-width: 560px) {
+  .palm-insights {
+    grid-template-columns: 1fr 1fr 1fr;
+  }
+}
+
+@media (max-width: 359px) {
+  .palm-insights {
+    grid-template-columns: 1fr;
+  }
 }
 
 .palm-insight {

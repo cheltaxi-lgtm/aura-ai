@@ -61,6 +61,12 @@ describe("palm-photo-first", () => {
     expect(existsSync(path.join(ROOT, "src/components/palm/PalmSilhouette.tsx"))).toBe(false);
     expect(flow).toContain('step === "preview"');
     expect(flow).toContain("palm-capture-surface");
+    expect(flow).toContain("PALM_GUIDE_PHOTO");
+    expect(flow).toContain("Новый снимок ладони");
+    expect(flow).toContain("newReadingBlock");
+    expect(flow).toContain("palm-result-hero");
+    expect(flow).toContain("Сегодняшний разбор уже открыт");
+    expect(flow).toContain("Чтобы снять заново, удалите запись ниже");
     expect(flow).toContain("PalmInsightCards");
     expect(stage).toContain("palm-photo-stage");
     expect(read("src/styles/palm-flow.css")).toContain("object-fit: contain");
@@ -74,6 +80,20 @@ describe("palm-photo-first", () => {
     expect(cabinet).not.toContain("PalmSilhouette");
     expect(cabinet).toContain("PalmInsightCards");
     expect(cabinet).toContain("Фото не хранится");
+  });
+
+  it("insight cards use a 2–3 column grid, not a single sheet", () => {
+    const css = read("src/styles/palm-flow.css");
+    expect(css).toContain("grid-template-columns: 1fr 1fr");
+    expect(css).toContain("grid-template-columns: 1fr 1fr 1fr");
+  });
+
+  it("browser preview cache never grants entitlement", () => {
+    const preview = read("src/lib/palm-preview-session.ts");
+    expect(preview).toContain("Never grants a free reading");
+    expect(preview).toContain("zovus_palm_preview_v1");
+    expect(preview).not.toContain("isFree");
+    expect(preview).not.toContain("billingExempt");
   });
 
   it("pricing on the flow stays server-authored", () => {
