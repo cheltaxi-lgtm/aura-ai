@@ -17,7 +17,13 @@ import {
 } from "@/lib/services/aura-guest-service";
 import { auraSpendBelongsToSnapshot } from "@/lib/aura-reading-billing";
 import type { AuraSnapshot } from "@/lib/aura-constants";
-import { AURA_COLORS } from "@/lib/aura-constants";
+import {
+  AURA_CHAKRA_KEYS,
+  AURA_COLORS,
+  AURA_LAYER_KEYS,
+  alignAuraSnapshotColors,
+  normalizeAuraSnapshot,
+} from "@/lib/aura-constants";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -67,6 +73,7 @@ describe("aura-stability", () => {
 
     const today = read("src/app/api/aura/today/route.ts");
     expect(today).toContain("findTodaysAuraSnapshotForUser");
+    expect(today).toContain("if (othersOn) return emptyToday()");
     expect(today).toContain("findTodaysAuraSnapshotByClaimToken");
     expect(today).toContain("toAuraTeaserSnapshot");
     expect(today).toContain("findTodaysPaidAuraReport");
@@ -188,6 +195,88 @@ describe("aura-stability", () => {
     expect(expired.dominantColor.key).toBe("gold");
   });
 
+  it("vision name/hex cannot drift off the catalog for a chosen key", () => {
+    const parsed = normalizeAuraSnapshot({
+      faceDetected: true,
+      dominantColor: {
+        key: "blue",
+        name: "Изумрудный",
+        hex: "#3fae7a",
+        meaning: "честная речь сегодня",
+      },
+      secondaryColors: [{ key: "gold", name: "Жёлтый", hex: "#ffff00", meaning: "свет" }],
+      layers: AURA_LAYER_KEYS.map((key) => ({ key, state: "ровный" })),
+      chakras: AURA_CHAKRA_KEYS.map((key) => ({ key, openness: "balanced", note: "" })),
+      verdict: "mixed",
+      teaser: "Поле синее и спокойное.",
+    });
+    expect(parsed?.dominantColor).toMatchObject({
+      key: "blue",
+      name: AURA_COLORS.blue.name,
+      hex: AURA_COLORS.blue.hex,
+      meaning: "честная речь сегодня",
+    });
+    expect(parsed?.secondaryColors[0]).toMatchObject({
+      key: "gold",
+      name: AURA_COLORS.gold.name,
+      hex: AURA_COLORS.gold.hex,
+    });
+  });
+
+  it("core lock rewrites a lottery teaser and parks the discarded color as secondary", () => {
+    const generated: AuraSnapshot = {
+      ...stubSnapshot("gold"),
+      teaser: "Золотой цвет говорит о зрелости и внутренней опоре.",
+      secondaryColors: [AURA_COLORS.emerald],
+    };
+    const locked = lockAuraCoreIfRecent(generated, {
+      color: { ...AURA_COLORS.blue, name: "Синева", hex: "#123456" },
+      createdAt: new Date(Date.now() - 10 * 60 * 1000),
+    });
+    expect(locked.dominantColor).toMatchObject({
+      key: "blue",
+      name: AURA_COLORS.blue.name,
+      hex: AURA_COLORS.blue.hex,
+    });
+    expect(locked.teaser).toContain(AURA_COLORS.blue.name);
+    expect(locked.teaser).not.toContain(AURA_COLORS.gold.name);
+    expect(locked.secondaryColors.map((c) => c.key)).toEqual(["gold", "emerald"]);
+  });
+
+  it("same-key lock and archive read heal a lottery teaser but keep a mixed-color sentence", () => {
+    const sameKey = lockAuraCoreIfRecent(
+      {
+        ...stubSnapshot("blue"),
+        teaser: "Золотой цвет говорит о зрелости и внутренней опоре.",
+      },
+      {
+        color: AURA_COLORS.blue,
+        createdAt: new Date(Date.now() - 10 * 60 * 1000),
+      }
+    );
+    expect(sameKey.dominantColor.key).toBe("blue");
+    expect(sameKey.teaser).toContain(AURA_COLORS.blue.name);
+    expect(sameKey.teaser).not.toContain(AURA_COLORS.gold.name);
+
+    const mixed = alignAuraSnapshotColors({
+      ...stubSnapshot("blue"),
+      teaser: "Синий с золотым отливом на периферии.",
+    });
+    expect(mixed.teaser).toBe("Синий с золотым отливом на периферии.");
+
+    const drifted = alignAuraSnapshotColors({
+      ...stubSnapshot("blue"),
+      dominantColor: { ...AURA_COLORS.blue, name: "Синева", hex: "#123456" },
+      teaser: "Золотой цвет говорит о зрелости.",
+    });
+    expect(drifted.dominantColor).toMatchObject({
+      name: AURA_COLORS.blue.name,
+      hex: AURA_COLORS.blue.hex,
+    });
+    expect(drifted.teaser).toContain(AURA_COLORS.blue.name);
+    expect(drifted.teaser).not.toContain(AURA_COLORS.gold.name);
+  });
+
   it("next shot is the following Moscow midnight and wait copy stays human", () => {
     const now = new Date();
     const next = nextAuraShotAt(now);
@@ -200,5 +289,21 @@ describe("aura-stability", () => {
     expect(cadence).toContain("Europe/Moscow");
     expect(cadence).not.toContain("aura-guest-service");
     expect(cadence).not.toContain("getTimezoneOffset");
+  });
+
+  it("palette is the source of truth for name and hex on every read path", () => {
+    const constants = read("src/lib/aura-constants.ts");
+    const guest = read("src/lib/services/aura-guest-service.ts");
+    const persist = read("src/lib/aura-reading-persist.ts");
+    const archive = read("src/lib/aura-reading-archive.ts");
+    const prompts = read("src/lib/aura-reading-prompts.ts");
+    expect(constants).toContain("export function alignAuraColorToCatalog");
+    expect(guest).toContain("alignAuraSnapshotColors(row.snapshot)");
+    expect(guest).toContain("alignAuraColorToCatalog(color)");
+    expect(guest).toContain("healAuraTeaser");
+    expect(persist).toContain("alignAuraSnapshotColors(params.snapshot)");
+    expect(archive).toContain("alignAuraSnapshotColors(candidate as AuraSnapshot)");
+    expect(prompts).toContain("alignAuraSnapshotColors(snapshot)");
+    expect(prompts).toContain("строго из палитры для выбранного key");
   });
 });

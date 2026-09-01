@@ -102,14 +102,15 @@ export interface AuraSnapshot {
 export type AuraTeaserSnapshot = Omit<AuraSnapshot, "layers" | "chakras">;
 
 export function toAuraTeaserSnapshot(snapshot: AuraSnapshot): AuraTeaserSnapshot {
+  const aligned = alignAuraSnapshotColors(snapshot);
   return {
-    version: snapshot.version,
-    faceDetected: snapshot.faceDetected,
-    dominantColor: snapshot.dominantColor,
-    secondaryColors: snapshot.secondaryColors,
-    verdict: snapshot.verdict,
-    teaser: snapshot.teaser,
-    createdAt: snapshot.createdAt,
+    version: aligned.version,
+    faceDetected: aligned.faceDetected,
+    dominantColor: aligned.dominantColor,
+    secondaryColors: aligned.secondaryColors,
+    verdict: aligned.verdict,
+    teaser: aligned.teaser,
+    createdAt: aligned.createdAt,
   };
 }
 
@@ -219,20 +220,65 @@ function normalizeHex(raw: unknown, fallback: string): string {
   return /^#[0-9a-f]{6}$/i.test(value) ? value.toLowerCase() : fallback;
 }
 
+function copyNamesOtherAuraColor(text: string, color: AuraColor): boolean {
+  const haystack = text.toLowerCase();
+  const hasCore = haystack.includes(color.name.toLowerCase());
+  const hasOther = Object.values(AURA_COLORS).some(
+    (candidate) =>
+      candidate.key !== color.key && haystack.includes(candidate.name.toLowerCase())
+  );
+  return hasOther && !hasCore;
+}
+
+/** Teaser/meaning that names another palette color without the core is a lottery leftover. */
+export function auraCopyContradictsCore(text: string, color: AuraColor): boolean {
+  const trimmed = text.trim();
+  if (!trimmed) return false;
+  return copyNamesOtherAuraColor(trimmed, color);
+}
+
+export function healAuraTeaser(teaser: string, color: AuraColor): string {
+  const trimmed = typeof teaser === "string" ? teaser.trim() : "";
+  if (trimmed && !auraCopyContradictsCore(trimmed, color)) return trimmed.slice(0, 600);
+  return `${color.name} — ${color.meaning}. Слои и чакры показывают состояние дня.`;
+}
+
+/** Name + hex come from the product palette. Meaning may stay from the reading. */
+export function alignAuraColorToCatalog(color: AuraColor): AuraColor {
+  const catalog = AURA_COLORS[color.key];
+  if (!catalog) return color;
+  const rawMeaning =
+    typeof color.meaning === "string" && color.meaning.trim()
+      ? color.meaning.trim().slice(0, 200)
+      : catalog.meaning;
+  const meaning = auraCopyContradictsCore(rawMeaning, catalog) ? catalog.meaning : rawMeaning;
+  return { key: catalog.key, name: catalog.name, hex: catalog.hex, meaning };
+}
+
+export function alignAuraSnapshotColors(snapshot: AuraSnapshot): AuraSnapshot {
+  const dominantColor = alignAuraColorToCatalog(snapshot.dominantColor);
+  return {
+    ...snapshot,
+    dominantColor,
+    secondaryColors: (snapshot.secondaryColors ?? []).map(alignAuraColorToCatalog),
+    teaser: healAuraTeaser(snapshot.teaser ?? "", dominantColor),
+  };
+}
+
 function normalizeColor(raw: unknown, fallbackKey: AuraColorKey): AuraColor {
   const obj = (raw ?? {}) as Record<string, unknown>;
   const keyRaw = typeof obj.key === "string" ? obj.key.trim().toLowerCase() : "";
   const key = (COLOR_KEYS.has(keyRaw) ? keyRaw : fallbackKey) as AuraColorKey;
   const base = AURA_COLORS[key];
-  return {
+  return alignAuraColorToCatalog({
     key,
-    name: typeof obj.name === "string" && obj.name.trim() ? obj.name.trim().slice(0, 40) : base.name,
-    hex: normalizeHex(obj.hex, base.hex),
+    name: base.name,
+    hex: base.hex,
     meaning:
       typeof obj.meaning === "string" && obj.meaning.trim()
         ? obj.meaning.trim().slice(0, 200)
         : base.meaning,
-  };
+  });
 }
 
 /**
@@ -290,7 +336,7 @@ export function normalizeAuraSnapshot(raw: unknown): AuraSnapshot | null {
       ? obj.teaser.trim().slice(0, 600)
       : "";
 
-  return {
+  return alignAuraSnapshotColors({
     version: 1,
     faceDetected: true,
     dominantColor,
@@ -300,5 +346,5 @@ export function normalizeAuraSnapshot(raw: unknown): AuraSnapshot | null {
     verdict,
     teaser,
     createdAt: new Date().toISOString(),
-  };
+  });
 }

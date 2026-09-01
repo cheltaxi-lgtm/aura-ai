@@ -91,6 +91,7 @@ export async function GET(request: NextRequest) {
         { headers: { "Cache-Control": "no-store" } }
       );
     }
+    if (othersOn) return emptyToday();
   }
 
   const claimToken = await readAuraGuestClaimCookie(request);

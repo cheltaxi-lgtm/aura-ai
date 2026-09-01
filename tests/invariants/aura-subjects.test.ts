@@ -44,6 +44,8 @@ describe("aura-subjects", () => {
     expect(nameExistsAt).toBeLessThan(genAt);
     expect(teaser).toContain("skipSelfToday");
     expect(teaser).toContain("newOtherSlot");
+    expect(teaser).toContain("allowCookieAnchor");
+    expect(teaser).toContain("!(othersOn && profileUserId)");
     expect(teaser).toContain("getAuraBaseColorAnchor");
     expect(teaser).toContain("othersOn ? subjectId");
     expect(teaser).toContain("must not bind a foreign subject UUID");
@@ -66,6 +68,8 @@ describe("aura-subjects", () => {
     expect(report).toContain('day:${auraCalendarDayKey()}:${subjectId ?? "self"}');
     expect(report).toContain("listTodaysSnapshotIdsForSubject");
     expect(pricing).toContain("listTodaysSnapshotIdsForSubject");
+    const today = read("src/app/api/aura/today/route.ts");
+    expect(today).toContain("if (othersOn) return emptyToday()");
   });
 
   it("picker requires a slot before the camera and never recaptures self as «другую ауру»", () => {

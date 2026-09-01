@@ -7,6 +7,7 @@ import {
   AURA_COLORS,
   AURA_LAYER_KEYS,
   AURA_LAYER_NAMES,
+  alignAuraSnapshotColors,
   normalizeAuraSnapshot,
   type AuraColor,
   type AuraSnapshot,
@@ -55,7 +56,8 @@ const AURA_SNAPSHOT_ONLY = `
 - layers — ровно 7 записей, key строго из: ${AURA_LAYER_KEYS.join(", ")}. state — одна строка по-русски.
 - chakras — ровно 7 записей, key строго из: ${AURA_CHAKRA_KEYS.join(", ")}. openness строго: open | balanced | blocked.
 - verdict строго: bright | mixed | heavy. Тон тизера = вердикт: при heavy не выравнивай надеждой, назови усталость/застой прямо, но бережно.
-- hex — реальный цвет в формате #rrggbb, близкий к названному.
+- name и hex — строго из палитры для выбранного key, не соседний оттенок и не другое имя.
+- teaser называет тот же dominantColor, что в JSON (не другой цвет «для красоты»).
 - teaser — по-русски, обращение на «вы», без медицинских утверждений, без «всё будет хорошо».`;
 
 /**
@@ -205,6 +207,7 @@ export async function generateAuraFullReport(
   ctx: AuraReadingContext
 ): Promise<string | null> {
   const name = ctx.userName?.trim() || "друг";
+  const aligned = alignAuraSnapshotColors(snapshot);
   const systemPrompt = await wrapSystemPrompt(
     `${AURA_TRADITION_BASE}\n\n${AURA_FULL_REPORT_RULES}`
   );
@@ -213,7 +216,7 @@ export async function generateAuraFullReport(
     `Сегодня: ${ctx.today ?? todayLabelRu()}.`,
     "",
     "СНИМОК АУРЫ (подтверждённый):",
-    snapshotSummaryForPrompt(snapshot),
+    snapshotSummaryForPrompt(aligned),
     "",
     "Напиши полный разбор по структуре.",
   ].join("\n");

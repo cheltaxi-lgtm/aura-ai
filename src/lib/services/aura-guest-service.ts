@@ -4,6 +4,9 @@ import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import {
   AURA_ENGINE_VERSION,
   AURA_GUEST_CLAIM_TTL_MS,
+  alignAuraColorToCatalog,
+  alignAuraSnapshotColors,
+  healAuraTeaser,
   type AuraColor,
   type AuraSnapshot,
 } from "@/lib/aura-constants";
@@ -62,7 +65,7 @@ function asStored(row: {
   if (!row.snapshot?.dominantColor) return null;
   return {
     snapshotId: row.id,
-    snapshot: row.snapshot,
+    snapshot: alignAuraSnapshotColors(row.snapshot),
     claimedUserId: row.claimed_user_id,
     createdAt: asDate(row.created_at),
     expiresAt: asDate(row.expires_at).toISOString(),
@@ -263,7 +266,7 @@ export async function getAuraBaseColorAnchor(
   );
   const color = rows[0]?.snapshot?.dominantColor;
   if (!color) return null;
-  return { color, createdAt: asDate(rows[0].created_at) };
+  return { color: alignAuraColorToCatalog(color), createdAt: asDate(rows[0].created_at) };
 }
 
 export async function getLatestAuraSnapshotForUser(
@@ -312,8 +315,34 @@ export function lockAuraCoreIfRecent(
   if (!anchor) return snapshot;
   const ageMs = Date.now() - anchor.createdAt.getTime();
   if (!Number.isFinite(ageMs) || ageMs < 0 || ageMs > AURA_CORE_LOCK_MS) return snapshot;
-  if (snapshot.dominantColor.key === anchor.color.key) return snapshot;
-  return { ...snapshot, dominantColor: { ...anchor.color } };
+
+  const lockedColor = alignAuraColorToCatalog(anchor.color);
+  if (snapshot.dominantColor.key === lockedColor.key) {
+    const meaning = snapshot.dominantColor.meaning || lockedColor.meaning;
+    const dominantColor = { ...lockedColor, meaning };
+    return {
+      ...snapshot,
+      dominantColor,
+      teaser: healAuraTeaser(snapshot.teaser, dominantColor),
+    };
+  }
+
+  const discarded = alignAuraColorToCatalog(snapshot.dominantColor);
+  const secondaries = [
+    discarded,
+    ...snapshot.secondaryColors.filter(
+      (color) => color.key !== lockedColor.key && color.key !== discarded.key
+    ),
+  ]
+    .map(alignAuraColorToCatalog)
+    .slice(0, 2);
+
+  return {
+    ...snapshot,
+    dominantColor: lockedColor,
+    secondaryColors: secondaries,
+    teaser: healAuraTeaser(snapshot.teaser, lockedColor),
+  };
 }
 
 async function sweepExpiredGuestSnapshots(client?: PoolClient): Promise<number> {
@@ -353,6 +382,7 @@ export async function createGuestAuraSnapshot(
   const claimHash = hashAuraGuestClaimToken(rawClaimToken);
   const expiresAt = new Date(Date.now() + AURA_GUEST_CLAIM_TTL_MS).toISOString();
 
+  const aligned = alignAuraSnapshotColors(snapshot);
   const { rows } = await query<{ id: string; expires_at: string }>(
     `INSERT INTO aura_guest_snapshots (
        snapshot, engine_version, claim_token_hash, photo_hash, expires_at,
@@ -360,7 +390,7 @@ export async function createGuestAuraSnapshot(
      ) VALUES ($1::jsonb, $2, $3, $4, $5::timestamptz, $6::uuid, $7, $8)
      RETURNING id, expires_at::text`,
     [
-      JSON.stringify(snapshot),
+      JSON.stringify(aligned),
       AURA_ENGINE_VERSION,
       claimHash,
       opts?.photoHash ?? null,
@@ -429,7 +459,7 @@ export async function claimGuestAuraSnapshot(opts: {
           ok: true,
           status: "idempotent",
           snapshotId: guest.id,
-          snapshot: guest.snapshot,
+          snapshot: alignAuraSnapshotColors(guest.snapshot),
           subjectId: guest.subject_id,
           subjectKind: guest.subject_kind === "other" ? "other" : guest.subject_kind === "self" ? "self" : null,
           subjectName: guest.subject_name,
@@ -488,7 +518,7 @@ export async function claimGuestAuraSnapshot(opts: {
       ok: true,
       status: "claimed",
       snapshotId: guest.id,
-      snapshot: guest.snapshot,
+      snapshot: alignAuraSnapshotColors(guest.snapshot),
       subjectId,
       subjectKind,
       subjectName,

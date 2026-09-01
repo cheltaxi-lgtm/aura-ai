@@ -1,6 +1,6 @@
 import { ensureDb, query } from "@/lib/db";
 import { createHistoryEntry } from "@/lib/users";
-import type { AuraSnapshot } from "@/lib/aura-constants";
+import { alignAuraSnapshotColors, type AuraSnapshot } from "@/lib/aura-constants";
 import { AURA_DAY_TIMEZONE } from "@/lib/services/aura-guest-service";
 import { isAuraOtherSubjectsEnabled } from "@/lib/settings";
 
@@ -77,7 +77,7 @@ export async function findTodaysPaidAuraReport(
   if (!report.trim()) return null;
   const snapshot =
     ctx.snapshot && typeof ctx.snapshot === "object" && !Array.isArray(ctx.snapshot)
-      ? (ctx.snapshot as AuraSnapshot)
+      ? alignAuraSnapshotColors(ctx.snapshot as AuraSnapshot)
       : null;
   const snapshotId =
     typeof ctx.auraSnapshotId === "string" && /^[0-9a-f-]{36}$/i.test(ctx.auraSnapshotId)
@@ -108,6 +108,7 @@ export async function persistAuraReadingResult(params: {
 }): Promise<string | undefined> {
   if (!(await ensureDb())) return undefined;
 
+  const snapshot = alignAuraSnapshotColors(params.snapshot);
   const entry = await createHistoryEntry({
     userId: params.profileUserId,
     characterName: "numerolog",
@@ -116,9 +117,9 @@ export async function persistAuraReadingResult(params: {
       report: params.reportBody,
       // Dual-write: cabinet/history readers historically expect `interpretation`.
       interpretation: params.reportBody,
-      snapshot: params.snapshot,
-      dominantColor: params.snapshot.dominantColor,
-      secondaryColors: params.snapshot.secondaryColors,
+      snapshot,
+      dominantColor: snapshot.dominantColor,
+      secondaryColors: snapshot.secondaryColors,
       verdict: params.snapshot.verdict,
       auraSnapshotId: params.snapshotId,
       userName: params.userName,

@@ -1,5 +1,5 @@
 import { ensureDb, query, withTransaction } from "@/lib/db";
-import type { AuraSnapshot } from "@/lib/aura-constants";
+import { alignAuraSnapshotColors, type AuraSnapshot } from "@/lib/aura-constants";
 
 /**
  * Aura archive — the user's aura readings from BOTH sources:
@@ -36,7 +36,7 @@ function asAuraSnapshot(value: unknown): AuraSnapshot | null {
   ) {
     return null;
   }
-  return candidate as AuraSnapshot;
+  return alignAuraSnapshotColors(candidate as AuraSnapshot);
 }
 
 function isoOf(value: Date | string): string {

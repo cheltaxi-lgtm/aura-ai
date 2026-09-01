@@ -358,11 +358,13 @@ export async function POST(request: NextRequest) {
         ? cookieStored
         : null;
     const newOtherSlot = othersOn && subjectKind === "other" && !subjectId;
+    // Authed + others: core comes only from that slot's DB row. Cookie is the
+    // last browser shot and can belong to another person after day 30.
+    const allowCookieAnchor = !newOtherSlot && !(othersOn && profileUserId);
     const previous =
       (profileUserId && !newOtherSlot
         ? await getLatestAuraSnapshotForUser(profileUserId, othersOn ? subjectId : undefined)
-        : null) ??
-      (newOtherSlot ? null : cookieSafe);
+        : null) ?? (allowCookieAnchor ? cookieSafe : null);
     const anchor =
       (profileUserId && !newOtherSlot
         ? await getAuraBaseColorAnchor(profileUserId, othersOn ? subjectId : undefined)
