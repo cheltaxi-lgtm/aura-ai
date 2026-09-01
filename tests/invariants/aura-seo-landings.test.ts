@@ -77,10 +77,24 @@ describe("aura-seo-landings", () => {
     expect(slugs).toContain("kak-uznat-cvet-aury-po-foto");
     expect(slugs).toContain("znachenie-cvetov-aury");
     const post = read("scripts/post-deploy-seo.mjs");
-    expect(post).toContain("${base}/aura");
+    expect(post).toContain("auraAbsoluteUrls");
     expect(post).toContain("kak-uznat-cvet-aury-po-foto");
     const recrawl = read("scripts/yandex-indexing-audit.mjs");
-    expect(recrawl).toContain("${base}/aura");
+    expect(recrawl).toContain("auraAbsoluteUrls");
+    const deploy = read("scripts/deploy-prod.sh");
+    expect(deploy).toContain("post-deploy-seo.mjs");
+  });
+
+  it("Yandex recrawl helper matches the product aura SEO family", async () => {
+    const { getAuraSeoPaths, getAuraArticlePaths } = await import(
+      "../../scripts/lib/aura-seo-urls.mjs"
+    );
+    expect(getAuraSeoPaths()).toEqual(getAllAuraSeoPaths());
+    expect(getAuraArticlePaths()).toEqual([
+      "/statyi/kak-uznat-cvet-aury-po-foto",
+      "/statyi/znachenie-cvetov-aury",
+      "/statyi/chtenie-aury-i-effekt-kirliana",
+    ]);
   });
 
   it("admin product stats cover aura spends and snapshots", () => {

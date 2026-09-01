@@ -1,0 +1,272 @@
+{
+  "at": "2026-09-01T03:20:28.102Z",
+  "base": "https://zovus.ru",
+  "webmaster": {
+    "userId": 112696101,
+    "summary": {
+      "status": 200,
+      "body": {
+        "sqi": 10,
+        "excluded_pages_count": 54,
+        "searchable_pages_count": 556,
+        "site_problems": {}
+      }
+    },
+    "sitemaps": {
+      "status": 200,
+      "body": {
+        "sitemaps": [
+          {
+            "sitemap_id": "9c6d6b10-fb44-3723-bad1-c51fc829d01d",
+            "sitemap_url": "https://zovus.ru/sitemap.xml",
+            "added_date": "2026-07-10T06:07:29.189+03:00"
+          }
+        ],
+        "count": 1
+      }
+    },
+    "recrawlQuota": {
+      "status": 200,
+      "body": {
+        "daily_quota": 150,
+        "quota_remainder": 150
+      }
+    },
+    "queries_TOTAL_CLICKS": {
+      "status": 200,
+      "top": [
+        {
+          "query": "поцелует ли он меня гадание онлайн",
+          "value": 14
+        },
+        {
+          "query": "бодиграф онлайн",
+          "value": 14
+        },
+        {
+          "query": "дизайн человека рассчитать",
+          "value": 14
+        },
+        {
+          "query": "совместимость дизайн человека рассчитать онлайн бесплатно",
+          "value": 13
+        },
+        {
+          "query": "дизайн человека совместимость",
+          "value": 12
+        },
+        {
+          "query": "ворота 35",
+          "value": 11
+        },
+        {
+          "query": "таро по фото онлайн",
+          "value": 11
+        },
+        {
+          "query": "проектор и манифестор совместимость zovus.ru",
+          "value": 10
+        },
+        {
+          "query": "расшифровка таро по фото челябинск",
+          "value": 10
+        },
+        {
+          "query": "дизайн человека рассчитать карту",
+          "value": 9
+        }
+      ]
+    },
+    "queries_TOTAL_SHOWS": {
+      "status": 200,
+      "top": [
+        {
+          "query": "дизайн человека рассчитать",
+          "value": 134
+        },
+        {
+          "query": "дизайн человека рассчитать карту бесплатно",
+          "value": 83
+        },
+        {
+          "query": "по фото ии таро",
+          "value": 57
+        },
+        {
+          "query": "дизайн человека совместимость",
+          "value": 40
+        },
+        {
+          "query": "дизайн человека совместимость пары zovus.ru",
+          "value": 34
+        },
+        {
+          "query": "рассчитать бодиграф",
+          "value": 32
+        },
+        {
+          "query": "расшифровка карт таро по фото",
+          "value": 31
+        },
+        {
+          "query": "расшифровка расклада таро по фото",
+          "value": 28
+        },
+        {
+          "query": "расшифровать расклад таро по фото",
+          "value": 28
+        },
+        {
+          "query": "матрица судьбы и натальная карта чем отличается",
+          "value": 25
+        }
+      ]
+    },
+    "queries_AVG_SHOW_POSITION": {
+      "status": 400,
+      "top": []
+    }
+  },
+  "metrika": {
+    "status": 200,
+    "id": 110138367,
+    "name": "Zovus",
+    "site": "zovus.ru",
+    "code_status": "CS_ERR_UNKNOWN",
+    "permission": "own"
+  },
+  "direct": {
+    "sandboxEnvFlag": true,
+    "login": "cheldriver",
+    "production": {
+      "http": 200,
+      "units": "15/99545/100000",
+      "campaigns": [
+        {
+          "id": 12264917,
+          "name": "Первая кампания",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "TEXT_CAMPAIGN"
+        },
+        {
+          "id": 26169404,
+          "name": "Приложение",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "MOBILE_APP_CAMPAIGN"
+        },
+        {
+          "id": 26170518,
+          "name": "Приложение сайт",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "TEXT_CAMPAIGN"
+        },
+        {
+          "id": 26224929,
+          "name": "Приложение Мой Копейск",
+          "state": "ARCHIVED",
+          "status": "MODERATION",
+          "type": "TEXT_CAMPAIGN"
+        },
+        {
+          "id": 35196656,
+          "name": "Мобильное приложение \"Мой Копейск\"",
+          "state": "OFF",
+          "status": "DRAFT",
+          "type": "TEXT_CAMPAIGN"
+        }
+      ]
+    },
+    "sandbox": {
+      "http": 200,
+      "error": {
+        "request_id": "2370743155884565269",
+        "error_code": 513,
+        "error_detail": "",
+        "error_string": "Ваш логин не подключен к Яндекс.Директу"
+      },
+      "campaigns": 0
+    },
+    "balanceLiveV4": {
+      "http": 200,
+      "body": {
+        "data": {
+          "ActionsResult": [],
+          "Accounts": [
+            {
+              "SmsNotification": {
+                "SmsTimeFrom": "09:00",
+                "SmsTimeTo": "21:00",
+                "PausedByDayBudgetSms": "Yes",
+                "MoneyOutSms": "No",
+                "MoneyInSms": "No"
+              },
+              "Amount": "0",
+              "AmountAvailableForTransfer": "0",
+              "AccountID": 8498596,
+              "Login": "cheldriver",
+              "AgencyName": null,
+              "AccountDayBudget": {
+                "Amount": "1000"
+              },
+              "EmailNotification": {
+                "Email": "cheldriver@yandex.ru",
+                "PausedByDayBudget": "Yes",
+                "MoneyWarningValue": 20
+              },
+              "Currency": "RUB"
+            }
+          ]
+        }
+      }
+    },
+    "changesProbe": {
+      "http": 202,
+      "error": {
+        "request_id": "8933873131343049252",
+        "error_code": 55,
+        "error_detail": "Указано неверное значение ключа method при запросе в формате JSON или некорректный SOAPAction",
+        "error_string": "Операция не найдена"
+      }
+    }
+  },
+  "site": {
+    "/": {
+      "status": 200,
+      "needles": {
+        "yandex-verification": true,
+        "7902ba7dfdb76ac3": true
+      }
+    },
+    "/telegram": {
+      "status": 200,
+      "needles": {
+        "zovus_card_bot": true,
+        "t.me/": true
+      }
+    },
+    "/robots.txt": {
+      "status": 200,
+      "needles": {
+        "Sitemap:": true,
+        "Host:": true
+      }
+    },
+    "/sitemap.xml": {
+      "status": 200,
+      "needles": {
+        "/telegram": true
+      }
+    },
+    "/107274032904532db6ae0e4b2f39c4b3.txt": {
+      "status": 200,
+      "needles": {
+        "107274032904532db6ae0e4b2f39c4b3": true
+      }
+    }
+  },
+  "recrawl": [],
+  "errors": []
+}

@@ -200,3 +200,8 @@ if [ "$PUB_CODE" != "200" ]; then
   exit 1
 fi
 echo "==> Done. Public health gate: HTTP 200"
+
+echo "==> Post-deploy SEO (IndexNow / sitemap ping)..."
+if ! node scripts/post-deploy-seo.mjs https://zovus.ru; then
+  echo "WARN: post-deploy-seo failed (non-fatal — site is already healthy)"
+fi

@@ -1,5 +1,18 @@
 # Yandex surface audit (zovus.ru + Telegram bot)
 
+## Snapshot (API + prod, 2026-09-01)
+
+| Surface | Status |
+|---------|--------|
+| Webmaster host `https:zovus.ru:443` | OK, sitemap с 2026-07-10 |
+| Pages in search | **556** (август: 96) |
+| SQI | **10** |
+| Recrawl | вся семья `/aura` (33 URL + 3 статьи) первой, затем хабы; квота 150/день |
+| IndexNow | хабы + полная семья ауры + статьи |
+| Metrika `110138367` | цели ауры в манифесте; `code_status=CS_ERR_UNKNOWN` (consent-gated tag.js) |
+| Direct `cheldriver` | баланс **0 ₽** — кампании ауры нет, крутить нечего |
+| Aura product | `auraReadingEnabled=true`, sitemap содержит `/aura` и листья |
+
 ## Snapshot (API + prod, 2026-08-02)
 
 | Surface | Status |

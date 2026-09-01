@@ -7,6 +7,8 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import { auraAbsoluteUrls } from "./lib/aura-seo-urls.mjs";
+
 const __dir = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dir, "..");
 const OUT_DIR = join(ROOT, "docs", "yandex-audit");
@@ -46,7 +48,7 @@ const metrikaToken =
 const directToken = process.env.ADS_DIRECT_TOKEN?.trim() || "";
 const directLogin = process.env.ADS_DIRECT_LOGIN?.trim() || "";
 
-const RECRAWL_URLS = [
+const RECRAWL_HUBS = [
   `${base}/`,
   `${base}/telegram`,
   `${base}/about`,
@@ -61,10 +63,6 @@ const RECRAWL_URLS = [
   `${base}/natalnaya-karta`,
   `${base}/runy`,
   `${base}/photo-rasklad`,
-  `${base}/aura`,
-  `${base}/aura/cveta`,
-  `${base}/aura/kak-uznat-cvet`,
-  `${base}/aura/chtenie-ili-kirlian`,
   `${base}/lenormand`,
   `${base}/lenormand/sochetaniya/lisa-i-medved`,
   `${base}/faq`,
@@ -72,6 +70,9 @@ const RECRAWL_URLS = [
   `${base}/prognoz`,
   `${base}/statyi`,
 ];
+
+/** Aura family first so a tight recrawl quota still covers the new product. */
+const RECRAWL_URLS = [...new Set([...auraAbsoluteUrls(base), ...RECRAWL_HUBS])];
 
 const report = {
   at: new Date().toISOString(),
@@ -112,7 +113,7 @@ async function auditSite() {
     ["/", ["yandex-verification", "7902ba7dfdb76ac3"]],
     ["/telegram", ["zovus_card_bot", "t.me/"]],
     ["/robots.txt", ["Sitemap:", "Host:"]],
-    ["/sitemap.xml", ["/telegram"]],
+    ["/sitemap.xml", ["/telegram", "/aura", "/aura/cveta"]],
     ["/107274032904532db6ae0e4b2f39c4b3.txt", ["107274032904532db6ae0e4b2f39c4b3"]],
   ];
   const out = {};

@@ -7,6 +7,8 @@ import { existsSync, readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
+import { auraAbsoluteUrls } from "./lib/aura-seo-urls.mjs";
+
 const base = (process.argv[2] || "https://zovus.ru").replace(/\/$/, "");
 const INDEXNOW_KEY = "107274032904532db6ae0e4b2f39c4b3";
 const METRIKA_ID = 110138367;
@@ -41,14 +43,7 @@ const CORE_PRIORITY = [
   `${base}/lenormand`,
   `${base}/sovmestimost-znakov-zodiaka`,
   `${base}/photo-rasklad`,
-  `${base}/aura`,
-  `${base}/aura/cveta`,
-  `${base}/aura/chakry`,
-  `${base}/aura/sloi`,
-  `${base}/aura/kak-uznat-cvet`,
-  `${base}/aura/chtenie-ili-kirlian`,
-  `${base}/aura/smeshannoe-pole`,
-  `${base}/aura/foto-i-chakry`,
+  ...auraAbsoluteUrls(base),
   `${base}/numerology`,
   `${base}/numerology/destiny-matrix`,
   `${base}/numerology/name-compatibility`,
