@@ -19,6 +19,22 @@ const VERDICT_GLOW: Record<PalmVerdict, string> = {
   mixed: "#c9cdd6",
 };
 
+function PalmDigits() {
+  return (
+    <>
+      <rect x="98" y="250" width="52" height="30" rx="15" />
+      <ellipse cx="124" cy="208" rx="50" ry="58" />
+      <rect x="52" y="68" width="24" height="128" rx="12" />
+      <rect x="82" y="42" width="24" height="154" rx="12" />
+      <rect x="114" y="22" width="26" height="174" rx="13" />
+      <rect x="148" y="46" width="24" height="150" rx="12" />
+      <g transform="rotate(-30 186 178)">
+        <rect x="168" y="164" width="82" height="28" rx="14" />
+      </g>
+    </>
+  );
+}
+
 export default function PalmSilhouette({
   whichHand,
   handShape,
@@ -34,7 +50,7 @@ export default function PalmSilhouette({
   return (
     <div className="mx-auto flex w-full max-w-xs justify-center" aria-hidden>
       <svg
-        viewBox="0 0 200 260"
+        viewBox="0 0 260 300"
         className="h-auto w-52"
         style={{
           transform: whichHand === "left" ? "scaleX(-1)" : undefined,
@@ -42,52 +58,46 @@ export default function PalmSilhouette({
       >
         <defs>
           <filter id={glowId} x="-20%" y="-20%" width="140%" height="140%">
-            <feGaussianBlur stdDeviation="4" result="blur" />
+            <feGaussianBlur stdDeviation="3" result="blur" />
             <feMerge>
               <feMergeNode in="blur" />
               <feMergeNode in="SourceGraphic" />
             </feMerge>
           </filter>
         </defs>
-        <path
-          d="M108 248c-28 0-52-18-58-48-4-22-2-48 6-78 3-12 2-24-4-34-8-14-10-30-4-42 5-10 16-14 24-8 6 4 10 12 12 22l6-36c2-12 12-20 22-18s16 12 14 24l-8 42 10-40c3-12 14-18 24-14s14 16 10 28l-14 44 8-28c3-12 14-18 24-14 10 4 14 16 10 26l-18 48c-4 12-2 26 4 36 10 18 14 40 10 58-6 28-32 48-62 48z"
-          fill="rgba(255,255,255,0.04)"
+        {/* Right palm facing viewer: 4 fingers up, thumb on the right. */}
+        <g
+          fill={stroke}
           stroke={stroke}
           strokeWidth="2.2"
+          opacity="0.38"
           filter={`url(#${glowId})`}
-        />
-        <path
-          d="M86 168c18 28 42 36 62 18"
-          fill="none"
-          stroke={glow}
-          strokeWidth="1.6"
-          strokeLinecap="round"
-          opacity="0.9"
-        />
-        <path
-          d="M92 150c22 8 40 6 56-8"
-          fill="none"
-          stroke={glow}
-          strokeWidth="1.4"
-          strokeLinecap="round"
-          opacity="0.75"
-        />
-        <path
-          d="M98 132c20 4 36-2 48-16"
-          fill="none"
-          stroke={glow}
-          strokeWidth="1.3"
-          strokeLinecap="round"
-          opacity="0.65"
-        />
-        <path
-          d="M110 176c2-28 4-52 2-74"
-          fill="none"
-          stroke={stroke}
-          strokeWidth="1.2"
-          strokeLinecap="round"
-          opacity="0.55"
-        />
+        >
+          <PalmDigits />
+        </g>
+        <g fill="none" stroke={glow} strokeLinecap="round">
+          <path
+            d="M92 194c22 24 48 28 68 10"
+            strokeWidth="1.6"
+            opacity="0.9"
+          />
+          <path
+            d="M98 174c24 6 42 2 58-12"
+            strokeWidth="1.4"
+            opacity="0.75"
+          />
+          <path
+            d="M104 156c22 2 38-8 50-20"
+            strokeWidth="1.3"
+            opacity="0.65"
+          />
+          <path
+            d="M130 206c2-32 2-56 0-80"
+            strokeWidth="1.2"
+            opacity="0.55"
+            stroke={stroke}
+          />
+        </g>
       </svg>
     </div>
   );

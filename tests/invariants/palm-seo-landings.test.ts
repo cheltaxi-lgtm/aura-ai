@@ -116,6 +116,12 @@ describe("palm-seo-landings", () => {
     expect(middleware).toContain("palmReadingEnabled");
   });
 
+  it("guide silhouette is a five-digit palm, not a four-finger blob", () => {
+    const src = read("src/components/palm/PalmSilhouette.tsx");
+    expect(src).toContain("4 fingers up, thumb on the right");
+    expect(src.match(/<rect /g)?.length).toBeGreaterThanOrEqual(5);
+  });
+
   it("admin product stats cover palm spends", () => {
     const stats = read("src/lib/admin-product-stats.ts");
     expect(stats).toContain("PALM_READING");
