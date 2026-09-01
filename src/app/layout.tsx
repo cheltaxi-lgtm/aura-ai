@@ -20,6 +20,7 @@ import "./globals.css";
    single route chunk and break if their CSS is home-scoped. */
 import "../styles/photo-flow.css";
 import "../styles/aura-flow.css";
+import "../styles/palm-flow.css";
 import "../styles/home-spreads.css";
 import "../styles/landing.css";
 import "../styles/app-chrome.css";

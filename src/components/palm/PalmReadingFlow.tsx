@@ -7,7 +7,8 @@ import Link from "next/link";
 
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
-import PalmSilhouette from "@/components/palm/PalmSilhouette";
+import PalmInsightCards from "@/components/palm/PalmInsightCards";
+import PalmPhotoStage from "@/components/palm/PalmPhotoStage";
 import { useAuth } from "@/lib/useAuth";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { canAffordRunes } from "@/lib/rune-afford-client";
@@ -33,6 +34,7 @@ import {
 
 type FlowStep =
   | "capture"
+  | "preview"
   | "processing"
   | "teaser"
   | "claimed"
@@ -75,9 +77,9 @@ function pastItemId(item: PalmPastItem): string {
 }
 
 const PROCESSING_PHRASES = [
-  "Считываю рисунок ладони…",
-  "Сверяю линии и холмы…",
-  "Собираю снимок вашей руки…",
+  "Изучаем форму ладони",
+  "Определяем основные линии",
+  "Готовим интерпретацию",
 ] as const;
 
 const PAYING_PHRASES = [
@@ -119,8 +121,10 @@ export default function PalmReadingFlow() {
   const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
   const [confirmPastDeleteId, setConfirmPastDeleteId] = useState<string | null>(null);
   const [openingPast, setOpeningPast] = useState(false);
+  const [preparingImage, setPreparingImage] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const cameraInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pollAbortRef = useRef<AbortController | null>(null);
@@ -223,7 +227,10 @@ export default function PalmReadingFlow() {
   }, [photoUrl]);
 
   useEffect(() => {
-    if (!isLoggedIn || (step !== "capture" && step !== "teaser" && step !== "claimed")) {
+    if (
+      !isLoggedIn ||
+      (step !== "capture" && step !== "teaser" && step !== "claimed" && step !== "report")
+    ) {
       return;
     }
     let cancelled = false;
@@ -308,6 +315,41 @@ export default function PalmReadingFlow() {
     },
     [snapshotId, resetAll]
   );
+
+  const stagePhoto = useCallback(
+    async (file: File | Blob) => {
+      if (!canOpenCamera) return;
+      setError(null);
+      setPreparingImage(true);
+      setStep("preview");
+      try {
+        const compressed = await compressImageForUpload(
+          file instanceof File ? file : new File([file], "palm.jpg", { type: "image/jpeg" }),
+          { maxWidth: 1280, maxHeight: 1280, maxBytes: 2_000_000 }
+        );
+        const staged = new File([compressed.blob], "palm.jpg", { type: compressed.mimeType });
+        pendingFileRef.current = staged;
+        const localUrl = URL.createObjectURL(compressed.blob);
+        if (photoUrl) URL.revokeObjectURL(photoUrl);
+        setPhotoUrl(localUrl);
+      } catch {
+        pendingFileRef.current = null;
+        setError("Не удалось прочитать фото. Попробуйте JPG или PNG при ровном свете.");
+        setStep("capture");
+      } finally {
+        setPreparingImage(false);
+      }
+    },
+    [canOpenCamera, photoUrl]
+  );
+
+  const discardStagedPhoto = useCallback(() => {
+    pendingFileRef.current = null;
+    if (photoUrl) URL.revokeObjectURL(photoUrl);
+    setPhotoUrl(null);
+    setError(null);
+    setStep("capture");
+  }, [photoUrl]);
 
   const runTeaser = useCallback(
     async (file: File | Blob) => {
@@ -429,7 +471,7 @@ export default function PalmReadingFlow() {
     if (isNativeCapacitorPlatform() && isAppCameraAvailable()) {
       try {
         const file = await pickPhotoFromApp("camera");
-        if (file) void runTeaser(file);
+        if (file) void stagePhoto(file);
       } catch {
         setError("Камера недоступна. Разрешите доступ в настройках или загрузите фото.");
       }
@@ -455,7 +497,7 @@ export default function PalmReadingFlow() {
     } catch {
       setError("Нет доступа к камере. Разрешите доступ или загрузите фото из галереи.");
     }
-  }, [runTeaser, canOpenCamera]);
+  }, [stagePhoto, canOpenCamera]);
 
   const captureFrame = useCallback(() => {
     if (!canOpenCamera) return;
@@ -472,12 +514,12 @@ export default function PalmReadingFlow() {
     canvas.toBlob(
       (blob) => {
         stopCamera();
-        if (blob) void runTeaser(blob);
+        if (blob) void stagePhoto(blob);
       },
       "image/jpeg",
       0.92
     );
-  }, [runTeaser, stopCamera, canOpenCamera]);
+  }, [stagePhoto, stopCamera, canOpenCamera]);
 
   const pollJob = useCallback(async (jobId: string) => {
     pollAbortRef.current?.abort();
@@ -688,12 +730,24 @@ export default function PalmReadingFlow() {
       <input
         ref={fileInputRef}
         type="file"
-        accept="image/jpeg,image/png,image/webp"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
         className="hidden"
         onChange={(e) => {
           const file = e.target.files?.[0] ?? null;
           e.target.value = "";
-          if (file && canOpenCamera) void runTeaser(file);
+          if (file && canOpenCamera) void stagePhoto(file);
+        }}
+      />
+      <input
+        ref={cameraInputRef}
+        type="file"
+        accept="image/jpeg,image/png,image/webp,image/heic,image/heif"
+        capture="environment"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0] ?? null;
+          e.target.value = "";
+          if (file && canOpenCamera) void stagePhoto(file);
         }}
       />
 
@@ -705,7 +759,7 @@ export default function PalmReadingFlow() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25 }}
-            className="space-y-6"
+            className="space-y-5"
           >
             {ageReady === null && (
               <p className="text-center text-sm text-white/55">Проверяю доступ…</p>
@@ -730,20 +784,12 @@ export default function PalmReadingFlow() {
 
             {cameraActive ? (
               <div className="space-y-4">
-                <div className="relative mx-auto aspect-[4/5] w-full max-w-xs overflow-hidden rounded-3xl border border-white/15 bg-black/40">
-                  <video
-                    ref={videoRef}
-                    playsInline
-                    muted
-                    autoPlay
-                    className="h-full w-full object-cover"
-                  />
-                  <div className="pointer-events-none absolute inset-0 flex items-center justify-center opacity-40">
-                    <PalmSilhouette whichHand={whichHand} handShape="earth" verdict="mixed" />
-                  </div>
+                <div className="palm-camera-frame">
+                  <video ref={videoRef} playsInline muted autoPlay />
+                  <div className="palm-camera-frame__guide" aria-hidden />
                 </div>
                 <p className="text-center text-sm text-white/60">
-                  Раскройте ладонь пальцами вверх, ровный свет, без сильных теней.
+                  Поместите открытую ладонь в рамку. Пальцы вверх, ровный свет.
                 </p>
                 <div className="flex justify-center gap-3">
                   <button
@@ -754,21 +800,20 @@ export default function PalmReadingFlow() {
                     <Camera className="mr-2 h-4 w-4" />
                     Снять
                   </button>
-                  <button type="button" onClick={stopCamera} className="btn-luxe btn-luxe--md">
+                  <button type="button" onClick={stopCamera} className="btn-luxe btn-luxe--md btn-luxe--ghost">
                     Отмена
                   </button>
                 </div>
               </div>
             ) : (
               <>
-                <PalmSilhouette whichHand={whichHand} handShape="earth" verdict="mixed" />
                 <div className="flex justify-center gap-2">
                   {(["right", "left"] as const).map((hand) => (
                     <button
                       key={hand}
                       type="button"
                       onClick={() => setWhichHand(hand)}
-                      className={`rounded-full px-4 py-2 text-sm ${
+                      className={`min-h-11 rounded-full px-4 py-2 text-sm ${
                         whichHand === hand
                           ? "bg-aura-gold/20 text-aura-gold"
                           : "bg-white/5 text-white/60"
@@ -783,25 +828,52 @@ export default function PalmReadingFlow() {
                     Снимок на сегодня уже есть. Новый будет доступен {formatPalmWaitRu()}.
                   </p>
                 ) : ageReady === true ? (
-                  <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
-                    <button
-                      type="button"
-                      onClick={() => void startCamera()}
-                      className="btn-luxe btn-luxe--md btn-luxe--gold"
-                    >
-                      <Camera className="mr-2 h-4 w-4" />
-                      Снять ладонь
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="btn-luxe btn-luxe--md"
-                    >
-                      <ImagePlus className="mr-2 h-4 w-4" />
-                      Загрузить фото
-                    </button>
+                  <div className="palm-capture-surface">
+                    <p className="palm-capture-surface__hint">
+                      Открытая ладонь полностью в кадре — это фото и будет разобрано.
+                    </p>
+                    <div className="palm-capture-actions">
+                      <button
+                        type="button"
+                        onClick={() => void startCamera()}
+                        className="btn-luxe btn-luxe--md btn-luxe--gold order-1 sm:order-2"
+                      >
+                        <Camera className="mr-2 h-4 w-4" />
+                        Сфотографировать ладонь
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="btn-luxe btn-luxe--md btn-luxe--ghost order-2 sm:order-1"
+                      >
+                        <ImagePlus className="mr-2 h-4 w-4" />
+                        Загрузить фото
+                      </button>
+                    </div>
+                    <ul className="palm-guide">
+                      <li>Ладонь целиком, пальцы расправлены</li>
+                      <li>Ровный свет, без сильных теней</li>
+                      <li>Одна ладонь на снимке</li>
+                    </ul>
                   </div>
                 ) : null}
+                {pricing ? (
+                  <div className="palm-price">
+                    {pricing.firstPalmDiscount && palmCost < palmBaseCost ? (
+                      <span className="palm-price__was">{formatRunes(palmBaseCost)}</span>
+                    ) : null}
+                    <span className="palm-price__now">{formatRunes(palmCost)}</span>
+                    {pricing.firstPalmDiscount && palmCost < palmBaseCost ? (
+                      <span className="palm-price__note">Первый разбор −50%</span>
+                    ) : (
+                      <span className="palm-price__note">Полный разбор</span>
+                    )}
+                  </div>
+                ) : null}
+                <p className="palm-privacy">
+                  Фото нужно, чтобы прочитать ладонь. Снимок не сохраняется — на сервере
+                  остаётся только результат анализа.
+                </p>
               </>
             )}
             {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
@@ -809,24 +881,71 @@ export default function PalmReadingFlow() {
           </motion.div>
         )}
 
+        {step === "preview" && (
+          <motion.div
+            key="preview"
+            initial={fadeUp}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0 }}
+            className="space-y-4"
+          >
+            {photoUrl ? (
+              <PalmPhotoStage src={photoUrl} showFrame alt="Превью вашей ладони" />
+            ) : (
+              <div className="palm-photo-stage flex min-h-64 items-center justify-center">
+                <Loader2
+                  className={`h-7 w-7 text-aura-gold${reduceMotion ? "" : " animate-spin"}`}
+                />
+              </div>
+            )}
+            {preparingImage ? (
+              <p className="text-center text-sm text-white/55" role="status">
+                Подготавливаем фото…
+              </p>
+            ) : (
+              <p className="text-center text-sm text-white/60">
+                Ладонь целиком в кадре? Можно заменить снимок до анализа.
+              </p>
+            )}
+            <div className="flex flex-col gap-3 sm:flex-row sm:justify-center">
+              <button
+                type="button"
+                disabled={preparingImage || !photoUrl}
+                onClick={() => {
+                  const file = pendingFileRef.current;
+                  if (file) void runTeaser(file);
+                }}
+                className="btn-luxe btn-luxe--md btn-luxe--gold"
+              >
+                Использовать это фото
+              </button>
+              <button
+                type="button"
+                disabled={preparingImage}
+                onClick={discardStagedPhoto}
+                className="btn-luxe btn-luxe--md btn-luxe--ghost"
+              >
+                Выбрать другое
+              </button>
+            </div>
+            {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
+          </motion.div>
+        )}
+
         {(step === "processing" || step === "paying") && (
           <motion.div
             key={step}
+            role="status"
+            aria-live="polite"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
-            className="flex flex-col items-center gap-4 py-10"
+            className="flex flex-col items-center gap-4 py-8"
           >
+            {photoUrl ? <PalmPhotoStage src={photoUrl} compact alt="" /> : null}
             <Loader2
-              className={`h-8 w-8 text-aura-gold${reduceMotion ? "" : " animate-spin"}`}
+              className={`h-7 w-7 text-aura-gold${reduceMotion ? "" : " animate-spin"}`}
             />
-            {photoUrl && step === "processing" ? (
-              <div
-                aria-hidden
-                className="h-28 w-20 rounded-xl border border-white/10 bg-cover bg-center opacity-80"
-                style={{ backgroundImage: `url("${photoUrl}")` }}
-              />
-            ) : null}
             <p className="text-sm text-white/70">
               {(step === "paying" ? PAYING_PHRASES : PROCESSING_PHRASES)[
                 phraseIdx % (step === "paying" ? PAYING_PHRASES.length : PROCESSING_PHRASES.length)
@@ -843,11 +962,13 @@ export default function PalmReadingFlow() {
             exit={{ opacity: 0 }}
             className="space-y-5"
           >
-            <PalmSilhouette
-              whichHand={snapshot.whichHand}
-              handShape={snapshot.handShape}
-              verdict={snapshot.verdict}
-            />
+            {photoUrl ? (
+              <PalmPhotoStage src={photoUrl} alt="Ваша ладонь" />
+            ) : (
+              <p className="text-center text-xs text-white/40">
+                Фото не хранится — остаётся тип руки и тизер.
+              </p>
+            )}
             <div className="space-y-2 text-center">
               <p className="text-xs uppercase tracking-[0.18em] text-aura-gold/80">
                 {PALM_HAND_LABELS[snapshot.whichHand]}
@@ -885,10 +1006,19 @@ export default function PalmReadingFlow() {
 
             {step === "claimed" && (
               <div className="flex flex-col items-center gap-3">
-                <p className="text-sm text-white/60">
-                  Полный разбор — {formatRunes(palmCost)}
-                  {pricing?.firstPalmDiscount ? ` (обычно ${formatRunes(palmBaseCost)})` : ""}.
-                </p>
+                {pricing ? (
+                  <div className="palm-price">
+                    {pricing.firstPalmDiscount && palmCost < palmBaseCost ? (
+                      <span className="palm-price__was">{formatRunes(palmBaseCost)}</span>
+                    ) : null}
+                    <span className="palm-price__now">{formatRunes(palmCost)}</span>
+                    {pricing.firstPalmDiscount && palmCost < palmBaseCost ? (
+                      <span className="palm-price__note">Первый разбор −50%</span>
+                    ) : (
+                      <span className="palm-price__note">Полный разбор</span>
+                    )}
+                  </div>
+                ) : null}
                 {blockedByRunes ? (
                   <Link href="/cabinet?shop=1" className="btn-luxe btn-luxe--md btn-luxe--gold">
                     Пополнить руны
@@ -941,16 +1071,27 @@ export default function PalmReadingFlow() {
             animate={{ opacity: 1, y: 0 }}
             className="space-y-6"
           >
-            <PalmSilhouette
-              whichHand={snapshot.whichHand}
-              handShape={snapshot.handShape}
-              verdict={snapshot.verdict}
-            />
+            <div className="space-y-2 text-center">
+              <p className="text-xs uppercase tracking-[0.18em] text-aura-gold/80">Ваша ладонь</p>
+              <h2 className="font-display text-2xl text-white">
+                {PALM_HAND_LABELS[snapshot.whichHand]} ·{" "}
+                {PALM_HAND_SHAPE_LABELS[snapshot.handShape]}
+              </h2>
+            </div>
+            {photoUrl ? (
+              <PalmPhotoStage src={photoUrl} alt="Ваша ладонь" />
+            ) : (
+              <p className="text-center text-xs text-white/40">
+                Фото не хранится. Ниже — то, что удалось прочитать по снимку.
+              </p>
+            )}
+            {snapshot.majorLines ? <PalmInsightCards snapshot={snapshot as PalmSnapshot} /> : null}
             <PremiumReadingBody content={report} className="text-sm text-white/85" />
             <CrossProductNextSteps context="palm" />
             <p className="text-center text-sm text-white/50">
               Новый снимок будет доступен {formatPalmWaitRu()}.
             </p>
+            {pastArchive}
             <Link href="/cabinet" className="btn-luxe btn-luxe--md mx-auto block">
               В кабинет
             </Link>

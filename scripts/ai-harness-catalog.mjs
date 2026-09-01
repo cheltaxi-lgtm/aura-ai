@@ -111,6 +111,7 @@ export const CHECKS = {
       "tests/invariants/palm-seo-landings.test.ts",
       "tests/invariants/palm-archive.test.ts",
       "tests/invariants/palm-reading-retry.test.ts",
+      "tests/invariants/palm-photo-first.test.ts",
     ],
   },
   "ads-unit": {

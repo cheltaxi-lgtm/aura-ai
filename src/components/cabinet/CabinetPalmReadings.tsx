@@ -7,7 +7,7 @@ import { Trash2, X } from "lucide-react";
 
 import BodyPortal from "@/components/BodyPortal";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
-import PalmSilhouette from "@/components/palm/PalmSilhouette";
+import PalmInsightCards from "@/components/palm/PalmInsightCards";
 import {
   PALM_HAND_LABELS,
   PALM_HAND_SHAPE_LABELS,
@@ -143,18 +143,17 @@ export default function CabinetPalmReadings({ readings, onDelete, deletingId = n
                     <X className="h-5 w-5" />
                   </button>
                 </div>
-                {snapshotOf(active) && (
-                  <PalmSilhouette
-                    whichHand={snapshotOf(active)!.whichHand}
-                    handShape={snapshotOf(active)!.handShape}
-                    verdict={snapshotOf(active)!.verdict}
-                  />
-                )}
                 <p className="mt-2 text-center text-sm text-white/55">
                   {active.contextData.whichHand
                     ? PALM_HAND_LABELS[active.contextData.whichHand]
                     : ""}
                 </p>
+                <p className="mb-4 text-center text-sm text-white/55">
+                  Фото не хранится — остаётся результат анализа.
+                </p>
+                {active.paid && snapshotOf(active)?.majorLines ? (
+                  <PalmInsightCards snapshot={snapshotOf(active)!} />
+                ) : null}
                 {active.contextData.report ? (
                   <PremiumReadingBody content={active.contextData.report} className="text-sm text-white/85" />
                 ) : (

@@ -7,7 +7,7 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { BRAND_NAME } from "@/lib/brand";
-import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
+import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export const metadata: Metadata = buildSeoMetadata({
@@ -41,26 +41,17 @@ const FAQ = [
 ];
 
 export default function PalmLandingPage() {
-  const cost = DEFAULT_RUNE_COSTS.PALM_READING;
-  const label = RUNE_ACTION_LABELS.PALM_READING;
-
   return (
     <SeoPageShell breadcrumbs={PALM_SEO_CRUMBS}>
       <SeoPageTracker goal="palm_landing_view" funnelProduct="palm" />
       <p className="text-sm text-aura-gold/80">Хиромантия</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Гадание по ладони онлайн</h1>
-      <p className="mt-4 text-white/70">
-        Классическая хиромантия читает рисунок руки: тип ладони, линии жизни, ума, сердца и
-        судьбы, холмы планет. Снимите ладонь с камеры или загрузите фото — сервис покажет тип
-        руки, а мастер разберёт линии, холмы и даст практику на ближайшие дни. Это чтение по
-        фото, без медицинских обещаний и без хранения снимка.
+      <h1 className="mt-2 font-display text-3xl font-bold">Гадание по ладони</h1>
+      <p className="mt-3 text-white/70">
+        Сфотографируйте открытую ладонь. Zovus определит основные линии, особенности формы
+        руки и подготовит персональную интерпретацию.
       </p>
 
-      <p className="mt-4 text-sm text-white/50">
-        {label} · {cost} ᚢ · первый разбор −50%
-      </p>
-
-      <section className="mt-8 sm:mt-10">
+      <section className="mt-6 sm:mt-8">
         <PalmReadingFlow />
       </section>
 

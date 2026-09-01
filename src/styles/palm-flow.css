@@ -1,0 +1,214 @@
+/* Palm reading — photo-first surface. Tokens only; no new palette. */
+
+.palm-capture-surface {
+  display: flex;
+  min-height: 17.5rem;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.25rem;
+  border-radius: 1.5rem;
+  border: 1px dashed rgba(232, 199, 126, 0.28);
+  background:
+    radial-gradient(ellipse 70% 55% at 50% 38%, rgba(232, 199, 126, 0.07), transparent 70%),
+    rgba(255, 255, 255, 0.02);
+  padding: 1.5rem 1.15rem;
+}
+
+.palm-capture-surface__hint {
+  max-width: 18rem;
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.55);
+}
+
+.palm-capture-actions {
+  display: flex;
+  width: 100%;
+  max-width: 22rem;
+  flex-direction: column;
+  gap: 0.75rem;
+}
+
+@media (min-width: 640px) {
+  .palm-capture-actions {
+    flex-direction: row;
+    justify-content: center;
+  }
+
+  .palm-capture-actions > .btn-luxe {
+    flex: 1;
+  }
+}
+
+.palm-photo-stage {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: #0a0810;
+}
+
+.palm-photo-stage img {
+  display: block;
+  width: 100%;
+  max-height: min(70vh, 28rem);
+  object-fit: contain;
+  vertical-align: middle;
+}
+
+.palm-photo-stage--compact img {
+  max-height: 8.5rem;
+}
+
+.palm-photo-stage__corners {
+  pointer-events: none;
+  position: absolute;
+  inset: 0.85rem;
+}
+
+.palm-photo-stage__corners span {
+  position: absolute;
+  width: 1.15rem;
+  height: 1.15rem;
+  border-color: rgba(232, 199, 126, 0.55);
+  border-style: solid;
+  border-width: 0;
+}
+
+.palm-photo-stage__corners span:nth-child(1) {
+  top: 0;
+  left: 0;
+  border-top-width: 1.5px;
+  border-left-width: 1.5px;
+  border-top-left-radius: 2px;
+}
+
+.palm-photo-stage__corners span:nth-child(2) {
+  top: 0;
+  right: 0;
+  border-top-width: 1.5px;
+  border-right-width: 1.5px;
+  border-top-right-radius: 2px;
+}
+
+.palm-photo-stage__corners span:nth-child(3) {
+  bottom: 0;
+  left: 0;
+  border-bottom-width: 1.5px;
+  border-left-width: 1.5px;
+  border-bottom-left-radius: 2px;
+}
+
+.palm-photo-stage__corners span:nth-child(4) {
+  right: 0;
+  bottom: 0;
+  border-right-width: 1.5px;
+  border-bottom-width: 1.5px;
+  border-bottom-right-radius: 2px;
+}
+
+.palm-camera-frame {
+  position: relative;
+  margin-inline: auto;
+  width: min(320px, 86vw);
+  aspect-ratio: 3 / 4;
+  overflow: hidden;
+  border-radius: 1.5rem;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  background: #0a0810;
+}
+
+.palm-camera-frame video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.palm-camera-frame__guide {
+  pointer-events: none;
+  position: absolute;
+  inset: 10% 12%;
+  border: 1px dashed rgba(232, 199, 126, 0.45);
+  border-radius: 1.25rem;
+}
+
+.palm-price {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0.4rem 0.65rem;
+  text-align: center;
+}
+
+.palm-price__was {
+  font-size: 0.8125rem;
+  color: rgba(255, 255, 255, 0.38);
+  text-decoration: line-through;
+}
+
+.palm-price__now {
+  font-size: 1.05rem;
+  font-weight: 600;
+  color: #e8c77e;
+}
+
+.palm-price__note {
+  width: 100%;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  color: rgba(232, 199, 126, 0.75);
+}
+
+.palm-guide {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 0.35rem;
+  text-align: center;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.45);
+}
+
+.palm-insights {
+  display: grid;
+  gap: 0.65rem;
+}
+
+.palm-insight {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.85rem 1rem;
+  text-align: left;
+}
+
+.palm-insight h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  color: #fff;
+}
+
+.palm-insight p {
+  margin: 0.35rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.68);
+}
+
+.palm-insight button {
+  margin-top: 0.45rem;
+  min-height: 2.75rem;
+  font-size: 0.8125rem;
+  color: rgba(232, 199, 126, 0.9);
+}
+
+.palm-privacy {
+  text-align: center;
+  font-size: 0.8125rem;
+  line-height: 1.4;
+  color: rgba(255, 255, 255, 0.58);
+}

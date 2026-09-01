@@ -116,10 +116,18 @@ describe("palm-seo-landings", () => {
     expect(middleware).toContain("palmReadingEnabled");
   });
 
-  it("guide silhouette is a five-digit palm, not a four-finger blob", () => {
-    const src = read("src/components/palm/PalmSilhouette.tsx");
-    expect(src).toContain("4 fingers up, thumb on the right");
-    expect(src.match(/<rect /g)?.length).toBeGreaterThanOrEqual(5);
+  it("product landing is photo-first and does not ship a schematic hand hero", () => {
+    const landing = read("src/app/gadanie-po-ladoni/page.tsx");
+    const flow = read("src/components/palm/PalmReadingFlow.tsx");
+    expect(landing).toContain("Гадание по ладони");
+    expect(landing).toContain("<PalmReadingFlow");
+    expect(flow).toContain("Сфотографировать ладонь");
+    expect(flow).toContain("Загрузить фото");
+    expect(flow).toContain("Использовать это фото");
+    expect(flow).toContain("Выбрать другое");
+    expect(flow).toContain("PalmPhotoStage");
+    expect(flow).not.toContain("PalmSilhouette");
+    expect(flow).not.toContain("LINE_PATHS");
   });
 
   it("admin product stats cover palm spends", () => {
