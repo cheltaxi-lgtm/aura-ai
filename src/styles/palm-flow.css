@@ -181,6 +181,121 @@
   gap: 1rem;
 }
 
+.palm-insights-block {
+  display: grid;
+  gap: 1rem;
+}
+
+.palm-map {
+  display: grid;
+  gap: 0.85rem;
+}
+
+.palm-map__kicker {
+  margin: 0;
+  text-align: center;
+  font-size: 0.6875rem;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: rgba(232, 199, 126, 0.75);
+}
+
+.palm-map__svg {
+  display: block;
+  width: min(100%, 18rem);
+  margin-inline: auto;
+  overflow: visible;
+}
+
+.palm-map__outline {
+  fill: rgba(18, 14, 24, 0.92);
+  stroke: rgba(232, 199, 126, 0.28);
+  stroke-width: 1.4;
+}
+
+.palm-map__line {
+  fill: none;
+  stroke-width: 3.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0.72;
+  pointer-events: stroke;
+  cursor: pointer;
+}
+
+.palm-map__line--faint {
+  opacity: 0.28;
+}
+
+.palm-map__line--on {
+  opacity: 1;
+  stroke-width: 4.4;
+}
+
+.palm-map__mount {
+  fill: rgba(232, 199, 126, 0.35);
+  stroke: rgba(232, 199, 126, 0.7);
+  stroke-width: 1;
+  cursor: pointer;
+}
+
+.palm-map__mount--on {
+  fill: rgba(232, 199, 126, 0.7);
+}
+
+.palm-map__chips {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+}
+
+.palm-map__chip {
+  min-height: 2.5rem;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  padding: 0.25rem 0.75rem;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+.palm-map__chip--on {
+  border-color: rgba(232, 199, 126, 0.45);
+  background: rgba(232, 199, 126, 0.14);
+  color: rgba(232, 199, 126, 0.95);
+}
+
+.palm-map__explain {
+  border-radius: 1rem;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.03);
+  padding: 0.9rem 1rem;
+  text-align: left;
+}
+
+.palm-map__explain h3 {
+  margin: 0;
+  font-size: 1rem;
+  color: #fff;
+}
+
+.palm-map__explain p {
+  margin: 0.4rem 0 0;
+  font-size: 0.875rem;
+  line-height: 1.45;
+  color: rgba(255, 255, 255, 0.7);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .palm-map__line,
+  .palm-map__mount,
+  .palm-map__chip {
+    transition: none;
+  }
+}
+
 .palm-insights {
   display: grid;
   grid-template-columns: 1fr 1fr;

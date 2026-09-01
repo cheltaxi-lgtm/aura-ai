@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 
+import PalmMap from "@/components/palm/PalmMap";
 import {
   PALM_HAND_SHAPE_LABELS,
   PALM_HAND_SHAPE_MEANINGS,
@@ -60,13 +61,13 @@ function LineCard({
 }
 
 /**
- * Semantic cards from the paid snapshot. No geometry — the contract has
- * length/quality/notes only, so this must never draw fake palm lines.
+ * Paid reading surface: schematic map + text cards.
+ * Cards have no SVG. The map is a canonical diagram, never a photo overlay.
  */
 export default function PalmInsightCards({
   snapshot,
 }: {
-  snapshot: Pick<PalmSnapshot, "handShape" | "majorLines" | "mounts">;
+  snapshot: Pick<PalmSnapshot, "whichHand" | "handShape" | "majorLines" | "mounts" | "verdict">;
 }) {
   if (!snapshot.majorLines?.length) return null;
 
@@ -75,32 +76,35 @@ export default function PalmInsightCards({
   );
 
   return (
-    <div className="palm-insights">
-      <LineCard
-        title={`Форма ладони — ${PALM_HAND_SHAPE_LABELS[snapshot.handShape]}`}
-        summary={PALM_HAND_SHAPE_MEANINGS[snapshot.handShape]}
-      />
-      {snapshot.majorLines.map((line) => {
-        const state = line.present
-          ? `${LENGTH_RU[line.length]}, ${QUALITY_RU[line.quality]}`
-          : "на фото слабо видна";
-        return (
-          <LineCard
-            key={line.key}
-            title={PALM_LINE_NAMES[line.key]}
-            summary={state}
-            detail={line.note}
-          />
-        );
-      })}
-      {notableMounts.map((mount) => (
+    <div className="palm-insights-block">
+      <PalmMap snapshot={snapshot} />
+      <div className="palm-insights">
         <LineCard
-          key={mount.key}
-          title={PALM_MOUNT_NAMES[mount.key]}
-          summary={PROMINENCE_RU[mount.prominence]}
-          detail={mount.note}
+          title={`Форма ладони — ${PALM_HAND_SHAPE_LABELS[snapshot.handShape]}`}
+          summary={PALM_HAND_SHAPE_MEANINGS[snapshot.handShape]}
         />
-      ))}
+        {snapshot.majorLines.map((line) => {
+          const state = line.present
+            ? `${LENGTH_RU[line.length]}, ${QUALITY_RU[line.quality]}`
+            : "на фото слабо видна";
+          return (
+            <LineCard
+              key={line.key}
+              title={PALM_LINE_NAMES[line.key]}
+              summary={state}
+              detail={line.note}
+            />
+          );
+        })}
+        {notableMounts.map((mount) => (
+          <LineCard
+            key={mount.key}
+            title={PALM_MOUNT_NAMES[mount.key]}
+            summary={PROMINENCE_RU[mount.prominence]}
+            detail={mount.note}
+          />
+        ))}
+      </div>
     </div>
   );
 }

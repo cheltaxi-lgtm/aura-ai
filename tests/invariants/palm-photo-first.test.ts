@@ -70,16 +70,34 @@ describe("palm-photo-first", () => {
     expect(flow).toContain("PalmInsightCards");
     expect(stage).toContain("palm-photo-stage");
     expect(read("src/styles/palm-flow.css")).toContain("object-fit: contain");
-    expect(cards).toContain("No geometry");
+    expect(cards).toContain("canonical diagram");
+    expect(cards).toContain("PalmMap");
     expect(cards).not.toContain("<svg");
     expect(flow).not.toContain("<svg");
+    expect(stage).not.toContain("<svg");
   });
 
-  it("cabinet does not present a schematic hand as the analysis result", () => {
+  it("cabinet shows the paid map through insight cards, not a fake photo overlay", () => {
     const cabinet = read("src/components/cabinet/CabinetPalmReadings.tsx");
     expect(cabinet).not.toContain("PalmSilhouette");
     expect(cabinet).toContain("PalmInsightCards");
     expect(cabinet).toContain("Фото не хранится");
+  });
+
+  it("palm map is a labeled schematic driven by snapshot keys, not photo coordinates", () => {
+    const map = read("src/components/palm/PalmMap.tsx");
+    const geo = read("src/components/palm/palm-map-geometry.ts");
+    expect(map).toContain("Must never be drawn on the user photo");
+    expect(map).toContain("PALM_LINE_MEANINGS");
+    expect(map).toContain("PALM_LINE_KEYS");
+    expect(map).toContain("PALM_MOUNT_KEYS");
+    expect(geo).toContain("PALM_MAP_LINES");
+    expect(geo).toContain("life:");
+    expect(geo).toContain("head:");
+    expect(geo).toContain("heart:");
+    expect(geo).toContain("fate:");
+    expect(map).not.toContain("photoUrl");
+    expect(map).not.toMatch(/\bcoordinates\b/);
   });
 
   it("insight cards use a 2–3 column grid, not a single sheet", () => {

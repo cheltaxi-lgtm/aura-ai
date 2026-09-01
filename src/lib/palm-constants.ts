@@ -109,6 +109,13 @@ export const PALM_LINE_NAMES: Record<PalmLineKey, string> = {
   fate: "Линия судьбы",
 };
 
+export const PALM_LINE_MEANINGS: Record<PalmLineKey, string> = {
+  life: "Идёт вокруг холма Венеры. Ритм сил и опора — не срок лет.",
+  head: "Пересекает ладонь. Как человек думает и принимает решения.",
+  heart: "Под пальцами. Близость, принятие и тон чувств.",
+  fate: "От запястья к среднему пальцу. Внешние опоры и выбранный путь.",
+};
+
 export const PALM_MOUNT_NAMES: Record<PalmMountKey, string> = {
   venus: "Холм Венеры",
   jupiter: "Холм Юпитера",
@@ -117,6 +124,16 @@ export const PALM_MOUNT_NAMES: Record<PalmMountKey, string> = {
   mercury: "Холм Меркурия",
   mars: "Холм Марса",
   luna: "Холм Луны",
+};
+
+export const PALM_MOUNT_MEANINGS: Record<PalmMountKey, string> = {
+  venus: "Тепло, тело, потребность в близости.",
+  jupiter: "Амбиция, честь, своё место.",
+  saturn: "Ответственность, границы, долгая работа.",
+  apollo: "Дар, видимость, радость быть увиденным.",
+  mercury: "Речь, сделки, лёгкость обмена.",
+  mars: "Защита, конфликт, способность держать удар.",
+  luna: "Воображение, путь вглубь, ночная интуиция.",
 };
 
 export const PALM_MARK_NAMES: Record<PalmMarkKey, string> = {
