@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Camera, ImagePlus, Loader2 } from "lucide-react";
+import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
@@ -53,6 +53,27 @@ type PalmPricing = {
 type FlowSnapshot = PalmTeaserSnapshot &
   Partial<Pick<PalmSnapshot, "majorLines" | "mounts" | "marks">>;
 
+type PalmPastItem = {
+  snapshotId: string | null;
+  historyId: string | null;
+  paid: boolean;
+  createdAt: string;
+  whichHand: PalmHand;
+  handShape: PalmSnapshot["handShape"];
+  verdict: PalmSnapshot["verdict"];
+  teaser: string | null;
+};
+
+function formatPastDate(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return "";
+  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+}
+
+function pastItemId(item: PalmPastItem): string {
+  return item.snapshotId ?? item.historyId ?? "";
+}
+
 const PROCESSING_PHRASES = [
   "Считываю рисунок ладони…",
   "Сверяю линии и холмы…",
@@ -94,6 +115,10 @@ export default function PalmReadingFlow() {
   const [dayLocked, setDayLocked] = useState(false);
   const [whichHand, setWhichHand] = useState<PalmHand>("right");
   const [acceptedEta, setAcceptedEta] = useState<string | null>(null);
+  const [pastReadings, setPastReadings] = useState<PalmPastItem[] | null>(null);
+  const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
+  const [confirmPastDeleteId, setConfirmPastDeleteId] = useState<string | null>(null);
+  const [openingPast, setOpeningPast] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
@@ -196,6 +221,93 @@ export default function PalmReadingFlow() {
     setAcceptedEta(null);
     setStep("capture");
   }, [photoUrl]);
+
+  useEffect(() => {
+    if (!isLoggedIn || (step !== "capture" && step !== "teaser" && step !== "claimed")) {
+      return;
+    }
+    let cancelled = false;
+    void fetch("/api/palm/readings", { credentials: "include", cache: "no-store" })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (cancelled || !data || !Array.isArray(data.readings)) return;
+        setPastReadings(data.readings as PalmPastItem[]);
+      })
+      .catch(() => undefined);
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, step]);
+
+  useEffect(() => {
+    if (!confirmPastDeleteId) return;
+    const timer = window.setTimeout(() => setConfirmPastDeleteId(null), 4000);
+    return () => window.clearTimeout(timer);
+  }, [confirmPastDeleteId]);
+
+  const openPast = useCallback(
+    async (item: PalmPastItem) => {
+      const id = pastItemId(item);
+      if (!id) return;
+      setOpeningPast(true);
+      setError(null);
+      try {
+        const res = await fetch(`/api/palm/readings/${encodeURIComponent(id)}`, {
+          credentials: "include",
+          cache: "no-store",
+        });
+        const data = await res.json().catch(() => null);
+        const entry = data?.entry;
+        if (!res.ok || !entry?.snapshot) {
+          setError("Не удалось открыть снимок. Попробуйте ещё раз.");
+          return;
+        }
+        if (photoUrl) URL.revokeObjectURL(photoUrl);
+        setPhotoUrl(null);
+        setSnapshot(entry.snapshot as FlowSnapshot);
+        setSnapshotId(typeof entry.snapshotId === "string" ? entry.snapshotId : id);
+        if (entry.paid && typeof entry.report === "string" && entry.report.trim()) {
+          setReport(entry.report);
+          setStep("report");
+        } else {
+          setReport(null);
+          setStep("claimed");
+        }
+      } catch {
+        setError("Ошибка сети. Попробуйте ещё раз.");
+      } finally {
+        setOpeningPast(false);
+      }
+    },
+    [photoUrl]
+  );
+
+  const deletePast = useCallback(
+    async (item: PalmPastItem) => {
+      const id = pastItemId(item);
+      if (!id) return;
+      setConfirmPastDeleteId(null);
+      setDeletingPastId(id);
+      try {
+        const res = await fetch(`/api/palm/readings/${encodeURIComponent(id)}`, {
+          method: "DELETE",
+          credentials: "include",
+        });
+        if (!res.ok) throw new Error("delete failed");
+        setPastReadings((prev) =>
+          (prev ?? []).filter((p) => pastItemId(p) !== id)
+        );
+        if (item.snapshotId && item.snapshotId === snapshotId) {
+          resetAll();
+        }
+      } catch {
+        setError("Не удалось удалить. Попробуйте ещё раз.");
+      } finally {
+        setDeletingPastId(null);
+      }
+    },
+    [snapshotId, resetAll]
+  );
 
   const runTeaser = useCallback(
     async (file: File | Blob) => {
@@ -518,6 +630,59 @@ export default function PalmReadingFlow() {
     runeBalance !== null &&
     !canAffordRunes({ enabled: config.enabled, balance: runeBalance, cost: palmCost });
 
+  const pastArchive =
+    isLoggedIn && pastReadings && pastReadings.length > 0 ? (
+      <div className="space-y-2 pt-2">
+        <p className="text-center text-xs uppercase tracking-[0.16em] text-white/40">
+          Ваши ладони
+        </p>
+        <ul className="space-y-2">
+          {pastReadings.map((item) => {
+            const itemId = pastItemId(item);
+            const deleting = deletingPastId === itemId;
+            const confirming = confirmPastDeleteId === itemId;
+            return (
+              <li
+                key={itemId}
+                className="flex items-center gap-2 rounded-2xl border border-white/10 bg-white/[0.03] px-3 py-2"
+              >
+                <button
+                  type="button"
+                  disabled={openingPast}
+                  onClick={() => void openPast(item)}
+                  className="min-w-0 flex-1 text-left"
+                >
+                  <span className="block text-sm text-white">
+                    {PALM_HAND_SHAPE_LABELS[item.handShape]}
+                    {item.verdict ? ` · ${PALM_VERDICT_LABELS[item.verdict]}` : ""}
+                  </span>
+                  <span className="text-xs text-white/45">
+                    {formatPastDate(item.createdAt)}
+                    {item.paid ? " · Отчёт" : " · Тизер"}
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  disabled={deleting}
+                  onClick={() => {
+                    if (confirming) void deletePast(item);
+                    else setConfirmPastDeleteId(itemId);
+                  }}
+                  className={`inline-flex h-11 min-w-11 shrink-0 items-center justify-center rounded-full px-2 text-xs ${
+                    confirming ? "bg-rose-400/20 text-rose-100" : "text-rose-300/80"
+                  }`}
+                  aria-label={confirming ? "Подтвердить удаление" : "Удалить снимок ладони"}
+                  title={confirming ? "Нажмите ещё раз" : "Удалить"}
+                >
+                  {deleting ? "…" : confirming ? "Точно?" : <Trash2 className="h-3.5 w-3.5" />}
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </div>
+    ) : null;
+
   return (
     <div className="mx-auto w-full max-w-xl">
       <input
@@ -640,6 +805,7 @@ export default function PalmReadingFlow() {
               </>
             )}
             {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
+            {pastArchive}
           </motion.div>
         )}
 
@@ -739,6 +905,12 @@ export default function PalmReadingFlow() {
               </div>
             )}
             {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
+            {isLoggedIn && snapshotId ? (
+              <p className="text-center text-xs text-white/40">
+                Можно удалить этот снимок в списке ниже и снять ладонь заново.
+              </p>
+            ) : null}
+            {pastArchive}
           </motion.div>
         )}
 

@@ -96,6 +96,7 @@ assert.match(worker, /280_000/);
 const sharedAuth = read("src/lib/async-job-worker-auth-shared.ts");
 assert.match(sharedAuth, /isAuthenticatedAsyncJobWorkerRequest|isAuthenticatedNatalWorkerRequest/);
 assert.match(sharedAuth, /isAsyncJobWorkerEndpoint/);
+assert.match(sharedAuth, /\/api\/palm\/report/);
 assert.match(sharedAuth, /isDirectLoopbackWorkerCall/);
 assert.match(sharedAuth, /isLoopbackAddress/);
 assert.match(sharedAuth, /::ffff:127\.0\.0\.1/);

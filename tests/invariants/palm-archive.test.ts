@@ -49,6 +49,14 @@ describe("palm-archive", () => {
     }
   });
 
+  it("product flow lists archive rows and can delete the current snapshot", () => {
+    const flow = read("src/components/palm/PalmReadingFlow.tsx");
+    expect(flow).toContain('fetch("/api/palm/readings"');
+    expect(flow).toContain('method: "DELETE"');
+    expect(flow).toContain("resetAll()");
+    expect(flow).toContain("Ваши ладони");
+  });
+
   it("cabinet palm rows come from the shared archive", () => {
     const cabinet = read("src/lib/cabinet-data.ts");
     expect(cabinet).toContain("listPalmArchive(profileUserId)");

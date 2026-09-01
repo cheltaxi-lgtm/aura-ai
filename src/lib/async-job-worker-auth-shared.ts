@@ -81,7 +81,8 @@ export function isAsyncJobWorkerEndpoint(pathname: string): boolean {
     pathname === "/api/human-design/report" ||
     pathname === "/api/human-design/composite-report" ||
     pathname === "/api/pro/jobs/premium-report" ||
-    pathname === "/api/aura/report"
+    pathname === "/api/aura/report" ||
+    pathname === "/api/palm/report"
   );
 }
 

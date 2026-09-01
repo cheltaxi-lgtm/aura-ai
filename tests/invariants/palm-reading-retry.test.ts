@@ -27,6 +27,13 @@ describe("palm-reading-retry", () => {
     expect(persist).toContain("palmSpendKeyBelongsToSnapshot(ctxKey, snapshotId)");
   });
 
+  it("durable worker may call /api/palm/report without a browser JWT", () => {
+    const shared = read("src/lib/async-job-worker-auth-shared.ts");
+    const registry = read("src/lib/async-job-registry.ts");
+    expect(shared).toContain('pathname === "/api/palm/report"');
+    expect(registry).toContain('path: "/api/palm/report"');
+  });
+
   it("unpaid archive/cabinet stay on the teaser subset", () => {
     const detail = read("src/app/api/palm/readings/[id]/route.ts");
     const cabinet = read("src/lib/cabinet-data.ts");
