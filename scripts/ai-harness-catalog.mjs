@@ -91,6 +91,7 @@ export const CHECKS = {
       "tests/invariants/guest-landing-conversion.test.ts",
       "tests/invariants/aura-seo-landings.test.ts",
       "tests/invariants/palm-seo-landings.test.ts",
+      "tests/invariants/admin-product-stats.test.ts",
       "tests/invariants/robots-prefix-hygiene.test.ts",
     ],
   },

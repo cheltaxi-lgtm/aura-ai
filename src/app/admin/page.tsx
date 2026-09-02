@@ -35,9 +35,9 @@ export default function AdminDashboardPage() {
         <StatCard label="Поддержка (непрочит.)" value={s?.supportUnread ?? "—"} accent="text-aura-champagne" />
       </div>
       <p className="mt-3 text-sm text-white/45">
-        Списания и очередь по продуктам — в{" "}
+        Спрос на услуги и очередь отчётов — в{" "}
         <a href="/admin/products" className="text-aura-gold hover:underline">
-          Разделах
+          Спросе
         </a>
         .
       </p>
