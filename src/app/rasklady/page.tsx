@@ -3,7 +3,6 @@ import Link from "next/link";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import RaskladyCatalog from "@/components/seo/RaskladyCatalog";
@@ -17,14 +16,13 @@ export const metadata: Metadata = buildSeoMetadata({
 
 export default function RaskladyCatalogPage() {
   return (
-    <SeoPageShell backHref="/" backLabel="На главную">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Каталог раскладов", path: "/rasklady" },
+      ]}
+    >
       <SeoPageTracker goal="rasklady_hub_view" />
-      <SeoBreadcrumbs
-        items={[
-          { name: "Zovus", path: "/" },
-          { name: "Каталог раскладов", path: "/rasklady" },
-        ]}
-      />
       <p className="text-sm text-aura-gold/80">Каталог раскладов</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Каталог раскладов Таро онлайн</h1>
       <p className="mt-4 text-white/70">

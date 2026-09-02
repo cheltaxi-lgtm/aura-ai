@@ -4,7 +4,6 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 
@@ -95,14 +94,13 @@ export default function GadaniePage() {
   });
 
   return (
-    <SeoPageShell backHref="/" backLabel="На главную">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Гадание онлайн", path: "/gadanie" },
+      ]}
+    >
       <SeoPageTracker goal="gadanie_hub_view" />
-      <SeoBreadcrumbs
-        items={[
-          { name: "Zovus", path: "/" },
-          { name: "Гадание онлайн", path: "/gadanie" },
-        ]}
-      />
       <p className="text-sm text-aura-gold/80">Гадание онлайн</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Гадание онлайн бесплатно</h1>
       <p className="mt-4 text-white/70">

@@ -7,7 +7,6 @@ import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 
@@ -86,14 +85,13 @@ export default async function NumerologyPage() {
   });
 
   return (
-    <SeoPageShell>
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Нумерология", path: "/numerology" },
+      ]}
+    >
       <SeoPageTracker goal="numerology_hub_view" />
-      <SeoBreadcrumbs
-        items={[
-          { name: "Zovus", path: "/" },
-          { name: "Нумерология", path: "/numerology" },
-        ]}
-      />
       <p className="text-sm text-aura-gold/80">Нумерология</p>
       <AdsSeoH1 path="/numerology">Нумерология по дате рождения онлайн</AdsSeoH1>
       <p className="mt-4 text-white/70">

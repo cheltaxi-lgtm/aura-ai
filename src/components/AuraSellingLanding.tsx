@@ -34,6 +34,7 @@ import {
   landingHeroExpectationCopy,
   LANDING_QUESTION_KEY,
   resolveLandingHeroVariant,
+  writePendingGuestSpreadStart,
   type GuestSpreadStartDetail,
   type LandingHeroVariant,
 } from "@/lib/landing-offer";
@@ -336,6 +337,7 @@ export default function AuraSellingLanding({
       question: normalizedQuestion,
       masterId,
     };
+    writePendingGuestSpreadStart(detail);
     setGuestSpreadRequest((current) => ({
       id: (current?.id ?? 0) + 1,
       detail,

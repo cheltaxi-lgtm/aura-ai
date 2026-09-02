@@ -4,7 +4,6 @@ import { BRAND_NAME } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import LenormandCatalog from "@/components/seo/LenormandCatalog";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
@@ -41,9 +40,8 @@ export default function LenormandHubPage() {
   });
 
   return (
-    <SeoPageShell backHref="/rasklady" backLabel="Каталог раскладов">
+    <SeoPageShell breadcrumbs={breadcrumbs}>
       <SeoPageTracker goal="lenormand_hub_view" />
-      <SeoBreadcrumbs items={breadcrumbs} />
       <p className="text-sm text-aura-gold/80">Колода Ленорман</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Расклады Ленорман онлайн</h1>
       <p className="mt-4 text-white/70">

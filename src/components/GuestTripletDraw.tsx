@@ -13,7 +13,7 @@ import {
 import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import { saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import { hasActiveGuestResumeIntent, saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
   buildGuestNarrativeFallback,
   buildGuestTripletTeaser,
@@ -22,15 +22,16 @@ import { GUEST_RESUME_SPREAD_ID } from "@/lib/guest-triplet-receipt-shared";
 import {
   confirmAgeGateOnServer,
   fetchServerAgeGateConfirmed,
-  isAgeGateConfirmed,
 } from "@/lib/age-gate";
 import {
+  clearPendingGuestSpreadStart,
   GUEST_SPREAD_DRAFT_KEY,
   GUEST_SPREAD_PICKER_ID,
   GUEST_SPREAD_RESET_EVENT,
   GUEST_SPREAD_START_EVENT,
   GUEST_TRIPLET_MASTER_ID,
   LANDING_QUESTION_KEY,
+  peekPendingGuestSpreadStart,
   type GuestSpreadStartDetail,
 } from "@/lib/landing-offer";
 import {
@@ -277,8 +278,10 @@ export default function GuestTripletDraw({
     if (typeof window === "undefined" || draftRestored) return;
     const stored = sessionStorage.getItem(LANDING_QUESTION_KEY);
     if (stored) setLandingQuestion(stored);
-    setAgeConfirmed(isAgeGateConfirmed());
-    setOauthAgeConfirmed(isAgeGateConfirmed());
+    void fetchServerAgeGateConfirmed().then((ok) => {
+      setAgeConfirmed(ok);
+      setOauthAgeConfirmed(ok);
+    });
 
     // Never auto-restore an in-progress guest draw or pending-auth teaser on homepage
     // load — a stuck draft previously hijacked the whole landing.
@@ -314,12 +317,12 @@ export default function GuestTripletDraw({
 
   useEffect(() => {
     if (!showAuthGate) return;
-    if (isAgeGateConfirmed()) {
-      setOauthAgeConfirmed(true);
-      setAgeConfirmedLocked(true);
-    }
     void fetchServerAgeGateConfirmed().then((ok) => {
-      if (!ok) return;
+      if (!ok) {
+        setOauthAgeConfirmed(false);
+        setAgeConfirmedLocked(false);
+        return;
+      }
       setOauthAgeConfirmed(true);
       setAgeConfirmedLocked(true);
     });
@@ -343,6 +346,7 @@ export default function GuestTripletDraw({
 
   const exitToLanding = useCallback(() => {
     // UI only — receipt / guest resume UI cache stays for post-auth claim.
+    clearPendingGuestSpreadStart();
     resetSpreadState();
     setStep("idle");
     teaserViewTracked.current = false;
@@ -431,14 +435,18 @@ export default function GuestTripletDraw({
         sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
         setLandingQuestion(nextQuestion);
       }
-      if (isAgeGateConfirmed()) {
+      void fetchServerAgeGateConfirmed().then((ok) => {
+        if (!ok) {
+          setAgeConfirmed(false);
+          setOauthAgeConfirmed(false);
+          setAgeGateError("");
+          setStep("age");
+          return;
+        }
         setAgeConfirmed(true);
         setOauthAgeConfirmed(true);
         beginGuestSpread(nextQuestion);
-        return;
-      }
-      setAgeGateError("");
-      setStep("age");
+      });
     },
     [beginGuestSpread]
   );
@@ -459,6 +467,17 @@ export default function GuestTripletDraw({
   }, [startRequest, handleStartRequest]);
 
   useEffect(() => {
+    if (step !== "idle") return;
+    if (hasActiveGuestResumeIntent()) {
+      clearPendingGuestSpreadStart();
+      return;
+    }
+    const pending = peekPendingGuestSpreadStart();
+    if (!pending) return;
+    handleStartRequest(pending);
+  }, [step, handleStartRequest]);
+
+  useEffect(() => {
     const onReset = () => exitToLanding();
     window.addEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
     return () => window.removeEventListener(GUEST_SPREAD_RESET_EVENT, onReset);
@@ -468,7 +487,8 @@ export default function GuestTripletDraw({
     if (step === "idle") return;
     const frame = window.requestAnimationFrame(() => {
       const picker = document.getElementById(GUEST_SPREAD_PICKER_ID);
-      picker?.scrollIntoView({ behavior: "smooth", block: "start" });
+      const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      picker?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
       picker?.focus({ preventScroll: true });
     });
     return () => window.cancelAnimationFrame(frame);
@@ -498,7 +518,7 @@ export default function GuestTripletDraw({
   const handleTablePick = useCallback(
     (index: number) => {
       if (ageConfirming) return;
-      if (!ageConfirmed && !isAgeGateConfirmed()) {
+      if (!ageConfirmed) {
         setStep("age");
         return;
       }
@@ -615,6 +635,7 @@ export default function GuestTripletDraw({
         phase: "receipt_pending_auth",
       });
       trackGuestSpreadCompleted();
+      clearPendingGuestSpreadStart();
       sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
       receiptReadyAtRef.current = Date.now();
       teaserFetchedRef.current = false;
@@ -682,6 +703,7 @@ export default function GuestTripletDraw({
   if (step === "pick") {
     return (
       <MagicalSpreadTable
+        id={GUEST_SPREAD_PICKER_ID}
         tableSize={tableSize}
         cardCount={CARD_COUNT}
         system={system}

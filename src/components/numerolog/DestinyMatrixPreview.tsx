@@ -17,7 +17,7 @@ import { PRICING } from "@/lib/config/pricing";
 import { fullMatrixSessionHref } from "@/lib/numerology/matrix-subject-routing";
 import {
   confirmAgeGateOnServer,
-  isAgeGateConfirmed,
+  fetchServerAgeGateConfirmed,
 } from "@/lib/age-gate";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
@@ -250,11 +250,19 @@ export default function DestinyMatrixPreview() {
   );
 
   useEffect(() => {
-    // Registered users already confirmed 18+ at signup; guests need the age gate.
+    // Registered users already confirmed 18+ at signup; guests need the HttpOnly cookie.
     if (authLoading) return;
-    if (isLoggedIn || isAgeGateConfirmed()) {
+    if (isLoggedIn) {
       setAgeReady(true);
+      return;
     }
+    let cancelled = false;
+    void fetchServerAgeGateConfirmed().then((ok) => {
+      if (!cancelled) setAgeReady(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, isLoggedIn]);
 
   useEffect(() => {

@@ -322,3 +322,15 @@
   color: rgba(255, 255, 255, 0.65);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .deck-pick__slot,
+  .deck-pick__card-wrap {
+    transition: none;
+  }
+
+  .deck-pick__slot--dim {
+    filter: none;
+    opacity: 0.4;
+  }
+}
+

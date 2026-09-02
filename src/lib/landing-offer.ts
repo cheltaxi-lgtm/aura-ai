@@ -130,6 +130,8 @@ export const HOME_CUSTOM_QUESTION_EVENT = "zovus:home-custom-question";
 export const GUEST_SPREAD_RESET_EVENT = "zovus:reset-guest-spread";
 export const GUEST_SPREAD_DRAFT_KEY = "zovus_guest_spread_draft";
 export const LANDING_QUESTION_KEY = "zovus_landing_question";
+/** One-shot SEO/CTA start that survives Strict Mode / splash remounts. Not a receipt. */
+export const GUEST_SPREAD_PENDING_START_KEY = "zovus_guest_spread_pending_start";
 
 /** Free 3-card landing spread is always classic Rider-Waite tarot with Veronika. */
 export const GUEST_TRIPLET_MASTER_ID = "veronika";
@@ -138,6 +140,43 @@ export type GuestSpreadStartDetail = {
   question?: string;
   masterId?: string;
 };
+
+export function writePendingGuestSpreadStart(detail: GuestSpreadStartDetail = {}): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(GUEST_SPREAD_PENDING_START_KEY, JSON.stringify(detail));
+  } catch {
+    /* private mode */
+  }
+}
+
+export function peekPendingGuestSpreadStart(): GuestSpreadStartDetail | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = sessionStorage.getItem(GUEST_SPREAD_PENDING_START_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as GuestSpreadStartDetail;
+    return parsed && typeof parsed === "object" ? parsed : {};
+  } catch {
+    return null;
+  }
+}
+
+export function clearPendingGuestSpreadStart(): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.removeItem(GUEST_SPREAD_PENDING_START_KEY);
+  } catch {
+    /* private mode */
+  }
+}
+
+/** Persist + dispatch so GuestTripletDraw can recover if it remounts after the event. */
+export function signalGuestSpreadStart(detail: GuestSpreadStartDetail = {}): void {
+  if (typeof window === "undefined") return;
+  writePendingGuestSpreadStart(detail);
+  window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+}
 
 /** Pain-language chips for guest hero — reuse intent slugs, change only labels. Max 3. */
 export const GUEST_HERO_PAIN_CHIPS = [

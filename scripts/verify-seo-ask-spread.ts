@@ -81,14 +81,17 @@ section("static: middleware allows guest teaser without JWT");
 section("static: HomePage routes guest ask/spread to GuestTriplet");
 {
   const home = readSrc("src/components/HomePage.tsx");
-  assert.ok(home.includes("GUEST_SPREAD_START_EVENT"), "must dispatch GuestTriplet start");
+  assert.ok(
+    home.includes("signalGuestSpreadStart"),
+    "must dispatch GuestTriplet start"
+  );
   assert.ok(home.includes("hasActiveGuestResumeIntent"), "must guard active receipt");
   assert.ok(home.includes('spreadParam === "1"') || home.includes("spreadParam === '1'"));
   assert.ok(home.includes("trackGuestTripletRedrawPrevented"));
 
   // Guest without receipt must NOT open paid SEO wall for bare spread=1
   const spreadBlock = home.slice(home.indexOf("Bare /?ask&spread=1"));
-  assert.ok(spreadBlock.includes("GUEST_SPREAD_START_EVENT"));
+  assert.ok(spreadBlock.includes("signalGuestSpreadStart"));
   assert.ok(
     !spreadBlock.slice(0, 900).includes("setSeoFlowOpen(true)"),
     "guest spread=1 must not open MasterSessionFlow wall"
@@ -98,7 +101,7 @@ section("static: HomePage routes guest ask/spread to GuestTriplet");
   const askIdx = home.indexOf("Guest SEO/deep-link");
   assert.ok(askIdx > 0, "guest SEO ask deep-link comment/branch missing");
   const askBlock = home.slice(askIdx, askIdx + 800);
-  assert.ok(askBlock.includes("GUEST_SPREAD_START_EVENT"));
+  assert.ok(askBlock.includes("signalGuestSpreadStart"));
 }
 
 section("matrix row 1: no receipt → new draw");

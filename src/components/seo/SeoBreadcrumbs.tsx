@@ -11,7 +11,9 @@ export default function SeoBreadcrumbs({ items }: { items: BreadcrumbItem[] }) {
           <span key={item.path} className="flex items-center gap-2">
             {i > 0 ? <span aria-hidden>·</span> : null}
             {i === items.length - 1 ? (
-              <span className="text-white/70">{item.name}</span>
+              <span className="text-white/70" aria-current="page">
+                {item.name}
+              </span>
             ) : (
               <Link href={item.path} className="transition hover:text-aura-gold">
                 {item.name}

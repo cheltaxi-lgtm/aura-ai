@@ -88,6 +88,36 @@ body,
     outline-offset: 2px;
   }
 
+  .skip-link {
+    position: absolute;
+    left: 0.75rem;
+    top: 0.75rem;
+    z-index: 10050;
+    padding: 0.5rem 0.85rem;
+    border-radius: 0.5rem;
+    background: #1a1208;
+    color: #f6ecd4;
+    font-size: 0.875rem;
+    opacity: 0;
+    transform: translateY(-160%);
+    transition:
+      opacity 0.15s ease,
+      transform 0.15s ease;
+  }
+
+  .skip-link:focus {
+    opacity: 1;
+    transform: none;
+    outline: 2px solid rgba(232, 199, 126, 0.7);
+    outline-offset: 2px;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .skip-link {
+      transition: none;
+    }
+  }
+
   @media (prefers-contrast: more) {
     body {
       --color-border: rgba(201, 162, 74, 0.5);

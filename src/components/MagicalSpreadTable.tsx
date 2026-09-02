@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Loader2 } from "lucide-react";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DECK_ACCENT_CLASS, DECK_SYSTEM_LABEL } from "@/lib/deck-card-utils";
@@ -13,6 +13,7 @@ interface TableCardFace {
 }
 
 interface MagicalSpreadTableProps {
+  id?: string;
   tableSize: number;
   cardCount: number;
   system: DeckSystem;
@@ -55,6 +56,7 @@ function cardSize(count: number): "sm" | "md" {
 }
 
 export default function MagicalSpreadTable({
+  id,
   tableSize,
   cardCount,
   system,
@@ -73,6 +75,7 @@ export default function MagicalSpreadTable({
   standalone = false,
   tableCards,
 }: MagicalSpreadTableProps) {
+  const reduceMotion = useReducedMotion();
   const faceUp = system === "numerology" && (tableCards?.length ?? 0) > 0;
   const theme = SYSTEM_THEME[system] ?? SYSTEM_THEME["tarot-veronika"];
   const accent = DECK_ACCENT_CLASS[system];
@@ -92,6 +95,8 @@ export default function MagicalSpreadTable({
 
   return (
     <div
+      id={id}
+      tabIndex={id ? -1 : undefined}
       className={`deck-pick ${theme} ${accent}${underSiteHeader ? " deck-pick--under-site-header" : ""}`}
       data-master={masterId}
     >
@@ -145,15 +150,20 @@ export default function MagicalSpreadTable({
                 disabled={disabled || resolving || pickComplete || selected}
                 onClick={() => onPick(index)}
                 className={`deck-pick__slot ${selected ? "deck-pick__slot--picked" : ""} ${dimmed ? "deck-pick__slot--dim" : ""}`}
-                initial={{ opacity: 0, y: slotCount > 36 ? 0 : 12 }}
+                initial={reduceMotion ? false : { opacity: 0, y: slotCount > 36 ? 0 : 12 }}
                 animate={{ opacity: dimmed ? 0.28 : 1, y: 0 }}
-                transition={{ delay: enterDelay, duration: slotCount > 36 ? 0.2 : 0.35 }}
+                transition={{
+                  delay: reduceMotion ? 0 : enterDelay,
+                  duration: reduceMotion ? 0 : slotCount > 36 ? 0.2 : 0.35,
+                }}
                 whileHover={
-                  !selected && !pickComplete && !disabled
-                    ? { y: -4, transition: { duration: 0.15 } }
-                    : undefined
+                  reduceMotion || selected || pickComplete || disabled
+                    ? undefined
+                    : { y: -4, transition: { duration: 0.15 } }
                 }
-                whileTap={!selected && !pickComplete && !disabled ? { scale: 0.96 } : undefined}
+                whileTap={
+                  reduceMotion || selected || pickComplete || disabled ? undefined : { scale: 0.96 }
+                }
                 aria-label={
                   selected
                     ? `Выбрано, позиция ${order + 1}`
@@ -177,7 +187,7 @@ export default function MagicalSpreadTable({
                     {selected ? (
                       <motion.span
                         className="deck-pick__badge"
-                        initial={{ scale: 0 }}
+                        initial={reduceMotion ? false : { scale: 0 }}
                         animate={{ scale: 1 }}
                       >
                         {order + 1}
@@ -200,7 +210,7 @@ export default function MagicalSpreadTable({
               <div key={i} className={`deck-pick__tray-slot ${filled ? "deck-pick__tray-slot--filled" : ""}`}>
                 {filled ? (
                   <motion.div
-                    initial={{ scale: 0.4, y: 12 }}
+                    initial={reduceMotion ? false : { scale: 0.4, y: 12 }}
                     animate={{ scale: 1, y: 0 }}
                     className="deck-pick__tray-card"
                   >

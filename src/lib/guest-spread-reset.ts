@@ -1,6 +1,7 @@
 import { clearGuestTriplet } from "@/lib/guest-triplet";
 import { ACCOUNT_KEY, persistStep } from "@/lib/home-flow-storage";
 import {
+  clearPendingGuestSpreadStart,
   GUEST_SPREAD_DRAFT_KEY,
   GUEST_SPREAD_RESET_EVENT,
   LANDING_QUESTION_KEY,
@@ -21,6 +22,7 @@ export function resetGuestSpreadFlow(options: ResetGuestSpreadOptions = {}): voi
 
   try {
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    clearPendingGuestSpreadStart();
     if (!options.keepLandingQuestion) {
       sessionStorage.removeItem(LANDING_QUESTION_KEY);
     }

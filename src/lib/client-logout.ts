@@ -1,7 +1,7 @@
 import { clearChatCache } from "@/lib/chat-cache";
 import { clearGuestTriplet } from "@/lib/guest-triplet";
 import { clearGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
-import { GUEST_SPREAD_DRAFT_KEY } from "@/lib/landing-offer";
+import { clearPendingGuestSpreadStart, GUEST_SPREAD_DRAFT_KEY } from "@/lib/landing-offer";
 import {
   POST_AUTH_RETURN_TO_KEY,
   PENDING_INTENT_KEY,
@@ -51,6 +51,7 @@ export function clearClientAuthState(): void {
   clearHdGuestBrowserState();
   try {
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    clearPendingGuestSpreadStart();
   } catch {
     /* private mode */
   }
@@ -70,6 +71,7 @@ export function clearClientActivityState(): void {
   localStorage.removeItem("aura:natal-active-job-started");
   try {
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    clearPendingGuestSpreadStart();
   } catch {
     /* private mode */
   }

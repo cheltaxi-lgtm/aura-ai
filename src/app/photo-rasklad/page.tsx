@@ -8,7 +8,6 @@ import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
@@ -47,15 +46,14 @@ export default function PhotoRaskladPage() {
   const label = RUNE_ACTION_LABELS.VISION_ANALYSIS;
 
   return (
-    <SeoPageShell>
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Гадание", path: "/gadanie" },
+        { name: "Расшифровка по фото", path: "/photo-rasklad" },
+      ]}
+    >
       <SeoPageTracker goal="photo_landing_view" />
-      <SeoBreadcrumbs
-        items={[
-          { name: "Zovus", path: "/" },
-          { name: "Гадание", path: "/gadanie" },
-          { name: "Расшифровка по фото", path: "/photo-rasklad" },
-        ]}
-      />
       <p className="text-sm text-aura-gold/80">Расшифровка по фото</p>
       <h1 className="mt-2 font-display text-3xl font-bold">
         Расшифровка Таро по фото онлайн

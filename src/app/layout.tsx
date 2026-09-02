@@ -65,6 +65,9 @@ export default function RootLayout({
   return (
     <html lang="ru" className={`${inter.variable} ${cormorant.variable}`} suppressHydrationWarning>
       <body className="font-body relative flex min-h-screen flex-col">
+        <a href="#app-main" className="skip-link">
+          Перейти к содержимому
+        </a>
         <Script id="app-shell-detect" strategy="beforeInteractive">
           {`(function(){try{if("scrollRestoration"in history)history.scrollRestoration="manual";if(!location.hash){window.scrollTo(0,0);var de=document.documentElement;if(de)de.scrollTop=0;if(document.body)document.body.scrollTop=0}var cap=window.Capacitor;if(cap&&cap.isNativePlatform&&cap.isNativePlatform()){document.documentElement.dataset.appShell="android";document.documentElement.dataset.nativeApp="1";document.documentElement.dataset.motionLite="1";return}var q=window.location.search;if(/(?:^|[?&])app=1(?:&|$)/.test(q)){document.documentElement.dataset.appShell="android";document.documentElement.dataset.motionLite="1";try{sessionStorage.setItem("zovus_app_shell","1")}catch(e){}}if("serviceWorker"in navigator&&!cap?.isNativePlatform?.()){navigator.serviceWorker.getRegistrations().then(function(regs){regs.forEach(function(r){r.unregister()})});if(window.caches&&caches.keys){caches.keys().then(function(keys){keys.forEach(function(k){if(k.indexOf("zovus-shell")===0)caches.delete(k)})})}}}catch(e){}})();`}
         </Script>
@@ -85,7 +88,13 @@ export default function RootLayout({
             viewport and lets long landing content paint over the site footer.
             Chat mode re-applies min-h-0 + overflow via body.chat-session-active.
           */}
-          <div className="app-main-column relative z-10 w-full flex-1">{children}</div>
+          <div
+            id="app-main"
+            tabIndex={-1}
+            className="app-main-column relative z-10 w-full flex-1"
+          >
+            {children}
+          </div>
           <AppAwareSiteFooter />
         </Providers>
         <UtmCapture />

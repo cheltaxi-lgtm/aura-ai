@@ -4,7 +4,7 @@ import dynamic from "next/dynamic";
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   confirmAgeGateOnServer,
-  isAgeGateConfirmed,
+  fetchServerAgeGateConfirmed,
 } from "@/lib/age-gate";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
@@ -95,9 +95,17 @@ export default function NatalGuestCalculator() {
 
   useEffect(() => {
     if (authLoading) return;
-    if (isLoggedIn || isAgeGateConfirmed()) {
+    if (isLoggedIn) {
       setAgeReady(true);
+      return;
     }
+    let cancelled = false;
+    void fetchServerAgeGateConfirmed().then((ok) => {
+      if (!cancelled) setAgeReady(ok);
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [authLoading, isLoggedIn]);
 
   useEffect(() => {

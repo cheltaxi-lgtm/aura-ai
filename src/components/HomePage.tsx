@@ -172,11 +172,12 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import {
+  clearPendingGuestSpreadStart,
   GUEST_SPREAD_PICKER_ID,
-  GUEST_SPREAD_START_EVENT,
   GUEST_TRIPLET_MASTER_ID,
   HOME_CUSTOM_QUESTION_EVENT,
   LANDING_QUESTION_KEY,
+  signalGuestSpreadStart,
   type GuestSpreadStartDetail,
 } from "@/lib/landing-offer";
 import { GUEST_TRIPLET_SUGGESTED_REPLIES } from "@/lib/guest-chat-suggestions";
@@ -794,7 +795,7 @@ export default function HomePage({
         question,
         masterId: GUEST_TRIPLET_MASTER_ID,
       };
-      window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+      signalGuestSpreadStart(detail);
       requestAnimationFrame(() => {
         document
           .getElementById(GUEST_SPREAD_PICKER_ID)
@@ -883,6 +884,7 @@ export default function HomePage({
       // Active guest receipt/UI: never start a new pick (SEO deep-link ≠ redraw).
       const guestUi = loadGuestResumeUiCache();
       if (hasActiveGuestResumeIntent() || (isLoggedIn && guestUi)) {
+        clearPendingGuestSpreadStart();
         trackGuestTripletRedrawPrevented({
           had_ask_params: true,
           master_id: guestUi?.masterId || params.get("master")?.trim() || "veronika",
@@ -906,7 +908,7 @@ export default function HomePage({
           question: askParam,
           masterId: params.get("master")?.trim() || GUEST_TRIPLET_MASTER_ID,
         };
-        window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+        signalGuestSpreadStart(detail);
         requestAnimationFrame(() => {
           document
             .getElementById(GUEST_SPREAD_PICKER_ID)
@@ -1042,6 +1044,7 @@ export default function HomePage({
     if (!isLoggedIn && (spreadParam === "1" || spreadParam === "triplet")) {
       const guestUi = loadGuestResumeUiCache();
       if (hasActiveGuestResumeIntent()) {
+        clearPendingGuestSpreadStart();
         trackGuestTripletRedrawPrevented({
           had_ask_params: Boolean(params.get("ask") != null),
           master_id: guestUi?.masterId || params.get("master")?.trim() || "veronika",
@@ -1050,7 +1053,7 @@ export default function HomePage({
         const detail: GuestSpreadStartDetail = {
           masterId: params.get("master")?.trim() || GUEST_TRIPLET_MASTER_ID,
         };
-        window.dispatchEvent(new CustomEvent(GUEST_SPREAD_START_EVENT, { detail }));
+        signalGuestSpreadStart(detail);
         requestAnimationFrame(() => {
           document
             .getElementById(GUEST_SPREAD_PICKER_ID)

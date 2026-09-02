@@ -20,6 +20,14 @@ export function confirmAgeGate(): void {
   }
 }
 
+export function clearAgeGate(): void {
+  try {
+    localStorage.removeItem(AGE_GATE_STORAGE_KEY);
+  } catch {
+    /* ignore */
+  }
+}
+
 /** Sync localStorage consent to httpOnly cookie (guest APIs). */
 export async function confirmAgeGateOnServer(): Promise<boolean> {
   try {
@@ -49,7 +57,9 @@ export async function fetchServerAgeGateConfirmed(): Promise<boolean> {
       confirmAgeGate();
       return true;
     }
-    return isAgeGateConfirmed();
+    // Cookie is the legal source of truth — drop stale localStorage so UI cannot skip.
+    clearAgeGate();
+    return false;
   } catch {
     return isAgeGateConfirmed();
   }
