@@ -129,6 +129,10 @@ function toPublic(row: {
 
 let seedPromise: Promise<void> | null = null;
 
+function isMissingRelationError(error: unknown): boolean {
+  return (error as { code?: string } | null)?.code === "42P01";
+}
+
 export async function ensureLandingReviewSeed(): Promise<void> {
   if (seedPromise) {
     await seedPromise;
@@ -151,21 +155,31 @@ export async function ensureLandingReviewSeed(): Promise<void> {
         [seed.key, seed.rating, seed.name, seed.city, seed.product, seed.body, published.toISOString()]
       );
     }
-  })().finally(() => {
-    seedPromise = null;
-  });
+  })()
+    .catch((error) => {
+      if (isMissingRelationError(error)) return;
+      throw error;
+    })
+    .finally(() => {
+      seedPromise = null;
+    });
   await seedPromise;
 }
 
 export async function getApprovedReviewSummary(): Promise<{ count: number; averageRating: number }> {
-  const { rows } = await query<{ count: string; avg: string | null }>(
-    `SELECT COUNT(*)::text AS count, ROUND(AVG(rating)::numeric, 1)::text AS avg
-     FROM landing_reviews WHERE status = 'approved'`
-  );
-  return {
-    count: Number.parseInt(rows[0]?.count ?? "0", 10),
-    averageRating: Number.parseFloat(rows[0]?.avg ?? "0") || 0,
-  };
+  try {
+    const { rows } = await query<{ count: string; avg: string | null }>(
+      `SELECT COUNT(*)::text AS count, ROUND(AVG(rating)::numeric, 1)::text AS avg
+       FROM landing_reviews WHERE status = 'approved'`
+    );
+    return {
+      count: Number.parseInt(rows[0]?.count ?? "0", 10),
+      averageRating: Number.parseFloat(rows[0]?.avg ?? "0") || 0,
+    };
+  } catch (error) {
+    if (isMissingRelationError(error)) return { count: 0, averageRating: 0 };
+    throw error;
+  }
 }
 
 export async function listApprovedReviews(opts: {
@@ -182,7 +196,7 @@ export async function listApprovedReviews(opts: {
   }
   params.push(limit + 1);
   const limitIdx = params.length;
-  const { rows } = await query<{
+  let rows: Array<{
     id: string;
     rating: number;
     author_name: string;
@@ -190,14 +204,20 @@ export async function listApprovedReviews(opts: {
     product: LandingReviewProduct;
     body: string;
     published_at: Date;
-  }>(
-    `SELECT id, rating, author_name, city, product, body, published_at
-     FROM landing_reviews
-     WHERE ${where}
-     ORDER BY published_at DESC, id DESC
-     LIMIT $${limitIdx}`,
-    params
-  );
+  }>;
+  try {
+    ({ rows } = await query(
+      `SELECT id, rating, author_name, city, product, body, published_at
+       FROM landing_reviews
+       WHERE ${where}
+       ORDER BY published_at DESC, id DESC
+       LIMIT $${limitIdx}`,
+      params
+    ));
+  } catch (error) {
+    if (isMissingRelationError(error)) return { items: [], nextCursor: null };
+    throw error;
+  }
   const extra = rows.length > limit;
   const slice = extra ? rows.slice(0, limit) : rows;
   const last = slice[slice.length - 1];

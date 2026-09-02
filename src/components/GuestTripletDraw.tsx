@@ -59,6 +59,8 @@ const CARD_COUNT = 3;
 const GUEST_TEASER_AUTH_ID = "guest-teaser-auth";
 /** Match server TEASER_RECEIPT_MIN_AGE_MS before first teaser fetch. */
 const TEASER_FETCH_MIN_DELAY_MS = 800;
+/** If the teaser LLM hangs, show keyword copy so conversion is not blocked. */
+const TEASER_FALLBACK_MS = 8_000;
 
 function getGuestId(): string {
   if (typeof window === "undefined") return "guest";
@@ -188,6 +190,16 @@ export default function GuestTripletDraw({
 
     let cancelled = false;
     let timer: number | null = null;
+    const fallbackTimer = window.setTimeout(() => {
+      if (cancelled) return;
+      setTeaserText(
+        (prev) =>
+          prev ||
+          keywordFallback ||
+          "Карты уже сохранены. Полный разбор откроется после входа — пересчёта не будет."
+      );
+      setTeaserLoading(false);
+    }, TEASER_FALLBACK_MS);
 
     const run = async () => {
       const readyAt = receiptReadyAtRef.current ?? Date.now();
@@ -224,6 +236,7 @@ export default function GuestTripletDraw({
     void run();
     return () => {
       cancelled = true;
+      window.clearTimeout(fallbackTimer);
       if (timer != null) window.clearTimeout(timer);
     };
   }, [step, keywordFallback]);
@@ -773,8 +786,7 @@ export default function GuestTripletDraw({
                 <button
                   type="button"
                   onClick={openFullReadingGate}
-                  disabled={teaserLoading || !teaserText}
-                  className="btn-primary w-full px-6 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
+                  className="btn-primary w-full px-6 py-3.5"
                   data-guest-cta="full_reading"
                 >
                   Получить полный разбор

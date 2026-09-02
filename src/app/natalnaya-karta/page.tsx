@@ -6,7 +6,6 @@ import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import NatalLandingCtas from "@/components/seo/NatalLandingCtas";
 import NatalGuestCalculator from "@/components/natal/NatalGuestCalculator";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
@@ -133,7 +132,13 @@ export default function NatalnayaKartaPage() {
   ].join(" ");
 
   return (
-    <SeoPageShell backHref="/gadanie" backLabel="Гадание онлайн">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Гадание", path: "/gadanie" },
+        { name: "Натальная карта", path: PATH },
+      ]}
+    >
       <script
         type="application/ld+json"
         dangerouslySetInnerHTML={{
@@ -151,12 +156,6 @@ export default function NatalnayaKartaPage() {
         goal="natal_landing_view"
         funnelProduct="natal"
         funnelSource="natal_landing"
-      />
-      <SeoBreadcrumbs
-        items={[
-          { name: "Zovus", path: "/" },
-          { name: "Натальная карта", path: PATH },
-        ]}
       />
       <p className="text-sm text-aura-gold/80">Астрология · Натальная карта</p>
       <h1 className="mt-2 font-display text-3xl font-bold">

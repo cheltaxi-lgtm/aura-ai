@@ -504,6 +504,17 @@ html[data-motion-lite="1"] .salon-bg__lines {
   margin-top: 1rem;
 }
 
+/* Desktop: ghost CTA sits over the hero flame — need a readable scrim. */
+@media (min-width: 768px) {
+  .editorial-hero__actions--secondary .editorial-btn--ghost {
+    background: rgba(10, 8, 6, 0.58);
+    backdrop-filter: blur(8px);
+    border-color: rgba(232, 199, 126, 0.55);
+    color: #f6ecd4;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.55);
+  }
+}
+
 .editorial-hero__gift {
   margin-top: 0.85rem;
 }
@@ -3214,14 +3225,18 @@ html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__
   display: grid;
   grid-template-rows: 0fr;
   opacity: 0;
-  transition:
-    grid-template-rows 280ms ease-out,
-    opacity 280ms ease-out;
+  transition: opacity 280ms ease-out;
 }
 
 .landing-faq__item--open .landing-faq__panel {
   grid-template-rows: 1fr;
   opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .landing-faq__panel {
+    transition: none;
+  }
 }
 
 .landing-faq__panel-inner {
@@ -3306,7 +3321,6 @@ html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__
   .landing-faq__list--revealed .landing-faq__item,
   .landing-faq__panel,
   .landing-faq__item--open .landing-faq__panel,
-  .landing-faq__chevron,
   .landing-final-cta__title,
   .landing-final-cta__sub,
   .landing-final-cta--in .landing-final-cta__title,
@@ -3315,6 +3329,11 @@ html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__
     animation: none !important;
     opacity: 1;
     transform: none;
+  }
+
+  .landing-faq__chevron {
+    transition: none !important;
+    animation: none !important;
   }
 
   .landing-faq__panel {

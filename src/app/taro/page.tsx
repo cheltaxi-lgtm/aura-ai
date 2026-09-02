@@ -4,7 +4,6 @@ import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import {
   FORECAST_MONTHS,
@@ -53,17 +52,15 @@ export default async function TaroPillarPage() {
   const month = getCurrentForecastMonth();
 
   return (
-    <SeoPageShell backHref="/" backLabel="На главную">
+    <SeoPageShell breadcrumbs={breadcrumbs}>
       <SeoPageTracker goal="taro_hub_view" />
-      <SeoBreadcrumbs items={breadcrumbs} />
-      <p className="text-sm text-aura-gold/80">Таро · Zovus</p>
       <AdsSeoH1 path="/taro">Таро онлайн: расклады и значения карт</AdsSeoH1>
       <p className="mt-4 text-white/70">
         Готовые вопросы, понятные схемы раскладов и разбор с наставником в чате. Можно изучать
         значения арканов, задать свой вопрос или загрузить фото домашнего расклада на расшифровку.
       </p>
 
-      <div className="mt-8 flex flex-wrap gap-3">
+      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-nowrap [&>a]:w-full [&>a]:justify-center [&>a]:text-center">
         <SeoTrackedCta href="/?spread=triplet">Бесплатный расклад на 3 карты</SeoTrackedCta>
         <SeoTrackedCta href="/photo-rasklad" variant="ghost">
           Расшифровка по фото

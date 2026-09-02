@@ -847,7 +847,7 @@ export default function AuraReadingFlow() {
         {step === "capture" && (
           <motion.div
             key="capture"
-            initial={{ opacity: 0, y: 12 }}
+            initial={false}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -8 }}
             transition={{ duration: 0.25 }}
@@ -879,6 +879,10 @@ export default function AuraReadingFlow() {
                     Отмена
                   </button>
                 </div>
+              </div>
+            ) : ageReady === null ? (
+              <div className="mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-6 text-center">
+                <p className="text-sm text-white/55">Готовим разбор…</p>
               </div>
             ) : ageReady === false ? (
               <div className="mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">

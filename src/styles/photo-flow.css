@@ -183,6 +183,12 @@
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .photo-flow-confirm-faces__preview:not(.photo-flow-confirm-faces__preview--loading) {
+    animation: none;
+  }
+}
+
 .photo-flow-field label {
   display: block;
   margin-bottom: 0.375rem;

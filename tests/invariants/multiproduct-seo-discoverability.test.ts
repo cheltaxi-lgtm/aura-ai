@@ -158,11 +158,11 @@ describe("multiproduct-seo-discoverability", () => {
     const matrixPage = read("src/app/numerology/[slug]/page.tsx");
     expect(matrixPage).toMatch(/buildForecastStructuredData/);
     expect(matrixPage).toMatch(/MATRIX_PAIR_FAQ/);
-    expect(matrixPage).toMatch(/SeoBreadcrumbs/);
+    expect(matrixPage).toMatch(/breadcrumbs=\{/);
 
     const natal = read("src/app/natalnaya-karta/page.tsx");
     expect(natal).toMatch(/buildForecastStructuredData/);
-    expect(natal).toMatch(/SeoBreadcrumbs/);
+    expect(natal).toMatch(/breadcrumbs=\{/);
 
     const hd = read("src/app/dizayn-cheloveka/rasschitat/page.tsx");
     expect(hd).toMatch(/buildForecastStructuredData/);

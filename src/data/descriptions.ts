@@ -439,7 +439,7 @@ export function getSymbolDescription(
   }
   return {
     shortMeaning: "",
-    fullMeaning: `${name} — символ колоды. Подробное описание скоро появится.`,
+    fullMeaning: `${name} — символ колоды. Значение читается в контексте вашего расклада.`,
     keywords: [],
   };
 }

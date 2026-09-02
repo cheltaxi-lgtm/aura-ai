@@ -6,7 +6,6 @@ import { PRICING } from "@/lib/config/pricing";
 import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
-import SeoBreadcrumbs from "@/components/seo/SeoBreadcrumbs";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { AdsSeoH1, AdsSeoJsonLd } from "@/components/seo/AdsSeoEnhancements";
 import { getAppliedSeoOverrides } from "@/modules/ads/organic/overrides";
@@ -179,7 +178,19 @@ export default async function NumerologyTopicPage({
       : null;
 
   return (
-    <SeoPageShell backHref="/numerology" backLabel="Нумерология">
+    <SeoPageShell
+      backHref="/numerology"
+      backLabel="Нумерология"
+      breadcrumbs={
+        isDestinyMatrix || isMatrixPair
+          ? [
+              { name: "Zovus", path: "/" },
+              { name: "Нумерология", path: "/numerology" },
+              { name: topic.title, path: `/numerology/${slug}` },
+            ]
+          : undefined
+      }
+    >
       {matrixStructuredData ? (
         <script
           type="application/ld+json"
@@ -200,15 +211,6 @@ export default async function NumerologyTopicPage({
         }
         funnelSource={isDestinyMatrix ? "destiny_matrix" : isMatrixPair ? "matrix_pair" : undefined}
       />
-      {isDestinyMatrix || isMatrixPair ? (
-        <SeoBreadcrumbs
-          items={[
-            { name: "Zovus", path: "/" },
-            { name: "Нумерология", path: "/numerology" },
-            { name: topic.title, path: `/numerology/${slug}` },
-          ]}
-        />
-      ) : null}
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
       <AdsSeoH1 path={`/numerology/${slug}`}>{topic.title}</AdsSeoH1>
       <p className="mt-4 text-white/70">{topic.intro}</p>
@@ -255,6 +257,7 @@ export default async function NumerologyTopicPage({
               Полный разбор пары
             </SeoTrackedCta>
           </div>
+          <MatrixCompatibilityPreview />
           <SeoSection title="Что показывает совместимость матриц">
             <p>
               Сравниваются ключевые точки двух матриц судьбы: комфорт, любовь, деньги, напряжение и
@@ -262,7 +265,6 @@ export default async function NumerologyTopicPage({
               универсальный официальный показатель «совместимости на всю жизнь».
             </p>
           </SeoSection>
-          <MatrixCompatibilityPreview />
           <SeoSection title="Что входит в полный разбор">
             <p>
               {pairCost} ᚢ — разбор пары с Эвелиной: практики по ключам, общий совет и диалог.
@@ -324,6 +326,8 @@ export default async function NumerologyTopicPage({
             </SeoTrackedCta>
           </div>
 
+          <DestinyMatrixPreview />
+
           <SeoSection title="Что показывает матрица судьбы">
             <p>
               Центральная энергия — ядро характера и способ принимать решения. Вокруг неё
@@ -341,7 +345,7 @@ export default async function NumerologyTopicPage({
 
           <SeoSection title="Как рассчитать матрицу судьбы онлайн">
             <ol className="list-decimal space-y-2 pl-5 text-white/75">
-              <li>Укажите дату рождения в блоке ниже.</li>
+              <li>Укажите дату рождения в форме выше.</li>
               <li>Получите схему на 22 арканах и короткие акценты по точкам.</li>
               <li>
                 Если нужен развёрнутый разбор — откройте сессию с{" "}
@@ -349,8 +353,6 @@ export default async function NumerologyTopicPage({
               </li>
             </ol>
           </SeoSection>
-
-          <DestinyMatrixPreview />
 
           <SeoSection title="Что вы узнаете из бесплатной схемы">
             <p>Ядро личности по центральной энергии.</p>

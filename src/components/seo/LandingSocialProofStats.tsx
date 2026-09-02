@@ -15,6 +15,13 @@ type LandingSocialProofStatsProps = {
   className?: string;
 };
 
+/** Clock-free SSR/first-paint placeholders — live numbers start in useEffect. */
+const PLACEHOLDER_STATS: LandingSocialProofStat[] = [
+  { key: "users", value: "—", label: "зарегистрированы" },
+  { key: "total", value: "—", label: "раскладов" },
+  { key: "online", value: "—", label: "сейчас на сайте", live: true },
+];
+
 const ONLINE_TICK_MS = 10_000;
 const PUBLIC_STATS_MS = 300_000;
 const SESSION_SPREAD_CAP = 5;
@@ -48,7 +55,7 @@ export default function LandingSocialProofStats({
   variant = "trust",
   className = "",
 }: LandingSocialProofStatsProps) {
-  const [stats, setStats] = useState<LandingSocialProofStat[]>(() => getLandingSocialProofStats());
+  const [stats, setStats] = useState<LandingSocialProofStat[]>(PLACEHOLDER_STATS);
   const publicFloorRef = useRef({ sessions: 0, users: 0 });
   const liveOffsetsRef = useRef({ users: 0, total: 0 });
 
