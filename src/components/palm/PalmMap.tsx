@@ -1,6 +1,7 @@
 "use client";
 
-import { useId, useMemo, useState } from "react";
+import Image from "next/image";
+import { type KeyboardEvent, useId, useMemo, useState } from "react";
 
 import {
   PALM_HAND_LABELS,
@@ -23,7 +24,6 @@ import {
 import {
   PALM_MAP_LINES,
   PALM_MAP_MOUNTS,
-  PALM_MAP_OUTLINE,
   PALM_MAP_VB,
 } from "@/components/palm/palm-map-geometry";
 
@@ -56,24 +56,35 @@ function defaultFeature(verdict: PalmVerdict | undefined): Feature {
   return "life";
 }
 
-function lineDash(quality: PalmLineQuality, length: PalmLineLength, present: boolean): string {
-  if (!present) return "6 10";
-  const shown = length === "short" ? 42 : length === "medium" ? 70 : 100;
-  if (quality === "broken") return "8 7";
-  if (quality === "chained") return "3 5";
-  return `${shown} 100`;
+function lineWindow(length: PalmLineLength): number {
+  if (length === "short") return 48;
+  if (length === "medium") return 76;
+  return 100;
+}
+
+function qualityDash(quality: PalmLineQuality, present: boolean): string | undefined {
+  if (!present) return "3 10";
+  if (quality === "broken") return "13 8";
+  if (quality === "chained") return "1 6";
+  return undefined;
+}
+
+function mountScale(prominence: PalmProminence): number {
+  if (prominence === "strong") return 1.12;
+  if (prominence === "weak") return 0.86;
+  return 1;
 }
 
 /**
- * Canonical chiromancy diagram. Reads length/quality/notes from the snapshot.
- * Must never be drawn on the user photo — the snapshot has no landmarks.
+ * A photographed palm with a semantic interactive reading layer.
+ * Must never be drawn on the user photo: the stored snapshot has no landmarks.
  */
 export default function PalmMap({
   snapshot,
 }: {
   snapshot: Pick<PalmSnapshot, "whichHand" | "handShape" | "majorLines" | "mounts" | "verdict">;
 }) {
-  const uid = useId();
+  const uid = useId().replace(/:/g, "");
   const [selected, setSelected] = useState<Feature>(() => defaultFeature(snapshot.verdict));
   const flipLeft = snapshot.whichHand === "left";
 
@@ -123,58 +134,181 @@ export default function PalmMap({
     detail = selectedMount.note;
   }
 
-  return (
-    <div className="palm-map">
-      <p className="palm-map__kicker">Карта ладони · {PALM_HAND_LABELS[snapshot.whichHand]}</p>
-      <svg
-        className="palm-map__svg"
-        viewBox={`0 0 ${PALM_MAP_VB.w} ${PALM_MAP_VB.h}`}
-        role="img"
-        aria-labelledby={`${uid}-title`}
-      >
-        <title id={`${uid}-title`}>Схема линий и холмов ладони</title>
-        <g transform={flipLeft ? `scale(-1,1) translate(-${PALM_MAP_VB.w},0)` : undefined}>
-          <path className="palm-map__outline" d={PALM_MAP_OUTLINE} />
-          {lines.map((line) => {
-            const geo = PALM_MAP_LINES[line.key];
-            const active = selected === line.key;
-            return (
-              <path
-                key={line.key}
-                className={`palm-map__line${active ? " palm-map__line--on" : ""}${
-                  line.present ? "" : " palm-map__line--faint"
-                }`}
-                d={geo.d}
-                pathLength={100}
-                stroke={geo.color}
-                strokeDasharray={lineDash(line.quality, line.length, line.present)}
-                onClick={() => setSelected(line.key)}
-              />
-            );
-          })}
-          {mounts.map((mount) => {
-            const geo = PALM_MAP_MOUNTS[mount.key];
-            const active = selected === mount.key;
-            const r = mount.prominence === "strong" ? 7 : mount.prominence === "weak" ? 4 : 5.5;
-            return (
-              <circle
-                key={mount.key}
-                className={`palm-map__mount${active ? " palm-map__mount--on" : ""}`}
-                cx={geo.cx}
-                cy={geo.cy}
-                r={r}
-                onClick={() => setSelected(mount.key)}
-              />
-            );
-          })}
-        </g>
-      </svg>
+  function selectFromKey(event: KeyboardEvent<SVGElement>, feature: Feature) {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    setSelected(feature);
+  }
 
-      <div className="palm-map__chips" role="tablist" aria-label="Линии и холмы">
+  return (
+    <figure className="palm-map">
+      <figcaption className="palm-map__intro">
+        <p className="palm-map__kicker">Карта чтения · {PALM_HAND_LABELS[snapshot.whichHand]}</p>
+        <h2 className="palm-map__title">Рисунок вашей ладони</h2>
+        <p className="palm-map__lead">
+          Основные линии и зоны, отмеченные по результату анализа фотографии
+        </p>
+      </figcaption>
+
+      <div className="palm-map__surface">
+        <div className={`palm-map__visual${flipLeft ? " palm-map__visual--left" : ""}`}>
+          <Image
+            className="palm-map__photo"
+            src="/palm/palm-realistic-right-v1.png"
+            width={PALM_MAP_VB.w}
+            height={PALM_MAP_VB.h}
+            sizes="(max-width: 560px) 88vw, 30rem"
+            alt=""
+          />
+          <svg
+            className="palm-map__svg"
+            viewBox={`0 0 ${PALM_MAP_VB.w} ${PALM_MAP_VB.h}`}
+            role="group"
+            aria-labelledby={`${uid}-title ${uid}-description`}
+          >
+            <title id={`${uid}-title`}>Карта основных линий и холмов ладони</title>
+            <desc id={`${uid}-description`}>
+              Выберите линию или область ладони, чтобы прочитать её состояние и значение.
+            </desc>
+            <defs>
+              <linearGradient id={`${uid}-line`} x1="0" y1="0" x2="1" y2="1">
+                <stop offset="0" stopColor="#b98445" />
+                <stop offset="0.48" stopColor="#fff0c9" />
+                <stop offset="1" stopColor="#9d632e" />
+              </linearGradient>
+              <filter id={`${uid}-soft`} x="-45%" y="-45%" width="190%" height="190%">
+                <feGaussianBlur stdDeviation="24" />
+              </filter>
+              <filter id={`${uid}-line-glow`} x="-40%" y="-40%" width="180%" height="180%">
+                <feGaussianBlur in="SourceGraphic" stdDeviation="2.5" result="blur" />
+                <feMerge>
+                  <feMergeNode in="blur" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+              {lines.map((line) => {
+                const shown = lineWindow(line.length);
+                return (
+                  <mask
+                    key={line.key}
+                    id={`${uid}-window-${line.key}`}
+                    maskUnits="userSpaceOnUse"
+                    x="0"
+                    y="0"
+                    width={PALM_MAP_VB.w}
+                    height={PALM_MAP_VB.h}
+                  >
+                    <path
+                      d={PALM_MAP_LINES[line.key].d}
+                      pathLength={100}
+                      fill="none"
+                      stroke="white"
+                      strokeWidth={36}
+                      strokeLinecap="round"
+                      strokeDasharray={`${shown} ${Math.max(0.01, 100 - shown)}`}
+                    />
+                  </mask>
+                );
+              })}
+            </defs>
+
+            <g className="palm-map__mounts">
+              {mounts.map((mount) => {
+                const geo = PALM_MAP_MOUNTS[mount.key];
+                const active = selected === mount.key;
+                const scale = mountScale(mount.prominence);
+                const transform = geo.rotate
+                  ? `rotate(${geo.rotate} ${geo.cx} ${geo.cy})`
+                  : undefined;
+                return (
+                  <g key={mount.key}>
+                    <ellipse
+                      className={`palm-map__mount-zone palm-map__mount-zone--${mount.prominence}${
+                        active ? " palm-map__mount-zone--on" : ""
+                      }`}
+                      cx={geo.cx}
+                      cy={geo.cy}
+                      rx={geo.rx * scale}
+                      ry={geo.ry * scale}
+                      transform={transform}
+                      filter={`url(#${uid}-soft)`}
+                      aria-hidden="true"
+                    />
+                    <ellipse
+                      className="palm-map__mount-hit"
+                      cx={geo.cx}
+                      cy={geo.cy}
+                      rx={Math.max(72, geo.rx + 28)}
+                      ry={Math.max(72, geo.ry + 28)}
+                      transform={transform}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${PALM_MOUNT_NAMES[mount.key]}: ${PROMINENCE_RU[mount.prominence]}`}
+                      aria-pressed={active}
+                      onClick={() => setSelected(mount.key)}
+                      onKeyDown={(event) => selectFromKey(event, mount.key)}
+                    />
+                  </g>
+                );
+              })}
+            </g>
+
+            <g className="palm-map__lines">
+              {lines.map((line) => {
+                const geo = PALM_MAP_LINES[line.key];
+                const active = selected === line.key;
+                const mask = `url(#${uid}-window-${line.key})`;
+                const state = line.present
+                  ? `${LENGTH_RU[line.length]}, ${QUALITY_RU[line.quality]}`
+                  : "на снимке слабо видна";
+                return (
+                  <g key={line.key}>
+                    <path className="palm-map__line-shadow" d={geo.d} mask={mask} aria-hidden="true" />
+                    <path
+                      className={`palm-map__line${active ? " palm-map__line--on" : ""}${
+                        line.present ? "" : " palm-map__line--faint"
+                      }`}
+                      d={geo.d}
+                      pathLength={100}
+                      mask={mask}
+                      stroke={`url(#${uid}-line)`}
+                      strokeDasharray={qualityDash(line.quality, line.present)}
+                      filter={active ? `url(#${uid}-line-glow)` : undefined}
+                      aria-hidden="true"
+                    />
+                    {line.present && line.quality === "forked" ? (
+                      <path
+                        className={`palm-map__line palm-map__line-fork${
+                          active ? " palm-map__line--on" : ""
+                        }`}
+                        d={geo.forkD[line.length]}
+                        stroke={`url(#${uid}-line)`}
+                        filter={active ? `url(#${uid}-line-glow)` : undefined}
+                        aria-hidden="true"
+                      />
+                    ) : null}
+                    <path
+                      className="palm-map__line-hit"
+                      d={geo.d}
+                      role="button"
+                      tabIndex={0}
+                      aria-label={`${PALM_LINE_NAMES[line.key]}: ${state}`}
+                      aria-pressed={active}
+                      onClick={() => setSelected(line.key)}
+                      onKeyDown={(event) => selectFromKey(event, line.key)}
+                    />
+                  </g>
+                );
+              })}
+            </g>
+          </svg>
+        </div>
+      </div>
+
+      <div className="palm-map__chips" aria-label="Линии и холмы ладони">
         <button
           type="button"
-          role="tab"
-          aria-selected={selected === "shape"}
+          aria-pressed={selected === "shape"}
           className={`palm-map__chip${selected === "shape" ? " palm-map__chip--on" : ""}`}
           onClick={() => setSelected("shape")}
         >
@@ -184,8 +318,7 @@ export default function PalmMap({
           <button
             key={line.key}
             type="button"
-            role="tab"
-            aria-selected={selected === line.key}
+            aria-pressed={selected === line.key}
             className={`palm-map__chip${selected === line.key ? " palm-map__chip--on" : ""}`}
             onClick={() => setSelected(line.key)}
           >
@@ -198,8 +331,7 @@ export default function PalmMap({
             <button
               key={mount.key}
               type="button"
-              role="tab"
-              aria-selected={selected === mount.key}
+              aria-pressed={selected === mount.key}
               className={`palm-map__chip${selected === mount.key ? " palm-map__chip--on" : ""}`}
               onClick={() => setSelected(mount.key)}
             >
@@ -208,11 +340,12 @@ export default function PalmMap({
           ))}
       </div>
 
-      <article className="palm-map__explain" aria-live="polite">
+      <article className="palm-map__explain" role="status" aria-live="polite">
+        <p className="palm-map__explain-kicker">Выбрано на карте</p>
         <h3>{title}</h3>
         <p>{summary}</p>
         {detail.trim() ? <p>{detail.trim()}</p> : null}
       </article>
-    </div>
+    </figure>
   );
 }

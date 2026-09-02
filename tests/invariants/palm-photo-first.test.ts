@@ -100,6 +100,33 @@ describe("palm-photo-first", () => {
     expect(map).not.toMatch(/\bcoordinates\b/);
   });
 
+  it("palm map uses a photorealistic hand asset and accessible feature hit areas", () => {
+    const map = read("src/components/palm/PalmMap.tsx");
+    const geo = read("src/components/palm/palm-map-geometry.ts");
+    const css = read("src/styles/palm-flow.css");
+
+    expect(geo).toContain("PalmMountGeometry");
+    expect(geo).toContain("rx:");
+    expect(geo).toContain("ry:");
+    expect(geo).not.toContain("PALM_MAP_OUTLINE");
+    expect(geo).not.toContain("PALM_MAP_CREASES");
+    expect(map).toContain('from "next/image"');
+    expect(map).toContain("/palm/palm-realistic-right-v1.png");
+    expect(map).toContain("palm-map__photo");
+    expect(map).toContain('role="button"');
+    expect(map).toContain("tabIndex={0}");
+    expect(map).toContain("aria-pressed");
+    expect(map).toContain("onKeyDown");
+    expect(map).toContain("lineWindow");
+    expect(map).toContain("palm-map__mount-zone");
+    expect(map).not.toContain("<circle");
+    expect(css).toContain("palm-map__surface");
+    expect(css).toContain("palm-map__photo");
+    expect(css).toContain("palm-map__line-hit");
+    expect(css).not.toContain("#e08a8a");
+    expect(css).not.toContain("#b8c8e6");
+  });
+
   it("insight cards use a 2–3 column grid, not a single sheet", () => {
     const css = read("src/styles/palm-flow.css");
     expect(css).toContain("grid-template-columns: 1fr 1fr");

@@ -1,36 +1,64 @@
-import type { PalmLineKey, PalmMountKey } from "@/lib/palm-constants";
+import type { PalmLineKey, PalmLineLength, PalmMountKey } from "@/lib/palm-constants";
 
-/** Right palm facing the viewer, fingers up, thumb on the right. Left is a scaleX flip. */
-export const PALM_MAP_VB = { w: 240, h: 340 };
+export interface PalmLineGeometry {
+  d: string;
+  forkD: Record<PalmLineLength, string>;
+}
 
-export const PALM_MAP_OUTLINE =
-  "M78 328 C62 300 54 268 50 232 C46 198 44 168 40 138 C36 112 28 88 32 68 C36 50 52 44 64 52 C74 58 78 78 80 98 C78 78 76 48 86 30 C96 12 114 12 122 28 C128 42 126 70 124 96 C126 68 128 32 140 16 C152 2 170 6 176 24 C182 40 176 72 170 100 C176 78 186 46 200 34 C214 22 230 32 228 52 C226 72 212 100 198 124 C214 128 232 148 236 176 C240 204 228 228 206 236 C190 242 176 230 170 214 C176 250 182 286 176 328 C154 336 100 336 78 328 Z";
+export interface PalmMountGeometry {
+  cx: number;
+  cy: number;
+  rx: number;
+  ry: number;
+  rotate?: number;
+}
 
-export const PALM_MAP_LINES: Record<PalmLineKey, { d: string; color: string }> = {
-  life: {
-    d: "M186 142 C168 168 148 210 138 248 C128 278 118 304 108 322",
-    color: "#e8a87c",
+/** Native dimensions of the approved photorealistic right-palm asset. */
+export const PALM_MAP_VB = { w: 1024, h: 1536 };
+
+/** Classical lines registered directly to the photographed palm. */
+export const PALM_MAP_LINES: Record<PalmLineKey, PalmLineGeometry> = {
+  heart: {
+    d: "M230 705 C338 699 441 664 543 613 C610 580 665 570 716 586",
+    forkD: {
+      short: "M450 660 C475 640 494 616 507 588",
+      medium: "M577 598 C604 577 624 551 638 520",
+      long: "M676 575 C704 552 725 525 739 493",
+    },
   },
   head: {
-    d: "M176 158 C140 168 100 172 62 178",
-    color: "#b8c8e6",
+    d: "M725 652 C630 691 531 724 428 742 C351 756 293 768 250 783",
+    forkD: {
+      short: "M523 726 C499 700 480 672 467 641",
+      medium: "M382 751 C352 725 328 695 310 661",
+      long: "M294 771 C264 743 239 710 221 675",
+    },
   },
-  heart: {
-    d: "M192 116 C150 108 100 112 56 126",
-    color: "#e08a8a",
+  life: {
+    d: "M736 628 C650 676 603 779 617 883 C629 967 602 1018 557 1055",
+    forkD: {
+      short: "M611 807 C639 827 661 851 678 880",
+      medium: "M618 930 C646 951 666 978 679 1009",
+      long: "M570 1044 C581 1074 598 1099 622 1121",
+    },
   },
   fate: {
-    d: "M120 316 C128 260 138 190 150 118",
-    color: "#d4b06a",
+    d: "M505 1025 C503 932 493 831 474 742 C466 691 473 642 491 605",
+    forkD: {
+      short: "M498 882 C470 855 449 825 435 791",
+      medium: "M476 754 C448 728 427 697 413 663",
+      long: "M485 626 C457 598 436 566 423 531",
+    },
   },
 };
 
-export const PALM_MAP_MOUNTS: Record<PalmMountKey, { cx: number; cy: number }> = {
-  venus: { cx: 158, cy: 228 },
-  jupiter: { cx: 196, cy: 126 },
-  saturn: { cx: 156, cy: 108 },
-  apollo: { cx: 118, cy: 108 },
-  mercury: { cx: 72, cy: 120 },
-  mars: { cx: 108, cy: 176 },
-  luna: { cx: 72, cy: 248 },
+/** Soft interactive territories aligned to the real thenar, pads and outer palm. */
+export const PALM_MAP_MOUNTS: Record<PalmMountKey, PalmMountGeometry> = {
+  venus: { cx: 746, cy: 842, rx: 143, ry: 224, rotate: -16 },
+  jupiter: { cx: 676, cy: 562, rx: 78, ry: 68 },
+  saturn: { cx: 518, cy: 528, rx: 72, ry: 65 },
+  apollo: { cx: 357, cy: 545, rx: 69, ry: 62 },
+  mercury: { cx: 218, cy: 593, rx: 65, ry: 61 },
+  mars: { cx: 494, cy: 781, rx: 104, ry: 96 },
+  luna: { cx: 276, cy: 932, rx: 101, ry: 176, rotate: -8 },
 };
