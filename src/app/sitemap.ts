@@ -30,7 +30,9 @@ import {
   AURA_LAYER_SEO,
 } from "@/lib/seo/aura-content";
 import {
+  PALM_INTENT_SEO,
   PALM_LINE_SEO,
+  PALM_MARK_SEO,
   PALM_MOUNT_SEO,
   PALM_SHAPE_SEO,
 } from "@/lib/seo/palm-content";
@@ -281,6 +283,10 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           staticPage("/gadanie-po-ladoni/linii", 0.8, "weekly"),
           staticPage("/gadanie-po-ladoni/kholmy", 0.75, "monthly"),
           staticPage("/gadanie-po-ladoni/tipy-ruk", 0.75, "monthly"),
+          staticPage("/gadanie-po-ladoni/znaki", 0.75, "monthly"),
+          ...PALM_INTENT_SEO.map((item) =>
+            staticPage(`/gadanie-po-ladoni/${item.slug}`, 0.75, "monthly")
+          ),
           ...PALM_LINE_SEO.map((item) =>
             staticPage(`/gadanie-po-ladoni/linii/${item.slug}`, 0.7, "monthly")
           ),
@@ -289,6 +295,9 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
           ),
           ...PALM_SHAPE_SEO.map((item) =>
             staticPage(`/gadanie-po-ladoni/tipy-ruk/${item.slug}`, 0.65, "monthly")
+          ),
+          ...PALM_MARK_SEO.map((item) =>
+            staticPage(`/gadanie-po-ladoni/znaki/${item.slug}`, 0.65, "monthly")
           ),
         ]
       : []),

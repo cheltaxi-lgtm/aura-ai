@@ -21,6 +21,8 @@ describe("robots prefix hygiene", () => {
       "/aura/cveta",
       "/gadanie-po-ladoni",
       "/gadanie-po-ladoni/linii",
+      "/gadanie-po-ladoni/znaki",
+      "/gadanie-po-ladoni/po-foto",
       "/photo-rasklad",
       "/numerology/destiny-matrix",
       "/natalnaya-karta",
@@ -63,6 +65,8 @@ describe("canonical alias consolidation", () => {
     expect(CANONICAL_ALIASES["/khiromantiya"]).toBe("/gadanie-po-ladoni");
     expect(CANONICAL_ALIASES["/chiromantiya"]).toBe("/gadanie-po-ladoni");
     expect(CANONICAL_ALIASES["/ladon"]).toBe("/gadanie-po-ladoni");
+    expect(CANONICAL_ALIASES["/gadanie-po-ladoni-po-foto"]).toBe("/gadanie-po-ladoni/po-foto");
+    expect(CANONICAL_ALIASES["/levaya-ladon"]).toBe("/gadanie-po-ladoni/levaya");
     expect(CANONICAL_ALIASES["/rasklady/chto-chuvstvuet-ona"]).toBe(
       "/rasklady/chto-ona-chuvstvuet"
     );

@@ -143,6 +143,13 @@ export const PALM_MARK_NAMES: Record<PalmMarkKey, string> = {
   grille: "Решётка",
 };
 
+export const PALM_MARK_MEANINGS: Record<PalmMarkKey, string> = {
+  star: "Яркая точка напряжения или дара — вспышка, которую нельзя игнорировать.",
+  cross: "Перекрёсток: выбор, долг или узел, который просят развязать, а не обойти.",
+  island: "Пауза и сгусток: место, где ритм линии сбивается и просит бережности.",
+  grille: "Сетка напряжения — много мелких воздействий сразу, не один удар.",
+};
+
 export const PALM_HAND_SHAPE_LABELS: Record<PalmHandShape, string> = {
   earth: "Земля",
   air: "Воздух",

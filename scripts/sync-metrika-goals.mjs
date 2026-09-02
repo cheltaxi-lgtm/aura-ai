@@ -123,6 +123,12 @@ const DISPLAY_NAMES = {
   palm_lines_hub: "Ладонь — hub линий",
   palm_mounts_hub: "Ладонь — hub холмов",
   palm_shapes_hub: "Ладонь — hub типов рук",
+  palm_marks_hub: "Ладонь — hub знаков",
+  palm_line_view: "Ладонь — страница линии",
+  palm_mount_view: "Ладонь — страница холма",
+  palm_shape_view: "Ладонь — страница типа руки",
+  palm_mark_view: "Ладонь — страница знака",
+  palm_intent_view: "Ладонь — тематическая посадка",
 };
 
 function displayName(id) {

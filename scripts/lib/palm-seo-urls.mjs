@@ -21,6 +21,8 @@ export function getPalmSeoPaths() {
   const lines = valuesInConst(src, "LINE_SLUGS");
   const mounts = valuesInConst(src, "MOUNT_SLUGS");
   const shapes = valuesInConst(src, "SHAPE_SLUGS");
+  const marks = valuesInConst(src, "MARK_SLUGS");
+  const intents = valuesInConst(src, "INTENT_SLUGS");
   return [
     "/gadanie-po-ladoni",
     "/gadanie-po-ladoni/linii",
@@ -29,6 +31,9 @@ export function getPalmSeoPaths() {
     ...mounts.map((s) => `/gadanie-po-ladoni/kholmy/${s}`),
     "/gadanie-po-ladoni/tipy-ruk",
     ...shapes.map((s) => `/gadanie-po-ladoni/tipy-ruk/${s}`),
+    "/gadanie-po-ladoni/znaki",
+    ...marks.map((s) => `/gadanie-po-ladoni/znaki/${s}`),
+    ...intents.map((s) => `/gadanie-po-ladoni/${s}`),
   ];
 }
 

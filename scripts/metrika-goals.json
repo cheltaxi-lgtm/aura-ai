@@ -1,8 +1,8 @@
 {
   "counterId": 110138367,
   "site": "https://zovus.ru",
-  "updated": "2026-07-12",
-  "syncedInMetrikaUi": "2026-07-12",
+  "updated": "2026-09-02",
+  "syncedInMetrikaUi": "2026-09-02",
   "notes": [
     "Все 48 JS-целей созданы в Метрике (счётчик 110138367) через UI.",
     "Для повторной синхронизации: node scripts/sync-metrika-goals.mjs (нужен YANDEX_METRIKA_OAUTH_TOKEN).",
@@ -516,6 +516,86 @@
       "id": "aura_intent_view",
       "group": "aura",
       "metrikaGoalId": 604188593
+    },
+    {
+      "id": "palm_landing_view",
+      "group": "palm",
+      "metrikaGoalId": 604921943
+    },
+    {
+      "id": "palm_snapshot_start",
+      "group": "palm",
+      "metrikaGoalId": 604921944
+    },
+    {
+      "id": "palm_snapshot_complete",
+      "group": "palm",
+      "metrikaGoalId": 604921945
+    },
+    {
+      "id": "palm_auth_cta",
+      "group": "palm",
+      "metrikaGoalId": 604921947
+    },
+    {
+      "id": "palm_guest_claim_complete",
+      "group": "palm",
+      "metrikaGoalId": 604921948
+    },
+    {
+      "id": "palm_paid_cta",
+      "group": "palm",
+      "metrikaGoalId": 604921949
+    },
+    {
+      "id": "palm_seo_cta",
+      "group": "palm",
+      "metrikaGoalId": 604921951
+    },
+    {
+      "id": "palm_lines_hub",
+      "group": "palm",
+      "metrikaGoalId": 604921953
+    },
+    {
+      "id": "palm_mounts_hub",
+      "group": "palm",
+      "metrikaGoalId": 604921954
+    },
+    {
+      "id": "palm_shapes_hub",
+      "group": "palm",
+      "metrikaGoalId": 604921956
+    },
+    {
+      "id": "palm_marks_hub",
+      "group": "palm",
+      "metrikaGoalId": 604921957
+    },
+    {
+      "id": "palm_line_view",
+      "group": "palm",
+      "metrikaGoalId": 604921974
+    },
+    {
+      "id": "palm_mount_view",
+      "group": "palm",
+      "metrikaGoalId": 604921975
+    },
+    {
+      "id": "palm_shape_view",
+      "group": "palm",
+      "metrikaGoalId": 604921976
+    },
+    {
+      "id": "palm_mark_view",
+      "group": "palm",
+      "metrikaGoalId": 604921977
+    },
+    {
+      "id": "palm_intent_view",
+      "group": "palm",
+      "metrikaGoalId": 604921978
     }
   ]
 }

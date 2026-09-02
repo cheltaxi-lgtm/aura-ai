@@ -75,6 +75,50 @@ export default function PalmLandingPage() {
             </Link>
             {" — "}земля, воздух, огонь и вода.
           </li>
+          <li>
+            <Link href="/gadanie-po-ladoni/znaki" className="text-aura-gold hover:underline">
+              Знаки
+            </Link>
+            {" — "}звезда, крест, островок, решётка.
+          </li>
+        </ul>
+        <ul className="mt-4 space-y-2 text-white/70">
+          <li>
+            <Link href="/gadanie-po-ladoni/po-foto" className="text-aura-gold hover:underline">
+              Как снять ладонь по фото
+            </Link>
+          </li>
+          <li>
+            <Link href="/gadanie-po-ladoni/levaya" className="text-aura-gold hover:underline">
+              Левая ладонь
+            </Link>
+            {" · "}
+            <Link href="/gadanie-po-ladoni/pravaya" className="text-aura-gold hover:underline">
+              правая ладонь
+            </Link>
+          </li>
+          <li>
+            <Link href="/gadanie-po-ladoni/lyubov" className="text-aura-gold hover:underline">
+              На любовь
+            </Link>
+            {" · "}
+            <Link href="/gadanie-po-ladoni/sudba" className="text-aura-gold hover:underline">
+              на судьбу
+            </Link>
+            {" · "}
+            <Link href="/gadanie-po-ladoni/karera" className="text-aura-gold hover:underline">
+              на карьеру
+            </Link>
+          </li>
+          <li>
+            <Link href="/gadanie-po-ladoni/kak-chitat" className="text-aura-gold hover:underline">
+              Как читать ладонь
+            </Link>
+            {" · "}
+            <Link href="/gadanie-po-ladoni/besplatno" className="text-aura-gold hover:underline">
+              что бесплатно
+            </Link>
+          </li>
         </ul>
       </SeoSection>
 
