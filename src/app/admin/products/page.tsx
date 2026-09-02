@@ -124,7 +124,10 @@ export default function AdminProductsPage() {
   const rankMax = ranking[0] ? spendOf(ranking[0], period) : 0;
   const dailyMax = Math.max(1, ...(data?.daily ?? []).map((d) => d.spend));
   const rankedActions = useMemo(
-    () => [...(data?.actions ?? [])].sort((a, b) => actionSpend(b, period) - actionSpend(a, period)),
+    () =>
+      [...(data?.actions ?? [])].sort(
+        (a, b) => actionSpend(b, period) - actionSpend(a, period) || actionRunes(b, period) - actionRunes(a, period)
+      ),
     [data?.actions, period]
   );
 

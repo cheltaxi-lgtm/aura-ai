@@ -22,6 +22,9 @@ describe("admin-product-stats", () => {
     expect(stats).toContain("Europe/Moscow");
     expect(stats).toContain("COUNT(DISTINCT user_id)");
     expect(stats).toContain("spendPrev30d");
+    expect(stats).toContain("emptyAction");
+    expect(stats).toMatch(/action\.refunds30d \+= n30/);
+    expect(stats).toContain("uniquePayers");
   });
 
   it("admin demand page ranks products and keeps the 30-day spend gate", () => {

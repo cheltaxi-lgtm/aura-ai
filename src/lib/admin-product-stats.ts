@@ -148,6 +148,25 @@ function actionToSection(action: string): ProductSectionId {
   return "other";
 }
 
+function emptyAction(action: string, sectionId: ProductSectionId): ProductActionStats {
+  return {
+    action,
+    label: RUNE_ACTION_LABELS[action as RuneActionType] ?? action,
+    sectionId,
+    spend7d: 0,
+    spend30d: 0,
+    spend90d: 0,
+    spendAll: 0,
+    runes7d: 0,
+    runes30d: 0,
+    runes90d: 0,
+    runesAll: 0,
+    users30d: 0,
+    refunds30d: 0,
+    avgCheck30d: 0,
+  };
+}
+
 function emptySection(id: ProductSectionId, label: string): ProductSectionStats {
   return {
     id,
@@ -203,7 +222,7 @@ export async function getProductSectionStats(): Promise<{
     jobsPending: number;
   };
 }> {
-  const [spend, users, repeats, daily, jobs, auraSnaps, palmSnaps, history] = await Promise.all([
+  const [spend, users, repeats, uniquePayers, daily, jobs, auraSnaps, palmSnaps, history] = await Promise.all([
     query<{
       action_type: string;
       type: string;
@@ -317,6 +336,14 @@ export async function getProductSectionStats(): Promise<{
       ) t
       GROUP BY section
     `),
+    query<{ users30d: string }>(`
+      SELECT COUNT(DISTINCT user_id)::text AS users30d
+      FROM rune_transactions
+      WHERE type = 'spend'
+        AND action_type IS NOT NULL
+        AND action_type <> ''
+        AND created_at >= NOW() - INTERVAL '30 days'
+    `),
     query<{ day: string; n: string; runes: string }>(`
       SELECT
         to_char((created_at AT TIME ZONE 'Europe/Moscow')::date, 'YYYY-MM-DD') AS day,
@@ -395,10 +422,14 @@ export async function getProductSectionStats(): Promise<{
     const r90 = n(row.r90);
     const rall = n(row.rall);
     const rprev = n(row.rprev);
+    let action = actionMap.get(row.action_type);
+    if (!action) {
+      action = emptyAction(row.action_type, sectionId);
+      actionMap.set(row.action_type, action);
+    }
     if (row.type === "refund") {
       section.refunds30d += n30;
-      const existing = actionMap.get(row.action_type);
-      if (existing) existing.refunds30d += n30;
+      action.refunds30d += n30;
       continue;
     }
     section.spend7d += n7;
@@ -411,34 +442,15 @@ export async function getProductSectionStats(): Promise<{
     section.runes90d += r90;
     section.runesAll += rall;
     section.runesPrev30d += rprev;
-    const prev = actionMap.get(row.action_type);
-    if (prev) {
-      prev.spend7d += n7;
-      prev.spend30d += n30;
-      prev.spend90d += n90;
-      prev.spendAll += nall;
-      prev.runes7d += r7;
-      prev.runes30d += r30;
-      prev.runes90d += r90;
-      prev.runesAll += rall;
-    } else {
-      actionMap.set(row.action_type, {
-        action: row.action_type,
-        label: RUNE_ACTION_LABELS[row.action_type as RuneActionType] ?? row.action_type,
-        sectionId,
-        spend7d: n7,
-        spend30d: n30,
-        spend90d: n90,
-        spendAll: nall,
-        runes7d: r7,
-        runes30d: r30,
-        runes90d: r90,
-        runesAll: rall,
-        users30d: n(row.u30),
-        refunds30d: 0,
-        avgCheck30d: n30 > 0 ? Math.round(r30 / n30) : 0,
-      });
-    }
+    action.spend7d += n7;
+    action.spend30d += n30;
+    action.spend90d += n90;
+    action.spendAll += nall;
+    action.runes7d += r7;
+    action.runes30d += r30;
+    action.runes90d += r90;
+    action.runesAll += rall;
+    action.users30d = n(row.u30);
   }
 
   for (const row of users.rows) {
@@ -548,7 +560,7 @@ export async function getProductSectionStats(): Promise<{
     runes: n(row.runes),
   }));
 
-  const users30d = sectionsAll.reduce((sum, s) => sum + s.users30d, 0);
+  const users30d = n(uniquePayers.rows[0]?.users30d);
 
   return {
     sections,
