@@ -60,7 +60,7 @@ export default async function TaroPillarPage() {
         значения арканов, задать свой вопрос или загрузить фото домашнего расклада на расшифровку.
       </p>
 
-      <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:flex-nowrap [&>a]:w-full [&>a]:justify-center [&>a]:text-center">
+      <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3 [&>a]:min-w-0 [&>a]:w-full [&>a]:justify-center [&>a]:text-center">
         <SeoTrackedCta href="/?spread=triplet">Бесплатный расклад на 3 карты</SeoTrackedCta>
         <SeoTrackedCta href="/photo-rasklad" variant="ghost">
           Расшифровка по фото
