@@ -138,7 +138,7 @@ export default async function TaroPillarPage() {
             </Link>
           </li>
           <li>
-            <Link href="/statyi/karta-dnya" className="text-aura-gold hover:underline">
+            <Link href="/gadanie/karta-dnya" className="text-aura-gold hover:underline">
               Карта дня
             </Link>
           </li>

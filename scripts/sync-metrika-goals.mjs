@@ -129,6 +129,19 @@ const DISPLAY_NAMES = {
   palm_shape_view: "Ладонь — страница типа руки",
   palm_mark_view: "Ладонь — страница знака",
   palm_intent_view: "Ладонь — тематическая посадка",
+  gadanie_karta_dnya_view: "Карта дня — view",
+  gadanie_karta_dnya_cta_click: "Карта дня — CTA",
+  gadanie_besplatno_view: "Гадание бесплатно — view",
+  gadanie_besplatno_cta_click: "Гадание бесплатно — CTA",
+  goroskop_na_segodnya_view: "Гороскоп на сегодня — view",
+  goroskop_na_segodnya_cta_click: "Гороскоп на сегодня — CTA",
+  life_path_landing_view: "Число пути — view",
+  life_path_calc_complete: "Число пути — расчёт",
+  life_path_cta_click: "Число пути — CTA",
+  lenormand_love_view: "Ленорман любовь — view",
+  lenormand_love_cta_click: "Ленорман любовь — CTA",
+  runes_love_view: "Руны любовь — view",
+  runes_love_cta_click: "Руны любовь — CTA",
 };
 
 function displayName(id) {

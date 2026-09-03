@@ -50,7 +50,12 @@ export default function HomeSeoContent() {
             Можно выбрать готовый вопрос в каталоге, загрузить{" "}
             <Link href="/photo-rasklad">фото домашнего расклада</Link> для расшифровки, снять{" "}
             <Link href="/aura">ауру по фото</Link> или начать с{" "}
-            <Link href="/gadanie">гадания онлайн</Link>. Есть <Link href="/lenormand">Ленорман</Link>,{" "}
+            <Link href="/gadanie">гадания онлайн</Link>
+            {" "}и{" "}
+            <Link href="/gadanie/besplatno">бесплатного старта</Link>. Есть{" "}
+            <Link href="/gadanie/karta-dnya">карта дня</Link>,{" "}
+            <Link href="/goroskop-na-segodnya">гороскоп на сегодня</Link>,{" "}
+            <Link href="/lenormand">Ленорман</Link>,{" "}
             <Link href="/telegram">Telegram-бот</Link> и раздел <Link href="/faq">FAQ</Link>. Полные
             сессии и углублённые разборы — по тарифу в рунах ᚢ. Это не медицинская и не юридическая
             услуга: <Link href="/disclaimer">подробнее об ограничениях</Link>.

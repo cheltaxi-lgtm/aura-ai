@@ -62,6 +62,21 @@ export const CANONICAL_ALIASES: Record<string, string> = {
   "/liniya-uma": "/gadanie-po-ladoni/linii/uma",
   "/kholm-venery": "/gadanie-po-ladoni/kholmy/venery",
   "/rasklady/chto-chuvstvuet-ona": "/rasklady/chto-ona-chuvstvuet",
+  "/karta-dnya": "/gadanie/karta-dnya",
+  "/karta-dnya-taro": "/gadanie/karta-dnya",
+  "/gadanie-besplatno": "/gadanie/besplatno",
+  "/gadanie-online-besplatno": "/gadanie/besplatno",
+  "/goroskop": "/goroskop-na-segodnya",
+  "/goroskop-online": "/goroskop-na-segodnya",
+  "/goroskop-na-segodnya-besplatno": "/goroskop-na-segodnya",
+  "/chislo-sudby": "/numerology/chislo-sudby",
+  "/chislo-zhiznennogo-puti": "/numerology/chislo-sudby",
+  "/chislo-sudby-po-date-rozhdeniya": "/numerology/chislo-sudby",
+  "/gadanie-po-foto": "/photo-rasklad",
+  "/rasklad-na-otnosheniya": "/rasklady/lyubov",
+  "/lenormand-na-lyubov": "/lenormand/na-lyubov",
+  "/runy-na-lyubov": "/runy/na-lyubov",
+  "/gadanie-na-runakh-lyubov": "/runy/na-lyubov",
 };
 
 export function resolveCanonicalPath(path: string): string {

@@ -63,6 +63,18 @@ const METHODS = [
     href: "/lenormand",
     cta: "Открыть Ленорман",
   },
+  {
+    title: "Карта дня",
+    text: "Одна карта на сегодня, 3 карты дня после входа и первый расклад по вопросу — три разных формата.",
+    href: "/gadanie/karta-dnya",
+    cta: "Разобрать карту дня",
+  },
+  {
+    title: "Что бесплатно",
+    text: "Первый расклад без регистрации, ежедневные карты дня, калькуляторы матрицы, натала и числа пути.",
+    href: "/gadanie/besplatno",
+    cta: "Смотреть бесплатное",
+  },
 ] as const;
 
 const faq = [
@@ -128,6 +140,9 @@ export default function GadaniePage() {
       <div className="mt-8 flex flex-wrap gap-3">
         <SeoTrackedCta href="/?spread=triplet" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "free" }}>
           Три карты бесплатно
+        </SeoTrackedCta>
+        <SeoTrackedCta href="/gadanie/karta-dnya" variant="ghost" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "karta-dnya" }}>
+          Карта дня
         </SeoTrackedCta>
         <SeoTrackedCta href="/gadanie/da-net" variant="ghost" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "da-net" }}>
           Быстрый ответ да / нет

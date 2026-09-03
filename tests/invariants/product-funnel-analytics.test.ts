@@ -76,6 +76,10 @@ describe("product-funnel-analytics", () => {
     expect(inferProductFunnelFromPath("/aura")).toBe("aura");
     expect(inferProductFunnelFromPath("/gadanie-po-ladoni")).toBe("palm");
     expect(inferProductFunnelFromPath("/khiromantiya")).toBe("palm");
+    expect(inferProductFunnelFromPath("/gadanie")).toBe("tarot");
+    expect(inferProductFunnelFromPath("/gadanie/karta-dnya")).toBe("tarot");
+    expect(inferProductFunnelFromPath("/goroskop-na-segodnya")).toBe("tarot");
+    expect(inferProductFunnelFromPath("/runy/na-lyubov")).toBe("tarot");
   });
 
   it("all 5 products emit core funnel stages in code", () => {

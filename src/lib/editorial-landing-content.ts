@@ -309,6 +309,7 @@ export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Руны", href: "/runy" },
   { label: "Ленорман", href: "/lenormand" },
   { label: "Нумерология", href: "/numerology" },
+  { label: "Гороскоп", href: "/goroskop-na-segodnya" },
   { label: "Прогнозы", href: "/prognoz" },
   { label: "Карты", href: "/cards" },
   { label: "Статьи", href: "/statyi" },

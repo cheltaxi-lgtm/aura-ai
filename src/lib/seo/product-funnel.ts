@@ -182,7 +182,10 @@ export function inferProductFunnelFromPath(pathname: string): ProductFunnelProdu
     p === "/" ||
     p.startsWith("/rasklad") ||
     p.startsWith("/taro") ||
-    p.startsWith("/lenormand")
+    p.startsWith("/lenormand") ||
+    p.startsWith("/gadanie") ||
+    p.startsWith("/goroskop") ||
+    p.startsWith("/runy")
   ) {
     return "tarot";
   }

@@ -21,6 +21,12 @@ export async function generateMetadata(): Promise<Metadata> {
 
 const NUMEROLOGY_DIRECTIONS = [
   {
+    title: "Число судьбы по дате",
+    text: "Число жизненного пути — бесплатный расчёт и короткий смысл.",
+    action: "Когда нужно одно число-каркас, а не вся матрица.",
+    href: "/numerology/chislo-sudby",
+  },
+  {
     title: "Три числа судьбы",
     text: "Путь, душа и личность — короткий каркас по дате рождения.",
     action: "Полезно, когда нужна опора «кто я сейчас» без длинной анкеты.",

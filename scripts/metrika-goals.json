@@ -1,8 +1,8 @@
 {
   "counterId": 110138367,
   "site": "https://zovus.ru",
-  "updated": "2026-09-02",
-  "syncedInMetrikaUi": "2026-09-02",
+  "updated": "2026-09-03",
+  "syncedInMetrikaUi": "2026-09-03",
   "notes": [
     "Все 48 JS-целей созданы в Метрике (счётчик 110138367) через UI.",
     "Для повторной синхронизации: node scripts/sync-metrika-goals.mjs (нужен YANDEX_METRIKA_OAUTH_TOKEN).",
@@ -596,6 +596,71 @@
       "id": "palm_intent_view",
       "group": "palm",
       "metrikaGoalId": 604921978
+    },
+    {
+      "id": "gadanie_karta_dnya_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427290
+    },
+    {
+      "id": "gadanie_karta_dnya_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427291
+    },
+    {
+      "id": "gadanie_besplatno_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427292
+    },
+    {
+      "id": "gadanie_besplatno_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427293
+    },
+    {
+      "id": "goroskop_na_segodnya_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427294
+    },
+    {
+      "id": "goroskop_na_segodnya_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427295
+    },
+    {
+      "id": "life_path_landing_view",
+      "group": "numerology",
+      "metrikaGoalId": 608427296
+    },
+    {
+      "id": "life_path_calc_complete",
+      "group": "numerology",
+      "metrikaGoalId": 608427297
+    },
+    {
+      "id": "life_path_cta_click",
+      "group": "numerology",
+      "metrikaGoalId": 608427298
+    },
+    {
+      "id": "lenormand_love_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427299
+    },
+    {
+      "id": "lenormand_love_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427300
+    },
+    {
+      "id": "runes_love_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427317
+    },
+    {
+      "id": "runes_love_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608427318
     }
   ]
 }

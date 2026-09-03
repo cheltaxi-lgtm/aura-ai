@@ -50,7 +50,12 @@ export default async function PrognozIndexPage() {
       <p className="text-sm text-aura-gold/80">Прогнозы</p>
       <AdsSeoH1 path="/prognoz">Прогноз Таро</AdsSeoH1>
       <p className="mt-4 text-white/70">
-        Годовые и месячные обзоры по картам, а также прогнозы для каждого знака зодиака.
+        Годовые и месячные обзоры по картам, а также прогнозы для каждого знака зодиака. Если ищете
+        «гороскоп на сегодня» —{" "}
+        <Link href="/goroskop-na-segodnya" className="text-aura-gold hover:underline">
+          разбор шаблона и натальной карты
+        </Link>
+        .
       </p>
 
       <SeoSection title="Актуальный период">

@@ -58,9 +58,14 @@ export default function LenormandHubPage() {
           Таро глубже в архетипах и психологии; Ленорман быстрее отвечает на «что будет» и «когда».
           На Zovus можно начать с линии Ленорман и уточнить детали у мастера — память сессии сохраняется.
         </p>
-        <Link href="/lenormand/sochetaniya" className="mt-3 inline-block text-sm text-aura-gold hover:underline">
-          Сочетания пар Ленорман →
-        </Link>
+        <div className="mt-3 flex flex-wrap gap-x-4 gap-y-2 text-sm">
+          <Link href="/lenormand/na-lyubov" className="text-aura-gold hover:underline">
+            Ленорман на любовь →
+          </Link>
+          <Link href="/lenormand/sochetaniya" className="text-aura-gold hover:underline">
+            Сочетания пар Ленорман →
+          </Link>
+        </div>
       </section>
 
       <SeoSection title="Частые вопросы">

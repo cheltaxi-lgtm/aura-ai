@@ -44,7 +44,12 @@ export default async function RunesHubPage() {
   });
 
   return (
-    <SeoPageShell backHref="/" backLabel="На главную">
+    <SeoPageShell
+      breadcrumbs={[
+        { name: "Zovus", path: "/" },
+        { name: "Руны", path: "/runy" },
+      ]}
+    >
       <SeoPageTracker goal="runes_hub_view" />
       <p className="text-sm text-aura-gold/80">Руны</p>
       <AdsSeoH1 path="/runy">Гадание на рунах онлайн</AdsSeoH1>
@@ -64,6 +69,14 @@ export default async function RunesHubPage() {
           trackParams={{ target: "yes-no" }}
         >
           Руны да / нет
+        </SeoTrackedCta>
+        <SeoTrackedCta
+          href="/runy/na-lyubov"
+          variant="ghost"
+          trackGoal="runes_hub_cta_click"
+          trackParams={{ target: "love" }}
+        >
+          Руны на любовь
         </SeoTrackedCta>
       </div>
 
