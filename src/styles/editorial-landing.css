@@ -3722,7 +3722,7 @@ button.editorial-reviews__star:focus-visible {
 .editorial-reviews__track {
   display: grid;
   grid-auto-flow: column;
-  grid-auto-columns: minmax(0, 86%);
+  grid-auto-columns: 86%;
   gap: 1rem;
   overflow-x: auto;
   overscroll-behavior-x: contain;
@@ -3734,7 +3734,7 @@ button.editorial-reviews__star:focus-visible {
 
 @media (min-width: 768px) {
   .editorial-reviews__track {
-    grid-auto-columns: minmax(0, calc((100% - 1rem) / 2));
+    grid-auto-columns: calc((100% - 1rem) / 2);
   }
 }
 
