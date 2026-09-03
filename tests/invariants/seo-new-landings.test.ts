@@ -1,12 +1,12 @@
 /**
- * New commercial SEO landings (Sep 2026): карта дня, бесплатно,
- * гороскоп на сегодня, число пути, Ленорман/руны на любовь.
+ * Commercial SEO landings: wave 1 (Sep 2026) + wave 2 (synastry,
+ * comparison, numerology calcs, love/future umbrellas, minors, aura free).
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CANONICAL_ALIASES } from "@/lib/seo/canonical-aliases";
-import { lifePathNumber } from "@/lib/numerology/calculator";
+import { lifePathNumber, personalYear, soulNumber } from "@/lib/numerology/calculator";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -51,6 +51,108 @@ const LANDINGS = [
     title: "Руны на любовь — гадание онлайн",
     h1: "Руны на любовь",
   },
+  {
+    file: "src/app/natalnaya-karta/sovmestimost/page.tsx",
+    path: "/natalnaya-karta/sovmestimost",
+    title: "Синастрия онлайн — совместимость натальных карт",
+    h1: "Синастрия — совместимость натальных карт",
+  },
+  {
+    file: "src/app/natal-ili-matrica/page.tsx",
+    path: "/natal-ili-matrica",
+    title: "Натальная карта или матрица судьбы — что выбрать",
+    h1: "Натальная карта или матрица судьбы — что выбрать",
+  },
+  {
+    file: "src/app/numerology/lichnyy-god/page.tsx",
+    path: "/numerology/lichnyy-god",
+    title: "Личный год по дате рождения — рассчитать бесплатно",
+    h1: "Личный год по дате рождения",
+  },
+  {
+    file: "src/app/numerology/rasschitat/page.tsx",
+    path: "/numerology/rasschitat",
+    title: "Рассчитать нумерологию по дате рождения бесплатно",
+    h1: "Рассчитать нумерологию по дате рождения",
+  },
+  {
+    file: "src/app/gadanie/na-lyubov/page.tsx",
+    path: "/gadanie/na-lyubov",
+    title: "Гадание на любовь онлайн — Таро, Ленорман и руны",
+    h1: "Гадание на любовь онлайн — Таро, Ленорман и руны",
+  },
+  {
+    file: "src/app/lenormand/da-net/page.tsx",
+    path: "/lenormand/da-net",
+    title: "Ленорман да или нет — короткий ответ онлайн",
+    h1: "Ленорман да или нет",
+  },
+  {
+    file: "src/app/cards/mladshie-arkany/page.tsx",
+    path: "/cards/mladshie-arkany",
+    title: "Младшие арканы Таро — 56 карт четырёх мастей",
+    h1: "Младшие арканы Таро: 56 карт и четыре масти",
+  },
+  {
+    file: "src/app/voskhodyashchiy-znak/page.tsx",
+    path: "/voskhodyashchiy-znak",
+    title: "Восходящий знак — асцендент по дате, времени и месту",
+    h1: "Восходящий знак — асцендент по времени рождения",
+  },
+  {
+    file: "src/app/numerology/chislo-dushi/page.tsx",
+    path: "/numerology/chislo-dushi",
+    title: "Число души по имени — рассчитать бесплатно",
+    h1: "Число души по имени",
+  },
+  {
+    file: "src/app/numerology/karmicheskiy-khvost/page.tsx",
+    path: "/numerology/karmicheskiy-khvost",
+    title: "Кармический хвост в матрице судьбы — что это",
+    h1: "Кармический хвост в матрице судьбы",
+  },
+  {
+    file: "src/app/numerology/kanal-deneg/page.tsx",
+    path: "/numerology/kanal-deneg",
+    title: "Канал денег в матрице судьбы — зона ресурса",
+    h1: "Канал денег в матрице судьбы",
+  },
+  {
+    file: "src/app/runy/na-rabotu/page.tsx",
+    path: "/runy/na-rabotu",
+    title: "Руны на работу — гадание онлайн",
+    h1: "Руны на работу",
+  },
+  {
+    file: "src/app/runy/na-dengi/page.tsx",
+    path: "/runy/na-dengi",
+    title: "Руны на деньги — гадание онлайн",
+    h1: "Руны на деньги",
+  },
+  {
+    file: "src/app/lenormand/na-rabotu/page.tsx",
+    path: "/lenormand/na-rabotu",
+    title: "Ленорман на работу — расклад онлайн",
+    h1: "Ленорман на работу",
+  },
+  {
+    file: "src/app/gadanie/na-budushchee/page.tsx",
+    path: "/gadanie/na-budushchee",
+    title: "Гадание на будущее онлайн — Таро, гороскоп и личный год",
+    h1: "Гадание на будущее онлайн",
+  },
+  {
+    file: "src/app/taro/tri-karty/page.tsx",
+    path: "/taro/tri-karty",
+    title: "Расклад на три карты Таро — первый разбор онлайн",
+    h1: "Расклад на три карты Таро",
+  },
+  {
+    file: "src/app/aura/besplatno/page.tsx",
+    path: "/aura/besplatno",
+    title: "Что входит в бесплатный снимок ауры",
+    h1: "Что входит в бесплатный снимок ауры",
+  },
 ] as const;
 
 describe("seo-new-landings", () => {
@@ -75,6 +177,17 @@ describe("seo-new-landings", () => {
     expect(read("src/app/gadanie/besplatno/page.tsx")).not.toContain(
       ">Гадание онлайн бесплатно<"
     );
+    expect(read("src/app/gadanie/na-lyubov/page.tsx")).not.toContain(
+      ">Гадание онлайн бесплатно<"
+    );
+    expect(read("src/app/aura/besplatno/page.tsx")).toContain(
+      ">Что входит в бесплатный снимок ауры<"
+    );
+    expect(read("src/app/aura/page.tsx")).toMatch(/Аура по фото онлайн/);
+    expect(read("src/app/numerology/page.tsx")).toContain("Нумерология по дате рождения онлайн");
+    expect(read("src/app/numerology/rasschitat/page.tsx")).toContain(
+      ">Рассчитать нумерологию по дате рождения<"
+    );
   });
 
   it("sitemap lists the new commercial hubs", () => {
@@ -94,23 +207,49 @@ describe("seo-new-landings", () => {
     expect(CANONICAL_ALIASES["/lenormand-na-lyubov"]).toBe("/lenormand/na-lyubov");
     expect(CANONICAL_ALIASES["/runy-na-lyubov"]).toBe("/runy/na-lyubov");
     expect(CANONICAL_ALIASES["/goroskop-rozhdeniya"]).toBe("/natalnaya-karta");
+    expect(CANONICAL_ALIASES["/sinastriya"]).toBe("/natalnaya-karta/sovmestimost");
+    expect(CANONICAL_ALIASES["/sovmestimost-po-date"]).toBe("/numerology/compatibility");
+    expect(CANONICAL_ALIASES["/rasklad-na-tri-karty"]).toBe("/taro/tri-karty");
+    expect(CANONICAL_ALIASES["/keltskiy-krest"]).toBe("/rasklad/keltskij-krest");
+    expect(CANONICAL_ALIASES["/gadanie-na-kartakh"]).toBe("/taro");
+    expect(CANONICAL_ALIASES["/lichnyy-god"]).toBe("/numerology/lichnyy-god");
+    expect(CANONICAL_ALIASES["/gadanie-na-lyubov"]).toBe("/gadanie/na-lyubov");
+    expect(CANONICAL_ALIASES["/mladshie-arkany"]).toBe("/cards/mladshie-arkany");
+    expect(CANONICAL_ALIASES["/aura-besplatno"]).toBe("/aura/besplatno");
   });
 
-  it("карта дня does not sell the guest triplet as daily cards", () => {
-    const src = read("src/app/gadanie/karta-dnya/page.tsx");
-    expect(src).toContain("/?ask=1&spread=1");
-    expect(src).toContain("Попробовать первый расклад");
-    expect(src).not.toMatch(/href="\/\?ask=1&spread=1"[\s\S]{0,80}карта дня/i);
-    expect(src).toContain("не «карта дня»");
-    expect(src).toContain("/rasklady/karta-dnya");
+  it("карта дня and три карты do not sell the guest triplet as daily cards", () => {
+    const karta = read("src/app/gadanie/karta-dnya/page.tsx");
+    expect(karta).toContain("/?ask=1&spread=1");
+    expect(karta).toContain("Попробовать первый расклад");
+    expect(karta).not.toMatch(/href="\/\?ask=1&spread=1"[\s\S]{0,80}карта дня/i);
+    expect(karta).toContain("не «карта дня»");
+    expect(karta).toContain("/rasklady/karta-dnya");
+
+    const three = read("src/app/taro/tri-karty/page.tsx");
+    expect(three).toContain("/?ask=1&spread=1");
+    expect(three).toContain("Попробовать первый расклад");
+    expect(three).toContain("не «карта дня»");
+    expect(three).not.toMatch(/href="\/\?ask=1&spread=1"[\s\S]{0,80}карта дня/i);
   });
 
-  it("life-path calculator uses the shared engine and does not persist a receipt", () => {
+  it("public numerology calcs use the shared engine and do not persist a receipt", () => {
     const preview = read("src/components/numerolog/LifePathPreview.tsx");
     expect(preview).toContain("lifePathNumber");
     expect(preview).not.toMatch(/localStorage\.|sessionStorage\.|guest_resume|claimToken/);
-    const result = lifePathNumber("1990-01-01");
-    expect(result.number).toBeGreaterThan(0);
-    expect(result.title).toBeTruthy();
+    const shared = read("src/components/numerolog/NumerologyPublicCalc.tsx");
+    expect(shared).toContain("lifePathNumber");
+    expect(shared).toContain("personalYear");
+    expect(shared).toContain("soulNumber");
+    expect(shared).not.toMatch(/localStorage\.|sessionStorage\.|guest_resume|claimToken/);
+    expect(lifePathNumber("1990-01-01").number).toBeGreaterThan(0);
+    expect(personalYear("1990-01-01", 2026).number).toBeGreaterThan(0);
+    expect(soulNumber("Анна").number).toBeGreaterThan(0);
+  });
+
+  it("rising sign landing does not mint a natal guest claim", () => {
+    const src = read("src/app/voskhodyashchiy-znak/page.tsx");
+    expect(src).toContain("/natalnaya-karta");
+    expect(src).not.toMatch(/NatalGuestCalculator|claimToken|guest_resume/);
   });
 });

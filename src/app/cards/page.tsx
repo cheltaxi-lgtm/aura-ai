@@ -108,6 +108,16 @@ export default function CardsCatalogPage() {
 
       <SeoSection title="Младшие арканы по мастям">
 
+        <p className="mb-4 text-sm text-white/60">
+
+          <Link href="/cards/mladshie-arkany" className="text-aura-gold hover:underline">
+
+            Полный раздел младших арканов →
+
+          </Link>
+
+        </p>
+
         <ul className="mb-4 flex flex-wrap gap-2">
 
           {SUIT_HUBS.map((hub) => (

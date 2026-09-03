@@ -67,6 +67,16 @@ export default function MajorArcanaHubPage() {
         </div>
       </SeoSection>
 
+      <SeoSection title="Младшие арканы">
+        <p>
+          Бытовой слой колоды — четыре масти, 56 карт.{" "}
+          <Link href="/cards/mladshie-arkany" className="text-aura-gold hover:underline">
+            Открыть младшие арканы
+          </Link>
+          .
+        </p>
+      </SeoSection>
+
       <SeoSection title="Старшие арканы в раскладах">
         <p>
           Выпадение нескольких старших арканов усиливает значимость периода.{" "}

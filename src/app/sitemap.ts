@@ -271,6 +271,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     ...(auraEnabled
       ? [
           staticPage("/aura", 0.85, "weekly"),
+          staticPage("/aura/besplatno", 0.8, "weekly"),
           staticPage("/aura/cveta", 0.8, "weekly"),
           staticPage("/aura/chakry", 0.75, "monthly"),
           staticPage("/aura/sloi", 0.75, "monthly"),
@@ -309,7 +310,14 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPage("/numerology/name-compatibility", 0.55, "monthly"),
     staticPage("/numerology/destiny-matrix", 0.85, "weekly"),
     staticPage("/numerology/matrica-sovmestimosti", 0.85, "weekly"),
-    ...(natalEnabled ? [staticPage("/natalnaya-karta", 0.9, "weekly")] : []),
+    ...(natalEnabled
+      ? [
+          staticPage("/natalnaya-karta", 0.9, "weekly"),
+          staticPage("/natalnaya-karta/sovmestimost", 0.8, "weekly"),
+          staticPage("/voskhodyashchiy-znak", 0.75, "monthly"),
+        ]
+      : []),
+    staticPage("/natal-ili-matrica", 0.8, "weekly"),
     ...(hdEnabled
       ? [
           staticPage("/dizayn-cheloveka", 0.9, "weekly"),
@@ -329,14 +337,27 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     staticPage("/gadanie/da-net", 0.8),
     staticPage("/gadanie/karta-dnya", 0.85, "weekly"),
     staticPage("/gadanie/besplatno", 0.85, "weekly"),
+    staticPage("/gadanie/na-lyubov", 0.85, "weekly"),
+    staticPage("/gadanie/na-budushchee", 0.8, "weekly"),
     staticPage("/goroskop-na-segodnya", 0.9, "weekly"),
     staticPage("/numerology/chislo-sudby", 0.8, "weekly"),
+    staticPage("/numerology/lichnyy-god", 0.75, "weekly"),
+    staticPage("/numerology/rasschitat", 0.8, "weekly"),
+    staticPage("/numerology/chislo-dushi", 0.7, "monthly"),
+    staticPage("/numerology/karmicheskiy-khvost", 0.7, "monthly"),
+    staticPage("/numerology/kanal-deneg", 0.7, "monthly"),
     staticPage("/numerology/detskaya-matritsa", 0.55, "monthly"),
     staticPage("/lenormand/na-lyubov", 0.75, "weekly"),
+    staticPage("/lenormand/da-net", 0.7, "weekly"),
+    staticPage("/lenormand/na-rabotu", 0.7, "weekly"),
     staticPage("/runy/na-lyubov", 0.75, "weekly"),
+    staticPage("/runy/na-rabotu", 0.7, "weekly"),
+    staticPage("/runy/na-dengi", 0.7, "weekly"),
+    staticPage("/taro/tri-karty", 0.85, "weekly"),
     staticPage("/runy", 0.75),
     staticPage("/cards", 0.7),
     staticPage("/cards/starshie-arkany", 0.65, "monthly"),
+    staticPage("/cards/mladshie-arkany", 0.65, "monthly"),
     staticPage("/cards/combinations", 0.5),
     staticPage("/statyi", 0.65),
     staticPage("/faq", 0.5, "monthly"),

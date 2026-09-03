@@ -80,6 +80,14 @@ describe("product-funnel-analytics", () => {
     expect(inferProductFunnelFromPath("/gadanie/karta-dnya")).toBe("tarot");
     expect(inferProductFunnelFromPath("/goroskop-na-segodnya")).toBe("tarot");
     expect(inferProductFunnelFromPath("/runy/na-lyubov")).toBe("tarot");
+    expect(inferProductFunnelFromPath("/natalnaya-karta/sovmestimost")).toBe("natal");
+    expect(inferProductFunnelFromPath("/natal-ili-matrica")).toBe("natal");
+    expect(inferProductFunnelFromPath("/voskhodyashchiy-znak")).toBe("natal");
+    expect(inferProductFunnelFromPath("/numerology/karmicheskiy-khvost")).toBe("matrix");
+    expect(inferProductFunnelFromPath("/numerology/kanal-deneg")).toBe("matrix");
+    expect(inferProductFunnelFromPath("/aura/besplatno")).toBe("aura");
+    expect(inferProductFunnelFromPath("/gadanie-po-ladoni/besplatno")).toBe("palm");
+    expect(inferProductFunnelFromPath("/gadanie/na-lyubov")).toBe("tarot");
   });
 
   it("all 5 products emit core funnel stages in code", () => {

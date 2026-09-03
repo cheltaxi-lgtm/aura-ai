@@ -1037,6 +1037,7 @@ export function auraIntentBySlug(slug: string): AuraSeoEntry | undefined {
 export function getAllAuraSeoPaths(): string[] {
   return [
     "/aura",
+    "/aura/besplatno",
     "/aura/cveta",
     ...AURA_COLOR_SEO.map((item) => `/aura/cveta/${item.slug}`),
     "/aura/chakry",
@@ -1051,6 +1052,7 @@ export function getAllAuraSeoPaths(): string[] {
 export function getAuraSeoHubPaths(): string[] {
   return [
     "/aura",
+    "/aura/besplatno",
     "/aura/cveta",
     "/aura/chakry",
     "/aura/sloi",

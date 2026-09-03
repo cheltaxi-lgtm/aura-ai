@@ -92,6 +92,10 @@ export default function AuraLandingPage() {
             {" — "}состояние откроется в полном разборе.
           </li>
           <li>
+            <Link href="/aura/besplatno" className="text-aura-gold hover:underline">
+              Что входит в бесплатный снимок
+            </Link>
+            {" · "}
             <Link href="/aura/kak-uznat-cvet" className="text-aura-gold hover:underline">
               Как узнать цвет ауры
             </Link>

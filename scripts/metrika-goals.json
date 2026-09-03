@@ -661,6 +661,186 @@
       "id": "runes_love_cta_click",
       "group": "seo_hub",
       "metrikaGoalId": 608427318
+    },
+    {
+      "id": "natal_synastry_view",
+      "group": "astrology",
+      "metrikaGoalId": 608438824
+    },
+    {
+      "id": "natal_synastry_cta_click",
+      "group": "astrology",
+      "metrikaGoalId": 608438825
+    },
+    {
+      "id": "natal_or_matrix_view",
+      "group": "astrology",
+      "metrikaGoalId": 608438833
+    },
+    {
+      "id": "natal_or_matrix_cta_click",
+      "group": "astrology",
+      "metrikaGoalId": 608438843
+    },
+    {
+      "id": "personal_year_landing_view",
+      "group": "numerology",
+      "metrikaGoalId": 608438844
+    },
+    {
+      "id": "personal_year_calc_complete",
+      "group": "numerology",
+      "metrikaGoalId": 608438861
+    },
+    {
+      "id": "personal_year_cta_click",
+      "group": "numerology",
+      "metrikaGoalId": 608438878
+    },
+    {
+      "id": "numerology_calc_view",
+      "group": "numerology",
+      "metrikaGoalId": 608438879
+    },
+    {
+      "id": "numerology_calc_complete",
+      "group": "numerology",
+      "metrikaGoalId": 608438880
+    },
+    {
+      "id": "numerology_calc_cta_click",
+      "group": "numerology",
+      "metrikaGoalId": 608438881
+    },
+    {
+      "id": "gadanie_love_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438882
+    },
+    {
+      "id": "gadanie_love_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438883
+    },
+    {
+      "id": "lenormand_da_net_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438884
+    },
+    {
+      "id": "lenormand_da_net_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438885
+    },
+    {
+      "id": "minor_arcana_view",
+      "group": "cards",
+      "metrikaGoalId": 608438886
+    },
+    {
+      "id": "rising_sign_view",
+      "group": "astrology",
+      "metrikaGoalId": 608438887
+    },
+    {
+      "id": "rising_sign_cta_click",
+      "group": "astrology",
+      "metrikaGoalId": 608438888
+    },
+    {
+      "id": "soul_number_view",
+      "group": "numerology",
+      "metrikaGoalId": 608438889
+    },
+    {
+      "id": "soul_number_calc_complete",
+      "group": "numerology",
+      "metrikaGoalId": 608438890
+    },
+    {
+      "id": "soul_number_cta_click",
+      "group": "numerology",
+      "metrikaGoalId": 608438891
+    },
+    {
+      "id": "karmic_tail_view",
+      "group": "numerology",
+      "metrikaGoalId": 608438892
+    },
+    {
+      "id": "karmic_tail_cta_click",
+      "group": "numerology",
+      "metrikaGoalId": 608438893
+    },
+    {
+      "id": "money_channel_view",
+      "group": "numerology",
+      "metrikaGoalId": 608438894
+    },
+    {
+      "id": "money_channel_cta_click",
+      "group": "numerology",
+      "metrikaGoalId": 608438896
+    },
+    {
+      "id": "runes_work_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438897
+    },
+    {
+      "id": "runes_work_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438898
+    },
+    {
+      "id": "runes_money_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438899
+    },
+    {
+      "id": "runes_money_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438900
+    },
+    {
+      "id": "lenormand_work_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438901
+    },
+    {
+      "id": "lenormand_work_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438902
+    },
+    {
+      "id": "gadanie_future_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438903
+    },
+    {
+      "id": "gadanie_future_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438904
+    },
+    {
+      "id": "three_cards_view",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438905
+    },
+    {
+      "id": "three_cards_cta_click",
+      "group": "seo_hub",
+      "metrikaGoalId": 608438906
+    },
+    {
+      "id": "aura_free_view",
+      "group": "aura",
+      "metrikaGoalId": 608438907
+    },
+    {
+      "id": "aura_free_cta_click",
+      "group": "aura",
+      "metrikaGoalId": 608438908
     }
   ]
 }

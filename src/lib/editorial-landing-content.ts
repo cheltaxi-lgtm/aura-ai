@@ -301,6 +301,7 @@ export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Отзывы", hash: EDITORIAL_SECTION_IDS.reviews },
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Натальная карта", href: "/natalnaya-karta" },
+  { label: "Натал или матрица", href: "/natal-ili-matrica" },
   { label: "Таро", href: "/taro" },
   { label: "Гадание", href: "/gadanie" },
   { label: "Фото-расклад", href: "/photo-rasklad" },

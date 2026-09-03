@@ -162,7 +162,14 @@ export function trackReminderOpt(enabled: boolean): void {
  */
 export function inferProductFunnelFromPath(pathname: string): ProductFunnelProduct | null {
   const p = pathname.split("?")[0] || "";
-  if (p.startsWith("/natalnaya-karta") || p.startsWith("/cabinet/astrology")) return "natal";
+  if (
+    p.startsWith("/natalnaya-karta") ||
+    p.startsWith("/cabinet/astrology") ||
+    p === "/voskhodyashchiy-znak" ||
+    p === "/natal-ili-matrica"
+  ) {
+    return "natal";
+  }
   if (p.startsWith("/dizayn-cheloveka") || p.startsWith("/cabinet/human-design")) {
     return "human_design";
   }
@@ -177,7 +184,14 @@ export function inferProductFunnelFromPath(pathname: string): ProductFunnelProdu
   ) {
     return "palm";
   }
-  if (p.includes("destiny-matrix") || p === "/matrix-destiny") return "matrix";
+  if (
+    p.includes("destiny-matrix") ||
+    p === "/matrix-destiny" ||
+    p.startsWith("/numerology/karmicheskiy-khvost") ||
+    p.startsWith("/numerology/kanal-deneg")
+  ) {
+    return "matrix";
+  }
   if (
     p === "/" ||
     p.startsWith("/rasklad") ||

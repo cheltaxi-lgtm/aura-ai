@@ -25,6 +25,7 @@ export function getAuraSeoPaths() {
   const intents = slugsInExport(src, "AURA_INTENT_SEO");
   return [
     "/aura",
+    "/aura/besplatno",
     "/aura/cveta",
     ...colors.map((s) => `/aura/cveta/${s}`),
     "/aura/chakry",
