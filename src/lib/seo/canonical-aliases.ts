@@ -107,6 +107,12 @@ export const CANONICAL_ALIASES: Record<string, string> = {
   "/runy-na-dengi": "/runy/na-dengi",
   "/mladshie-arkany": "/cards/mladshie-arkany",
   "/aura-besplatno": "/aura/besplatno",
+  "/proyektor-i-manifestor": "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor",
+  "/proektor-i-manifestor": "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor",
+  "/dizayn-cheloveka/sovmestimost/proektor-i-manifestor":
+    "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor",
+  "/dizayn-cheloveka/sovmestimost/proyektor-i-manifestor":
+    "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor",
 };
 
 export function resolveCanonicalPath(path: string): string {

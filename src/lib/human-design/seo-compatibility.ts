@@ -78,10 +78,24 @@ export interface HdPairSeo {
   nameA: string;
   nameB: string;
   title: string;
+  h1: string;
+  navLabel: string;
   metaDescription: string;
   intro: string;
   sections: HdEntitySection[];
   faq: HdEntityFaq[];
+}
+
+/** High-click branded pair (Webmaster: «проектор и манифестор совместимость»). */
+export const FEATURED_HD_PAIR_SLUG = "manifestor-i-proektor";
+
+const TYPE_SLUG_ALIASES: Record<string, string> = {
+  proyektor: "proektor",
+  projector: "proektor",
+};
+
+function resolveTypeSlugToken(raw: string): string {
+  return TYPE_SLUG_ALIASES[raw] ?? raw;
 }
 
 function pairKey(a: HdTypeKey, b: HdTypeKey): string {
@@ -102,6 +116,8 @@ export function buildHdPairSeo(typeA: HdTypeKey, typeB: HdTypeKey): HdPairSeo {
     nameA: a.nameRu,
     nameB: b.nameRu,
     title: `${a.nameRu} и ${b.nameRu}: совместимость в Дизайне Человека`,
+    h1: `${a.nameRu} и ${b.nameRu}: совместимость`,
+    navLabel: `${a.nameRu} + ${b.nameRu}`,
     metaDescription: same
       ? `Совместимость двух типов «${a.nameRu}» в Дизайне Человека: сильные стороны пары, зоны притирки, стратегии ${a.strategyRu.toLowerCase()}. Проверьте свою пару бесплатно.`
       : `Совместимость ${a.nameRu} и ${b.nameRu} в Дизайне Человека: как взаимодействуют стратегии «${a.strategyRu}» и «${b.strategyRu}», сильные стороны и зоны притирки. Рассчитайте совместимость пары бесплатно.`,
@@ -147,20 +163,72 @@ export function buildHdPairSeo(typeA: HdTypeKey, typeB: HdTypeKey): HdPairSeo {
   };
 }
 
+function applyFeaturedPairOverrides(seo: HdPairSeo): HdPairSeo {
+  if (seo.slug !== FEATURED_HD_PAIR_SLUG) return seo;
+  return {
+    ...seo,
+    title: "Проектор и Манифестор: совместимость в Дизайне Человека",
+    h1: "Проектор и Манифестор: совместимость",
+    navLabel: "Проектор + Манифестор",
+    metaDescription:
+      "Проектор и Манифестор в Дизайне Человека: стратегия приглашения и информирования, сильные стороны пары и зоны притирки. Рассчитайте совместимость на Zovus бесплатно.",
+    intro:
+      "Проектор и Манифестор — одна из самых узнаваемых пар в Дизайне Человека: проводник, который видит направление, и инициатор, который умеет запускать движение. Союз держится на двух стратегиях: Проектор ждёт приглашения делиться видением, Манифестор информирует до действия — не после.",
+    sections: [
+      ...seo.sections.slice(0, 3),
+      {
+        title: "Проектор и Манифестор в быту",
+        body:
+          "В обычном дне Манифестор быстрее принимает решения и легче уходит в своё. Проектор быстрее замечает, куда энергия пары утекает впустую. Конфликт почти всегда один и тот же: Манифестор уже сделал, Проектор не был в курсе — и совет звучит как критика. Короткий ритуал «я сейчас ухожу делать вот это» снимает горечь у Проектора и гнев у Манифестора лучше любых длинных разборов.",
+      },
+      ...seo.sections.slice(3),
+    ],
+    faq: [
+      {
+        q: "Подходят ли проектор и манифестор друг другу?",
+        a: "Да, если каждый живёт свою стратегию. Манифестор инициирует и информирует, Проектор направляет только по приглашению. Без этих двух правил пара быстро скатывается в «ты давишь» и «ты не слышишь».",
+      },
+      {
+        q: "Как проектору жить с манифестором?",
+        a: "Не вести его «для его же блага» без запроса. Проектор сильнее, когда его спрашивают. Имеет смысл договориться о сигнале: Манифестор сам просит взгляд Проектора на решение, а не получает совет после факта.",
+      },
+      {
+        q: "Должен ли манифестор ждать приглашения проектора?",
+        a: "Нет. Приглашение — стратегия Проектора, не Манифестора. Манифестору нужно информировать: сказать, что он делает и зачем. Тогда автономия не читается как холодность.",
+      },
+      ...seo.faq.slice(1),
+    ],
+  };
+}
+
 export const HD_PAIR_SEO: readonly HdPairSeo[] = TYPE_ORDER.flatMap((a, i) =>
-  TYPE_ORDER.slice(i).map((b) => buildHdPairSeo(a, b))
+  TYPE_ORDER.slice(i).map((b) => applyFeaturedPairOverrides(buildHdPairSeo(a, b)))
 );
 
 export const HD_PAIR_SLUGS = HD_PAIR_SEO.map((p) => p.slug);
 
+/** Alternate spellings / word order → canonical pair path. */
+export const HD_PAIR_ALIASES: Record<string, string> = {
+  "/proyektor-i-manifestor": `/dizayn-cheloveka/sovmestimost/${FEATURED_HD_PAIR_SLUG}`,
+  "/proektor-i-manifestor": `/dizayn-cheloveka/sovmestimost/${FEATURED_HD_PAIR_SLUG}`,
+  "/dizayn-cheloveka/sovmestimost/proektor-i-manifestor": `/dizayn-cheloveka/sovmestimost/${FEATURED_HD_PAIR_SLUG}`,
+  "/dizayn-cheloveka/sovmestimost/proyektor-i-manifestor": `/dizayn-cheloveka/sovmestimost/${FEATURED_HD_PAIR_SLUG}`,
+};
+
 export function hdPairSeoBySlug(slug: string): HdPairSeo | null {
+  const exact = HD_PAIR_SEO.find((p) => p.slug === slug);
+  if (exact) return exact;
   const m = slug.match(/^([a-z-]+?)-i-([a-z-]+)$/);
   if (!m) return null;
-  const a = SLUG_TO_TYPE[m[1]];
-  const b = SLUG_TO_TYPE[m[2]];
+  const a = SLUG_TO_TYPE[resolveTypeSlugToken(m[1])];
+  const b = SLUG_TO_TYPE[resolveTypeSlugToken(m[2])];
   if (!a || !b) return null;
-  const found = HD_PAIR_SEO.find((p) => p.slug === slug);
-  return found ?? null;
+  return (
+    HD_PAIR_SEO.find(
+      (p) =>
+        (p.typeA === a && p.typeB === b) || (p.typeA === b && p.typeB === a)
+    ) ?? null
+  );
 }
 
 export function hdTypeSlug(type: HdTypeKey): string {

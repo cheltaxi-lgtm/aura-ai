@@ -7,6 +7,11 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import { CANONICAL_ALIASES } from "@/lib/seo/canonical-aliases";
 import { lifePathNumber, personalYear, soulNumber } from "@/lib/numerology/calculator";
+import {
+  FEATURED_HD_PAIR_SLUG,
+  HD_PAIR_ALIASES,
+  hdPairSeoBySlug,
+} from "@/lib/human-design/seo-compatibility";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -198,6 +203,31 @@ describe("seo-new-landings", () => {
     expect(sitemap).toContain('staticPage("/numerology/detskaya-matritsa"');
   });
 
+  it("projector × manifestor pair is unique and aliased", () => {
+    expect(FEATURED_HD_PAIR_SLUG).toBe("manifestor-i-proektor");
+    const seo = hdPairSeoBySlug("manifestor-i-proektor");
+    expect(seo?.title).toMatch(/Проектор и Манифестор/);
+    expect(seo?.h1).toBe("Проектор и Манифестор: совместимость");
+    expect(seo?.navLabel).toBe("Проектор + Манифестор");
+    expect(seo?.faq.some((item) => /проектор и манифестор/i.test(item.q))).toBe(true);
+    expect(hdPairSeoBySlug("proektor-i-manifestor")?.slug).toBe("manifestor-i-proektor");
+    expect(hdPairSeoBySlug("proyektor-i-manifestor")?.slug).toBe("manifestor-i-proektor");
+    expect(CANONICAL_ALIASES["/proyektor-i-manifestor"]).toBe(
+      "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor"
+    );
+    expect(HD_PAIR_ALIASES["/proektor-i-manifestor"]).toBe(
+      "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor"
+    );
+    const hub = read("src/app/dizayn-cheloveka/page.tsx");
+    expect(hub).toContain("/dizayn-cheloveka/sovmestimost/rasschitat");
+    expect(hub).toContain("/dizayn-cheloveka/sovmestimost/manifestor-i-proektor");
+    expect(hub).toContain("/natal-ili-matrica");
+    expect(hub).toContain("/photo-rasklad");
+    const pairPage = read("src/app/dizayn-cheloveka/sovmestimost/[pair]/page.tsx");
+    expect(pairPage).toContain("seo.h1");
+    expect(pairPage).toContain("/dizayn-cheloveka/sovmestimost/rasschitat");
+  });
+
   it("canonical aliases consolidate duplicate keyword paths", () => {
     expect(CANONICAL_ALIASES["/karta-dnya"]).toBe("/gadanie/karta-dnya");
     expect(CANONICAL_ALIASES["/gadanie-besplatno"]).toBe("/gadanie/besplatno");
@@ -216,6 +246,12 @@ describe("seo-new-landings", () => {
     expect(CANONICAL_ALIASES["/gadanie-na-lyubov"]).toBe("/gadanie/na-lyubov");
     expect(CANONICAL_ALIASES["/mladshie-arkany"]).toBe("/cards/mladshie-arkany");
     expect(CANONICAL_ALIASES["/aura-besplatno"]).toBe("/aura/besplatno");
+    expect(CANONICAL_ALIASES["/proyektor-i-manifestor"]).toBe(
+      "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor"
+    );
+    expect(CANONICAL_ALIASES["/dizayn-cheloveka/sovmestimost/proektor-i-manifestor"]).toBe(
+      "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor"
+    );
   });
 
   it("карта дня and три карты do not sell the guest triplet as daily cards", () => {
@@ -231,6 +267,18 @@ describe("seo-new-landings", () => {
     expect(three).toContain("Попробовать первый расклад");
     expect(three).toContain("не «карта дня»");
     expect(three).not.toMatch(/href="\/\?ask=1&spread=1"[\s\S]{0,80}карта дня/i);
+
+    const taro = read("src/app/taro/page.tsx");
+    expect(taro).toContain('href="/?ask=1&spread=1"');
+    expect(taro).toContain("Попробовать первый расклад");
+    expect(taro).not.toContain("/?spread=triplet");
+    expect(taro).toContain("Это не карта дня");
+
+    const gadanie = read("src/app/gadanie/page.tsx");
+    expect(gadanie).toContain('href="/?ask=1&spread=1"');
+    expect(gadanie).toContain("Попробовать первый расклад");
+    expect(gadanie).not.toContain("/?spread=triplet");
+    expect(gadanie).toContain("Это не карта дня");
   });
 
   it("public numerology calcs use the shared engine and do not persist a receipt", () => {

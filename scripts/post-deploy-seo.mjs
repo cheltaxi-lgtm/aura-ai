@@ -66,6 +66,11 @@ const CORE_PRIORITY = [
   `${base}/lenormand`,
   `${base}/sovmestimost-znakov-zodiaka`,
   `${base}/photo-rasklad`,
+  `${base}/dizayn-cheloveka`,
+  `${base}/dizayn-cheloveka/rasschitat`,
+  `${base}/dizayn-cheloveka/sovmestimost`,
+  `${base}/dizayn-cheloveka/sovmestimost/rasschitat`,
+  `${base}/dizayn-cheloveka/sovmestimost/manifestor-i-proektor`,
   ...auraAbsoluteUrls(base),
   ...palmAbsoluteUrls(base),
   `${base}/numerology`,
@@ -164,6 +169,21 @@ function loadAllArticleUrls() {
   }
   return [...new Set(urls)];
 }
+
+/**
+ * Webmaster «важные страницы» — только UI (Indexing → Important page monitoring).
+ * Public API v4 has GET only; there is no write endpoint.
+ */
+const WEBMASTER_IMPORTANT_PATHS = [
+  "/",
+  "/dizayn-cheloveka/rasschitat",
+  "/dizayn-cheloveka/sovmestimost",
+  "/photo-rasklad",
+  "/gadanie",
+  "/numerology/destiny-matrix",
+  "/natalnaya-karta",
+  "/gadanie/na-lyubov",
+];
 
 const PRIORITY_URLS = [...new Set([...CORE_PRIORITY, ...RECRAWL_PRIORITY, ...loadAllArticleUrls()])];
 
@@ -282,5 +302,9 @@ async function verifyMetrikaGoals() {
 console.log("\n=== Metrika API ===");
 await verifyMetrikaGoals();
 console.log(`Счётчик: ${goalsDoc.counterId}, целей в манифесте: ${goalsDoc.goals.length}`);
+console.log("\n=== Webmaster important URLs (UI only, no API write) ===");
+for (const path of WEBMASTER_IMPORTANT_PATHS) {
+  console.log(`  ${base}${path}`);
+}
 
 process.exit(failed > 0 ? 1 : 0);

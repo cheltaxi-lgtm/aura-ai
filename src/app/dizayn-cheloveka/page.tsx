@@ -104,15 +104,32 @@ export default function HumanDesignHubPage() {
         <p>
           Наложите две карты друг на друга: композитный бодиграф покажет
           электромагнетические каналы притяжения и то, как вы влияете друг на друга.
-          Разборы динамики для всех 15 пар типов и бесплатный калькулятор совместимости —
-          в разделе{" "}
+          Разборы динамики для всех 15 пар типов — в разделе{" "}
           <Link
             href="/dizayn-cheloveka/sovmestimost"
             className="text-amber-200 underline-offset-4 hover:underline"
           >
             Совместимость
           </Link>
+          . Калькулятор пары —{" "}
+          <Link
+            href="/dizayn-cheloveka/sovmestimost/rasschitat"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            рассчитать совместимость
+          </Link>
           .
+        </p>
+        <p className="mt-3">
+          Частый запрос:{" "}
+          <Link
+            href="/dizayn-cheloveka/sovmestimost/manifestor-i-proektor"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Проектор и Манифестор
+          </Link>
+          {" — "}
+          инициатор и проводник, стратегии информирования и приглашения.
         </p>
       </SeoSection>
 
@@ -279,6 +296,53 @@ export default function HumanDesignHubPage() {
             </div>
           ))}
         </dl>
+      </SeoSection>
+
+      <SeoSection title="Другие инструменты Zovus">
+        <ul className="space-y-2 text-sm">
+          <li>
+            <Link
+              href="/dizayn-cheloveka/rasschitat"
+              className="text-amber-200 underline-offset-4 hover:underline"
+            >
+              Рассчитать бодиграф
+            </Link>
+            {" — "}
+            тип, стратегия и авторитет по дате рождения.
+          </li>
+          <li>
+            <Link
+              href="/natal-ili-matrica"
+              className="text-amber-200 underline-offset-4 hover:underline"
+            >
+              Натальная карта или матрица судьбы
+            </Link>
+            {" — "}
+            чем системы отличаются и с чего начать.
+          </li>
+          <li>
+            <Link
+              href="/natalnaya-karta"
+              className="text-amber-200 underline-offset-4 hover:underline"
+            >
+              Натальная карта
+            </Link>
+            {" · "}
+            <Link
+              href="/numerology/destiny-matrix"
+              className="text-amber-200 underline-offset-4 hover:underline"
+            >
+              Матрица судьбы
+            </Link>
+            {" · "}
+            <Link
+              href="/photo-rasklad"
+              className="text-amber-200 underline-offset-4 hover:underline"
+            >
+              Таро по фото
+            </Link>
+          </li>
+        </ul>
       </SeoSection>
 
       <div className="mt-10">

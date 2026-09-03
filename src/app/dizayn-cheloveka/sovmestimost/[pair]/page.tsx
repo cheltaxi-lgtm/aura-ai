@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
@@ -41,6 +41,9 @@ export default async function HdPairPage({
   const { pair } = await params;
   const seo = hdPairSeoBySlug(pair);
   if (!seo) notFound();
+  if (pair !== seo.slug) {
+    redirect(`/dizayn-cheloveka/sovmestimost/${seo.slug}`);
+  }
 
   const metaA = TYPE_META[seo.typeA];
   const metaB = TYPE_META[seo.typeB];
@@ -60,7 +63,7 @@ export default async function HdPairPage({
         { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
         { name: "Совместимость", path: "/dizayn-cheloveka/sovmestimost" },
         {
-          name: `${seo.nameA} + ${seo.nameB}`,
+          name: seo.navLabel,
           path: `/dizayn-cheloveka/sovmestimost/${seo.slug}`,
         },
       ]}
@@ -72,9 +75,7 @@ export default async function HdPairPage({
       <SeoPageTracker goal="hd_pair_view" params={{ pair: seo.slug }} />
 
       <p className="text-sm text-aura-gold/80">Дизайн Человека · Совместимость</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">
-        {seo.nameA} + {seo.nameB}
-      </h1>
+      <h1 className="mt-2 font-display text-3xl font-bold">{seo.h1}</h1>
       <p className="mt-4 text-white/70">{seo.intro}</p>
 
       <dl className="mt-6 grid grid-cols-2 gap-2.5 text-sm">
@@ -133,7 +134,7 @@ export default async function HdPairPage({
                 href={`/dizayn-cheloveka/sovmestimost/${p.slug}`}
                 className="text-white/70 underline-offset-4 transition hover:text-amber-200 hover:underline"
               >
-                {p.nameA} + {p.nameB}
+                {p.navLabel}
               </Link>
             </li>
           ))}

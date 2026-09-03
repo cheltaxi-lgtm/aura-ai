@@ -19,6 +19,8 @@ const DEFAULT_LINKS = [
   { href: "/lenormand", label: "Ленорман" },
   { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн Человека" },
+  { href: "/dizayn-cheloveka/sovmestimost", label: "Совместимость Дизайн Человека" },
+  { href: "/dizayn-cheloveka/sovmestimost/manifestor-i-proektor", label: "Проектор и Манифестор" },
   { href: "/numerology/chislo-sudby", label: "Число судьбы" },
   { href: "/numerology/rasschitat", label: "Рассчитать нумерологию" },
   { href: "/numerology/lichnyy-god", label: "Личный год" },

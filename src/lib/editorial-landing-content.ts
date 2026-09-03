@@ -302,6 +302,7 @@ export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Натальная карта", href: "/natalnaya-karta" },
   { label: "Натал или матрица", href: "/natal-ili-matrica" },
+  { label: "Дизайн Человека", href: "/dizayn-cheloveka" },
   { label: "Таро", href: "/taro" },
   { label: "Гадание", href: "/gadanie" },
   { label: "Фото-расклад", href: "/photo-rasklad" },

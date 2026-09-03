@@ -58,6 +58,12 @@ const METHODS = [
     cta: "Открыть астрологию",
   },
   {
+    title: "Дизайн Человека",
+    text: "Бодиграф, типы и совместимость пары — бесплатный расчёт по дате рождения.",
+    href: "/dizayn-cheloveka",
+    cta: "Рассчитать бодиграф",
+  },
+  {
     title: "Ленорман онлайн",
     text: "Короткая фраза из карт — основа и исход без длинных интерпретаций.",
     href: "/lenormand",
@@ -96,7 +102,7 @@ const faq = [
   },
   {
     q: "Можно ли гадать онлайн бесплатно?",
-    a: "Да. На главной три карты открываются бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки. Полные сессии с развёрнутым разбором и продолжением в чате — за руны по тарифу сервиса.",
+    a: "Да. Первый расклад из трёх карт на главной открывается до регистрации и после входа не перетягивается. Это не карта дня. Карта дня и три карты дня — отдельный ритуал после входа. Полные сессии с разбором в чате — за руны по тарифу сервиса.",
   },
   {
     q: "Гадание да или нет — какой метод выбрать?",
@@ -150,8 +156,8 @@ export default function GadaniePage() {
       </SeoSection>
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href="/?spread=triplet" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "free" }}>
-          Три карты бесплатно
+        <SeoTrackedCta href="/?ask=1&spread=1" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "free" }}>
+          Попробовать первый расклад
         </SeoTrackedCta>
         <SeoTrackedCta href="/gadanie/karta-dnya" variant="ghost" trackGoal="gadanie_hub_cta_click" trackParams={{ target: "karta-dnya" }}>
           Карта дня

@@ -3837,7 +3837,7 @@ export const SEO_ARTICLES_EXTRA: SeoArticle[] = [
     ],
     intentSlugs: [],
     relatedHrefs: [
-      { href: "/?spread=triplet", title: "Три карты бесплатно" },
+      { href: "/?ask=1&spread=1", title: "Попробовать первый расклад" },
       { href: "/taro#besplatno", title: "Таро онлайн" },
       { href: "/photo-rasklad", title: "Расшифровка по фото" },
     ],

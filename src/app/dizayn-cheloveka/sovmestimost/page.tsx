@@ -78,7 +78,14 @@ export default function HdCompatibilityHubPage() {
       <SeoSection title="Совместимость по типам">
         <p>
           Тип — первый слой совместимости: стратегия каждого партнёра задаёт ритм
-          отношений. Выберите вашу пару:
+          отношений. Частый запрос —{" "}
+          <Link
+            href="/dizayn-cheloveka/sovmestimost/manifestor-i-proektor"
+            className="text-amber-200 underline-offset-4 hover:underline"
+          >
+            Проектор и Манифестор
+          </Link>
+          . Выберите вашу пару:
         </p>
         <ul className="mt-3 grid grid-cols-1 gap-2 text-sm sm:grid-cols-2">
           {HD_PAIR_SEO.map((p) => (
@@ -87,7 +94,7 @@ export default function HdCompatibilityHubPage() {
                 href={`/dizayn-cheloveka/sovmestimost/${p.slug}`}
                 className="block rounded-xl border border-white/10 bg-white/[0.03] px-3.5 py-2.5 text-white/80 transition hover:border-amber-500/40 hover:text-amber-100"
               >
-                {p.nameA} + {p.nameB}
+                {p.navLabel}
               </Link>
             </li>
           ))}

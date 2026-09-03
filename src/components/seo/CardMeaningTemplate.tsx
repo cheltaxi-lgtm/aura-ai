@@ -68,10 +68,10 @@ export default function CardMeaningTemplate({
       ) : null}
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href="/?spread=triplet" trackGoal="spread_intent_start">
+        <SeoTrackedCta href="/?ask=1&spread=1" trackGoal="spread_intent_start">
           Разобрать мой случай с мастером
         </SeoTrackedCta>
-        <SeoTrackedCta href="/?spread=triplet" variant="ghost">
+        <SeoTrackedCta href="/?ask=1&spread=1" variant="ghost">
           Сделать расклад
         </SeoTrackedCta>
       </div>

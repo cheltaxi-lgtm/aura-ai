@@ -37,7 +37,7 @@ export default function SeasonalForecastPage({
   zodiacLinks,
   intentLinks,
   faq,
-  ctaHref = "/?spread=triplet",
+  ctaHref = "/?ask=1&spread=1",
   ctaLabel = "Сделать расклад на период",
   extraSections,
 }: SeasonalForecastPageProps) {

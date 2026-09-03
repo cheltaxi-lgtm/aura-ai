@@ -19,6 +19,7 @@ const START_LINKS = [
   { href: "/numerology/destiny-matrix", label: "Матрица судьбы бесплатно" },
   { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн человека" },
+  { href: "/dizayn-cheloveka/sovmestimost", label: "Совместимость Дизайн Человека" },
   { href: "/taro#besplatno", label: "Бесплатный расклад Таро" },
   { href: "/aura", label: "Аура по фото" },
 ] as const;
@@ -43,8 +44,11 @@ export default function HomeSeoContent() {
             ,{" "}
             <Link href="/natalnaya-karta">натальной карты</Link>
             ,{" "}
-            <Link href="/dizayn-cheloveka/rasschitat">дизайна человека</Link> или открыть три карты Таро
-            бесплатно до регистрации. После входа классический расклад на три карты доступен раз в сутки.
+            <Link href="/dizayn-cheloveka/rasschitat">дизайна человека</Link>
+            ,{" "}
+            <Link href="/dizayn-cheloveka/sovmestimost">совместимости по Дизайну Человека</Link> или
+            открыть три карты Таро бесплатно до регистрации. Первый расклад после входа не
+            перетягивается и это не карта дня. Три карты дня — отдельный ритуал раз в сутки.
           </p>
           <p>
             Можно выбрать готовый вопрос в каталоге, загрузить{" "}
