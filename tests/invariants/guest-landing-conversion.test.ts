@@ -89,8 +89,11 @@ describe("guest landing conversion cleanup", () => {
     const guest = guestLandingBranch();
     expect(guest.indexOf("<EditorialReviewsSection")).toBeLessThan(guest.indexOf("<LandingSeoHub"));
     const reviews = readSrc("src/components/editorial/EditorialReviewsSection.tsx");
-    expect(reviews).toContain('attachRecaptchaToken(payload, "reviews"');
-    expect(reviews).toContain("Отправить на модерацию");
+    expect(reviews).not.toContain("<form");
+    expect(reviews).not.toContain("Отправить на модерацию");
+    const form = readSrc("src/components/cabinet/CabinetReviewForm.tsx");
+    expect(form).toContain('attachRecaptchaToken(payload, "reviews"');
+    expect(form).toContain("Отправить на модерацию");
     expect(reviews).not.toMatch(/реальн(ые|ый|ых) (покупател|отзыв)/i);
     expect(reviews).toContain("/api/reviews");
   });

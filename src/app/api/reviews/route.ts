@@ -63,6 +63,11 @@ export async function POST(request: NextRequest) {
   if (!landingReviewsEnabled()) {
     return NextResponse.json({ error: "disabled" }, { status: 404 });
   }
+  const auth = await getAuth();
+  if (!auth || auth.role !== "user") {
+    return NextResponse.json({ error: "auth_required" }, { status: 401 });
+  }
+  const userAccountId = auth.sub;
   await ensureDb();
 
   const ip = clientIp(request);
@@ -98,8 +103,6 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: parsed.error }, { status: 400 });
   }
 
-  const auth = await getAuth();
-  const userAccountId = auth?.role === "user" ? auth.sub : null;
   const ipHash = hashReviewIp(ip);
   if (await hasRecentPendingReview({ userAccountId, ipHash })) {
     return NextResponse.json({ error: "already_pending" }, { status: 409 });

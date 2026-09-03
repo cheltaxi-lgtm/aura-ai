@@ -48,6 +48,7 @@ import CabinetAppVersion from "@/components/cabinet/CabinetAppVersion";
 import CabinetJointReadings from "@/components/cabinet/CabinetJointReadings";
 import CabinetMemoryFacts from "@/components/cabinet/CabinetMemoryFacts";
 import CabinetSupportLink from "@/components/cabinet/CabinetSupportLink";
+import CabinetReviewForm from "@/components/cabinet/CabinetReviewForm";
 import RitualFlow from "@/components/ritual/RitualFlow";
 import { clearClientActivityState } from "@/lib/client-logout";
 import type { RitualMasterKey } from "@/lib/ritual-config";
@@ -727,6 +728,7 @@ export default function CabinetPage() {
               />
             ) : null}
             <CabinetSupportLink />
+            {authUser?.role === "user" ? <CabinetReviewForm /> : null}
             <CabinetJointReadings variant="compact" />
             <CabinetDailyNotifications />
             <CabinetAppVersion />

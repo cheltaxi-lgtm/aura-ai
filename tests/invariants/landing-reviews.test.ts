@@ -82,7 +82,7 @@ describe("landing reviews", () => {
     expect(formatLandingReviewWhen("2026-08-01T12:00:00+03:00", now)).toMatch(/авг/i);
   });
 
-  it("guest GET/POST /api/reviews is middleware-public", () => {
+  it("keeps review browsing middleware-public (POST enforces account access in the route)", () => {
     const mw = readFileSync(path.join(__dirname, "../../src/middleware.ts"), "utf8");
     expect(mw).toContain('"/api/reviews"');
   });
