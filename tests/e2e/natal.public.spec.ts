@@ -16,7 +16,7 @@ test.describe("natal public and authentication boundaries", () => {
       url.pathname === "/auth/user/login"
       && url.searchParams.get("returnTo") === "/cabinet/astrology"
     );
-    await expect(page.getByRole("heading", { name: "Вход", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "С возвращением", exact: true })).toBeVisible();
   });
 
   for (const entry of [
@@ -40,7 +40,7 @@ test.describe("natal public and authentication boundaries", () => {
         url.pathname === "/auth/user/login"
         && url.searchParams.get("returnTo") === entry.path
       );
-      await expect(page.getByRole("heading", { name: "Вход", exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "С возвращением", exact: true })).toBeVisible();
     });
   }
 
@@ -72,7 +72,7 @@ test.describe("natal public and authentication boundaries", () => {
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/auth/user/login?returnTo=%2Fcabinet%2Fastrology");
 
-    await expect(page.getByRole("heading", { name: "Вход", exact: true })).toBeVisible();
+    await expect(page.getByRole("heading", { name: "С возвращением", exact: true })).toBeVisible();
     await expect(page.getByRole("textbox", { name: "Email *" })).toBeVisible();
     await expect(page.getByLabel("Пароль *")).toBeVisible();
     await expect(page.getByRole("button", { name: "Войти", exact: true })).toBeVisible();

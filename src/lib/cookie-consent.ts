@@ -4,6 +4,7 @@ export const COOKIE_CONSENT_KEY = "aura_cookie_consent";
 export type CookieConsentValue = "1" | "0";
 
 export const COOKIE_CONSENT_EVENT = "aura:cookie-consent";
+export const METRIKA_READY_EVENT = "aura:metrika-ready";
 
 export function getCookieConsent(): CookieConsentValue | null {
   if (typeof window === "undefined") return null;

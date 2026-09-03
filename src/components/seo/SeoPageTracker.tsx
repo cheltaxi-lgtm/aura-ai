@@ -1,6 +1,8 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
+import { hasCookieConsent, METRIKA_READY_EVENT } from "@/lib/cookie-consent";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import {
   trackProductFunnel,
@@ -19,15 +21,26 @@ export default function SeoPageTracker({
   funnelProduct?: ProductFunnelProduct;
   funnelSource?: string;
 }) {
+  const pathname = usePathname();
+  const lastView = useRef<string | null>(null);
   useEffect(() => {
-    trackSeoEvent(goal, params);
-    if (funnelProduct) {
-      trackProductFunnel("product_view", {
-        product: funnelProduct,
-        source: funnelSource || goal,
-      });
-    }
-  }, [goal, params, funnelProduct, funnelSource]);
+    const sendCurrentView = () => {
+      if (!hasCookieConsent() || !window.ym) return;
+      const key = JSON.stringify([pathname, goal, params, funnelProduct, funnelSource]);
+      if (lastView.current === key) return;
+      lastView.current = key;
+      trackSeoEvent(goal, params);
+      if (funnelProduct) {
+        trackProductFunnel("product_view", {
+          product: funnelProduct,
+          source: funnelSource || goal,
+        });
+      }
+    };
+    sendCurrentView();
+    window.addEventListener(METRIKA_READY_EVENT, sendCurrentView);
+    return () => window.removeEventListener(METRIKA_READY_EVENT, sendCurrentView);
+  }, [pathname, goal, params, funnelProduct, funnelSource]);
 
   return null;
 }

@@ -117,17 +117,22 @@ export async function resolveBirthPlace(city: string): Promise<GeocodedPlace | n
   const offline = resolveFallbackCity(city);
   if (offline) return fromFallback(offline);
 
-  const geonames = resolveGeonamesCity(city);
-  if (geonames) return geonames;
-
-  const primaryName = city.split(",")[0]?.trim();
-  if (primaryName && primaryName !== city.trim()) {
-    const primaryFallback = resolveFallbackCity(primaryName);
-    if (primaryFallback) return fromFallback(primaryFallback);
-    const primaryGeonames = resolveGeonamesCity(primaryName);
-    if (primaryGeonames) return primaryGeonames;
+  const parts = (label: string) => label.trim().toLowerCase().normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "").replace(/ё/g, "е")
+    .split(",").map((part) => part.trim()).filter(Boolean);
+  const requested = parts(city);
+  if (requested.length < 2) {
+    const geonames = resolveGeonamesCity(city);
+    if (geonames) return geonames;
+    return (await searchBirthPlaces(city, 1))[0] ?? null;
   }
 
-  const hits = await searchBirthPlaces(city, 1);
-  return hits[0] ?? null;
+  // Autocomplete may search just the primary name, but resolving stored birth
+  // data must preserve every region/country qualifier from the original label.
+  const hits = await searchBirthPlaces(city, 100);
+  const matches = hits.filter((hit) => {
+    const candidate = parts(hit.label);
+    return requested.every((part) => candidate.includes(part));
+  });
+  return matches.length === 1 ? matches[0] : null;
 }

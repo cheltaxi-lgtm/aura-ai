@@ -14,7 +14,7 @@ import {
   getGuestNatalArtifactMeta,
   hashNatalGuestClaimToken,
 } from "@/lib/services/natal-guest-service";
-import { getStoredNatalChart } from "@/lib/services/natal-chart-service";
+import { getStoredNatalChart, isStoredNatalChartStale } from "@/lib/services/natal-chart-service";
 import {
   ensureMinimalConsumerProfile,
   getUserById,
@@ -199,6 +199,10 @@ describe.skipIf(!hasTestDb)("natal-guest-continuity (db)", () => {
     const meta = await getGuestNatalArtifactMeta(payload.artifactId);
     expect(claim.birthFingerprint).toBe(meta!.birthFingerprint);
     expect(payload).not.toHaveProperty("birthFingerprint");
+    const refreshed = await getUserById(stub.id);
+    const stored = await getStoredNatalChart(stub.id);
+    expect(refreshed!.birth_city).toBe(MOSCOW.label);
+    expect(await isStoredNatalChartStale(stored!, refreshed!)).toBe(false);
   });
 
   it("N7+N8: conflict then explicit replace adopts guest chart", async () => {

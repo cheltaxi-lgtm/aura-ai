@@ -735,6 +735,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               <label className={labelClass}>Дата рождения</label>
               <input
                 type="date"
+                aria-label="Дата рождения"
                 value={optionalBirthDate}
                 onChange={(e) => setOptionalBirthDate(e.target.value)}
                 className={fieldClass}
@@ -744,6 +745,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               <label className={labelClass}>Пол</label>
               <select
                 value={optionalGender}
+                aria-label="Пол"
                 onChange={(e) => setOptionalGender(e.target.value as "male" | "female")}
                 className={fieldClass}
               >

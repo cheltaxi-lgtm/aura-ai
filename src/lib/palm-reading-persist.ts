@@ -1,4 +1,5 @@
 import { ensureDb, query } from "@/lib/db";
+import { withReadingLock } from "@/lib/reading-lock";
 import { createHistoryEntry } from "@/lib/users";
 import { alignPalmSnapshot, type PalmHand, type PalmSnapshot } from "@/lib/palm-constants";
 import { PALM_DAY_TIMEZONE } from "@/lib/services/palm-guest-service";
@@ -144,10 +145,5 @@ export async function withPalmReadingLock<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const lockKey = `palm-reading:${userId}:${key}`;
-  await query(`SELECT pg_advisory_lock(hashtext($1))`, [lockKey]);
-  try {
-    return await fn();
-  } finally {
-    await query(`SELECT pg_advisory_unlock(hashtext($1))`, [lockKey]).catch(() => {});
-  }
+  return withReadingLock(lockKey, fn);
 }

@@ -288,11 +288,11 @@ describe("invariants", () => {
 describe("year forecast age transitions", () => {
   it("marks 34→35, 39→40, 44→45 and stays quiet inside a period", () => {
     const at34 = matrixYearForecast("1991-03-08", new Date(2026, 2, 1))!;
-    expect(at34.months.find((m) => m.year === 2026 && m.month === 4)?.ageTransition).toBe(true);
+    expect(at34.months.find((m) => m.year === 2026 && m.month === 3)?.ageTransition).toBe(true);
     const at39 = matrixYearForecast("1987-04-30", new Date(2027, 3, 1))!;
-    expect(at39.months.find((m) => m.year === 2027 && m.month === 5)?.ageTransition).toBe(true);
+    expect(at39.months.find((m) => m.year === 2027 && m.month === 4)?.ageTransition).toBe(true);
     const at44 = matrixYearForecast("1981-01-11", new Date(2026, 0, 1))!;
-    expect(at44.months.find((m) => m.year === 2026 && m.month === 2)?.ageTransition).toBe(true);
+    expect(at44.months.find((m) => m.year === 2026 && m.month === 1)?.ageTransition).toBe(true);
     const mid = matrixYearForecast("1990-08-15", new Date(2026, 0, 1))!;
     expect(mid.months.find((m) => m.year === 2026 && m.month === 3)?.ageTransition).toBeUndefined();
   });

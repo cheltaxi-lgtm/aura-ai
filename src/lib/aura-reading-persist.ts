@@ -1,4 +1,5 @@
 import { ensureDb, query } from "@/lib/db";
+import { withReadingLock } from "@/lib/reading-lock";
 import { createHistoryEntry } from "@/lib/users";
 import { alignAuraSnapshotColors, type AuraSnapshot } from "@/lib/aura-constants";
 import { AURA_DAY_TIMEZONE } from "@/lib/services/aura-guest-service";
@@ -179,10 +180,5 @@ export async function withAuraReadingLock<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const lockKey = auraReadingLockKey(userId, key);
-  await query(`SELECT pg_advisory_lock(hashtext($1))`, [lockKey]);
-  try {
-    return await fn();
-  } finally {
-    await query(`SELECT pg_advisory_unlock(hashtext($1))`, [lockKey]).catch(() => {});
-  }
+  return withReadingLock(lockKey, fn);
 }

@@ -3,7 +3,6 @@
 set -euo pipefail
 
 HOST="${DEPLOY_HOST:-root@217.12.37.32}"
-APP_DIR="${DEPLOY_DIR:-/opt/aura-ai}"
 TARBALL="${TMPDIR:-/tmp}/aura-ai-deploy.tgz"
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 SSH_KEY="${DEPLOY_SSH_KEY:-$HOME/.ssh/aura_deploy_ed25519}"
@@ -15,10 +14,15 @@ echo "==> Type-checking locally..."
 cd "$ROOT"
 npx tsc --noEmit -p tsconfig.json
 
-echo "==> Packing (excluding node_modules, .next, .git, .env.local)..."
-rm -f "$TARBALL"
-tar --exclude="node_modules" --exclude=".next" --exclude=".git" --exclude=".env.local" \
-  -czf "$TARBALL" -C "$(dirname "$ROOT")" "$(basename "$ROOT")"
+echo "==> Packing committed release (local secrets and temporary files excluded)..."
+RELEASE_SHA="$(git rev-parse HEAD)"
+PACK_DIR="$(mktemp -d)"
+trap 'rm -rf "$PACK_DIR"' EXIT
+mkdir "$PACK_DIR/aura-ai"
+git archive "$RELEASE_SHA" | tar -xf - -C "$PACK_DIR/aura-ai"
+printf '%s\n' "$RELEASE_SHA" > "$PACK_DIR/aura-ai/deploy-sha.txt"
+tar -czf "$TARBALL" -C "$PACK_DIR" aura-ai
+echo "Release: $RELEASE_SHA"
 
 echo "==> Uploading to $HOST..."
 scp "${SSH_OPTS[@]}" "$TARBALL" "$HOST:/tmp/aura-ai-deploy.tgz"
@@ -27,11 +31,82 @@ echo "==> Deploying on server (env preserved)..."
 ssh "${SSH_OPTS[@]}" "$HOST" bash -s <<'REMOTE'
 set -euo pipefail
 APP_DIR="/opt/aura-ai"
-ENV_BACKUP="/tmp/aura-ai-env.local.bak"
-BOT_ENV_BACKUP="/tmp/aura-ai-telegram-bot.env.bak"
-STAGING="/tmp/aura-ai-staging"
+umask 077
+SNAPSHOT_ROOT="/opt/aura-ai-deploy-snapshots"
+mkdir -p "$SNAPSHOT_ROOT"
+chmod 700 "$SNAPSHOT_ROOT"
+SNAPSHOT="$(mktemp -d "$SNAPSHOT_ROOT/release-$(date -u +%Y%m%dT%H%M%SZ)-XXXXXX")"
+PREVIOUS="$SNAPSHOT/aura-ai"
+ENV_BACKUP="$SNAPSHOT/env.local"
+BOT_ENV_BACKUP="$SNAPSHOT/telegram-bot.env"
+STAGING="$(mktemp -d /tmp/aura-ai-staging-XXXXXX)"
 BOT_USER="aura-ai"
 BOT_GROUP="aura-ai"
+TREE_MOVED=0
+SERVICES_STOPPED=0
+RUNTIME_COPIED=0
+
+rollback_on_failure() {
+  local code=$?
+  trap - EXIT
+  if [ "$code" -ne 0 ]; then
+    echo "ERROR: deploy failed; restoring previous release from $SNAPSHOT" >&2
+    if [ "$TREE_MOVED" -eq 1 ]; then
+      systemctl stop aura-ai-async-jobs zovus-telegram-bot aura-ai || true
+      if [ "$RUNTIME_COPIED" -eq 1 ]; then
+        for relative in public/scene-art telegram-bot/data telegram-bot/backups logs backups; do
+          if [ -d "$APP_DIR/$relative" ]; then
+            mkdir -p "$PREVIOUS/$relative"
+            cp -a "$APP_DIR/$relative/." "$PREVIOUS/$relative/"
+          fi
+        done
+      fi
+      [ ! -d "$APP_DIR" ] || mv "$APP_DIR" "$SNAPSHOT/failed-release"
+      mv "$PREVIOUS" "$APP_DIR"
+    fi
+    for unit in aura-ai aura-ai-async-jobs zovus-telegram-bot; do
+      if [ -f "$SNAPSHOT/$unit.service" ]; then
+        install -m 644 "$SNAPSHOT/$unit.service" "/etc/systemd/system/$unit.service"
+      fi
+    done
+    if [ -f "$SNAPSHOT/Caddyfile" ]; then
+      install -m 644 "$SNAPSHOT/Caddyfile" /etc/caddy/Caddyfile
+      systemctl reload caddy || true
+    fi
+    if [ -f "$SNAPSHOT/root.crontab" ]; then
+      crontab "$SNAPSHOT/root.crontab"
+    fi
+    systemctl daemon-reload
+    if [ "$SERVICES_STOPPED" -eq 1 ]; then
+      systemctl restart aura-ai aura-ai-async-jobs zovus-telegram-bot || true
+    fi
+    local restored=0
+    for _ in $(seq 1 30); do
+      if [ "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health || true)" = "200" ]; then
+        restored=1
+        break
+      fi
+      sleep 2
+    done
+    for unit in aura-ai aura-ai-async-jobs zovus-telegram-bot; do
+      systemctl is-active --quiet "$unit" || restored=0
+    done
+    for url in https://zovus.ru/api/health http://127.0.0.1:8787/health; do
+      [ "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' "$url" || true)" = "200" ] || restored=0
+    done
+    echo "previous_release_restored=$restored snapshot=$SNAPSHOT"
+  fi
+  exit "$code"
+}
+
+for unit in aura-ai aura-ai-async-jobs zovus-telegram-bot; do
+  cp -a "/etc/systemd/system/$unit.service" "$SNAPSHOT/$unit.service"
+done
+cp -a /etc/caddy/Caddyfile "$SNAPSHOT/Caddyfile"
+crontab -l > "$SNAPSHOT/root.crontab"
+trap rollback_on_failure EXIT
+test -s "$APP_DIR/.env.local"
+bash "$APP_DIR/proxmox-setup/cron-pg-backup.sh"
 
 if [ -f "$APP_DIR/.env.local" ]; then
   cp "$APP_DIR/.env.local" "$ENV_BACKUP"
@@ -42,10 +117,8 @@ if [ -f "$APP_DIR/telegram-bot/.env" ]; then
   echo "Backed up telegram-bot/.env -> $BOT_ENV_BACKUP"
 fi
 
-# Stage first: install outage page + Caddy BEFORE wiping the live tree so
+# Stage first: install outage page + Caddy BEFORE replacing the live tree so
 # visitors see the premium stub instead of a broken hero / blank 502.
-rm -rf "$STAGING"
-mkdir -p "$STAGING"
 tar -xzf /tmp/aura-ai-deploy.tgz -C "$STAGING"
 # Tarball root is the repo folder name (aura-ai).
 STAGE_APP="$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d | head -n1)"
@@ -53,17 +126,28 @@ STAGE_APP="$(find "$STAGING" -mindepth 1 -maxdepth 1 -type d | head -n1)"
 sed -i 's/\r$//' "$STAGE_APP/hosting/install-maintenance-page.sh" 2>/dev/null || true
 bash "$STAGE_APP/hosting/install-maintenance-page.sh" "$STAGE_APP"
 
-systemctl stop aura-ai || true
-systemctl stop aura-ai-async-jobs || true
-systemctl stop zovus-telegram-bot || true
+SERVICES_STOPPED=1
+systemctl stop aura-ai-async-jobs
+systemctl stop zovus-telegram-bot
+systemctl stop aura-ai
 
-rm -rf "$APP_DIR"
+mv "$APP_DIR" "$PREVIOUS"
+TREE_MOVED=1
 mv "$STAGE_APP" "$APP_DIR"
 rm -rf "$STAGING"
 chown -R root:root "$APP_DIR"
+# Keep runtime state authoritative; never replace it with developer copies.
+for relative in public/releases public/scene-art telegram-bot/data telegram-bot/backups logs backups; do
+  if [ -d "$PREVIOUS/$relative" ]; then
+    mkdir -p "$APP_DIR/$relative"
+    cp -a "$PREVIOUS/$relative/." "$APP_DIR/$relative/"
+  fi
+done
+RUNTIME_COPIED=1
 
 if [ -f "$ENV_BACKUP" ]; then
   cp "$ENV_BACKUP" "$APP_DIR/.env.local"
+  chmod 600 "$APP_DIR/.env.local"
   echo "Restored production .env.local"
 fi
 if [ -f "$BOT_ENV_BACKUP" ]; then
@@ -100,6 +184,7 @@ grep -q '^TRUST_PROXY=' "$APP_DIR/.env.local" \
   || echo 'TRUST_PROXY=true' >> "$APP_DIR/.env.local"
 
 cd "$APP_DIR"
+umask 022
 npm ci
 [ -f data/geonames/cities.min.json ] || npm run build:geonames
 npm run migrate
@@ -120,7 +205,7 @@ fi
 npm run build
 bash proxmox-setup/install-crons.sh
 
-# Async worker needs .env.async-jobs — wiped by rm -rf above. Without it,
+# Async worker needs .env.async-jobs regenerated for the new tree. Without it,
 # intention/daily/natal jobs stay pending and the client ritual hangs forever.
 sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai.service hosting/aura-ai-async-jobs.service hosting/install-maintenance-page.sh hosting/zovus-telegram-bot.service 2>/dev/null || true
 bash hosting/ensure-async-jobs-user.sh "$APP_DIR"
@@ -191,6 +276,17 @@ if [ "$HEALTH_CODE" != "200" ]; then
   exit 1
 fi
 echo "Local health gate: HTTP 200"
+# Keep rollback armed until public traffic and every service pass.
+for path in /api/health / /auth/user/register /numerology/destiny-matrix /apple-icon.svg; do
+  CODE="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' "https://zovus.ru$path" || true)"
+  [ "$CODE" = "200" ] || { echo "ERROR: public $path returned $CODE" >&2; exit 1; }
+done
+for unit in aura-ai aura-ai-async-jobs zovus-telegram-bot; do
+  systemctl is-active --quiet "$unit"
+done
+[ "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/health || true)" = "200" ]
+echo "Previous release retained: $PREVIOUS"
+trap - EXIT
 REMOTE
 
 echo "==> Public health gate (https://zovus.ru/api/health)..."

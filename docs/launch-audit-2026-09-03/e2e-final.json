@@ -1,0 +1,236 @@
+{
+  "kind": "combined-original-and-targeted-verification",
+  "generatedAt": "2026-09-03T09:26:19.985Z",
+  "passed": 32,
+  "failed": 0,
+  "sources": [
+    "e2e-first-production.json",
+    "e2e-daily-final.json"
+  ],
+  "tests": [
+    {
+      "title": "palm restores the same guest hand after login ahead of an older paid hand",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "palm reopens an already paid report without generation",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "unlimited palm access does not require topping up an empty balance",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "a failed palm claim explains recovery instead of offering another registration",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "password recovery reports network failure and allows retry",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "personal memory choice is scrollable and keyboard-contained on a landscape phone",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "guest entry responds before an age lookup and ignores its response after closing",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "a late age confirmation cannot reopen a guest draw after returning to the landing",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "late analytics consent records the current landing exactly once and tracks SPA navigation",
+      "file": "launch-readiness.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "guest can open calculator without registration wall",
+      "file": "natal-guest.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "hero CTA points at on-page calculator for guests",
+      "file": "natal-guest.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "main site uses the same standard header as natal",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "cabinet astrology preserves a safe return path",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "natal report print view requires authentication",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "relationship report print view requires authentication",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "natal compatibility report print view requires authentication",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "invalid public report is a non-sensitive 404",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "invalid public report API is reachable without authentication",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "mobile login and legal navigation remain usable",
+      "file": "natal.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "personal memory explainer is public and transparent",
+      "file": "personal-memory.public.spec.ts",
+      "project": "public-chromium",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "hero CTA opens and focuses the actual picker",
+      "file": "guest-triplet.public.spec.ts",
+      "project": "guest-triplet-mobile",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "daily guest CTA opens and focuses the actual picker",
+      "file": "guest-triplet.public.spec.ts",
+      "project": "guest-triplet-mobile",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "auth gate is not shown before teaser CTA",
+      "file": "guest-funnel-golden.public.spec.ts",
+      "project": "guest-funnel-golden",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "SEO ask+spread without receipt still opens a new guest picker",
+      "file": "guest-funnel-golden.public.spec.ts",
+      "project": "guest-funnel-golden",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "conversion CTA copy is present in guest draw source path after cards",
+      "file": "guest-funnel-golden.public.spec.ts",
+      "project": "guest-funnel-golden",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "landing sells daily retention hook without guest-auth demand",
+      "file": "guest-funnel-golden.public.spec.ts",
+      "project": "guest-funnel-golden",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "starter gift before cards never promises full reading",
+      "file": "guest-funnel-golden.public.spec.ts",
+      "project": "guest-funnel-golden",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "guest calc, auth resume, history, report idempotency, mobile, ownership",
+      "file": "matrix.e2e.spec.ts",
+      "project": "matrix-e2e",
+      "status": "passed",
+      "source": "e2e-first-production.json"
+    },
+    {
+      "title": "Scenario C: anonymous landing has premium copy without internal jargon",
+      "file": "daily-artifact.public.spec.ts",
+      "project": "daily-artifact",
+      "status": "passed",
+      "source": "e2e-daily-final.json"
+    },
+    {
+      "title": "Scenario daily guest: before-cards CTA opens guest picker",
+      "file": "daily-artifact.public.spec.ts",
+      "project": "daily-artifact",
+      "status": "passed",
+      "source": "e2e-daily-final.json"
+    },
+    {
+      "title": "Scenario A: header reopens the exact existing daily artifact",
+      "file": "daily-artifact.public.spec.ts",
+      "project": "daily-artifact",
+      "status": "passed",
+      "source": "e2e-daily-final.json"
+    },
+    {
+      "title": "Scenario B: a server-hidden recap stays absent after reload",
+      "file": "daily-artifact.public.spec.ts",
+      "project": "daily-artifact",
+      "status": "passed",
+      "source": "e2e-daily-final.json"
+    }
+  ]
+}

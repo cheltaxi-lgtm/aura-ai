@@ -1,0 +1,1581 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\gamer\\Projects\\aura-ai\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--project=public-chromium",
+      "--project=matrix-e2e",
+      "--project=guest-triplet-mobile",
+      "--project=guest-funnel-golden",
+      "--project=daily-artifact",
+      "--workers=1",
+      "--timeout=60000",
+      "--reporter=list,json"
+    ],
+    "configFile": "C:\\Users\\gamer\\Projects\\aura-ai\\playwright.config.ts",
+    "rootDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "public-chromium",
+        "name": "public-chromium",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/(natal|natal-guest|personal-memory|launch-readiness)\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "guest-triplet-mobile",
+        "name": "guest-triplet-mobile",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/guest-triplet\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "guest-funnel-golden",
+        "name": "guest-funnel-golden",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/guest-funnel-golden\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "guest-conversion-smoke",
+        "name": "guest-conversion-smoke",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/guest-conversion-smoke\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "daily-artifact",
+        "name": "daily-artifact",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/daily-artifact\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "matrix-e2e",
+        "name": "matrix-e2e",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/matrix\\.e2e\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": {
+      "command": "npx next dev --hostname 127.0.0.1 --port 3417",
+      "url": "http://127.0.0.1:3417",
+      "reuseExistingServer": true,
+      "timeout": 120000,
+      "env": {
+        "ALLUSERSPROFILE": "C:\\ProgramData",
+        "APPDATA": "C:\\Users\\gamer\\AppData\\Roaming",
+        "CODEX_APP_TOOLS_PIPE_PATH": "\\\\.\\pipe\\codex-browser-use-9e2891b5-83bb-4db5-a72d-a6a209a100f8",
+        "CODEX_CI": "1",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop",
+        "CODEX_MCP_NODE_PATH": "C:\\Users\\gamer\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\ad3b5049246cde44\\bin\\node.exe",
+        "CODEX_PERMISSION_PROFILE": ":workspace",
+        "CODEX_SAGE_BACKFILL_TRACKER_TAB_REUSE": "1",
+        "CODEX_SANDBOX_NETWORK_DISABLED": "1",
+        "CODEX_SESSION_ID": "01a06636-5d18-7cc2-9a4d-9584c5b237be",
+        "CODEX_THREAD_ID": "01a06636-5d18-7cc2-9a4d-9584c5b237be",
+        "COLOR": "0",
+        "COLORTERM": "",
+        "CommonProgramFiles": "C:\\Program Files\\Common Files",
+        "CommonProgramFiles(x86)": "C:\\Program Files (x86)\\Common Files",
+        "CommonProgramW6432": "C:\\Program Files\\Common Files",
+        "COMPUTERNAME": "GR9",
+        "ComSpec": "C:\\WINDOWS\\system32\\cmd.exe",
+        "DriverData": "C:\\Windows\\System32\\Drivers\\DriverData",
+        "EDITOR": "C:\\WINDOWS\\notepad.exe",
+        "GH_PAGER": "cat",
+        "GIT_PAGER": "cat",
+        "GOPATH": "C:\\Users\\gamer\\go",
+        "HOME": "C:\\Users\\gamer",
+        "HOMEDRIVE": "C:",
+        "HOMEPATH": "\\Users\\gamer",
+        "INIT_CWD": "C:\\Users\\gamer\\Projects\\aura-ai",
+        "JAVA_HOME": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOCALAPPDATA": "C:\\Users\\gamer\\AppData\\Local",
+        "LOGONSERVER": "\\\\GR9",
+        "LOG_FORMAT": "json",
+        "NODE": "C:\\Program Files\\nodejs\\node.exe",
+        "NO_COLOR": "1",
+        "npm_command": "exec",
+        "npm_config_cache": "C:\\Users\\gamer\\AppData\\Local\\npm-cache",
+        "npm_config_globalconfig": "C:\\Users\\gamer\\AppData\\Roaming\\npm\\etc\\npmrc",
+        "npm_config_global_prefix": "C:\\Users\\gamer\\AppData\\Roaming\\npm",
+        "npm_config_init_module": "C:\\Users\\gamer\\.npm-init.js",
+        "npm_config_local_prefix": "C:\\Users\\gamer\\Projects\\aura-ai",
+        "npm_config_node_gyp": "C:\\Program Files\\nodejs\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js",
+        "npm_config_noproxy": "",
+        "npm_config_npm_version": "11.12.1",
+        "npm_config_prefix": "C:\\Users\\gamer\\AppData\\Roaming\\npm",
+        "npm_config_userconfig": "C:\\Users\\gamer\\.npmrc",
+        "npm_config_user_agent": "npm/11.12.1 node/v24.15.0 win32 x64 workspaces/false",
+        "npm_execpath": "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+        "npm_lifecycle_event": "npx",
+        "npm_lifecycle_script": "playwright",
+        "npm_node_execpath": "C:\\Program Files\\nodejs\\node.exe",
+        "npm_package_json": "C:\\Users\\gamer\\Projects\\aura-ai\\package.json",
+        "npm_package_name": "aura-ai",
+        "npm_package_version": "0.1.0",
+        "NUMBER_OF_PROCESSORS": "16",
+        "OneDrive": "C:\\Users\\gamer\\OneDrive",
+        "OneDriveConsumer": "C:\\Users\\gamer\\OneDrive",
+        "OS": "Windows_NT",
+        "PAGER": "cat",
+        "Path": "C:\\Users\\gamer\\Projects\\aura-ai\\node_modules\\.bin;C:\\Users\\gamer\\Projects\\aura-ai\\node_modules\\.bin;C:\\Users\\gamer\\Projects\\node_modules\\.bin;C:\\Users\\gamer\\node_modules\\.bin;C:\\Users\\node_modules\\.bin;C:\\node_modules\\.bin;C:\\Program Files\\nodejs\\node_modules\\npm\\node_modules\\@npmcli\\run-script\\lib\\node-gyp-bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\gamer\\.codex\\tmp\\arg0\\codex-arg08WIxz7;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\libheif\\libheif\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\jxrlib\\jxrlib\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\poppler\\Library\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\override;C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\Git\\cmd;C:\\Program Files\\PuTTY\\;C:\\Program Files\\Go\\bin;C:\\Program Files\\nodejs\\;C:\\Program Files\\GitHub CLI\\;C:\\Program Files\\dotnet\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Users\\gamer\\.cargo\\bin;C:\\Users\\gamer\\.local\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\gamer\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\gamer\\AppData\\Local\\Programs\\Antigravity\\bin;C:\\Users\\gamer\\go\\bin;C:\\Users\\gamer\\AppData\\Local\\devin\\cli\\bin;C:\\Users\\gamer\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\gamer\\AppData\\Roaming\\npm;C:\\Users\\gamer\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin;C:\\Users\\gamer\\.dotnet\\tools;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\fallback;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\git\\cmd;C:\\Users\\gamer\\AppData\\Local\\OpenAI\\Codex\\bin\\2c99e6a5175484dd;C:\\Users\\gamer\\AppData\\Local\\OpenAI\\Codex\\bin\\994e8469124a0d31",
+        "PATHEXT": ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL",
+        "PLAYWRIGHT_JSON_OUTPUT_NAME": "docs/launch-audit-2026-09-03/e2e-final.json",
+        "PROCESSOR_ARCHITECTURE": "AMD64",
+        "PROCESSOR_IDENTIFIER": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+        "PROCESSOR_LEVEL": "25",
+        "PROCESSOR_REVISION": "5000",
+        "ProgramData": "C:\\ProgramData",
+        "ProgramFiles": "C:\\Program Files",
+        "ProgramFiles(x86)": "C:\\Program Files (x86)",
+        "ProgramW6432": "C:\\Program Files",
+        "PROMPT": "$P$G",
+        "PSModulePath": "C:\\Users\\gamer\\OneDrive\\Документы\\PowerShell\\Modules;C:\\Program Files\\PowerShell\\Modules;c:\\users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\Modules;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules",
+        "PUBLIC": "C:\\Users\\Public",
+        "RUST_LOG": "warn",
+        "SystemDrive": "C:",
+        "SystemRoot": "C:\\WINDOWS",
+        "TEMP": "C:\\Users\\gamer\\AppData\\Local\\Temp",
+        "TERM": "dumb",
+        "TMP": "C:\\Users\\gamer\\AppData\\Local\\Temp",
+        "USERDOMAIN": "GR9",
+        "USERDOMAIN_ROAMINGPROFILE": "GR9",
+        "USERNAME": "gamer",
+        "USERPROFILE": "C:\\Users\\gamer",
+        "windir": "C:\\WINDOWS",
+        "__COMPAT_LAYER": "DetectorsAppHealth",
+        "NEXT_DIST_DIR": ".next-e2e"
+      }
+    }
+  },
+  "suites": [
+    {
+      "title": "launch-readiness.public.spec.ts",
+      "file": "launch-readiness.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "palm restores the same guest hand after login ahead of an older paid hand",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 13612,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:09.402Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-e9b43b6a3a5529fa3217",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 40,
+          "column": 5
+        },
+        {
+          "title": "palm reopens an already paid report without generation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2831,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:28.609Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-8ee52c53688fb819be31",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 51,
+          "column": 5
+        },
+        {
+          "title": "unlimited palm access does not require topping up an empty balance",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2885,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:31.469Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-12fa7ab2a524afe268d0",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 59,
+          "column": 5
+        },
+        {
+          "title": "a failed palm claim explains recovery instead of offering another registration",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1688,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:34.375Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-416c362ab6ac995fdcdf",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 66,
+          "column": 5
+        },
+        {
+          "title": "password recovery reports network failure and allows retry",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1449,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:36.104Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-97ec1eabb8156a22431f",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 73,
+          "column": 5
+        },
+        {
+          "title": "personal memory choice is scrollable and keyboard-contained on a landscape phone",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 3746,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:37.573Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-7bd59153861c5fd45333",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 83,
+          "column": 5
+        },
+        {
+          "title": "guest entry responds before an age lookup and ignores its response after closing",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4229,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:41.339Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-5aaceef52aeeb04fbe81",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 102,
+          "column": 5
+        },
+        {
+          "title": "a late age confirmation cannot reopen a guest draw after returning to the landing",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 4512,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:45.587Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-70b708719baca5a7b6da",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 125,
+          "column": 5
+        },
+        {
+          "title": "late analytics consent records the current landing exactly once and tracks SPA navigation",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 2127,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:11:50.117Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "3423c00e6efdf7e5cad3-fd1ce9c314c131ad60a9",
+          "file": "launch-readiness.public.spec.ts",
+          "line": 146,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "natal-guest.public.spec.ts",
+      "file": "natal-guest.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "natal guest calculator (public)",
+          "file": "natal-guest.public.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "guest can open calculator without registration wall",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1569,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:11:52.287Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ef01afe3fe6e16d7c374-4b2d3e0e77540fb95f96",
+              "file": "natal-guest.public.spec.ts",
+              "line": 4,
+              "column": 7
+            },
+            {
+              "title": "hero CTA points at on-page calculator for guests",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1178,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:11:53.874Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "ef01afe3fe6e16d7c374-8ed48506c9391bdab033",
+              "file": "natal-guest.public.spec.ts",
+              "line": 25,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "natal.public.spec.ts",
+      "file": "natal.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "natal public and authentication boundaries",
+          "file": "natal.public.spec.ts",
+          "line": 3,
+          "column": 6,
+          "specs": [
+            {
+              "title": "main site uses the same standard header as natal",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2397,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:11:55.108Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-db85ee1e8c2f0c0dfaf0",
+              "file": "natal.public.spec.ts",
+              "line": 4,
+              "column": 7
+            },
+            {
+              "title": "cabinet astrology preserves a safe return path",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1551,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:11:57.535Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-e69842eeabfeff2082bc",
+              "file": "natal.public.spec.ts",
+              "line": 12,
+              "column": 7
+            },
+            {
+              "title": "natal report print view requires authentication",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1498,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:11:59.103Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-b74c1b9d6c9650fa4bb5",
+              "file": "natal.public.spec.ts",
+              "line": 36,
+              "column": 9
+            },
+            {
+              "title": "relationship report print view requires authentication",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1504,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:00.616Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-bcb81b9b5aa2fb9f64aa",
+              "file": "natal.public.spec.ts",
+              "line": 36,
+              "column": 9
+            },
+            {
+              "title": "natal compatibility report print view requires authentication",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1531,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:02.136Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-703960c686ed473984e6",
+              "file": "natal.public.spec.ts",
+              "line": 36,
+              "column": 9
+            },
+            {
+              "title": "invalid public report is a non-sensitive 404",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1773,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:03.687Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-c3d462976c0e56e82230",
+              "file": "natal.public.spec.ts",
+              "line": 47,
+              "column": 7
+            },
+            {
+              "title": "invalid public report API is reachable without authentication",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 98,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:05.479Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-888c584243836fa82385",
+              "file": "natal.public.spec.ts",
+              "line": 58,
+              "column": 7
+            },
+            {
+              "title": "mobile login and legal navigation remain usable",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "public-chromium",
+                  "projectName": "public-chromium",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1297,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:05.593Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "3dfb2aa88fce1579d142-ad6687f899ed388ab7e5",
+              "file": "natal.public.spec.ts",
+              "line": 71,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "personal-memory.public.spec.ts",
+      "file": "personal-memory.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [
+        {
+          "title": "personal memory explainer is public and transparent",
+          "ok": true,
+          "tags": [],
+          "tests": [
+            {
+              "timeout": 60000,
+              "annotations": [],
+              "expectedStatus": "passed",
+              "projectId": "public-chromium",
+              "projectName": "public-chromium",
+              "results": [
+                {
+                  "workerIndex": 0,
+                  "parallelIndex": 0,
+                  "status": "passed",
+                  "duration": 1152,
+                  "errors": [],
+                  "stdout": [],
+                  "stderr": [],
+                  "retry": 0,
+                  "startTime": "2026-09-03T09:12:06.923Z",
+                  "annotations": [],
+                  "attachments": []
+                }
+              ],
+              "status": "expected"
+            }
+          ],
+          "id": "f2c7dada890ed375b3e4-88e15c780edfa581ca57",
+          "file": "personal-memory.public.spec.ts",
+          "line": 3,
+          "column": 5
+        }
+      ]
+    },
+    {
+      "title": "guest-triplet.public.spec.ts",
+      "file": "guest-triplet.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "mobile guest triplet entry points",
+          "file": "guest-triplet.public.spec.ts",
+          "line": 19,
+          "column": 6,
+          "specs": [
+            {
+              "title": "hero CTA opens and focuses the actual picker",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "guest-triplet-mobile",
+                  "projectName": "guest-triplet-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7356,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:17.439Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "eb4d4ed854942a74e3f2-002f2a1433a3a11c3672",
+              "file": "guest-triplet.public.spec.ts",
+              "line": 20,
+              "column": 7
+            },
+            {
+              "title": "daily guest CTA opens and focuses the actual picker",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "guest-triplet-mobile",
+                  "projectName": "guest-triplet-mobile",
+                  "results": [
+                    {
+                      "workerIndex": 1,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5408,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:25.209Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "eb4d4ed854942a74e3f2-db9912635e7107a58851",
+              "file": "guest-triplet.public.spec.ts",
+              "line": 30,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "guest-funnel-golden.public.spec.ts",
+      "file": "guest-funnel-golden.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "guest funnel golden path (public)",
+          "file": "guest-funnel-golden.public.spec.ts",
+          "line": 21,
+          "column": 6,
+          "specs": [
+            {
+              "title": "auth gate is not shown before teaser CTA",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "guest-funnel-golden",
+                  "projectName": "guest-funnel-golden",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 3481,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:32.825Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c3724d78b47b2a37f9b5-6a61f8e7bb7ec8292c30",
+              "file": "guest-funnel-golden.public.spec.ts",
+              "line": 22,
+              "column": 7
+            },
+            {
+              "title": "SEO ask+spread without receipt still opens a new guest picker",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "guest-funnel-golden",
+                  "projectName": "guest-funnel-golden",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2730,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:36.585Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c3724d78b47b2a37f9b5-49e6604b868f67e2a04f",
+              "file": "guest-funnel-golden.public.spec.ts",
+              "line": 30,
+              "column": 7
+            },
+            {
+              "title": "conversion CTA copy is present in guest draw source path after cards",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "guest-funnel-golden",
+                  "projectName": "guest-funnel-golden",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1767,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:39.336Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c3724d78b47b2a37f9b5-a9c4c5c9251aea3211c1",
+              "file": "guest-funnel-golden.public.spec.ts",
+              "line": 37,
+              "column": 7
+            },
+            {
+              "title": "landing sells daily retention hook without guest-auth demand",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "guest-funnel-golden",
+                  "projectName": "guest-funnel-golden",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 1908,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:41.124Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c3724d78b47b2a37f9b5-0ad5048fb4fc2253b427",
+              "file": "guest-funnel-golden.public.spec.ts",
+              "line": 50,
+              "column": 7
+            },
+            {
+              "title": "starter gift before cards never promises full reading",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "guest-funnel-golden",
+                  "projectName": "guest-funnel-golden",
+                  "results": [
+                    {
+                      "workerIndex": 2,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 2783,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:43.049Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "c3724d78b47b2a37f9b5-1d57db71a1550fee58bd",
+              "file": "guest-funnel-golden.public.spec.ts",
+              "line": 61,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "daily-artifact.public.spec.ts",
+      "file": "daily-artifact.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "daily artifact + landing copy",
+          "file": "daily-artifact.public.spec.ts",
+          "line": 151,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Scenario C: anonymous landing has premium copy without internal jargon",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 3,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 7255,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('button', { name: /Попробовать 3 карты бесплатно/i }).first()\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: /Попробовать 3 карты бесплатно/i }).first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('button', { name: /Попробовать 3 карты бесплатно/i }).first()\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: /Попробовать 3 карты бесплатно/i }).first()\u001b[22m\n\n    at C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts:161:7",
+                        "location": {
+                          "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                          "column": 7,
+                          "line": 161
+                        },
+                        "snippet": "  159 |     await expect(\n  160 |       page.getByRole(\"button\", { name: /Попробовать 3 карты бесплатно/i }).first()\n> 161 |     ).toBeVisible();\n      |       ^\n  162 |     // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).\n  163 |     const starter = page.locator(\".editorial-starter-pack\");\n  164 |     await expect(starter).toBeVisible();"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                            "column": 7,
+                            "line": 161
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByRole('button', { name: /Попробовать 3 карты бесплатно/i }).first()\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for getByRole('button', { name: /Попробовать 3 карты бесплатно/i }).first()\u001b[22m\n\n\n  159 |     await expect(\n  160 |       page.getByRole(\"button\", { name: /Попробовать 3 карты бесплатно/i }).first()\n> 161 |     ).toBeVisible();\n      |       ^\n  162 |     // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).\n  163 |     const starter = page.locator(\".editorial-starter-pack\");\n  164 |     await expect(starter).toBeVisible();\n    at C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts:161:7"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:48.768Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-38927-opy-without-internal-jargon-daily-artifact\\test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-38927-opy-without-internal-jargon-daily-artifact\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-38927-opy-without-internal-jargon-daily-artifact\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                        "column": 7,
+                        "line": 161
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-00c909d4cb608a2205fa",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 152,
+              "column": 7
+            },
+            {
+              "title": "Scenario starter: before-cards CTA opens guest picker",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 4,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 6762,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.editorial-starter-pack [data-starter-cta=\\'try_cards\\']')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.editorial-starter-pack [data-starter-cta=\\'try_cards\\']')\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.editorial-starter-pack [data-starter-cta=\\'try_cards\\']')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.editorial-starter-pack [data-starter-cta=\\'try_cards\\']')\u001b[22m\n\n    at C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts:188:30",
+                        "location": {
+                          "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                          "column": 30,
+                          "line": 188
+                        },
+                        "snippet": "  186 |     await page.goto(\"/?app=1\");\n  187 |     const starterCta = page.locator(\".editorial-starter-pack [data-starter-cta='try_cards']\");\n> 188 |     await expect(starterCta).toBeVisible();\n      |                              ^\n  189 |     await expect(starterCta).toHaveText(/Попробовать 3 карты бесплатно/i);\n  190 |     await starterCta.scrollIntoViewIfNeeded();\n  191 |     await starterCta.click();"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                            "column": 30,
+                            "line": 188
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: locator('.editorial-starter-pack [data-starter-cta=\\'try_cards\\']')\nExpected: visible\nTimeout: 5000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 5000ms\u001b[22m\n\u001b[2m  - waiting for locator('.editorial-starter-pack [data-starter-cta=\\'try_cards\\']')\u001b[22m\n\n\n  186 |     await page.goto(\"/?app=1\");\n  187 |     const starterCta = page.locator(\".editorial-starter-pack [data-starter-cta='try_cards']\");\n> 188 |     await expect(starterCta).toBeVisible();\n      |                              ^\n  189 |     await expect(starterCta).toHaveText(/Попробовать 3 карты бесплатно/i);\n  190 |     await starterCta.scrollIntoViewIfNeeded();\n  191 |     await starterCta.click();\n    at C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts:188:30"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:12:57.393Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-8e8ea-ards-CTA-opens-guest-picker-daily-artifact\\test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-8e8ea-ards-CTA-opens-guest-picker-daily-artifact\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-8e8ea-ards-CTA-opens-guest-picker-daily-artifact\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                        "column": 30,
+                        "line": 188
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-4e4d5d2fb3ae5a0f1b38",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 185,
+              "column": 7
+            },
+            {
+              "title": "Scenario A: opened state CTA opens exact daily artifact identity",
+              "ok": false,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 5,
+                      "parallelIndex": 0,
+                      "status": "failed",
+                      "duration": 22069,
+                      "error": {
+                        "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByText(/Ваш расклад на сегодня уже ждёт/i).first()\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for getByText(/Ваш расклад на сегодня уже ждёт/i).first()\u001b[22m\n",
+                        "stack": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByText(/Ваш расклад на сегодня уже ждёт/i).first()\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for getByText(/Ваш расклад на сегодня уже ждёт/i).first()\u001b[22m\n\n    at C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts:207:78",
+                        "location": {
+                          "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                          "column": 78,
+                          "line": 207
+                        },
+                        "snippet": "  205 |\n  206 |     await page.goto(\"/?app=1\");\n> 207 |     await expect(page.getByText(/Ваш расклад на сегодня уже ждёт/i).first()).toBeVisible({\n      |                                                                              ^\n  208 |       timeout: 20_000,\n  209 |     });\n  210 |"
+                      },
+                      "errors": [
+                        {
+                          "location": {
+                            "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                            "column": 78,
+                            "line": 207
+                          },
+                          "message": "Error: \u001b[2mexpect(\u001b[22m\u001b[31mlocator\u001b[39m\u001b[2m).\u001b[22mtoBeVisible\u001b[2m(\u001b[22m\u001b[2m)\u001b[22m failed\n\nLocator: getByText(/Ваш расклад на сегодня уже ждёт/i).first()\nExpected: visible\nTimeout: 20000ms\nError: element(s) not found\n\nCall log:\n\u001b[2m  - Expect \"toBeVisible\" with timeout 20000ms\u001b[22m\n\u001b[2m  - waiting for getByText(/Ваш расклад на сегодня уже ждёт/i).first()\u001b[22m\n\n\n  205 |\n  206 |     await page.goto(\"/?app=1\");\n> 207 |     await expect(page.getByText(/Ваш расклад на сегодня уже ждёт/i).first()).toBeVisible({\n      |                                                                              ^\n  208 |       timeout: 20_000,\n  209 |     });\n  210 |\n    at C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts:207:78"
+                        }
+                      ],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:13:08.638Z",
+                      "annotations": [],
+                      "attachments": [
+                        {
+                          "name": "screenshot",
+                          "contentType": "image/png",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-1b9fd-act-daily-artifact-identity-daily-artifact\\test-failed-1.png"
+                        },
+                        {
+                          "name": "error-context",
+                          "contentType": "text/markdown",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-1b9fd-act-daily-artifact-identity-daily-artifact\\error-context.md"
+                        },
+                        {
+                          "name": "trace",
+                          "contentType": "application/zip",
+                          "path": "C:\\Users\\gamer\\Projects\\aura-ai\\test-results\\playwright\\daily-artifact.public-dail-1b9fd-act-daily-artifact-identity-daily-artifact\\trace.zip"
+                        }
+                      ],
+                      "errorLocation": {
+                        "file": "C:\\Users\\gamer\\Projects\\aura-ai\\tests\\e2e\\daily-artifact.public.spec.ts",
+                        "column": 78,
+                        "line": 207
+                      }
+                    }
+                  ],
+                  "status": "unexpected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-1366077c4cc9aa1481b0",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 196,
+              "column": 7
+            },
+            {
+              "title": "Scenario B: hide from home persists after reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 6,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 6618,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:13:32.596Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-9388081ea04ed60a3c9d",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 243,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "title": "matrix.e2e.spec.ts",
+      "file": "matrix.e2e.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "Matrix E2E",
+          "file": "matrix.e2e.spec.ts",
+          "line": 318,
+          "column": 12,
+          "specs": [
+            {
+              "title": "guest calc, auth resume, history, report idempotency, mobile, ownership",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 90000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "matrix-e2e",
+                  "projectName": "matrix-e2e",
+                  "results": [
+                    {
+                      "workerIndex": 7,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7705,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:13:45.096Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "b7ac0deffe8c6360d3e1-607c3c3f96d545a9dbf8",
+              "file": "matrix.e2e.spec.ts",
+              "line": 319,
+              "column": 18
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-03T09:10:52.277Z",
+    "duration": 191389.706,
+    "expected": 29,
+    "skipped": 0,
+    "unexpected": 3,
+    "flaky": 0
+  }
+}

@@ -40,13 +40,6 @@ export async function POST(request: NextRequest) {
       ? body.subjectKind
       : "self";
   const subjectId = typeof body.subjectId === "string" ? body.subjectId : null;
-  const snapshot =
-    body.snapshot && typeof body.snapshot === "object"
-      ? (body.snapshot as Record<string, unknown>)
-      : null;
-  const asOfDate = typeof body.asOfDate === "string" ? body.asOfDate : null;
-  const calculationVersion =
-    typeof body.calculationVersion === "string" ? body.calculationVersion : null;
 
   try {
     const persisted = await persistOwnedMatrixSnapshot({
@@ -55,9 +48,8 @@ export async function POST(request: NextRequest) {
       displayName,
       subjectKind,
       subjectId,
-      snapshot,
-      asOfDate,
-      calculationVersion,
+      // New snapshots are calculated on the server. Existing owned/claimed
+      // snapshots remain frozen inside persistOwnedMatrixSnapshot.
     });
     return NextResponse.json({
       ok: true,

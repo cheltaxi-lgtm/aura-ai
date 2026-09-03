@@ -50,6 +50,8 @@ export default function ForgotPasswordForm() {
         return;
       }
       setDone(true);
+    } catch {
+      setError("Не удалось связаться с сервером. Проверьте подключение и попробуйте ещё раз.");
     } finally {
       setLoading(false);
     }
@@ -75,8 +77,10 @@ export default function ForgotPasswordForm() {
       <p className="mt-2 text-center text-sm text-gray-400">Укажите email аккаунта — пришлём ссылку для нового пароля.</p>
       <form onSubmit={(e) => void submit(e)} className="mt-8 space-y-4">
         <div>
-          <label className="mb-1 block text-xs text-gray-500">Email</label>
+          <label htmlFor="forgot-email" className="mb-1 block text-xs text-gray-500">Email</label>
           <input
+            id="forgot-email"
+            autoComplete="email"
             type="email"
             required
             value={email}
@@ -84,7 +88,7 @@ export default function ForgotPasswordForm() {
             className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
           />
         </div>
-        {error ? <p className="text-center text-sm text-red-400">{error}</p> : null}
+        {error ? <p role="alert" className="text-center text-sm text-red-400">{error}</p> : null}
         <button type="submit" disabled={loading || !featuresLoaded} className="btn-primary w-full py-2.5 text-sm disabled:opacity-50">
           {loading ? "Отправляем…" : "Отправить ссылку"}
         </button>

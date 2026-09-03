@@ -1,6 +1,7 @@
 /**
  * Photo-rasklad thin client for Telegram bot — same libs as /api/photo-reading/*.
  */
+import { randomUUID } from "crypto";
 import { isUserAgeEligible } from "@/lib/age-gate";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { MAX_IMAGE_BYTES, validateImageBase64Payload, validateImageMime } from "@/lib/api-guards";
@@ -24,6 +25,7 @@ import { MAX_PHOTO_CARDS, parseRecognitionConfidence } from "@/lib/photo-reading
 import {
   buildPhotoSpreadKey,
   findPhotoReadingEntry,
+  getPhotoChargeReuseState,
   withPhotoReadingLock,
 } from "@/lib/photo-reading-idempotency";
 import {
@@ -377,7 +379,9 @@ export async function botPhotoInterpret(input: {
   }
 
   const photoSpreadKey = buildPhotoSpreadKey(characterId, confirmedSpread, question);
-  const lockKey = input.idempotencyKey?.trim() || photoSpreadKey;
+  // Use the same normalized identity for the lock and the ledger. A missing
+  // client key still needs to survive retries after a newly created session.
+  const lockKey = input.idempotencyKey?.trim().slice(0, 80) || photoSpreadKey;
   const profile = serializeUserProfile(gate.user);
   const unlimited = await resolveUnlimitedAccess({ accountId, profileUserId });
   const runeSettings = await getRuneSettings();
@@ -412,6 +416,7 @@ export async function botPhotoInterpret(input: {
 
     let billingCharge: Awaited<ReturnType<typeof BillingService.chargeForSession>> | null = null;
     let spentRunes = 0;
+    let chargedRunes = 0;
     let runeBalance = gate.resolved.runeBalance ?? undefined;
     let firstPhotoDiscount = false;
     let isPaid = false;
@@ -438,12 +443,11 @@ export async function botPhotoInterpret(input: {
             : "Фото-расклад",
           sessionId: resolvedSessionId,
           // Prefer client/flow key — never a freshly minted session id.
-          idempotencyKey: input.idempotencyKey?.trim()
-            ? `tg-photo:${input.idempotencyKey.trim().slice(0, 80)}`
-            : undefined,
+          idempotencyKey: `tg-photo:${lockKey}`,
         });
         runeBalance = billingCharge.newBalance;
         spentRunes = billingCharge.spentRunes;
+        chargedRunes = spentRunes;
 
         if (billingCharge.deduplicated) {
           const existingAfter = await findPhotoReadingEntry(
@@ -469,24 +473,31 @@ export async function botPhotoInterpret(input: {
               firstPhotoDiscount: Boolean(payload.firstPhotoDiscount),
             };
           }
-          return {
-            ok: true as const,
-            action: "interpret" as const,
-            analysis: "",
-            cards: [] as string[],
-            sessionId: resolvedSessionId || null,
-            historyId: null,
-            runeBalance,
-            charged: 0,
-            cached: false,
-            pending: true,
-            reused: true,
-            firstPhotoDiscount,
-            message: "Фото-разбор уже выполняется — откройте сессию на сайте.",
-            linkUrl: resolvedSessionId
-              ? `${siteBase()}/?chat_session=${encodeURIComponent(resolvedSessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=photo`
-              : `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=photo`,
-          };
+          const prior = billingCharge.transactionId
+            ? await getPhotoChargeReuseState(profileUserId, billingCharge.transactionId)
+            : null;
+          if (!prior) throw new Error("photo_prior_charge_missing");
+          if (!prior.refunded) {
+            // The reading lock excludes another active attempt. Resume the
+            // existing spend, including a failed retry, without another debit.
+            billingCharge = {
+              ...billingCharge,
+              transactionId: prior.transactionId,
+              spentRunes: prior.amount,
+            };
+          } else {
+            billingCharge = await BillingService.chargeForSession({
+              userId: profileUserId,
+              cost: pricing.effectiveCost,
+              actionType: "VISION_ANALYSIS",
+              sessionId: resolvedSessionId,
+              idempotencyKey: `${prior.retryPrefix}${randomUUID()}`,
+            });
+            if (billingCharge.deduplicated) throw new Error("photo_retry_charge_conflict");
+            chargedRunes = billingCharge.spentRunes;
+          }
+          spentRunes = billingCharge.spentRunes;
+          runeBalance = billingCharge.newBalance;
         }
       } catch (err) {
         if (err instanceof InsufficientFundsError) {
@@ -594,29 +605,35 @@ export async function botPhotoInterpret(input: {
         sessionId: resolvedSessionId ?? null,
         historyId: historyId ?? null,
         runeBalance,
-        charged: spentRunes,
+        charged: chargedRunes,
         cached: false,
         firstPhotoDiscount,
       };
     } catch (err) {
       console.error("[bot-photo] interpret", err);
+      let refunded = false;
       if (billingCharge) {
         try {
-          runeBalance = await BillingService.rollbackCharge({
+          const rollback = await BillingService.rollbackChargeEx({
             userId: profileUserId,
             cost: billingCharge.spentRunes,
             wasFreeQuestion: billingCharge.wasFreeQuestion,
             actionType: "VISION_ANALYSIS",
             transactionId: billingCharge.transactionId,
           });
-        } catch {
-          /* ignore */
+          runeBalance = rollback.balance;
+          refunded = rollback.refunded;
+        } catch (refundError) {
+          console.error("[bot-photo] refund", refundError);
         }
       }
       return {
         ok: false as const,
         error: "generation_failed" as const,
-        message: "Не удалось получить трактовку. Руны возвращены — попробуйте ещё раз.",
+        message: refunded
+          ? "Не удалось получить трактовку. Руны возвращены — попробуйте ещё раз."
+          : "Не удалось получить трактовку. Проверьте статус оплаты в кабинете.",
+        refunded,
         runeBalance,
       };
     }

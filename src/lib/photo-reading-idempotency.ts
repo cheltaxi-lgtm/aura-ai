@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import { query, queryClient, type PoolClient } from "@/lib/db";
+import { withReadingLock } from "@/lib/reading-lock";
 import type { RedrawSpread } from "@/lib/photo-spread-redraw";
 
 export type SavedPhotoReadingRow = {
@@ -79,6 +80,23 @@ export async function countUserPhotoReadings(userId: string): Promise<number> {
   return Number.parseInt(rows[0]?.count ?? "0", 10) || 0;
 }
 
+/** Follow retries of the original spend, so a failed retry cannot debit twice. */
+export async function getPhotoChargeReuseState(userId: string, originalTransactionId: string) {
+  const retryPrefix = `photo-retry:${originalTransactionId}:`;
+  const { rows } = await query<{ id: string; amount: string; refunded: boolean }>(
+    `SELECT t.id, ABS(t.amount)::text AS amount,
+       EXISTS (SELECT 1 FROM rune_transactions rf
+               WHERE rf.type = 'refund' AND rf.refund_of_transaction_id = t.id) AS refunded
+     FROM rune_transactions t
+     WHERE t.user_id = $1 AND t.type = 'spend' AND t.action_type = 'VISION_ANALYSIS'
+       AND (t.id = $2 OR LEFT(t.idempotency_key, LENGTH($3)) = $3)
+     ORDER BY t.created_at DESC LIMIT 1`,
+    [userId, originalTransactionId, retryPrefix]
+  );
+  const row = rows[0];
+  return row ? { transactionId: row.id, amount: Number(row.amount), refunded: row.refunded, retryPrefix } : null;
+}
+
 /** Serialize photo interpretation per user + spread (prevents duplicate rune charges). */
 export async function withPhotoReadingLock<T>(
   userId: string,
@@ -86,10 +104,5 @@ export async function withPhotoReadingLock<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const lockKey = photoReadingLockKey(userId, key);
-  await query(`SELECT pg_advisory_lock(hashtext($1))`, [lockKey]);
-  try {
-    return await fn();
-  } finally {
-    await query(`SELECT pg_advisory_unlock(hashtext($1))`, [lockKey]).catch(() => {});
-  }
+  return withReadingLock(lockKey, fn);
 }

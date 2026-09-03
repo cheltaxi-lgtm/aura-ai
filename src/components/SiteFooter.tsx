@@ -149,7 +149,7 @@ export default function SiteFooter({
               (item) => {
                 if ("hash" in item) {
                   return (
-                    <a key={item.label} href={`#${item.hash}`} className="editorial-footer__link">
+                    <a key={item.label} href={`/#${item.hash}`} className="editorial-footer__link">
                       {item.label}
                     </a>
                   );

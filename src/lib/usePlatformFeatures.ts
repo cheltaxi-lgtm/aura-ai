@@ -108,8 +108,10 @@ export function invalidatePlatformFeaturesCache() {
 }
 
 export function usePlatformFeatures() {
-  const [features, setFeatures] = useState<PlatformFeatures>(cached ?? FALLBACK);
-  const [featuresLoaded, setFeaturesLoaded] = useState(cached !== null);
+  // The first client render must match SSR, even if another mounted consumer
+  // populated the module cache before this Suspense boundary hydrated.
+  const [features, setFeatures] = useState<PlatformFeatures>(FALLBACK);
+  const [featuresLoaded, setFeaturesLoaded] = useState(false);
 
   useEffect(() => {
     void fetchPlatformFeatures().then((next) => {

@@ -1,10 +1,11 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import EditorialImage from "@/components/editorial/EditorialImage";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { useRuneConfig } from "@/lib/useRuneConfig";
-import { buildRegisterHref, resolveRegistrationReturnTo } from "@/lib/post-auth-return";
+import { buildAuthHref, buildRegisterHref, resolveRegistrationReturnTo } from "@/lib/post-auth-return";
 
 /**
  * Guest landing extra formats — PhotoTarot and Numerology only.
@@ -21,7 +22,10 @@ export default function EditorialExtraFeaturesSection() {
   const numerologyReady = fromServer && starter > 0 && numerologyCost > 0;
   const photoFree = photoReady && starter >= photoCost;
   const numerologyFree = numerologyReady && starter >= numerologyCost;
-  const photoHref = buildRegisterHref(resolveRegistrationReturnTo({ photo: true }));
+  const [photoHref, setPhotoHref] = useState(() => buildAuthHref("/auth/user/register", "/?photo=1"));
+  useEffect(() => {
+    setPhotoHref(buildRegisterHref(resolveRegistrationReturnTo({ photo: true })));
+  }, []);
 
   return (
     <section

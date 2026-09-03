@@ -6,11 +6,11 @@ const RU_MONTHS = [
   "Июль", "Август", "Сентябрь", "Октябрь", "Ноябрь", "Декабрь",
 ];
 
-function asOfFor(year: number, month: number): { asOfYear: number; asOfMonth: number; asOfDate: string } {
+function asOfFor(year: number, month: number, day = 1): { asOfYear: number; asOfMonth: number; asOfDate: string } {
   return {
     asOfYear: year,
     asOfMonth: month,
-    asOfDate: `${year}-${String(month).padStart(2, "0")}-01`,
+    asOfDate: `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`,
   };
 }
 
@@ -38,10 +38,11 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
     const cur = addMatrixCalendarMonths(start.year, start.month, index);
     const prev = addMatrixCalendarMonths(start.year, start.month, index - 1);
     const matrix = destinyMatrix(birthDate, asOfFor(cur.year, cur.month))!;
-    const previous = destinyMatrix(birthDate, asOfFor(prev.year, prev.month));
+    const previous = destinyMatrix(birthDate, asOfFor(prev.year, prev.month, new Date(Date.UTC(prev.year, prev.month, 0)).getUTCDate()));
+    const monthEnd = destinyMatrix(birthDate, asOfFor(cur.year, cur.month, new Date(Date.UTC(cur.year, cur.month, 0)).getUTCDate()))!;
     const number = reduceToArcanaNumber(matrix.yearArcana.number + cur.month);
     const point = arcanaForNumber(number, matrix.calculationVersion);
-    const ageTransition = Boolean(previous && previous.ageCurrent.age !== matrix.ageCurrent.age);
+    const ageTransition = Boolean(previous && previous.ageCurrent.age !== monthEnd.ageCurrent.age);
     return {
       year: cur.year,
       month: cur.month,
@@ -52,8 +53,8 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
         ? {
             ageTransition: true,
             periodFrom: previous!.ageCurrent.age,
-            periodTo: matrix.ageCurrent.age,
-            chronological: matrix.chronologicalAge,
+            periodTo: monthEnd.ageCurrent.age,
+            chronological: monthEnd.chronologicalAge,
           }
         : {}),
     };

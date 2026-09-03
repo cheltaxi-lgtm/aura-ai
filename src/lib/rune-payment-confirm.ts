@@ -54,6 +54,9 @@ export async function confirmRunePurchaseForUser(
   if (payment.status !== "succeeded") {
     return { status: "pending", balance };
   }
+  if (payment.paid !== true || payment.amount?.currency !== "RUB") {
+    return { status: "invalid", balance };
+  }
 
   const metadata = payment.metadata ?? {};
   if (metadata.type !== "rune_purchase" || !metadata.packageId) {
@@ -111,6 +114,7 @@ export async function reconcileRecentRunePurchasesForUser(profileUserId: string)
   for (const payment of payments) {
     const metadata = payment.metadata ?? {};
     if (payment.status !== "succeeded") continue;
+    if (payment.paid !== true || payment.amount?.currency !== "RUB") continue;
     if (metadata.type !== "rune_purchase") continue;
     if (metadata.userId !== profileUserId) continue;
     if (!metadata.packageId) continue;

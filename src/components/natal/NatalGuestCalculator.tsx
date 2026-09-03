@@ -422,6 +422,7 @@ export default function NatalGuestCalculator() {
             </span>
             <input
               type="time"
+              aria-label="Время рождения"
               disabled={timeUnknown}
               value={birthTime}
               onChange={(e) => setBirthTime(e.target.value)}

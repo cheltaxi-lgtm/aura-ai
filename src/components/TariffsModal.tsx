@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect } from "react";
+import { useEffect, useRef } from "react";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 import { X } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import RunePrice from "@/components/RunePrice";
@@ -44,18 +45,15 @@ export default function TariffsModal({
   isLoggedIn = false,
 }: TariffsModalProps) {
   const { config, cost } = useRuneConfig();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open, onClose);
 
   useEffect(() => {
     if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
     const prev = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKey);
     return () => {
       document.body.style.overflow = prev;
-      window.removeEventListener("keydown", onKey);
     };
   }, [open, onClose]);
 
@@ -73,6 +71,7 @@ export default function TariffsModal({
           aria-label="Закрыть"
         />
         <div
+          ref={dialogRef}
           role="dialog"
           aria-modal="true"
           aria-labelledby="tariffs-modal-title"

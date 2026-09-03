@@ -1,0 +1,404 @@
+{
+  "config": {
+    "argv": [
+      "C:\\Program Files\\nodejs\\node.exe",
+      "C:\\Users\\gamer\\Projects\\aura-ai\\node_modules\\@playwright\\test\\cli.js",
+      "test",
+      "--project=daily-artifact",
+      "--workers=1",
+      "--timeout=60000",
+      "--reporter=list,json"
+    ],
+    "configFile": "C:\\Users\\gamer\\Projects\\aura-ai\\playwright.config.ts",
+    "rootDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+    "failOnFlakyTests": false,
+    "forbidOnly": false,
+    "fullyParallel": true,
+    "globalSetup": null,
+    "globalTeardown": null,
+    "globalTimeout": 0,
+    "grep": {},
+    "grepInvert": null,
+    "maxFailures": 0,
+    "metadata": {
+      "actualWorkers": 1
+    },
+    "preserveOutput": "always",
+    "projects": [
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "public-chromium",
+        "name": "public-chromium",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/(natal|natal-guest|personal-memory|launch-readiness)\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "guest-triplet-mobile",
+        "name": "guest-triplet-mobile",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/guest-triplet\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "guest-funnel-golden",
+        "name": "guest-funnel-golden",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/guest-funnel-golden\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "guest-conversion-smoke",
+        "name": "guest-conversion-smoke",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/guest-conversion-smoke\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "daily-artifact",
+        "name": "daily-artifact",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/daily-artifact\\.public\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      },
+      {
+        "outputDir": "C:/Users/gamer/Projects/aura-ai/test-results/playwright",
+        "repeatEach": 1,
+        "retries": 0,
+        "metadata": {
+          "actualWorkers": 1
+        },
+        "id": "matrix-e2e",
+        "name": "matrix-e2e",
+        "testDir": "C:/Users/gamer/Projects/aura-ai/tests/e2e",
+        "testIgnore": [],
+        "testMatch": [
+          "/matrix\\.e2e\\.spec\\.ts/"
+        ],
+        "timeout": 60000
+      }
+    ],
+    "quiet": false,
+    "reporter": [
+      [
+        "list"
+      ],
+      [
+        "json"
+      ]
+    ],
+    "reportSlowTests": {
+      "max": 5,
+      "threshold": 300000
+    },
+    "shard": null,
+    "tags": [],
+    "updateSnapshots": "missing",
+    "updateSourceMethod": "patch",
+    "version": "1.61.1",
+    "workers": 1,
+    "webServer": {
+      "command": "npx next dev --hostname 127.0.0.1 --port 3417",
+      "url": "http://127.0.0.1:3417",
+      "reuseExistingServer": true,
+      "timeout": 120000,
+      "env": {
+        "ALLUSERSPROFILE": "C:\\ProgramData",
+        "APPDATA": "C:\\Users\\gamer\\AppData\\Roaming",
+        "CODEX_APP_TOOLS_PIPE_PATH": "\\\\.\\pipe\\codex-browser-use-9e2891b5-83bb-4db5-a72d-a6a209a100f8",
+        "CODEX_CI": "1",
+        "CODEX_INTERNAL_ORIGINATOR_OVERRIDE": "Codex Desktop",
+        "CODEX_MCP_NODE_PATH": "C:\\Users\\gamer\\AppData\\Local\\OpenAI\\Codex\\runtimes\\cua_node\\ad3b5049246cde44\\bin\\node.exe",
+        "CODEX_PERMISSION_PROFILE": ":workspace",
+        "CODEX_SAGE_BACKFILL_TRACKER_TAB_REUSE": "1",
+        "CODEX_SANDBOX_NETWORK_DISABLED": "1",
+        "CODEX_SESSION_ID": "01a06636-5d18-7cc2-9a4d-9584c5b237be",
+        "CODEX_THREAD_ID": "01a06636-5d18-7cc2-9a4d-9584c5b237be",
+        "COLOR": "0",
+        "COLORTERM": "",
+        "CommonProgramFiles": "C:\\Program Files\\Common Files",
+        "CommonProgramFiles(x86)": "C:\\Program Files (x86)\\Common Files",
+        "CommonProgramW6432": "C:\\Program Files\\Common Files",
+        "COMPUTERNAME": "GR9",
+        "ComSpec": "C:\\WINDOWS\\system32\\cmd.exe",
+        "DriverData": "C:\\Windows\\System32\\Drivers\\DriverData",
+        "EDITOR": "C:\\WINDOWS\\notepad.exe",
+        "GH_PAGER": "cat",
+        "GIT_PAGER": "cat",
+        "GOPATH": "C:\\Users\\gamer\\go",
+        "HOME": "C:\\Users\\gamer",
+        "HOMEDRIVE": "C:",
+        "HOMEPATH": "\\Users\\gamer",
+        "INIT_CWD": "C:\\Users\\gamer\\Projects\\aura-ai",
+        "JAVA_HOME": "C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\",
+        "LANG": "C.UTF-8",
+        "LC_ALL": "C.UTF-8",
+        "LC_CTYPE": "C.UTF-8",
+        "LOCALAPPDATA": "C:\\Users\\gamer\\AppData\\Local",
+        "LOGONSERVER": "\\\\GR9",
+        "LOG_FORMAT": "json",
+        "NODE": "C:\\Program Files\\nodejs\\node.exe",
+        "NO_COLOR": "1",
+        "npm_command": "exec",
+        "npm_config_cache": "C:\\Users\\gamer\\AppData\\Local\\npm-cache",
+        "npm_config_globalconfig": "C:\\Users\\gamer\\AppData\\Roaming\\npm\\etc\\npmrc",
+        "npm_config_global_prefix": "C:\\Users\\gamer\\AppData\\Roaming\\npm",
+        "npm_config_init_module": "C:\\Users\\gamer\\.npm-init.js",
+        "npm_config_local_prefix": "C:\\Users\\gamer\\Projects\\aura-ai",
+        "npm_config_node_gyp": "C:\\Program Files\\nodejs\\node_modules\\npm\\node_modules\\node-gyp\\bin\\node-gyp.js",
+        "npm_config_noproxy": "",
+        "npm_config_npm_version": "11.12.1",
+        "npm_config_prefix": "C:\\Users\\gamer\\AppData\\Roaming\\npm",
+        "npm_config_userconfig": "C:\\Users\\gamer\\.npmrc",
+        "npm_config_user_agent": "npm/11.12.1 node/v24.15.0 win32 x64 workspaces/false",
+        "npm_execpath": "C:\\Program Files\\nodejs\\node_modules\\npm\\bin\\npm-cli.js",
+        "npm_lifecycle_event": "npx",
+        "npm_lifecycle_script": "playwright",
+        "npm_node_execpath": "C:\\Program Files\\nodejs\\node.exe",
+        "npm_package_json": "C:\\Users\\gamer\\Projects\\aura-ai\\package.json",
+        "npm_package_name": "aura-ai",
+        "npm_package_version": "0.1.0",
+        "NUMBER_OF_PROCESSORS": "16",
+        "OneDrive": "C:\\Users\\gamer\\OneDrive",
+        "OneDriveConsumer": "C:\\Users\\gamer\\OneDrive",
+        "OS": "Windows_NT",
+        "PAGER": "cat",
+        "Path": "C:\\Users\\gamer\\Projects\\aura-ai\\node_modules\\.bin;C:\\Users\\gamer\\Projects\\aura-ai\\node_modules\\.bin;C:\\Users\\gamer\\Projects\\node_modules\\.bin;C:\\Users\\gamer\\node_modules\\.bin;C:\\Users\\node_modules\\.bin;C:\\node_modules\\.bin;C:\\Program Files\\nodejs\\node_modules\\npm\\node_modules\\@npmcli\\run-script\\lib\\node-gyp-bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\gamer\\.codex\\tmp\\arg0\\codex-arg08WIxz7;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\libheif\\libheif\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\jxrlib\\jxrlib\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\poppler\\Library\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\override;C:\\Program Files\\Eclipse Adoptium\\jdk-21.0.11.10-hotspot\\bin;C:\\WINDOWS\\system32;C:\\WINDOWS;C:\\WINDOWS\\System32\\Wbem;C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\;C:\\WINDOWS\\System32\\OpenSSH\\;C:\\Program Files\\Git\\cmd;C:\\Program Files\\PuTTY\\;C:\\Program Files\\Go\\bin;C:\\Program Files\\nodejs\\;C:\\Program Files\\GitHub CLI\\;C:\\Program Files\\dotnet\\;C:\\Program Files\\Docker\\Docker\\resources\\bin;C:\\Users\\gamer\\.cargo\\bin;C:\\Users\\gamer\\.local\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell;C:\\Users\\gamer\\AppData\\Local\\Microsoft\\WindowsApps;C:\\Users\\gamer\\AppData\\Local\\Programs\\Antigravity\\bin;C:\\Users\\gamer\\go\\bin;C:\\Users\\gamer\\AppData\\Local\\devin\\cli\\bin;C:\\Users\\gamer\\AppData\\Local\\Programs\\Microsoft VS Code\\bin;C:\\Users\\gamer\\AppData\\Roaming\\npm;C:\\Users\\gamer\\AppData\\Local\\Programs\\cursor\\resources\\app\\bin;C:\\Users\\gamer\\.dotnet\\tools;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\bin\\fallback;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\node\\bin;C:\\Users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\git\\cmd;C:\\Users\\gamer\\AppData\\Local\\OpenAI\\Codex\\bin\\2c99e6a5175484dd;C:\\Users\\gamer\\AppData\\Local\\OpenAI\\Codex\\bin\\994e8469124a0d31",
+        "PATHEXT": ".COM;.EXE;.BAT;.CMD;.VBS;.VBE;.JS;.JSE;.WSF;.WSH;.MSC;.CPL",
+        "PLAYWRIGHT_JSON_OUTPUT_NAME": "docs/launch-audit-2026-09-03/e2e-daily-final.json",
+        "PROCESSOR_ARCHITECTURE": "AMD64",
+        "PROCESSOR_IDENTIFIER": "AMD64 Family 25 Model 80 Stepping 0, AuthenticAMD",
+        "PROCESSOR_LEVEL": "25",
+        "PROCESSOR_REVISION": "5000",
+        "ProgramData": "C:\\ProgramData",
+        "ProgramFiles": "C:\\Program Files",
+        "ProgramFiles(x86)": "C:\\Program Files (x86)",
+        "ProgramW6432": "C:\\Program Files",
+        "PROMPT": "$P$G",
+        "PSModulePath": "C:\\Users\\gamer\\OneDrive\\Документы\\PowerShell\\Modules;C:\\Program Files\\PowerShell\\Modules;c:\\users\\gamer\\.cache\\codex-runtimes\\codex-primary-runtime\\dependencies\\native\\powershell\\Modules;C:\\Program Files\\WindowsPowerShell\\Modules;C:\\WINDOWS\\system32\\WindowsPowerShell\\v1.0\\Modules",
+        "PUBLIC": "C:\\Users\\Public",
+        "RUST_LOG": "warn",
+        "SystemDrive": "C:",
+        "SystemRoot": "C:\\WINDOWS",
+        "TEMP": "C:\\Users\\gamer\\AppData\\Local\\Temp",
+        "TERM": "dumb",
+        "TMP": "C:\\Users\\gamer\\AppData\\Local\\Temp",
+        "USERDOMAIN": "GR9",
+        "USERDOMAIN_ROAMINGPROFILE": "GR9",
+        "USERNAME": "gamer",
+        "USERPROFILE": "C:\\Users\\gamer",
+        "windir": "C:\\WINDOWS",
+        "__COMPAT_LAYER": "DetectorsAppHealth",
+        "NEXT_DIST_DIR": ".next-e2e"
+      }
+    }
+  },
+  "suites": [
+    {
+      "title": "daily-artifact.public.spec.ts",
+      "file": "daily-artifact.public.spec.ts",
+      "column": 0,
+      "line": 0,
+      "specs": [],
+      "suites": [
+        {
+          "title": "daily artifact + landing copy",
+          "file": "daily-artifact.public.spec.ts",
+          "line": 151,
+          "column": 6,
+          "specs": [
+            {
+              "title": "Scenario C: anonymous landing has premium copy without internal jargon",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 20426,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:23:42.363Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-00c909d4cb608a2205fa",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 152,
+              "column": 7
+            },
+            {
+              "title": "Scenario daily guest: before-cards CTA opens guest picker",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 7939,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:24:05.966Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-d2901341f379d20e771d",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 189,
+              "column": 7
+            },
+            {
+              "title": "Scenario A: header reopens the exact existing daily artifact",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 9249,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:24:13.939Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-09b5cc580521d0dd36dc",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 199,
+              "column": 7
+            },
+            {
+              "title": "Scenario B: a server-hidden recap stays absent after reload",
+              "ok": true,
+              "tags": [],
+              "tests": [
+                {
+                  "timeout": 60000,
+                  "annotations": [],
+                  "expectedStatus": "passed",
+                  "projectId": "daily-artifact",
+                  "projectName": "daily-artifact",
+                  "results": [
+                    {
+                      "workerIndex": 0,
+                      "parallelIndex": 0,
+                      "status": "passed",
+                      "duration": 5102,
+                      "errors": [],
+                      "stdout": [],
+                      "stderr": [],
+                      "retry": 0,
+                      "startTime": "2026-09-03T09:24:23.219Z",
+                      "annotations": [],
+                      "attachments": []
+                    }
+                  ],
+                  "status": "expected"
+                }
+              ],
+              "id": "8414bfa3a9b0d7ee7db6-b777ef76f5d534a5fcc5",
+              "file": "daily-artifact.public.spec.ts",
+              "line": 234,
+              "column": 7
+            }
+          ]
+        }
+      ]
+    }
+  ],
+  "errors": [],
+  "stats": {
+    "startTime": "2026-09-03T09:23:37.100Z",
+    "duration": 85064.302,
+    "expected": 4,
+    "skipped": 0,
+    "unexpected": 0,
+    "flaky": 0
+  }
+}

@@ -1,6 +1,7 @@
 "use client";
 
-import { type ReactNode, useEffect, useState } from "react";
+import { type ReactNode, useEffect, useRef, useState } from "react";
+import { hasCookieConsent, METRIKA_READY_EVENT } from "@/lib/cookie-consent";
 import Link from "next/link";
 import { motion } from "framer-motion";
 import {
@@ -290,6 +291,7 @@ export default function AuraSellingLanding({
   const { config, cost, formatRunes, formatRunesWithRub, ready } = useRuneConfig();
   const { expertRegistrationEnabled, proModuleEnabled } = usePlatformFeatures();
   const [heroVariant, setHeroVariant] = useState<LandingHeroVariant>("a");
+  const landingViewSent = useRef(false);
   const [guestSpreadRequest, setGuestSpreadRequest] = useState<{
     id: number;
     detail: GuestSpreadStartDetail;
@@ -302,9 +304,14 @@ export default function AuraSellingLanding({
   useEffect(() => {
     const variant = resolveLandingHeroVariant();
     setHeroVariant(variant);
-    if (showHero && !isLoggedIn) {
+    const sendCurrentView = () => {
+      if (!showHero || isLoggedIn || landingViewSent.current || !hasCookieConsent() || !window.ym) return;
+      landingViewSent.current = true;
       trackLandingView({ hero_variant: variant });
-    }
+    };
+    sendCurrentView();
+    window.addEventListener(METRIKA_READY_EVENT, sendCurrentView);
+    return () => window.removeEventListener(METRIKA_READY_EVENT, sendCurrentView);
   }, [showHero, isLoggedIn, isEditorial]);
 
   const scrollToMasters = () => {

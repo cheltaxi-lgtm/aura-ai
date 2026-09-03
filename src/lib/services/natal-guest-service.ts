@@ -177,7 +177,8 @@ function birthIdentityMatches(
   if (uCity === gCity) return true;
   const uPrimary = uCity.split(",")[0]?.trim() ?? "";
   const gPrimary = gCity.split(",")[0]?.trim() ?? "";
-  return uPrimary.length >= 2 && uPrimary === gPrimary;
+  // Rich labels for different regions must not silently replace one another.
+  return uPrimary.length >= 2 && uPrimary === gPrimary && (!uCity.includes(",") || !gCity.includes(","));
 }
 
 async function sweepExpiredGuestNatal(client?: PoolClient): Promise<number> {
@@ -447,7 +448,9 @@ export async function claimGuestNatalChart(opts: {
       };
     }
 
-    if (!hasBirth || !matches || opts.confirmReplace) {
+    // The adopted chart fingerprint includes the complete place label. Even a
+    // matching legacy profile (e.g. "Moscow") must use the guest's canonical label.
+    {
       const birthDate = String(guest.birth_date).slice(0, 10);
       const birthTime = guest.time_known ? guest.birth_time : null;
       const zodiac = getZodiacFromDate(birthDate).name || user.zodiac || "";

@@ -3436,10 +3436,13 @@ html[data-motion-lite="1"] .landing-closing-band--sky-on .landing-closing-band__
 
 @keyframes guest-teaser-shimmer {
   0% {
-    background-position: 100% 0;
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
   }
   100% {
-    background-position: -100% 0;
+    opacity: 0.45;
   }
 }
 

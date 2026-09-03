@@ -130,6 +130,8 @@ export default function GuestTripletDraw({
   const [oauthAgeConfirmed, setOauthAgeConfirmed] = useState(false);
   const [ageConfirmedLocked, setAgeConfirmedLocked] = useState(false);
   const handledStartRequestId = useRef<number | null>(null);
+  const ageFlowVersionRef = useRef(0);
+  const ageRequestRef = useRef<AbortController | null>(null);
   const teaserViewTracked = useRef(false);
   const [draftRestored, setDraftRestored] = useState(false);
   const [teaserText, setTeaserText] = useState("");
@@ -141,6 +143,11 @@ export default function GuestTripletDraw({
   const teaserFetchedRef = useRef(false);
   const teaserBlockRef = useRef<HTMLDivElement | null>(null);
   const authGateViewTracked = useRef(false);
+
+  useEffect(() => () => {
+    ageFlowVersionRef.current++;
+    ageRequestRef.current?.abort();
+  }, []);
 
   const oauthReturnTo = useMemo(
     () =>
@@ -278,7 +285,11 @@ export default function GuestTripletDraw({
     if (typeof window === "undefined" || draftRestored) return;
     const stored = sessionStorage.getItem(LANDING_QUESTION_KEY);
     if (stored) setLandingQuestion(stored);
-    void fetchServerAgeGateConfirmed().then((ok) => {
+    const controller = new AbortController();
+    ageRequestRef.current = controller;
+    const version = ageFlowVersionRef.current;
+    void fetchServerAgeGateConfirmed(controller.signal).then((ok) => {
+      if (controller.signal.aborted || version !== ageFlowVersionRef.current) return;
       setAgeConfirmed(ok);
       setOauthAgeConfirmed(ok);
     });
@@ -345,6 +356,9 @@ export default function GuestTripletDraw({
   }, []);
 
   const exitToLanding = useCallback(() => {
+    ageFlowVersionRef.current++;
+    ageRequestRef.current?.abort();
+    setAgeConfirming(false);
     // UI only — receipt / guest resume UI cache stays for post-auth claim.
     clearPendingGuestSpreadStart();
     resetSpreadState();
@@ -411,9 +425,12 @@ export default function GuestTripletDraw({
   );
 
   const confirmAgeAndStart = useCallback(async () => {
+    const version = ++ageFlowVersionRef.current;
+    ageRequestRef.current?.abort();
     setAgeConfirming(true);
     setAgeGateError("");
     const ok = await confirmAgeGateOnServer();
+    if (version !== ageFlowVersionRef.current) return;
     setAgeConfirming(false);
     if (!ok) {
       setAgeGateError("Не удалось подтвердить возраст. Обновите страницу и попробуйте ещё раз.");
@@ -430,12 +447,22 @@ export default function GuestTripletDraw({
 
   const handleStartRequest = useCallback(
     (detail?: GuestSpreadStartDetail) => {
+      const version = ++ageFlowVersionRef.current;
+      ageRequestRef.current?.abort();
+      const controller = new AbortController();
+      ageRequestRef.current = controller;
+      // Give the click an immediate visible response. Only the server response
+      // or a successful confirmation below may advance to card selection.
+      setAgeGateError("");
+      setAgeConfirming(false);
+      setStep("age");
       const nextQuestion = detail?.question?.trim();
       if (nextQuestion) {
         sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
         setLandingQuestion(nextQuestion);
       }
-      void fetchServerAgeGateConfirmed().then((ok) => {
+      void fetchServerAgeGateConfirmed(controller.signal).then((ok) => {
+        if (controller.signal.aborted || version !== ageFlowVersionRef.current) return;
         if (!ok) {
           setAgeConfirmed(false);
           setOauthAgeConfirmed(false);

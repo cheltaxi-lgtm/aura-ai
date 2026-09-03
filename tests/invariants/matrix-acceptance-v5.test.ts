@@ -539,17 +539,19 @@ describe("year forecast UI contract", () => {
     ] as const;
     for (const row of cases) {
       const engine = matrixYearForecast(row.dob, from)!;
-      const aprilEngine = engine.months.find((m) => m.year === 2026 && m.month === 4);
-      expect(aprilEngine?.ageTransition).toBe(true);
-      expect(aprilEngine?.periodFrom).toBe(row.fromPeriod);
-      expect(aprilEngine?.periodTo).toBe(row.toPeriod);
+      // The transition belongs to the birthday month, including its partial period.
+      const marchEngine = engine.months.find((m) => m.year === 2026 && m.month === 3);
+      expect(marchEngine?.ageTransition).toBe(true);
+      expect(marchEngine?.periodFrom).toBe(row.fromPeriod);
+      expect(marchEngine?.periodTo).toBe(row.toPeriod);
+      expect(engine.months.find((m) => m.year === 2026 && m.month === 4)?.ageTransition).toBeUndefined();
       const ui = buildNumerologSessionResult({
         toolId: "matrix_year_forecast",
         birthDate: row.dob,
         fromDate: from,
       });
-      const april = ui?.positions.find((p) => p.label === "Апрель 2026");
-      expect(april?.detail).toContain(
+      const march = ui?.positions.find((p) => p.label === "Март 2026");
+      expect(march?.detail).toContain(
         `Смена периода матрицы: ${row.fromPeriod}→${row.toPeriod} лет`
       );
     }

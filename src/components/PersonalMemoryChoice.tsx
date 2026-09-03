@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Brain, Check, Loader2, ShieldCheck } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 import LegalDocLink from "@/components/legal/LegalDocLink";
 import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
 
@@ -19,6 +20,8 @@ export default function PersonalMemoryChoice({
     variant: "continuity" | "history";
   } | null>(null);
   const trackedShown = useRef(false);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogFocus(dialogRef, open);
 
   useEffect(() => {
     if (!enabled) {
@@ -100,12 +103,13 @@ export default function PersonalMemoryChoice({
   return (
     <BodyPortal>
       <div
+        ref={dialogRef}
         className="fixed inset-0 z-[180] flex items-center justify-center bg-[#08060d]/92 px-4 py-8 backdrop-blur-xl"
         role="dialog"
         aria-modal="true"
         aria-labelledby="personal-memory-title"
       >
-        <div className="w-full max-w-lg overflow-hidden rounded-[28px] border border-aura-gold/25 bg-[#12101a] shadow-2xl shadow-black/70">
+        <div className="max-h-[calc(100dvh-4rem)] w-full max-w-lg overflow-y-auto overscroll-contain rounded-[28px] border border-aura-gold/25 bg-[#12101a] shadow-2xl shadow-black/70">
           <div className="border-b border-white/8 bg-gradient-to-br from-aura-gold/12 via-transparent to-aura-gold/8 px-6 py-7 sm:px-8">
             <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-aura-gold/25 bg-aura-gold/10">
               <Brain className="h-7 w-7 text-aura-gold" aria-hidden />

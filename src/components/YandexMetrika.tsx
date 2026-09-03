@@ -1,8 +1,10 @@
 "use client";
 
 import { useEffect, useRef } from "react";
+import { usePathname } from "next/navigation";
 import {
   COOKIE_CONSENT_EVENT,
+  METRIKA_READY_EVENT,
   hasCookieConsent,
   type CookieConsentValue,
 } from "@/lib/cookie-consent";
@@ -50,7 +52,7 @@ function initMetrikaFull(): void {
       accurateTrackBounce: true,
       trackLinks: true,
       referrer: document.referrer,
-      url: location.href,
+      url: location.origin + location.pathname,
     });
   } catch {
     /* optional */
@@ -62,27 +64,38 @@ function enableAnalyticsIfConsented(): void {
   ensureYmStub();
   injectTagScript();
   initMetrikaFull();
+  window.dispatchEvent(new Event(METRIKA_READY_EVENT));
 }
 
 export default function YandexMetrika() {
   const booted = useRef(false);
+  const pathname = usePathname();
+  const lastPath = useRef<string | null>(null);
 
   useEffect(() => {
-    if (hasCookieConsent()) {
+    const enable = () => {
+      if (booted.current || !hasCookieConsent()) return;
       enableAnalyticsIfConsented();
       booted.current = true;
-    }
+      lastPath.current = window.location.pathname;
+    };
+    enable();
 
     const onConsent = (e: Event) => {
       const value = (e as CustomEvent<{ value?: CookieConsentValue }>).detail?.value;
       if (value === "1" || hasCookieConsent()) {
-        enableAnalyticsIfConsented();
-        booted.current = true;
+        enable();
       }
     };
     window.addEventListener(COOKIE_CONSENT_EVENT, onConsent);
     return () => window.removeEventListener(COOKIE_CONSENT_EVENT, onConsent);
   }, []);
+
+  useEffect(() => {
+    if (!pathname || !booted.current || !hasCookieConsent() || !window.ym || lastPath.current === pathname) return;
+    window.ym(YANDEX_METRIKA_ID, "hit", window.location.origin + pathname, { title: document.title });
+    lastPath.current = pathname;
+  }, [pathname]);
 
   // No beforeInteractive script / noscript pixel — analytics only after explicit consent.
   return null;

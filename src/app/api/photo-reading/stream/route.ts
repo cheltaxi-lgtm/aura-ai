@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { ensureDb } from "@/lib/db";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { requireUserAuth } from "@/lib/require-auth";
@@ -36,6 +37,7 @@ import { resolvePhotoReadingPricing } from "@/lib/photo-reading-billing";
 import {
   buildPhotoSpreadKey,
   findPhotoReadingEntry,
+  getPhotoChargeReuseState,
   withPhotoReadingLock,
 } from "@/lib/photo-reading-idempotency";
 import {
@@ -182,8 +184,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  // Worker / durable path always returns JSON (no SSE).
-  const preferJson = Boolean(workerUserId);
+  // Async clients also expect JSON when a worker is unavailable and we run inline.
+  const preferJson = Boolean(workerUserId) || asyncRequested;
 
   let isPaid = false;
   let referrerSlug: string | null = null;
@@ -284,15 +286,27 @@ export async function POST(request: NextRequest) {
             await trackWorkerJobCompleted(request, payload);
             return NextResponse.json(payload);
           }
-          const pendingPayload = {
-            pending: true,
-            reused: true,
-            sessionId: sessionId ?? null,
-            runeBalance,
-            message: "Фото-разбор уже выполняется — откройте сессию.",
-          };
-          await trackWorkerJobCompleted(request, pendingPayload);
-          return NextResponse.json(pendingPayload);
+          const prior = charge.transactionId
+            ? await getPhotoChargeReuseState(profileUserId, charge.transactionId)
+            : null;
+          if (!prior) throw new Error("photo_prior_charge_missing");
+          if (!prior.refunded) {
+            // The lock excludes an active generation. Resume its unpaid result
+            // using the existing spend rather than returning a permanent pending state.
+            billingCharge = { ...charge, transactionId: prior.transactionId, spentRunes: prior.amount };
+          } else {
+            billingCharge = await BillingService.chargeForSession({
+              userId: profileUserId,
+              cost: pricing.effectiveCost,
+              actionType: "VISION_ANALYSIS",
+              sessionId,
+              idempotencyKey: `${prior.retryPrefix}${randomUUID()}`,
+            });
+            if (billingCharge.deduplicated) throw new Error("photo_retry_charge_conflict");
+          }
+          spentRunes = billingCharge.spentRunes;
+          runeBalance = billingCharge.newBalance;
+          await trackWorkerJobCharged(request, billingCharge.transactionId);
         }
       } catch (err) {
         if (err instanceof InsufficientFundsError) {
@@ -364,31 +378,44 @@ export async function POST(request: NextRequest) {
       systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
     }
 
+    const refundCurrentCharge = async (): Promise<boolean> => {
+      if (!profileUserId || !billingCharge) return false;
+      try {
+        const rollback = await BillingService.rollbackChargeEx({
+          userId: profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          transactionId: billingCharge.transactionId,
+          actionType: "VISION_ANALYSIS",
+        });
+        runeBalance = rollback.balance;
+        if (rollback.refunded) {
+          billingCharge = null;
+          spentRunes = 0;
+        }
+        return rollback.refunded;
+      } catch (refundError) {
+        console.error("Photo reading refund failed:", refundError);
+        return false;
+      }
+    };
+
     const finalizeSuccess = async (reply: string) => {
       let historyId: string | undefined;
       if (profileUserId) {
         if (!(await beginWorkerJobSave(request))) {
-          if (billingCharge) {
-            try {
-              runeBalance = await BillingService.rollbackCharge({
-                userId: profileUserId,
-                cost: billingCharge.spentRunes,
-                wasFreeQuestion: billingCharge.wasFreeQuestion,
-                actionType: "VISION_ANALYSIS",
-              });
-            } catch (refundErr) {
-              console.error("Photo save-race refund failed:", refundErr);
-            }
-          }
+          const refunded = await refundCurrentCharge();
           await trackWorkerJobFailed(request, "Photo reading save race", {
-            refunded: Boolean(billingCharge),
+            refunded,
             errorCode: "generation_failed",
           });
           return NextResponse.json(
             {
-              error: "Не удалось сохранить трактовку. Руны возвращены. Попробуйте ещё раз.",
+              error: refunded
+                ? "Не удалось сохранить трактовку. Руны возвращены. Попробуйте ещё раз."
+                : "Не удалось сохранить трактовку. Проверьте статус оплаты в кабинете.",
               code: "generation_failed",
-              refunded: Boolean(billingCharge),
+              refunded,
             },
             { status: 502 }
           );
@@ -432,29 +459,18 @@ export async function POST(request: NextRequest) {
     };
 
     const refundAndFail = async (message: string) => {
-      if (profileUserId && billingCharge) {
-        try {
-          runeBalance = await BillingService.rollbackCharge({
-            userId: profileUserId,
-            cost: billingCharge.spentRunes,
-            wasFreeQuestion: billingCharge.wasFreeQuestion,
-            actionType: "VISION_ANALYSIS",
-          });
-          billingCharge = null;
-          spentRunes = 0;
-        } catch (refundErr) {
-          console.error("Photo reading refund failed:", refundErr);
-        }
-      }
+      const refunded = await refundCurrentCharge();
       await trackWorkerJobFailed(request, message, {
-        refunded: true,
+        refunded,
         errorCode: "generation_failed",
       });
       return NextResponse.json(
         {
-          error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+          error: refunded
+            ? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+            : "Не удалось получить трактовку. Проверьте статус оплаты в кабинете.",
           code: "generation_failed",
-          refunded: true,
+          refunded,
           runeBalance,
         },
         { status: 502 }
@@ -482,20 +498,7 @@ export async function POST(request: NextRequest) {
       userName: ctx.userName ?? "друг",
       cardCount: confirmedSpread!.cards.length,
       onComplete: async ({ reply, llmFailed }) => {
-        if (llmFailed && profileUserId && billingCharge) {
-          try {
-            runeBalance = await BillingService.rollbackCharge({
-              userId: profileUserId,
-              cost: billingCharge.spentRunes,
-              wasFreeQuestion: billingCharge.wasFreeQuestion,
-              actionType: "VISION_ANALYSIS",
-            });
-            billingCharge = null;
-            spentRunes = 0;
-          } catch (refundErr) {
-            console.error("Photo stream refund failed:", refundErr);
-          }
-        }
+        const refunded = llmFailed ? await refundCurrentCharge() : false;
 
         let historyId: string | undefined;
         if (profileUserId && !llmFailed) {
@@ -532,7 +535,7 @@ export async function POST(request: NextRequest) {
           runeBalance,
           firstPhotoDiscount,
           streamed: true,
-          refunded: llmFailed && spentRunes === 0,
+          refunded,
         };
       },
     });
@@ -541,6 +544,8 @@ export async function POST(request: NextRequest) {
       return refundAndFail("Photo reading stream failed to start");
     }
 
-    return sse;
+    // Legacy callers retain the SSE format, but generation/save/refund must
+    // finish before releasing the lock. Current async clients receive JSON.
+    return new Response(await sse.arrayBuffer(), { status: sse.status, headers: sse.headers });
   });
 }

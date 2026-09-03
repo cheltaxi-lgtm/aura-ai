@@ -13,6 +13,7 @@ import {
   normalizeVedicChart,
 } from "@/lib/natal";
 import { localDateStringInTimezone } from "@/lib/natal/time";
+import { birthFingerprintsMatch } from "@/lib/natal/types";
 
 type NatalChartRow = {
   user_id: string;
@@ -82,7 +83,7 @@ export async function isStoredNatalChartStale(
       : null;
   return (
     stored.engineVersion !== NATAL_ENGINE_VERSION ||
-    stored.birthFingerprint !== fingerprint ||
+    !birthFingerprintsMatch(stored.birthFingerprint, fingerprint) ||
     (stored.western !== null && storedEphemeris !== expectedEphemeris)
   );
 }
@@ -206,7 +207,7 @@ export async function getOrComputeNatalChart(userId: string): Promise<NatalChart
   const stale =
     !stored ||
     stored.engineVersion !== NATAL_ENGINE_VERSION ||
-    stored.birthFingerprint !== fingerprint ||
+    !birthFingerprintsMatch(stored.birthFingerprint, fingerprint) ||
     (stored.western !== null && storedEphemeris !== expectedEphemeris);
 
   if (stale) {

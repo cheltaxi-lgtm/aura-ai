@@ -1,4 +1,5 @@
 import { query, type PoolClient, queryClient } from "@/lib/db";
+import { withReadingLock } from "@/lib/reading-lock";
 import { tarotCardsKey } from "@/lib/tarot";
 import {
   isNumerologToolId,
@@ -89,10 +90,5 @@ export async function withSpreadReadingLock<T>(
   fn: () => Promise<T>
 ): Promise<T> {
   const lockKey = spreadReadingLockKey(userId, characterId, cardsKey);
-  await query(`SELECT pg_advisory_lock(hashtext($1))`, [lockKey]);
-  try {
-    return await fn();
-  } finally {
-    await query(`SELECT pg_advisory_unlock(hashtext($1))`, [lockKey]).catch(() => {});
-  }
+  return withReadingLock(lockKey, fn);
 }

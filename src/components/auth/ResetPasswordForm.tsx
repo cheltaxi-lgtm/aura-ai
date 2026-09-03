@@ -38,6 +38,8 @@ export default function ResetPasswordForm() {
         return;
       }
       router.replace("/auth/user/login?reset=1");
+    } catch {
+      setError("Не удалось связаться с сервером. Проверьте подключение и попробуйте ещё раз.");
     } finally {
       setLoading(false);
     }
@@ -59,8 +61,10 @@ export default function ResetPasswordForm() {
       <h1 className="font-display text-center text-2xl font-bold text-white">Новый пароль</h1>
       <form onSubmit={(e) => void submit(e)} className="mt-8 space-y-4">
         <div>
-          <label className="mb-1 block text-xs text-gray-500">Новый пароль</label>
+          <label htmlFor="reset-password" className="mb-1 block text-xs text-gray-500">Новый пароль</label>
           <input
+            id="reset-password"
+            autoComplete="new-password"
             type="password"
             required
             minLength={MIN_PASSWORD_LENGTH}
@@ -70,8 +74,10 @@ export default function ResetPasswordForm() {
           />
         </div>
         <div>
-          <label className="mb-1 block text-xs text-gray-500">Повторите пароль</label>
+          <label htmlFor="reset-confirm" className="mb-1 block text-xs text-gray-500">Повторите пароль</label>
           <input
+            id="reset-confirm"
+            autoComplete="new-password"
             type="password"
             required
             minLength={MIN_PASSWORD_LENGTH}
@@ -80,7 +86,7 @@ export default function ResetPasswordForm() {
             className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
           />
         </div>
-        {error ? <p className="text-center text-sm text-red-400">{error}</p> : null}
+        {error ? <p role="alert" className="text-center text-sm text-red-400">{error}</p> : null}
         <button type="submit" disabled={loading} className="btn-primary w-full py-2.5 text-sm disabled:opacity-50">
           {loading ? "Сохраняем…" : "Сохранить пароль"}
         </button>

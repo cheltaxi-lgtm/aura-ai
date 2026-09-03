@@ -41,6 +41,7 @@ type FlowStep =
   | "error";
 
 type AuraPricing = {
+  unlimited?: boolean;
   baseCost: number;
   effectiveCost: number;
   firstAuraDiscount: boolean;
@@ -181,6 +182,7 @@ export default function AuraReadingFlow() {
       .then((data) => {
         if (data && typeof data.effectiveCost === "number") {
           setPricing({
+            unlimited: data.unlimited === true,
             baseCost: data.baseCost,
             effectiveCost: data.effectiveCost,
             firstAuraDiscount: data.firstAuraDiscount === true,
@@ -730,7 +732,11 @@ export default function AuraReadingFlow() {
           }
           if (data.status === "failed" || data.status === "needs_regeneration") {
             setError(
-              "Не удалось получить разбор. Руны возвращены — попробуйте ещё раз."
+              data.refunded === true
+                ? "Не удалось получить разбор. Руны возвращены — попробуйте ещё раз."
+                : data.status === "needs_regeneration"
+                  ? "Разбор требует повторной подготовки. Проверьте его статус в кабинете."
+                  : "Не удалось получить разбор. Проверьте статус оплаты в кабинете или обратитесь в поддержку."
             );
             setStep("claimed");
             return;
@@ -827,7 +833,7 @@ export default function AuraReadingFlow() {
     isLoggedIn &&
     config.enabled &&
     runeBalance !== null &&
-    !canAffordRunes({ enabled: config.enabled, balance: runeBalance, cost: auraCost });
+    !canAffordRunes({ enabled: config.enabled, unlimited: pricing?.unlimited, balance: runeBalance, cost: auraCost });
 
   return (
     <div className="aura-flow mx-auto w-full max-w-xl">

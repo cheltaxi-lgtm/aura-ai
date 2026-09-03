@@ -10,6 +10,7 @@ set -euo pipefail
 APP_ROOT="${APP_ROOT:-/opt/aura-ai}"
 SNAP_DIR="${DEPLOY_SNAPSHOT_DIR:-/opt/aura-ai-deploy-snapshots}"
 SERVICE="${DEPLOY_SERVICE:-aura-ai}"
+WORKER_SERVICE="aura-ai-async-jobs"
 
 mkdir -p "${SNAP_DIR}"
 
@@ -54,7 +55,8 @@ restore_snapshot() {
     exit 1
   fi
   echo ">>> Restoring ${name} -> ${APP_ROOT}"
-  systemctl stop "${SERVICE}" || true
+  systemctl stop "${WORKER_SERVICE}"
+  systemctl stop "${SERVICE}"
   local backup="${SNAP_DIR}/pre-restore-$(date -u +%Y%m%dT%H%M%SZ)"
   save_snapshot "pre-restore" >/dev/null
   rm -rf "${APP_ROOT}.rollback-staging"
@@ -65,10 +67,31 @@ restore_snapshot() {
   cd "${APP_ROOT}"
   npm ci
   npm run build
+  bash hosting/ensure-async-jobs-user.sh "${APP_ROOT}"
+  install -m 644 hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service
+  systemctl daemon-reload
   systemctl restart "${SERVICE}"
-  sleep 2
-  systemctl is-active "${SERVICE}"
-  curl -sS -o /dev/null -w "health=%{http_code}\n" http://127.0.0.1:3000/api/health
+  systemctl restart "${WORKER_SERVICE}"
+  systemctl is-active --quiet "${SERVICE}"
+  systemctl is-active --quiet "${WORKER_SERVICE}"
+  local healthy=0
+  for attempt in $(seq 1 30); do
+    if [ "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:3000/api/health || true)" = "200" ]; then
+      healthy=1
+      break
+    fi
+    sleep 2
+  done
+  if [ "${healthy}" -ne 1 ]; then
+    echo "ERROR: rollback health check failed" >&2
+    exit 1
+  fi
+  if [ "$(curl -sS --max-time 15 -o /dev/null -w '%{http_code}' https://zovus.ru/api/health || true)" != "200" ]; then
+    echo "ERROR: rollback public health check failed" >&2
+    exit 1
+  fi
+  systemctl is-active --quiet "${SERVICE}"
+  systemctl is-active --quiet "${WORKER_SERVICE}"
   echo ">>> Rollback complete from ${name}"
 }
 

@@ -152,76 +152,67 @@ test.describe("daily artifact + landing copy", () => {
   test("Scenario C: anonymous landing has premium copy without internal jargon", async ({
     page,
   }, testInfo) => {
+    await page.route("**/api/runes/config", (route) => route.fulfill({
+      json: { enabled: true, starterRunes: 300, rubPerRune: 2, freeQuestions: 2,
+        costs: { VISION_ANALYSIS: 30, READING: 15, NUMEROLOGY_SESSION: 100 } },
+    }));
     await page.goto("/?app=1");
     await expect(page.getByText(/не путать со стартовым раскладом/i)).toHaveCount(0);
     await expect(page.getByText(/^После входа$/i)).toHaveCount(0);
     await expect(page.getByRole("heading", { name: /3 карты дня/i })).toBeVisible();
     await expect(
-      page.getByRole("button", { name: /Попробовать 3 карты бесплатно/i }).first()
+      page.getByRole("button", { name: /Открыть первые 3 карты/i }).first()
     ).toBeVisible();
     // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).
-    const starter = page.locator(".editorial-starter-pack");
+    const starter = page.locator(".editorial-starter-gift");
     await expect(starter).toBeVisible();
-    await expect(starter).toHaveAttribute("data-starter-state", "before_cards");
-    await expect(starter.getByRole("button", { name: /Попробовать 3 карты бесплатно/i })).toBeVisible();
+    await expect(starter.getByRole("link", { name: /Создать аккаунт и получить/i })).toBeVisible();
+    await expect(starter.getByRole("link", { name: /Получить полный разбор/i })).toHaveCount(0);
     await expect(starter.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1440, height: 900 });
     await page.locator("#карты-дня").screenshot({
       path: testInfo.outputPath("daily-guest-desktop.png"),
     });
-    await page.locator(".editorial-starter-pack").screenshot({
+    await starter.screenshot({
       path: testInfo.outputPath("starter-guest-desktop.png"),
     });
     await page.setViewportSize({ width: 390, height: 844 });
     await page.locator("#карты-дня").screenshot({
       path: testInfo.outputPath("daily-guest-mobile.png"),
     });
-    await page.locator(".editorial-starter-pack").screenshot({
+    await starter.screenshot({
       path: testInfo.outputPath("starter-guest-mobile.png"),
     });
   });
 
-  test("Scenario starter: before-cards CTA opens guest picker", async ({ page }) => {
+  test("Scenario daily guest: before-cards CTA opens guest picker", async ({ page }) => {
     await page.goto("/?app=1");
-    const starterCta = page.locator(".editorial-starter-pack [data-starter-cta='try_cards']");
+    const starterCta = page.locator(".editorial-daily-ritual").getByRole("button", { name: "Открыть первые 3 карты" });
     await expect(starterCta).toBeVisible();
-    await expect(starterCta).toHaveText(/Попробовать 3 карты бесплатно/i);
     await starterCta.scrollIntoViewIfNeeded();
     await starterCta.click();
     await expect(page.locator("#guest-spread-picker")).toBeVisible({ timeout: 15_000 });
     await expect(page.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
   });
 
-  test("Scenario A: opened state CTA opens exact daily artifact identity", async ({ page }) => {
+  test("Scenario A: header reopens the exact existing daily artifact", async ({ page }) => {
     await installDailyMocks(page);
-    const touchedSessionUrls: string[] = [];
-    page.on("request", (req) => {
-      const url = req.url();
-      if (url.includes(sessionId) || /\/api\/(sessions|chat|reading)/.test(url)) {
-        touchedSessionUrls.push(url);
-      }
-    });
-
     await page.goto("/?app=1");
-    await expect(page.getByText(/Ваш расклад на сегодня уже ждёт/i).first()).toBeVisible({
+    await expect(page.getByRole("heading", { name: "С возвращением, Ева" })).toBeVisible({
       timeout: 20_000,
     });
+    await expect(page.getByRole("button", { name: "Расклад Таро Продолжить с Вероника" })).toBeVisible();
 
-    const viewBtn = page.getByRole("button", { name: /Посмотреть карты дня/i }).first();
+    const viewBtn = page.getByRole("banner").getByRole("button", { name: "Карты дня", exact: true });
     await expect(viewBtn).toBeVisible();
+    const exactHistoryRequest = page.waitForRequest((request) => {
+      const url = new URL(request.url());
+      return url.pathname === "/api/chat/history" && url.searchParams.get("archiveSessionId") === sessionId;
+    });
     await viewBtn.click();
-
-    // Must open the exact daily session — not a generic recap scroll.
-    await expect
-      .poll(
-        () =>
-          touchedSessionUrls.some(
-            (u) => u.includes(sessionId) || u.includes("/api/sessions") || u.includes("/api/chat")
-          ),
-        { timeout: 15_000 }
-      )
-      .toBeTruthy();
+    // Only the target artifact after the click counts; boot-time session requests do not.
+    await exactHistoryRequest;
 
     const stored = await page.evaluate(() => {
       const raw = localStorage.getItem("aura_profile");
@@ -240,22 +231,14 @@ test.describe("daily artifact + landing copy", () => {
     );
   });
 
-  test("Scenario B: hide from home persists after reload", async ({ page }) => {
-    await installDailyMocks(page);
+  test("Scenario B: a server-hidden recap stays absent after reload", async ({ page }) => {
+    await installDailyMocks(page, { hiddenKey: `history:${historyId}` });
     await page.goto("/?app=1");
-    const clearBtn = page.getByRole("button", { name: /Убрать с главной/i });
-    if (await clearBtn.count()) {
-      await clearBtn.first().click();
-      await expect(clearBtn).toHaveCount(0, { timeout: 10_000 });
-      await page.reload();
-      await expect(page.getByRole("button", { name: /Убрать с главной/i })).toHaveCount(0);
-    } else {
-      // Recap may be filtered before paint if hidden already — still assert hide API contract.
-      await page.request.patch("/api/profile/home-recap", {
-        data: { hiddenKey: `history:${historyId}` },
-      });
-      await page.reload();
-      await expect(page.getByRole("button", { name: /Убрать с главной/i })).toHaveCount(0);
-    }
+    await expect(page.getByRole("heading", { name: "С возвращением, Ева" })).toBeVisible();
+    const recap = page.getByRole("button", { name: "Расклад Таро Продолжить с Вероника" });
+    await expect(recap).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("heading", { name: "С возвращением, Ева" })).toBeVisible();
+    await expect(recap).toHaveCount(0);
   });
 });

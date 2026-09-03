@@ -142,7 +142,7 @@ function localIso(date: Date, timezone: string): string {
 function localNoonUtc(date: string, place: NatalPlace): Date {
   const offset = resolveBirthUtcOffsetHours(date, "12:00", place.timezone);
   const [year, month, day] = date.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day, 12 - offset));
+  return new Date(Date.UTC(year, month - 1, day, 12) - offset * 3_600_000);
 }
 
 function positionsFromSky(

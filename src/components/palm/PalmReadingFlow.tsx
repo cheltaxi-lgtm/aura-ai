@@ -51,6 +51,7 @@ type FlowStep =
   | "error";
 
 type PalmPricing = {
+  unlimited?: boolean;
   baseCost: number;
   effectiveCost: number;
   firstPalmDiscount: boolean;
@@ -103,7 +104,7 @@ function formatRunes(n: number): string {
 }
 
 export default function PalmReadingFlow() {
-  const { isLoggedIn, refresh: refreshAuth } = useAuth();
+  const { isLoggedIn, loading: authLoading } = useAuth();
   const { config } = useRuneConfig();
   const reduceMotion = useReducedMotion();
   const fadeUp = reduceMotion ? { opacity: 0 } : { opacity: 0, y: 12 };
@@ -174,6 +175,7 @@ export default function PalmReadingFlow() {
       .then((data) => {
         if (cancelled || !data) return;
         setPricing({
+          unlimited: data.unlimited === true,
           baseCost: Number(data.baseCost) || 100,
           effectiveCost: Number(data.effectiveCost) || 100,
           firstPalmDiscount: data.firstPalmDiscount === true,
@@ -195,24 +197,50 @@ export default function PalmReadingFlow() {
   }, [isLoggedIn]);
 
   useEffect(() => {
-    if (isLoggedIn) return;
+    if (authLoading) return;
     let cancelled = false;
-    void fetch("/api/palm/today", { credentials: "include", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
+    void (async () => {
+        // Auth redirects remount the flow; the HttpOnly claim cookie is the
+        // authority for restoring the same guest photo after registration.
+        let claimed = null;
+        if (isLoggedIn) {
+          const response = await fetch("/api/palm/claim", { method: "POST", credentials: "include" });
+          const claimData = await response.json().catch(() => null);
+          if (response.ok) claimed = claimData;
+          else if (claimData?.code !== "NO_CLAIM_TOKEN") throw new Error("palm_claim_failed");
+        }
+        const response = await fetch("/api/palm/today", { credentials: "include", cache: "no-store" });
+        const today = response.ok ? await response.json() : null;
+        // An older paid hand must not replace a newly claimed guest hand.
+        const data = claimed?.ok && claimed.snapshot && claimed.snapshotId !== today?.snapshotId
+          ? { ...claimed, claimed: true, paid: false, report: null }
+          : today;
         if (cancelled || !data?.snapshot) return;
         const nextId = typeof data.snapshotId === "string" ? data.snapshotId : null;
         setSnapshot(data.snapshot as FlowSnapshot);
         setSnapshotId(nextId);
+        if (data.snapshot.whichHand === "left" || data.snapshot.whichHand === "right") {
+          setWhichHand(data.snapshot.whichHand);
+        }
         const stored = readPalmPreview(nextId);
         if (stored) setPhotoUrl(stored);
-        setStep("teaser");
-      })
-      .catch(() => undefined);
+        if (data.paid && typeof data.report === "string" && data.report.trim()) {
+          setReport(data.report);
+          setStep("report");
+        } else {
+          setStep(data.claimed ? "claimed" : "teaser");
+        }
+        if (claimed?.ok) {
+          trackProductFunnel("claim_complete", { product: "palm", source: "palm_flow" });
+          trackSeoEvent("palm_guest_claim_complete");
+        }
+      })().catch(() => {
+        if (!cancelled) setError("Не удалось восстановить снимок. Проверьте подключение и обновите страницу.");
+      });
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn]);
+  }, [authLoading, isLoggedIn]);
 
   const resetAll = useCallback(() => {
     pollAbortRef.current?.abort();
@@ -593,7 +621,11 @@ export default function PalmReadingFlow() {
           return;
         }
         if (data.status === "failed" || data.status === "needs_regeneration") {
-          setError("Не удалось получить разбор. Руны возвращены — попробуйте ещё раз.");
+          setError(data.refunded === true
+            ? "Не удалось получить разбор. Руны возвращены — попробуйте ещё раз."
+            : data.status === "needs_regeneration"
+              ? "Разбор требует повторной подготовки. Проверьте его статус в кабинете."
+              : "Не удалось получить разбор. Проверьте статус оплаты в кабинете или обратитесь в поддержку.");
           setStep("claimed");
           return;
         }
@@ -678,29 +710,11 @@ export default function PalmReadingFlow() {
     }
   }, [snapshotId, pollJob]);
 
-  useEffect(() => {
-    if (!isLoggedIn || step !== "teaser" || !snapshotId) return;
-    void (async () => {
-      const claimRes = await fetch("/api/palm/claim", {
-        method: "POST",
-        credentials: "include",
-      });
-      const claimData = await claimRes.json().catch(() => null);
-      if (claimData?.ok) {
-        if (typeof claimData.snapshotId === "string") setSnapshotId(claimData.snapshotId);
-        trackProductFunnel("claim_complete", { product: "palm", source: "palm_flow" });
-        trackSeoEvent("palm_guest_claim_complete");
-        await refreshAuth();
-        setStep("claimed");
-      }
-    })();
-  }, [isLoggedIn, step, snapshotId, refreshAuth]);
-
   const blockedByRunes =
     isLoggedIn &&
     config.enabled &&
     runeBalance !== null &&
-    !canAffordRunes({ enabled: config.enabled, balance: runeBalance, cost: palmCost });
+    !canAffordRunes({ enabled: config.enabled, unlimited: pricing?.unlimited, balance: runeBalance, cost: palmCost });
 
   const selectedHandTakenToday = (pastReadings ?? []).some(
     (item) => item.whichHand === whichHand && isPalmMoscowToday(item.createdAt)

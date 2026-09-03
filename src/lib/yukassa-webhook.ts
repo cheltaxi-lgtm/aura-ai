@@ -13,7 +13,7 @@ export async function processYukassaWebhook(body: Record<string, unknown>): Prom
   const event = body.event as string | undefined;
   const payment = body.object as { id?: string; metadata?: Record<string, string> } | undefined;
 
-  if (event !== "payment.succeeded" || !payment?.id) {
+  if (event !== "payment.succeeded" || !payment?.id || typeof payment.id !== "string") {
     return { ok: true, kind: "ignored" };
   }
 
@@ -23,13 +23,14 @@ export async function processYukassaWebhook(body: Record<string, unknown>): Prom
   }
 
   const verified = await verifyYukassaWebhookPayment(payment.id, event);
-  if (!verified.valid) {
+  if (!verified.valid || !verified.paymentId) {
     console.warn("[yukassa-webhook] rejected", payment.id, event);
     return { ok: false, kind: "rejected", paymentId: payment.id };
   }
-  if (verified.metadata) {
-    payment.metadata = { ...payment.metadata, ...verified.metadata };
-  }
+  // Only the provider's authenticated response can identify the purchase.
+  // Request metadata must never supply fields missing from the provider.
+  payment.metadata = verified.metadata;
+  payment.id = verified.paymentId;
   const amountRub = verified.amountRub;
 
   if (payment.metadata?.type === "rune_purchase") {

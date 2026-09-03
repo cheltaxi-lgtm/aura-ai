@@ -1,0 +1,174 @@
+{
+  "version": 1,
+  "updatedAt": "2026-09-03T09:59:29.805Z",
+  "scope": "full",
+  "scopes": [
+    "full"
+  ],
+  "level": "production",
+  "verdict": "PASS",
+  "production": "PASS",
+  "productionRequired": true,
+  "requiredChecks": [
+    "build",
+    "account-deleted",
+    "oauth",
+    "telegram-test",
+    "invariants-all",
+    "product-suite",
+    "guardrails",
+    "lint",
+    "guards",
+    "typecheck",
+    "prod-health",
+    "prod-smoke"
+  ],
+  "checks": [
+    {
+      "id": "build",
+      "title": "build",
+      "status": "PASS",
+      "durationMs": 367630
+    },
+    {
+      "id": "account-deleted",
+      "title": "account-deleted",
+      "status": "PASS",
+      "durationMs": 5718
+    },
+    {
+      "id": "oauth",
+      "title": "oauth",
+      "status": "PASS",
+      "durationMs": 6702
+    },
+    {
+      "id": "telegram-test",
+      "title": "telegram-test",
+      "status": "PASS",
+      "durationMs": 15280
+    },
+    {
+      "id": "invariants-all",
+      "title": "invariants",
+      "status": "PASS",
+      "durationMs": 4117196
+    },
+    {
+      "id": "product-suite",
+      "title": "product-suite",
+      "status": "PASS",
+      "durationMs": 148128
+    },
+    {
+      "id": "guardrails",
+      "title": "guardrails",
+      "status": "PASS",
+      "durationMs": 12241
+    },
+    {
+      "id": "lint",
+      "title": "lint",
+      "status": "PASS",
+      "durationMs": 194985
+    },
+    {
+      "id": "guards",
+      "title": "guards",
+      "status": "PASS",
+      "durationMs": 12045
+    },
+    {
+      "id": "typecheck",
+      "title": "typecheck",
+      "status": "PASS",
+      "durationMs": 91365
+    },
+    {
+      "id": "prod-health",
+      "title": "prod-health",
+      "status": "PASS",
+      "durationMs": 859
+    },
+    {
+      "id": "prod-smoke",
+      "title": "prod-smoke",
+      "status": "PASS",
+      "durationMs": 627
+    }
+  ],
+  "reviews": {
+    "code": "PARTIAL",
+    "security": "PARTIAL",
+    "visual": "PASS",
+    "calc": "PASS",
+    "production": "PARTIAL"
+  },
+  "head": "a90503f975fdf051fa5e14b9b6108a399c21d295",
+  "files": [
+    "docs/yandex-audit/latest.json",
+    "hosting/rollback-deploy.sh",
+    "playwright.config.ts",
+    "src/app/api/aura/pricing/route.ts",
+    "src/app/api/image/persist/route.ts",
+    "src/app/api/numerology/matrix-snapshot/route.ts",
+    "src/app/api/palm/pricing/route.ts",
+    "src/app/api/photo-reading/stream/route.ts",
+    "src/components/AppHeaderMenu.tsx",
+    "src/components/AuraSellingLanding.tsx",
+    "src/components/AuthForm.tsx",
+    "src/components/PaywallModal.tsx",
+    "src/components/PersonalMemoryChoice.tsx",
+    "src/components/TariffsModal.tsx",
+    "src/components/YandexMetrika.tsx",
+    "src/components/aura/AuraReadingFlow.tsx",
+    "src/components/auth/ForgotPasswordForm.tsx",
+    "src/components/auth/ResetPasswordForm.tsx",
+    "src/components/natal/NatalGuestCalculator.tsx",
+    "src/components/palm/PalmReadingFlow.tsx",
+    "src/components/seo/SeoPageTracker.tsx",
+    "src/lib/aura-reading-persist.ts",
+    "src/lib/cookie-consent.ts",
+    "src/lib/natal/cities-fallback.ts",
+    "src/lib/natal/geocode.ts",
+    "src/lib/natal/timing.ts",
+    "src/lib/natal/types.ts",
+    "src/lib/numerology/matrix-year-forecast.ts",
+    "src/lib/palm-reading-persist.ts",
+    "src/lib/photo-reading-idempotency.ts",
+    "src/lib/reading-idempotency.ts",
+    "src/lib/rune-payment-confirm.ts",
+    "src/lib/services/natal-chart-service.ts",
+    "src/lib/services/natal-guest-service.ts",
+    "src/lib/telegram/bot-photo-service.ts",
+    "src/lib/usePlatformFeatures.ts",
+    "src/lib/yukassa-webhook.ts",
+    "src/lib/yukassa.ts",
+    "src/styles/editorial-landing.css",
+    "tests/e2e/natal.public.spec.ts",
+    "tests/invariants/matrix-acceptance-v5.test.ts",
+    "tests/invariants/matrix-methodology.test.ts",
+    "tests/invariants/natal-guest-continuity.test.ts",
+    ".agents/",
+    ".codex/",
+    "docs/yandex-audit/audit-2026-09-02T08-34-12-520Z.json",
+    "docs/yandex-audit/audit-2026-09-03T01-08-44-531Z.json",
+    "docs/yandex-audit/audit-2026-09-03T03-41-50-545Z.json",
+    "docs/yandex-audit/audit-2026-09-03T04-51-43-745Z.json",
+    "public/apple-icon.svg",
+    "src/lib/reading-lock.ts",
+    "src/lib/useDialogFocus.ts",
+    "tests/e2e/launch-readiness.public.spec.ts",
+    "tests/invariants/birth-place-region.test.ts",
+    "tests/invariants/image-persist-guards.test.ts",
+    "tests/invariants/launch-calculation-regressions.test.ts",
+    "tests/invariants/matrix-snapshot-route-authority.test.ts",
+    "tests/invariants/photo-launch-regressions.test.ts",
+    "tests/invariants/reading-lock-db.test.ts",
+    "tests/invariants/reading-lock.test.ts",
+    "tests/invariants/telegram-photo-retry-regressions.test.ts",
+    "tests/invariants/yukassa-provider-validation.test.ts",
+    "tests/invariants/yukassa-webhook-authority.test.ts",
+    "tmp/"
+  ]
+}

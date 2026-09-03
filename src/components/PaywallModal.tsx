@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, CreditCard, Smartphone, Loader2 } from "lucide-react";
@@ -464,9 +465,11 @@ function LegacyPaywallView({
 }
 
 export default function PaywallModal({ isOpen, onClose, options }: PaywallModalProps) {
+  const dialogRef = useRef<HTMLDivElement>(null);
   const [config, setConfig] = useState<PaywallConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
+  useDialogFocus(dialogRef, isOpen && mounted, onClose);
 
   const balance = options.currentBalance ?? options.balance ?? 0;
   const required = options.requiredRunes ?? 0;
@@ -527,6 +530,7 @@ export default function PaywallModal({ isOpen, onClose, options }: PaywallModalP
           />
           <motion.div
             initial={{ y: "100%" }}
+            ref={dialogRef}
             animate={{ y: 0 }}
             exit={{ y: "100%" }}
             transition={{ type: "spring", stiffness: 300, damping: 30 }}

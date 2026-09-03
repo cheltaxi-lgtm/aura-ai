@@ -144,10 +144,12 @@ export async function createYukassaRunePayment(params: {
 export async function fetchYukassaPayment(paymentId: string): Promise<{
   id: string;
   status: string;
+  paid?: boolean;
   amount?: { value: string; currency: string };
   metadata?: Record<string, string>;
 } | null> {
-  if (!isYukassaConfigured()) return null;
+  if (!isYukassaConfigured() || typeof paymentId !== "string" ||
+      !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(paymentId)) return null;
 
   try {
     const response = await fetch(`${YUKASSA_API}/payments/${paymentId}`, {
@@ -157,7 +159,8 @@ export async function fetchYukassaPayment(paymentId: string): Promise<{
       },
     });
     if (!response.ok) return null;
-    return response.json();
+    const payment = await response.json();
+    return payment?.id === paymentId ? payment : null;
   } catch {
     return null;
   }
@@ -167,6 +170,7 @@ export async function listRecentYukassaPayments(sinceIso: string, limit = 100): 
   Array<{
     id: string;
     status: string;
+    paid?: boolean;
     amount?: { value: string; currency: string };
     metadata?: Record<string, string>;
     created_at?: string;
@@ -177,6 +181,7 @@ export async function listRecentYukassaPayments(sinceIso: string, limit = 100): 
   type Item = {
     id: string;
     status: string;
+    paid?: boolean;
     amount?: { value: string; currency: string };
     metadata?: Record<string, string>;
     created_at?: string;
@@ -221,17 +226,19 @@ export async function listRecentYukassaPayments(sinceIso: string, limit = 100): 
 export async function verifyYukassaWebhookPayment(
   paymentId: string,
   event?: string
-): Promise<{ valid: boolean; metadata?: Record<string, string>; amountRub?: number }> {
+): Promise<{ valid: boolean; paymentId?: string; metadata?: Record<string, string>; amountRub?: number }> {
   if (event && event !== "payment.succeeded") {
     return { valid: false };
   }
   const payment = await fetchYukassaPayment(paymentId);
-  if (!payment || payment.status !== "succeeded") {
+  if (!payment || payment.status !== "succeeded" || payment.paid !== true || payment.amount?.currency !== "RUB") {
     return { valid: false };
   }
   const amountRub = payment.amount?.value ? Number(payment.amount.value) : undefined;
+  if (amountRub === undefined || !Number.isFinite(amountRub) || amountRub <= 0) return { valid: false };
   return {
     valid: true,
+    paymentId: payment.id,
     metadata: payment.metadata,
     amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
   };

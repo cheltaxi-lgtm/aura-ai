@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import {
   auraReadingPricingFromSettings,
   auraSpendBelongsToSnapshot,
@@ -52,7 +52,7 @@ export async function GET(request: Request) {
   const subjectId =
     subjectParam && /^[0-9a-f-]{36}$/i.test(subjectParam) ? subjectParam : null;
 
-  const [pricing, todays, spentToday] = await Promise.all([
+  const [pricing, todays, spentToday, unlimited] = await Promise.all([
     resolveAuraReadingPricing(profileUserId),
     findTodaysPaidAuraReport(profileUserId, othersOn ? subjectId : undefined),
     othersOn
@@ -64,10 +64,12 @@ export async function GET(request: Request) {
           return snapshotIds.some((id) => auraSpendBelongsToSnapshot(spends, id));
         })()
       : hasTodaysUnrefundedAuraSpend(profileUserId),
+    resolveUnlimitedAccess({ accountId: auth.sub, profileUserId }),
   ]);
   return NextResponse.json(
     {
       ...pricing,
+      unlimited,
       isLoggedIn: true,
       todayPaid: Boolean(todays) || spentToday,
       todayHistoryId: todays?.historyId ?? null,

@@ -54,3 +54,15 @@ export function buildBirthFingerprint(input: {
     (input.birthCity ?? "").trim().toLowerCase(),
   ].join("|");
 }
+
+/** Compare SQL TIME (HH:MM:00) with browser HH:MM without rewriting stored report keys. */
+export function birthFingerprintsMatch(stored: string | undefined, current: string): boolean {
+  if (!stored) return false;
+  const normalize = (value: string) => {
+    const parts = value.split("|");
+    if (parts.length !== 3) return value;
+    parts[1] = parts[1].replace(/^([0-2]\d:[0-5]\d):00$/, "$1");
+    return parts.join("|");
+  };
+  return normalize(stored) === normalize(current);
+}

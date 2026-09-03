@@ -1,0 +1,84 @@
+{
+  "startedAt": "2026-09-03T08:49:48.628Z",
+  "completedAt": "2026-09-03T08:49:50.923Z",
+  "scope": "60 public GET requests, concurrency 3; response-body download included; no LLM or payment calls",
+  "assumption": "300 visitors/day",
+  "requests": 60,
+  "ok": 60,
+  "p50Ms": 76,
+  "p95Ms": 210,
+  "maxMs": 667,
+  "routes": {
+    "/": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 81,
+      "p95Ms": 667,
+      "maxMs": 667
+    },
+    "/taro": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 70,
+      "p95Ms": 414,
+      "maxMs": 414
+    },
+    "/numerology/destiny-matrix": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 67,
+      "p95Ms": 444,
+      "maxMs": 444
+    },
+    "/natalnaya-karta": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 74,
+      "p95Ms": 171,
+      "maxMs": 171
+    },
+    "/dizayn-cheloveka": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 80,
+      "p95Ms": 174,
+      "maxMs": 174
+    },
+    "/photo-rasklad": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 59,
+      "p95Ms": 126,
+      "maxMs": 126
+    },
+    "/aura": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 78,
+      "p95Ms": 103,
+      "maxMs": 103
+    },
+    "/gadanie-po-ladoni": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 71,
+      "p95Ms": 77,
+      "maxMs": 77
+    },
+    "/api/health": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 57,
+      "p95Ms": 66,
+      "maxMs": 66
+    },
+    "/rasklady": {
+      "requests": 6,
+      "ok": 6,
+      "p50Ms": 96,
+      "p95Ms": 138,
+      "maxMs": 138
+    }
+  },
+  "failures": []
+}

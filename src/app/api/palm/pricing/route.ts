@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import {
   hasTodaysUnrefundedPalmSpend,
   palmReadingPricingFromSettings,
@@ -44,14 +44,16 @@ export async function GET() {
     );
   }
 
-  const [pricing, todays, spentToday] = await Promise.all([
+  const [pricing, todays, spentToday, unlimited] = await Promise.all([
     resolvePalmReadingPricing(profileUserId),
     findTodaysPaidPalmReport(profileUserId),
     hasTodaysUnrefundedPalmSpend(profileUserId),
+    resolveUnlimitedAccess({ accountId: auth.sub, profileUserId }),
   ]);
   return NextResponse.json(
     {
       ...pricing,
+      unlimited,
       isLoggedIn: true,
       todayPaid: Boolean(todays) || spentToday,
       todayHistoryId: todays?.historyId ?? null,

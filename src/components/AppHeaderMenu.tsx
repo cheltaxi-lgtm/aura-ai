@@ -13,6 +13,7 @@ import {
   X,
 } from "lucide-react";
 import { performClientLogout } from "@/lib/client-logout";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 import { navigateToCabinet } from "@/lib/app-shell-nav";
 import { shouldUseAppShellClient } from "@/lib/app-shell";
 import { triggerAppHaptic } from "@/lib/app-haptics";
@@ -65,6 +66,7 @@ export default function AppHeaderMenu({
   useEffect(() => setMounted(true), []);
 
   const close = useCallback(() => setOpen(false), []);
+  useDialogFocus(panelRef, open && mounted, close);
 
   const run = useCallback(
     (action: () => void) => {
@@ -84,15 +86,6 @@ export default function AppHeaderMenu({
     close();
     await performClientLogout({ redirectTo: inAppShell ? "/?app=1" : "/" });
   }, [close, inAppShell]);
-
-  useEffect(() => {
-    if (!open) return;
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") close();
-    };
-    document.addEventListener("keydown", onKey);
-    return () => document.removeEventListener("keydown", onKey);
-  }, [open, close]);
 
   useEffect(() => {
     if (!open) return;
