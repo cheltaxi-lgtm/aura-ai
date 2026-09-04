@@ -1245,6 +1245,13 @@ export default function ChatWindow({
         {retentionOptInSurface === "post_value" ? (
           <RetentionOptInCard surface="post_value" />
         ) : null}
+        {!readOnly && !hasFullAccess && questionsLeft != null ? (
+          <p className="text-xs text-aura-champagne/85" aria-live="polite">
+            {questionsLeft > 0
+              ? `Бесплатных уточнений осталось: ${questionsLeft}`
+              : usesRuneBilling ? `Следующее уточнение — ${questionCost} ᚢ. Подсказка отправляет вопрос сразу.` : null}
+          </p>
+        ) : null}
         {suggestedReplies && suggestedReplies.length > 0 && !readOnly ? (
           <div className="flex flex-wrap gap-2" role="group" aria-label="Подсказки для продолжения">
             {suggestedReplies.map((chip) => (

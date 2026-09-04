@@ -291,6 +291,7 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   age_confirmed_at TIMESTAMPTZ,
   marketing_consent BOOLEAN NOT NULL DEFAULT TRUE,
   marketing_consent_at TIMESTAMPTZ,
+  registration_attribution JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_login_at TIMESTAMPTZ,
   daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE,

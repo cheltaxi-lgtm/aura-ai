@@ -732,7 +732,7 @@ export default function HdCalculator({
         onMouseDown={() => setPlacesOpen(false)}
         onClick={() => void submit()}
         disabled={loading}
-        className="btn-luxe btn-luxe--gold mt-5 w-full disabled:opacity-60"
+        className="btn-luxe btn-luxe--md btn-luxe--gold mt-5 w-full disabled:opacity-60"
       >
         {loading ? "Рассчитываем…" : "Рассчитать карту"}
       </button>

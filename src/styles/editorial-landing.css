@@ -338,6 +338,15 @@ html[data-motion-lite="1"] .salon-bg__lines {
 }
 
 /* ── Hero ── */
+.editorial-landing--guest-conversion > .guest-resume-banner {
+  padding-top: calc(var(--app-header-h, 3.25rem) + 1rem);
+}
+
+.editorial-landing--guest-conversion > .guest-resume-banner + .editorial-hero,
+.editorial-landing--guest-conversion > .aura-landing-section--guest-spread + .editorial-hero {
+  margin-top: 0;
+}
+
 .editorial-hero {
   position: relative;
   width: 100%;

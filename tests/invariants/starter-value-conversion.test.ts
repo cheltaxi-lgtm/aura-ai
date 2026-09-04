@@ -95,7 +95,7 @@ describe("starter 300ᚢ conversion pass — product placements", () => {
 
   it("HD calculator page splits the free/paid copy contradiction", () => {
     const src = readSrc("src/app/dizayn-cheloveka/rasschitat/page.tsx");
-    expect(src).toContain("карта и основные параметры — бесплатно и без регистрации;");
+    expect(src).toContain("Карта и основные параметры — бесплатно, без регистрации.");
     expect(src).not.toContain("бесплатно и без регистрации — разбор с Эвелиной после входа.");
     // Price hint comes from code defaults, not a magic number.
     expect(src).toContain("DEFAULT_RUNE_COSTS.HD_REPORT");

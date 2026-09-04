@@ -396,6 +396,7 @@ export default function AuraSellingLanding({
   if (isGuestEditorial) {
     return (
       <div className="editorial-landing editorial-landing--guest-conversion">
+        <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
         <EditorialHeroSection
           isLoggedIn={false}
           conversionHero
@@ -410,9 +411,15 @@ export default function AuraSellingLanding({
           }}
         />
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
+        <section className="mx-auto my-6 max-w-2xl px-5" aria-label="Пример краткого ответа">
+          <details className="rounded-2xl border border-aura-gold/20 bg-black/20 p-4">
+            <summary className="cursor-pointer font-medium text-aura-champagne">Посмотреть пример краткого ответа</summary>
+            <p className="mt-3 text-xs text-white/50">Демонстрация формата, не персональный расклад.</p>
+            <p className="mt-2 text-sm text-white/80">Вопрос: «Как подойти к разговору об отношениях?»</p>
+            <p className="mt-2 text-sm leading-relaxed text-white/70">Луна, Умеренность и Справедливость: прежде чем делать выводы, отделите факты от догадок. Выберите спокойный момент и задайте один прямой вопрос. Смотрите на готовность договариваться, а не только на обещания.</p>
+          </details>
+        </section>
         <HomeAuraBanner />
-        {/* Same guest-receipt flow; mounted under hero (no full navigation). Idle = null. */}
-        <GuestTripletDraw startRequest={guestSpreadRequest} className="editorial-hero-inline-spread" />
         <EditorialStarterGiftSection />
         <EditorialSessionStepsSection />
         {showMasters ? (
@@ -434,12 +441,15 @@ export default function AuraSellingLanding({
             className="aura-landing-masters"
           />
         ) : null}
+        <details className="mx-auto my-6 max-w-6xl px-5">
+        <summary className="cursor-pointer rounded-2xl border border-aura-gold/25 px-5 py-4 text-aura-champagne">Другие возможности Zovus</summary>
         <EditorialBirthToolsSection />
         <EditorialDailyCardsSection
           isLoggedIn={false}
           onGuestCta={() => startGuestSpread()}
         />
         <EditorialExtraFeaturesSection />
+        </details>
         <EditorialReviewsSection />
         {showTariffs ? (
           <LandingSeoHub

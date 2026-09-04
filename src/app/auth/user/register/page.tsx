@@ -11,15 +11,17 @@ export default function UserRegisterPage() {
         <Link href="/auth">← Выбор аккаунта</Link>
       }
     >
-      <AuthSessionResume role="user" fallback="/cabinet" />
+      <AuthSessionResume role="user" fallback="/cabinet" compact />
       <AuthSalonHeader
-        overline="Приватный цифровой салон"
-        title="Добро пожаловать в салон"
-        subtitle="Создайте аккаунт — сохраним расклады и диалоги с наставниками"
+        overline=""
+        title="Сохраните свой разбор"
+        subtitle="Аккаунт сохранит результаты и позволит продолжить диалог."
       />
       {/* Main registration value: server-confirmed starter package (renders only
           when /api/runes/config loaded — never shows fallback numbers). */}
-      <StarterRunesValue variant="hero" className="mb-5" />
+      <div className="mb-3 min-h-[54px] text-center">
+        <StarterRunesValue variant="badge" generic />
+      </div>
       <AuthForm mode="register" role="user" />
     </AuthShell>
   );

@@ -89,8 +89,8 @@ export async function POST(request: NextRequest) {
     const accountConsent = {
       termsAcceptedAt: consentNow,
       ageConfirmedAt: consentNow,
-      marketingConsent: true,
-      marketingConsentAt: consentNow,
+      marketingConsent: body.marketingConsent === true,
+      marketingConsentAt: body.marketingConsent === true ? consentNow : null,
     };
 
     // Always create a consumer profile at registration — birth is optional.

@@ -79,6 +79,10 @@ export default function HeroQuestionField({
   const buttonText = submitLabel ?? (compact ? "Разложить" : "Разложить карты");
 
   useEffect(() => {
+    inputRef.current?.setCustomValidity("");
+  }, [question, inputRef]);
+
+  useEffect(() => {
     if (!autoFocusDesktop || compact) return;
     if (typeof window === "undefined") return;
     const isDesktop = window.matchMedia("(min-width: 768px) and (pointer: fine)").matches;
@@ -93,7 +97,12 @@ export default function HeroQuestionField({
   const submit = (event: FormEvent) => {
     event.preventDefault();
     const value = (inputRef.current?.value ?? question).trim();
-    if (!value) return;
+    if (!value) {
+      inputRef.current?.setCustomValidity("Напишите вопрос, чтобы начать разбор.");
+      inputRef.current?.reportValidity();
+      inputRef.current?.focus();
+      return;
+    }
 
     if (typeof window !== "undefined") {
       sessionStorage.setItem(LANDING_QUESTION_KEY, value);
@@ -122,8 +131,11 @@ export default function HeroQuestionField({
   const fieldProps = {
     ref: inputRef,
     value: question,
-    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) =>
-      setQuestion(e.target.value),
+    onChange: (e: React.ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+      e.target.setCustomValidity("");
+      setQuestion(e.target.value);
+    },
+    required: true,
     autoComplete: "off",
     autoCorrect: "on" as const,
     spellCheck: true,

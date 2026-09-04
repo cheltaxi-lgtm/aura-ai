@@ -909,6 +909,7 @@ export default function PalmReadingFlow() {
                     </button>
                   ))}
                 </div>
+                <p className="text-center text-sm text-aura-champagne">Снимок ладони и краткий результат — бесплатно. Полный разбор — отдельно после результата.</p>
                 {captureActions}
                 {pricing ? (
                   <div className="palm-price">

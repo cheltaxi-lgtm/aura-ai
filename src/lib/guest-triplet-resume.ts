@@ -12,6 +12,7 @@ import {
   trackGuestTripletResumeDetected,
   trackGuestTripletResumeFailed,
   trackGuestTripletResumeStarted,
+  trackGuestClaim,
 } from "@/lib/seo/metrika";
 
 export type GuestResumeStage =
@@ -323,6 +324,11 @@ export async function runGuestTripletResume(opts?: {
       return { ok: false, stage: "session" as const, phase: "recoverable_error" };
     }
 
+    trackGuestClaim({
+      master_id: claim.masterId,
+      cards_count: claim.cards.length,
+      has_question: Boolean(claim.question.trim()),
+    });
     setPhase("resuming_reading");
 
     let readingMode: "full" | "existing" = "full";

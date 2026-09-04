@@ -1471,7 +1471,9 @@ export default function PhotoReadingFlow({
                 </h2>
                 <p className="text-[11px] text-aura-gold/70 mt-0.5">
                   {runeConfig.enabled && step !== "result"
-                    ? `${photoPriceLabel} · распознавание и расшифровка`
+                    ? isLoggedIn
+                      ? `${photoPriceLabel} · распознавание и расшифровка`
+                      : "Фото сохранится при входе · точная цена перед разбором"
                     : (selectedMaster?.title ?? "Фото-расклад")}
                 </p>
               </div>

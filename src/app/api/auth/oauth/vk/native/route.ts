@@ -82,7 +82,7 @@ export async function POST(request: NextRequest) {
       sessionId: body.sessionId?.trim() || null,
       acceptedTerms: true,
       ageConfirmed: true,
-      marketingConsent: true,
+      marketingConsent: body.marketingConsent === true,
       mode,
       appFlow: true,
       linkAccountId,

@@ -11,9 +11,11 @@ import { fetchWithTimeout } from "@/lib/fetch-with-timeout";
 export default function AuthSessionResume({
   role = "user",
   fallback = "/",
+  compact = false,
 }: {
   role?: "user" | "expert" | "admin";
   fallback?: string;
+  compact?: boolean;
 }) {
   const [checking, setChecking] = useState(true);
 
@@ -51,7 +53,7 @@ export default function AuthSessionResume({
   if (!checking) return null;
 
   return (
-    <p className="mb-4 text-center text-sm text-white/50" role="status">
+    <p className={compact ? "sr-only" : "mb-4 text-center text-sm text-white/50"} role="status">
       Проверяем сессию…
     </p>
   );

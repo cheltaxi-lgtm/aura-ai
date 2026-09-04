@@ -80,8 +80,8 @@ export async function POST(request: NextRequest) {
     const consent: OAuthAccountConsent = {
       termsAcceptedAt: now,
       ageConfirmedAt: now,
-      marketingConsent: true,
-      marketingConsentAt: now,
+      marketingConsent: body.marketingConsent === true,
+      marketingConsentAt: body.marketingConsent === true ? now : null,
     };
 
     const bodyAttribution = sanitizeRegistrationAttribution(body.attribution);

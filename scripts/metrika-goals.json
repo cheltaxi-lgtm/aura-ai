@@ -4,11 +4,11 @@
   "updated": "2026-09-04",
   "syncedInMetrikaUi": "2026-09-04",
   "notes": [
-    "190 JS-целей сверены с Метрикой; 24 цели общих воронок и возврата добавлены 2026-09-04 через Management API.",
+    "193 JS-цели: добавлены этапы выбора способа регистрации 2026-09-04.",
     "Для повторной синхронизации: node scripts/sync-metrika-goals.mjs (нужен YANDEX_METRIKA_OAUTH_TOKEN).",
     "Создайте цели типа JavaScript-событие с идентификатором = goal id.",
     "Воронка регистрации: registration_started → registration_account_created → registration_completed.",
-    "registration_completed теперь срабатывает после онбординга (дата рождения), не при создании аккаунта."
+    "registration_completed — успешное создание аккаунта; заполнение профиля учитывается отдельно (profile_completed)."
   ],
   "goals": [
     {
@@ -961,6 +961,21 @@
       "id": "guest_triplet_resume_failed",
       "group": "guest",
       "metrikaGoalId": 608788416
+    },
+    {
+      "id": "auth_gate_view",
+      "group": "registration",
+      "metrikaGoalId": 608840670
+    },
+    {
+      "id": "auth_provider_click",
+      "group": "registration",
+      "metrikaGoalId": 608840671
+    },
+    {
+      "id": "auth_email_view",
+      "group": "registration",
+      "metrikaGoalId": 608840672
     }
   ]
 }

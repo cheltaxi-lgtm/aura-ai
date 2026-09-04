@@ -166,11 +166,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   }, []);
 
   useEffect(() => {
-    if (!featuresLoaded || shouldUseAppShellClient()) return;
+    if (!featuresLoaded || shouldUseAppShellClient() || (isUserRegister && !showEmailRegister)) return;
     if (recaptcha.masterEnabled && recaptcha.scopes[recaptchaScope]) {
       preloadRecaptchaScript();
     }
-  }, [featuresLoaded, recaptcha, recaptchaScope]);
+  }, [featuresLoaded, recaptcha, recaptchaScope, isUserRegister, showEmailRegister]);
 
   const loginHref = buildAuthHref(`/auth/${role}/login`, returnTo, isExpert ? "/expert" : "/");
   const registerHref = buildAuthHref(`/auth/${role}/register`, returnTo, isExpert ? "/expert" : "/");
@@ -500,13 +500,6 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           termsId="legal-terms-consent"
           ageId="legal-age-consent"
         />
-        {!acceptedTerms || !ageConfirmed ? (
-          <p className="auth-salon-hint mt-3 text-center">
-            {ageConfirmed
-              ? "Подтвердите согласие с условиями, чтобы продолжить"
-              : "Подтвердите возраст и согласие с условиями, чтобы продолжить"}
-          </p>
-        ) : null}
       </div>
     ) : null;
 
@@ -519,7 +512,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     : "mb-1 block text-xs text-gray-500";
   const formShellClass =
     isUserLogin || isUserRegister
-      ? "auth-form space-y-5"
+      ? "auth-form space-y-3 sm:space-y-5"
       : "auth-form glass-panel mx-auto max-w-lg space-y-5 p-8";
 
   if (isUserRegister && !showEmailRegister) {

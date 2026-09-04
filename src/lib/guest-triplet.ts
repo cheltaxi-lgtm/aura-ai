@@ -31,12 +31,20 @@ export function loadGuestTriplet(): GuestTripletDraft | null {
 
 export function saveGuestTriplet(draft: GuestTripletDraft): void {
   if (typeof window === "undefined") return;
-  localStorage.setItem(GUEST_TRIPLET_KEY, JSON.stringify(draft));
+  try {
+    localStorage.setItem(GUEST_TRIPLET_KEY, JSON.stringify(draft));
+  } catch {
+    // Optional UI cache. The server receipt and the current result remain valid.
+  }
 }
 
 export function clearGuestTriplet(): void {
   if (typeof window === "undefined") return;
-  localStorage.removeItem(GUEST_TRIPLET_KEY);
+  try {
+    localStorage.removeItem(GUEST_TRIPLET_KEY);
+  } catch {
+    // Cache cleanup must not interrupt successful server-side continuation.
+  }
 }
 
 /** Persist guest triplet to server after register (profile with birth date already exists). */

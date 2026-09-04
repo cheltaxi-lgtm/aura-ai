@@ -26,9 +26,7 @@ export default function RaskladyCatalogPage() {
       <p className="text-sm text-aura-gold/80">Каталог раскладов</p>
       <h1 className="mt-2 font-display text-3xl font-bold">Каталог раскладов Таро онлайн</h1>
       <p className="mt-4 text-white/70">
-        Выберите готовый вопрос — откроем подходящую схему и разбор. Формулировки про партнёра
-        подстраиваются под пол из анкеты: для мужчин «она», для женщин «он». Уже разложили карты
-        дома —{" "}
+        Найдите свой вопрос или выберите тему — откроем подходящую схему. Уже разложили карты дома —{" "}
         <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
           расшифруйте фото расклада
         </Link>

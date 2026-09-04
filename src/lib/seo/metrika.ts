@@ -269,7 +269,6 @@ export function trackGuestTripletResumeStarted(props: {
     cards_count: props.cards_count,
     has_question: props.has_question ? 1 : 0,
   });
-  trackGuestClaim(props);
 }
 
 export function trackGuestTripletResumeCompleted(props: {

@@ -166,12 +166,16 @@ export default function NatalnayaKartaPage() {
         джйотиш. {master?.name ?? "Гуру Шри Радж"} помогает увидеть структуру характера, периоды и
         совместимость без шаблонного «гороскопа на день».
       </p>
-      <ul className="mt-4 space-y-1.5 text-sm text-white/55">
+      <p className="mt-4 font-medium text-aura-champagne">Карта рождения и основные акценты — бесплатно, без регистрации.</p>
+      <details className="mt-3 text-sm text-white/60">
+      <summary className="cursor-pointer py-2">Какие данные нужны и что входит в расчёт</summary>
+      <ul className="mt-2 space-y-1.5 text-sm text-white/55">
         <li>нужны дата, время (если известно) и место рождения;</li>
         <li>карта считается автоматически — без ручных таблиц;</li>
         <li>западный разбор и ведическая традиция в одном кабинете;</li>
         <li>полная трактовка, прогноз и синастрия — по запросу.</li>
       </ul>
+      </details>
       <p className="mt-4 text-sm text-white/50">
         {RUNE_ACTION_LABELS.NATAL_READING} · от {DEFAULT_RUNE_COSTS.NATAL_READING} ᚢ
       </p>

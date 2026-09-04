@@ -13,7 +13,7 @@ import {
 import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import { hasActiveGuestResumeIntent, saveGuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import { hasActiveGuestResumeIntent, loadGuestResumeUiCache, saveGuestResumeUiCache, type GuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
 import {
   buildGuestNarrativeFallback,
   buildGuestTripletTeaser,
@@ -47,7 +47,6 @@ import {
   trackGuestTeaserCta,
   trackGuestTeaserView,
   trackGuestIntroBlockedAuthenticated,
-  trackRegistrationStarted,
 } from "@/lib/seo/metrika";
 import DeckCard from "@/components/DeckCard";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
@@ -101,6 +100,7 @@ function GuestSpreadSection({ children }: { children: React.ReactNode }) {
     <section
       id={GUEST_SPREAD_PICKER_ID}
       className="aura-landing-section aura-landing-section--guest-spread"
+      style={{ paddingTop: "calc(var(--app-header-h, 3.25rem) + 1rem)" }}
       tabIndex={-1}
     >
       <div className="mx-auto max-w-6xl">{children}</div>
@@ -134,6 +134,7 @@ export default function GuestTripletDraw({
   const ageRequestRef = useRef<AbortController | null>(null);
   const teaserViewTracked = useRef(false);
   const [draftRestored, setDraftRestored] = useState(false);
+  const [savedResume, setSavedResume] = useState<GuestResumeUiCache | null>(null);
   const [teaserText, setTeaserText] = useState("");
   const [teaserLoading, setTeaserLoading] = useState(false);
   const [teaserPaused, setTeaserPaused] = useState(false);
@@ -296,7 +297,8 @@ export default function GuestTripletDraw({
 
     // Never auto-restore an in-progress guest draw or pending-auth teaser on homepage
     // load — a stuck draft previously hijacked the whole landing.
-    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    try { sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY); } catch { /* optional draft */ }
+    setSavedResume(hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null);
     setDraftRestored(true);
   }, [draftRestored]);
 
@@ -311,14 +313,27 @@ export default function GuestTripletDraw({
       revealed,
       landingQuestion,
     };
-    sessionStorage.setItem(GUEST_SPREAD_DRAFT_KEY, JSON.stringify(draft));
+    try { sessionStorage.setItem(GUEST_SPREAD_DRAFT_KEY, JSON.stringify(draft)); } catch { /* optional draft */ }
   }, [step, masterId, sessionSeed, pickedIndices, deck, revealed, landingQuestion]);
 
   useEffect(() => {
-    if (step !== "done" || teaserViewTracked.current) return;
-    teaserViewTracked.current = true;
-    trackGuestTeaserView();
-  }, [step]);
+    if (step !== "done" || teaserLoading || !teaserText.trim() || teaserViewTracked.current) return;
+    const node = teaserBlockRef.current;
+    if (!node) return;
+    const trackVisible = () => {
+      const rect = node.getBoundingClientRect();
+      if (document.visibilityState !== "visible" || rect.bottom <= 0 || rect.top >= window.innerHeight || teaserViewTracked.current) return;
+      teaserViewTracked.current = true;
+      trackGuestTeaserView();
+    };
+    const observer = new IntersectionObserver(trackVisible, { threshold: 0.15 });
+    observer.observe(node);
+    document.addEventListener("visibilitychange", trackVisible);
+    return () => {
+      observer.disconnect();
+      document.removeEventListener("visibilitychange", trackVisible);
+    };
+  }, [step, teaserLoading, teaserText]);
 
   useEffect(() => {
     if (!showAuthGate || authGateViewTracked.current) return;
@@ -362,6 +377,7 @@ export default function GuestTripletDraw({
     // UI only — receipt / guest resume UI cache stays for post-auth claim.
     clearPendingGuestSpreadStart();
     resetSpreadState();
+    setSavedResume(hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null);
     setStep("idle");
     teaserViewTracked.current = false;
     window.scrollTo({ top: 0, behavior: "smooth" });
@@ -573,7 +589,6 @@ export default function GuestTripletDraw({
   const allRevealed = revealed.every(Boolean);
 
   const goToEmailRegistration = useCallback(() => {
-    trackRegistrationStarted("guest_triplet_email");
     trackAuthEmailView("guest_teaser");
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     window.location.assign(
@@ -663,7 +678,7 @@ export default function GuestTripletDraw({
       });
       trackGuestSpreadCompleted();
       clearPendingGuestSpreadStart();
-      sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+      try { sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY); } catch { /* optional draft */ }
       receiptReadyAtRef.current = Date.now();
       teaserFetchedRef.current = false;
       setTeaserText("");
@@ -684,7 +699,20 @@ export default function GuestTripletDraw({
   );
 
   if (step === "idle") {
-    return null;
+    if (!savedResume) return null;
+    return (
+      <div className="guest-resume-banner px-4 pb-4">
+      <aside className="mx-auto max-w-lg rounded-2xl border border-aura-gold/25 bg-black/40 p-4" aria-label="Сохранённый расклад">
+        <p className="font-medium text-aura-champagne">Ваши три карты сохранены</p>
+        <p className="mt-1 text-sm text-white/70">Войдите, чтобы продолжить полный разбор этих карт. Пересчёта не будет.</p>
+        <a
+          href={buildRegisterHref(resolveRegistrationReturnTo({ guestSpread: true, guestMasterId: savedResume.masterId, guestQuestion: savedResume.question || undefined }))}
+          onClick={() => trackGuestTeaserCta()}
+          className="btn-luxe btn-luxe--md btn-luxe--gold mt-3 w-full"
+        >Продолжить сохранённый расклад</a>
+      </aside>
+      </div>
+    );
   }
 
   if (step === "age") {
@@ -755,7 +783,7 @@ export default function GuestTripletDraw({
         <div className={`mx-auto max-w-lg px-4 pb-12 ${className}`.trim()}>
           {backToLandingButton}
           <motion.div
-            className="glass-panel space-y-5 p-6 sm:p-8"
+            className="glass-panel space-y-3 p-4 sm:space-y-5 sm:p-8"
             initial={{ opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
@@ -773,11 +801,11 @@ export default function GuestTripletDraw({
               </p>
             ) : null}
 
-            <div className="flex flex-wrap items-end justify-center gap-4 sm:gap-5">
+            <div className="grid grid-cols-3 items-end gap-2 sm:gap-5">
               {positions.map((pos, i) => (
-                <div key={pos} className="flex max-w-[120px] flex-col items-center gap-2">
+                <div key={pos} className="flex min-w-0 flex-col items-center gap-2">
                   <p className="lux-label text-center text-[10px]">{pos}</p>
-                  <div className="h-[180px] w-[112px] sm:h-[196px] sm:w-[120px]">
+                  <div className="h-[120px] w-full max-w-[80px] sm:h-[196px] sm:max-w-[120px]">
                     <DeckCard
                       card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
                       system={system}
@@ -820,18 +848,12 @@ export default function GuestTripletDraw({
               <div className="guest-teaser-conversion space-y-4 rounded-xl border border-aura-gold/25 bg-black/25 p-4 text-left">
                 <div>
                   <h3 className="font-display text-lg text-white">
-                    Полный разбор этих карт готов
+                    Получите полный разбор этих карт
                   </h3>
                   <p className="mt-1 text-sm text-aura-ivory/70">
-                    Войдите, чтобы открыть полный ответ на ваш вопрос. Карты уже сохранены и после
-                    входа не изменятся.
+                    После входа подготовим полный ответ на ваш вопрос. Первый полный разбор этих карт включён бесплатно.
                   </p>
                 </div>
-                <ul className="space-y-1.5 text-sm text-aura-ivory/75">
-                  <li>✓ полный разбор именно этих трёх карт</li>
-                  <li>✓ карты уже сохранены — после входа не изменятся</li>
-                  <li>✓ продолжение диалога с мастером</li>
-                </ul>
                 <button
                   type="button"
                   onClick={openFullReadingGate}
@@ -851,11 +873,10 @@ export default function GuestTripletDraw({
               >
                 <div>
                   <h3 className="font-display text-lg text-white">
-                    Полный разбор этих карт готов
+                    Получите полный разбор этих карт
                   </h3>
                   <p className="mt-1 text-sm text-aura-ivory/65">
-                    Войдите, чтобы открыть полный ответ на ваш вопрос. Эти три карты уже сохранены
-                    и не изменятся.
+                    После входа подготовим полный ответ бесплатно. Эти три карты сохранены и не изменятся.
                   </p>
                   <StarterRunesValue
                     variant="badge"
@@ -931,15 +952,15 @@ export default function GuestTripletDraw({
           </p>
         ) : null}
 
-        <div className="mb-10 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
+        <div className="mb-6 grid grid-cols-3 items-end justify-items-center gap-2 sm:mb-10 sm:gap-8">
           {positions.map((pos, i) => (
-            <div key={pos} className="flex max-w-[148px] flex-col items-center gap-2">
+            <div key={pos} className="flex w-full max-w-[148px] min-w-0 flex-col items-center gap-2">
               <p className="lux-label text-center">{pos}</p>
               <button
                 type="button"
                 onClick={() => handleFlip(i)}
                 disabled={revealed[i] || !deck[i]?.name}
-                className="perspective-1000 h-[220px] w-[140px] sm:h-[236px] sm:w-[148px]"
+                className="perspective-1000 h-[154px] w-full sm:h-[236px] sm:w-[148px]"
                 aria-label={revealed[i] ? deck[i]?.name ?? pos : `Открыть ${pos}`}
               >
                 <motion.div

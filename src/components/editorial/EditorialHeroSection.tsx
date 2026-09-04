@@ -62,8 +62,9 @@ export default function EditorialHeroSection({
           submitVariant={guestConversion ? "gold" : "secondary"}
           submitLabel={guestConversion ? "Начать разбор" : undefined}
           placeholder="Например: вернётся ли он?"
-          hint={guestConversion ? "" : "Подберём схему и мастера под ваш вопрос"}
-          hintOnScrim={!guestConversion}
+          label={guestConversion ? "Ваш вопрос для расклада Таро" : undefined}
+          hint={guestConversion ? "3 карты и краткая трактовка — бесплатно, без регистрации." : "Подберём схему и мастера под ваш вопрос"}
+          hintOnScrim
         />
         {guestConversion ? (
           <div className="editorial-hero__pain-chips" role="list" aria-label="Частые вопросы">

@@ -55,14 +55,14 @@ describe("guest landing conversion cleanup", () => {
     expect(landing).toContain("expectationSubtitle=");
   });
 
-  it("guest landing order is hero → products → starter → masters → birth → daily → extra features → reviews → seo → final CTA", () => {
+  it("saved guest continuation precedes hero; product discovery stays available below", () => {
     const guest = guestLandingBranch();
     expect(guest).not.toContain("<LandingDemoSection");
     expect(guest).not.toContain("<LandingHonestSection");
     const markers = [
+      "<GuestTripletDraw",
       "<EditorialHeroSection",
       "<EditorialProductEntries",
-      "<GuestTripletDraw",
       "<EditorialStarterGiftSection",
       "<EditorialSessionStepsSection",
       "<MastersShowcase",

@@ -1,6 +1,5 @@
 "use client";
 
-import { motion, useReducedMotion } from "framer-motion";
 import type { ReactNode } from "react";
 
 type AuthShellProps = {
@@ -12,25 +11,14 @@ type AuthShellProps = {
 
 /** Centered salon card with soft vignette — presentation only. */
 export default function AuthShell({ children, backSlot, className = "" }: AuthShellProps) {
-  const reduceMotion = useReducedMotion();
-
   return (
     <div className={`auth-salon-page ${className}`.trim()}>
       <div className="auth-salon-vignette" aria-hidden />
       <div className="auth-salon-inner">
         {backSlot ? <div className="auth-salon-back">{backSlot}</div> : null}
-        <motion.div
-          className="auth-salon-card"
-          initial={reduceMotion ? false : { opacity: 0, y: 12 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={
-            reduceMotion
-              ? { duration: 0 }
-              : { duration: 0.22, ease: [0.22, 1, 0.36, 1] }
-          }
-        >
+        <div className="auth-salon-card">
           {children}
-        </motion.div>
+        </div>
       </div>
     </div>
   );

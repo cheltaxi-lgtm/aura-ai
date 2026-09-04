@@ -173,7 +173,7 @@ export default function AppTopHeader({
               onBuyRunes={onOpenPaywall}
               onOpenNotifications={openNotifications}
             />
-          ) : (
+          ) : null}
             <AppHeaderMenu
               photoNavLabel={photoNavLabel}
               isLoggedIn={isLoggedIn}
@@ -186,7 +186,6 @@ export default function AppTopHeader({
               onNavRitual={onNavRitual}
               onStartReading={onStartReading}
             />
-          )}
           {isLoggedIn && authUser?.role === "user" ? (
             <NotificationBell hiddenTrigger />
           ) : null}

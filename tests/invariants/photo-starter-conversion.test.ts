@@ -87,7 +87,7 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
     expect(guestBlock).toContain("buildLoginHref(photoAuthReturnTo())");
 
     const register = readSrc("src/app/auth/user/register/page.tsx");
-    expect(register).toContain('StarterRunesValue variant="hero"');
+    expect(register).toContain('StarterRunesValue variant="badge" generic');
   });
 
   it("photo modal price line explains runes without ruble conversion", () => {

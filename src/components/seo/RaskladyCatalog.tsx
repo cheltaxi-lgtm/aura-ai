@@ -188,39 +188,21 @@ export default function RaskladyCatalog() {
 
     <>
 
-      {showGrouped && heroIntents.length > 0 ? (
-        <section className="mt-8">
-          <h2 className="font-display text-lg text-aura-gold">Глубокие расклады</h2>
-          <p className="mt-1 text-sm text-white/50">
-            Год вперёд, совместимость на 12 карт и линия Ленорман — флагманские схемы Zovus.
-          </p>
-          <div className="mt-4 grid gap-3 md:grid-cols-3">
-            {heroIntents.map((intent) => {
-              const href = buildIntentSeoUrl(intent);
-              return (
-              <a
-                key={intent.slug}
-                href={href}
-                onClick={goToIntent(href)}
-                className="rounded-2xl border border-aura-gold/25 bg-gradient-to-br from-aura-gold/10 to-white/[0.03] p-5 transition hover:border-aura-gold/45"
-              >
-                <p className="font-display text-base text-white">
-                  {resolveIntentCopy(intent, userGender).title}
-                </p>
-                <p className="mt-2 line-clamp-2 text-sm text-white/55">
-                  {resolveIntentCopy(intent, userGender).intro}
-                </p>
-                <p className="mt-3 text-xs text-aura-gold/80">
-                  {getSpread(intent.spreadId).label} · {getSpread(intent.spreadId).cardCount} карт
-                </p>
-              </a>
-              );
-            })}
-          </div>
-        </section>
-      ) : null}
-
       <section className="rasklady-filters mt-8 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+        <input
+
+          type="search"
+
+          value={query}
+
+          onChange={(e) => setQuery(e.target.value)}
+
+          placeholder="Поиск по названию или вопросу…"
+
+          aria-label="Поиск расклада"
+          className="mb-4 min-h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/35"
+
+        />
 
         <div className="flex flex-wrap gap-2">
 
@@ -276,7 +258,7 @@ export default function RaskladyCatalog() {
 
             >
 
-              {value === "all" ? "Любое число карт" : `${value} карт`}
+              {value === "all" ? "Любое число карт" : value === "1" ? "1 карта" : value === "3" ? "3 карты" : `${value} карт`}
 
             </button>
 
@@ -284,19 +266,7 @@ export default function RaskladyCatalog() {
 
         </div>
 
-        <input
 
-          type="search"
-
-          value={query}
-
-          onChange={(e) => setQuery(e.target.value)}
-
-          placeholder="Поиск по названию или вопросу…"
-
-          className="mt-3 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/35"
-
-        />
 
         <div className="mt-3 flex flex-wrap gap-2 text-xs">
 
@@ -309,6 +279,40 @@ export default function RaskladyCatalog() {
         </div>
 
       </section>
+
+      {showGrouped && heroIntents.length > 0 ? (
+        <section className="mt-8">
+          <h2 className="font-display text-lg text-aura-gold">Глубокие расклады</h2>
+          <p className="mt-1 text-sm text-white/50">
+            Год вперёд, совместимость на 12 карт и линия Ленорман — флагманские схемы Zovus.
+          </p>
+          <div className="mt-4 grid gap-3 md:grid-cols-3">
+            {heroIntents.map((intent) => {
+              const href = buildIntentSeoUrl(intent);
+              return (
+              <a
+                key={intent.slug}
+                href={href}
+                onClick={goToIntent(href)}
+                className="rounded-2xl border border-aura-gold/25 bg-gradient-to-br from-aura-gold/10 to-white/[0.03] p-5 transition hover:border-aura-gold/45"
+              >
+                <p className="font-display text-base text-white">
+                  {resolveIntentCopy(intent, userGender).title}
+                </p>
+                <p className="mt-2 line-clamp-2 text-sm text-white/55">
+                  {resolveIntentCopy(intent, userGender).intro}
+                </p>
+                <p className="mt-3 text-xs text-aura-gold/80">
+                  {getSpread(intent.spreadId).label} · {getSpread(intent.spreadId).cardCount} карт
+                </p>
+              </a>
+              );
+            })}
+          </div>
+        </section>
+      ) : null}
+
+
 
 
 
@@ -358,7 +362,7 @@ export default function RaskladyCatalog() {
 
                 <div className="mt-4 grid gap-3 sm:grid-cols-2">
 
-                  {items.map((intent) => (
+                  {items.slice(0, 6).map((intent) => (
 
                     <IntentCard key={intent.slug} intent={intent} userGender={userGender} />
 
@@ -366,6 +370,18 @@ export default function RaskladyCatalog() {
 
                 </div>
 
+                {items.length > 6 ? (
+                  <details className="mt-4">
+                    <summary className="min-h-11 cursor-pointer rounded-xl border border-aura-gold/25 px-4 py-3 text-sm text-aura-gold">
+                      Все расклады: {SPREAD_INTENT_CATEGORY_LABELS[category]} ({items.length})
+                    </summary>
+                    <div className="mt-4 grid gap-3 sm:grid-cols-2">
+                      {items.slice(6).map((intent) => (
+                        <IntentCard key={intent.slug} intent={intent} userGender={userGender} />
+                      ))}
+                    </div>
+                  </details>
+                ) : null}
               </section>
 
             );

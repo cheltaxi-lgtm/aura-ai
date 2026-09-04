@@ -246,8 +246,8 @@ export async function upsertOAuthAccountWithClient(
       trimmedName,
       opts.consent.termsAcceptedAt,
       opts.consent.ageConfirmedAt,
-      true,
-      opts.consent.marketingConsentAt ?? opts.consent.termsAcceptedAt,
+      opts.consent.marketingConsent === true,
+      opts.consent.marketingConsent === true ? opts.consent.marketingConsentAt : null,
       attributionJson,
     ]
   );

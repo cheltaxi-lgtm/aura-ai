@@ -47,7 +47,7 @@ export default function EditorialProductEntries({ onTarotCta }: EditorialProduct
 
             return (
               <li key={entry.id}>
-                <Link href={entry.href} className="editorial-product-entry">
+                <Link href={entry.href} prefetch={false} className="editorial-product-entry">
                   <span className="editorial-product-entry__title">{entry.title}</span>
                   <span className="editorial-product-entry__text">{entry.text}</span>
                   <span className="editorial-product-entry__cta">{entry.cta}</span>

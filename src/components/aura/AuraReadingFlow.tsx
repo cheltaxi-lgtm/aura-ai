@@ -956,6 +956,7 @@ export default function AuraReadingFlow() {
                     }}
                   />
                 ) : null}
+                <p className="text-center text-sm text-aura-champagne">Снимок ауры и краткий результат — бесплатно. Полный разбор — отдельно после результата.</p>
                 <AuraCadenceHint
                   locked={dayLocked}
                   slot={othersOn && subjectKind === "other" ? "other" : "self"}

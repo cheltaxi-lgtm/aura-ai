@@ -80,7 +80,7 @@ export default function OAuthConsentFields({
             checked={marketingConsent}
             onChange={(e) => onMarketingConsentChange(e.target.checked)}
           />
-          <span>Я согласен на получение рекламных рассылок</span>
+          <span>Получать рекламные рассылки <span className="text-aura-ivory/50">(необязательно)</span></span>
         </label>
       ) : null}
     </div>

@@ -30,6 +30,9 @@ const dryRun = process.argv.includes("--dry-run");
 const token = process.env.YANDEX_METRIKA_OAUTH_TOKEN;
 
 const DISPLAY_NAMES = {
+  auth_gate_view: "Регистрация — показ способов входа",
+  auth_provider_click: "Регистрация — выбор провайдера",
+  auth_email_view: "Регистрация — открытие email-формы",
   landing_view: "Лендинг — просмотр",
   social_proof_view: "Лендинг — social proof",
   hero_question_started: "Лендинг — вопрос (начало)",

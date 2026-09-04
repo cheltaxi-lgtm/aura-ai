@@ -142,8 +142,9 @@ describe("guest-registration-conversion", () => {
     expect(guest).not.toContain("Регистрация по email");
     expect(guest).toContain("Получить трактовку");
     expect(guest).toContain("Получить полный разбор");
-    expect(guest).toContain("Полный разбор этих карт готов");
-    expect(guest).toContain("после входа не изменятся");
+    expect(guest).toContain("Получите полный разбор этих карт");
+    expect(guest).not.toContain("Полный разбор этих карт готов");
+    expect(guest).toContain("Эти три карты сохранены и не изменятся");
     expect(guest).toContain("Продолжить по email");
     expect(guest).toContain("showAuthGate");
     expect(guest).toContain("showMarketing={false}");

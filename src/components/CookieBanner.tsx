@@ -66,8 +66,8 @@ export default function CookieBanner() {
     <div ref={bannerRef} className="cookie-banner" role="dialog" aria-label="Уведомление о cookie">
       <div className="cookie-banner__inner">
         <div className="cookie-banner__text">
-          Мы используем необходимые cookie для работы сайта. Яндекс Метрика (включая вебвизор и
-          карту кликов) подключается только после «Принять аналитику».{" "}
+          Необходимые cookie обеспечивают работу сайта. Яндекс Метрика, вебвизор и карта кликов —
+          только после «Принять аналитику».{" "}
           <LegalDocLink href="/privacy" className="cookie-banner__link">
             Политика конфиденциальности
           </LegalDocLink>
