@@ -1,10 +1,10 @@
 {
   "counterId": 110138367,
   "site": "https://zovus.ru",
-  "updated": "2026-09-03",
-  "syncedInMetrikaUi": "2026-09-03",
+  "updated": "2026-09-04",
+  "syncedInMetrikaUi": "2026-09-04",
   "notes": [
-    "Все 48 JS-целей созданы в Метрике (счётчик 110138367) через UI.",
+    "190 JS-целей сверены с Метрикой; 24 цели общих воронок и возврата добавлены 2026-09-04 через Management API.",
     "Для повторной синхронизации: node scripts/sync-metrika-goals.mjs (нужен YANDEX_METRIKA_OAUTH_TOKEN).",
     "Создайте цели типа JavaScript-событие с идентификатором = goal id.",
     "Воронка регистрации: registration_started → registration_account_created → registration_completed.",
@@ -841,6 +841,126 @@
       "id": "aura_free_cta_click",
       "group": "aura",
       "metrikaGoalId": 608438908
+    },
+    {
+      "id": "product_view",
+      "group": "product_funnel",
+      "metrikaGoalId": 608788366
+    },
+    {
+      "id": "free_start",
+      "group": "product_funnel",
+      "metrikaGoalId": 608788367
+    },
+    {
+      "id": "free_complete",
+      "group": "product_funnel",
+      "metrikaGoalId": 608788368
+    },
+    {
+      "id": "auth_cta",
+      "group": "product_funnel",
+      "metrikaGoalId": 608788369
+    },
+    {
+      "id": "claim_complete",
+      "group": "product_funnel",
+      "metrikaGoalId": 608788370
+    },
+    {
+      "id": "paid_cta",
+      "group": "product_funnel",
+      "metrikaGoalId": 608788373
+    },
+    {
+      "id": "personal_home_view",
+      "group": "retention",
+      "metrikaGoalId": 608788375
+    },
+    {
+      "id": "personal_continue_click",
+      "group": "retention",
+      "metrikaGoalId": 608788377
+    },
+    {
+      "id": "personal_explore_click",
+      "group": "retention",
+      "metrikaGoalId": 608788379
+    },
+    {
+      "id": "cross_product_click",
+      "group": "retention",
+      "metrikaGoalId": 608788380
+    },
+    {
+      "id": "retention_return",
+      "group": "retention",
+      "metrikaGoalId": 608788381
+    },
+    {
+      "id": "reminder_opt_in",
+      "group": "retention",
+      "metrikaGoalId": 608788382
+    },
+    {
+      "id": "reminder_opt_out",
+      "group": "retention",
+      "metrikaGoalId": 608788383
+    },
+    {
+      "id": "retention_optin_shown",
+      "group": "retention",
+      "metrikaGoalId": 608788386
+    },
+    {
+      "id": "retention_optin_accepted",
+      "group": "retention",
+      "metrikaGoalId": 608788388
+    },
+    {
+      "id": "retention_optin_declined",
+      "group": "retention",
+      "metrikaGoalId": 608788403
+    },
+    {
+      "id": "retention_optin_settings_opened",
+      "group": "retention",
+      "metrikaGoalId": 608788404
+    },
+    {
+      "id": "guest_teaser_view",
+      "group": "guest",
+      "metrikaGoalId": 608788406
+    },
+    {
+      "id": "guest_teaser_cta",
+      "group": "guest",
+      "metrikaGoalId": 608788407
+    },
+    {
+      "id": "daily_cards_started",
+      "group": "retention",
+      "metrikaGoalId": 608788408
+    },
+    {
+      "id": "daily_cards_completed",
+      "group": "retention",
+      "metrikaGoalId": 608788411
+    },
+    {
+      "id": "profile_completed",
+      "group": "registration",
+      "metrikaGoalId": 608788412
+    },
+    {
+      "id": "guest_triplet_resume_completed",
+      "group": "guest",
+      "metrikaGoalId": 608788413
+    },
+    {
+      "id": "guest_triplet_resume_failed",
+      "group": "guest",
+      "metrikaGoalId": 608788416
     }
   ]
 }

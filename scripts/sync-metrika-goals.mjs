@@ -234,7 +234,7 @@ for (const goal of doc.goals) {
     goal: {
       name: displayName(id),
       type: "action",
-      conditions: [{ type: "contain", url: id }],
+      conditions: [{ type: "exact", url: id }],
     },
   };
 
