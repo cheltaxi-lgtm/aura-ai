@@ -75,7 +75,7 @@ export const CHECKS = {
 
   "photo-reading": { title: "photo-reading", npm: "test:photo-reading" },
   "photo-aliases": { title: "photo-aliases", npm: "verify:photo-aliases" },
-  "photo-unit": { title: "photo-unit", vitest: ["tests/invariants/photo-*.test.ts"] },
+  "photo-unit": { title: "photo-unit", vitest: ["tests/invariants/photo-"] },
 
   "seo-ask": { title: "seo-ask-spread", npm: "verify:seo-ask-spread" },
   "seo-teaser": { title: "guest-teaser-quality", npm: "verify:guest-teaser-quality" },

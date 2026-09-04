@@ -26,7 +26,7 @@ export default defineConfig({
   projects: [
     {
       name: "public-chromium",
-      testMatch: /(natal|natal-guest|personal-memory|launch-readiness)\.public\.spec\.ts/,
+      testMatch: /(natal|natal-guest|personal-memory|launch-readiness|photo-conversion)\.public\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {

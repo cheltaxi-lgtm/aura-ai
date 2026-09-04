@@ -40,7 +40,9 @@ export function fetchRuneConfig(): Promise<RuneConfig> {
       const config: RuneConfig = {
         enabled: d.enabled !== false,
         rubPerRune: Number(d.rubPerRune) || FALLBACK.rubPerRune,
-        starterRunes: Number(d.starterRunes) || FALLBACK.starterRunes,
+        starterRunes: d.starterRunes != null && Number.isFinite(Number(d.starterRunes)) && Number(d.starterRunes) >= 0
+          ? Number(d.starterRunes)
+          : FALLBACK.starterRunes,
         freeQuestions: Number(d.freeQuestions) ?? FALLBACK.freeQuestions,
         costs: { ...FALLBACK.costs, ...(d.costs ?? {}) },
         labels: { ...FALLBACK.labels, ...(d.labels ?? {}) },

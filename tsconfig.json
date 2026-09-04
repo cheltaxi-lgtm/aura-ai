@@ -41,6 +41,7 @@
     "scripts",
     "telegram-bot",
     "_verify",
+    "tmp",
     "**/*.test.ts",
     "**/*.test.tsx",
     "**/*.spec.ts",

@@ -1,7 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PHOTO_READING_GUIDE_STEPS } from "@/lib/photo-reading-guide";
-import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildPhotoMarkUrl, buildPhotoReadingUrl } from "@/lib/spread-intents/router";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
@@ -10,18 +9,19 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
+import PhotoReadingOffer from "@/components/seo/PhotoReadingOffer";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Расшифровка Таро по фото онлайн — загрузить расклад | ${BRAND_NAME}`,
   description:
-    "Расшифровка Таро по фото онлайн: загрузите снимок домашнего расклада или отметьте карты вручную — ИИ распознает арканы и перевёрнутые позиции, а мастер даст персональный разбор. Первый фото-расклад со скидкой.",
+    "Загрузите фото своего расклада Таро: ИИ распознает арканы, а вы проверите карты и получите разбор по своему вопросу. Стартовые руны после регистрации, сохранение результата и продолжение в чате.",
   path: "/photo-rasklad",
 });
 
 const FAQ = [
   {
     q: "Можно ли расшифровать Таро по фото бесплатно?",
-    a: "Распознать карты и проверить позиции можно в демо-контуре; полный персональный разбор с мастером — по тарифу. Первый фото-расклад идёт со скидкой 50%. Три карты на главной открываются бесплатно без фото.",
+    a: "При первой регистрации начисляются стартовые руны. Ими можно оплатить ФотоТаро без пополнения, если баланса хватает на разбор. Размер подарка и действующая стоимость показаны выше. Перед отправкой фото потребуется вход в аккаунт.",
   },
   {
     q: "Нужна ли колода Zovus?",
@@ -37,14 +37,11 @@ const FAQ = [
   },
   {
     q: "Сколько стоит полная расшифровка?",
-    a: `Цикл «распознавание + подтверждение + расшифровка» — ${DEFAULT_RUNE_COSTS.VISION_ANALYSIS} ᚢ. Первый фото-расклад со скидкой 50%.`,
+    a: "Действующая цена в рунах и рублях показана в блоке стоимости. Первый фото-расклад со скидкой 50%. Если рун на балансе достаточно, пополнять его не нужно. Итоговую стоимость вы увидите перед началом.",
   },
 ];
 
 export default function PhotoRaskladPage() {
-  const cost = DEFAULT_RUNE_COSTS.VISION_ANALYSIS;
-  const label = RUNE_ACTION_LABELS.VISION_ANALYSIS;
-
   return (
     <SeoPageShell
       breadcrumbs={[
@@ -59,15 +56,12 @@ export default function PhotoRaskladPage() {
         Расшифровка Таро по фото онлайн
       </h1>
       <p className="mt-4 text-white/70">
-        Разложили карты дома и хотите понять значение? Загрузите фото расклада или отметьте арканы
-        вручную — сервис распознает символы, вы проверите позиции и получите персональную
-        расшифровку с возможностью уточнить детали в чате. Это не общий видео-ролик, а разбор
-        вашего конкретного расклада.
+        Загрузите свой расклад и задайте вопрос. Проверьте распознанные карты — получите
+        их общий смысл, разбор каждой позиции и следующий шаг. Ответ подготовит ИИ-наставник;
+        детали можно уточнить в чате.
       </p>
 
-      <p className="mt-4 text-sm text-white/50">
-        {label} · {cost} ᚢ · первая расшифровка −50%
-      </p>
+      <div className="mt-4"><PhotoReadingOffer /></div>
 
       <div className="mt-8 flex flex-wrap gap-3">
         <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click">
@@ -93,24 +87,35 @@ export default function PhotoRaskladPage() {
         </ul>
       </SeoSection>
 
-      <SeoSection title="До и после">
+      <SeoSection title="Что будет в вашем разборе">
         <div className="grid gap-4 sm:grid-cols-2">
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="font-medium text-white">До</p>
+            <p className="font-medium text-white">Ваш вопрос и карты</p>
             <p className="mt-2 text-sm text-white/60">
-              Физический расклад на столе или скриншот из приложения — как вы привыкли гадать.
+              Фото своей колоды или скриншот. Можно проверить названия, порядок и перевёрнутые
+              позиции до расшифровки.
             </p>
           </div>
           <div className="rounded-xl border border-aura-gold/20 bg-aura-gold/5 p-4">
-            <p className="font-medium text-aura-gold">После</p>
+            <p className="font-medium text-aura-gold">Ответ, к которому можно вернуться</p>
             <p className="mt-2 text-sm text-white/70">
-              Цифровая колода Zovus, проверка позиций, расшифровка мастера и сохранение в кабинете.
+              Связь карт с вашим вопросом, смысл их сочетания и варианты следующего шага.
+              Расклад сохранится в кабинете; уточнения можно задать в том же чате.
             </p>
           </div>
         </div>
       </SeoSection>
 
-      <SeoSection title="Как это работает">
+      <SeoSection title="Три шага до расшифровки">
+        <ol className="list-decimal space-y-3 pl-5">
+          <li>Выберите фото и напишите вопрос. Войдите в аккаунт — черновик вернётся в этой вкладке.</li>
+          <li>Запустите распознавание. Проверьте названия и позиции карт, при необходимости исправьте их.</li>
+          <li>Подтвердите расклад и прочитайте ответ. Он сохранится вместе с продолжением в чате.</li>
+        </ol>
+      </SeoSection>
+
+      <details className="mt-8 rounded-xl border border-white/10 p-4">
+        <summary className="cursor-pointer font-medium text-white">Как подготовить и сфотографировать расклад</summary>
         <ol className="space-y-4">
           {PHOTO_READING_GUIDE_STEPS.map((step, i) => (
             <li key={step.title} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
@@ -121,17 +126,13 @@ export default function PhotoRaskladPage() {
             </li>
           ))}
         </ol>
-      </SeoSection>
+      </details>
 
       <SeoSection title="Бесплатно и по тарифу — честно">
         <p>
-          На{" "}
-          <Link href="/taro#besplatno" className="text-aura-gold hover:underline">
-            странице Таро
-          </Link>{" "}
-          и на главной доступен бесплатный расклад на три карты без загрузки фото. Полная
-          расшифровка вашего домашнего расклада по снимку — платный цикл с первой скидкой. Подробнее
-          о лимитах — в статье{" "}
+          ФотоТаро оплачивается рунами с вашего баланса. Для знакомства с сервисом новый аккаунт
+          получает стартовые руны; когда их хватает, покупать пакет не требуется. Размер подарка
+          и стоимость разбора показаны выше. Подробнее — в статье{" "}
           <Link
             href="/statyi/rasshifrovka-taro-po-foto-besplatno"
             className="text-aura-gold hover:underline"
@@ -172,9 +173,9 @@ export default function PhotoRaskladPage() {
       />
 
       <div className="mt-10">
-        <Link href="/rasklady" className="text-sm text-aura-gold hover:underline">
-          ← Каталог раскладов
-        </Link>
+        <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click" trackParams={{ source: "closing" }}>
+          Загрузить свой расклад
+        </SeoTrackedCta>
       </div>
 
       <script

@@ -26,7 +26,7 @@ function leaveToHomeAfterAccountDeletion(): void {
   const target = homeUrlAfterAccountDeletion();
   markAccountDeletedHome();
   clearAuthPending();
-  clearClientAuthState();
+  clearClientAuthState({ clearPhotoDraft: true });
   // Hard document navigation — do not use Next router / AUTH_LOGOUT_EVENT.
   window.location.replace(target);
   // Absolute fallback if replace is swallowed by the SPA.

@@ -82,9 +82,9 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
     // Guest-only block: the welcome promise is shown exclusively to logged-out users.
     const guestBlock = modal.slice(modal.indexOf("{!isLoggedIn && step === \"upload\" && ("));
     expect(guestBlock).toContain('StarterRunesValue variant="badge"');
-    expect(guestBlock).toContain("buildRegisterHref(resolveRegistrationReturnTo({ photo: true }))");
+    expect(guestBlock).toContain("buildRegisterHref(photoAuthReturnTo())");
     // Existing users get a login path instead of a new-user promise.
-    expect(guestBlock).toContain("buildLoginHref(resolveRegistrationReturnTo({ photo: true }))");
+    expect(guestBlock).toContain("buildLoginHref(photoAuthReturnTo())");
 
     const register = readSrc("src/app/auth/user/register/page.tsx");
     expect(register).toContain('StarterRunesValue variant="hero"');

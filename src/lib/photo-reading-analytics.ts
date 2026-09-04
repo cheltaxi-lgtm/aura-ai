@@ -4,6 +4,9 @@ import { trackSeoEvent } from "@/lib/seo/metrika";
 
 export type PhotoReadingAnalyticsPhase =
   | "open"
+  | "auth_redirect"
+  | "draft_restored"
+  | "draft_save_failed"
   | "upload"
   | "recognize_start"
   | "merge_photo_start"

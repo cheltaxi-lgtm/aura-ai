@@ -12,6 +12,7 @@ import { waitUntilLoggedOut } from "@/lib/client-auth-session";
 import { clearAuthPending } from "@/lib/auth-pending";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
 import { clearHdGuestBrowserState } from "@/components/human-design/hd-claim";
+import { PHOTO_AUTH_DRAFT_KEY } from "@/lib/photo-auth-draft";
 
 export const AUTH_LOGOUT_EVENT = "aura:logout";
 
@@ -37,8 +38,9 @@ const STORAGE_KEYS = [
 ] as const;
 
 /** Drop all client-side session/profile data for the current browser tab. */
-export function clearClientAuthState(): void {
+export function clearClientAuthState(options: { clearPhotoDraft?: boolean } = {}): void {
   if (typeof window === "undefined") return;
+  if (options.clearPhotoDraft) clearClientPhotoDraft();
   for (const key of STORAGE_KEYS) {
     localStorage.removeItem(key);
   }
@@ -60,6 +62,7 @@ export function clearClientAuthState(): void {
 /** Wipe local chat/spread caches after server-side activity purge (keeps login + triplet cooldown). */
 export function clearClientActivityState(): void {
   if (typeof window === "undefined") return;
+  clearClientPhotoDraft();
   clearChatCache();
   clearGuestTriplet();
   clearHdGuestBrowserState();
@@ -96,6 +99,14 @@ export interface ClientLogoutOptions {
   hardRedirect?: boolean;
 }
 
+function clearClientPhotoDraft(): void {
+  try {
+    sessionStorage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+  } catch {
+    /* storage unavailable */
+  }
+}
+
 async function requestServerLogout(): Promise<boolean> {
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
@@ -128,7 +139,7 @@ export async function performClientLogout(options: ClientLogoutOptions = {}): Pr
   await waitUntilLoggedOut({ attempts: 5, delayMs: 200 });
   await flushWebViewCookies();
 
-  clearClientAuthState();
+  clearClientAuthState({ clearPhotoDraft: true });
   window.dispatchEvent(new CustomEvent(AUTH_LOGOUT_EVENT));
 
   if (!hardRedirect) return;

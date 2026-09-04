@@ -63,6 +63,7 @@ const {
   storeHdClaimToken,
 } = await import("@/components/human-design/hd-claim");
 const { clearClientAuthState, clearClientActivityState } = await import("@/lib/client-logout");
+const { PHOTO_AUTH_DRAFT_KEY } = await import("@/lib/photo-auth-draft");
 
 function seedHdTraces(): void {
   local.setItem(HD_LAST_FINGERPRINT_KEY, "fp-last-chart");
@@ -105,6 +106,17 @@ describe("HD guest traces vs logout", () => {
     expect(local.getItem(HD_LAST_FINGERPRINT_KEY)).toBeNull();
     expect(local.getItem(hdClaimTokenKey("fp-a"))).toBeNull();
     expect(local.getItem("aura:natal-active-job")).toBeNull();
+  });
+
+  it("keeps photo handoff during login but clears it on account deletion and activity purge", () => {
+    session.setItem(PHOTO_AUTH_DRAFT_KEY, "private photo and question");
+    clearClientAuthState();
+    expect(session.getItem(PHOTO_AUTH_DRAFT_KEY)).not.toBeNull();
+    clearClientAuthState({ clearPhotoDraft: true });
+    expect(session.getItem(PHOTO_AUTH_DRAFT_KEY)).toBeNull();
+    session.setItem(PHOTO_AUTH_DRAFT_KEY, "private photo and question");
+    clearClientActivityState();
+    expect(session.getItem(PHOTO_AUTH_DRAFT_KEY)).toBeNull();
   });
 
   it("clearAllHdClaimTokens removes only claim-prefixed keys", () => {

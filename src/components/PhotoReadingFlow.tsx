@@ -37,7 +37,8 @@ import {
   type PhotoRecognitionConfidence,
 } from "@/lib/photo-reading-constants";
 import { canAffordRunes } from "@/lib/rune-afford-client";
-import { compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
+import { blobFromBase64, compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
+import { consumePhotoAuthDraft, savePhotoAuthDraft, type PhotoAuthDraft } from "@/lib/photo-auth-draft";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
@@ -353,6 +354,8 @@ export default function PhotoReadingFlow({
   const [fileOriginalBytes, setFileOriginalBytes] = useState(0);
   const [masterId, setMasterId] = useState(defaultMasterId);
   const [question, setQuestion] = useState("");
+  const [draftSaveFailedHref, setDraftSaveFailedHref] = useState<string | null>(null);
+  const [draftRestored, setDraftRestored] = useState(false);
   const questionInputSyncRef = useNativeInputSync<HTMLTextAreaElement>(setQuestion);
   const [loading, setLoading] = useState(false);
   const [loadingElapsedSec, setLoadingElapsedSec] = useState(0);
@@ -567,7 +570,33 @@ export default function PhotoReadingFlow({
     interpretIdempotencyKeyRef.current = null;
     setStreamingAnalysis("");
     setPhotoPricing(null);
+    setDraftSaveFailedHref(null);
+    setDraftRestored(false);
   }, [open]);
+
+  useEffect(() => {
+    if (!open || !isLoggedIn) return;
+    let draft: PhotoAuthDraft | null = null;
+    try {
+      draft = consumePhotoAuthDraft(window.sessionStorage);
+    } catch {
+      // Storage may be disabled; the ordinary upload remains available.
+    }
+    if (!draft) return;
+    setQuestion(draft.question);
+    if (aiMasters.some((m) => m.id === draft.masterId)) setMasterId(draft.masterId);
+    if (draft.image) {
+      const blob = blobFromBase64(draft.image.base64, draft.image.mimeType);
+      if (previewObjectUrlRef.current) URL.revokeObjectURL(previewObjectUrlRef.current);
+      const url = URL.createObjectURL(blob);
+      previewObjectUrlRef.current = url;
+      setPreviewUrl(url);
+      setImageData({ ...draft.image, blob });
+      setFileOriginalBytes(blob.size);
+    }
+    setDraftRestored(true);
+    trackPhotoReadingPhase("draft_restored", { mode: draft.mode, has_photo: Boolean(draft.image) });
+  }, [open, isLoggedIn, aiMasters]);
 
   const markModeBootedRef = useRef(false);
   useEffect(() => {
@@ -576,16 +605,15 @@ export default function PhotoReadingFlow({
       return;
     }
     if (initialMode !== "mark" || markModeBootedRef.current) return;
-    markModeBootedRef.current = true;
     if (!isLoggedIn) return;
     if (runesBlocked) return;
+    markModeBootedRef.current = true;
     trackPhotoReadingPhase("manual_mark");
     openConfirmStep(createEmptyManualRedrawSpread(masterId), {
       manual: true,
       confidence: "unknown",
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- boot mark mode once per open
-  }, [open, initialMode, isLoggedIn, masterId]);
+  }, [open, initialMode, isLoggedIn, masterId, runesBlocked]);
 
   useEffect(() => {
     if (!open) return;
@@ -650,9 +678,39 @@ export default function PhotoReadingFlow({
     }
   };
 
+  const photoAuthReturnTo = (mode = initialMode) => mode === "mark"
+    ? resolveRegistrationReturnTo({ custom: "/?photo=1&mode=mark" })
+    : resolveRegistrationReturnTo({ photo: true });
+
+  const continueThroughAuth = (kind: "register" | "login", mode = initialMode) => {
+    if (preparingImage) {
+      setError("Фото ещё загружается. Подождите немного и продолжите.");
+      return;
+    }
+    const href = kind === "register" ? buildRegisterHref(photoAuthReturnTo(mode)) : buildLoginHref(photoAuthReturnTo(mode));
+    let saved = false;
+    try {
+      saved = savePhotoAuthDraft({
+        mode, masterId, question,
+        ...(imageData ? { image: { base64: imageData.base64, mimeType: imageData.mimeType as "image/jpeg" } } : {}),
+      }, window.sessionStorage);
+    } catch {
+      // Access itself can throw in restricted browsers.
+    }
+    if (!saved && (imageData || question)) {
+      setDraftSaveFailedHref(href);
+      setError("Браузер не сохранил черновик. Можно продолжить вход, затем выбрать фото и написать вопрос заново.");
+      trackPhotoReadingPhase("draft_save_failed");
+      return;
+    }
+    trackPhotoReadingPhase("auth_redirect", { mode, has_photo: Boolean(imageData) });
+    if (kind === "register") trackRegistrationCtaClick("photo_reading");
+    window.location.href = href;
+  };
+
   const startManualSpread = () => {
     if (!isLoggedIn) {
-      window.location.href = buildRegisterHref(resolveRegistrationReturnTo({ photo: true }));
+      continueThroughAuth("register", "mark");
       return;
     }
     if (runesBlocked) {
@@ -810,7 +868,7 @@ export default function PhotoReadingFlow({
       originalBytes: fileOriginalBytes,
     });
     if (!isLoggedIn) {
-      window.location.href = buildRegisterHref(resolveRegistrationReturnTo({ photo: true }));
+      continueThroughAuth("register");
       return;
     }
     if (!imageData) {
@@ -929,7 +987,7 @@ export default function PhotoReadingFlow({
       }
 
       if (response.status === 401) {
-        window.location.href = buildLoginHref(resolveRegistrationReturnTo({ photo: true }));
+        continueThroughAuth("login");
         return;
       }
 
@@ -1481,6 +1539,11 @@ export default function PhotoReadingFlow({
                   )}
                   {/* Guide */}
                   <PhotoReadingGuide compact={!!previewUrl} />
+                  {draftRestored && (
+                    <p role="status" className="mb-3 text-sm text-aura-champagne">
+                      Черновик восстановлен. Проверьте вопрос и продолжите разбор.
+                    </p>
+                  )}
 
                   {/* Upload zone */}
                   {!previewUrl ? (
@@ -1837,23 +1900,30 @@ export default function PhotoReadingFlow({
                 <div className="flex flex-col items-center gap-3 rounded-2xl border border-aura-gold/20 bg-aura-gold/[0.05] px-4 py-5 text-center">
                   <StarterRunesValue variant="badge" />
                   <p className="text-sm text-gray-300">
-                    Создайте аккаунт, чтобы получить расшифровку — расклад и диалог с мастером
+                    После входа выбранное фото и вопрос вернутся в этой вкладке. Разбор и диалог
                     сохранятся в кабинете.
                   </p>
                   <Link
-                    href={buildRegisterHref(resolveRegistrationReturnTo({ photo: true }))}
-                    onClick={() => trackRegistrationCtaClick("photo_reading")}
+                    href={buildRegisterHref(photoAuthReturnTo())}
+                    onClick={(event) => { event.preventDefault(); continueThroughAuth("register"); }}
                     className="btn-luxe btn-luxe--sm btn-luxe--gold"
                   >
                     Создать аккаунт и продолжить
                   </Link>
                   <Link
-                    href={buildLoginHref(resolveRegistrationReturnTo({ photo: true }))}
+                    href={buildLoginHref(photoAuthReturnTo())}
+                    onClick={(event) => { event.preventDefault(); continueThroughAuth("login"); }}
                     className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
                   >
                     Уже есть аккаунт? Войти
                   </Link>
                 </div>
+              )}
+
+              {draftSaveFailedHref && (
+                <Link href={draftSaveFailedHref} className="mt-3 block text-center text-sm text-aura-gold underline">
+                  Продолжить без сохранения черновика
+                </Link>
               )}
 
               {/* Runes blocked */}
@@ -1893,6 +1963,8 @@ export default function PhotoReadingFlow({
                       ? recognizeAttempt > 1
                         ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})… ${loadingElapsedLabel}`
                         : `Распознаём и перерисовываем… ${loadingElapsedLabel}`
+                      : !isLoggedIn
+                        ? "Сохранить фото и продолжить"
                       : runeConfig.enabled
                         ? `Начать фото-расклад · ${formatRunes(photoCost)}`
                         : "Начать фото-расклад"}

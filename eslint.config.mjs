@@ -6,6 +6,7 @@ const eslintConfig = [
       ".next/**",
       ".next-e2e/**",
       ".cursor/**",
+      "tmp/**",
       "node_modules/**",
       "scripts/**/*.mjs",
       "mobile/android/app/build/**",

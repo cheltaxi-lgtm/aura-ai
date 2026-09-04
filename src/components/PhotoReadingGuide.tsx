@@ -8,7 +8,7 @@ import {
 } from "@/lib/photo-reading-guide";
 
 export default function PhotoReadingGuide({ compact = false }: { compact?: boolean }) {
-  const [open, setOpen] = useState(!compact);
+  const [open, setOpen] = useState(false);
 
   return (
     <section
@@ -33,14 +33,12 @@ export default function PhotoReadingGuide({ compact = false }: { compact?: boole
             id="photo-reading-guide-title"
             className="font-display text-sm font-semibold text-white/92"
           >
-            Как правильно разложить карты
+            Как сфотографировать расклад
           </h3>
           <p className="mt-1 text-xs leading-relaxed text-white/45">
             {open
               ? "Сделай расклад дома, затем загрузи фото — мастер расшифрует."
-              : compact
-                ? "3 карты слева направо · перевёрнутые не трогать · фото сверху"
-                : "Нажми, чтобы открыть пошаговую инструкцию"}
+              : "Фото сверху · все карты целиком · без бликов"}
           </p>
         </div>
         <ChevronDown
