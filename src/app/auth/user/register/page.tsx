@@ -7,6 +7,7 @@ import StarterRunesValue from "@/components/auth/StarterRunesValue";
 export default function UserRegisterPage() {
   return (
     <AuthShell
+      className="auth-salon-page--register"
       backSlot={
         <Link href="/auth">← Выбор аккаунта</Link>
       }

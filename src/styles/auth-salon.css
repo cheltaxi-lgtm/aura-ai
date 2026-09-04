@@ -13,6 +13,12 @@
     calc(1.5rem + env(safe-area-inset-bottom, 0px));
 }
 
+/* Provider buttons and starter credit arrive after hydration. Keep the form
+   anchored instead of recentering the whole card whenever its height changes. */
+.auth-salon-page--register {
+  justify-content: flex-start;
+}
+
 .auth-salon-vignette {
   pointer-events: none;
   position: absolute;
