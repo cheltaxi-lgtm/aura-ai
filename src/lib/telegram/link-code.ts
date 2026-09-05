@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { query } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { linkTelegramToAccount } from "@/lib/telegram/accounts";
 import { LINK_CODE_HEX_LEN } from "@/lib/telegram/link-code-format";
 import { notifyBotAccountLinked } from "@/lib/telegram/notify-bot-link";
@@ -33,8 +33,16 @@ export async function createBotLinkCode(input: {
   const token = hashLinkCode(code);
   const expiresAt = new Date(Date.now() + TTL_MS);
 
+  // Serializes with erasure acceptance/final cleanup even though an unused
+  // challenge has no account FK. Never write new link PII during erasure.
+  await withTransaction(async (client) => {
+  await client.query("SELECT pg_advisory_xact_lock(hashtext($1))", [`telegram:${input.telegramUserId}`]);
+  const erasing = await client.query(`SELECT id FROM account_erasure_jobs
+    WHERE stage <> 'completed' AND telegram_user_ids @> ARRAY[$1::bigint] LIMIT 1`, [input.telegramUserId]);
+  if (erasing.rows[0]) throw new Error("account_erasure_pending");
+
   // Invalidate previous unused link codes for this telegram user.
-  await query(
+  await client.query(
     `UPDATE telegram_auth_challenges
      SET status = 'expired'
      WHERE purpose = 'link'
@@ -43,7 +51,7 @@ export async function createBotLinkCode(input: {
     [input.telegramUserId]
   );
 
-  await query(
+  await client.query(
     `INSERT INTO telegram_auth_challenges (
        token, purpose, telegram_user_id, telegram_username, telegram_first_name, telegram_photo_url,
        accepted_terms, age_confirmed, marketing_consent, expires_at, confirmed_at, status
@@ -57,7 +65,7 @@ export async function createBotLinkCode(input: {
       expiresAt.toISOString(),
     ]
   );
-
+  });
   return {
     code,
     linkUrl: `${siteBase()}/auth/telegram-link?code=${encodeURIComponent(code)}`,
@@ -155,7 +163,9 @@ export async function consumeLinkCodeForAccount(input: {
   });
   if (!linked.ok) {
     const message =
-      linked.code === "telegram_taken"
+      linked.code === "erasure_pending"
+        ? "Удаление аккаунта ещё выполняется. Дождитесь завершения, прежде чем привязывать Telegram."
+        : linked.code === "telegram_taken"
         ? "Этот Telegram уже привязан к другому аккаунту."
         : "К аккаунту уже привязан другой Telegram.";
     return { ok: false, error: linked.code, message };

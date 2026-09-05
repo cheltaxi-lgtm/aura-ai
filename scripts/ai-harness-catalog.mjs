@@ -125,9 +125,16 @@ export const CHECKS = {
   "telegram-test": { title: "telegram-test", cmd: ["npm", "test"], cwd: "telegram-bot" },
   "telegram-unit": {
     title: "telegram-unit",
+    // Billing fixtures truncate shared tables; separate files must not race.
+    vitestArgs: ["--no-file-parallelism"],
     vitest: [
       "tests/invariants/telegram-bot-bridge.test.ts",
-      "tests/invariants/bot-*.test.ts",
+      "tests/invariants/bot-veronika-idempotency.test.ts",
+      "tests/invariants/bot-charge-result-session.test.ts",
+      "tests/invariants/account-deletion-bot-purge.test.ts",
+      "tests/invariants/account-erasure-outbox-db.test.ts",
+      "tests/invariants/bot-matrix-operation.test.ts",
+      "tests/invariants/bot-reading-detail.test.ts",
     ],
   },
 

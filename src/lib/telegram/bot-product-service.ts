@@ -7,7 +7,7 @@ import {
   getUserReadingHistory,
   resolveUnlimitedAccess,
 } from "@/lib/accounts";
-import { formatReversedCardName } from "@/lib/card-orientation";
+import { formatReversedCardName, parseCardOrientation } from "@/lib/card-orientation";
 import { buildCharacterPrompt, generateReading } from "@/lib/chat-prompts";
 import {
   DailyReadingLockedError,
@@ -125,9 +125,12 @@ export async function botReadingDetail(profileUserId: string, sessionId: string)
     character_key: string | null;
     intention: string | null;
     cards: string[] | null;
+    spread_id: string | null;
+    matrix_report_id: string | null;
     content: string | null;
   }>(
-    `SELECT s.id, s.character_key, s.intention, s.cards,
+    `SELECT s.id, s.character_key, s.intention, s.cards, s.spread_id,
+            (SELECT n.id FROM numerology_report_history n WHERE n.session_id = s.id AND n.user_id = s.user_id ORDER BY n.updated_at DESC LIMIT 1) AS matrix_report_id,
             (
               SELECT cm.content FROM chat_messages cm
               WHERE cm.session_id = s.id AND cm.role = 'assistant'
@@ -143,9 +146,15 @@ export async function botReadingDetail(profileUserId: string, sessionId: string)
   if (!row) return null;
   return {
     sessionId: row.id,
+    matrixReportId: row.matrix_report_id,
     characterKey: row.character_key,
     intention: row.intention,
     cards: row.cards ?? [],
+    structuredCards: (row.cards ?? []).map((raw, i) => ({
+      ...parseCardOrientation(raw), position: i,
+      positionLabel: row.spread_id && getSpread(row.spread_id)
+        ? resolveSpreadPositions(row.spread_id).at(i)?.label || `Карта ${i + 1}` : `Карта ${i + 1}`,
+    })),
     reading: row.content ?? "",
   };
 }

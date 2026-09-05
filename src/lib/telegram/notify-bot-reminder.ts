@@ -4,6 +4,7 @@ export type BotReminderKind = "daily_cards" | "daily_bonus" | "inactive_7d" | "i
 
 export async function notifyBotReminder(input: {
   telegramUserId: number;
+  sourceProfileUserId: string;
   kind: BotReminderKind;
   title: string;
   body: string;
@@ -24,6 +25,7 @@ export async function notifyBotReminder(input: {
       },
       body: JSON.stringify({
         telegram_user_id: input.telegramUserId,
+        source_profile_user_id: input.sourceProfileUserId,
         kind: input.kind,
         title: input.title.slice(0, 160),
         body: input.body.slice(0, 400),

@@ -1,3 +1,5 @@
+import { readInternalBody as readBody } from "./read-body.js";
+import { acceptNotificationIdentity, withInternalUserActivity, safeZovusUrl } from "./internal-user-activity.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { botConfig } from "../config.js";
@@ -18,19 +20,9 @@ function secretOk(req: IncomingMessage): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
 
 function safeHttpsZovus(url: unknown, fallback: string): string {
-  if (typeof url !== "string") return fallback;
-  if (!/^https:\/\/[a-z0-9.-]*zovus\.ru\//i.test(url)) return fallback;
-  return url.slice(0, 512);
+  return safeZovusUrl(url, fallback);
 }
 
 /** Site → bot: daily cards / bonus / win-back reminder. */
@@ -51,6 +43,7 @@ export async function handleReminderNotify(
 
   let body: {
     telegram_user_id?: unknown;
+    source_profile_user_id?: unknown;
     title?: unknown;
     body?: unknown;
     cta_url?: unknown;
@@ -69,6 +62,8 @@ export async function handleReminderNotify(
     json(res, 400, { ok: false, error: "invalid_telegram_user_id" });
     return true;
   }
+  return withInternalUserActivity(tgId, res, async () => {
+  if (!await acceptNotificationIdentity(tgId, body.source_profile_user_id, res)) return true;
 
   const title =
     typeof body.title === "string" && body.title.trim()
@@ -86,14 +81,14 @@ export async function handleReminderNotify(
   const unsubUrl = safeHttpsZovus(body.unsubscribe_url, `${botConfig.siteUrl}/cabinet`);
 
     const user = getDb()
-      .prepare(`SELECT chat_id, unsubscribed_at FROM bot_users WHERE telegram_user_id = ?`)
-      .get(tgId) as { chat_id: number; unsubscribed_at?: string | null } | undefined;
+      .prepare(`SELECT chat_id, unsubscribed_at, blocked_at, banned_at FROM bot_users WHERE telegram_user_id = ?`)
+      .get(tgId) as { chat_id: number; unsubscribed_at?: string | null; blocked_at?: string; banned_at?: string } | undefined;
     if (!user?.chat_id) {
       json(res, 200, { ok: true, delivered: false, reason: "no_chat" });
       return true;
     }
     // Bot-side unsubscribe (/stop) must also silence site-originated reminders.
-    if (user.unsubscribed_at) {
+    if (user.unsubscribed_at || user.blocked_at || user.banned_at) {
       json(res, 200, { ok: true, delivered: false, reason: "unsubscribed" });
       return true;
     }
@@ -101,6 +96,7 @@ export async function handleReminderNotify(
   try {
     const tgRes = await fetch(`https://api.telegram.org/bot${botConfig.token}/sendMessage`, {
       method: "POST",
+      signal: AbortSignal.timeout(15_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: user.chat_id,
@@ -126,4 +122,5 @@ export async function handleReminderNotify(
 
   json(res, 200, { ok: true, delivered: true });
   return true;
+  });
 }

@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { fitTextToWidth } from './text-fit.js';
 import {
   BOT_CANVAS_HEIGHT,
   BOT_CANVAS_WIDTH,
@@ -51,22 +52,39 @@ function goldFrame(width: number, height: number): string {
 export type ProfileCardInput = {
   name: string;
   linked: boolean;
+  statsUnavailable?: boolean;
   unlimited?: boolean;
   zodiac?: string | null;
   birthDate?: string | null;
   memberSince?: string | null;
-  runeBalance: number;
-  totalSessions: number;
-  totalCards: number;
-  daysWithUs: number;
+  runeBalance: number | null;
+  totalSessions: number | null;
+  totalCards: number | null;
+  daysWithUs: number | null;
   favoriteMasterName?: string | null;
   natalLabel?: string | null;
-  matrices: number;
-  photos: number;
-  rituals: number;
+  matrices: number | null;
+  photos: number | null;
+  rituals: number | null;
   timezone?: string | null;
   streak?: number | null;
 };
+
+export function profileText(p: ProfileCardInput): string {
+  const value = (n: number | null) => n == null ? '—' : String(n);
+  return [
+    `Профиль · ${trunc(p.name || 'Гость', 80)}`,
+    `Руны: ${value(p.runeBalance)} · Расклады: ${value(p.totalSessions)} · Карты: ${value(p.totalCards)}`,
+    `Матрицы: ${value(p.matrices)} · Фото: ${value(p.photos)} · Обряды: ${value(p.rituals)}`,
+    p.birthDate ? `Дата рождения: ${formatDate(p.birthDate)}${p.zodiac ? ` · ${p.zodiac}` : ''}` : null,
+    p.favoriteMasterName ? `Любимый мастер: ${trunc(p.favoriteMasterName, 80)}` : null,
+    p.natalLabel ? `Натал: ${trunc(p.natalLabel, 100)}` : null,
+    p.timezone ? `Часовой пояс: ${trunc(p.timezone, 80)}` : null,
+    p.memberSince ? `С нами с ${formatDate(p.memberSince)}${p.daysWithUs == null ? '' : ` · ${p.daysWithUs} дн.`}` : null,
+    p.streak ? `Серия: ${p.streak} дн.` : null,
+    p.statsUnavailable || (p.linked && p.runeBalance == null) ? 'Статистика временно недоступна. Откройте Профиль ещё раз для обновления.' : null,
+  ].filter(Boolean).join('\n');
+}
 
 /**
  * Profile card — same honey field as salon home (brand parity).
@@ -74,7 +92,7 @@ export type ProfileCardInput = {
 export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffer> {
   const width = BOT_CANVAS_WIDTH;
   const height = BOT_CANVAS_HEIGHT;
-  const name = trunc(p.name || "Гость", 28);
+  const name = await fitTextToWidth(p.name || "Гость", 52, width - CONTENT * 2);
   const access = !p.linked
     ? "АККАУНТ НЕ ПРИВЯЗАН"
     : p.unlimited
@@ -82,10 +100,10 @@ export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffe
       : "АККАУНТ ZOVUS";
 
   const rows: Array<{ label: string; value: string }> = [
-    { label: "РУНЫ", value: String(p.runeBalance) },
-    { label: "РАСКЛАДЫ", value: String(p.totalSessions) },
-    { label: "КАРТЫ", value: String(p.totalCards) },
-    { label: "С НАМИ", value: `${p.daysWithUs} дн.` },
+    { label: "РУНЫ", value: p.runeBalance == null ? "—" : String(p.runeBalance) },
+    { label: "РАСКЛАДЫ", value: p.totalSessions == null ? "—" : String(p.totalSessions) },
+    { label: "КАРТЫ", value: p.totalCards == null ? "—" : String(p.totalCards) },
+    { label: "С НАМИ", value: p.daysWithUs == null ? "—" : `${p.daysWithUs} дн.` },
   ];
 
   const details: Array<{ label: string; value: string }> = [];
@@ -95,9 +113,9 @@ export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffe
     details.push({ label: "Любимый мастер", value: p.favoriteMasterName });
   }
   if (p.natalLabel) details.push({ label: "Натал", value: p.natalLabel });
-  details.push({ label: "Матрицы", value: String(p.matrices) });
-  details.push({ label: "Фото-расклады", value: String(p.photos) });
-  details.push({ label: "Обряды", value: String(p.rituals) });
+  details.push({ label: "Матрицы", value: p.matrices == null ? '—' : String(p.matrices) });
+  details.push({ label: "Фото-расклады", value: p.photos == null ? '—' : String(p.photos) });
+  details.push({ label: "Обряды", value: p.rituals == null ? '—' : String(p.rituals) });
   if (p.memberSince) {
     details.push({ label: "С нами с", value: formatDate(p.memberSince) });
   }
@@ -124,24 +142,25 @@ export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffe
       <rect x="${x}" y="${ty}" width="${tileW}" height="${tileH}"
         fill="url(#chipFill)" stroke="#5A3210" stroke-opacity="0.45" stroke-width="2" rx="16"/>
       <text x="${x + tileW / 2}" y="${ty + 40}" text-anchor="middle"
-        font-family="${FONT}" font-size="18" fill="#5A3210">${escapeXml(row.label)}</text>
+        font-family="${FONT}" font-size="30" fill="#5A3210">${escapeXml(row.label)}</text>
       <text x="${x + tileW / 2}" y="${ty + 86}" text-anchor="middle"
         font-family="${FONT}" font-size="40" fill="#1E1008">${escapeXml(row.value)}</text>`;
     })
     .join("\n");
 
-  let detailY = tilesTop + 2 * (tileH + gapY) + 36;
-  const detailNodes = details
-    .slice(0, 7)
+  // The full profile is readable native text below the card. Keep the image uncluttered.
+  const imageDetails = details.filter(d => ['Дата рождения', 'Любимый мастер', 'Пояс', 'Серия'].includes(d.label));
+  for (const d of imageDetails) d.value = await fitTextToWidth(d.value, 32, 370);
+  let detailY = 780;
+  const detailNodes = imageDetails
     .map((d) => {
       const y = detailY;
-      detailY += 40;
-      if (y > height - 100) return "";
+      detailY += 76;
       return `
       <text x="${CONTENT}" y="${y}" text-anchor="start"
-        font-family="${FONT}" font-size="22" fill="#5A3210">${escapeXml(d.label)}</text>
+        font-family="${FONT}" font-size="32" fill="#5A3210">${escapeXml(d.label)}</text>
       <text x="${width - CONTENT}" y="${y}" text-anchor="end"
-        font-family="${FONT}" font-size="24" fill="#1E1008">${escapeXml(d.value)}</text>`;
+        font-family="${FONT}" font-size="32" fill="#1E1008">${escapeXml(d.value)}</text>`;
     })
     .join("\n");
 
@@ -175,7 +194,7 @@ export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffe
   <text x="50%" y="270" text-anchor="middle"
     font-family="${FONT}" font-size="52" fill="#1E1008">${escapeXml(name)}</text>
   <text x="50%" y="320" text-anchor="middle"
-    font-family="${FONT}" font-size="22" fill="#6B3E14">${escapeXml(access)}</text>
+    font-family="${FONT}" font-size="30" fill="#6B3E14">${escapeXml(access)}</text>
 
   <line x1="${width * 0.28}" y1="360" x2="${width * 0.72}" y2="360"
     stroke="#5A3210" stroke-opacity="0.35" stroke-width="2"/>
@@ -183,8 +202,8 @@ export async function renderProfileCardImage(p: ProfileCardInput): Promise<Buffe
   ${tileNodes}
   ${detailNodes}
 
-  <text x="50%" y="${height - 56}" text-anchor="middle"
-    font-family="${FONT}" font-size="20" fill="#5A3210">zovus.ru</text>
+  <text x="50%" y="${height - 178}" text-anchor="middle"
+    font-family="${FONT}" font-size="28" fill="#5A3210">${p.statsUnavailable ? 'Статистика не обновилась' : 'Все сведения — под карточкой'}</text>
 </svg>`);
 
   const png = await sharp(svg).png().toBuffer();

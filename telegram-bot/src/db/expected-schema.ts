@@ -191,9 +191,15 @@ export const EXPECTED_TABLES: ExpectedTable[] = [
   },
   {
     name: "bot_processed_updates",
+    createSql: `CREATE TABLE IF NOT EXISTS bot_processed_updates (
+      update_id INTEGER PRIMARY KEY, processed_at TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'completed', owner_id TEXT
+    );`,
     columns: [
       { name: "update_id", sqlType: "INTEGER", nullable: true },
       { name: "processed_at", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "status", sqlType: "TEXT NOT NULL DEFAULT 'completed'", nullable: false },
+      { name: "owner_id", sqlType: "TEXT", nullable: true },
     ],
   },
   {
@@ -201,6 +207,99 @@ export const EXPECTED_TABLES: ExpectedTable[] = [
     columns: [
       { name: "key", sqlType: "TEXT", nullable: true },
       { name: "value", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "updated_at", sqlType: "TEXT NOT NULL", nullable: false },
+    ],
+  },
+  {
+    name: "bot_update_inbox",
+    createSql: `CREATE TABLE IF NOT EXISTS bot_update_inbox (
+      update_id INTEGER PRIMARY KEY, user_key TEXT NOT NULL, payload TEXT NOT NULL,
+      status TEXT NOT NULL DEFAULT 'queued', received_at TEXT NOT NULL
+    );`,
+    columns: [
+      { name: "update_id", sqlType: "INTEGER", nullable: true },
+      { name: "user_key", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "payload", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "status", sqlType: "TEXT NOT NULL DEFAULT 'queued'", nullable: false },
+      { name: "received_at", sqlType: "TEXT NOT NULL", nullable: false },
+    ],
+  },
+  {
+    name: "bot_polling_cursor",
+    createSql: `CREATE TABLE IF NOT EXISTS bot_polling_cursor (
+      id INTEGER PRIMARY KEY CHECK(id = 1), offset INTEGER NOT NULL, last_accepted_at TEXT NOT NULL
+    );`,
+    columns: [
+      { name: "id", sqlType: "INTEGER", nullable: true },
+      { name: "offset", sqlType: "INTEGER NOT NULL", nullable: false },
+      { name: "last_accepted_at", sqlType: "TEXT NOT NULL", nullable: false },
+    ],
+  },
+  {
+    name: "bot_user_erasure",
+    createSql: `CREATE TABLE IF NOT EXISTS bot_user_erasure (
+      operation_id TEXT NOT NULL, telegram_user_id INTEGER NOT NULL,
+      status TEXT NOT NULL DEFAULT 'pending', created_at TEXT NOT NULL, completed_at TEXT,
+      PRIMARY KEY (operation_id, telegram_user_id)
+    ); CREATE INDEX IF NOT EXISTS bot_user_erasure_active ON bot_user_erasure(telegram_user_id, status);`,
+    columns: [
+      { name: "operation_id", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "telegram_user_id", sqlType: "INTEGER NOT NULL", nullable: false },
+      { name: "status", sqlType: "TEXT NOT NULL DEFAULT 'pending'", nullable: false },
+      { name: "created_at", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "completed_at", sqlType: "TEXT", nullable: true },
+    ],
+  },
+  {
+    name: "bot_reminder_delivery",
+    createSql: `CREATE TABLE IF NOT EXISTS bot_reminder_delivery (
+      telegram_user_id INTEGER NOT NULL REFERENCES bot_users(telegram_user_id) ON DELETE CASCADE,
+      kind TEXT NOT NULL, state TEXT NOT NULL, owner_id TEXT NOT NULL,
+      attempts INTEGER NOT NULL DEFAULT 1, retry_at INTEGER NOT NULL DEFAULT 0,
+      suppress_until INTEGER NOT NULL, updated_at INTEGER NOT NULL,
+      PRIMARY KEY (telegram_user_id, kind)
+    );`,
+    columns: [
+      { name: "telegram_user_id", sqlType: "INTEGER NOT NULL", nullable: false },
+      { name: "kind", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "state", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "owner_id", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "attempts", sqlType: "INTEGER NOT NULL DEFAULT 1", nullable: false },
+      { name: "retry_at", sqlType: "INTEGER NOT NULL DEFAULT 0", nullable: false },
+      { name: "suppress_until", sqlType: "INTEGER NOT NULL", nullable: false },
+      { name: "updated_at", sqlType: "INTEGER NOT NULL", nullable: false },
+    ],
+  },
+  {
+    name: "bot_reading_views",
+    createSql: `CREATE TABLE IF NOT EXISTS bot_reading_views (
+      id TEXT PRIMARY KEY, telegram_user_id INTEGER NOT NULL, data TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(telegram_user_id) REFERENCES bot_users(telegram_user_id) ON DELETE CASCADE
+    );`,
+    columns: [
+      { name: "id", sqlType: "TEXT", nullable: true },
+      { name: "telegram_user_id", sqlType: "INTEGER NOT NULL", nullable: false },
+      { name: "data", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "updated_at", sqlType: "TEXT NOT NULL", nullable: false },
+    ],
+  },
+  {
+    name: "bot_paid_operations",
+    createSql: `CREATE TABLE IF NOT EXISTS bot_paid_operations (
+      id TEXT PRIMARY KEY, telegram_user_id INTEGER NOT NULL, kind TEXT NOT NULL,
+      input_hash TEXT NOT NULL, input TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'pending', result TEXT,
+      created_at TEXT NOT NULL, updated_at TEXT NOT NULL,
+      FOREIGN KEY(telegram_user_id) REFERENCES bot_users(telegram_user_id) ON DELETE CASCADE
+    ); CREATE INDEX IF NOT EXISTS bot_paid_operations_resume ON bot_paid_operations(telegram_user_id, kind, input_hash, status);`,
+    columns: [
+      { name: "id", sqlType: "TEXT", nullable: true },
+      { name: "telegram_user_id", sqlType: "INTEGER NOT NULL", nullable: false },
+      { name: "kind", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "input_hash", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "input", sqlType: "TEXT NOT NULL", nullable: false },
+      { name: "status", sqlType: "TEXT NOT NULL DEFAULT 'pending'", nullable: false },
+      { name: "result", sqlType: "TEXT", nullable: true },
+      { name: "created_at", sqlType: "TEXT NOT NULL", nullable: false },
       { name: "updated_at", sqlType: "TEXT NOT NULL", nullable: false },
     ],
   },

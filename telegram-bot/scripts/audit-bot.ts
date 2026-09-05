@@ -28,7 +28,6 @@ import {
   findSessionsByTokenPrefix,
   getUser,
   plainTokenPrefixFromToken,
-  releaseUpdate,
   setFlag,
   setTimezoneOffset,
   trackEvent,
@@ -164,7 +163,7 @@ async function main() {
   const sid = "audit-session-idem-1";
   const updateId = 880_001;
   check("claim update first", claimUpdate(updateId));
-  const fakeCtx = {};
+  const fakeCtx = { update: { update_id: updateId } };
   markIrreversible(fakeCtx as never);
   check("irreversible marked", isIrreversible(fakeCtx as never));
   const c1 = claimSpreadSlot(uid, q, sid, user);
@@ -196,7 +195,7 @@ async function main() {
     .get(uid) as { c: number };
   check("exactly one session after retry", sessCount.c === 1);
   check("existing session readable", Boolean(findSessionById(sid)?.teaser_text));
-  releaseUpdate(updateId); // cleanup
+  getDb().prepare('DELETE FROM bot_processed_updates WHERE update_id = ?').run(updateId); // isolated audit cleanup
   deleteUserData(uid);
 
   // 4) Copy: bodies no emoji; buttons whitelist

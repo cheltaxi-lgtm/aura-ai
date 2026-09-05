@@ -9,7 +9,7 @@
     "start": "tsx src/index.ts",
     "typecheck": "tsc --noEmit",
     "lint": "tsc --noEmit",
-    "test": "tsx src/copy/no-emoji.test.ts && tsx src/safety/__tests__/run-corpus.ts && tsx src/flags/__tests__/flags.test.ts && tsx src/db/__tests__/slot-release.test.ts && tsx src/db/__tests__/reminder-purge.test.ts && tsx src/domain/session/__tests__/fingerprint.test.ts && tsx src/config/__tests__/runtime-guards.test.ts",
+    "test": "tsx src/copy/no-emoji.test.ts && tsx src/safety/__tests__/run-corpus.ts && tsx src/flags/__tests__/flags.test.ts && tsx src/db/__tests__/slot-release.test.ts && tsx src/db/__tests__/reminder-purge.test.ts && tsx src/db/__tests__/reminder-pagination.test.ts && tsx src/ops/__tests__/polling.test.ts && tsx src/middleware/__tests__/user-queue.test.ts && tsx src/ops/__tests__/lock.test.ts && tsx src/jobs/__tests__/reminder-delivery.test.ts && tsx src/db/__tests__/backup-rollback.test.ts && tsx src/db/__tests__/retention.test.ts && tsx src/ops/__tests__/runtime-health.test.ts && tsx src/http/__tests__/erasure-internal.test.ts && tsx src/domain/session/__tests__/fingerprint.test.ts && tsx src/domain/reading/__tests__/delivery-regressions.test.ts && tsx src/domain/__tests__/durable-recovery.test.ts && tsx src/domain/__tests__/erasure-replay.test.ts && tsx src/config/__tests__/runtime-guards.test.ts",
     "audit": "tsx scripts/audit-bot.ts",
     "migrate": "tsx src/db/migrate.ts",
     "migrate:up": "tsx src/db/migrate-cli.ts up",
@@ -22,7 +22,7 @@
     "prepare": "node scripts/install-git-hooks.mjs"
   },
   "engines": {
-    "node": ">=20"
+    "node": ">=22.13.0"
   },
   "dependencies": {
     "dotenv": "^16.4.7",

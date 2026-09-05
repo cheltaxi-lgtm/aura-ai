@@ -11,10 +11,10 @@ WorkingDirectory=/opt/aura-ai/telegram-bot
 Environment=NODE_ENV=production
 EnvironmentFile=/opt/aura-ai/telegram-bot/.env
 # Bind HTTP for /health + /r/:token + /internal/receipt/* on loopback (site calls 127.0.0.1:8787).
-ExecStart=/usr/bin/npm start
+ExecStart=/usr/bin/node --import tsx src/index.ts
 Restart=always
 RestartSec=5
-TimeoutStopSec=15
+TimeoutStopSec=40
 KillMode=mixed
 StandardOutput=append:/var/log/aura-ai/telegram-bot.log
 StandardError=append:/var/log/aura-ai/telegram-bot.log

@@ -95,8 +95,9 @@ export async function getProfileUserIdForAccount(accountId: string): Promise<str
     `SELECT ua.profile_user_id
      FROM user_accounts ua
      WHERE ua.id = $1
+       AND ua.erasure_requested_at IS NULL
        AND ua.profile_user_id IS NOT NULL
-       AND EXISTS (SELECT 1 FROM users u WHERE u.id = ua.profile_user_id)`,
+       AND EXISTS (SELECT 1 FROM users u WHERE u.id = ua.profile_user_id AND u.erasure_requested_at IS NULL)`,
     [accountId]
   );
   return rows[0]?.profile_user_id ?? null;

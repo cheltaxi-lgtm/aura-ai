@@ -45,12 +45,38 @@ BOT_GROUP="aura-ai"
 TREE_MOVED=0
 SERVICES_STOPPED=0
 RUNTIME_COPIED=0
+NEW_SERVICES_STARTED=0
 
 rollback_on_failure() {
   local code=$?
   trap - EXIT
   if [ "$code" -ne 0 ]; then
     echo "ERROR: deploy failed; restoring previous release from $SNAPSHOT" >&2
+    if [ "$TREE_MOVED" -eq 1 ] && [ "$NEW_SERVICES_STARTED" -eq 1 ]; then
+      # Freeze all consumers before inspecting the durable state. A failed or
+      # ambiguous check must never downgrade executables that own accepted work.
+      ROLLBACK_STATE_SAFE=0
+      if systemctl stop aura-ai-async-jobs zovus-telegram-bot aura-ai; then
+        ALL_NEW_SERVICES_STOPPED=1
+        for unit in aura-ai aura-ai-async-jobs zovus-telegram-bot; do
+          if [ "$(systemctl show "$unit" --property=ActiveState --value 2>/dev/null || true)" != "inactive" ]; then
+            ALL_NEW_SERVICES_STOPPED=0
+          fi
+        done
+        if [ "$ALL_NEW_SERVICES_STOPPED" -eq 1 ]; then
+          if timeout 20s /usr/bin/node "$APP_DIR/hosting/check-deploy-rollback-safety.mjs" "$APP_DIR" "$PREVIOUS" > "$SNAPSHOT/rollback-safety.json" 2>/dev/null; then
+            ROLLBACK_STATE_SAFE=1
+          fi
+        fi
+      fi
+      if [ "$ROLLBACK_STATE_SAFE" -ne 1 ]; then
+        echo "NEEDS_FORWARD_RECOVERY: old-version rollback blocked; new code, compatible units and all data retained. Snapshot: $SNAPSHOT" >&2
+        # These are still the new units and tree. Do not restore old credentials,
+        # databases, fences or service definitions over unfinished durable work.
+        systemctl restart aura-ai aura-ai-async-jobs zovus-telegram-bot || true
+        exit "$code"
+      fi
+    fi
     if [ "$TREE_MOVED" -eq 1 ]; then
       systemctl stop aura-ai-async-jobs zovus-telegram-bot aura-ai || true
       if [ "$RUNTIME_COPIED" -eq 1 ]; then
@@ -243,6 +269,7 @@ if [ -d "$APP_DIR/telegram-bot" ]; then
   fi
 fi
 
+NEW_SERVICES_STARTED=1
 systemctl restart aura-ai
 systemctl restart aura-ai-async-jobs
 systemctl restart zovus-telegram-bot || true
@@ -260,6 +287,20 @@ if systemctl list-unit-files zovus-telegram-bot.service >/dev/null 2>&1; then
     exit 1
   fi
   systemctl is-active zovus-telegram-bot
+fi
+
+# New releases must demonstrate a functioning update consumer, not just a live
+# Node process. The rollback above deliberately retains /health for old releases
+# that predate /ready. Keep rollback armed throughout this bounded gate.
+BOT_READY_CODE=""
+for _ in $(seq 1 20); do
+  BOT_READY_CODE="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/ready || true)"
+  [ "$BOT_READY_CODE" = "200" ] && break
+  sleep 2
+done
+if [ "$BOT_READY_CODE" != "200" ]; then
+  echo "ERROR: bot readiness never returned 200 (last: ${BOT_READY_CODE:-none}; bounded to 100s)" >&2
+  exit 1
 fi
 
 # Enforced HTTP health gate: `is-active` proves process liveness, not serving
@@ -284,7 +325,7 @@ done
 for unit in aura-ai aura-ai-async-jobs zovus-telegram-bot; do
   systemctl is-active --quiet "$unit"
 done
-[ "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/health || true)" = "200" ]
+[ "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/ready || true)" = "200" ]
 echo "Previous release retained: $PREVIOUS"
 trap - EXIT
 REMOTE

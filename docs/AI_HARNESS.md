@@ -42,7 +42,9 @@ Equivalent CLI: `node scripts/ai-harness.mjs --scope <id> --level <fast\|full\|p
 | **full** | fast + lint + scoped unit/E2E + extra verifies | Behavior, UI, API, calc |
 | **production** | full + `https://zovus.ru/api/health` + product URLs | Deploy, infra, `/audit-production` |
 
-`COMPLETED` only if `.cursor/harness-state.json` is fresh `PASS` and production is `PASS` or `NOT_REQUIRED`. FAIL, missing run, PARTIAL, or guesswork cannot be COMPLETED.
+`COMPLETED` requires fresh passing checks, production `PASS` or `NOT_REQUIRED`, and fresh independent reviews bound to the same working-tree fingerprint. The fingerprint includes HEAD and changed/untracked file contents; generated harness state, temporary test artifacts and Yandex audit output are excluded. An edit during or after testing invalidates the evidence. Any recorded `FAIL` or `PARTIAL` review blocks completion, including after the retry limit.
+
+After the final checks, record each applicable independent result with `node scripts/ai-harness.mjs --record-review code --result PASS` (or `security`, `visual`, `calc`, `production`). The command refuses `PASS` if the diff changed or checks have not passed. Recording a review does not refresh the test timestamp. Old review strings without fingerprint evidence must be reviewed again. Self-tests exercise synthetic states without overwriting the product's saved evidence.
 
 ## Add a product or check
 

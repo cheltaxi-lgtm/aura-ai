@@ -194,6 +194,7 @@ async function deliverTelegram(row: DeliveryRow): Promise<void> {
   const ctaUrl = `${appUrl}${path.startsWith("/") ? path : `/${path}`}`;
   const res = await notifyBotReportReady({
     telegramUserId: Number(tg.telegramUserId),
+    sourceProfileUserId: row.user_id,
     title: row.title,
     ctaUrl,
   });

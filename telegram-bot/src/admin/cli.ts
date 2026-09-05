@@ -1,8 +1,9 @@
-import { copyFileSync, writeFileSync } from "node:fs";
+import { writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { Bot } from "grammy";
 import { botConfig } from "../config.js";
 import { getDb, migrate } from "../db/client.js";
+import { createDatabaseBackup } from "../db/backup.js";
 import { migrateDown, migrateUp } from "../db/migrate-runner.js";
 import {
   audit,
@@ -106,7 +107,9 @@ async function main(): Promise<void> {
     }
     case "backup": {
       const dest = resolve(botConfig.backupDir, `bot-${Date.now()}.sqlite`);
-      copyFileSync(botConfig.dbPath, dest);
+      // SQLite online backup: copying the main file while WAL is active can
+      // silently omit committed rows still stored in bot.sqlite-wal.
+      createDatabaseBackup(dest);
       console.log("backup", dest);
       audit("backup", { dest });
       break;

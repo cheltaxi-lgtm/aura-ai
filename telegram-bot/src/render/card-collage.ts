@@ -282,8 +282,8 @@ export async function renderDayCardImage(card: DrawnCard): Promise<Buffer> {
 }
 
 export async function renderShareCollage(cards: DrawnCard[], question: string): Promise<Buffer> {
-  return renderTripletCollage(cards, {
-    revealedCount: 3,
+  return renderSpreadCollage(cards, {
+    revealedCount: cards.length,
     question,
     watermark: true,
   });

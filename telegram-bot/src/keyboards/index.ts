@@ -229,6 +229,7 @@ export function catalogListKeyboard(
 }
 
 export function catalogItemKeyboard(opts: {
+  confirmationId?: string;
   native: boolean;
   url: string;
   /** exact | site_only — controls in-bot button (approx = legacy alias for exact). */
@@ -239,7 +240,7 @@ export function catalogItemKeyboard(opts: {
   const mode = opts.runMode ?? (opts.native !== false ? "exact" : "site_only");
   const botCost = Math.max(0, Math.round(opts.botCost ?? 15));
   if (mode === "exact" || mode === "approx") {
-    kb.text(`🔮 Сделать в боте · ${botCost}ᚢ`, CB.catRun).row();
+    kb.text(`🔮 Сделать в боте · ${botCost}ᚢ`, opts.confirmationId ? `${CB.catRun}:${opts.confirmationId}` : CB.catRun).row();
   }
   webAppButton(kb, `🕯 ${copy.catalogOpenSite}`, opts.url).row();
   // Back to the same list page (edit in place), not a new home message.
@@ -287,6 +288,7 @@ export function chatFollowUpKeyboard(sessionId: string): InlineKeyboard {
 export function readingPagerKeyboard(opts: {
   page: number;
   total: number;
+  viewId?: string | null;
   chatUrl?: string | null;
   /** Destiny matrix actions on the same album keyboard (not a second bubble). */
   matrixActions?: boolean;
@@ -297,10 +299,11 @@ export function readingPagerKeyboard(opts: {
   const page = Math.min(Math.max(0, opts.page), total - 1);
 
   if (total > 1) {
-    if (page > 0) kb.text("‹", `${CB.rdPagePrefix}${page - 1}`);
+    const prefix = opts.viewId ? `${CB.rdPagePrefix}${opts.viewId}:` : CB.rdPagePrefix;
+    if (page > 0) kb.text("‹", `${prefix}${page - 1}`);
     else kb.text("·", CB.rdNoop);
     kb.text(`${page + 1} / ${total}`, CB.rdNoop);
-    if (page + 1 < total) kb.text("›", `${CB.rdPagePrefix}${page + 1}`);
+    if (page + 1 < total) kb.text("›", `${prefix}${page + 1}`);
     else kb.text("·", CB.rdNoop);
     kb.row();
   }
@@ -313,15 +316,16 @@ export function readingPagerKeyboard(opts: {
   }
 
   if (opts.matrixActions) {
+    const action = (value: string) => opts.viewId ? `${value}:v:${opts.viewId}` : value;
     // Living cycle: zones · period · share · replace · delete.
-    kb.text("🗺 Зоны", CB.mxZones)
-      .text("📅 Узел периода", CB.mxPeriod)
+    kb.text("🗺 Зоны", action(CB.mxZones))
+      .text("📅 Узел периода", action(CB.mxPeriod))
       .row()
-      .text("📤 Карточка зоны", CB.mxShare)
+      .text("📤 Карточка зоны", action(CB.mxShare))
       .row()
-      .text("✨ Новая матрица", CB.mxNew)
+      .text("✨ Новая матрица", action(CB.mxNew))
       .row()
-      .text("🗑 Удалить разбор", CB.mxDel);
+      .text("🗑 Удалить разбор", action(CB.mxDel));
   }
   return kb;
 }
@@ -369,6 +373,7 @@ export function profileKeyboard(opts: {
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
   kb.text("📚 История", CB.profHist).row();
+  if (opts.linked) kb.text("Восстановить запрос", "op:list").row();
   kb.text("🧬 Дизайн Человека", CB.modHd).row();
   kb.text("✋ Ладонь", CB.modPalm).row();
   kb.text("🪙 Руны", CB.profRunes).text("⚙️ Настройки", CB.profSettings).row();
@@ -522,14 +527,15 @@ export function historyDeleteConfirmKeyboard(sessionId: string): InlineKeyboard 
  */
 export function matrixGetKeyboard(opts: {
   cost: number;
+  viewId?: string;
   shopUrl?: string | null;
   runeBalance?: number | null;
 }): InlineKeyboard {
   const cost = Math.max(0, Math.round(opts.cost || 0));
   const kb = new InlineKeyboard()
-    .text(`✨ Получить полный разбор · ${cost}ᚢ`, CB.mxRun)
+    .text(`✨ Получить полный разбор · ${cost}ᚢ`, opts.viewId ? `${CB.mxRun}:v:${opts.viewId}` : CB.mxRun)
     .row()
-    .text("📅 Узел периода", CB.mxPeriod)
+    .text("📅 Узел периода", opts.viewId ? `${CB.mxPeriod}:v:${opts.viewId}` : CB.mxPeriod)
     .row()
     .text("👥 Чья матрица", CB.mxSubjects);
   const bal = opts.runeBalance;
@@ -543,19 +549,20 @@ export function matrixGetKeyboard(opts: {
 }
 
 /** Owned full report actions (standalone; pager uses readingPagerKeyboard). */
-export function matrixOwnedKeyboard(opts?: { siteUrl?: string | null }): InlineKeyboard {
+export function matrixOwnedKeyboard(opts?: { siteUrl?: string | null; viewId?: string }): InlineKeyboard {
+  const bound = (action: string) => opts?.viewId ? `${action}:v:${opts.viewId}` : action;
   const kb = new InlineKeyboard()
-    .text("🗺 Зоны", CB.mxZones)
-    .text("📅 Узел периода", CB.mxPeriod)
+    .text("🗺 Зоны", bound(CB.mxZones))
+    .text("📅 Узел периода", bound(CB.mxPeriod))
     .row()
-    .text("📤 Карточка зоны", CB.mxShare)
+    .text("📤 Карточка зоны", bound(CB.mxShare))
     .row()
     .text("👥 Чья матрица", CB.mxSubjects)
     .text("📚 Мои отчёты", CB.mxList)
     .row()
-    .text("✨ Новая матрица", CB.mxNew)
+    .text("✨ Новая матрица", bound(CB.mxNew))
     .row()
-    .text("🗑 Удалить разбор", CB.mxDel);
+    .text("🗑 Удалить разбор", bound(CB.mxDel));
   if (opts?.siteUrl) {
     kb.row();
     webAppButton(kb, `🕯 ${copy.continueDiscussionOnSite}`, opts.siteUrl);
@@ -563,15 +570,15 @@ export function matrixOwnedKeyboard(opts?: { siteUrl?: string | null }): InlineK
   return kb;
 }
 
-export function matrixDeleteConfirmKeyboard(): InlineKeyboard {
+export function matrixDeleteConfirmKeyboard(viewId: string): InlineKeyboard {
   return new InlineKeyboard()
-    .text("🗑 Да, удалить", CB.mxDelYes)
+    .text("🗑 Да, удалить", `${CB.mxDelYes}:v:${viewId}`)
     .text("↩ Отмена", CB.mxDelNo);
 }
 
-export function matrixNewConfirmKeyboard(cost = 20): InlineKeyboard {
+export function matrixNewConfirmKeyboard(cost = 20, viewId: string): InlineKeyboard {
   return new InlineKeyboard()
-    .text(`✨ Да, новая · ${cost}ᚢ`, CB.mxNewYes)
+    .text(`✨ Да, новая · ${cost}ᚢ`, `${CB.mxNewYes}:v:${viewId}`)
     .text("↩ Отмена", CB.mxNewNo);
 }
 

@@ -15,6 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHECKS, LEVELS, PATH_SCOPES, REVIEW_IDS, SCOPES, STATE_PATH } from "./ai-harness-catalog.mjs";
 import { completedAllowed } from "./ai-harness-gate.mjs";
+import { workspaceFingerprint, requiredReviewIds } from "./ai-harness-fingerprint.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -139,7 +140,7 @@ function expandCmd(check) {
   if (check.vitest) {
     return {
       bin: npxBin,
-      args: ["vitest", "run", ...check.vitest],
+      args: ["vitest", "run", ...check.vitest, ...(check.vitestArgs || [])],
       cwd: ROOT,
     };
   }
@@ -325,8 +326,15 @@ async function recordReview(id, result) {
   if (!REVIEW_IDS.includes(id)) throw new Error(`Unknown review ${id}`);
   if (!["PASS", "FAIL", "PARTIAL"].includes(result)) throw new Error("result must be PASS|FAIL|PARTIAL");
   const state = readState();
+  const fingerprint = workspaceFingerprint();
+  if (result === "PASS" && (state.verdict !== "PASS" || !state.diffFingerprint || state.diffFingerprint !== fingerprint)) {
+    throw new Error("Cannot record PASS review: run passing checks against the current diff first.");
+  }
   state.reviews = { ...(state.reviews || {}), [id]: result };
-  state.updatedAt = new Date().toISOString();
+  state.reviewEvidence = { ...(state.reviewEvidence || {}), [id]: {
+    result, reviewedAt: new Date().toISOString(), diffFingerprint: fingerprint, head: headSha(),
+  } };
+  // Reviewing must not refresh the age of the underlying test evidence.
   writeState(state);
   return state;
 }
@@ -381,6 +389,7 @@ async function main() {
     process.exit(0);
   }
 
+  const fingerprintBefore = workspaceFingerprint();
   const rows = [];
   for (const id of checkIds) {
     if (id === "__selftest_fail__") {
@@ -393,11 +402,17 @@ async function main() {
     console.error(`[harness] ${row.status} ${id}${row.reason ? ` — ${String(row.reason).split("\n")[0]}` : ""}`);
   }
 
+  const fingerprintAfter = workspaceFingerprint();
+  if (fingerprintBefore !== fingerprintAfter) {
+    rows.push({ id: "workspace-stable", title: "workspace unchanged during checks", status: "PARTIAL", durationMs: 0,
+      reason: "Working tree changed during verification; rerun against the final diff." });
+  }
   const verdict = verdictOf(rows, plan.productionRequired);
   const production = productionOf(rows, plan.productionRequired);
   const state = {
-    version: 1,
+    version: 2,
     updatedAt: new Date().toISOString(),
+    checksCompletedAt: new Date().toISOString(),
     scope: args.scope,
     scopes: plan.scopes,
     level: args.level,
@@ -407,6 +422,12 @@ async function main() {
     requiredChecks: checkIds.filter((id) => id !== "__selftest_fail__"),
     checks: rows,
     reviews: readState().reviews || {},
+    reviewEvidence: readState().reviewEvidence || {},
+    requiredReviews: [...new Set([
+      ...plan.scopes.flatMap(scope => SCOPES[scope].reviews || []),
+      ...requiredReviewIds(files, plan.productionRequired),
+    ])],
+    diffFingerprint: fingerprintAfter,
     head: headSha(),
     files: files.slice(0, 80),
   };

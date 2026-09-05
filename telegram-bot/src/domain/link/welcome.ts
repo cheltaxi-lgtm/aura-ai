@@ -2,9 +2,13 @@ import { botConfig } from "../../config.js";
 import { getDb, nowIso } from "../../db/client.js";
 import { copy } from "../../copy/ru.js";
 import { siteMiniAppShellUrl, siteSetMiniAppNav } from "../site-client.js";
+import { withUserActivity } from "../../middleware/activity.js";
+import { isUserErasing } from "../user-erasure.js";
 
 /** One-time salon message after Zovus account is linked (link-code or claim). */
 export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void> {
+  if (isUserErasing(telegramUserId)) return;
+  return withUserActivity(telegramUserId, async () => {
   const db = getDb();
   const user = db
     .prepare(
@@ -27,10 +31,15 @@ export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void
 
   const text = copy.linkWelcome(telegramUserId, 0);
   await siteSetMiniAppNav(telegramUserId, "/").catch(() => undefined);
+  if (isUserErasing(telegramUserId)) return;
+  const current = db.prepare(`SELECT blocked_at, banned_at, unsubscribed_at FROM bot_users WHERE telegram_user_id = ?`)
+    .get(telegramUserId) as { blocked_at?: string; banned_at?: string; unsubscribed_at?: string } | undefined;
+  if (!current || current.blocked_at || current.banned_at || current.unsubscribed_at) return;
   const shell = siteMiniAppShellUrl();
   try {
     const res = await fetch(`https://api.telegram.org/bot${botConfig.token}/sendMessage`, {
       method: "POST",
+      signal: AbortSignal.timeout(15_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: user.chat_id,
@@ -48,4 +57,5 @@ export async function maybeSendLinkWelcome(telegramUserId: number): Promise<void
   } catch (err) {
     console.error("[link-welcome]", err);
   }
+  });
 }

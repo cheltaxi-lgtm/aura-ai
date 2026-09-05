@@ -18,6 +18,7 @@ export async function POST(request: NextRequest) {
     action?: unknown;
     report_id?: unknown;
     replace?: unknown;
+    operation_id?: unknown;
     subject_id?: unknown;
     kind?: unknown;
     display_name?: unknown;
@@ -29,6 +30,7 @@ export async function POST(request: NextRequest) {
       action?: unknown;
       report_id?: unknown;
       replace?: unknown;
+      operation_id?: unknown;
       subject_id?: unknown;
       kind?: unknown;
       display_name?: unknown;
@@ -64,6 +66,7 @@ export async function POST(request: NextRequest) {
     action,
     reportId,
     replace,
+    operationId: typeof body.operation_id === "string" ? body.operation_id : undefined,
     subjectId: typeof body.subject_id === "string" ? body.subject_id : undefined,
     kind: typeof body.kind === "string" ? body.kind : undefined,
     displayName: typeof body.display_name === "string" ? body.display_name : undefined,

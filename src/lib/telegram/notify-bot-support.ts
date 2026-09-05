@@ -1,6 +1,7 @@
 /** Best-effort: push support reply into Telegram bot. */
 export async function notifyBotSupportReply(input: {
   telegramUserId: number;
+  sourceProfileUserId: string;
   ticketId: string;
   subject: string;
   preview: string;
@@ -18,6 +19,7 @@ export async function notifyBotSupportReply(input: {
       },
       body: JSON.stringify({
         telegram_user_id: input.telegramUserId,
+        source_profile_user_id: input.sourceProfileUserId,
         ticket_id: input.ticketId,
         subject: input.subject.slice(0, 160),
         preview: input.preview.slice(0, 800),

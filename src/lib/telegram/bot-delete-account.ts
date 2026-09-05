@@ -2,15 +2,15 @@
  * Full Zovus account erasure initiated from the Telegram bot (152-FZ).
  */
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
-import { deleteUserAccountCompletely, deleteUserAccountOnly } from "@/lib/user-deletion";
-import { resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { pendingTelegramErasure, requestAccountErasure } from "@/lib/account-erasure";
+import { findTelegramIdentity } from "@/lib/telegram/accounts";
 
 export type BotDeleteAccountResult =
   | {
       ok: true;
-      deleted: true;
-      accountRemoved: number;
-      userRemoved: number;
+      deleted: false;
+      pending: true;
+      operationId: string;
     }
   | {
       ok: false;
@@ -20,8 +20,10 @@ export type BotDeleteAccountResult =
     };
 
 export async function botDeleteAccount(telegramUserId: number): Promise<BotDeleteAccountResult> {
-  const resolved = await resolveBotUser(telegramUserId);
-  if (!resolved.linked || !resolved.accountId) {
+  const pending = await pendingTelegramErasure(telegramUserId);
+  if (pending) return { ok: true, deleted: false, pending: true, operationId: pending.id };
+  const identity = await findTelegramIdentity(telegramUserId);
+  if (!identity) {
     return {
       ok: false,
       error: "not_linked",
@@ -30,7 +32,7 @@ export async function botDeleteAccount(telegramUserId: number): Promise<BotDelet
   }
 
   const { allowed, retryAfterSec } = await checkRateLimit(
-    rateLimitKey("bot_user_delete", resolved.accountId),
+    rateLimitKey("bot_user_delete", identity.user_account_id),
     3,
     86_400_000
   );
@@ -44,26 +46,8 @@ export async function botDeleteAccount(telegramUserId: number): Promise<BotDelet
   }
 
   try {
-    if (!resolved.profileUserId) {
-      const result = await deleteUserAccountOnly(resolved.accountId);
-      return {
-        ok: true,
-        deleted: true,
-        accountRemoved: result.accountRemoved,
-        userRemoved: 0,
-      };
-    }
-
-    const result = await deleteUserAccountCompletely(
-      resolved.accountId,
-      resolved.profileUserId
-    );
-    return {
-      ok: true,
-      deleted: true,
-      accountRemoved: result.accountRemoved,
-      userRemoved: result.userRemoved,
-    };
+    const result = await requestAccountErasure(identity.user_account_id);
+    return { ok: true, deleted: false, pending: true, operationId: result.operationId };
   } catch (err) {
     console.error("[bot-delete-account]", err);
     return {

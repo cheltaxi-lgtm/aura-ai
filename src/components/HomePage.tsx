@@ -229,8 +229,9 @@ export default function HomePage({
   const { isLoggedIn, loading: authLoading, user: authUser, refresh: refreshAuth } = useAuth();
   const { openPaywall, showRateLimit } = usePaywall();
 
+  const [accountErasureNotice, setAccountErasureNotice] = useState(false);
   useEffect(() => {
-    consumeAccountDeletedHomeArrival();
+    if (consumeAccountDeletedHomeArrival()) setAccountErasureNotice(true);
   }, []);
 
   const [selectedCharacter, setSelectedCharacterState] = useState<string | null>(null);
@@ -3466,6 +3467,12 @@ export default function HomePage({
               : "relative z-10 mx-auto max-w-7xl px-6 py-8 md:py-12"
         }
       >
+        {accountErasureNotice && (
+          <div role="status" className="mx-4 my-4 rounded-xl border border-amber-500/30 bg-amber-500/10 px-4 py-3 text-sm text-amber-100">
+            <p>Удаление аккаунта началось. Доступ закрыт; данные на сайте и в Telegram будут очищены автоматически.</p>
+            <button type="button" onClick={() => setAccountErasureNotice(false)} className="mt-2 text-amber-300 underline">Понятно</button>
+          </div>
+        )}
         {paymentNotice && (
           <div
             role="alert"

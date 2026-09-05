@@ -79,7 +79,12 @@ export async function unlinkTelegramFromAccount(accountId: string): Promise<{
   unlinked: boolean;
   telegramUserId: number | null;
 }> {
-  const { rows } = await query<{ telegram_user_id: string }>(
+  return withTransaction(async (client) => {
+  const account = await client.query<{ erasure_requested_at: unknown }>(
+    `SELECT erasure_requested_at FROM user_accounts WHERE id = $1 FOR UPDATE`, [accountId]
+  );
+  if (account.rows[0]?.erasure_requested_at) throw new Error("account_erasure_pending");
+  const { rows } = await client.query<{ telegram_user_id: string }>(
     `DELETE FROM user_telegram_identities
      WHERE user_account_id = $1
      RETURNING telegram_user_id::text`,
@@ -92,6 +97,7 @@ export async function unlinkTelegramFromAccount(accountId: string): Promise<{
     unlinked: Boolean(rows[0]),
     telegramUserId,
   };
+  });
 }
 
 export type TelegramLoginResult =
@@ -124,7 +130,7 @@ export type TelegramLinkResult =
   | { ok: true; alreadyLinked: boolean; username: string | null }
   | {
       ok: false;
-      code: "telegram_taken" | "account_has_telegram";
+      code: "telegram_taken" | "account_has_telegram" | "erasure_pending";
     };
 
 export async function linkTelegramToAccount(opts: {
@@ -132,9 +138,21 @@ export async function linkTelegramToAccount(opts: {
   data: TelegramLoginPayload;
 }): Promise<TelegramLinkResult> {
   return withTransaction(async (client) => {
+    const account = await client.query<{ erasure_requested_at: unknown }>(
+      `SELECT erasure_requested_at FROM user_accounts WHERE id = $1 FOR UPDATE`, [opts.accountId]
+    );
+    if (!account.rows[0] || account.rows[0].erasure_requested_at) {
+      return { ok: false as const, code: "erasure_pending" as const };
+    }
     await queryClient(client, "SELECT pg_advisory_xact_lock(hashtext($1))", [
       `telegram:${opts.data.id}`,
     ]);
+
+    const erasing = await client.query(
+      `SELECT id FROM account_erasure_jobs WHERE stage <> 'completed'
+       AND telegram_user_ids @> ARRAY[$1::bigint] LIMIT 1`, [opts.data.id]
+    );
+    if (erasing.rows[0]) return { ok: false as const, code: "erasure_pending" as const };
 
     const byTg = await queryClient<{ user_account_id: string }>(
       client,

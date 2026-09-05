@@ -26,6 +26,7 @@ import {
 import { parseStartPayload } from "../domain/attribution.js";
 import { PAIN_CHIPS } from "../domain/question/validate.js";
 import type { DrawnCard } from "../domain/deck/types.js";
+import { drawnCardsFromSiteCards } from '../domain/reading/present.js';
 import {
   CB,
   NAV,
@@ -45,12 +46,13 @@ import {
 } from "../keyboards/index.js";
 import { isShareCardEnabled } from "../flags.js";
 import { renderShareCollage } from "../render/card-collage.js";
-import { renderProfileCardImage } from "../render/profile-card.js";
+import { renderProfileCardImage, profileText, type ProfileCardInput } from "../render/profile-card.js";
 import {
   isTelegramShellEmail,
   siteCabinet,
   siteDeleteAccount,
   siteHistory,
+  siteReading,
 } from "../domain/site-client.js";
 import {
   beginChatFollowUp,
@@ -363,6 +365,7 @@ export function registerFlows(bot: Bot): void {
     let question = "";
     let cardNames: string[] = [];
     let sessionKey = "";
+    let savedCards: DrawnCard[] = [];
 
     try {
       const hist = await siteHistory(user.telegram_user_id, 8);
@@ -371,6 +374,8 @@ export function registerFlows(bot: Bot): void {
         cardNames = withCards.cards;
         question = withCards.topic || "";
         sessionKey = withCards.sessionId;
+        const detail = await siteReading(user.telegram_user_id, sessionKey);
+        if (detail.data.ok && detail.data.structuredCards?.length) savedCards = drawnCardsFromSiteCards(detail.data.structuredCards);
       }
     } catch {
       /* fall back to local guest sessions */
@@ -384,19 +389,12 @@ export function registerFlows(bot: Bot): void {
       }
       sessionKey = rows[0].id;
       question = rows[0].question;
-      cardNames = (JSON.parse(rows[0].cards) as DrawnCard[]).map((c) => c.name);
+      savedCards = JSON.parse(rows[0].cards) as DrawnCard[];
+      cardNames = savedCards.map((c) => c.name);
     }
 
     trackEvent("share_clicked", user.telegram_user_id, { session_id: sessionKey });
-    const enriched = cardNames.slice(0, 3).map((name, i) => ({
-      id: i + 1,
-      name,
-      reversed: false,
-      meaning: "",
-      slug: `card-${i + 1}`,
-      positionLabel: ["Прошлое", "Настоящее", "Будущее"][i] || String(i),
-      position: i,
-    }));
+    const enriched = savedCards.length ? savedCards : drawnCardsFromSiteCards(cardNames.map((name, i) => ({ name, positionLabel: `Карта ${i + 1}` })));
     try {
       const img = await renderShareCollage(enriched as DrawnCard[], question);
       const code = ensureRefCode(user.telegram_user_id);
@@ -453,6 +451,12 @@ export function registerFlows(bot: Bot): void {
         }
         await ctx.reply(site.message || copy.deleteSiteFailed, {
           reply_markup: salonKeyboard(),
+        });
+        return;
+      }
+      if (site.pending || !site.deleted) {
+        await ctx.reply('Запрос на удаление принят. Данные в кабинете и Telegram очищаются автоматически. Новые действия временно недоступны.', {
+          reply_markup: removeKeyboardMarkup(),
         });
         return;
       }
@@ -627,7 +631,7 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
   }
 }
 
-async function showProfile(ctx: Context): Promise<void> {
+export async function showProfile(ctx: Context): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
 
@@ -648,22 +652,23 @@ async function showProfile(ctx: Context): Promise<void> {
   }
 
   const timezone = formatTimezoneLabel(user);
-  let card = {
+  let card: ProfileCardInput = {
     name: user.first_name || "Гость",
     linked,
     unlimited: false,
     zodiac: null as string | null,
     birthDate: null as string | null,
-    memberSince: user.created_at,
-    runeBalance: site?.runeBalance ?? 0,
-    totalSessions: countSessions(user.telegram_user_id),
-    totalCards: 0,
-    daysWithUs: user.streak_days || 1,
+    memberSince: linked ? null : user.created_at,
+    runeBalance: site?.runeBalance ?? null,
+    totalSessions: linked ? null : countSessions(user.telegram_user_id),
+    totalCards: null,
+    daysWithUs: null,
+    statsUnavailable: linked,
     favoriteMasterName: null as string | null,
     natalLabel: null as string | null,
-    matrices: 0,
-    photos: 0,
-    rituals: 0,
+    matrices: null,
+    photos: null,
+    rituals: null,
     timezone,
     streak: user.streak_days,
   };
@@ -678,21 +683,22 @@ async function showProfile(ctx: Context): Promise<void> {
         card = {
           name: data.profile?.name || card.name,
           linked: true,
+          statsUnavailable: !data.stats,
           unlimited: Boolean(data.profile?.unlimited),
           zodiac: data.profile?.zodiac ?? null,
           birthDate: data.profile?.birthDate ?? null,
           memberSince: data.profile?.memberSince || card.memberSince,
           runeBalance: data.runeBalance ?? card.runeBalance,
           totalSessions: data.stats?.totalSessions ?? card.totalSessions,
-          totalCards: data.stats?.totalCards ?? 0,
+          totalCards: data.stats?.totalCards ?? null,
           daysWithUs: data.stats?.daysWithUs ?? card.daysWithUs,
           favoriteMasterName: data.stats?.favoriteMasterName ?? null,
           natalLabel: data.natal?.hasChart
             ? (data.natal.bigThree || []).slice(0, 3).join(" · ") || "есть карта"
             : "не построена",
-          matrices: data.stats?.matrices ?? data.numerology?.matrices?.length ?? 0,
-          photos: data.stats?.photos ?? data.photo?.items?.length ?? 0,
-          rituals: data.stats?.rituals ?? data.rituals?.recent?.length ?? 0,
+          matrices: data.stats?.matrices ?? data.numerology?.matrices?.length ?? null,
+          photos: data.stats?.photos ?? data.photo?.items?.length ?? null,
+          rituals: data.stats?.rituals ?? data.rituals?.recent?.length ?? null,
           timezone,
           streak: user.streak_days,
         };
@@ -716,6 +722,7 @@ async function showProfile(ctx: Context): Promise<void> {
     await ctx.replyWithChatAction("upload_photo");
     const buf = await renderProfileCardImage(card);
     await ctx.replyWithPhoto(new InputFile(buf, "profile.jpg"), {
+      caption: profileText(card),
       reply_markup: profileKeyboard({
         linked,
         cabinetUrl: linked ? cabinetUrl : null,
@@ -737,18 +744,7 @@ async function showProfile(ctx: Context): Promise<void> {
     }
   } catch (err) {
     console.error("[profile] render failed, text fallback", err);
-    const body = copy.profile({
-      since: (card.memberSince || "").slice(0, 10),
-      streak: user.streak_days,
-      spreads: card.totalSessions,
-      age: Boolean(user.age_confirmed_at),
-      consent: Boolean(user.terms_accepted_at && user.privacy_accepted_at),
-      refLink: inviteUrl,
-      invites: user.referral_count ?? 0,
-      timezone,
-      zovusLinked: linked,
-    });
-    await ctx.reply(`${body}\nРуны: ${card.runeBalance}`, {
+    await ctx.reply(profileText(card), {
       reply_markup: profileKeyboard({
         linked,
         cabinetUrl: linked ? cabinetUrl : null,

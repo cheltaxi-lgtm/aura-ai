@@ -29,6 +29,7 @@ import { markIrreversible } from "../middleware/irreversible.js";
 import { ensureOnboarded, track } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
 import { SPREAD_QUESTION_STEPS } from "./spread-steps.js";
+import { pendingOperation, savePaidResult, deliveredOperation } from '../domain/paid-operation.js';
 
 let copyCounter = 0;
 
@@ -100,18 +101,8 @@ export async function runCatalogIntent(
     intent_slug: slug,
     channel: "site",
   });
-  const priorCatalog = getFlow(user.telegram_user_id);
-  // Catalog retries re-navigate (flow is overwritten), so the retry key must
-  // not depend on flow state: same item inside a 10-minute bucket collapses
-  // to one site charge; after the bucket it is a legitimate new purchase.
-  const catalogRetryBucket = Math.floor(Date.now() / (10 * 60_000));
-  const catalogEventId =
-    priorCatalog?.flow === "spread" &&
-    priorCatalog.step === "drawing" &&
-    priorCatalog.data.intentSlug === slug &&
-    typeof priorCatalog.data.clientEventId === "string"
-      ? priorCatalog.data.clientEventId
-      : `cat:${slug}:${catalogRetryBucket}`;
+  const operation = pendingOperation(user.telegram_user_id, 'catalog', { slug, question: questionHint || '' });
+  const catalogEventId = operation.id;
   setFlow(user.telegram_user_id, "spread", "drawing", {
     intentSlug: slug,
     question: questionHint || "",
@@ -119,16 +110,17 @@ export async function runCatalogIntent(
     clientEventId: catalogEventId,
   });
 
-  await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
-  await ctx.replyWithChatAction("typing");
-  await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
+  await ctx.reply(operation.result ? 'Открываю сохранённый ответ. Повторного списания нет.' : copy.shuffling(user.telegram_user_id, copyCounter++)).catch(() => undefined);
+  await ctx.replyWithChatAction("typing").catch(() => undefined);
 
   // Point of no return: the next call may charge runes.
   markIrreversible(ctx);
 
   let result: Awaited<ReturnType<typeof siteCatalogSpread>>;
   try {
-    result = await siteCatalogSpread(user.telegram_user_id, slug, catalogEventId);
+    result = operation.result ? { data: JSON.parse(operation.result), ok: true, status: 200 } as typeof result
+      : await siteCatalogSpread(user.telegram_user_id, slug, catalogEventId);
+    savePaidResult(operation.id, result.data);
   } catch (err) {
     console.error("[spread] catalog intent failed", err);
     // Keep the drawing flow: re-tapping the same catalog item reuses
@@ -138,11 +130,12 @@ export async function runCatalogIntent(
   }
 
   try {
-    await deliverSiteSpreadResult(ctx, user, result.data, {
+    await deliverSiteSpreadResult(ctx, user, operation.result ? { ...result.data, charged: 0, runeBalance: undefined } : result.data, {
       source: "catalog",
       question: questionHint || "",
       spreadIdFallback: result.data.spreadId,
     });
+    deliveredOperation(operation.id);
   } catch (err) {
     console.error("[spread] catalog delivery failed after site success", err);
     trackEvent("spread_delivery_failed", user.telegram_user_id, {
@@ -182,28 +175,16 @@ async function runSiteSpread(
   }
 
   track(user, "question_submitted", { source, question_len: validated.question.length, channel: "site" });
-  const prior = getFlow(user.telegram_user_id);
-  // Reuse the event id when the user retries the SAME question after a
-  // network failure — the site dedupes by this key, so no double charge.
-  const priorEventId =
-    prior?.flow === "spread" && typeof prior.data.clientEventId === "string"
-      ? prior.data.clientEventId
-      : null;
-  const isRetryOfSameQuestion =
-    (prior?.step === "drawing" && prior.data.question === validated.question) ||
-    (SPREAD_QUESTION_STEPS.has(prior?.step ?? "") &&
-      prior?.data.failedQuestion === validated.question);
-  const clientEventId =
-    isRetryOfSameQuestion && priorEventId ? priorEventId : String(ctx.update.update_id);
+  const operation = pendingOperation(user.telegram_user_id, 'spread', { question: validated.question });
+  const clientEventId = operation.id;
   setFlow(user.telegram_user_id, "spread", "drawing", {
     question: validated.question,
     source,
     clientEventId,
   });
 
-  await ctx.reply(copy.pause(user.telegram_user_id, copyCounter++));
-  await ctx.replyWithChatAction("typing");
-  await ctx.reply(copy.shuffling(user.telegram_user_id, copyCounter++));
+  await ctx.reply(operation.result ? 'Открываю сохранённый ответ. Повторного списания нет.' : copy.shuffling(user.telegram_user_id, copyCounter++)).catch(() => undefined);
+  await ctx.replyWithChatAction("typing").catch(() => undefined);
 
   // Point of no return: the next call may charge runes. Telegram retries of
   // this update must stay no-ops from here on.
@@ -211,7 +192,9 @@ async function runSiteSpread(
 
   let result: Awaited<ReturnType<typeof siteSpread>>;
   try {
-    result = await siteSpread(user.telegram_user_id, validated.question, clientEventId);
+    result = operation.result ? { data: JSON.parse(operation.result), ok: true, status: 200 } as typeof result
+      : await siteSpread(user.telegram_user_id, validated.question, clientEventId);
+    savePaidResult(operation.id, result.data);
   } catch (err) {
     console.error("[spread] site call failed", err);
     // Do NOT clearFlow: restore the entry step with the same event id so a
@@ -227,10 +210,11 @@ async function runSiteSpread(
   }
 
   try {
-    await deliverSiteSpreadResult(ctx, user, result.data, {
+    await deliverSiteSpreadResult(ctx, user, operation.result ? { ...result.data, charged: 0, runeBalance: undefined } : result.data, {
       source,
       question: validated.question,
     });
+    deliveredOperation(operation.id);
   } catch (err) {
     // Runes may be charged and the session saved on the site — never leave
     // the user in silence. The reading is waiting in history.
@@ -309,7 +293,7 @@ async function deliverSiteSpreadResult(
     card_count: data.cards.length,
   });
 
-  await ctx.replyWithChatAction("upload_photo");
+  await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
   const footer =
     data.runeBalance != null
       ? `Баланс: ${data.runeBalance} рун${data.charged ? ` (−${data.charged})` : ""}.`

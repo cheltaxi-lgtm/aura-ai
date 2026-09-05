@@ -1,3 +1,5 @@
+import { readInternalBody as readBody } from "./read-body.js";
+import { withInternalUserActivity, rejectErasingUser } from "./internal-user-activity.js";
 import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { botConfig } from "../config.js";
@@ -31,14 +33,6 @@ function rateOk(ip: string, limit = 60): boolean {
   return slot.n <= limit;
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   const payload = JSON.stringify(body);
@@ -152,6 +146,12 @@ export async function handleInternalReceipt(
 
   const hash = hashSessionToken(token);
   const row = findSessionByTokenHash(hash);
+  if (!row) {
+    await settle(start);
+    json(res, 404, { ok: false, error: "invalid_token" });
+    return true;
+  }
+  return withInternalUserActivity(row.telegram_user_id, res, async () => {
 
   if (path === "/internal/receipt/verify") {
     if (!row) {
@@ -175,6 +175,7 @@ export async function handleInternalReceipt(
       return true;
     }
     await settle(start);
+    if (rejectErasingUser(row.telegram_user_id, res)) return true;
     json(res, 200, { ok: true, session: sessionPayload(row) });
     return true;
   }
@@ -214,6 +215,7 @@ export async function handleInternalReceipt(
       .get(row.telegram_user_id) as { zovus_user_id: string | null } | undefined;
     if (user?.zovus_user_id === zovusUserId) {
       await settle(start);
+      if (rejectErasingUser(row.telegram_user_id, res)) return true;
       json(res, 200, {
         ok: true,
         alreadyClaimed: true,
@@ -254,10 +256,12 @@ export async function handleInternalReceipt(
 
   const fresh = findSessionByTokenHash(hash)!;
   await settle(start);
+  if (rejectErasingUser(row.telegram_user_id, res)) return true;
   json(res, 200, {
     ok: true,
     alreadyClaimed: false,
     session: sessionPayload(fresh),
   });
   return true;
+  });
 }

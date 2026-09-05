@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { ensureDb } from "@/lib/db";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
 import { clearAuthCookie } from "@/lib/auth";
 import { requireUserAuth } from "@/lib/require-auth";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { clearSessionClaimCookie } from "@/lib/session-claim";
-import { deleteUserAccountCompletely, deleteUserAccountOnly } from "@/lib/user-deletion";
+import { requestAccountErasure } from "@/lib/account-erasure";
 
 const CONFIRM_PHRASE = "УДАЛИТЬ";
 
@@ -38,29 +37,6 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  const profileUserId = await getProfileUserIdForAccount(auth.sub);
-  if (!profileUserId) {
-    const { allowed, retryAfterSec } = await checkRateLimit(
-      rateLimitKey("user_delete", auth.sub),
-      3,
-      86_400_000
-    );
-    if (!allowed) {
-      return NextResponse.json(
-        {
-          error: "rate_limit",
-          message: "Удаление аккаунта можно выполнять не чаще нескольких раз в сутки.",
-          retryAfterSec,
-        },
-        { status: 429, headers: { "Retry-After": String(retryAfterSec ?? 86400) } }
-      );
-    }
-    const result = await deleteUserAccountOnly(auth.sub);
-    await clearAuthCookie(request);
-    await clearSessionClaimCookie(request);
-    return NextResponse.json({ ok: true, ...result });
-  }
-
   const { allowed, retryAfterSec } = await checkRateLimit(
     rateLimitKey("user_delete", auth.sub),
     3,
@@ -77,9 +53,19 @@ export async function DELETE(request: NextRequest) {
     );
   }
 
-  const result = await deleteUserAccountCompletely(auth.sub, profileUserId);
+  let result;
+  try {
+    result = await requestAccountErasure(auth.sub);
+  } catch {
+    return NextResponse.json({
+      error: "account_cleanup_unavailable",
+      message: "Не удалось принять запрос на удаление. Попробуйте позже.",
+    }, { status: 503 });
+  }
   await clearAuthCookie(request);
   await clearSessionClaimCookie(request);
-
-  return NextResponse.json({ ok: true, ...result });
+  return NextResponse.json({
+    ok: true, ...result,
+    message: "Удаление началось. Доступ к аккаунту закрыт; данные на сайте и в Telegram будут очищены автоматически.",
+  }, { status: 202 });
 }

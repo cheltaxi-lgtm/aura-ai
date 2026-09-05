@@ -34,6 +34,7 @@ export interface SupportMessageRow {
 }
 
 export interface SupportTicketWithMeta extends SupportTicketRow {
+  profile_user_id?: string | null;
   user_email?: string;
   user_name?: string;
   assigned_admin_name?: string | null;

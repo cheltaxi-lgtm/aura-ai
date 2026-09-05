@@ -1,4 +1,4 @@
-import { readdirSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { getDb, migrate as ensureBaseline, nowIso } from "./client.js";
@@ -73,7 +73,7 @@ export function migrateUp(): string[] {
   return appliedNow;
 }
 
-export function migrateDown(): string[] {
+export function migrateDown(migrationsDirectory = dir): string[] {
   ensureMigrationsTable();
   const rows = getDb()
     .prepare(`SELECT id FROM bot_schema_migrations ORDER BY id DESC`)
@@ -81,15 +81,18 @@ export function migrateDown(): string[] {
   if (!rows.length) return [];
   const last = rows[0].id;
   const downFile = `${last}.down.sql`;
+  if (!existsSync(join(migrationsDirectory, downFile))) return [];
+  const sql = readFileSync(join(migrationsDirectory, downFile), "utf8");
+  const db = getDb();
+  db.exec("BEGIN IMMEDIATE");
   try {
-    const sql = readFileSync(join(dir, downFile), "utf8");
-    for (const stmt of statements(sql)) {
-      getDb().exec(stmt);
-    }
-  } catch {
-    // no down file / noop
+    for (const stmt of statements(sql)) db.exec(stmt);
+    db.prepare(`DELETE FROM bot_schema_migrations WHERE id = ?`).run(last);
+    db.exec("COMMIT");
+  } catch (err) {
+    try { db.exec("ROLLBACK"); } catch { /* preserve original failure */ }
+    throw err;
   }
-  getDb().prepare(`DELETE FROM bot_schema_migrations WHERE id = ?`).run(last);
   return [last];
 }
 

@@ -1,6 +1,8 @@
 import { InlineKeyboard } from "grammy";
 import type { Context } from "grammy";
+import { randomBytes } from "node:crypto";
 import { setFlow, getFlow } from "../../db/repos.js";
+import { getDb, nowIso } from "../../db/client.js";
 import { FULL_DECK, TRIPLET_POSITIONS } from "../deck/cards.js";
 import type { DrawnCard, TarotCardDef } from "../deck/types.js";
 import { buildSessionChatUrl, chunkTelegramText } from "../site-client.js";
@@ -29,12 +31,15 @@ const SECTION_HEADERS =
   /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?((?:[✨⚡🜁🌳💎💞💰🕯🌙♻️📅🪴✦🌌]\s*)?(?:Предназначение|Зона\s+комфорта|Характер|Тело и характер|Небо(?:\s*\/\s*энергия)?|Энергия|Материя(?:\s*\/\s*год)?|Род и корни|Таланты|Денежный\s+канал|Деньги|Канал\s+отношений|Отношения|Род\s+(?:по\s+)?отц[ау]|Род\s+(?:по\s+)?матер[ии]|Кармический\s+хвост(?:\s*[·.]\s*(?:корень|середина|остри[её]))?|Карма|Точка\s+возраста(?:\s+сейчас)?|Ближайший\s+возрастной\s+переход|Аркан\s+(?:года|месяца)|Узел\s+периода|Небо|Духовный\s+полюс)(?:\s*\(\s*\d{1,2}\s*[—–\-]\s*[^)\n]+\))?|Простыми словами|Шаги(?:\s+на\s+\d+\s+дней)?|Что делать|Итог|Вывод|Совет\s+карт(?:ы)?|Практика(?:\s+на\s+(?:неделю|месяц|30\s+дней))?|Общий вывод|Ключевые выводы|Краткое резюме|Прошлое|Настоящее|Будущее|Карта\s+\d+|Позиция\s+\d+)\s*:?\s*(?=\S)/giu;
 
 type ReadingViewState = {
+  viewId?: string;
   pages: string[];
   page: number;
   chatUrl?: string;
   footer?: string;
   matrixActions?: boolean;
   matrixSiteUrl?: string;
+  matrixReportId?: string;
+  matrixSubjectId?: string;
 };
 
 function normalizeCardName(raw: string): string {
@@ -407,6 +412,32 @@ function pageHtml(
   return widenTelegramText(parts.filter(Boolean).join("\n\n")).slice(0, 3900);
 }
 
+function persistReadingView(tid: number, state: ReadingViewState): void {
+  if (!state.viewId) return;
+  getDb().prepare(`INSERT INTO bot_reading_views (id, telegram_user_id, data, updated_at)
+    VALUES (?, ?, ?, ?) ON CONFLICT(id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at`)
+    .run(state.viewId, tid, JSON.stringify(state), nowIso());
+  getDb().prepare(`DELETE FROM bot_reading_views WHERE telegram_user_id = ? AND updated_at < ?`)
+    .run(tid, new Date(Date.now() - 30 * 86_400_000).toISOString());
+}
+
+export function activateReadingView(tid: number, viewId: string): boolean {
+  const row = getDb().prepare(`SELECT data FROM bot_reading_views WHERE id = ? AND telegram_user_id = ?`)
+    .get(viewId, tid) as { data: string } | undefined;
+  if (!row) return false;
+  const state = JSON.parse(row.data) as ReadingViewState;
+  setFlow(tid, 'reading_view', 'page', state as unknown as Record<string, unknown>);
+  return true;
+}
+
+/** Keep the quoted person/report attached to a teaser even after later navigation. */
+export function createMatrixView(tid: number, subjectId?: string, reportId?: string): string {
+  const viewId = randomBytes(6).toString('hex');
+  persistReadingView(tid, { viewId, pages: [], page: 0, matrixActions: true,
+    matrixSubjectId: subjectId, matrixReportId: reportId });
+  return viewId;
+}
+
 function pagerMarkup(state: ReadingViewState): InlineKeyboard {
   // Fat matrix action rows only on first/last page — mid-album flips stay light on mobile.
   const showMatrixActions =
@@ -415,10 +446,22 @@ function pagerMarkup(state: ReadingViewState): InlineKeyboard {
   return readingPagerKeyboard({
     page: state.page,
     total: state.pages.length,
+    viewId: state.viewId,
     chatUrl: state.chatUrl,
     matrixActions: showMatrixActions,
     matrixSiteUrl: state.matrixSiteUrl,
   });
+}
+
+function plainReadingText(text: string): string {
+  return stripReadingForTelegram(text)
+    .replace(/<br\s*\/?\s*>/gi, "\n")
+    .replace(/<[^>]+>/g, "")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
 }
 
 /**
@@ -439,6 +482,8 @@ export async function presentReadingToTelegram(
     /** Put matrix calc/delete/site buttons on the same album keyboard. */
     matrixActions?: boolean;
     matrixSiteUrl?: string | null;
+    matrixReportId?: string | null;
+    matrixSubjectId?: string | null;
     /** Matrix album: one message = one point with emoji (not tarot splitter). */
     matrixPaging?: boolean;
   }
@@ -463,12 +508,15 @@ export async function presentReadingToTelegram(
   const chatUrl = input.sessionId ? buildSessionChatUrl(input.sessionId) : undefined;
   const matrixSiteUrl = input.matrixSiteUrl?.trim() || undefined;
   const state: ReadingViewState = {
+    viewId: randomBytes(6).toString("hex"),
     pages,
     page: 0,
     chatUrl,
     footer: input.footer?.trim() || undefined,
     matrixActions: Boolean(input.matrixActions),
     matrixSiteUrl,
+    matrixReportId: input.matrixReportId?.trim() || undefined,
+    matrixSubjectId: input.matrixSubjectId?.trim() || undefined,
   };
 
   const usePager =
@@ -489,7 +537,14 @@ export async function presentReadingToTelegram(
   }
 
   if (usePager && tid && pages.length) {
-    setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
+    persistReadingView(tid, state);
+    const prior = getFlow(tid);
+    const views = prior?.flow === "reading_view" && prior.data.views && typeof prior.data.views === "object"
+      ? (prior.data.views as Record<string, unknown>) : {};
+    views[state.viewId!] = state;
+    const keys = Object.keys(views);
+    for (const key of keys.slice(0, Math.max(0, keys.length - 8))) delete views[key];
+    setFlow(tid, "reading_view", "page", { ...state, views } as unknown as Record<string, unknown>);
   }
 
   // Text first — never block the reading on a hung sendPhoto (was up to 60s on this VPS).
@@ -502,9 +557,10 @@ export async function presentReadingToTelegram(
       });
     } catch (err) {
       console.error("[present-reading] html send failed, plain fallback", err);
-      await ctx.reply(widenTelegramText(stripReadingForTelegram(pages.join("\n\n"))), {
-        reply_markup: markup,
-      });
+      const chunks = chunkTelegramText(widenTelegramText(plainReadingText(pages.join("\n\n"))));
+      for (let i = 0; i < chunks.length; i++) {
+        await ctx.reply(chunks[i]!, { reply_markup: i === chunks.length - 1 ? markup : undefined });
+      }
     }
   } else if (question) {
     await ctx.reply(captionFor(question), { reply_markup: markup });
@@ -531,27 +587,42 @@ export async function presentReadingToTelegram(
 export async function jumpReadingAlbumPage(
   ctx: Context,
   page: number,
-  answerText?: string
+  answerText?: string,
+  requestedViewId?: string
 ): Promise<boolean> {
   const tid = ctx.from?.id;
   if (!tid) return false;
+  if (requestedViewId && !activateReadingView(tid, requestedViewId)) {
+    await ctx.answerCallbackQuery({ text: 'Откройте этот разбор из истории заново.' }).catch(() => undefined);
+    return true;
+  }
   const flow = getFlow(tid);
   if (!flow || flow.flow !== "reading_view" || !Array.isArray(flow.data.pages)) {
     return false;
   }
-  if (!flow.data.pages.length) return false;
+  const source = flow.data;
+  if (!Array.isArray(source.pages) || !source.pages.length) return false;
 
   const state: ReadingViewState = {
-    pages: flow.data.pages as string[],
+    viewId: typeof source.viewId === "string" ? source.viewId : requestedViewId,
+    pages: source.pages as string[],
     page: Number.isFinite(page) ? page : 0,
-    chatUrl: typeof flow.data.chatUrl === "string" ? flow.data.chatUrl : undefined,
-    footer: typeof flow.data.footer === "string" ? flow.data.footer : undefined,
-    matrixActions: Boolean(flow.data.matrixActions),
+    chatUrl: typeof source.chatUrl === "string" ? source.chatUrl : undefined,
+    footer: typeof source.footer === "string" ? source.footer : undefined,
+    matrixActions: Boolean(source.matrixActions),
     matrixSiteUrl:
-      typeof flow.data.matrixSiteUrl === "string" ? flow.data.matrixSiteUrl : undefined,
+      typeof source.matrixSiteUrl === "string" ? source.matrixSiteUrl : undefined,
+    matrixReportId:
+      typeof source.matrixReportId === "string" ? source.matrixReportId : undefined,
+    matrixSubjectId:
+      typeof source.matrixSubjectId === "string" ? source.matrixSubjectId : undefined,
   };
   state.page = Math.min(Math.max(0, state.page), state.pages.length - 1);
-  setFlow(tid, "reading_view", "page", state as unknown as Record<string, unknown>);
+  persistReadingView(tid, state);
+  const views = flow.data.views && typeof flow.data.views === "object"
+    ? flow.data.views as Record<string, unknown> : {};
+  if (state.viewId) views[state.viewId] = state;
+  setFlow(tid, "reading_view", "page", { ...state, views } as unknown as Record<string, unknown>);
 
   const html = pageHtml(state.pages, state.page, state.footer);
   const markup = pagerMarkup(state);
@@ -614,12 +685,13 @@ export async function handleReadingPagerCallback(
     return false;
   }
 
-  const page = Number(data.slice(CB.rdPagePrefix.length));
-  const flow = getFlow(tid);
-  if (!flow || flow.flow !== "reading_view" || !Array.isArray(flow.data.pages)) {
-    await ctx.answerCallbackQuery({ text: "Расклад уже закрыт — откройте снова" }).catch(() => undefined);
+  const raw = data.slice(CB.rdPagePrefix.length);
+  const separator = raw.lastIndexOf(":");
+  const requestedViewId = separator > 0 ? raw.slice(0, separator) : undefined;
+  if (!requestedViewId) {
+    await ctx.answerCallbackQuery({ text: 'Старая кнопка: откройте разбор из истории.' }).catch(() => undefined);
     return true;
   }
-
-  return jumpReadingAlbumPage(ctx, Number.isFinite(page) ? page : 0);
+  const page = Number(separator > 0 ? raw.slice(separator + 1) : raw);
+  return jumpReadingAlbumPage(ctx, Number.isFinite(page) ? page : 0, undefined, requestedViewId);
 }

@@ -15,6 +15,7 @@ export type SiteResolve = {
   runeBalance: number | null;
   linkUrl: string;
   error?: string;
+  deletionPending?: boolean;
 };
 
 /** Shell accounts created by bot-offer — need Yandex/VK/email bind for PC login. */
@@ -62,6 +63,7 @@ function mapSiteResolve(data: SiteResolve & Json): SiteResolve {
     runeBalance: typeof data.runeBalance === "number" ? data.runeBalance : null,
     linkUrl: typeof data.linkUrl === "string" ? data.linkUrl : `${botConfig.siteUrl}/cabinet`,
     error: typeof data.error === "string" ? data.error : undefined,
+    deletionPending: data.deletionPending === true,
   };
 }
 
@@ -391,9 +393,11 @@ export async function siteReading(telegramUserId: number, sessionId: string) {
   return siteFetch<{
     ok: boolean;
     sessionId?: string;
+    matrixReportId?: string | null;
     characterKey?: string | null;
     reading?: string;
     cards?: string[];
+    structuredCards?: Array<{ name: string; reversed: boolean; position: number; positionLabel: string }>;
     intention?: string | null;
     error?: string;
   }>("/api/internal/bot/reading", {
@@ -616,7 +620,7 @@ export async function siteNumerology(
   telegramUserId: number,
   action: "summary" | "list" | "get" | "run" | "delete" | "subjects" | "subjects.list" | "subjects.create" | "subjects.delete" = "summary",
   reportId?: string,
-  opts?: { replace?: boolean; subjectId?: string; kind?: string; displayName?: string; birthDate?: string }
+  opts?: { replace?: boolean; subjectId?: string; kind?: string; displayName?: string; birthDate?: string; operationId?: string }
 ) {
   return siteFetch<{
     ok: boolean;
@@ -663,6 +667,8 @@ export async function siteNumerology(
     charged?: number;
     reused?: boolean;
     replaced?: boolean;
+    pending?: boolean;
+    diagramUnavailable?: boolean;
     deleted?: number;
     url?: string;
     error?: string;
@@ -675,6 +681,7 @@ export async function siteNumerology(
       action,
       report_id: reportId,
       replace: opts?.replace === true,
+      operation_id: opts?.operationId,
       subject_id: opts?.subjectId,
       kind: opts?.kind,
       display_name: opts?.displayName,
@@ -775,12 +782,16 @@ export async function siteSetMiniAppNav(
 export async function siteDeleteAccount(telegramUserId: number): Promise<{
   ok: boolean;
   deleted?: boolean;
+  pending?: boolean;
+  operationId?: string;
   error?: string;
   message?: string;
 }> {
   const { data } = await siteFetch<{
     ok?: boolean;
     deleted?: boolean;
+    pending?: boolean;
+    operationId?: string;
     error?: string;
     message?: string;
   }>(
@@ -791,6 +802,8 @@ export async function siteDeleteAccount(telegramUserId: number): Promise<{
   return {
     ok: Boolean(data.ok),
     deleted: Boolean(data.deleted),
+    pending: data.pending === true,
+    operationId: typeof data.operationId === 'string' ? data.operationId : undefined,
     error: typeof data.error === "string" ? data.error : undefined,
     message: typeof data.message === "string" ? data.message : undefined,
   };

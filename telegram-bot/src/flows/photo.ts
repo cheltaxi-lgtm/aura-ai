@@ -18,6 +18,8 @@ import {
   presentReadingToTelegram,
 } from "../domain/reading/present.js";
 import { markIrreversible } from "../middleware/irreversible.js";
+import { pendingOperation, savePaidResult, deliveredOperation, userOperation } from '../domain/paid-operation.js';
+import { FULL_DECK } from '../domain/deck/cards.js';
 import { renderSpreadCollage } from "../render/card-collage.js";
 import { renderHistoryEntryImage } from "../render/history-entry.js";
 import { renderPhotoHomeCardImage } from "../render/photo-home-card.js";
@@ -116,13 +118,14 @@ function photoHomeKeyboard(opts: {
   return kb;
 }
 
-function photoConfirmKeyboard(opts?: { siteUrl?: string | null; cost?: number }): InlineKeyboard {
+function photoConfirmKeyboard(opts?: { siteUrl?: string | null; cost?: number; token?: string }): InlineKeyboard {
   const kb = new InlineKeyboard()
     .text(
       opts?.cost != null ? `✨ Расшифровать · ${opts.cost}ᚢ` : "✨ Расшифровать",
-      CB.phOk
+      opts?.token ? `${CB.phOk}:c:${opts.token}` : CB.phOk
     )
     .text("↩ Отмена", CB.phCancel);
+  if (opts?.token) kb.row().text('Исправить одну карту', `ph:edit:c:${opts.token}`);
   if (opts?.siteUrl) {
     webAppButton(kb.row(), "🕯 Поправить на сайте", opts.siteUrl);
   }
@@ -338,6 +341,7 @@ export async function showPhoto(ctx: Context): Promise<void> {
       mode: "home",
     });
     await ctx.replyWithPhoto(new InputFile(homeBuf, "photo-home.jpg"), {
+      caption: `Фото-расклад · ${cost} рун${meta.balance == null ? "" : ` · баланс ${meta.balance}`}.`,
       reply_markup: photoHomeKeyboard({
         cost,
         firstDiscount: meta.firstDiscount,
@@ -383,6 +387,7 @@ export async function beginPhotoReading(ctx: Context): Promise<void> {
       mode: "await",
     });
     await ctx.replyWithPhoto(new InputFile(buf, "photo-await.jpg"), {
+      caption: `Фото-расклад · стоимость ${cost} рун. Пришлите фотографию, чтобы начать.`,
       reply_markup: photoAwaitKeyboard(siteUrl),
     });
   } catch (err) {
@@ -475,6 +480,7 @@ async function runRecognizeFromBuffer(
     const confirmKb = photoConfirmKeyboard({
       siteUrl: data.url,
       cost,
+      token: String(getFlow(linked.user.telegram_user_id)?.data.idempotencyKey),
     });
     let sentCollage = false;
     try {
@@ -558,10 +564,9 @@ async function runInterpret(ctx: Context): Promise<void> {
     typeof flow.data.characterId === "string" ? flow.data.characterId : "veronika";
   const question = typeof flow.data.question === "string" ? flow.data.question : "";
   const cost = typeof flow.data.cost === "number" ? flow.data.cost : 30;
-  const idempotencyKey =
-    typeof flow.data.idempotencyKey === "string" && flow.data.idempotencyKey
-      ? flow.data.idempotencyKey
-      : randomUUID();
+  const operation = pendingOperation(tid, 'photo', { characterId, question, confirmedSpread: redrawSpread },
+    typeof flow.data.idempotencyKey === 'string' ? flow.data.idempotencyKey : undefined);
+  const idempotencyKey = operation.id;
 
   // Lock step before network — blocks double-tap ph:ok; keep same idempotency key.
   setFlow(tid, "photo", "interpreting", {
@@ -574,16 +579,16 @@ async function runInterpret(ctx: Context): Promise<void> {
   });
   markIrreversible(ctx);
 
-  await ctx.reply(copy.photoInterpreting(cost));
-  await ctx.replyWithChatAction("typing");
-
   try {
-    const { data } = await sitePhoto(tid, "interpret", {
+    await ctx.reply(copy.photoInterpreting(cost)).catch(() => undefined);
+    await ctx.replyWithChatAction("typing").catch(() => undefined);
+    const { data } = operation.result ? { data: JSON.parse(operation.result) as Awaited<ReturnType<typeof sitePhoto>>['data'] } : await sitePhoto(tid, "interpret", {
       characterId,
       question,
       confirmedSpread: redrawSpread,
       idempotencyKey,
     });
+    savePaidResult(operation.id, data);
 
     if (!data.ok || !data.analysis) {
       clearFlow(tid);
@@ -606,7 +611,7 @@ async function runInterpret(ctx: Context): Promise<void> {
 
     clearFlow(tid);
 
-    const footerParts = [
+    const footerParts = operation.result ? ['Сохранённый ответ · без повторного списания'] : [
       data.charged && data.charged > 0 ? `Списано ${data.charged}ᚢ` : null,
       data.cached ? "Из сохранённых" : null,
       data.firstPhotoDiscount ? "Скидка на первый фото-расклад" : null,
@@ -620,6 +625,7 @@ async function runInterpret(ctx: Context): Promise<void> {
       sessionId: data.sessionId || undefined,
       footer: footerParts.join(" · ") || undefined,
     });
+    deliveredOperation(operation.id);
 
     if (data.sessionId) {
       await ctx.reply(copy.photoSavedHint, {
@@ -697,6 +703,29 @@ export async function handlePhotoText(ctx: Context, text: string): Promise<boole
   const flow = getFlow(ctx.from.id);
   if (!flow || flow.flow !== "photo") return false;
 
+  if (flow.step === 'edit_card') {
+    const spread = flow.data.redrawSpread as SitePhotoRedrawSpread;
+    const match = /^(\d+)\s*[.)]?\s+(.+)$/u.exec(text.trim());
+    const index = match ? Number(match[1]) - 1 : -1;
+    const raw = match?.[2] || '';
+    const reversed = /перев[её]рнут|reversed/i.test(raw);
+    const name = raw.replace(/\(?\s*(?:перев[её]рнутая|перев[её]рнутый|перев[её]рнутое|прямая|прямой|reversed)\s*\)?/gi, '').trim();
+    const normalize = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/\s+/g, ' ').trim();
+    const card = FULL_DECK.find(c => normalize(c.name) === normalize(name));
+    if (!card || index < 0 || index >= spread.cards.length) {
+      await ctx.reply('Укажите номер и точное название карты, например: 2 Луна перевёрнутая. Чтобы оставить прямую карту: 2 Луна.');
+      return true;
+    }
+    const cards = spread.cards.map((c, i) => i === index ? { ...c, name: card.name, originalName: card.name, reversed,
+      placeholder: false, imagePath: undefined, shortMeaning: undefined, confidence: 'high' } : c);
+    const token = randomUUID();
+    setFlow(ctx.from.id, 'photo', 'confirm', { ...flow.data, redrawSpread: { ...spread, cards }, idempotencyKey: token });
+    await ctx.reply(`Карта ${index + 1} исправлена. Проверьте расклад:\n\n${cards.map((c, i) => `${i + 1}. ${c.name}${c.reversed ? ' · перевёрнутая' : ' · прямая'}${c.position ? ` · ${c.position}` : ''}`).join('\n')}`, {
+      reply_markup: photoConfirmKeyboard({ token, cost: typeof flow.data.cost === 'number' ? flow.data.cost : undefined }),
+    });
+    return true;
+  }
+
   if (flow.step === "await_photo") {
     setFlow(ctx.from.id, "photo", "await_photo", {
       ...flow.data,
@@ -718,6 +747,31 @@ export async function handlePhotoCallback(ctx: Context, data: string): Promise<b
   const tid = ctx.from?.id;
   if (!tid) {
     await ctx.answerCallbackQuery().catch(() => undefined);
+    return true;
+  }
+  const bound = /^(.*):c:([a-f0-9-]{36})$/.exec(data);
+  if (bound) {
+    const flow = getFlow(tid);
+    if (flow?.flow !== 'photo' || flow.data.idempotencyKey !== bound[2]) {
+      await ctx.answerCallbackQuery({ text: 'Это прежнее подтверждение. Используйте кнопки под последней проверкой карт.', show_alert: true }).catch(() => undefined);
+      return true;
+    }
+    data = bound[1];
+  }
+  if (data === CB.phOk && !bound) {
+    await ctx.answerCallbackQuery({ text: 'Откройте последнюю проверку карт или /resume.', show_alert: true }).catch(() => undefined);
+    return true;
+  }
+  if (data === 'ph:edit' && bound) {
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    const flow = getFlow(tid);
+    const operation = userOperation(tid, bound[2]);
+    if (operation && ['pending', 'ready'].includes(operation.status)) {
+      await ctx.reply('Этот запрос уже отправлен. Сначала восстановите его через /resume.'); return true;
+    }
+    if (flow?.step !== 'confirm') { await ctx.reply('Дождитесь завершения текущего шага.'); return true; }
+    setFlow(tid, 'photo', 'edit_card', flow.data);
+    await ctx.reply('Отправьте номер и название одной карты. Например: 2 Луна перевёрнутая. Остальные карты и вопрос сохранятся.', { reply_markup: photoAwaitKeyboard() });
     return true;
   }
 

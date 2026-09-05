@@ -1,6 +1,7 @@
 /** Best-effort: push "отчёт готов" into Telegram bot. Mirrors notify-bot-support. */
 export async function notifyBotReportReady(input: {
   telegramUserId: number;
+  sourceProfileUserId: string;
   title: string;
   ctaUrl: string;
 }): Promise<{ delivered: boolean; reason?: string }> {
@@ -17,6 +18,7 @@ export async function notifyBotReportReady(input: {
       },
       body: JSON.stringify({
         telegram_user_id: input.telegramUserId,
+        source_profile_user_id: input.sourceProfileUserId,
         title: input.title.slice(0, 160),
         cta_url: input.ctaUrl.slice(0, 512),
       }),

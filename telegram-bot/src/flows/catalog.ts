@@ -1,4 +1,5 @@
 import type { Context, InlineKeyboard } from "grammy";
+import { randomBytes } from 'node:crypto';
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import { clearFlow, getFlow, setFlow, trackEvent } from "../db/repos.js";
@@ -40,6 +41,7 @@ type CatalogListState = {
 };
 
 type CatalogDetailState = CatalogListState & {
+  confirmationId: string;
   slug: string;
   title: string;
   description: string;
@@ -266,6 +268,7 @@ async function showItem(
     ...listState,
     slug: item.id,
     title: item.title,
+    confirmationId: randomBytes(6).toString('hex'),
     description: item.description,
     native: item.native,
     runMode,
@@ -319,6 +322,7 @@ async function showItem(
       url: item.url,
       runMode,
       botCost,
+      confirmationId: detail.confirmationId,
     })
   );
 }
@@ -415,13 +419,17 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
     return true;
   }
 
-  if (data === CB.catRun) {
+  if (data === CB.catRun || data.startsWith(`${CB.catRun}:`)) {
     const flow = getFlow(tid);
     if (!flow || flow.flow !== "catalog" || flow.step !== "detail") {
       await showHome(ctx, tid);
       return true;
     }
     const st = flow.data as unknown as CatalogDetailState;
+    if (data !== `${CB.catRun}:${st.confirmationId}`) {
+      await ctx.reply('Это прежнее подтверждение. Откройте нужный расклад в каталоге и проверьте стоимость ещё раз.');
+      return true;
+    }
     if (!st.questionTemplate?.trim() || st.runMode === "site_only") {
       await renderCatalog(
         ctx,
@@ -444,8 +452,8 @@ export async function handleCatalogCallback(ctx: Context, data: string): Promise
       bot_cost: st.botCost,
       card_count: st.cardCount,
     });
-    clearFlow(tid);
-    // Reading output is a new conversation thread; leave catalog message as-is.
+    // Preserve the drawing operation key until the site result is delivered;
+    // a timeout/retry must reuse the same idempotency key across navigation.
     await runCatalogIntent(ctx, linked.user, st.slug, st.questionTemplate);
     return true;
   }

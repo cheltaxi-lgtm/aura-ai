@@ -3,6 +3,8 @@ import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import {
   claimUpdate,
+  completeUpdate,
+  heartbeatUpdate,
   getUser,
   markBlocked,
   releaseUpdate,
@@ -37,8 +39,13 @@ export async function idempotent(ctx: Context, next: NextFunction): Promise<void
     });
     return;
   }
+  const heartbeat = setInterval(() => {
+    try { heartbeatUpdate(id); } catch (err) { console.error('[update] heartbeat failed', err); }
+  }, 30_000);
+  heartbeat.unref();
   try {
     await next();
+    completeUpdate(id);
   } catch (err) {
     // Release only before the point of no return (validation / pre-draw).
     // After draw/session side effects, keep the claim so Telegram retries are no-ops.
@@ -51,6 +58,8 @@ export async function idempotent(ctx: Context, next: NextFunction): Promise<void
       });
     }
     throw err;
+  } finally {
+    clearInterval(heartbeat);
   }
 }
 

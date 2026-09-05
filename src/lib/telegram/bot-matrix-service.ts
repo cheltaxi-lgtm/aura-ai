@@ -62,6 +62,7 @@ import {
 import { forceFillMissingSections } from "@/lib/numerology/matrix-sectioned-reading";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
+import { bindBotChargeSession, findSessionIdForBotCharge, normalizeBotClientEventId } from "@/lib/telegram/bot-charge-idempotency";
 import { createHistoryEntry, getUserById } from "@/lib/users";
 import {
   deleteMatrixSubject,
@@ -155,12 +156,16 @@ function diagramForSavedReport(
 
 type GateFail = {
   ok: false;
-  error: "needs_link" | "needs_onboarding" | "internal" | "insufficient_runes" | "not_found";
+  error: "needs_link" | "needs_onboarding" | "internal" | "insufficient_runes" | "not_found" | "operation_required" | "operation_failed" | "not_available";
   message: string;
   linkUrl?: string;
   runeBalance?: number;
   cost?: number;
+  refunded?: boolean;
 };
+
+type MatrixOperationIntent = { input: { subjectId: string | null; toolId: string; birthDate: string };
+  session_id: string | null; status: string; expired: boolean; billing_required: boolean };
 
 async function requireMatrixUser(telegramUserId: number) {
   const resolved = await resolveBotUser(telegramUserId);
@@ -256,6 +261,10 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     ok: true as const,
     action: "summary" as const,
     birthDate: subjectBirthDate,
+    subjectId: subject?.id ?? null,
+    subjectKind: subject?.kind ?? null,
+    subjectName: subjectName ?? null,
+    subject: subject ? { id: subject.id, kind: subject.kind, displayName: subject.displayName, birthDate: subject.birthDate } : null,
     name: subjectName || gate.resolved.name || null,
     portrait: summary.portrait.slice(0, 900),
     moneyInsight: summary.moneyInsight.slice(0, 400),
@@ -307,6 +316,8 @@ export async function botMatrixList(telegramUserId: number, _subjectId?: string)
     action: "list" as const,
     items: reports.map((r) => ({
       id: r.id,
+      subjectId: r.subjectId,
+      toolId: r.toolId,
       birthDate: r.birthDate,
       date: r.createdAt.slice(0, 10),
       preview: r.content.replace(/\s+/g, " ").trim().slice(0, 220),
@@ -338,15 +349,23 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
       message: "Отчёт повреждён. Откройте сохранённый текст в кабинете или закажите новый расчёт.",
     };
   }
+  const subject = report.subjectId
+    ? await getMatrixSubject(gate.resolved.profileUserId!, report.subjectId)
+    : null;
+  const subjectName = subject?.displayName?.trim() || null;
 
   return {
     ok: true as const,
     action: "get" as const,
     reportId: report.id,
+    subjectId: report.subjectId,
+    subjectKind: subject?.kind ?? null,
+    subjectName,
+    subject: subject ? { id: subject.id, kind: subject.kind, displayName: subject.displayName, birthDate: subject.birthDate } : null,
     birthDate: report.birthDate,
     content: sanitizeReadingForClient(report.content) || report.content,
     sessionId: report.sessionId,
-    diagram: diagramForSavedReport(report, gate.user.name || gate.resolved.name),
+    diagram: diagramForSavedReport(report, subjectName),
     url: report.sessionId
       ? `${siteBase()}/?chat_session=${encodeURIComponent(report.sessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`
       : `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=numerology`,
@@ -355,12 +374,17 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
 
 export async function botMatrixRun(
   telegramUserId: number,
-  opts?: { replace?: boolean; subjectId?: string }
+  opts?: { replace?: boolean; subjectId?: string; operationId?: string }
 ): Promise<
   | {
       ok: true;
       action: "run";
       reportId: string;
+      subjectId: string | null;
+      subjectKind: string | null;
+      subjectName: string;
+      subject: { id: string; kind: string; displayName: string | null; birthDate: string } | null;
+      operationId?: string;
       sessionId: string;
       content: string;
       birthDate: string;
@@ -371,6 +395,7 @@ export async function botMatrixRun(
       url: string;
       diagram: BotMatrixDiagram | null;
       pending?: boolean;
+      diagramUnavailable?: boolean;
       message?: string;
     }
   | GateFail
@@ -405,6 +430,17 @@ export async function botMatrixRun(
     subject?.displayName?.trim() ||
     readerName;
   const replace = Boolean(opts?.replace);
+  const operationId = normalizeBotClientEventId(opts?.operationId);
+  const operationInput = { subjectId: subject?.id ?? null, toolId, birthDate: isoBirth };
+  let operationIntent = operationId ? (await query<MatrixOperationIntent>(`SELECT input, session_id, status, billing_required,
+    created_at < NOW() - INTERVAL '30 minutes' AS expired FROM bot_matrix_operations
+    WHERE user_id = $1 AND operation_id = $2`, [profileUserId, operationId])).rows[0] : undefined;
+  let freeReplay = Boolean(operationIntent && !operationIntent.billing_required);
+  let freeClaimed = false;
+  const subjectIdentity = {
+    subjectId: subject?.id ?? null, subjectKind: subject?.kind ?? null, subjectName,
+    subject: subject ? { id: subject.id, kind: subject.kind, displayName: subject.displayName, birthDate: subject.birthDate } : null,
+  };
 
   const owned = subject?.id
     ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
@@ -417,7 +453,7 @@ export async function botMatrixRun(
     : buildLiveMatrixDiagram(isoBirth, subjectName);
 
   // Open existing only when not explicitly ordering a replacement and content is client-safe.
-  if (ownedUsable && owned && !replace) {
+  if (ownedUsable && owned && !replace && !operationIntent) {
     let sessionId = owned.sessionId?.trim() || "";
     if (sessionId) {
       const existing = await getSession(sessionId);
@@ -458,6 +494,8 @@ export async function botMatrixRun(
       ok: true,
       action: "run",
       reportId: owned.id,
+      ...subjectIdentity,
+      operationId: operationId ?? undefined,
       sessionId,
       content: safeOwned,
       birthDate: isoBirth,
@@ -470,21 +508,14 @@ export async function botMatrixRun(
     };
   }
 
-  // Unusable text: drop only that calculation version, then regenerate.
-  // Explicit replace writes a new version row and must not delete older purchases.
-  const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
-  if (regenerateAfterLeak && owned) {
-    const subjectForWipe = subject ?? (await ensureSelfSubject(profileUserId));
-    const wiped = subjectForWipe?.id
-      ? await deleteOwnedMatrixReportsForSubject(profileUserId, subjectForWipe.id, {
-          toolId,
-          calculationVersion: owned.calculationVersion,
-        })
-      : await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth, {
-          calculationVersion: owned.calculationVersion,
-        });
-    await purgeMatrixConsultationSessions(profileUserId, wiped.sessionIds);
+  if (!operationId) {
+    return { ok: false, error: "operation_required", message: "Откройте матрицу заново и подтвердите расчёт." };
   }
+
+  // Unusable text: drop only that calculation version, then regenerate.
+  // Explicit replace overwrites the current calculation version; rows for other
+  // calculation versions remain in the archive.
+  const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
 
   const unlimited = await resolveUnlimitedAccess({
     accountId: gate.resolved.accountId,
@@ -497,16 +528,43 @@ export async function botMatrixRun(
   let runeBalance = await getRuneBalance(profileUserId);
   let charged = 0;
 
-  if (useRuneBilling && !regenerateAfterLeak) {
+  if (!operationIntent) {
+    const claimed = await query<MatrixOperationIntent>(`INSERT INTO bot_matrix_operations (user_id, operation_id, input, billing_required)
+      VALUES ($1, $2, $3::jsonb, $4 OR EXISTS (SELECT 1 FROM rune_transactions
+        WHERE user_id = $1 AND type = 'spend' AND idempotency_key = $5))
+      ON CONFLICT (user_id, operation_id) DO NOTHING
+      RETURNING input, session_id, status, billing_required, false AS expired`,
+    [profileUserId, operationId, JSON.stringify(operationInput), useRuneBilling && !regenerateAfterLeak,
+      `tg-matrix:${subject?.id ?? isoBirth}:${operationId}`]);
+    operationIntent = claimed.rows[0] ?? (await query<MatrixOperationIntent>(`SELECT input, session_id, status, billing_required,
+      created_at < NOW() - INTERVAL '30 minutes' AS expired FROM bot_matrix_operations
+      WHERE user_id = $1 AND operation_id = $2`, [profileUserId, operationId])).rows[0];
+    if (!operationIntent) throw new Error("matrix_operation_claim_missing");
+    freeClaimed = Boolean(claimed.rows[0] && !operationIntent.billing_required);
+    freeReplay = !claimed.rows[0] && !operationIntent.billing_required;
+  }
+  if (operationIntent && (operationIntent.input.subjectId !== operationInput.subjectId || operationIntent.input.toolId !== toolId)) {
+    return { ok: false, error: "operation_failed", message: "Номер запроса принадлежит другой матрице. Подтвердите новый расчёт." };
+  }
+  if (operationIntent?.status === "failed") {
+    return { ok: false, error: "operation_failed", message: "Этот запрос завершился без результата. Подтвердите новый расчёт." };
+  }
+  if (operationIntent.billing_required && operationIntent.input.birthDate !== isoBirth) {
+    const priorSpend = await query(`SELECT id FROM rune_transactions WHERE user_id = $1
+      AND type = 'spend' AND idempotency_key = $2 LIMIT 1`,
+    [profileUserId, `tg-matrix:${subject?.id ?? isoBirth}:${operationId}`]);
+    if (!priorSpend.rows[0]) {
+      return { ok: false, error: "operation_failed", message: "Дата рождения изменилась после подтверждения. Подтвердите новый расчёт; руны не списаны." };
+    }
+  }
+  if (operationIntent.billing_required) {
     try {
       billingCharge = await BillingService.chargeForSession({
         userId: profileUserId,
         cost: tool.cost,
         actionType: chargeAction,
         description: `${subject?.kind === "child" ? "Детская" : "Полная"} матрица — разбор Эвелины`,
-        idempotencyKey: subject?.id
-          ? `tg-matrix:${subject.id}:${chargeAction}:${tool.cost}`
-          : undefined,
+        idempotencyKey: `tg-matrix:${subject?.id ?? isoBirth}:${operationId}`,
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
@@ -526,37 +584,92 @@ export async function botMatrixRun(
   }
 
   // Charge dedupe: never re-generate — reopen owned report or point to cabinet.
-  if (billingCharge?.deduplicated) {
-    const ownedAgain = subject?.id
-      ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
-      : await findOwnedMatrixReport(profileUserId, isoBirth, { toolId });
+  if (billingCharge?.deduplicated || freeReplay) {
+    const refund = billingCharge ? await query(`SELECT id FROM rune_transactions WHERE user_id = $1
+      AND type = 'refund' AND refund_of_transaction_id = $2 LIMIT 1`, [profileUserId, billingCharge.transactionId])
+      : { rows: [] };
+    if (refund.rows[0]) {
+      return { ok: false, error: "operation_failed", refunded: true,
+        message: "Этот расчёт завершился ошибкой; руны возвращены. Новый расчёт можно подтвердить в меню матрицы." };
+    }
+    // A replacement retry must resolve its own receipt, never an older report
+    // belonging to the same subject while the replacement is still running.
+    const receipt = await query<{
+      id: string; content: string; sessionId: string | null; birthDate: string;
+      structuredData: Record<string, unknown> | null; calculationVersion: string; createdAt: string;
+    }>(`SELECT id, content, session_id AS "sessionId", birth_date::text AS "birthDate",
+        structured_data AS "structuredData", calculation_version AS "calculationVersion", created_at::text AS "createdAt"
+      FROM numerology_report_history
+      WHERE user_id = $1 AND ${billingCharge ? "charge_transaction_id = $2" : "session_id = $2::uuid"} AND tool_id = $3
+        AND subject_id IS NOT DISTINCT FROM $4::uuid LIMIT 1`,
+      [profileUserId, billingCharge?.transactionId ?? operationIntent?.session_id ?? null, toolId, subject?.id ?? null]);
+    // Read receipt and content in one statement: a concurrent same-version
+    // replacement can change the report row between two separate reads.
+    const ownedAgain = receipt.rows[0] ?? null;
+    const boundSessionId = billingCharge ? await findSessionIdForBotCharge(billingCharge.transactionId) : operationIntent?.session_id;
+    const original = boundSessionId ? await query<{
+      content: string | null;
+      receipt: { birthDate?: string; subjectName?: string; subjectIdentity?: typeof subjectIdentity;
+        structuredData?: Record<string, unknown>; calculationVersion?: string; createdAt?: string } | null;
+    }>(`SELECT s.numerolog_tool_params->'botMatrixReceipt' AS receipt,
+        COALESCE(s.numerolog_tool_params->'botMatrixReceipt'->>'content', (SELECT cm.content FROM chat_messages cm WHERE cm.session_id = s.id
+          AND cm.role = 'assistant' AND cm.character_id = 'numerolog'
+          AND (cm.owner_user_id = $2 OR cm.owner_user_id IS NULL)
+          AND length(trim(cm.content)) > 0 ORDER BY cm.created_at ASC, cm.id ASC LIMIT 1)) AS content
+      FROM sessions s WHERE s.id = $1 AND s.user_id = $2 AND s.character_key = 'numerolog'`,
+    [boundSessionId, profileUserId]) : null;
+    const saved = original?.rows[0];
+    const frozen = saved?.receipt;
     if (ownedAgain?.content?.trim() && isUsableMatrixReading(ownedAgain.content, toolId)) {
-      let sessionId = ownedAgain.sessionId?.trim() || "";
-      if (!sessionId) {
-        const session = await createSession(undefined, profileUserId);
-        sessionId = session.id;
-      }
+      const sessionId = ownedAgain.sessionId?.trim() || boundSessionId || "";
       const safeOwned = sanitizeReadingForClient(ownedAgain.content) || ownedAgain.content;
       return {
         ok: true,
         action: "run",
         reportId: ownedAgain.id,
+        ...(frozen?.subjectIdentity ?? { ...subjectIdentity,
+          subject: subjectIdentity.subject ? { ...subjectIdentity.subject, birthDate: ownedAgain.birthDate } : null }),
+        operationId,
         sessionId,
         content: safeOwned,
-        birthDate: isoBirth,
+        birthDate: ownedAgain.birthDate,
         runeBalance,
         charged: 0,
         reused: true,
         replaced: false,
-        diagram: diagramForSavedReport(ownedAgain, subjectName),
+        diagram: diagramForSavedReport(ownedAgain, frozen?.subjectName ?? subjectName),
         url: `${siteBase()}/?chat_session=${encodeURIComponent(sessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
       };
+    }
+    if (boundSessionId) {
+      if (saved?.content?.trim() && isUsableMatrixReading(saved.content, toolId)) {
+        const originalDiagram = frozen?.structuredData && frozen.birthDate && frozen.calculationVersion && frozen.createdAt
+          ? diagramForSavedReport({ birthDate: frozen.birthDate, structuredData: frozen.structuredData,
+              calculationVersion: frozen.calculationVersion, createdAt: frozen.createdAt }, frozen.subjectName)
+          : null;
+        return {
+          ok: true, action: "run", reportId: "", ...(frozen?.subjectIdentity ?? subjectIdentity), operationId,
+          sessionId: boundSessionId, content: sanitizeReadingForClient(saved.content) || saved.content,
+          birthDate: frozen?.birthDate ?? isoBirth, runeBalance, charged: 0, reused: true, replaced: false,
+          diagram: originalDiagram, diagramUnavailable: !originalDiagram,
+          message: originalDiagram ? undefined : "Прежний текст восстановлен. Исходная схема этого разбора недоступна.",
+          url: `${siteBase()}/?chat_session=${encodeURIComponent(boundSessionId)}&utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
+        };
+      }
+    }
+    const age = billingCharge ? await query<{ expired: boolean }>(`SELECT created_at < NOW() - INTERVAL '30 minutes' AS expired
+      FROM rune_transactions WHERE id = $1 AND user_id = $2 AND type = 'spend'`,
+    [billingCharge.transactionId, profileUserId]) : { rows: [{ expired: operationIntent?.expired ?? false }] };
+    if (age.rows[0]?.expired) {
+      return { ok: false, error: "not_available", message: "Исходный результат этого запроса недоступен. Повторная проверка не списала руны. Обратитесь в поддержку с номером операции." };
     }
     return {
       ok: true,
       action: "run",
       reportId: ownedAgain?.id ?? "",
-      sessionId: ownedAgain?.sessionId ?? "",
+      ...subjectIdentity,
+      operationId,
+      sessionId: boundSessionId ?? "",
       content: "",
       pending: true,
       birthDate: isoBirth,
@@ -567,12 +680,36 @@ export async function botMatrixRun(
       diagram: ownedAgain
         ? diagramForSavedReport(ownedAgain, subjectName)
         : buildLiveMatrixDiagram(isoBirth, subjectName),
-      message: "Разбор уже выполняется — откройте кабинет.",
+      message: "Операция принята ранее. Готовый результат ещё не подтверждён; повторная проверка не спишет руны.",
       url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
     };
   }
 
+  let persisted: Awaited<ReturnType<typeof saveMatrixReport>> | null = null;
+  let resultSessionId = "";
+  try {
+  // Cleanup belongs only to a newly accepted generation. A replay must retain
+  // its original session even when the current mutable report is unusable.
+  if (regenerateAfterLeak && owned) {
+    const subjectForWipe = subject ?? (await ensureSelfSubject(profileUserId));
+    const wiped = subjectForWipe?.id
+      ? await deleteOwnedMatrixReportsForSubject(profileUserId, subjectForWipe.id, {
+          toolId,
+          calculationVersion: owned.calculationVersion,
+        })
+      : await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth, {
+          calculationVersion: owned.calculationVersion,
+        });
+    await purgeMatrixConsultationSessions(profileUserId, wiped.sessionIds);
+  }
   const session = await createSession(undefined, profileUserId);
+  resultSessionId = session.id;
+  await bindBotChargeSession(billingCharge?.transactionId, session.id);
+  if (freeClaimed) {
+    const bound = await query(`UPDATE bot_matrix_operations SET session_id = $3
+      WHERE user_id = $1 AND operation_id = $2 AND session_id IS NULL`, [profileUserId, operationId, session.id]);
+    if (bound.rowCount !== 1) throw new Error("matrix_operation_bind_failed");
+  }
   await updateSessionChatMeta(session.id, {
     characterKey: "numerolog",
     intention: "destiny_matrix",
@@ -581,7 +718,6 @@ export async function botMatrixRun(
     cards: [],
   });
 
-  try {
     const numerologMemoryCtx = await buildMemoryContext({
       userId: profileUserId,
       characterId: "numerolog",
@@ -607,6 +743,13 @@ export async function botMatrixRun(
       subjectKind: subject?.kind ?? "self",
       subjectId: subject?.id,
     });
+    // Preserve the original diagram and subject alongside the charge-bound
+    // session; a later replacement updates the mutable report archive row.
+    await query(`UPDATE sessions SET numerolog_tool_params = COALESCE(numerolog_tool_params, '{}'::jsonb)
+      || jsonb_build_object('botMatrixReceipt', $3::jsonb) WHERE id = $1 AND user_id = $2`,
+    [session.id, profileUserId, JSON.stringify({ birthDate: isoBirth, subjectName, subjectIdentity,
+      structuredData: ownedSnap.snapshot, calculationVersion: ownedSnap.calculationVersion ?? MATRIX_CALCULATION_VERSION,
+      createdAt: ownedSnap.asOfDate })]);
     const sessionResult = await generateNumerologSessionReading({
       toolId,
       userName: readerName,
@@ -649,6 +792,9 @@ export async function botMatrixRun(
     if (!isUsableMatrixReading(reading, toolId) || !reading.trim()) {
       throw new Error("matrix_prompt_leak_or_empty");
     }
+    await query(`UPDATE sessions SET numerolog_tool_params = jsonb_set(numerolog_tool_params,
+      '{botMatrixReceipt,content}', to_jsonb($3::text)) WHERE id = $1 AND user_id = $2`,
+    [session.id, profileUserId, reading]);
     const { matrixReadingToStructuredPayload } = await import(
       "@/lib/numerology/matrix-reading-document"
     );
@@ -657,9 +803,10 @@ export async function botMatrixRun(
       : { version: MATRIX_CALCULATION_VERSION };
     const saved = await saveMatrixReport({
       userId: profileUserId,
+      toolId,
       birthDateRaw: birthDate,
       content: reading,
-      runeCost: billingCharge?.spentRunes ?? tool.cost,
+      runeCost: charged,
       chargeTransactionId: billingCharge?.transactionId,
       sessionId: session.id,
       structuredData: {
@@ -670,21 +817,25 @@ export async function botMatrixRun(
       },
       subjectId: subject?.id,
       // Overwrite is scoped to this calculation_version — older purchased rows stay.
-      overwrite: true,
+      overwrite: replace || regenerateAfterLeak,
     });
+    persisted = saved;
 
     if (saved.status === "already_saved") {
       reading = saved.report.content;
       if (billingCharge) {
-        runeBalance = await BillingService.rollbackCharge({
+        const rollback = await BillingService.rollbackChargeEx({
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: false,
           actionType: chargeAction,
           transactionId: billingCharge.transactionId,
         });
-        charged = 0;
-        billingCharge = null;
+        runeBalance = rollback.balance;
+        if (rollback.refunded) {
+          charged = 0;
+          billingCharge = null;
+        }
       }
     }
 
@@ -726,6 +877,8 @@ export async function botMatrixRun(
       ok: true,
       action: "run",
       reportId: saved.report.id,
+      ...subjectIdentity,
+      operationId,
       sessionId: session.id,
       content: reading,
       birthDate: isoBirth,
@@ -738,15 +891,32 @@ export async function botMatrixRun(
     };
   } catch (err) {
     console.error("[bot-matrix] run failed", err);
+    // Once the owned report is durable, chat/history delivery cannot turn a
+    // successful paid purchase into a refund or a second generation.
+    if (persisted) {
+      return {
+        ok: true, action: "run", reportId: persisted.report.id, ...subjectIdentity, operationId,
+        sessionId: resultSessionId, content: sanitizeReadingForClient(persisted.report.content) || persisted.report.content,
+        birthDate: isoBirth, runeBalance, charged, reused: persisted.status === "already_saved",
+        replaced: replace || persisted.status === "updated", diagram: diagramForSavedReport(persisted.report, subjectName),
+        url: `${siteBase()}/cabinet?utm_source=telegram&utm_medium=bot&utm_campaign=matrix`,
+      };
+    }
+    let refunded = false;
+    if (freeClaimed) {
+      await query(`UPDATE bot_matrix_operations SET status = 'failed' WHERE user_id = $1 AND operation_id = $2`,
+        [profileUserId, operationId]);
+    }
     if (billingCharge) {
       try {
-        await BillingService.rollbackCharge({
+        const rollback = await BillingService.rollbackChargeEx({
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: false,
           actionType: chargeAction,
           transactionId: billingCharge.transactionId,
         });
+        refunded = rollback.refunded;
       } catch {
         /* ignore */
       }
@@ -754,7 +924,10 @@ export async function botMatrixRun(
     return {
       ok: false,
       error: "internal",
-      message: "Разбор не сложился. Руны не списаны — попробуйте ещё раз.",
+      refunded,
+      message: refunded ? "Разбор не сложился. Руны возвращены; новый расчёт можно подтвердить в меню матрицы."
+        : charged > 0 ? "Не удалось завершить расчёт. Возврат рун пока не подтверждён — проверьте баланс в профиле."
+        : "Разбор не сложился. Руны не списаны — попробуйте ещё раз.",
     };
   }
 }
@@ -807,6 +980,7 @@ export async function botMatrixAction(input: {
   action: "summary" | "list" | "get" | "run" | "delete" | "subjects" | "subjects.list" | "subjects.create" | "subjects.delete";
   reportId?: string;
   replace?: boolean;
+  operationId?: string;
   subjectId?: string;
   kind?: string;
   displayName?: string;
@@ -853,7 +1027,7 @@ export async function botMatrixAction(input: {
     case "get":
       return botMatrixGet(input.telegramUserId, input.reportId || "", input.subjectId);
     case "run":
-      return botMatrixRun(input.telegramUserId, { replace: input.replace, subjectId: input.subjectId });
+      return botMatrixRun(input.telegramUserId, { replace: input.replace, subjectId: input.subjectId, operationId: input.operationId });
     case "delete":
       return botMatrixDelete({
         telegramUserId: input.telegramUserId,

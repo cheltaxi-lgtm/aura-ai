@@ -64,7 +64,7 @@ export async function verifyPassword(password: string, hash: string) {
 export async function getAccountTokenVersion(accountId: string): Promise<number | null> {
   try {
     const { rows } = await query<{ token_version: number }>(
-      `SELECT token_version FROM user_accounts WHERE id = $1 LIMIT 1`,
+      `SELECT token_version FROM user_accounts WHERE id = $1 AND erasure_requested_at IS NULL LIMIT 1`,
       [accountId]
     );
     if (!rows[0]) return null;
@@ -76,7 +76,7 @@ export async function getAccountTokenVersion(accountId: string): Promise<number 
       return null;
     }
     const { rows } = await query<{ id: string }>(
-      `SELECT id FROM user_accounts WHERE id = $1 LIMIT 1`,
+      `SELECT id FROM user_accounts WHERE id = $1 AND erasure_requested_at IS NULL LIMIT 1`,
       [accountId]
     );
     return rows[0] ? 0 : null;

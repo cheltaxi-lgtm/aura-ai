@@ -48,11 +48,12 @@ export async function POST(request: NextRequest, context: RouteContext) {
 
     if (ticket?.user_account_id) {
       void getTelegramStatusForAccount(ticket.user_account_id).then((tg) => {
-        if (!tg.linked || !tg.telegramUserId) return;
+        if (!tg.linked || !tg.telegramUserId || !ticket.profile_user_id) return;
         const telegramUserId = Number(tg.telegramUserId);
         if (!Number.isInteger(telegramUserId) || telegramUserId <= 0) return;
         void notifyBotSupportReply({
           telegramUserId,
+          sourceProfileUserId: ticket.profile_user_id,
           ticketId: id,
           subject: ticket.subject,
           preview: message.content,

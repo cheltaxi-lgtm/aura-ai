@@ -1,8 +1,11 @@
+import { readInternalBody as readBody } from "./read-body.js";
+import { withInternalUserActivity, rejectErasingUser } from "./internal-user-activity.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { botConfig } from "../config.js";
 import { setZovusUserId } from "../db/repos.js";
 import { maybeSendLinkWelcome } from "../domain/link/welcome.js";
+import { siteResolve } from "../domain/site-client.js";
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -18,14 +21,6 @@ function secretOk(req: IncomingMessage): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
 
 /** Site → bot: post-auth link-code bound telegram_user_id to a Zovus account. */
 export async function handleAccountLinked(
@@ -59,15 +54,29 @@ export async function handleAccountLinked(
     json(res, 400, { ok: false, error: "invalid_telegram_user_id" });
     return true;
   }
+  return withInternalUserActivity(tgId, res, async () => {
   const zovus =
     typeof body.zovus_user_id === "string" && body.zovus_user_id.trim()
       ? body.zovus_user_id.trim()
       : null;
 
+  // A delayed pre-erasure link callback must not attach a recreated bot profile
+  // to the removed site profile. Resolve the currently owned identity first.
+  const current = await siteResolve(tgId);
+  if (rejectErasingUser(tgId, res)) return true;
+  if (!current.ok || current.deletionPending) {
+    json(res, 503, { ok: false, error: "account_link_unverified" });
+    return true;
+  }
+  if ((current.profileUserId ?? null) !== zovus || (zovus !== null && !current.linked)) {
+    json(res, 409, { ok: false, error: "stale_account_link" });
+    return true;
+  }
   setZovusUserId(tgId, zovus);
   if (zovus) {
-    void maybeSendLinkWelcome(tgId);
+    await maybeSendLinkWelcome(tgId);
   }
   json(res, 200, { ok: true });
   return true;
+  });
 }

@@ -1,4 +1,5 @@
 import sharp from "sharp";
+import { fitTextToWidth } from './text-fit.js';
 import {
   BOT_CANVAS_HEIGHT,
   BOT_CANVAS_WIDTH,
@@ -49,7 +50,7 @@ export async function renderSalonHomeCardImage(opts?: {
 }): Promise<Buffer> {
   const width = BOT_CANVAS_WIDTH;
   const height = BOT_CANVAS_HEIGHT;
-  const who = (opts?.name || "").trim().slice(0, 20);
+  const who = await fitTextToWidth(opts?.name || '', 38, width - CONTENT * 2);
 
   const pillars = [
     { title: "РАСКЛАД", sub: "три карты" },
@@ -123,19 +124,19 @@ export async function renderSalonHomeCardImage(opts?: {
     font-family="${FONT}" font-size="78" fill="#1E1008">помнит</text>
 
   <text x="50%" y="${heroTop + 236}" text-anchor="middle"
-    font-family="${FONT}" font-size="26" fill="#5A3210">карты · наставники · один аккаунт</text>
+    font-family="${FONT}" font-size="30" fill="#5A3210">карты · мастера · один аккаунт</text>
 
   <line x1="${CONTENT + 20}" y1="${heroTop + 268}" x2="${width - CONTENT - 20}" y2="${heroTop + 268}"
     stroke="#5A3210" stroke-opacity="0.35" stroke-width="2.5"/>
 
   ${tiles}
 
-  <text x="50%" y="${height - 220}" text-anchor="middle"
+  <text x="50%" y="${height - 276}" text-anchor="middle"
     font-family="${FONT}" font-size="34" fill="#1E1008">Меню внизу — начните</text>
+  <text x="50%" y="${height - 226}" text-anchor="middle"
+    font-family="${FONT}" font-size="30" fill="#5A3210">расклад · карта дня · матрица</text>
   <text x="50%" y="${height - 174}" text-anchor="middle"
-    font-family="${FONT}" font-size="24" fill="#5A3210">расклад · карта дня · матрица</text>
-  <text x="50%" y="${height - 132}" text-anchor="middle"
-    font-family="${FONT}" font-size="20" fill="#6B3E14">18+ · zovus.ru</text>
+    font-family="${FONT}" font-size="28" fill="#6B3E14">18+ · zovus.ru</text>
 </svg>`);
 
   // Rasterize SVG → exact canvas (no letter-spacing, no density quirks).

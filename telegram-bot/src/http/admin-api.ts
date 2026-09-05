@@ -1,3 +1,4 @@
+import { readInternalBody as readBody } from "./read-body.js";
 /**
  * Site admin → bot internal control plane.
  * POST /internal/admin  { action, ... }
@@ -13,6 +14,10 @@ import {
   buildAdminDashboard,
   listFlags,
 } from "../admin/dashboard.js";
+import { audit, deleteUserData } from "../db/repos.js";
+import { hasActivePollingUser } from "../ops/polling.js";
+import { hasActiveUserOperation } from "../middleware/activity.js";
+import { beginUserErasure, completeUserErasure } from "../domain/user-erasure.js";
 
 function json(res: ServerResponse, status: number, body: unknown): void {
   res.writeHead(status, { "Content-Type": "application/json" });
@@ -35,14 +40,6 @@ function secretOk(req: IncomingMessage): boolean {
   return ok;
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
 
 type AdminAction =
   | "dashboard"
@@ -52,7 +49,10 @@ type AdminAction =
   | "set_flag"
   | "ban"
   | "unban"
-  | "user";
+  | "user"
+  | "begin_user_erasure"
+  | "complete_user_erasure"
+  | "delete_user";
 
 export async function handleAdminApi(
   req: IncomingMessage,
@@ -75,6 +75,9 @@ export async function handleAdminApi(
       "ban",
       "unban",
       "user",
+      "delete_user",
+      "begin_user_erasure",
+      "complete_user_erasure",
     ] });
     return true;
   }
@@ -105,6 +108,20 @@ export async function handleAdminApi(
 
   try {
     switch (action) {
+      case 'begin_user_erasure':
+      case 'complete_user_erasure': {
+        const id = Number(body.telegram_user_id);
+        const operation = typeof body.operation_id === 'string' ? body.operation_id : '';
+        if (!Number.isSafeInteger(id) || id <= 0 || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(operation)) {
+          json(res, 400, { ok: false, error: 'invalid_erasure_request' });
+          return true;
+        }
+        const ok = action === 'begin_user_erasure' ? beginUserErasure(id, operation) : completeUserErasure(id, operation);
+        json(res, ok ? 200 : 409, ok
+          ? { ok: true, ...(action === 'begin_user_erasure' ? { deleted: true } : { completed: true }) }
+          : { ok: false, error: 'erasure_pending' });
+        return true;
+      }
       case "dashboard": {
         json(res, 200, buildAdminDashboard());
         return true;
@@ -144,6 +161,21 @@ export async function handleAdminApi(
         const user = listed.items.find((u) => u.telegram_user_id === tgId) || null;
         const events = adminListEvents({ limit: 40, telegramUserId: tgId });
         json(res, 200, { ok: true, user, events });
+        return true;
+      }
+      case "delete_user": {
+        const tgId = Number(body.telegram_user_id);
+        if (!Number.isInteger(tgId) || tgId <= 0) {
+          json(res, 400, { ok: false, error: "invalid_telegram_user_id" });
+          return true;
+        }
+        if (hasActivePollingUser(tgId) || hasActiveUserOperation(tgId)) {
+          json(res, 409, { ok: false, error: "user_operation_running" });
+          return true;
+        }
+        deleteUserData(tgId);
+        audit("delete_user", { telegram_user_id: tgId }, actor);
+        json(res, 200, { ok: true, deleted: true });
         return true;
       }
       case "events": {

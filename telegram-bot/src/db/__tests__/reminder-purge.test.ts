@@ -5,6 +5,9 @@ import { getDb, migrate } from "../client.js";
 import { ensureCriticalColumns, migrateUp } from "../migrate-runner.js";
 import {
   claimUpdate,
+  completeUpdate,
+  markUpdateIrreversible,
+  heartbeatUpdate,
   confirmAge,
   confirmConsent,
   createGuestSession,
@@ -154,7 +157,39 @@ function main(): void {
     deleteUserData(uid);
   }
 
-  // (5) usersForReactivation: site-linked accounts excluded (site win-back owns them)
+  // (5) processed-update lease: crashed work can be recovered after timeout,
+  // while a live claim remains idempotently suppressed.
+  {
+    const liveId = 921_000_003;
+    const crashedId = 921_000_004;
+    getDb().prepare(`DELETE FROM bot_processed_updates WHERE update_id IN (?, ?)`).run(liveId, crashedId);
+    assert(claimUpdate(liveId), "updates: live claimed");
+    assert(!claimUpdate(liveId), "updates: live duplicate suppressed");
+    assert(claimUpdate(crashedId), "updates: crashed initial claim");
+    const old = new Date(Date.now() - 16 * 60_000).toISOString();
+    getDb().prepare(`UPDATE bot_processed_updates SET processed_at = ? WHERE update_id = ?`).run(old, crashedId);
+    assert(claimUpdate(crashedId), "updates: stale lease recovered");
+    completeUpdate(crashedId);
+    getDb().prepare(`UPDATE bot_processed_updates SET processed_at = ? WHERE update_id = ?`).run(old, crashedId);
+    assert(!claimUpdate(crashedId), "updates: completed action never replays after lease timeout");
+    markUpdateIrreversible(liveId);
+    getDb().prepare(`UPDATE bot_processed_updates SET processed_at = ? WHERE update_id = ?`).run(old, liveId);
+    assert(!claimUpdate(liveId), "updates: irreversible action never replays after timeout");
+    getDb().prepare(`DELETE FROM bot_processed_updates WHERE update_id IN (?, ?)`).run(liveId, crashedId);
+    getDb().prepare(`INSERT INTO bot_processed_updates (update_id, processed_at) VALUES (?, ?)`).run(liveId, old);
+    assert(!claimUpdate(liveId), "updates: legacy rows default to completed, not replayable");
+    assert(claimUpdate(crashedId), "updates: heartbeat test claimed");
+    getDb().prepare(`UPDATE bot_processed_updates SET processed_at = ? WHERE update_id = ?`).run(old, crashedId);
+    heartbeatUpdate(crashedId);
+    assert(!claimUpdate(crashedId), "updates: live heartbeat renews lease");
+    getDb().prepare(`UPDATE bot_processed_updates SET owner_id = 'other-process' WHERE update_id = ?`).run(crashedId);
+    let fenced = false;
+    try { markUpdateIrreversible(crashedId); } catch { fenced = true; }
+    assert(fenced, "updates: expired owner cannot start an irreversible action");
+    getDb().prepare(`DELETE FROM bot_processed_updates WHERE update_id IN (?, ?)`).run(liveId, crashedId);
+  }
+
+  // (6) usersForReactivation: site-linked accounts excluded (site win-back owns them)
   {
     const uidFree = 920_005;
     const uidLinked = 920_006;
@@ -170,11 +205,16 @@ function main(): void {
     const picked = usersForReactivation(7).map((u) => u.telegram_user_id);
     assert(picked.includes(uidFree), "reactivation: unlinked inactive user picked");
     assert(!picked.includes(uidLinked), "reactivation: site-linked user excluded");
+    markReminderSent(uidFree, "reactivation_7");
+    assert(
+      !usersForReactivation(7).some((u) => u.telegram_user_id === uidFree),
+      "reactivation: sent users leave capped batch so later users progress"
+    );
     deleteUserData(uidFree);
     deleteUserData(uidLinked);
   }
 
-  console.log("ok: spread-steps / reminder-dedupe / purges / reactivation-scope");
+  console.log("ok: spread-steps / reminder-dedupe / purges / update-lease / reactivation-scope");
 }
 
 main();

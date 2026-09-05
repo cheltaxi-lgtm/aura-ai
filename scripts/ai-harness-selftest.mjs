@@ -10,9 +10,12 @@ import { fileURLToPath } from "node:url";
 import { CHECKS, SCOPES, STATE_PATH } from "./ai-harness-catalog.mjs";
 import { completedAllowed, evaluateStopGate, isWorkSession } from "./ai-harness-gate.mjs";
 import { parsePorcelain, validateCatalog } from "./ai-harness.mjs";
+import { workspaceFingerprint } from "./ai-harness-fingerprint.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
+const allows = (state) => completedAllowed(state, state.diffFingerprint);
+const originalState = fs.existsSync(path.join(ROOT, STATE_PATH)) ? fs.readFileSync(path.join(ROOT, STATE_PATH), "utf8") : null;
 
 function check(name, ok, detail = "") {
   const mark = ok ? "PASS" : "FAIL";
@@ -43,17 +46,23 @@ const passState = {
   verdict: "PASS",
   production: "NOT_REQUIRED",
   updatedAt: new Date().toISOString(),
+  diffFingerprint: "test-fingerprint",
+  requiredReviews: ["code", "security"],
+  reviews: { code: "PASS", security: "PASS" },
+  reviewEvidence: Object.fromEntries(["code", "security"].map(id => [id, {
+    result: "PASS", reviewedAt: new Date().toISOString(), diffFingerprint: "test-fingerprint",
+  }])),
   requiredChecks: ["guards"],
   checks: [{ id: "guards", status: "PASS" }],
 };
-check("gate allows PASS", completedAllowed(passState));
+check("gate allows PASS", allows(passState));
 
 const failState = {
   ...passState,
   verdict: "FAIL",
   checks: [{ id: "guards", status: "FAIL", reason: "injected" }],
 };
-check("gate blocks FAIL", !completedAllowed(failState));
+check("gate blocks FAIL", !allows(failState));
 
 const noState = evaluateStopGate({
   status: "completed",
@@ -66,20 +75,58 @@ const qa = evaluateStopGate({ status: "completed", dirtyFiles: [], state: null }
 check("gate allows Q&A stop", qa.action === "allow");
 
 const partialState = { ...passState, verdict: "PARTIAL" };
-check("gate blocks PARTIAL", !completedAllowed(partialState));
+check("gate blocks PARTIAL", !allows(partialState));
 
 const stale = {
   ...passState,
   updatedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
 };
-check("gate blocks stale", !completedAllowed(stale));
+check("gate blocks stale", !allows(stale));
 check("work session includes package.json", isWorkSession(["package.json"]));
 const lyingPass = {
   ...passState,
   requiredChecks: ["guards", "typecheck"],
   checks: [{ id: "guards", status: "PASS" }, { id: "typecheck", status: "FAIL" }],
 };
-check("gate blocks lying PASS", !completedAllowed(lyingPass));
+check("gate blocks lying PASS", !allows(lyingPass));
+
+check("gate blocks explicit negative review", !allows({ ...passState, reviews: { code: "FAIL", security: "PASS" } }));
+check("gate respects extra negative review", !allows({ ...passState, reviews: { ...passState.reviews, production: "FAIL" } }));
+check("gate blocks PARTIAL review", !allows({ ...passState, reviews: { code: "PASS", security: "PARTIAL" } }));
+check("gate blocks missing review", !allows({ ...passState, reviews: { code: "PASS" } }));
+check("gate blocks legacy unbound review", !allows({ ...passState, reviewEvidence: {} }));
+check("gate blocks different reviewed diff", !allows({ ...passState, reviewEvidence: {
+  ...passState.reviewEvidence, code: { ...passState.reviewEvidence.code, diffFingerprint: "old-diff" },
+} }));
+check("gate blocks post-test edit", !completedAllowed(passState, "edited-diff"));
+check("review cannot renew old tests", !allows({ ...passState,
+  updatedAt: new Date().toISOString(), checksCompletedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(),
+}));
+check("loop cap cannot bypass failure", evaluateStopGate({ status: "completed", loopCount: 3,
+  dirtyFiles: ["src/x.ts"], state: failState, currentFingerprint: failState.diffFingerprint,
+}).action === "block");
+
+// Evidence must change when content changes, even if HEAD and file names do not.
+fs.mkdirSync(path.join(ROOT, "tmp"), { recursive: true });
+const fingerprintRepo = fs.mkdtempSync(path.join(ROOT, "tmp", "harness-fingerprint-"));
+const fixtureGit = (...args) => {
+  const result = spawnSync("git", args, { cwd: fingerprintRepo, encoding: "utf8" });
+  if (result.status !== 0) throw new Error(`Fingerprint fixture git failed: ${result.stderr}`);
+};
+fixtureGit("init", "--quiet");
+fs.writeFileSync(path.join(fingerprintRepo, "source.ts"), "export const value = 1;\n");
+fixtureGit("add", "source.ts");
+fixtureGit("-c", "user.name=Harness Test", "-c", "user.email=harness@example.invalid", "commit", "--quiet", "-m", "test fixture");
+const cleanFingerprint = workspaceFingerprint(fingerprintRepo);
+fs.writeFileSync(path.join(fingerprintRepo, "source.ts"), "export const value = 2;\n");
+const changedFingerprint = workspaceFingerprint(fingerprintRepo);
+check("fingerprint catches content edit", changedFingerprint !== cleanFingerprint);
+fs.writeFileSync(path.join(fingerprintRepo, "source.ts"), "export const value = 3;\n");
+check("fingerprint catches second same-path edit", workspaceFingerprint(fingerprintRepo) !== changedFingerprint);
+fs.writeFileSync(path.join(fingerprintRepo, "untracked.ts"), "export const pending = true;\n");
+const withUntracked = workspaceFingerprint(fingerprintRepo);
+fs.writeFileSync(path.join(fingerprintRepo, "untracked.ts"), "export const pending = false;\n");
+check("fingerprint covers untracked contents", workspaceFingerprint(fingerprintRepo) !== withUntracked);
 
 const hookFail = runNode(".cursor/hooks/completed-gate.mjs", []);
 // completed-gate reads stdin; empty stdin must fail-open
@@ -116,6 +163,7 @@ const injected = runNode("scripts/ai-harness.mjs", [
   "--level",
   "fast",
   "--selftest-fail",
+  "--no-state",
   "--json",
 ]);
 check("injected FAIL exits 1", injected.status === 1);
@@ -126,9 +174,9 @@ try {
   injectedState = {};
 }
 check("injected FAIL verdict", injectedState.verdict === "FAIL");
-check("injected FAIL blocks COMPLETED", !completedAllowed(injectedState));
+check("injected FAIL blocks COMPLETED", !allows(injectedState));
 
-const fixed = runNode("scripts/ai-harness.mjs", ["--scope", "harness", "--level", "fast", "--json"]);
+const fixed = runNode("scripts/ai-harness.mjs", ["--scope", "harness", "--level", "fast", "--json", "--no-state"]);
 check("retest after fix exits 0", fixed.status === 0, String(fixed.stderr || "").split("\n").slice(-1)[0]);
 let fixedState = {};
 try {
@@ -137,7 +185,14 @@ try {
   fixedState = {};
 }
 check("retest PASS", fixedState.verdict === "PASS");
-check("retest allows COMPLETED", completedAllowed(fixedState));
+check("retest requires independent review", !allows(fixedState));
+const reviewedFixed = { ...fixedState,
+  reviews: Object.fromEntries(fixedState.requiredReviews.map(id => [id, "PASS"])),
+  reviewEvidence: Object.fromEntries(fixedState.requiredReviews.map(id => [id, {
+    result: "PASS", reviewedAt: new Date().toISOString(), diffFingerprint: fixedState.diffFingerprint,
+  }])),
+};
+check("retest plus fresh reviews allows COMPLETED", allows(reviewedFixed));
 
 const postEdit = spawnSync(process.execPath, [path.join(ROOT, ".cursor/hooks/post-edit-checks.mjs")], {
   cwd: ROOT,
@@ -184,7 +239,7 @@ for (const name of npmScripts) {
 }
 
 const statePath = path.join(ROOT, STATE_PATH);
-check("state file written", fs.existsSync(statePath));
+check("selftest preserves product state", originalState === (fs.existsSync(statePath) ? fs.readFileSync(statePath, "utf8") : null));
 
 if (failures.length) {
   console.error(`\nSELFTEST FAIL: ${failures.length} checks`);

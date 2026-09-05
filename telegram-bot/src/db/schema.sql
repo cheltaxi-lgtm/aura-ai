@@ -73,7 +73,9 @@ CREATE TABLE IF NOT EXISTS bot_day_cards (
 
 CREATE TABLE IF NOT EXISTS bot_processed_updates (
   update_id INTEGER PRIMARY KEY,
-  processed_at TEXT NOT NULL
+  processed_at TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'completed',
+  owner_id TEXT
 );
 
 CREATE TABLE IF NOT EXISTS bot_events (

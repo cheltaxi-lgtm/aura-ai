@@ -1,3 +1,5 @@
+import { workspaceFingerprint } from "./ai-harness-fingerprint.mjs";
+
 /**
  * Machine COMPLETED gate. COMPLETED is allowed only on verdict PASS
  * and production PASS or NOT_REQUIRED.
@@ -10,13 +12,13 @@ export function evaluateStopGate({
   state = null,
   dirtyFiles = [],
   now = Date.now(),
+  currentFingerprint,
 } = {}) {
   if (status !== "completed") {
     return { action: "allow", reason: "not-completed" };
   }
-  if (loopCount >= 3) {
-    return { action: "allow", reason: "loop-limit" };
-  }
+  // Reaching a retry limit does not turn incomplete work into completed work.
+  void loopCount;
 
   const work = isWorkSession(dirtyFiles, state);
   if (!work) {
@@ -32,7 +34,7 @@ export function evaluateStopGate({
     };
   }
 
-  const updated = Date.parse(state.updatedAt || "") || 0;
+  const updated = Date.parse(state.checksCompletedAt || state.updatedAt || "") || 0;
   if (!updated || now - updated > STALE_MS) {
     return {
       action: "block",
@@ -90,6 +92,35 @@ export function evaluateStopGate({
     };
   }
 
+  if (!state.diffFingerprint) {
+    return { action: "block", reason: "missing-fingerprint", message: "COMPLETED запрещён: проверки не привязаны к содержимому диффа. Перезапусти harness." };
+  }
+  try {
+    const current = currentFingerprint ?? workspaceFingerprint();
+    if (current !== state.diffFingerprint) {
+      return { action: "block", reason: "changed-diff", message: "COMPLETED запрещён: код изменился после проверок. Повтори проверки и независимый review на текущем диффе." };
+    }
+  } catch {
+    return { action: "block", reason: "fingerprint-unavailable", message: "COMPLETED запрещён: не удалось проверить актуальность рабочего дерева." };
+  }
+  const requiredReviews = state.requiredReviews?.length ? state.requiredReviews : ["code"];
+  const negativeReview = Object.entries(state.reviews || {}).find(([, result]) => result === "FAIL" || result === "PARTIAL");
+  if (negativeReview) {
+    return { action: "block", reason: "review", message: `COMPLETED запрещён: review ${negativeReview[0]}=${negativeReview[1]}. Отрицательное заключение требует исправления и повторной проверки.` };
+  }
+  for (const id of requiredReviews) {
+    const result = state.reviews?.[id];
+    if (result !== "PASS") {
+      return { action: "block", reason: "review", message: `COMPLETED запрещён: независимый review ${id}=${result || "NOT_RUN"}. Исправь замечания и проведи повторный review.` };
+    }
+    const evidence = state.reviewEvidence?.[id];
+    const reviewedAt = Date.parse(evidence?.reviewedAt || "") || 0;
+    if (!evidence || evidence.result !== "PASS" || evidence.diffFingerprint !== state.diffFingerprint ||
+      !reviewedAt || now - reviewedAt > STALE_MS || reviewedAt > now + 60_000) {
+      return { action: "block", reason: "stale-review", message: `COMPLETED запрещён: review ${id} не подтверждён для актуального диффа. Требуется свежий независимый review.` };
+    }
+  }
+
   return { action: "allow", reason: "pass" };
 }
 
@@ -104,12 +135,13 @@ export function isWorkSession(dirtyFiles = [], state = null) {
   );
 }
 
-export function completedAllowed(state) {
+export function completedAllowed(state, currentFingerprint) {
   const r = evaluateStopGate({
     status: "completed",
     loopCount: 0,
     state,
     dirtyFiles: ["src/x.ts"],
+    currentFingerprint,
   });
   return r.action === "allow" && r.reason === "pass";
 }

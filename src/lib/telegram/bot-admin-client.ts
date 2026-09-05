@@ -24,7 +24,10 @@ export type BotAdminAction =
   | "set_flag"
   | "ban"
   | "unban"
-  | "user";
+  | "user"
+  | "begin_user_erasure"
+  | "complete_user_erasure"
+  | "delete_user";
 
 export async function callBotAdmin(
   action: BotAdminAction,
@@ -53,11 +56,14 @@ export async function callBotAdmin(
     });
     let data: Record<string, unknown> = {};
     try {
-      data = (await res.json()) as Record<string, unknown>;
+      const payload: unknown = await res.json();
+      data = payload !== null && typeof payload === "object" && !Array.isArray(payload)
+        ? payload as Record<string, unknown>
+        : { ok: false, error: "invalid_bot_response" };
     } catch {
       data = { ok: false, error: "invalid_bot_response" };
     }
-    return { ok: res.ok && data.ok !== false, status: res.status, data };
+    return { ok: res.ok && data.ok === true, status: res.status, data };
   } catch (err) {
     return {
       ok: false,

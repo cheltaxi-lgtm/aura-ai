@@ -1,3 +1,5 @@
+import { readInternalBody as readBody } from "./read-body.js";
+import { acceptNotificationIdentity, withInternalUserActivity } from "./internal-user-activity.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { botConfig } from "../config.js";
@@ -19,14 +21,6 @@ function secretOk(req: IncomingMessage): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
 
 /** Site → bot: admin answered a support ticket. */
 export async function handleSupportReplyNotify(
@@ -46,6 +40,7 @@ export async function handleSupportReplyNotify(
 
   let body: {
     telegram_user_id?: unknown;
+    source_profile_user_id?: unknown;
     ticket_id?: unknown;
     subject?: unknown;
     preview?: unknown;
@@ -62,6 +57,8 @@ export async function handleSupportReplyNotify(
     json(res, 400, { ok: false, error: "invalid_telegram_user_id" });
     return true;
   }
+  return withInternalUserActivity(tgId, res, async () => {
+  if (!await acceptNotificationIdentity(tgId, body.source_profile_user_id, res)) return true;
   const ticketId =
     typeof body.ticket_id === "string" && body.ticket_id.trim()
       ? body.ticket_id.trim()
@@ -89,6 +86,7 @@ export async function handleSupportReplyNotify(
   try {
     const tgRes = await fetch(`https://api.telegram.org/bot${botConfig.token}/sendMessage`, {
       method: "POST",
+      signal: AbortSignal.timeout(15_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: user.chat_id,
@@ -109,4 +107,5 @@ export async function handleSupportReplyNotify(
 
   json(res, 200, { ok: true, delivered: true });
   return true;
+  });
 }

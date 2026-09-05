@@ -352,6 +352,7 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
       const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
       const sent = await notifyBotReminder({
         telegramUserId: user.telegramUserId,
+        sourceProfileUserId: user.userId,
         kind: "daily_cards",
         title: "Карты дня ждут вас",
         body: "Бесплатный расклад на сутки готов. Откройте, когда будет минута.",

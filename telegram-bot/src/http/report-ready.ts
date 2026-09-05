@@ -1,3 +1,5 @@
+import { readInternalBody as readBody } from "./read-body.js";
+import { acceptNotificationIdentity, withInternalUserActivity, safeZovusUrl } from "./internal-user-activity.js";
 import type { IncomingMessage, ServerResponse } from "node:http";
 import { timingSafeEqual } from "node:crypto";
 import { botConfig } from "../config.js";
@@ -18,14 +20,6 @@ function secretOk(req: IncomingMessage): boolean {
   return a.length === b.length && timingSafeEqual(a, b);
 }
 
-function readBody(req: IncomingMessage): Promise<string> {
-  return new Promise((resolve, reject) => {
-    const chunks: Buffer[] = [];
-    req.on("data", (c) => chunks.push(Buffer.isBuffer(c) ? c : Buffer.from(c)));
-    req.on("end", () => resolve(Buffer.concat(chunks).toString("utf8")));
-    req.on("error", reject);
-  });
-}
 
 /** Site → bot: a paid async report finished — push the ready notice. */
 export async function handleReportReadyNotify(
@@ -45,6 +39,7 @@ export async function handleReportReadyNotify(
 
   let body: {
     telegram_user_id?: unknown;
+    source_profile_user_id?: unknown;
     title?: unknown;
     cta_url?: unknown;
   };
@@ -60,14 +55,13 @@ export async function handleReportReadyNotify(
     json(res, 400, { ok: false, error: "invalid_telegram_user_id" });
     return true;
   }
+  return withInternalUserActivity(tgId, res, async () => {
+  if (!await acceptNotificationIdentity(tgId, body.source_profile_user_id, res)) return true;
   const title =
     typeof body.title === "string" && body.title.trim()
       ? body.title.trim().slice(0, 160)
       : "Отчёт готов";
-  const ctaUrl =
-    typeof body.cta_url === "string" && /^https:\/\/[a-z0-9.-]*zovus\.ru\//i.test(body.cta_url)
-      ? body.cta_url.slice(0, 512)
-      : botConfig.siteUrl;
+  const ctaUrl = safeZovusUrl(body.cta_url, botConfig.siteUrl);
 
   const user = getDb()
     .prepare(`SELECT chat_id FROM bot_users WHERE telegram_user_id = ?`)
@@ -80,6 +74,7 @@ export async function handleReportReadyNotify(
   try {
     const tgRes = await fetch(`https://api.telegram.org/bot${botConfig.token}/sendMessage`, {
       method: "POST",
+      signal: AbortSignal.timeout(15_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         chat_id: user.chat_id,
@@ -102,4 +97,5 @@ export async function handleReportReadyNotify(
 
   json(res, 200, { ok: true, delivered: true });
   return true;
+  });
 }

@@ -68,23 +68,14 @@ export async function renderPhotoHomeCardImage(opts: {
           { title: "РАЗБОР", sub: `${cost}ᚢ расшифровка` },
         ];
 
-  const colGap = 14;
-  const innerW = width - CONTENT * 2;
-  const colW = Math.floor((innerW - colGap * 2) / 3);
-  const colLeft = CONTENT;
-  const colY = 760;
-  const colH = 148;
-
   const tiles = pillars
     .map((p, i) => {
-      const x = colLeft + i * (colW + colGap);
+      const y = 720 + i * 108;
       return `
-      <rect x="${x}" y="${colY}" width="${colW}" height="${colH}"
-        fill="url(#chipFill)" stroke="#5A3210" stroke-opacity="0.45" stroke-width="2" rx="18"/>
-      <text x="${x + colW / 2}" y="${colY + 64}" text-anchor="middle"
-        font-family="${FONT}" font-size="30" fill="#2A1608">${escapeXml(p.title)}</text>
-      <text x="${x + colW / 2}" y="${colY + 110}" text-anchor="middle"
-        font-family="${FONT}" font-size="22" fill="#5A3210">${escapeXml(p.sub)}</text>`;
+      <text x="${CONTENT + 20}" y="${y}" font-family="${FONT}" font-size="34" fill="#2A1608">${i + 1}. ${escapeXml(p.title)}</text>
+      <text x="${width - CONTENT - 20}" y="${y}" text-anchor="end"
+        font-family="${FONT}" font-size="32" fill="#5A3210">${escapeXml(p.sub)}</text>
+      <line x1="${CONTENT + 20}" x2="${width - CONTENT - 20}" y1="${y + 32}" y2="${y + 32}" stroke="#5A3210" stroke-opacity="0.2"/>`;
     })
     .join("\n");
 
@@ -143,21 +134,21 @@ export async function renderPhotoHomeCardImage(opts: {
     font-family="${FONT}" font-size="78" fill="#1E1008">${escapeXml(heroLines[1]!)}</text>
 
   <text x="50%" y="${heroTop + 160}" text-anchor="middle"
-    font-family="${FONT}" font-size="28" fill="#5A3210">${escapeXml(dealLine)}</text>
+    font-family="${FONT}" font-size="34" fill="#5A3210">${escapeXml(dealLine)}</text>
   <text x="50%" y="${heroTop + 208}" text-anchor="middle"
-    font-family="${FONT}" font-size="26" fill="#5A3210">${escapeXml(balLine)}</text>
+    font-family="${FONT}" font-size="32" fill="#5A3210">${escapeXml(balLine)}</text>
 
   <line x1="${CONTENT + 20}" y1="${heroTop + 248}" x2="${width - CONTENT - 20}" y2="${heroTop + 248}"
     stroke="#5A3210" stroke-opacity="0.35" stroke-width="2.5"/>
 
   ${tiles}
 
-  <text x="50%" y="${height - 220}" text-anchor="middle"
+  <text x="50%" y="${height - 276}" text-anchor="middle"
     font-family="${FONT}" font-size="34" fill="#1E1008">${escapeXml(ctaLine)}</text>
+  <text x="50%" y="${height - 226}" text-anchor="middle"
+    font-family="${FONT}" font-size="30" fill="#5A3210">${escapeXml(histLine)}</text>
   <text x="50%" y="${height - 174}" text-anchor="middle"
-    font-family="${FONT}" font-size="24" fill="#5A3210">${escapeXml(histLine)}</text>
-  <text x="50%" y="${height - 132}" text-anchor="middle"
-    font-family="${FONT}" font-size="20" fill="#6B3E14">zovus.ru</text>
+    font-family="${FONT}" font-size="28" fill="#6B3E14">zovus.ru</text>
 </svg>`);
 
   const png = await sharp(svg).png().toBuffer();

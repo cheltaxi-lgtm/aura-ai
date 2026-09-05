@@ -3,9 +3,11 @@ import { resolveClientGender, type BinaryGender } from "@/lib/russian-name-gende
 import { getRuneBalance } from "@/lib/rune-service";
 import { getUserById } from "@/lib/users";
 import { findTelegramIdentity } from "@/lib/telegram/accounts";
+import { pendingTelegramErasure } from "@/lib/account-erasure";
 
 export type BotResolveResult = {
   linked: boolean;
+  deletionPending?: boolean;
   telegramUserId: number;
   accountId: string | null;
   profileUserId: string | null;
@@ -40,9 +42,11 @@ export async function resolveBotUser(telegramUserId: number): Promise<BotResolve
   // Fallback only: real bind URL is bot-minted `/auth/telegram-link?code=…` after site auth.
   const linkUrl = `${siteBase()}/auth/user/login?returnTo=${encodeURIComponent("/cabinet")}&utm_source=telegram&utm_medium=bot&utm_campaign=account_link`;
   const identity = await findTelegramIdentity(telegramUserId);
-  if (!identity) {
+  const deletionPending = Boolean(await pendingTelegramErasure(telegramUserId));
+  if (!identity || deletionPending) {
     return {
       linked: false,
+      deletionPending,
       telegramUserId,
       accountId: null,
       profileUserId: null,

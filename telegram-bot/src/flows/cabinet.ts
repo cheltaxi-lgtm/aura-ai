@@ -17,6 +17,9 @@ import {
 } from "../domain/site-client.js";
 import {
   jumpReadingAlbumPage,
+  activateReadingView,
+  createMatrixView,
+  drawnCardsFromSiteCards,
   presentReadingToTelegram,
 } from "../domain/reading/present.js";
 import { buildLocalMatrixDiagram } from "../domain/matrix/calc.js";
@@ -46,6 +49,7 @@ import { formatMatrixPremiumTeaser } from "../domain/matrix/format.js";
 import { replyPhotoBudget } from "../domain/tg-send.js";
 import { announceWorking } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
+import { pendingOperation, savePaidResult, deliveredOperation, operationIdForIntent } from '../domain/paid-operation.js';
 
 let cabinetCopyCounter = 0;
 
@@ -284,7 +288,7 @@ export async function showNatal(ctx: Context): Promise<void> {
   }
 }
 
-async function sendMatrixDiagram(
+export async function sendMatrixDiagram(
   ctx: Context,
   opts: {
     diagram?: SiteMatrixDiagram | null;
@@ -342,6 +346,7 @@ async function renderMatrixTeaserFromSummary(
   });
   const chunks = chunkTelegramText(body);
   const kb = matrixGetKeyboard({
+    viewId: ctx.from ? createMatrixView(ctx.from.id, data.subject?.id, data.ownedReportId || undefined) : undefined,
     cost: data.cost ?? 20,
     shopUrl: data.shopUrl,
     runeBalance: data.runeBalance,
@@ -500,15 +505,25 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
     activeFlow?.flow === "matrix_subject" &&
     typeof activeFlow.data?.subjectId === "string"
       ? activeFlow.data.subjectId
-      : undefined;
+      : activeFlow?.flow === "reading_view" &&
+          typeof activeFlow.data?.matrixSubjectId === "string"
+        ? activeFlow.data.matrixSubjectId
+        : undefined;
+  const viewId = typeof activeFlow?.data.viewId === 'string' ? activeFlow.data.viewId : undefined;
+  const reportId = typeof activeFlow?.data.matrixReportId === 'string' ? activeFlow.data.matrixReportId : undefined;
+  const operation = pendingOperation(tid, 'matrix', { subjectId: subjectId || null, reportId: reportId || null },
+    viewId ? operationIdForIntent(tid, `matrix:${viewId}`) : undefined);
   setFlow(tid, "matrix_run", "running", { subjectId: subjectId ?? null });
-  await ctx.reply(copy.matrixRunning);
   try {
-    await ctx.replyWithChatAction("typing");
-    const { data } = await siteNumerology(linked.user.telegram_user_id, "run", undefined, {
+    await ctx.reply(copy.matrixRunning).catch(() => undefined);
+    await ctx.replyWithChatAction("typing").catch(() => undefined);
+    const { data } = operation.result ? { data: JSON.parse(operation.result) as MatrixSummaryData } : await siteNumerology(linked.user.telegram_user_id, "run", undefined, {
       replace: true,
+      operationId: operation.id,
       ...(subjectId ? { subjectId } : {}),
     });
+    savePaidResult(operation.id, data);
+    if (data.pending) { await ctx.reply('Разбор ещё готовится. Продолжите этот запрос через /resume.'); return; }
     if (!data.ok) {
       if (data.error === "insufficient_runes") {
         await ctx.reply(
@@ -526,10 +541,10 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
       });
       return;
     }
-    const footer = data.replaced
+    const footer = operation.result ? 'Сохранённый разбор · без повторного списания' : data.replaced
       ? data.charged
-        ? `Новая матрица готова. Предыдущая заменена · списано ${data.charged}ᚢ`
-        : "Новая матрица готова. Предыдущая заменена."
+        ? `Новая версия готова · списано ${data.charged}ᚢ`
+        : "Новая версия готова."
       : data.charged
         ? `Списано ${data.charged}ᚢ`
         : undefined;
@@ -541,34 +556,25 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
       matrixActions: true,
       matrixPaging: true,
       matrixSiteUrl: data.url,
+      matrixReportId: data.reportId,
+      matrixSubjectId: data.subject?.id || subjectId,
     });
-    await sendMatrixDiagram(ctx, {
+    const diagramDelivered = data.diagramUnavailable ? true : await sendMatrixDiagram(ctx, {
       diagram: data.diagram,
       birthDate: data.birthDate,
       caption: data.birthDate ? `🌌 Матрица судьбы · ${data.birthDate}` : "🌌 Матрица судьбы",
       focusKey: data.diagram?.focusKey ?? data.focusKey,
     });
+    if (data.diagramUnavailable) await ctx.reply('Текст исходного разбора сохранён. Схема этой старой версии недоступна.');
+    if (diagramDelivered) deliveredOperation(operation.id);
+    else await ctx.reply('Текст готов. Схему можно повторно получить через /resume.');
     trackEvent("matrix_full_ready", linked.user.telegram_user_id, {
       sessionId: data.sessionId ?? null,
       charged: data.charged ?? 0,
     });
   } catch (err) {
     console.error("[cabinet] matrix run", err);
-    // Server may finish after undici/headers timeout — try to pull a just-saved report.
-    try {
-      const owned = await siteNumerology(linked.user.telegram_user_id, "list");
-      const latest = owned.data.items?.[0];
-      if (owned.data.ok && latest?.id) {
-        const ageMs = Date.now() - new Date(latest.date).getTime();
-        if (Number.isFinite(ageMs) && ageMs >= 0 && ageMs < 10 * 60_000) {
-          await openMatrixReport(ctx, latest.id, { showActions: true });
-          return;
-        }
-      }
-    } catch (recoverErr) {
-      console.warn("[cabinet] matrix run recovery failed", recoverErr);
-    }
-    await ctx.reply(copy.matrixStillWorking, { reply_markup: salonKeyboard() });
+    await ctx.reply('Номер запроса сохранён. Откройте /resume, чтобы получить именно этот разбор.', { reply_markup: salonKeyboard() });
   } finally {
     // Release the double-tap lock unless a reading album already took the flow.
     const cur = getFlow(tid);
@@ -582,12 +588,14 @@ export async function runMatrixFull(ctx: Context): Promise<void> {
 export async function openMatrixReport(
   ctx: Context,
   reportId: string,
-  opts?: { siteUrl?: string | null; showActions?: boolean }
+  opts?: { siteUrl?: string | null; showActions?: boolean; subjectId?: string | null }
 ): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
   try {
-    const { data } = await siteNumerology(linked.user.telegram_user_id, "get", reportId);
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "get", reportId, {
+      subjectId: opts?.subjectId || undefined,
+    });
     if (!data.ok || !data.content) {
       await ctx.reply(data.message || copy.matrixReportsEmpty, {
         reply_markup: salonKeyboard(),
@@ -601,6 +609,8 @@ export async function openMatrixReport(
       matrixActions: opts?.showActions !== false,
       matrixPaging: true,
       matrixSiteUrl: opts?.siteUrl || data.url,
+      matrixReportId: data.reportId || reportId,
+      matrixSubjectId: data.subject?.id || opts?.subjectId,
     });
     await sendMatrixDiagram(ctx, {
       diagram: data.diagram,
@@ -617,7 +627,16 @@ export async function deleteMatrixReport(ctx: Context): Promise<void> {
   const linked = await ensureSiteLinked(ctx);
   if (!linked) return;
   try {
-    const { data } = await siteNumerology(linked.user.telegram_user_id, "delete");
+    const current = getFlow(linked.user.telegram_user_id);
+    const reportId = current?.flow === "reading_view" && typeof current.data.matrixReportId === "string"
+      ? current.data.matrixReportId : undefined;
+    const subjectId = current?.flow === "reading_view" && typeof current.data.matrixSubjectId === "string"
+      ? current.data.matrixSubjectId : undefined;
+    if (!reportId) {
+      await ctx.reply("Не удалось определить, какой разбор удалить. Откройте его из истории ещё раз.", { reply_markup: salonKeyboard() });
+      return;
+    }
+    const { data } = await siteNumerology(linked.user.telegram_user_id, "delete", reportId, { subjectId });
     if (!data.ok) {
       await ctx.reply(data.message || "Не удалось удалить матрицу.", {
         reply_markup: salonKeyboard(),
@@ -644,6 +663,19 @@ export async function deleteMatrixReport(ctx: Context): Promise<void> {
 
 export async function handleMatrixCallback(ctx: Context, data: string): Promise<boolean> {
   if (!data.startsWith(CB.mxPrefix)) return false;
+  const bound = /^(.*):v:([a-f0-9]{12})$/.exec(data);
+  const viewId = bound?.[2];
+  if (bound) {
+    data = bound[1];
+    if (!ctx.from || !activateReadingView(ctx.from.id, viewId!)) {
+      await ctx.answerCallbackQuery({ text: 'Откройте эту матрицу из истории заново.' }).catch(() => undefined);
+      return true;
+    }
+  }
+  if ([CB.mxDel, CB.mxDelYes, CB.mxNew, CB.mxNewYes].some(action => action === data) && !viewId) {
+    await ctx.answerCallbackQuery({ text: 'Откройте нужный полный разбор и используйте кнопку под ним.', show_alert: true }).catch(() => undefined);
+    return true;
+  }
   const tid = ctx.from?.id;
   if (!tid) {
     await ctx.answerCallbackQuery().catch(() => undefined);
@@ -729,15 +761,20 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
 
   if (data === CB.mxRun) {
     await ctx.answerCallbackQuery().catch(() => undefined);
+    if (!viewId) { await showMatrixTeaser(ctx); return true; }
     await runMatrixFull(ctx);
     return true;
   }
 
   if (data === CB.mxNew) {
     await ctx.answerCallbackQuery().catch(() => undefined);
+    const selected = getFlow(tid);
+    const subjectId = typeof selected?.data.matrixSubjectId === 'string' ? selected.data.matrixSubjectId : undefined;
+    const summary = await siteNumerology(tid, 'summary', undefined, { subjectId });
+    if (!summary.data.ok) { await ctx.reply(summary.data.message || copy.siteBridgeDown); return true; }
     await ctx.reply(
-      "Заказать новую матрицу? Старый полный разбор будет затёрт, руны спишутся снова.",
-      { reply_markup: matrixNewConfirmKeyboard(20) }
+      `Новый разбор: ${summary.data.subject?.displayName || summary.data.name || 'ваша матрица'}${summary.data.birthDate ? ` · ${summary.data.birthDate}` : ''}. Стоимость — ${summary.data.cost ?? 20}ᚢ. Текущая версия будет заменена.`,
+      { reply_markup: matrixNewConfirmKeyboard(summary.data.cost ?? 20, viewId!) }
     );
     return true;
   }
@@ -764,7 +801,9 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     const linked = await ensureSiteLinked(ctx);
     if (!linked) return true;
     try {
-      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary");
+      const selected = viewId ? getFlow(tid) : null;
+      const subjectId = typeof selected?.data.matrixSubjectId === 'string' ? selected.data.matrixSubjectId : undefined;
+      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary", undefined, { subjectId });
       if (!summary.ok) {
         await ctx.reply(summary.message || copy.siteBridgeDown, {
           reply_markup: linkKb(summary.linkUrl),
@@ -793,8 +832,9 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
           .join("\n\n"),
         {
           reply_markup: summary.owned
-            ? matrixOwnedKeyboard({ siteUrl: summary.url })
+            ? matrixOwnedKeyboard({ siteUrl: summary.url, viewId })
             : matrixGetKeyboard({
+                viewId: viewId || createMatrixView(tid, summary.subject?.id, summary.ownedReportId || undefined),
                 cost: summary.cost ?? 20,
                 shopUrl: summary.shopUrl,
                 runeBalance: summary.runeBalance,
@@ -825,7 +865,9 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     const linked = await ensureSiteLinked(ctx);
     if (!linked) return true;
     try {
-      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary");
+      const selected = viewId ? getFlow(tid) : null;
+      const subjectId = typeof selected?.data.matrixSubjectId === 'string' ? selected.data.matrixSubjectId : undefined;
+      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary", undefined, { subjectId });
       if (!summary.ok) {
         await ctx.reply(summary.message || copy.siteBridgeDown, {
           reply_markup: linkKb(summary.linkUrl),
@@ -865,6 +907,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
           .join("\n\n"),
         {
           reply_markup: matrixGetKeyboard({
+            viewId: viewId || createMatrixView(tid, summary.subject?.id, summary.ownedReportId || undefined),
             cost: summary.cost ?? 20,
             shopUrl: summary.shopUrl,
             runeBalance: summary.runeBalance,
@@ -883,7 +926,9 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     const linked = await ensureSiteLinked(ctx);
     if (!linked) return true;
     try {
-      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary");
+      const selected = viewId ? getFlow(tid) : null;
+      const subjectId = typeof selected?.data.matrixSubjectId === 'string' ? selected.data.matrixSubjectId : undefined;
+      const { data: summary } = await siteNumerology(linked.user.telegram_user_id, "summary", undefined, { subjectId });
       if (!summary.ok) {
         await ctx.reply(summary.message || copy.siteBridgeDown, {
           reply_markup: linkKb(summary.linkUrl),
@@ -913,8 +958,9 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
         // after the card was already rendered.
         caption: summary.shareCard ? summary.shareCard.slice(0, 1024) : undefined,
         reply_markup: summary.owned
-          ? matrixOwnedKeyboard({ siteUrl: summary.url })
+          ? matrixOwnedKeyboard({ siteUrl: summary.url, viewId })
           : matrixGetKeyboard({
+              viewId: viewId || createMatrixView(tid, summary.subject?.id, summary.ownedReportId || undefined),
               cost: summary.cost ?? 20,
               shopUrl: summary.shopUrl,
               runeBalance: summary.runeBalance,
@@ -931,7 +977,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     await ctx.answerCallbackQuery().catch(() => undefined);
     await ctx.reply(
       "Удалить сохранённую матрицу? Полный разбор пропадёт — получить снова можно за руны.",
-      { reply_markup: matrixDeleteConfirmKeyboard() }
+      { reply_markup: matrixDeleteConfirmKeyboard(viewId!) }
     );
     return true;
   }
@@ -1308,26 +1354,17 @@ export async function openHistoryReading(ctx: Context, sessionId: string): Promi
       await showHistory(ctx);
       return;
     }
-    await ctx.replyWithChatAction("upload_photo");
+    await ctx.replyWithChatAction("upload_photo").catch(() => undefined);
     const isMatrix =
       data.characterKey === "numerolog" ||
       data.intention === "destiny_matrix";
     if (isMatrix) {
-      try {
-        const { data: mx } = await siteNumerology(linked.user.telegram_user_id, "summary");
-        await sendMatrixDiagram(ctx, {
-          diagram: mx.diagram,
-          birthDate: mx.birthDate,
-          name: linked.user.first_name || null,
-        });
-      } catch {
-        /* diagram optional */
-      }
+      if (data.matrixReportId) { await openMatrixReport(ctx, data.matrixReportId); return; }
       await presentReadingToTelegram(ctx, {
         reading: data.reading,
         cardNames: [],
         sessionId,
-        matrixActions: true,
+        matrixActions: false,
         matrixPaging: true,
       });
       return;
@@ -1335,6 +1372,7 @@ export async function openHistoryReading(ctx: Context, sessionId: string): Promi
     await presentReadingToTelegram(ctx, {
       reading: data.reading,
       cardNames: data.cards || [],
+      cards: data.structuredCards ? drawnCardsFromSiteCards(data.structuredCards) : undefined,
       question: data.intention,
       sessionId,
     });
@@ -1476,7 +1514,7 @@ export async function handleCabinetText(ctx: Context, text: string): Promise<boo
         });
         return true;
       }
-      const reply = [copy.supportCreated, data.autoReply || ""].filter(Boolean).join("\n\n");
+      const reply = [copy.supportCreated, data.ticketId ? `Номер обращения: ${data.ticketId}` : '', data.autoReply || ""].filter(Boolean).join("\n\n");
       await ctx.reply(reply.slice(0, 3500), { reply_markup: salonKeyboard() });
     } catch (err) {
       console.error("[cabinet] support create", err);

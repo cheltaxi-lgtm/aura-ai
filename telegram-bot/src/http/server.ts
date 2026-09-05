@@ -2,7 +2,7 @@ import { createServer, type IncomingMessage, type ServerResponse } from "node:ht
 import { webhookCallback } from "grammy";
 import type { Bot } from "grammy";
 import { botConfig } from "../config.js";
-import { getDb } from "../db/client.js";
+import { runtimeHealth } from "../ops/runtime-health.js";
 import {
   findSessionByTokenHash,
   trackEvent,
@@ -34,21 +34,6 @@ function rateOk(ip: string): boolean {
   return slot.n <= 60;
 }
 
-function healthPayload(): { ok: boolean; service: string; db: "ok" | "error"; ts: string } {
-  let db: "ok" | "error" = "ok";
-  try {
-    getDb().prepare(`SELECT 1 AS ok`).get();
-  } catch {
-    db = "error";
-  }
-  return {
-    ok: db === "ok",
-    service: "zovus-telegram-bot",
-    db,
-    ts: new Date().toISOString(),
-  };
-}
-
 function handleRedirect(req: IncomingMessage, res: ServerResponse): void {
   const ip = req.socket.remoteAddress || "unknown";
   if (!rateOk(ip)) {
@@ -57,7 +42,14 @@ function handleRedirect(req: IncomingMessage, res: ServerResponse): void {
     return;
   }
   const url = new URL(req.url || "/", `http://${req.headers.host || "localhost"}`);
-  const token = decodeURIComponent(url.pathname.replace(/^\/r\//, ""));
+  let token: string;
+  try {
+    token = decodeURIComponent(url.pathname.replace(/^\/r\//, ""));
+  } catch {
+    res.writeHead(400, { "Content-Type": "text/plain; charset=utf-8" });
+    res.end("bad request");
+    return;
+  }
   if (!isSessionToken(token)) {
     res.writeHead(302, { Location: botConfig.siteUrl });
     res.end();
@@ -75,15 +67,21 @@ function handleRedirect(req: IncomingMessage, res: ServerResponse): void {
   res.end();
 }
 
-export function startHttpServer(bot?: Bot): void {
+export function startHttpServer(bot?: Bot) {
   const handleUpdate = bot ? webhookCallback(bot, "http") : null;
 
   const server = createServer(async (req, res) => {
+    try {
     const path = req.url?.split("?")[0] || "/";
 
-    if (path === "/health") {
-      const body = healthPayload();
-      res.writeHead(body.ok ? 200 : 503, { "Content-Type": "application/json" });
+    if (path === "/live") {
+      res.writeHead(200, { "Content-Type": "application/json", "Cache-Control": "no-store" });
+      res.end(JSON.stringify({ ok: true, service: "zovus-telegram-bot" }));
+      return;
+    }
+    if (path === "/health" || path === "/ready") {
+      const body = runtimeHealth();
+      res.writeHead(body.ok ? 200 : 503, { "Content-Type": "application/json", "Cache-Control": "no-store" });
       res.end(JSON.stringify(body));
       return;
     }
@@ -144,6 +142,11 @@ export function startHttpServer(bot?: Bot): void {
 
     res.writeHead(404);
     res.end("not found");
+    } catch (err) {
+      console.error("[http] request failed", err);
+      if (!res.headersSent) res.writeHead(500);
+      if (!res.writableEnded) res.end("internal error");
+    }
   });
 
   // Default loopback: site calls http://127.0.0.1:8787. Override with BOT_HTTP_HOST if needed.
@@ -151,6 +154,7 @@ export function startHttpServer(bot?: Bot): void {
   server.listen(botConfig.webhookPort, host, () => {
     console.log(`[http] ${host}:${botConfig.webhookPort} health+/r/:token${bot ? "+webhook" : ""}`);
   });
+  return server;
 }
 
 /** @deprecated use startHttpServer */

@@ -58,6 +58,17 @@ import {
 } from "../src/lib/async-worker-health";
 import { processMemoryExtractionJobs } from "../src/lib/memory/client-memory";
 import { processMemoryIntelligenceJobs } from "../src/lib/memory/intelligence-rebuild";
+import { processDueAccountErasures } from "../src/lib/account-erasure";
+
+let erasureDrain: Promise<unknown> | null = null;
+function scheduleErasureDrain(): void {
+  if (stopping || erasureDrain) return;
+  erasureDrain = processDueAccountErasures().then((result) => {
+    if (result.completed || result.failed) console.log("[account-erasure]", result);
+  }).catch((error) => {
+    console.error("[account-erasure] worker tick failed", error instanceof Error ? error.message : "database error");
+  }).finally(() => { erasureDrain = null; });
+}
 
 const PROVIDER_PROBE_MS = Math.max(
   60_000,
@@ -671,6 +682,10 @@ async function main(): Promise<void> {
   if (!process.env.ASYNC_JOB_WORKER_SECRET) {
     throw new Error("ASYNC_JOB_WORKER_SECRET is required");
   }
+  // Independent from report/provider availability and report concurrency.
+  const erasureTimer = setInterval(scheduleErasureDrain, 5_000);
+  erasureTimer.unref();
+  scheduleErasureDrain();
   // reportInFlightJobs is process-local — always empty on start.
   console.log(
     `[async-jobs] worker ${workerId} polling ${baseUrl} inprocess=${isAsyncReportInProcessEnabled()} reportConcurrency=${REPORT_CONCURRENCY} otherConcurrency=${OTHER_CONCURRENCY} proxy=${process.env.OPENROUTER_HTTPS_PROXY || "NONE"} reportSlots=0/${REPORT_CONCURRENCY} watchdogMs=${WATCHDOG_MS} reportKinds=${REPORT_KINDS.join(",")} otherKinds=${OTHER_KINDS.join(",")}`
@@ -756,6 +771,8 @@ async function main(): Promise<void> {
 
   clearInterval(memoryTimer);
   clearInterval(probeTimer);
+  clearInterval(erasureTimer);
+  if (erasureDrain) await erasureDrain;
   if (inFlight.size) {
     console.log(`[async-jobs] draining ${inFlight.size} in-flight job(s)`);
     await Promise.allSettled([...inFlight]);

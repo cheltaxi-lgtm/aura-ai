@@ -17,10 +17,32 @@ import {
 } from "../db/repos.js";
 import { isRemindersEnabled, isWeeklyDigestEnabled } from "../flags.js";
 import { CB, reactivationKeyboard } from "../keyboards/index.js";
-import { withBlockDetect } from "../middleware/stack.js";
+import { deliverReminder } from "./reminder-delivery.js";
 import { siteHdDaily } from "../domain/site-client.js";
 
+async function safeReminder(fn: () => Promise<void>, telegramUserId: number, kind: string): Promise<void> {
+  try {
+    await deliverReminder(telegramUserId, kind, fn);
+  } catch {
+    // Persistent storage faults after acceptance preserve the claim; do not let
+    // one recipient prevent the rest of this tick from being evaluated.
+    console.error("[reminders] delivery state unavailable", { telegramUserId, kind });
+  }
+}
+
+let reminderTickRunning = false;
+
 export async function runReminderTick(bot: Bot): Promise<void> {
+  if (reminderTickRunning) return;
+  reminderTickRunning = true;
+  try {
+    await runReminderTickUnsafe(bot);
+  } finally {
+    reminderTickRunning = false;
+  }
+}
+
+async function runReminderTickUnsafe(bot: Bot): Promise<void> {
   if (isRemindersEnabled()) {
     for (const mode of ["morning", "evening"] as const) {
       const users = usersForReminder(mode);
@@ -42,11 +64,11 @@ export async function runReminderTick(bot: Bot): Promise<void> {
             /* site bridge down — send base reminder */
           }
         }
-        await withBlockDetect(async () => {
+        await safeReminder(async () => {
           await bot.api.sendMessage(u.chat_id, text);
           markReminderSent(u.telegram_user_id, mode);
           trackEvent("reminder_sent", u.telegram_user_id, { kind: mode });
-        }, u.telegram_user_id);
+        }, u.telegram_user_id, mode);
       }
     }
 
@@ -54,25 +76,32 @@ export async function runReminderTick(bot: Bot): Promise<void> {
     for (const row of abandoned) {
       // A stale flow stays "abandoned" for days — nudge at most every 3 days.
       if (reminderSentWithinDays(row.telegram_user_id, "abandoned", 3)) continue;
-      await withBlockDetect(async () => {
+      await safeReminder(async () => {
         await bot.api.sendMessage(row.chat_id, copy.abandoned);
         markReminderSent(row.telegram_user_id, "abandoned");
         trackEvent("reminder_sent", row.telegram_user_id, { kind: "abandoned" });
-      }, row.telegram_user_id);
+      }, row.telegram_user_id, "abandoned");
     }
 
     // Reactivation 7/14/30 — SQL-scoped, not a blind listUsers scan.
+    const reactivationNow = Date.now();
     for (const d of [7, 14, 30]) {
-      for (const u of usersForReactivation(d)) {
-        const kind = `reactivation_${d}`;
-        if (reminderAlreadySent(u.telegram_user_id, kind)) continue;
-        await withBlockDetect(async () => {
-          await bot.api.sendMessage(u.chat_id, copy.reactivation(d), {
-            reply_markup: reactivationKeyboard(),
-          });
-          markReminderSent(u.telegram_user_id, kind);
-          trackEvent("reactivation_sent", u.telegram_user_id, { days: d });
-        }, u.telegram_user_id);
+      const kind = `reactivation_${d}`;
+      let cursor = 0;
+      while (true) {
+        const page = usersForReactivation(d, 200, kind, cursor, reactivationNow);
+        if (!page.length) break;
+        for (const u of page) {
+          cursor = u.telegram_user_id;
+          if (reminderAlreadySent(u.telegram_user_id, kind)) continue;
+          await safeReminder(async () => {
+            await bot.api.sendMessage(u.chat_id, copy.reactivation(d), {
+              reply_markup: reactivationKeyboard(),
+            });
+            markReminderSent(u.telegram_user_id, kind);
+            trackEvent("reactivation_sent", u.telegram_user_id, { days: d });
+          }, u.telegram_user_id, kind);
+        }
       }
     }
 
@@ -85,7 +114,7 @@ export async function runReminderTick(bot: Bot): Promise<void> {
         .text("📅 Узел периода", CB.mxPeriod)
         .row()
         .text("🗺 Зоны", CB.mxZones);
-      await withBlockDetect(async () => {
+      await safeReminder(async () => {
         await bot.api.sendMessage(
           u.chat_id,
           "Через неделю после полной матрицы — обновите узел периода. Это бесплатно: что в фокусе сейчас и короткая практика на 7 дней.",
@@ -93,7 +122,7 @@ export async function runReminderTick(bot: Bot): Promise<void> {
         );
         markReminderSent(u.telegram_user_id, kind);
         trackEvent("reminder_sent", u.telegram_user_id, { kind });
-      }, u.telegram_user_id);
+      }, u.telegram_user_id, kind);
     }
   }
 
@@ -104,25 +133,32 @@ export async function runReminderTick(bot: Bot): Promise<void> {
 export async function runWeeklyDigestTick(bot: Bot): Promise<void> {
   if (!isWeeklyDigestEnabled()) return;
 
-  const week = isoWeekKey();
-  const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString();
+  const now = Date.now();
+  const weekAgo = new Date(now - 7 * 86_400_000).toISOString();
 
-  for (const u of usersForWeeklyDigest()) {
-    const hour = localHourForUser(u);
-    const local = new Date(Date.now() + (u.timezone_offset_minutes ?? 180) * 60_000);
-    if (local.getUTCDay() !== 0 || hour !== 11) continue;
+  // At Sunday 11 local all supported offsets are in the same ISO week as UTC.
+  const week = isoWeekKey(new Date(now));
+  const kind = `digest_${week}`;
+  let cursor = 0;
+  while (true) {
+    const page = usersForWeeklyDigest(500, kind, cursor);
+    if (!page.length) break;
+    for (const u of page) {
+      cursor = u.telegram_user_id;
+      const local = new Date(now + (u.timezone_offset_minutes ?? 180) * 60_000);
+      if (local.getUTCDay() !== 0 || local.getUTCHours() !== 11) continue;
 
-    const kind = `digest_${week}`;
-    if (reminderAlreadySent(u.telegram_user_id, kind)) continue;
+      if (reminderAlreadySent(u.telegram_user_id, kind)) continue;
 
-    const spreads = countSessionsSince(u.telegram_user_id, weekAgo);
-    await withBlockDetect(async () => {
-      await bot.api.sendMessage(
-        u.chat_id,
-        copy.weeklyDigest({ streak: u.streak_days ?? 0, spreads })
-      );
-      markReminderSent(u.telegram_user_id, kind);
-      trackEvent("digest_sent", u.telegram_user_id, { week });
-    }, u.telegram_user_id);
+      const spreads = countSessionsSince(u.telegram_user_id, weekAgo);
+      await safeReminder(async () => {
+        await bot.api.sendMessage(
+          u.chat_id,
+          copy.weeklyDigest({ streak: u.streak_days ?? 0, spreads })
+        );
+        markReminderSent(u.telegram_user_id, kind);
+        trackEvent("digest_sent", u.telegram_user_id, { week });
+      }, u.telegram_user_id, kind);
+    }
   }
 }

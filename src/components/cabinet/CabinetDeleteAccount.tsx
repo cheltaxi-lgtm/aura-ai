@@ -17,7 +17,7 @@ interface Props {
 }
 
 /**
- * After successful DELETE /api/user/delete:
+ * After durable acceptance (202) of DELETE /api/user/delete:
  * clear client state and hard-navigate to guest homepage.
  * Must NOT dispatch AUTH_LOGOUT_EVENT / setState before navigation — cabinet's
  * `!authUser` effect would otherwise router.replace → /auth/user/login.
@@ -182,6 +182,9 @@ export default function CabinetDeleteAccount({ onDeleted }: Props) {
                   <p className="text-sm text-red-200/80">
                     Вы уверены? Это действие необратимо. Все ваши руны, история раскладов и память
                     ИИ будут безвозвратно удалены из базы данных согласно 152-ФЗ.
+                  </p>
+                  <p className="text-sm text-red-200/80">
+                    Доступ закроется сразу. Очистка сайта и Telegram продолжится автоматически, даже если вы закроете страницу.
                   </p>
 
                   <label className="flex cursor-pointer items-start gap-2 text-sm text-red-100/90">

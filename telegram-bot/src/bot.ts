@@ -2,6 +2,11 @@ import { Bot } from "grammy";
 import { botConfig } from "./config.js";
 import { telegramFetch } from "./domain/telegram-ipv4.js";
 import { registerFlows } from "./flows/register.js";
+import { markIrreversible } from "./middleware/irreversible.js";
+import { userActivity } from "./middleware/activity.js";
+import { userQueue } from "./middleware/user-queue.js";
+import { erasureGate } from "./domain/user-erasure.js";
+import { registerRecoveryFlows } from './flows/recovery.js';
 import {
   ensureUser,
   featureGate,
@@ -21,11 +26,23 @@ export function createBot(): Bot {
   });
 
   bot.use(privateOnly);
+  bot.use(userQueue);
+  bot.use(erasureGate);
+  bot.use(userActivity);
   bot.use(idempotent);
   bot.use(ensureUser);
   bot.use(rateLimit);
   bot.use(featureGate);
 
+  // The handlers include purchases, deletion and external notifications. Until
+  // each operation has a durable result/retry contract, never replay a handler
+  // after a crash with an unknown outcome. Unstarted inbox items remain queued.
+  bot.use(async (ctx, next) => {
+    markIrreversible(ctx);
+    await next();
+  });
+
+  registerRecoveryFlows(bot);
   registerFlows(bot);
 
   bot.catch((err) => {

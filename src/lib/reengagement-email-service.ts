@@ -141,6 +141,7 @@ export async function sendDailyBonusReminderEmails(): Promise<number> {
     if (telegramUserId) {
       const tgOk = await notifyBotReminder({
         telegramUserId,
+        sourceProfileUserId: row.user_id,
         kind: "daily_bonus",
         title: "Ежедневные руны ждут вас",
         body: `Можно забрать ${DAILY_BONUS_AMOUNT} бесплатных рун в кабинете.`,
@@ -274,6 +275,7 @@ async function deliverInactiveStage(
     if (row.telegramUserId) {
       const tgOk = await notifyBotReminder({
         telegramUserId: row.telegramUserId,
+        sourceProfileUserId: row.user_id,
         kind: stage,
         title: stage === "inactive_7d" ? "Давно не виделись" : "Ваш Zovus остаётся с Вами",
         body: "Можно вернуться к своим вопросам — личный контекст на месте.",

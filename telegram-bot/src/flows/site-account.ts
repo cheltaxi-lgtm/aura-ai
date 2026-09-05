@@ -95,6 +95,10 @@ export async function ensureSiteLinked(
     return null;
   }
 
+  if (site.deletionPending) {
+    await ctx.reply('Удаление аккаунта ещё выполняется. Новые действия будут доступны после завершения.');
+    return null;
+  }
   if (!site.ok && site.error === "site_bridge_disabled") {
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
     return null;

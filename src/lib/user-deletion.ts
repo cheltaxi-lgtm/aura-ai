@@ -1,4 +1,5 @@
 import { withTransaction } from "@/lib/db";
+import type { PoolClient } from "pg";
 
 export interface DeleteUserAccountResult {
   chatMessagesRemoved: number;
@@ -26,7 +27,15 @@ export async function deleteUserAccountCompletely(
   accountId: string,
   profileUserId: string
 ): Promise<DeleteUserAccountResult> {
-  return withTransaction(async (client) => {
+  return withTransaction((client) => deleteUserAccountInTransaction(client, accountId, profileUserId));
+}
+
+/** Worker calls this inside the same transaction as its durable stage change. */
+export async function deleteUserAccountInTransaction(
+  client: PoolClient,
+  accountId: string,
+  profileUserId: string
+): Promise<DeleteUserAccountResult> {
     const run = async (text: string, params?: unknown[]) => {
       const result = await client.query(text, params);
       return result.rowCount ?? 0;
@@ -82,5 +91,4 @@ export async function deleteUserAccountCompletely(
       accountRemoved,
       userRemoved,
     };
-  });
 }

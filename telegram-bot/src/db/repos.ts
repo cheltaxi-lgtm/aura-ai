@@ -299,19 +299,42 @@ export function clearFlow(telegramUserId: number): void {
   getDb().prepare(`DELETE FROM bot_flow_state WHERE telegram_user_id = ?`).run(telegramUserId);
 }
 
+const updateOwnerId = randomUUID();
+
 export function claimUpdate(updateId: number): boolean {
-  try {
-    getDb()
-      .prepare(`INSERT INTO bot_processed_updates (update_id, processed_at) VALUES (?, ?)`)
-      .run(updateId, nowIso());
-    return true;
-  } catch {
-    return false;
-  }
+  const now = nowIso();
+  const cutoff = new Date(Date.now() - 15 * 60_000).toISOString();
+  const result = getDb().prepare(
+    `INSERT INTO bot_processed_updates (update_id, processed_at, status, owner_id)
+     VALUES (?, ?, 'processing', ?)
+     ON CONFLICT(update_id) DO UPDATE SET
+       processed_at = excluded.processed_at, owner_id = excluded.owner_id
+     WHERE bot_processed_updates.status = 'processing'
+       AND bot_processed_updates.processed_at < ?`
+  ).run(updateId, now, updateOwnerId, cutoff);
+  return Number(result.changes) === 1;
+}
+
+export function heartbeatUpdate(updateId: number): void {
+  getDb().prepare(`UPDATE bot_processed_updates SET processed_at = ?
+    WHERE update_id = ? AND owner_id = ? AND status = 'processing'`)
+    .run(nowIso(), updateId, updateOwnerId);
+}
+
+export function completeUpdate(updateId: number): void {
+  getDb().prepare(`UPDATE bot_processed_updates SET status = 'completed', processed_at = ?
+    WHERE update_id = ? AND owner_id = ?`).run(nowIso(), updateId, updateOwnerId);
+}
+
+export function markUpdateIrreversible(updateId: number): void {
+  const result = getDb().prepare(`UPDATE bot_processed_updates SET status = 'irreversible', processed_at = ?
+    WHERE update_id = ? AND owner_id = ?`).run(nowIso(), updateId, updateOwnerId);
+  if (Number(result.changes) !== 1) throw new Error('update_lease_not_owned');
 }
 
 export function releaseUpdate(updateId: number): void {
-  getDb().prepare(`DELETE FROM bot_processed_updates WHERE update_id = ?`).run(updateId);
+  getDb().prepare(`DELETE FROM bot_processed_updates
+    WHERE update_id = ? AND owner_id = ? AND status = 'processing'`).run(updateId, updateOwnerId);
 }
 
 export function trackEvent(
@@ -710,6 +733,7 @@ export function deleteUserData(telegramUserId: number): void {
   const db = getDb();
   db.exec("BEGIN");
   try {
+    db.prepare(`DELETE FROM bot_update_inbox WHERE user_key = ?`).run(String(telegramUserId));
     db.prepare(`DELETE FROM bot_reminder_log WHERE telegram_user_id = ?`).run(telegramUserId);
     db.prepare(`DELETE FROM bot_day_cards WHERE telegram_user_id = ?`).run(telegramUserId);
     db.prepare(`DELETE FROM bot_flow_state WHERE telegram_user_id = ?`).run(telegramUserId);
@@ -736,8 +760,13 @@ export function listUsers(limit = 100): BotUser[] {
  * win-back (7/14d email + in-app + Telegram via /internal/reminder) owns them,
  * otherwise a linked user gets two parallel "come back" tracks.
  */
-export function usersForReactivation(days: number, limit = 200): BotUser[] {
-  const now = Date.now();
+export function usersForReactivation(
+  days: number,
+  limit = 200,
+  reminderKind = `reactivation_${days}`,
+  afterUserId = 0,
+  now = Date.now()
+): BotUser[] {
   const start = new Date(now - (days + 1) * 86_400_000).toISOString();
   const end = new Date(now - days * 86_400_000).toISOString();
   return getDb()
@@ -750,14 +779,29 @@ export function usersForReactivation(days: number, limit = 200): BotUser[] {
          AND last_active_at IS NOT NULL
          AND last_active_at > ?
          AND last_active_at <= ?
-       ORDER BY last_active_at ASC
+         AND telegram_user_id > ?
+         AND NOT EXISTS (
+           SELECT 1 FROM bot_reminder_log l
+           WHERE l.telegram_user_id = bot_users.telegram_user_id
+             AND l.kind = ?
+             AND l.created_at >= bot_users.last_active_at
+         )
+       ORDER BY telegram_user_id ASC
        LIMIT ?`
     )
-    .all(start, end, limit) as BotUser[];
+    .all(start, end, afterUserId, reminderKind, limit) as BotUser[];
 }
 
-/** Active opted-in users for weekly digest (capped). */
-export function usersForWeeklyDigest(limit = 500): BotUser[] {
+/** One bounded page; advance the ID cursor even when a user's local hour is not due. */
+export function usersForWeeklyDigest(limit = 500, reminderKind?: string, afterUserId = 0): BotUser[] {
+  const dedupe = reminderKind
+    ? `AND NOT EXISTS (
+         SELECT 1 FROM bot_reminder_log l
+         WHERE l.telegram_user_id = bot_users.telegram_user_id
+           AND l.kind = ?
+       )`
+    : "";
+  const params = reminderKind ? [afterUserId, reminderKind, limit] : [afterUserId, limit];
   return getDb()
     .prepare(
       `SELECT * FROM bot_users
@@ -765,10 +809,12 @@ export function usersForWeeklyDigest(limit = 500): BotUser[] {
          AND banned_at IS NULL
          AND age_confirmed_at IS NOT NULL
          AND (unsubscribed_at IS NULL OR unsubscribed_at = '')
-       ORDER BY last_active_at DESC
+         AND telegram_user_id > ?
+         ${dedupe}
+       ORDER BY telegram_user_id ASC
        LIMIT ?`
     )
-    .all(limit) as BotUser[];
+    .all(...params) as BotUser[];
 }
 
 /** ISO week key YYYY-Www for digest dedupe. */
@@ -883,7 +929,9 @@ export function abandonedFlows(olderThanMs: number): Array<{
        FROM bot_flow_state s
        JOIN bot_users u ON u.telegram_user_id = s.telegram_user_id
        WHERE s.flow = 'spread' AND s.step = 'await_question' AND s.updated_at < ?
-         AND u.blocked_at IS NULL`
+         AND u.blocked_at IS NULL
+         AND u.banned_at IS NULL
+         AND (u.unsubscribed_at IS NULL OR u.unsubscribed_at = '')`
     )
     .all(cutoff) as Array<{
     telegram_user_id: number;

@@ -1,5 +1,17 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { createHash } from "node:crypto";
+
+// Session-memory writes lifetime counters in the background. Await the real
+// writes before the next fixture TRUNCATE, which otherwise deadlocks with them.
+const lifetimeWrites = vi.hoisted(() => new Set<Promise<void>>());
+vi.mock("@/lib/user-lifetime-stats", async () => {
+  const actual = await vi.importActual<typeof import("@/lib/user-lifetime-stats")>("@/lib/user-lifetime-stats");
+  return { ...actual, recordLifetimeSessionActivity: (...args: Parameters<typeof actual.recordLifetimeSessionActivity>) => {
+    const work = actual.recordLifetimeSessionActivity(...args);
+    lifetimeWrites.add(work);
+    return work;
+  } };
+});
 import {
   buildBotProductChargeKey,
   bindBotChargeSession,
@@ -120,7 +132,9 @@ describe("bot-charge-idempotency keys (pure)", () => {
 describe.skipIf(!hasTestDb)("botRunVeronikaSpread idempotency (db)", () => {
   installDbLifecycle();
 
-  afterEach(() => {
+  afterEach(async () => {
+    try { await Promise.all(lifetimeWrites); }
+    finally { lifetimeWrites.clear(); }
     vi.mocked(generateReading).mockClear();
   });
 
