@@ -466,7 +466,7 @@ async function main() {
       sourceEntityId: sessionId,
     });
     const { rows: jobsOn } = await query<{ c: string }>(
-      `SELECT COUNT(*)::text AS c FROM memory_extraction_jobs WHERE user_id=$1 AND status='pending'`,
+      `SELECT COUNT(*)::text AS c FROM memory_extraction_jobs WHERE user_id=$1`,
       [U]
     );
     ok(Number(jobsOn[0]?.c ?? 0) >= 2, "each chat turn enqueues its own extraction job");
@@ -474,27 +474,28 @@ async function main() {
       Number(jobsOn[0]?.c ?? 0) >= 2,
       "fresh session still captures new user-authored turns"
     );
-    const extraction = await processMemoryExtractionJobs(5, U);
-    ok(
-      extraction.processed >= 2 && extraction.failed === 0,
-      "durable extraction jobs process end-to-end for the smoke user"
-    );
-    const { rows: completedJobs } = await query<{
-      c: string;
-      extracted: string;
-      rejected: string;
-    }>(
-      `SELECT COUNT(*)::text AS c,
-              COALESCE(SUM(extracted_count), 0)::text AS extracted,
-              COALESCE(SUM(grounding_rejected_count), 0)::text AS rejected
-         FROM memory_extraction_jobs
-        WHERE user_id=$1 AND status='completed'`,
-      [U]
-    );
-    ok(
-      Number(completedJobs[0]?.c ?? 0) >= 2,
-      "completed extraction jobs retain quality metrics"
-    );
+    await processMemoryExtractionJobs(5, U);
+    // The live worker may own one of our jobs. Assert durable completion, not
+    // how many jobs this invocation happened to claim before the other worker.
+    const extractionDeadline = Date.now() + 90_000;
+    let completed = 0;
+    let metricsPresent = 0;
+    while (true) {
+      const { rows } = await query<{ completed: string; metrics: string; failed: string }>(
+        `SELECT COUNT(*) FILTER (WHERE status='completed')::text AS completed,
+                COUNT(*) FILTER (WHERE status='completed' AND extracted_count IS NOT NULL
+                  AND grounding_rejected_count IS NOT NULL)::text AS metrics,
+                COUNT(*) FILTER (WHERE status='failed')::text AS failed
+           FROM memory_extraction_jobs WHERE user_id=$1`,
+        [U]
+      );
+      completed = Number(rows[0]?.completed ?? 0);
+      metricsPresent = Number(rows[0]?.metrics ?? 0);
+      if (completed >= 2 || Number(rows[0]?.failed ?? 0) > 0 || Date.now() >= extractionDeadline) break;
+      await sleep(1500);
+    }
+    ok(completed >= 2, "durable extraction jobs process end-to-end for the smoke user");
+    ok(metricsPresent >= 2, "completed extraction jobs retain quality metrics");
 
     const draftSource = "00000000-0000-0000-0000-0000000000dd";
     await upsertFact(U, {
