@@ -67,14 +67,13 @@ export default function EditorialHeroSection({
           hintOnScrim
         />
         {guestConversion ? (
-          <div className="editorial-hero__pain-chips" role="list" aria-label="Частые вопросы">
+          <ul className="editorial-hero__pain-chips" aria-label="Начать с готового вопроса">
             {GUEST_HERO_PAIN_CHIPS.map((chip) => {
               const intent = getSpreadIntentBySlug(chip.intentSlug);
               return (
+                <li key={chip.label}>
                 <button
-                  key={chip.label}
                   type="button"
-                  role="listitem"
                   className="editorial-hero__pain-chip"
                   onClick={() => {
                     trackQuickQuestionClick(chip.intentSlug);
@@ -88,9 +87,10 @@ export default function EditorialHeroSection({
                 >
                   {chip.label}
                 </button>
+                </li>
               );
             })}
-          </div>
+          </ul>
         ) : null}
         {guestConversion ? null : (
           <div className="editorial-hero__actions">

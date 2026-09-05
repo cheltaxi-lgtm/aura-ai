@@ -34,7 +34,8 @@ import {
   buildLandingOfferCopy,
   LANDING_HERO_VERSION,
   landingHeroExpectationCopy,
-  LANDING_QUESTION_KEY,
+  readLandingQuestion,
+  writeLandingQuestion,
   resolveLandingHeroVariant,
   writePendingGuestSpreadStart,
   type GuestSpreadStartDetail,
@@ -55,6 +56,7 @@ import LandingSocialProofStats, {
   useLandingSocialProofVisible,
 } from "@/components/seo/LandingSocialProofStats";
 import EditorialHeroSection from "@/components/editorial/EditorialHeroSection";
+import EditorialPreviewSection from "@/components/editorial/EditorialPreviewSection";
 import EditorialProductEntries from "@/components/editorial/EditorialProductEntries";
 import HomeAuraBanner from "@/components/editorial/HomeAuraBanner";
 import EditorialStarterGiftSection from "@/components/editorial/EditorialStarterGiftSection";
@@ -339,7 +341,7 @@ export default function AuraSellingLanding({
   const startGuestSpread = (question?: string, masterId?: string) => {
     const normalizedQuestion = question?.trim();
     if (normalizedQuestion) {
-      sessionStorage.setItem(LANDING_QUESTION_KEY, normalizedQuestion);
+      writeLandingQuestion(normalizedQuestion);
     }
     const detail: GuestSpreadStartDetail = {
       question: normalizedQuestion,
@@ -358,8 +360,7 @@ export default function AuraSellingLanding({
       return;
     }
     trackLandingPrimaryCtaClick(placement);
-    const storedQuestion =
-      typeof window !== "undefined" ? sessionStorage.getItem(LANDING_QUESTION_KEY)?.trim() : "";
+    const storedQuestion = readLandingQuestion();
     startGuestSpread(storedQuestion || undefined);
   };
 
@@ -411,17 +412,10 @@ export default function AuraSellingLanding({
             startGuestSpread(question, intent?.recommendedMasterId);
           }}
         />
-        <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
-        <section className="mx-auto my-6 max-w-2xl px-5" aria-label="Пример краткого ответа">
-          <details className="rounded-2xl border border-aura-gold/20 bg-black/20 p-4">
-            <summary className="cursor-pointer font-medium text-aura-champagne">Посмотреть пример краткого ответа</summary>
-            <p className="mt-3 text-xs text-white/50">Демонстрация формата, не персональный расклад.</p>
-            <p className="mt-2 text-sm text-white/80">Вопрос: «Как подойти к разговору об отношениях?»</p>
-            <p className="mt-2 text-sm leading-relaxed text-white/70">Луна, Умеренность и Справедливость: прежде чем делать выводы, отделите факты от догадок. Выберите спокойный момент и задайте один прямой вопрос. Смотрите на готовность договариваться, а не только на обещания.</p>
-          </details>
-        </section>
-        <HomeAuraBanner />
+        <EditorialPreviewSection />
         <EditorialStarterGiftSection />
+        <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
+        <HomeAuraBanner />
         <EditorialSessionStepsSection />
         {showMasters ? (
           <MastersShowcase

@@ -31,7 +31,7 @@ export const LANDING_FAQ_ITEMS = [
 export type LandingHeroVariant = "a" | "b" | "c";
 
 /** One coordinated guest offer while traffic is too small for an A/B/C test. */
-export const LANDING_HERO_VERSION = "guest-clarity-v1";
+export const LANDING_HERO_VERSION = "guest-value-v2";
 
 const HERO_VARIANTS: Record<
   LandingHeroVariant,
@@ -123,6 +123,25 @@ export const HOME_CUSTOM_QUESTION_EVENT = "zovus:home-custom-question";
 export const GUEST_SPREAD_RESET_EVENT = "zovus:reset-guest-spread";
 export const GUEST_SPREAD_DRAFT_KEY = "zovus_guest_spread_draft";
 export const LANDING_QUESTION_KEY = "zovus_landing_question";
+
+/** Optional draft only: the active flow carries its question in React state. */
+export function readLandingQuestion(): string {
+  if (typeof window === "undefined") return "";
+  try {
+    return sessionStorage.getItem(LANDING_QUESTION_KEY)?.trim() || "";
+  } catch {
+    return "";
+  }
+}
+
+export function writeLandingQuestion(question: string): void {
+  if (typeof window === "undefined") return;
+  try {
+    sessionStorage.setItem(LANDING_QUESTION_KEY, question);
+  } catch {
+    // A blocked/full draft store must not interrupt the current question.
+  }
+}
 /** One-shot SEO/CTA start that survives Strict Mode / splash remounts. Not a receipt. */
 export const GUEST_SPREAD_PENDING_START_KEY = "zovus_guest_spread_pending_start";
 

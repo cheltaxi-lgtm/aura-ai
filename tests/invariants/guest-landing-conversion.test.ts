@@ -62,8 +62,9 @@ describe("guest landing conversion cleanup", () => {
     const markers = [
       "<GuestTripletDraw",
       "<EditorialHeroSection",
-      "<EditorialProductEntries",
+      "<EditorialPreviewSection",
       "<EditorialStarterGiftSection",
+      "<EditorialProductEntries",
       "<EditorialSessionStepsSection",
       "<MastersShowcase",
       "<EditorialBirthToolsSection",

@@ -148,7 +148,7 @@ describe("starter gift on the public homepage", () => {
   it("gift CTA leads to the existing register flow", () => {
     const src = readSrc("src/components/editorial/EditorialStarterGiftSection.tsx");
     expect(src).toContain("buildRegisterHref");
-    expect(src).toContain("Создать аккаунт и получить {starter} ᚢ");
+    expect(src).toContain("Создать бесплатный аккаунт");
     expect(src).toContain('trackSeoEvent("starter_gift_cta_click"');
     expect(src).toContain('trackSeoEvent("starter_gift_view"');
   });

@@ -30,7 +30,8 @@ import {
   GUEST_SPREAD_RESET_EVENT,
   GUEST_SPREAD_START_EVENT,
   GUEST_TRIPLET_MASTER_ID,
-  LANDING_QUESTION_KEY,
+  readLandingQuestion,
+  writeLandingQuestion,
   peekPendingGuestSpreadStart,
   type GuestSpreadStartDetail,
 } from "@/lib/landing-offer";
@@ -292,7 +293,7 @@ export default function GuestTripletDraw({
 
   useEffect(() => {
     if (typeof window === "undefined" || draftRestored) return;
-    const stored = sessionStorage.getItem(LANDING_QUESTION_KEY);
+    const stored = readLandingQuestion();
     if (stored) setLandingQuestion(stored);
     const controller = new AbortController();
     ageRequestRef.current = controller;
@@ -437,7 +438,7 @@ export default function GuestTripletDraw({
       teaserViewTracked.current = false;
       setAgeGateError("");
       if (question) {
-        sessionStorage.setItem(LANDING_QUESTION_KEY, question);
+        writeLandingQuestion(question);
         setLandingQuestion(question);
       }
       const seed = buildGuestSpreadSeed({
@@ -467,10 +468,7 @@ export default function GuestTripletDraw({
     }
     setAgeConfirmed(true);
     setOauthAgeConfirmed(true);
-    const pendingQuestion =
-      typeof window !== "undefined"
-        ? sessionStorage.getItem(LANDING_QUESTION_KEY) || landingQuestion
-        : landingQuestion;
+    const pendingQuestion = landingQuestion || readLandingQuestion();
     beginGuestSpread(pendingQuestion || undefined);
   }, [beginGuestSpread, landingQuestion]);
 
@@ -487,7 +485,7 @@ export default function GuestTripletDraw({
       setStep("age");
       const nextQuestion = detail?.question?.trim();
       if (nextQuestion) {
-        sessionStorage.setItem(LANDING_QUESTION_KEY, nextQuestion);
+        writeLandingQuestion(nextQuestion);
         setLandingQuestion(nextQuestion);
       }
       void fetchServerAgeGateConfirmed(controller.signal).then((ok) => {

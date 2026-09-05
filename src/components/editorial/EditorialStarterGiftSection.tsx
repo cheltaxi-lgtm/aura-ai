@@ -103,14 +103,28 @@ export default function EditorialStarterGiftSection() {
           <div className="editorial-starter-pack__copy">
             <p className="editorial-starter-pack__eyebrow">Начните бесплатно</p>
             <h2 id="editorial-starter-gift-title" className="editorial-starter-pack__title">
-              Попробуйте Zovus и получите стартовые руны
+              Сохраните свои разборы и возвращайтесь к ним
             </h2>
             <p className="editorial-starter-gift__amount">При первой регистрации — {starter} ᚢ</p>
             <ul className="editorial-starter-gift__points">
-              <li>3 карты по своему вопросу — без регистрации</li>
-              <li>{starter} ᚢ для первых персональных разборов</li>
-              <li>После регистрации — 3 карты дня бесплатно раз в сутки</li>
+              <li>История разборов в личном кабинете</li>
+              <li>3 карты дня бесплатно раз в сутки</li>
+              <li>{starter} ᚢ на дополнительные разборы — цена видна до начала</li>
             </ul>
+            <div className="editorial-starter-pack__actions">
+              <Link
+                href={buildRegisterHref("/")}
+                prefetch={false}
+                className="editorial-btn editorial-btn--gold"
+                onClick={() => trackSeoEvent("starter_gift_cta_click", { placement: "home" })}
+              >
+                Создать бесплатный аккаунт
+              </Link>
+            </div>
+            <p className="editorial-starter-pack__fine">Банковская карта для регистрации не нужна.</p>
+            <details className="editorial-starter-gift__details">
+            <summary>На что хватит {starter} ᚢ</summary>
+            <p className="editorial-starter-pack__fine">Примеры на выбор: весь подарок на один из форматов. Количество указано по обычной цене, без дополнительных уточнений.</p>
             <ul className="editorial-starter-gift__chips" aria-label={`На что хватит ${starter} ᚢ`}>
               {chips.map((chip) => (
                 <li key={chip.id} className="editorial-starter-gift__chip">
@@ -119,18 +133,10 @@ export default function EditorialStarterGiftSection() {
                 </li>
               ))}
             </ul>
-            <div className="editorial-starter-pack__actions">
-              <Link
-                href={buildRegisterHref("/")}
-                className="editorial-btn editorial-btn--gold"
-                onClick={() => trackSeoEvent("starter_gift_cta_click", { placement: "home" })}
-              >
-                Создать аккаунт и получить {starter} ᚢ
-              </Link>
-            </div>
             <p className="editorial-starter-pack__fine">
               ᚢ — внутренняя валюта Zovus. Начисляются один раз при первой регистрации.
             </p>
+            </details>
           </div>
         </div>
       </div>

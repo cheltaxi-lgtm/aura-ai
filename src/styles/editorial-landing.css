@@ -2665,9 +2665,12 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
   gap: 0.5rem;
   margin: 1rem auto 0;
   max-width: 40rem;
+  padding: 0;
+  list-style: none;
 }
 
 .editorial-hero__pain-chip {
+  min-height: 44px;
   appearance: none;
   border: 1px solid rgba(232, 199, 126, 0.28);
   background: rgba(8, 6, 4, 0.45);
@@ -2684,6 +2687,105 @@ html[data-motion-lite="1"] .editorial-practice-card:hover .editorial-practice-ca
   border-color: rgba(232, 199, 126, 0.55);
   background: rgba(232, 199, 126, 0.1);
   color: #fff8eb;
+}
+
+.editorial-hero__pain-chip:focus-visible,
+.editorial-starter-gift__details summary:focus-visible {
+  outline: 2px solid #f3dc8e;
+  outline-offset: 4px;
+}
+
+.editorial-preview {
+  padding: 2rem 0 0.5rem;
+}
+.editorial-preview__grid {
+  display: grid;
+  gap: 1.25rem;
+}
+.editorial-preview__intro h2 {
+  margin: 0.5rem 0 0.75rem;
+  font-family: var(--font-display, Georgia, serif);
+  font-size: clamp(1.5rem, 3vw, 2rem);
+  line-height: 1.15;
+  color: #fff3da;
+}
+.editorial-preview__stages span {
+  font-size: 0.9375rem;
+  line-height: 1.55;
+  color: #c7c0b5;
+}
+.editorial-preview__eyebrow {
+  color: #e8c77e;
+  font-size: 0.75rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+.editorial-preview__stages {
+  display: grid;
+  gap: 1rem;
+  margin: 1.25rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+.editorial-preview__stages li {
+  padding-left: 1rem;
+  border-left: 2px solid #b68e48;
+}
+.editorial-preview__stages strong,
+.editorial-preview__stages span {
+  display: block;
+}
+.editorial-preview__stages strong {
+  margin-bottom: 0.25rem;
+  color: #f3dc8e;
+  font-size: 0.9375rem;
+}
+.editorial-preview__example {
+  margin: 0;
+  padding: 1.25rem;
+  border: 1px solid rgba(232, 199, 126, 0.25);
+  border-radius: 1.25rem;
+  background: linear-gradient(145deg, #211b13, #100e0b);
+}
+.editorial-preview__example figcaption,
+.editorial-preview__note {
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #bab2a5;
+}
+.editorial-preview__question {
+  margin: 1rem 0;
+  font-size: 1.125rem;
+  line-height: 1.4;
+  color: #fff3da;
+}
+.editorial-preview__cards {
+  margin-bottom: 0.75rem;
+  font-size: 0.8125rem;
+  color: #e8c77e;
+}
+.editorial-preview__example blockquote {
+  margin: 0 0 1rem;
+  font-size: 0.9375rem;
+  line-height: 1.65;
+  color: #e4ded4;
+}
+.editorial-starter-gift__details {
+  margin-top: 1rem;
+  border-top: 1px solid rgba(232, 199, 126, 0.2);
+}
+.editorial-starter-gift__details summary {
+  padding: 0.875rem 0;
+  cursor: pointer;
+  color: #e8c77e;
+  font-size: 0.875rem;
+}
+@media (min-width: 768px) {
+  .editorial-preview__grid {
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+    gap: 2.5rem;
+  }
 }
 
 .editorial-hero__legal-note {

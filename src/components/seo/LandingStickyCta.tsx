@@ -17,6 +17,7 @@ const INLINE_CTA_SELECTORS = [
   ".aura-landing-hero__actions",
   ".editorial-hero__actions",
   ".editorial-hero__question .hero-question__submit",
+  ".editorial-starter-gift .editorial-starter-pack__actions",
   ".aura-landing-section--final",
   "#guest-teaser-auth",
 ] as const;
@@ -46,9 +47,11 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
       return;
     }
 
+    const obscured = obscuredRef.current;
+
     const applyVisibility = () => {
       // Show when no inline CTA block is in view (hero button may be below fold on desktop).
-      const next = obscuredRef.current.size === 0;
+      const next = obscured.size === 0;
       setVisible((prev) => (prev === next ? prev : next));
     };
 
@@ -64,9 +67,9 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
       (entries) => {
         for (const entry of entries) {
           if (entry.isIntersecting) {
-            obscuredRef.current.add(entry.target);
+            obscured.add(entry.target);
           } else {
-            obscuredRef.current.delete(entry.target);
+            obscured.delete(entry.target);
           }
         }
         scheduleApply();
@@ -78,10 +81,30 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
       }
     );
 
-    const targets = INLINE_CTA_SELECTORS.map((selector) => document.querySelector(selector)).filter(
-      (node): node is Element => Boolean(node)
-    );
-    targets.forEach((target) => observer.observe(target));
+    const targets = new Set<Element>();
+    const observeTargets = () => {
+      for (const target of targets) {
+        if (!target.isConnected) {
+          observer.unobserve(target);
+          targets.delete(target);
+          obscured.delete(target);
+        }
+      }
+      for (const selector of INLINE_CTA_SELECTORS) {
+        const target = document.querySelector(selector);
+        if (!target || targets.has(target)) continue;
+        targets.add(target);
+        observer.observe(target);
+      }
+      scheduleApply();
+    };
+    observeTargets();
+    // The registration offer mounts only after the server price config arrives.
+    const layoutObserver = new MutationObserver(observeTargets);
+    layoutObserver.observe(document.querySelector(".editorial-landing") ?? document.body, {
+      childList: true,
+      subtree: true,
+    });
 
     applyVisibility();
 
@@ -90,6 +113,8 @@ export default function LandingStickyCta({ label, onClick, hidden }: LandingStic
 
     return () => {
       observer.disconnect();
+      layoutObserver.disconnect();
+      obscured.clear();
       window.removeEventListener("scroll", scheduleApply);
       window.removeEventListener("resize", scheduleApply);
       if (debounceRef.current !== null) {

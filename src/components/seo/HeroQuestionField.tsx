@@ -5,7 +5,7 @@ import { Sparkles } from "lucide-react";
 import { matchSpreadIntentFromQuestion } from "@/lib/spread-intents/match-question";
 import { buildAskUrl, buildSpreadStartUrl } from "@/lib/spread-intents/router";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
-import { HOME_CUSTOM_QUESTION_EVENT, LANDING_QUESTION_KEY } from "@/lib/landing-offer";
+import { HOME_CUSTOM_QUESTION_EVENT, writeLandingQuestion } from "@/lib/landing-offer";
 import { trackHeroQuestionStarted, trackHeroQuestionSubmitted } from "@/lib/seo/metrika";
 
 function dispatchHomeCustomQuestion(question: string, master = "veronika"): boolean {
@@ -104,9 +104,7 @@ export default function HeroQuestionField({
       return;
     }
 
-    if (typeof window !== "undefined") {
-      sessionStorage.setItem(LANDING_QUESTION_KEY, value);
-    }
+    writeLandingQuestion(value);
 
     trackHeroQuestionSubmitted(
       analyticsSource ?? (compact ? "quick_questions" : "hero")

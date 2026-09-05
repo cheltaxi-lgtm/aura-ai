@@ -157,6 +157,91 @@ test.describe("mobile cache recovery with API fixtures", () => {
 });
 
 
+test.describe("landing question storage failure", () => {
+  test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  test.setTimeout(90000);
+  for (const entry of ["typed", "chip"] as const) {
+    test(`${entry} question survives blocked draft through age confirmation and registration`, async ({ page }) => {
+      let confirmed = false;
+      let savedQuestion = "";
+      let completions = 0;
+      const errors: string[] = [];
+      page.on("pageerror", e => errors.push(e.message));
+      await page.route("**/api/age-gate/confirm", route => {
+        if (route.request().method() === "POST") confirmed = true;
+        return route.fulfill({ json: { ok: true, confirmed } });
+      });
+      await page.route("**/api/guest-triplet/status", route => route.fulfill({ json: { ok: true, status: "none" } }));
+      await page.route("**/api/auth/oauth/providers", route => route.fulfill({ json: { providers: ["yandex", "vk"] } }));
+      await page.route("**/api/guest-triplet/complete", route => {
+        completions++;
+        savedQuestion = route.request().postDataJSON().question;
+        return route.fulfill({ json: { ok: true } });
+      });
+      await page.route("**/api/guest-triplet/teaser", route => route.fulfill({ json: { text: "Пример для теста: обсудите ожидания и выберите один небольшой шаг." } }));
+      await page.addInitScript(() => {
+        const get = Storage.prototype.getItem;
+        const set = Storage.prototype.setItem;
+        Storage.prototype.getItem = function (key) {
+          if (key === "zovus_landing_question") throw new DOMException("blocked draft read", "SecurityError");
+          return get.call(this, key);
+        };
+        Storage.prototype.setItem = function (key, value) {
+          if (key === "zovus_landing_question") throw new DOMException("blocked draft write", "QuotaExceededError");
+          return set.call(this, key, value);
+        };
+      });
+      await page.goto("/");
+      await page.getByRole("button", { name: "Только необходимые", exact: true }).click();
+      const question = "Как подготовиться к важному разговору?";
+      if (entry === "typed") {
+        await page.locator("#hero-question").fill(question);
+        await page.getByRole("button", { name: "Открыть 3 карты бесплатно", exact: true }).click();
+      } else {
+        const chip = page.locator(".editorial-hero__pain-chips").getByRole("button").first();
+        expect((await chip.boundingBox())!.height).toBeGreaterThanOrEqual(44);
+        await chip.click();
+      }
+      await page.getByRole("button", { name: "Мне есть 18 лет — открыть карты", exact: true }).click();
+      await expect(page.getByRole("heading", { name: "Выберите три карты" })).toBeVisible();
+      await pickAndRevealTriplet(page);
+      await expect(page.locator(".guest-spread-teaser__text")).toBeVisible();
+      expect(completions).toBe(1);
+      expect(savedQuestion).toBeTruthy();
+      if (entry === "typed") expect(savedQuestion).toBe(question);
+      await page.getByRole("button", { name: "Получить полный разбор", exact: true }).click();
+      await expect(page.locator(AUTH_GATE)).toBeInViewport();
+      await page.getByRole("button", { name: "Продолжить по email", exact: true }).click();
+      await expect(page).toHaveURL(/method=email/);
+      await expect(page.getByRole("heading", { name: "Откройте полный разбор этих карт" })).toBeVisible();
+      expect(errors).toEqual([]);
+    });
+  }
+});
+
+test("late registration offer hides competing sticky CTA", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.emulateMedia({ reducedMotion: "reduce" });
+  let release!: () => void;
+  const pending = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/runes/config", async route => {
+    const response = await route.fetch();
+    await pending;
+    await route.fulfill({ response });
+  });
+  await page.goto("/");
+  await page.getByRole("button", { name: "Только необходимые", exact: true }).click();
+  await expect(page.locator(".editorial-starter-gift")).toHaveCount(0);
+  release();
+  const cta = page.getByRole("link", { name: "Создать бесплатный аккаунт", exact: true });
+  await expect(cta).toBeVisible();
+  await cta.scrollIntoViewIfNeeded();
+  await expect(cta).toBeInViewport();
+  await expect(page.locator(".landing-sticky-cta")).toHaveAttribute("aria-hidden", "true");
+  await cta.click();
+  await expect(page).toHaveURL(/\/auth\/user\/register(?:\?|$)/);
+});
+
 test.describe("short guest flow regressions", () => {
   test.use({ reducedMotion: "reduce" });
   test.setTimeout(90_000);
