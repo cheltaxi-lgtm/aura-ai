@@ -11,6 +11,7 @@ import {
 } from "@/lib/photo-spread-redraw";
 
 export async function persistPhotoReadingResult(params: {
+  captureGeneration?: string | null;
   profileUserId: string;
   characterId: string;
   analysisBody: string;
@@ -94,7 +95,8 @@ export async function persistPhotoReadingResult(params: {
   }
 
   if (params.question.trim()) {
-    void recordTurn({
+    await recordTurn({
+      captureGeneration: params.captureGeneration ?? null,
       userId: params.profileUserId,
       characterId: params.characterId,
       userMessage: params.question,

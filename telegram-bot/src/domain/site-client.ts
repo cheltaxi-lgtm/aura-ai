@@ -446,7 +446,9 @@ export async function siteCabinet(telegramUserId: number) {
       items: Array<{ token: string; status: string; url: string; createdAt: string }>;
       url: string;
     };
-    memory?: Array<{ id: string; fact: string; category: string | null }>;
+    memory?: Array<{ id: string; fact: string; category: string | null; source?: string; capturedAt?: string | null }>;
+    memoryStatus?: { enabled: boolean; autoCapture: boolean };
+    memoryContexts?: Array<{ product: string; factsCount: number }>;
     support?: {
       tickets: Array<{ id: string; subject: string; status: string; preview: string }>;
       url: string;

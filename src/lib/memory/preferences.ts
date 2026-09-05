@@ -2,7 +2,8 @@
  * Per-user memory governance preferences (opt-in, sensitive capture, reminders).
  * Fail-closed: missing row ⇒ memory/auto-capture disabled.
  */
-import { query } from "@/lib/db";
+import { query, queryClient, type PoolClient } from "@/lib/db";
+import { withUserMemoryLock } from "@/lib/memory/write-guard";
 import { createHash } from "node:crypto";
 import { getSetting } from "@/lib/settings";
 
@@ -95,9 +96,10 @@ function mapRow(row: PrefRow): MemoryPreferences {
   };
 }
 
-export async function getMemoryPreferences(userId: string): Promise<MemoryPreferences> {
+export async function getMemoryPreferences(userId: string, client?: PoolClient): Promise<MemoryPreferences> {
   if (!userId) return DEFAULT_PREFS("");
-  const { rows } = await query<PrefRow>(
+  const run: typeof query = client ? (queryClient.bind(null, client) as typeof query) : query;
+  const { rows } = await run<PrefRow>(
     `SELECT user_id, memory_enabled, auto_capture_enabled, sensitive_capture_enabled,
             event_reminders_enabled, memory_moments_mode, memory_cabinet_mode,
             memory_initial_choice, memory_initial_choice_at,
@@ -126,10 +128,12 @@ export type MemoryPreferencesPatch = {
  */
 export async function updateMemoryPreferences(
   userId: string,
-  patch: MemoryPreferencesPatch
+  patch: MemoryPreferencesPatch,
+  client?: PoolClient
 ): Promise<MemoryPreferences> {
   if (!userId) throw new Error("userId required");
-  const current = await getMemoryPreferences(userId);
+  if (!client) return withUserMemoryLock(userId, (tx) => updateMemoryPreferences(userId, patch, tx));
+  const current = await getMemoryPreferences(userId, client);
 
   const next: MemoryPreferences = {
     ...current,
@@ -159,7 +163,7 @@ export async function updateMemoryPreferences(
     (!current.memoryEnabled || !current.consentGrantedAt || current.consentRevokedAt);
   const revoking = current.memoryEnabled && !next.memoryEnabled;
 
-  const { rows } = await query<PrefRow>(
+  const { rows } = await queryClient<PrefRow>(client,
     `INSERT INTO user_memory_preferences (
        user_id, memory_enabled, auto_capture_enabled, sensitive_capture_enabled,
        event_reminders_enabled, memory_moments_mode, memory_cabinet_mode,
@@ -177,6 +181,16 @@ export async function updateMemoryPreferences(
        NOW()
      )
      ON CONFLICT (user_id) DO UPDATE SET
+       capture_changed_at = CASE WHEN
+         user_memory_preferences.memory_enabled IS DISTINCT FROM EXCLUDED.memory_enabled OR
+         user_memory_preferences.auto_capture_enabled IS DISTINCT FROM EXCLUDED.auto_capture_enabled OR
+         user_memory_preferences.sensitive_capture_enabled IS DISTINCT FROM EXCLUDED.sensitive_capture_enabled
+         THEN NOW() ELSE user_memory_preferences.capture_changed_at END,
+       capture_generation = user_memory_preferences.capture_generation + CASE WHEN
+         user_memory_preferences.memory_enabled IS DISTINCT FROM EXCLUDED.memory_enabled OR
+         user_memory_preferences.auto_capture_enabled IS DISTINCT FROM EXCLUDED.auto_capture_enabled OR
+         user_memory_preferences.sensitive_capture_enabled IS DISTINCT FROM EXCLUDED.sensitive_capture_enabled
+         THEN 1 ELSE 0 END,
        memory_enabled = EXCLUDED.memory_enabled,
        auto_capture_enabled = EXCLUDED.auto_capture_enabled,
        sensitive_capture_enabled = EXCLUDED.sensitive_capture_enabled,
@@ -273,11 +287,13 @@ export async function isMemoryMoatV2Eligible(userId: string): Promise<boolean> {
 /** Record the mandatory first choice. Sensitive capture and reminders stay off. */
 export async function recordInitialMemoryChoice(
   userId: string,
-  choice: "enabled" | "disabled"
+  choice: "enabled" | "disabled",
+  client?: PoolClient
 ): Promise<MemoryPreferences> {
   if (!userId) throw new Error("userId required");
+  if (!client) return withUserMemoryLock(userId, (tx) => recordInitialMemoryChoice(userId, choice, tx));
   const enabled = choice === "enabled";
-  const { rows } = await query<PrefRow>(
+  const { rows } = await queryClient<PrefRow>(client,
     `INSERT INTO user_memory_preferences (
        user_id, memory_enabled, auto_capture_enabled, sensitive_capture_enabled,
        event_reminders_enabled, memory_moments_mode, memory_cabinet_mode,
@@ -292,6 +308,8 @@ export async function recordInitialMemoryChoice(
        NOW()
      )
      ON CONFLICT (user_id) DO UPDATE SET
+       capture_changed_at = NOW(),
+       capture_generation = user_memory_preferences.capture_generation + 1,
        memory_enabled = $2,
        auto_capture_enabled = $2,
        sensitive_capture_enabled = FALSE,
@@ -307,7 +325,7 @@ export async function recordInitialMemoryChoice(
     [userId, enabled, choice, MEMORY_INITIAL_PROMPT_VERSION, MEMORY_CONSENT_VERSION]
   );
   const assignment = getMemoryExperimentAssignment(userId);
-  await query(
+  await queryClient(client,
     `UPDATE user_memory_preferences
         SET memory_rollout_bucket = COALESCE(memory_rollout_bucket, $2),
             memory_prompt_variant = COALESCE(memory_prompt_variant, $3)
@@ -318,14 +336,17 @@ export async function recordInitialMemoryChoice(
 }
 
 /** Soft-disable after purge (keeps row for audit). */
-export async function revokeMemoryConsent(userId: string): Promise<void> {
+export async function revokeMemoryConsent(userId: string, client?: PoolClient): Promise<void> {
   if (!userId) return;
-  await query(
+  if (!client) return withUserMemoryLock(userId, (tx) => revokeMemoryConsent(userId, tx));
+  await queryClient(client,
     `INSERT INTO user_memory_preferences (
        user_id, memory_enabled, auto_capture_enabled, sensitive_capture_enabled,
        event_reminders_enabled, consent_revoked_at, updated_at
      ) VALUES ($1, FALSE, FALSE, FALSE, FALSE, NOW(), NOW())
      ON CONFLICT (user_id) DO UPDATE SET
+       capture_changed_at = NOW(),
+       capture_generation = user_memory_preferences.capture_generation + 1,
        memory_enabled = FALSE,
        auto_capture_enabled = FALSE,
        sensitive_capture_enabled = FALSE,

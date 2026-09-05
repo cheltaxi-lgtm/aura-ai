@@ -23,7 +23,13 @@ const CRITICAL_RE =
   /(развод|расстал|расхо|измен[аыу]|смерт|умер|похорон|онколог|\bрак\b|опухол|инсульт|инфаркт|операци|беремен|выкидыш|увол|сокращ|банкрот|долг|суд\b|иск\b|насили|депресс|суицид|зависим)/i;
 
 const META_FACT_RE =
-  /(карт[аыуои]?|таро|рун[аыуои]?|раскла|гадани|предсказ|астролог|гороскоп|зодиак|энерги|мастер(?!ск)|ассистент|assistant|tarot|card)/i;
+  /(?:^|[^\p{L}])(?:карт(?:а|ы|у|ой|е|ах|ами)?|рун(?:а|ы|у|ой|е|ах|ами)?|таро|расклад[\p{L}]*|гадани[\p{L}]*|предсказ[\p{L}]*|астролог[\p{L}]*|гороскоп[\p{L}]*|зодиак[\p{L}]*|энерги[\p{L}]*|мастер(?:а|у|ом|е|ы|ов)?|ассистент[\p{L}]*|assistant|tarot|cards?)(?=$|[^\p{L}])/iu;
+
+export function isValidMemoryDate(value: string): boolean {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return false;
+  const date = new Date(`${value}T00:00:00.000Z`);
+  return Number.isFinite(date.getTime()) && date.toISOString().slice(0, 10) === value;
+}
 
 export function boostFactSalience(fact: string, salience: number): number {
   if (CRITICAL_RE.test(fact)) return Math.max(salience, 5);
@@ -54,8 +60,8 @@ export function validateUserSubmittedFact(
       ? (category as UserFactCategory)
       : "other";
 
-  const date =
-    eventDate && /^\d{4}-\d{2}-\d{2}$/.test(eventDate) ? eventDate : null;
+  if (eventDate && !isValidMemoryDate(eventDate)) return null;
+  const date = eventDate || null;
 
   const predicateKey = inferManualPredicate(fact, cat);
   const multi = [
@@ -102,7 +108,7 @@ function inferManualPredicate(fact: string, cat: UserFactCategory): string {
   if (cat === "goal") return "goal.current";
   if (cat === "event") return "event.upcoming";
   if (cat === "health") return "health.condition";
-  if (cat === "money") return "finance.debt";
+  if (cat === "money") return /долг|кредит|ипотек|займ|за[её]м/i.test(f) ? "finance.debt" : "other";
   return "other";
 }
 

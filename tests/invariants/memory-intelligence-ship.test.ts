@@ -160,8 +160,11 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 ship hardening (db)", () => 
 
   it("backfill seeds eligible users and increments existing generation", async () => {
     const eligible = await createTestUser({ name: "Intel Backfill Yes" });
+    await recordInitialMemoryChoice(eligible.id, "enabled");
     const draftOnly = await createTestUser({ name: "Intel Backfill Draft" });
+    await recordInitialMemoryChoice(draftOnly.id, "enabled");
     const already = await createTestUser({ name: "Intel Backfill Gen" });
+    await recordInitialMemoryChoice(already.id, "enabled");
     await upsertFact(eligible.id, {
       fact: "Клиент работает аналитиком",
       category: "work",
@@ -224,6 +227,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 ship hardening (db)", () => 
     expect(INTELLIGENCE_REBUILD_PAGE_SIZE).toBe(250);
     expect(INTELLIGENCE_REBUILD_MAX_PAGES).toBe(40);
     const user = await createTestUser({ name: "Intel Trunc" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await query(
       `INSERT INTO user_facts
          (user_id, fact, category, predicate_key, status, salience, source_type, created_at)

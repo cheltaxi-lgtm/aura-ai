@@ -1,3 +1,4 @@
+import { recordInitialMemoryChoice } from "@/lib/memory/preferences";
 import { describe, expect, it } from "vitest";
 import { query } from "@/lib/db";
 import { searchFacts, upsertFact } from "@/lib/memory/user-facts";
@@ -28,6 +29,7 @@ describe.skipIf(!hasTestDb)("memory employment lifecycle (db)", () => {
 
   it("A: auto searching → auto current supersedes and leaves one active", async () => {
     const user = await createTestUser({ name: "Emp A" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await upsertFact(user.id, {
       fact: "Клиент ищет работу программистом",
       category: "work",
@@ -56,6 +58,7 @@ describe.skipIf(!hasTestDb)("memory employment lifecycle (db)", () => {
 
   it("B: auto current cannot destroy manual searching", async () => {
     const user = await createTestUser({ name: "Emp B" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await upsertFact(user.id, {
       fact: "Клиент ищет работу программистом",
       category: "work",
@@ -81,6 +84,7 @@ describe.skipIf(!hasTestDb)("memory employment lifecycle (db)", () => {
 
   it("C: user-authored current may supersede manual searching", async () => {
     const user = await createTestUser({ name: "Emp C" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await upsertFact(user.id, {
       fact: "Клиент ищет работу программистом",
       category: "work",
@@ -109,6 +113,7 @@ describe.skipIf(!hasTestDb)("memory employment lifecycle (db)", () => {
 
   it("D: different subject_key rows do not supersede each other", async () => {
     const user = await createTestUser({ name: "Emp D" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await upsertFact(user.id, {
       fact: "Клиент ищет работу программистом",
       category: "work",
@@ -134,6 +139,7 @@ describe.skipIf(!hasTestDb)("memory employment lifecycle (db)", () => {
 
   it("unavailable embedding still finds a natural work fact", async () => {
     const user = await createTestUser({ name: "Search fallback" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await upsertFact(user.id, {
       fact: "Клиент работает программистом и думает сменить работу",
       category: "work",

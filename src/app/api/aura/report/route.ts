@@ -416,6 +416,7 @@ export async function POST(request: NextRequest) {
   let report: string | null;
   try {
     report = await generateAuraFullReport(snapshot, {
+      memoryUserId: stored.subjectKind === "other" ? undefined : profileUserId,
       userName,
       gender:
         profile?.gender === "male" ? "Мужской" : profile?.gender === "female" ? "Женский" : undefined,

@@ -26,6 +26,7 @@ import type { SessionIntention } from "@/lib/intention";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import SessionFeedback from "@/components/SessionFeedback";
 import MemoryMoments from "@/components/MemoryMoments";
+import MemoryContextReceipt from "@/components/MemoryContextReceipt";
 import MemoryAnchorSuggestion from "@/components/MemoryAnchorSuggestion";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import MasterAvatar from "@/components/MasterAvatar";
@@ -1178,7 +1179,8 @@ export default function ChatWindow({
         queryText={memoryAnchorQuery}
         active={!readOnly && !memoryFresh && !isLoading}
       />
-      <MemoryMoments sessionId={sessionId} active={!readOnly} />
+      <MemoryContextReceipt sessionId={sessionId} refreshKey={messages.length} active={Boolean(sessionId) && !memoryFresh && !isLoading} />
+      <MemoryMoments sessionId={sessionId} active={!readOnly && !memoryFresh} />
       <SessionFeedback characterId={characterId} visible={showSessionFeedback && !readOnly} />
 
       {readOnly ? (

@@ -1,3 +1,4 @@
+import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
 import {
   profileAuthFailureResponse,
@@ -95,6 +96,7 @@ export async function POST(request: NextRequest) {
     if (rateLimited) return rateLimited;
   }
 
+  const captureGeneration = await captureMemoryGenerationForRequest(request, userId);
   const profileRow = await getUserById(userId).catch(() => null);
   if (!profileRow || !isUserAgeEligible(profileRow)) {
     return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
@@ -529,7 +531,7 @@ export async function POST(request: NextRequest) {
       durationMs: generated?.durationMs,
     });
     if (chart.subjectKind === "self") {
-      rememberHdChartFact(userId, chart.chart, chart.id);
+      await rememberHdChartFact(userId, chart.chart, chart.id, captureGeneration);
     }
 
     const report = await getHdReportById(pending.id, userId);

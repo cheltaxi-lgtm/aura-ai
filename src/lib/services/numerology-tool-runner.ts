@@ -129,7 +129,8 @@ export async function runNumerologTool(
     // Only enqueue when the tool carries real user-authored form data
     // (partner/object), not synthetic UI labels like "Разбери квадрат Пифагора".
     if (numerologToolHasUserAuthoredFacts(input.toolId, input.params)) {
-      void recordTurn({
+      await recordTurn({
+        captureGeneration: memoryCtx.captureGeneration ?? null,
         userId: input.profileUserId,
         characterId: "numerolog",
         userMessage,

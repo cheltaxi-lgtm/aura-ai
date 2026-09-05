@@ -3,7 +3,7 @@
  * normalized text without storing the original PII.
  */
 import { createHmac } from "node:crypto";
-import { query } from "@/lib/db";
+import { query, queryClient, type PoolClient } from "@/lib/db";
 
 function tombstoneSecret(): string {
   const secret =
@@ -35,11 +35,13 @@ export async function addTombstone(
   userId: string,
   fact: string,
   predicateKey?: string | null,
-  expiresDays = 365
+  expiresDays = 365,
+  client?: PoolClient
 ): Promise<void> {
   if (!userId || !fact.trim()) return;
   const hmac = factFingerprint(fact);
-  await query(
+  const run: typeof query = client ? (queryClient.bind(null, client) as typeof query) : query;
+  await run(
     `INSERT INTO user_memory_tombstones (user_id, fact_hmac, predicate_key, expires_at)
      VALUES ($1, $2, $3, NOW() + ($4 || ' days')::interval)
      ON CONFLICT (user_id, fact_hmac) DO UPDATE SET
@@ -49,10 +51,11 @@ export async function addTombstone(
   );
 }
 
-export async function isFactTombstoned(userId: string, fact: string): Promise<boolean> {
+export async function isFactTombstoned(userId: string, fact: string, client?: PoolClient): Promise<boolean> {
   if (!userId || !fact.trim()) return false;
   const hmac = factFingerprint(fact);
-  const { rows } = await query<{ id: string }>(
+  const run: typeof query = client ? (queryClient.bind(null, client) as typeof query) : query;
+  const { rows } = await run<{ id: string }>(
     `SELECT id FROM user_memory_tombstones
       WHERE user_id = $1
         AND fact_hmac = $2

@@ -1,4 +1,5 @@
-import { query } from "@/lib/db";
+import { readMemoryWriteConsent, withUserMemoryLock } from "@/lib/memory/write-guard";
+import { query, queryClient } from "@/lib/db";
 import {
   isPgForeignKeyViolation,
   resurrectSessionStub,
@@ -132,7 +133,10 @@ export async function saveSessionMemory(input: {
     return;
   }
 
-  await query(
+  await withUserMemoryLock(input.userId, async (client) => {
+    const { rows } = await queryClient(client, 'SELECT 1 FROM user_memory_preferences WHERE user_id=$1 AND memory_purged_at IS NOT NULL', [input.userId]);
+    if (rows.length) return;
+    await queryClient(client,
     `INSERT INTO session_memories
        (user_id, character_key, topic_summary, key_cards, prediction, mood, outcome_rating)
      VALUES ($1, $2, $3, $4, $5, $6, $7)`,
@@ -146,6 +150,7 @@ export async function saveSessionMemory(input: {
       input.outcomeRating ?? null,
     ]
   );
+  });
   void recordLifetimeOrphanMemory({
     userId: input.userId,
     characterKey: input.characterKey,
@@ -183,8 +188,15 @@ export async function upsertSessionMemoryFromChat(input: {
   prediction: string;
   mood?: string;
 }): Promise<void> {
-  const upsert = () =>
-    query(
+  const generation = (await readMemoryWriteConsent(input.userId))?.generation;
+  const upsert = () => withUserMemoryLock(input.userId, async (client) => {
+    if ((await readMemoryWriteConsent(input.userId, client))?.generation !== generation) return;
+    const { rows: blocked } = await queryClient(client, `SELECT 1 FROM user_memory_preferences p
+      WHERE p.user_id = $1 AND p.memory_purged_at IS NOT NULL AND NOT EXISTS (
+        SELECT 1 FROM sessions s WHERE s.id = $2 AND s.user_id = $1 AND s.created_at > p.memory_purged_at)
+      `, [input.userId, input.sessionId]);
+    if (blocked.length) return;
+    await queryClient(client,
       `INSERT INTO session_memories
          (user_id, session_id, character_key, topic_summary, key_cards, prediction, mood)
        VALUES ($1, $2, $3, $4, $5, $6, $7)
@@ -205,6 +217,7 @@ export async function upsertSessionMemoryFromChat(input: {
         input.mood ?? null,
       ]
     );
+  });
   try {
     await upsert();
   } catch (error) {

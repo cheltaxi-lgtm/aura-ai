@@ -6,7 +6,7 @@
  * Claim ownership is (user_id, generation, processing_at).
  * A write during rebuild bumps generation but does not steal the lease.
  */
-import { query } from "@/lib/db";
+import { query, queryClient, type PoolClient } from "@/lib/db";
 
 export type MemoryIntelligenceDirtyClaim = {
   userId: string;
@@ -27,10 +27,11 @@ function iso(value: Date | string | null | undefined): string | null {
   return value instanceof Date ? value.toISOString() : String(value);
 }
 
-export async function markUserMemoryIntelligenceDirty(userId: string): Promise<void> {
+export async function markUserMemoryIntelligenceDirty(userId: string, client?: PoolClient): Promise<void> {
   if (!userId) return;
   try {
-    await query(
+    const run: typeof query = client ? (queryClient.bind(null, client) as typeof query) : query;
+    await run(
       `INSERT INTO user_memory_intelligence_dirty (
          user_id, dirty_at, attempts, last_error, processing_at, generation
        ) VALUES ($1, NOW(), 0, NULL, NULL, 1)
@@ -40,7 +41,8 @@ export async function markUserMemoryIntelligenceDirty(userId: string): Promise<v
          generation = user_memory_intelligence_dirty.generation + 1`,
       [userId]
     );
-  } catch {
+  } catch (error) {
+    if (client) throw error;
     /* V3 write path must keep working if derived tables are unavailable. */
   }
 }

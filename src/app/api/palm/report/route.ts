@@ -342,6 +342,7 @@ export async function POST(request: NextRequest) {
     let report: string | null;
     try {
       report = await generatePalmFullReport(snapshot, {
+        memoryUserId: profileUserId,
         userName,
         gender:
           profile?.gender === "male"

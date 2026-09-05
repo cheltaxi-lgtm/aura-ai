@@ -1,3 +1,4 @@
+import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
 import { ensureDb } from "@/lib/db";
@@ -74,6 +75,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   const outcome = await runRitualGenerationForUser({
+    captureGeneration: await captureMemoryGenerationForRequest(request, authed.profileUserId),
     ritualId: id,
     userId: authed.profileUserId,
     rollbackOnFailure: true,

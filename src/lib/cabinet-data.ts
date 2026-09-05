@@ -1,3 +1,4 @@
+import { purgeAllUserMemory } from "@/lib/memory/user-facts";
 import { query, withTransaction } from "@/lib/db";
 import { preserveUserRateLimitsBeforePurge } from "@/lib/rate-limit-anchors";
 import { getUserById } from "@/lib/users";
@@ -983,6 +984,7 @@ export interface PurgeUserCabinetResult {
 /** Irreversibly wipe user activity: sessions, chats, diary, rituals, spreads. Keeps earned achievements & rune bonuses. */
 export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCabinetResult> {
   return withTransaction(async (client) => {
+    const memory = await purgeAllUserMemory(userId, client);
     const run = async (text: string, params?: unknown[]) => {
       const result = await client.query(text, params);
       return result.rowCount ?? 0;
@@ -991,8 +993,8 @@ export async function purgeUserCabinetData(userId: string): Promise<PurgeUserCab
     const ritualsRemoved = await run(`DELETE FROM rituals WHERE user_id = $1`, [userId]);
     const notificationsRemoved = await run(`DELETE FROM notifications WHERE user_id = $1`, [userId]);
     const diaryRemoved = await run(`DELETE FROM diary_entries WHERE user_id = $1`, [userId]);
-    const memoriesRemoved = await run(`DELETE FROM session_memories WHERE user_id = $1`, [userId]);
-    const factsRemoved = await run(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
+    const memoriesRemoved = memory.sessionMemoriesRemoved;
+    const factsRemoved = memory.factsRemoved;
     await run(`DELETE FROM numerology_report_history WHERE user_id = $1`, [userId]);
 
     // Persist lifetime guest intro + daily cooldown anchors BEFORE wiping sessions.

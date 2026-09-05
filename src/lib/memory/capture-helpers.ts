@@ -24,17 +24,19 @@ export function buildRitualAnswersMessage(
   return lines.join("\n").slice(0, 4000);
 }
 
-export function captureRitualMemory(params: {
+export async function captureRitualMemory(params: {
+  captureGeneration: string | null;
   userId: string;
   ritualId: string;
   characterKey: string;
   ritualType: RitualType | string;
   answers: string[];
   assistantSummary?: string | null;
-}): void {
+}): Promise<void> {
   const userMessage = buildRitualAnswersMessage(params.ritualType, params.answers);
-  if (userMessage.length < 8) return;
-  void recordTurn({
+  if (!userMessage) return;
+  await recordTurn({
+    captureGeneration: params.captureGeneration,
     userId: params.userId,
     characterId: params.characterKey,
     userMessage,
@@ -44,15 +46,17 @@ export function captureRitualMemory(params: {
   }).catch((err) => console.warn("[memory] ritual capture failed:", err));
 }
 
-export function captureRitualReviewMemory(params: {
+export async function captureRitualReviewMemory(params: {
+  captureGeneration: string | null;
   userId: string;
   ritualId: string;
   characterKey: string;
   outcomeText: string;
-}): void {
+}): Promise<void> {
   const userMessage = params.outcomeText.trim();
-  if (userMessage.length < 8) return;
-  void recordTurn({
+  if (!userMessage) return;
+  await recordTurn({
+    captureGeneration: params.captureGeneration,
     userId: params.userId,
     characterId: params.characterKey,
     userMessage: `Итог обряда: ${userMessage}`.slice(0, 4000),
@@ -62,24 +66,26 @@ export function captureRitualReviewMemory(params: {
   }).catch((err) => console.warn("[memory] ritual review capture failed:", err));
 }
 
-export function captureJointInviteMemory(params: {
+export async function captureJointInviteMemory(params: {
+  captureGeneration: string | null;
   userId: string;
   jointId: string;
   initiatorName?: string | null;
   partnerName?: string | null;
   intentSlug?: string | null;
-}): void {
+}): Promise<void> {
   const partner = params.partnerName?.trim();
   const initiator = params.initiatorName?.trim();
   if (!partner && !initiator) return;
   const parts = [
     initiator ? `Клиент: ${initiator}` : null,
-    partner ? `Партнёр для совместного расклада: ${partner}` : null,
+    partner ? `Другой участник совместного расклада: ${partner}` : null,
     params.intentSlug ? `Тема: ${params.intentSlug}` : null,
   ].filter(Boolean);
   const userMessage = parts.join(". ");
-  if (userMessage.length < 8) return;
-  void recordTurn({
+  if (!userMessage) return;
+  await recordTurn({
+    captureGeneration: params.captureGeneration,
     userId: params.userId,
     characterId: "joint",
     userMessage,
@@ -89,7 +95,9 @@ export function captureJointInviteMemory(params: {
   }).catch((err) => console.warn("[memory] joint invite capture failed:", err));
 }
 
-export function captureJointCombinedMemory(params: {
+export async function captureJointCombinedMemory(params: {
+  captureGeneration: string | null;
+  partnerCaptureGeneration: string | null;
   initiatorUserId: string;
   partnerUserId?: string | null;
   jointId: string;
@@ -97,19 +105,20 @@ export function captureJointCombinedMemory(params: {
   partnerName?: string | null;
   intentSlug?: string | null;
   combinedReading: string;
-}): void {
+}): Promise<void> {
   const userMessage = [
     params.initiatorName?.trim() ? `Клиент: ${params.initiatorName.trim()}` : null,
     params.partnerName?.trim()
-      ? `Партнёр: ${params.partnerName.trim()}`
+      ? `Другой участник совместного расклада: ${params.partnerName.trim()}`
       : null,
     params.intentSlug ? `Совместный расклад: ${params.intentSlug}` : null,
   ]
     .filter(Boolean)
     .join(". ");
-  if (userMessage.length < 8) return;
+  if (!userMessage) return;
   const assistantReply = params.combinedReading.slice(0, 2000);
-  void recordTurn({
+  await recordTurn({
+    captureGeneration: params.captureGeneration,
     userId: params.initiatorUserId,
     characterId: "joint",
     userMessage,
@@ -119,10 +128,15 @@ export function captureJointCombinedMemory(params: {
   }).catch((err) => console.warn("[memory] joint combined capture failed:", err));
 
   if (params.partnerUserId && params.partnerUserId !== params.initiatorUserId) {
-    void recordTurn({
+    await recordTurn({
+    captureGeneration: params.partnerCaptureGeneration,
       userId: params.partnerUserId,
       characterId: "joint",
-      userMessage,
+      userMessage: [
+        params.partnerName?.trim() ? `Клиент: ${params.partnerName.trim()}` : null,
+        params.initiatorName?.trim() ? `Другой участник совместного расклада: ${params.initiatorName.trim()}` : null,
+        params.intentSlug ? `Тема совместного расклада: ${params.intentSlug}` : null,
+      ].filter(Boolean).join('. '),
       assistantReply,
       sourceType: "joint_combined",
       sourceEntityId: params.jointId,

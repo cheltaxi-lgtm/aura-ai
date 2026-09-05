@@ -1,3 +1,4 @@
+import { captureMemoryGeneration, withUserMemoryLock } from "@/lib/memory/write-guard";
 import { query } from "@/lib/db";
 import { completeChat } from "@/lib/llm";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
@@ -474,6 +475,7 @@ export async function submitRitualReview(
     return false;
   }
 
+  const captureGeneration = await captureMemoryGeneration(ritual.user_id);
   const outcomeText = params.outcomeText?.trim().slice(0, 500) || null;
   const sharePublicly = Boolean(params.sharePublicly && outcomeText);
 
@@ -507,8 +509,9 @@ export async function submitRitualReview(
     );
   }
 
-  if (outcomeText && outcomeText.length >= 8) {
-    captureRitualReviewMemory({
+  if (outcomeText) {
+    await captureRitualReviewMemory({
+      captureGeneration,
       userId: ritual.user_id,
       ritualId: ritual.id,
       characterKey: ritual.character_key,
@@ -645,7 +648,14 @@ export async function createNotification(params: {
 }): Promise<{ created: boolean }> {
   if (!params.userId) return { created: false };
   const key = params.idempotencyKey?.trim() || null;
-  const result = await query(
+  const insert = async (run: typeof query) => {
+  if (params.type === 'event_reminder') {
+    const { rows } = await run(`SELECT 1 FROM user_memory_preferences p JOIN user_facts f ON f.user_id = p.user_id
+      WHERE p.user_id=$1 AND p.memory_enabled AND p.event_reminders_enabled AND f.id::text=$2 AND f.status='active'`,
+      [params.userId, String(params.data?.factId ?? '')]);
+    if (!rows.length) return { created: false };
+  }
+  const result = await run(
     `INSERT INTO notifications (user_id, type, title, body, data, idempotency_key)
      VALUES ($1, $2, $3, $4, $5::jsonb, $6)
      ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL
@@ -660,6 +670,8 @@ export async function createNotification(params: {
     ]
   );
   return { created: (result.rowCount ?? 0) > 0 };
+  };
+  return params.type === "event_reminder" ? withUserMemoryLock(params.userId, (client) => insert(client.query.bind(client))) : insert(query);
 }
 
 export async function getUnreadNotifications(userId: string) {

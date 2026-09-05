@@ -1122,15 +1122,18 @@ export async function showMemory(ctx: Context): Promise<void> {
       return;
     }
     const facts = data.memory ?? [];
+    const memoryUrl = data.urls?.memory ?? data.urls?.cabinet;
     if (!facts.length) {
-      await ctx.reply(copy.memoryEmpty, { reply_markup: linkKb(data.urls?.cabinet) });
+      await ctx.reply(`${copy.memoryEmpty}\n\nДобавьте важный факт в память — он будет доступен всем мастерам по теме обращения.`, { reply_markup: linkKb(memoryUrl) });
       return;
     }
     const lines = facts.map(
-      (f, i) => `${i + 1}. ${f.category ? `[${f.category}] ` : ""}${f.fact}`
+      (f, i) => `${i + 1}. ${f.fact}${f.source ? `\nИсточник: ${f.source}` : ""}`
     );
-    await ctx.reply(lines.join("\n\n").slice(0, 3500), {
-      reply_markup: linkKb(data.urls?.cabinet),
+    const status = data.memoryStatus?.enabled ? "Память включена · единая для сайта и бота" : "Память выключена · записи не передаются мастерам";
+    const contexts = data.memoryContexts?.slice(0, 3).map(c => `${c.product}: передано фактов — ${c.factsCount}`).join("\n");
+    await ctx.reply(`${status}\n\n${lines.join("\n\n")}\n\n${contexts || ""}\nИзменить, подтвердить или забыть факт можно в разделе памяти.`.slice(0, 3500), {
+      reply_markup: linkKb(memoryUrl),
     });
   } catch (err) {
     console.error("[cabinet] memory", err);

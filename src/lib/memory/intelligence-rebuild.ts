@@ -6,7 +6,6 @@ import { persistCurrentStateSnapshots, computeCurrentStateSnapshots } from "@/li
 import { computeEpisodes, persistEpisodes } from "@/lib/memory/episodes";
 import {
   claimDirtyIntelligenceUsers,
-  clearUserMemoryIntelligenceDirty,
   countMemoryIntelligenceOps,
   failUserMemoryIntelligenceDirty,
   incrementIntelligenceRebuildTruncated,
@@ -18,6 +17,8 @@ import {
   type MemoryIntelligenceOpsCounts,
 } from "@/lib/memory/intelligence-dirty";
 import { listFactsForIntelligenceRebuild } from "@/lib/memory/user-facts";
+import { queryClient } from "@/lib/db";
+import { readMemoryWriteConsent, withUserMemoryLock } from "@/lib/memory/write-guard";
 
 export {
   markUserMemoryIntelligenceDirty,
@@ -44,6 +45,7 @@ export async function rebuildUserMemoryIntelligence(
   const started = Date.now();
   const empty = { snapshots: 0, episodes: 0, ms: 0, truncated: false, skipped: false };
   if (!userId) return empty;
+  const consentAtStart = await readMemoryWriteConsent(userId);
   const peeked = await peekUserMemoryIntelligenceDirty(userId);
   const generation = opts?.generation ?? peeked?.generation;
   const processingAt = opts?.processingAt ?? peeked?.processingAt ?? null;
@@ -72,13 +74,25 @@ export async function rebuildUserMemoryIntelligence(
       return { ...empty, ms: Date.now() - started, skipped: true };
     }
   }
-  await persistCurrentStateSnapshots(userId, snapshots);
-  await persistEpisodes(userId, episodes);
+  const persisted = await withUserMemoryLock(userId, async (client) => {
+    const consent = await readMemoryWriteConsent(userId, client);
+    if (!consent?.memoryEnabled || consent.generation !== consentAtStart?.generation) return false;
+    const { rows } = await queryClient(client, `SELECT generation, processing_at::text AS processing_at
+      FROM user_memory_intelligence_dirty WHERE user_id = $1 FOR UPDATE`, [userId]);
+    const current = rows[0];
+    if (generation != null ? (!current || Number(current.generation) !== generation ||
+      (current.processing_at ?? null) !== processingAt) : Boolean(current)) return false;
+    await persistCurrentStateSnapshots(userId, snapshots, client);
+    await persistEpisodes(userId, episodes, client);
+    await queryClient(client, `DELETE FROM user_memory_intelligence_dirty WHERE user_id = $1`, [userId]);
+    return true;
+  });
+  if (!persisted) {
+    if (processingAt) await releaseMemoryIntelligenceClaim(userId, processingAt);
+    return { ...empty, ms: Date.now() - started, skipped: true };
+  }
   if (truncated) {
     await incrementIntelligenceRebuildTruncated();
-  }
-  if (generation != null) {
-    await clearUserMemoryIntelligenceDirty(userId, generation, processingAt);
   }
   return {
     snapshots: snapshots.length,

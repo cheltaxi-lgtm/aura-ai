@@ -131,6 +131,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 claim ownership (db)", () =>
 
   it("expired lease takeover: A cannot persist, clear, or release B's token", async () => {
     const user = await createTestUser({ name: "Intel Own Lease" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент ищет работу",
       category: "work",

@@ -3,8 +3,10 @@
  * Governance: status lifecycle, consent-aware purge, tombstones, supersede.
  */
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
+import { FACT_WRITE_LOCK_CLASS, lockUserMemory, readMemoryWriteConsent, withUserMemoryLock } from "@/lib/memory/write-guard";
 import { EMBED_DIM, embedModel, embedTexts } from "@/lib/memory/embeddings";
 import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
+import { validateUserSubmittedFact } from "@/lib/memory/user-fact-input";
 import {
   CORE_PREDICATES,
   isSensitiveFact,
@@ -15,14 +17,12 @@ import {
   addTombstone,
   expireOldTombstones,
   isFactTombstoned,
+  factFingerprint,
 } from "@/lib/memory/tombstones";
-import {
-  cancelPendingMemoryJobs,
-  purgeMemoryExtractionJobs,
-} from "@/lib/memory/extraction-jobs";
 import {
   recordMemoryProductEvent,
   toAnalyticsFactCategory,
+  toMemorySourceType,
 } from "@/lib/memory/product-analytics";
 import {
   canAutoSupersede,
@@ -34,7 +34,6 @@ import { entitiesCompatibleForMerge } from "@/lib/memory/entities";
 import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
 import {
   markUserMemoryIntelligenceDirty,
-  purgeUserMemoryIntelligence,
 } from "@/lib/memory/intelligence-dirty";
 
 export interface UserFact {
@@ -80,6 +79,10 @@ export interface FactInput {
   sourceEntityId?: string | null;
   allowSensitive?: boolean;
   forceNewVersion?: boolean;
+  /** Captured before asynchronous extraction; stale jobs cannot cross consent changes. */
+  captureGeneration?: string;
+  extractionClaim?: { jobId: string; claimToken: string };
+  replacesFactId?: string;
 }
 
 const DEDUP_MAX_DISTANCE = 0.22;
@@ -169,7 +172,6 @@ async function embedOne(text: string, timeoutMs?: number): Promise<number[] | nu
 }
 
 const SEARCH_EMBED_TIMEOUT_MS = 2500;
-const FACT_WRITE_LOCK_CLASS = 823_401;
 
 async function pruneUser(client: PoolClient, userId: string): Promise<void> {
   await queryClient(
@@ -587,6 +589,9 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
   }
 
   const salience = clampSalience(input.salience);
+  const initialConsent = await readMemoryWriteConsent(userId);
+  const captureGeneration = input.captureGeneration ?? initialConsent?.generation;
+  if (!isUserAuthored(input) && (!initialConsent?.memoryEnabled || !initialConsent.autoCaptureEnabled)) return false;
   const embedding = await embedOne(fact);
 
   let storedFactId: string | null = null;
@@ -595,13 +600,42 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
       FACT_WRITE_LOCK_CLASS,
       userId,
     ]);
-    // Re-check tombstone under lock to shrink the race window.
-    if (await isFactTombstoned(userId, fact)) return;
+    const consent = await readMemoryWriteConsent(userId, client);
+    if (consent?.generation !== captureGeneration) return;
+    if (!isUserAuthored(input) && (!consent?.memoryEnabled || !consent.autoCaptureEnabled ||
+      (isSensitiveFact(input) && !consent.sensitiveCaptureEnabled))) return;
+    if (input.sourceType === "human_design") {
+      const source = await queryClient(client, `SELECT id FROM hd_charts WHERE id=$1 AND user_id=$2 AND subject_kind='self' FOR SHARE`, [input.sourceEntityId, userId]);
+      if (!source.rows.length) return;
+    }
+    if (input.extractionClaim) {
+      const { rows } = await queryClient(client, `SELECT id FROM memory_extraction_jobs
+        WHERE id = $1 AND user_id = $2 AND status = 'running' AND claim_token = $3::uuid
+          AND capture_generation = $4::bigint AND claimed_at > NOW() - INTERVAL '10 minutes'
+        FOR UPDATE`, [input.extractionClaim.jobId, userId, input.extractionClaim.claimToken, captureGeneration]);
+      if (!rows.length) return;
+      const delivered = await queryClient(client, `SELECT 1 FROM memory_extraction_fact_writes WHERE job_id=$1 AND user_id=$2 AND fact_hmac=$3`,
+        [input.extractionClaim.jobId, userId, factFingerprint(fact)]);
+      if (delivered.rows.length) return;
+    }
+    if (input.replacesFactId) {
+      const { rows } = await queryClient(client, `SELECT id FROM user_facts WHERE user_id = $1 AND id = $2 AND status IN ('draft', 'active')`, [userId, input.replacesFactId]);
+      if (!rows.length) return;
+    }
+    // Same connection and transaction as purge/delete; never re-ingest a forgotten fact.
+    if (await isFactTombstoned(userId, fact, client)) return;
     storedFactId = await upsertFactLocked(client, userId, input, salience, embedding);
+    if (storedFactId && input.extractionClaim) {
+      await queryClient(client, `INSERT INTO memory_extraction_fact_writes (job_id,user_id,fact_hmac) VALUES ($1,$2,$3)`,
+        [input.extractionClaim.jobId, userId, factFingerprint(fact)]);
+    }
     await pruneUser(client, userId);
-  });
+    if (storedFactId && input.replacesFactId) {
+      await queryClient(client, `UPDATE user_facts SET status = 'superseded', valid_to = NOW(), superseded_by = $3, updated_at = NOW()
+        WHERE user_id = $1 AND id = $2 AND id <> $3`, [userId, input.replacesFactId, storedFactId]);
+    }
   if (storedFactId && (input.evidenceQuote || input.sourceEntityId)) {
-    await query(
+    await queryClient(client,
       `UPDATE user_facts
           SET evidence_quote = COALESCE($3, evidence_quote),
               source_entity_id = COALESCE($4::uuid, source_entity_id),
@@ -614,7 +648,7 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
         input.sourceEntityId ?? null,
       ]
     );
-    await query(
+    await queryClient(client,
       `INSERT INTO user_memory_activity
          (user_id, fact_id, source_entity_id, activity_type, seen_at)
        SELECT $1, $2, $3::uuid, 'learned',
@@ -641,16 +675,7 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
       `,
       [userId, storedFactId, input.sourceEntityId ?? null]
     );
-    const sourceType =
-      input.sourceType === "ritual" || input.sourceType === "ritual_review"
-        ? "ritual"
-        : input.sourceType === "photo"
-          ? "photo"
-          : input.sourceType === "daily"
-            ? "daily"
-            : input.sourceType === "reading"
-              ? "reading"
-              : "chat";
+    const sourceType = toMemorySourceType(input.sourceType === "user" ? "cabinet" : input.sourceType);
     const isDraft =
       input.sourceCharacter !== "user" &&
       input.sourceType !== "user" &&
@@ -667,19 +692,17 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
     });
   }
   if (storedFactId) {
-    await markUserMemoryIntelligenceDirty(userId);
+    await markUserMemoryIntelligenceDirty(userId, client);
   }
-  return true;
+  });
+  return storedFactId !== null;
 }
 
 export async function upsertFacts(userId: string, inputs: FactInput[]): Promise<number> {
   let stored = 0;
   for (const input of inputs) {
-    try {
-      if (await upsertFact(userId, input)) stored += 1;
-    } catch (err) {
-      console.warn("[memory] upsertFact failed:", err instanceof Error ? err.message : err);
-    }
+    // Policy rejection is false; a storage failure must reach the durable retry loop.
+    if (await upsertFact(userId, input)) stored += 1;
   }
   return stored;
 }
@@ -1276,6 +1299,7 @@ export async function confirmFact(
        VALUES ($1, $2, $3, 'confirmed')`,
       [userId, factId, rows[0].source_entity_id ?? null]
     );
+    await markUserMemoryIntelligenceDirty(userId, client);
     return promoted;
   });
   if (confirmed) {
@@ -1287,7 +1311,6 @@ export async function confirmFact(
       factSourceType: "confirmed",
       sensitivity: confirmed.sensitivity === "sensitive" ? "sensitive" : "normal",
     });
-    await markUserMemoryIntelligenceDirty(userId);
   }
   return confirmed;
 }
@@ -1307,13 +1330,15 @@ export async function changeFact(
   );
   const old = oldRows[0] ? mapRow(oldRows[0]) : null;
   if (!old) return null;
+  const validated = validateUserSubmittedFact(fact, old.category, eventDate ?? old.eventDate);
+  if (!validated) return null;
 
   const stored = await upsertFact(userId, {
     fact,
     category: old.category,
     eventDate: eventDate ?? old.eventDate,
     salience: Math.max(3, old.salience),
-    predicateKey: old.predicateKey,
+    predicateKey: validated.predicateKey,
     entityKey: old.entityKey,
     subjectKey: old.subjectKey,
     operation: "replace",
@@ -1322,6 +1347,7 @@ export async function changeFact(
     sourceType: "user",
     allowSensitive: true,
     forceNewVersion: true,
+    replacesFactId: factId,
   });
   if (!stored) return null;
   const { rows: nextRows } = await query<FactRow>(
@@ -1334,17 +1360,6 @@ export async function changeFact(
   );
   const next = nextRows[0] ? mapRow(nextRows[0]) : null;
   if (!next) return null;
-  await query(
-    `UPDATE user_facts
-        SET status = 'superseded', valid_to = NOW(), superseded_by = $3, updated_at = NOW()
-      WHERE user_id = $1 AND id = $2 AND id <> $3 AND status IN ('draft', 'active')`,
-    [userId, factId, next.id]
-  );
-  await query(
-    `INSERT INTO user_memory_activity (user_id, fact_id, source_entity_id, activity_type)
-     VALUES ($1, $2, $3, 'changed')`,
-    [userId, next.id, next.sourceEntityId ?? null]
-  );
   void recordMemoryProductEvent({
     event: "fact_changed",
     userId,
@@ -1353,12 +1368,13 @@ export async function changeFact(
     factSourceType: "confirmed",
     sensitivity: next.sensitivity === "sensitive" ? "sensitive" : "normal",
   });
-  await markUserMemoryIntelligenceDirty(userId);
+
   return next;
 }
 
 export async function deleteFact(userId: string, factId: string): Promise<boolean> {
   const removed = await withTransaction(async (client) => {
+    await lockUserMemory(client, userId);
     const { rows } = await queryClient<{
       fact: string;
       predicate_key: string | null;
@@ -1376,6 +1392,8 @@ export async function deleteFact(userId: string, factId: string): Promise<boolea
     );
     const row = rows[0];
     if (!row) return null;
+    await addTombstone(userId, row.fact, row.predicate_key, 365, client);
+    await queryClient(client, `DELETE FROM notifications WHERE user_id = $1 AND type = 'event_reminder' AND data->>'factId' = $2`, [userId, factId]);
     await queryClient(
       client,
       `INSERT INTO user_memory_activity
@@ -1387,17 +1405,10 @@ export async function deleteFact(userId: string, factId: string): Promise<boolea
       userId,
       factId,
     ]);
+    await markUserMemoryIntelligenceDirty(userId, client);
     return row;
   });
   if (!removed) return false;
-  await addTombstone(userId, removed.fact, removed.predicate_key);
-  await query(
-    `DELETE FROM notifications
-      WHERE user_id = $1
-        AND type = 'event_reminder'
-        AND data->>'factId' = $2`,
-    [userId, factId]
-  ).catch(() => undefined);
   void recordMemoryProductEvent({
     event: "fact_forgotten",
     userId,
@@ -1406,7 +1417,6 @@ export async function deleteFact(userId: string, factId: string): Promise<boolea
     factSourceType: removed.source_type === "user" ? "manual" : "extracted",
     sensitivity: removed.sensitivity === "sensitive" ? "sensitive" : "normal",
   });
-  await markUserMemoryIntelligenceDirty(userId);
   return true;
 }
 
@@ -1424,11 +1434,13 @@ export async function updateFact(
   const model = embedModel();
   const incomingUser =
     input.sourceCharacter === "user" || input.sourceType === "user";
-  const { rows } = await query<FactRow>(
+  return withUserMemoryLock(userId, async (client) => {
+  if (await isFactTombstoned(userId, fact, client)) return null;
+  const { rows } = await queryClient<FactRow>(client,
     `UPDATE user_facts
         SET fact = $3,
             category = COALESCE($4, category),
-            event_date = COALESCE($5::date, event_date),
+            event_date = $5::date,
             salience = GREATEST(salience, $6),
             predicate_key = COALESCE($7, predicate_key),
             entity_key = COALESCE($8, entity_key),
@@ -1464,12 +1476,11 @@ export async function updateFact(
   );
   const updated = rows[0] ? mapRow(rows[0]) : null;
   if (updated) {
-    await withTransaction(async (client) => {
-      await supersedeReplaceables(client, userId, input, updated.id);
-    }).catch(() => undefined);
-    await markUserMemoryIntelligenceDirty(userId);
+    await supersedeReplaceables(client, userId, input, updated.id);
+    await markUserMemoryIntelligenceDirty(userId, client);
   }
   return updated;
+  });
 }
 
 export async function purgeFacts(userId: string): Promise<number> {
@@ -1478,45 +1489,46 @@ export async function purgeFacts(userId: string): Promise<number> {
 }
 
 /** Wipe AI memory + reminders + jobs; revoke consent; keep tombstones against re-ingest. */
-export async function purgeAllUserMemory(userId: string): Promise<{
+export async function purgeAllUserMemory(userId: string, transaction?: PoolClient): Promise<{
   factsRemoved: number;
   sessionMemoriesRemoved: number;
   remindersRemoved: number;
   jobsRemoved: number;
   tombstonesAdded: number;
 }> {
-  await cancelPendingMemoryJobs(userId).catch(() => 0);
-  const jobsRemoved = await purgeMemoryExtractionJobs(userId).catch(() => 0);
-  await purgeUserMemoryIntelligence(userId).catch(() => undefined);
-
-  const { rows: doomed } = await query<{ fact: string; predicate_key: string | null }>(
+  const purge = async (client: PoolClient) => {
+  await lockUserMemory(client, userId);
+  await revokeMemoryConsent(userId, client);
+  await queryClient(client, `UPDATE user_memory_preferences SET memory_purged_at = NOW() WHERE user_id = $1`, [userId]);
+  const jobs = await queryClient(client, `DELETE FROM memory_extraction_jobs WHERE user_id = $1`, [userId]);
+  for (const table of ["user_memory_context_receipts", "user_memory_state_snapshots", "user_memory_episodes", "user_memory_intelligence_dirty", "user_memory_activity", "session_memory_fact_decisions"]) {
+    await queryClient(client, `DELETE FROM ${table} WHERE user_id = $1`, [userId]);
+  }
+  const { rows: doomed } = await queryClient<{ fact: string; predicate_key: string | null }>(client,
     `SELECT fact, predicate_key FROM user_facts WHERE user_id = $1`,
     [userId]
   );
   let tombstonesAdded = 0;
   for (const row of doomed) {
-    try {
-      await addTombstone(userId, row.fact, row.predicate_key);
+      await addTombstone(userId, row.fact, row.predicate_key, 365, client);
       tombstonesAdded += 1;
-    } catch {
-      /* keep purging even if a fingerprint write fails */
-    }
   }
 
-  const sessionRes = await query(`DELETE FROM session_memories WHERE user_id = $1`, [userId]);
-  const factsRes = await query(`DELETE FROM user_facts WHERE user_id = $1`, [userId]);
-  const remindersRes = await query(
+  const sessionRes = await queryClient(client, `DELETE FROM session_memories WHERE user_id = $1`, [userId]);
+  const factsRes = await queryClient(client, `DELETE FROM user_facts WHERE user_id = $1`, [userId]);
+  const remindersRes = await queryClient(client,
     `DELETE FROM notifications WHERE user_id = $1 AND type = 'event_reminder'`,
     [userId]
   );
-  await revokeMemoryConsent(userId).catch(() => undefined);
   return {
     sessionMemoriesRemoved: sessionRes.rowCount ?? 0,
     factsRemoved: factsRes.rowCount ?? 0,
     remindersRemoved: remindersRes.rowCount ?? 0,
-    jobsRemoved,
+    jobsRemoved: jobs.rowCount ?? 0,
     tombstonesAdded,
   };
+  };
+  return transaction ? purge(transaction) : withUserMemoryLock(userId, purge);
 }
 
 export { EMBED_DIM };

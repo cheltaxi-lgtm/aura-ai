@@ -14,7 +14,7 @@ import { countUserMemoryIntelligence } from "@/lib/memory/intelligence-dirty";
 import { rebuildUserMemoryIntelligence } from "@/lib/memory/intelligence-rebuild";
 import { loadMemoryIntelligenceForPack, planMemoryIntelligence } from "@/lib/memory/intelligence-retrieve";
 import { memoryBudgetFor } from "@/lib/memory/memory-budget";
-import { recordInitialMemoryChoice } from "@/lib/memory/preferences";
+import { recordInitialMemoryChoice, updateMemoryPreferences } from "@/lib/memory/preferences";
 import { expandMemoryQuery } from "@/lib/memory/query-expansion";
 import {
   changeFact,
@@ -67,6 +67,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("A: work search → events → hired is one episode and current snapshot", async () => {
     const user = await createTestUser({ name: "Intel A" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент ищет работу программистом",
       category: "work",
@@ -109,6 +110,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("B: Sergey query keeps only Sergey episode, not the later partner", async () => {
     const user = await createTestUser({ name: "Intel B" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Сергей бывший муж клиента",
       category: "relationship",
@@ -146,6 +148,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("C: old searching is stale and not presented as confidently current", async () => {
     const user = await createTestUser({ name: "Intel C" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент ищет работу",
       category: "work",
@@ -180,6 +183,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("D: old family.child is not stale only because of age", async () => {
     const user = await createTestUser({ name: "Intel D" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "У клиента есть дочь Маша",
       category: "family",
@@ -203,6 +207,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("E: user job correction rebuilds snapshot and keeps old job in timeline", async () => {
     const user = await createTestUser({ name: "Intel E" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент работает кассиром",
       category: "work",
@@ -229,6 +234,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("F: delete supporting fact removes its id from episode/snapshot", async () => {
     const user = await createTestUser({ name: "Intel F" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент ищет работу",
       category: "work",
@@ -258,6 +264,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("G: purge removes raw facts, snapshots, episodes and dirty markers", async () => {
     const user = await createTestUser({ name: "Intel G" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент живёт в Москве",
       category: "residence",
@@ -280,6 +287,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("H: episode from master A is available to master B query", async () => {
     const user = await createTestUser({ name: "Intel H" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент ищет работу дизайнером",
       category: "work",
@@ -300,6 +308,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("I: work query does not inject relationship episode", async () => {
     const user = await createTestUser({ name: "Intel I" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент встречается с Иваном",
       category: "relationship",
@@ -353,6 +362,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("K: intelligence unavailable still returns V3 raw memory", async () => {
     const user = await createTestUser({ name: "Intel K" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент работает аналитиком",
       category: "work",
@@ -377,6 +387,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("L: rebuild of unchanged memory is idempotent", async () => {
     const user = await createTestUser({ name: "Intel L" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент работает аналитиком",
       category: "work",
@@ -395,6 +406,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("memory-off does not inject intelligence even if derived rows exist", async () => {
     const user = await createTestUser({ name: "Intel Off" });
+    await enableMemory(user.id);
     await upsertFact(user.id, {
       fact: "Клиент работает аналитиком",
       category: "work",
@@ -403,6 +415,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
       salience: 4,
     });
     await rebuildUserMemoryIntelligence(user.id);
+    await updateMemoryPreferences(user.id, { memoryEnabled: false });
     const loaded = await loadClientMemoryBlock({
       userId: user.id,
       queryText: "Стоит ли менять работу?",
@@ -412,6 +425,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1", () => {
 
   it("performance: snapshot/episode lookup stays indexed for 10..1000 facts", async () => {
     const user = await createTestUser({ name: "Intel Perf" });
+    await enableMemory(user.id);
     const sizes = [10, 100, 300, 1000];
     const timings: Array<{ n: number; snapshotMs: number; episodeMs: number; packMs: number }> = [];
     for (const n of sizes) {

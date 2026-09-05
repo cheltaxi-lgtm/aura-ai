@@ -21,8 +21,10 @@ export default function MemoryAnchorSuggestion({
 }) {
   const [suggestion, setSuggestion] = useState<SuggestedFact | null>(null);
   const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
+    setError(null);
     const query = queryText.trim();
     if (!active || !sessionId || query.length < 8) {
       setSuggestion(null);
@@ -49,6 +51,7 @@ export default function MemoryAnchorSuggestion({
   const decide = async (decision: "included" | "excluded") => {
     if (!sessionId || !suggestion || busy) return;
     setBusy(true);
+    setError(null);
     try {
       const res = await fetch("/api/memory/session-facts", {
         method: "POST",
@@ -56,13 +59,15 @@ export default function MemoryAnchorSuggestion({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ sessionId, factId: suggestion.factId, decision }),
       });
-      if (!res.ok) return;
+      if (!res.ok) throw new Error("memory_decision_failed");
       trackMemoryProductEvent({
         event: decision === "included" ? "memory_anchor_included" : "memory_anchor_excluded",
         sessionId,
         sourceType: "chat",
       });
       setSuggestion(null);
+    } catch {
+      setError("Не удалось сохранить выбор. Попробуйте ещё раз.");
     } finally {
       setBusy(false);
     }
@@ -101,6 +106,7 @@ export default function MemoryAnchorSuggestion({
           </div>
         </div>
       </div>
+      {error ? <p role="alert" className="mt-2 text-xs text-red-200">{error}</p> : null}
     </div>
   );
 }

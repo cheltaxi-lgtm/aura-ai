@@ -1,3 +1,4 @@
+import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 import { ensureDb } from "@/lib/db";
@@ -355,6 +356,7 @@ export async function POST(request: NextRequest) {
       })),
     };
 
+    const captureGeneration = profileUserId ? await captureMemoryGenerationForRequest(request, profileUserId) : null;
     let systemPrompt = await resolvePhotoInterpretationPrompt(characterId, ctx, referrerSlug);
 
     if (profileUserId) {
@@ -421,6 +423,7 @@ export async function POST(request: NextRequest) {
           );
         }
         historyId = await persistPhotoReadingResult({
+          captureGeneration,
           profileUserId,
           characterId,
           analysisBody: reply,
@@ -503,6 +506,7 @@ export async function POST(request: NextRequest) {
         let historyId: string | undefined;
         if (profileUserId && !llmFailed) {
           historyId = await persistPhotoReadingResult({
+          captureGeneration,
             profileUserId,
             characterId,
             analysisBody: reply,

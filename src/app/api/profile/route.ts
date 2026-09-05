@@ -1,3 +1,4 @@
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import {
@@ -167,6 +168,7 @@ export async function PATCH(request: NextRequest) {
     }
 
     let profileUserId = await getProfileUserIdForAccount(auth.sub);
+    const captureGeneration = profileUserId ? await captureMemoryGeneration(profileUserId) : null;
     let profile = profileUserId ? await getUserById(profileUserId) : null;
 
     // Allow mainQuestion-only edits on an existing profile without re-sending birth data.
@@ -190,11 +192,12 @@ export async function PATCH(request: NextRequest) {
       });
       const trimmedQuestion = mainQuestion?.trim();
       if (trimmedQuestion && trimmedQuestion.length >= 8) {
-        void import("@/lib/memory/preferences")
+        await import("@/lib/memory/preferences")
           .then(({ canAutoCapture }) => canAutoCapture(profileUserId!))
           .then((allowed) => {
-            if (!allowed) return;
+            if (!allowed || captureGeneration == null) return;
             return upsertFact(profileUserId!, {
+              captureGeneration,
               fact: `Главный запрос клиента: ${trimmedQuestion}`,
               category: "goal",
               salience: 4,
@@ -291,11 +294,12 @@ export async function PATCH(request: NextRequest) {
     // Seed main question only when the user opted into auto memory capture.
     const trimmedQuestion = mainQuestion?.trim();
     if (profileUserId && trimmedQuestion && trimmedQuestion.length >= 8) {
-      void import("@/lib/memory/preferences")
+      await import("@/lib/memory/preferences")
         .then(({ canAutoCapture }) => canAutoCapture(profileUserId))
         .then((allowed) => {
-          if (!allowed) return;
+          if (!allowed || captureGeneration == null) return;
           return upsertFact(profileUserId, {
+              captureGeneration,
             fact: `Главный запрос клиента: ${trimmedQuestion}`,
             category: "goal",
             salience: 4,

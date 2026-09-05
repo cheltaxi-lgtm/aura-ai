@@ -19,7 +19,7 @@ export async function GET(request: NextRequest) {
 
   const { allowed, retryAfterSec } = await checkRateLimit(
     rateLimitKey("memory_activity", auth.sub),
-    180,
+    720,
     60 * 60 * 1000
   );
   if (!allowed) {

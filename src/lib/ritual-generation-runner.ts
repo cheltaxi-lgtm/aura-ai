@@ -1,3 +1,4 @@
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 import { BillingService } from "@/lib/services/billing-service";
 import {
   buildRitualAnswersMessage,
@@ -46,6 +47,7 @@ export async function runRitualGenerationForUser(params: {
   ritualId: string;
   userId: string;
   rollbackOnFailure?: boolean;
+  captureGeneration?: string | null;
 }): Promise<RitualGenerationOutcome> {
   const ritual = await getRitualById(params.ritualId);
   if (!ritual || ritual.user_id !== params.userId) {
@@ -68,6 +70,7 @@ export async function runRitualGenerationForUser(params: {
     return { ok: false, status: "failed", error: "invalid_status", ritual };
   }
 
+  const captureGeneration = params.captureGeneration !== undefined ? params.captureGeneration : await captureMemoryGeneration(params.userId, ritual.created_at);
   const profile = await getUserById(params.userId);
   const userProfile = {
     name: profile?.name ?? "друг",
@@ -101,7 +104,8 @@ export async function runRitualGenerationForUser(params: {
       memoryContext
     );
     if (result) {
-      captureRitualMemory({
+      await captureRitualMemory({
+        captureGeneration,
         userId: params.userId,
         ritualId: result.id,
         characterKey: result.character_key,

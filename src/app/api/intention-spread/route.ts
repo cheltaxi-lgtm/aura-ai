@@ -1,3 +1,4 @@
+import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import {
@@ -978,6 +979,7 @@ export async function POST(request: NextRequest) {
     positionLabels,
   });
 
+  const captureGeneration = await captureMemoryGenerationForRequest(request, authed.profileUserId);
   const memoryCtx = await buildMemoryContext({
     userId: authed.profileUserId,
     characterId,
@@ -1079,6 +1081,7 @@ export async function POST(request: NextRequest) {
     async (resolvedSessionId) => {
       if (reading.trim()) {
         await ensureSpreadReadingInChatMessages({
+          captureGeneration,
           sessionId: resolvedSessionId,
           profileUserId: authed.profileUserId,
           characterId,

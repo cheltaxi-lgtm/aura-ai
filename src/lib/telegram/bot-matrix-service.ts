@@ -862,6 +862,7 @@ export async function botMatrixRun(
     });
 
     await ensureSpreadReadingInChatMessages({
+      captureGeneration: numerologMemoryCtx.captureGeneration ?? null,
       sessionId: session.id,
       profileUserId,
       characterId: "numerolog",

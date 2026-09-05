@@ -1,5 +1,6 @@
 import { query, withTransaction } from "@/lib/db";
 import { BillingService } from "@/lib/services/billing-service";
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 
 export type AsyncJobKind =
   | "reading"
@@ -79,9 +80,10 @@ export async function createAsyncJob(input: {
   dedupeKey?: string;
   actionType?: string;
 }): Promise<string> {
+  const memoryCaptureGeneration = await captureMemoryGeneration(input.userId);
   const { rows } = await query<{ id: string }>(
-    `INSERT INTO async_jobs (user_id, kind, input, period_metadata, dedupe_key, action_type)
-     VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6)
+    `INSERT INTO async_jobs (user_id, kind, input, period_metadata, dedupe_key, action_type, provenance)
+     VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7::jsonb)
      RETURNING id`,
     [
       input.userId,
@@ -90,6 +92,7 @@ export async function createAsyncJob(input: {
       JSON.stringify(input.periodMetadata ?? {}),
       input.dedupeKey ?? "",
       input.actionType ?? null,
+      JSON.stringify({ memoryCaptureGeneration }),
     ]
   );
   return rows[0]!.id;

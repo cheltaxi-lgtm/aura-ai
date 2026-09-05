@@ -1,3 +1,4 @@
+import { buildMemoryContext, appendMemoryContextToPrompt } from "@/lib/memory/build-memory-context";
 import { completeChat, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { todayLabelRu } from "@/lib/prompt-date";
@@ -21,6 +22,8 @@ export interface PalmReadingContext {
   gender?: string;
   zodiac?: string;
   today?: string;
+  memoryUserId?: string;
+  memoryQuestion?: string;
 }
 
 const PALM_TRADITION_BASE = `
@@ -197,9 +200,16 @@ export async function generatePalmFullReport(
 ): Promise<string | null> {
   const name = ctx.userName?.trim() || "друг";
   const aligned = alignPalmSnapshot(snapshot);
-  const systemPrompt = await wrapSystemPrompt(
+  let systemPrompt = await wrapSystemPrompt(
     `${PALM_TRADITION_BASE}\n\n${PALM_FULL_REPORT_RULES}`
   );
+  if (ctx.memoryUserId) {
+    const memory = await buildMemoryContext({ userId: ctx.memoryUserId, characterId: 'evelina', product: 'palm',
+      lastUserMessage: ctx.memoryQuestion?.trim() || 'Мои цели, работа и отношения: рекомендации для повседневной жизни',
+    });
+    systemPrompt = appendMemoryContextToPrompt(systemPrompt, memory);
+    systemPrompt += '\nПамять — только жизненный контекст рекомендаций. Она не меняет признаки снимка и не является свидетельством того, что видно на фотографии. Не выдавай известные факты за обнаруженные по изображению.';
+  }
   const userText = [
     `Клиент: ${name}${ctx.gender ? `, ${ctx.gender.toLowerCase()}` : ""}${ctx.zodiac ? `, ${ctx.zodiac}` : ""}.`,
     `Сегодня: ${ctx.today ?? todayLabelRu()}.`,

@@ -1,3 +1,4 @@
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 /**
  * Thin product surface for Telegram bot ↔ site parity.
  * Site Postgres remains source of truth; bot calls these via /api/internal/bot/*.
@@ -241,6 +242,7 @@ export async function botRunVeronikaSpread(input: {
   }
 
   const profileUserId = resolved.profileUserId;
+  const captureGeneration = await captureMemoryGeneration(profileUserId);
   const user = await getUserById(profileUserId);
   if (!user) {
     return { ok: false, error: "internal", message: "Профиль не найден." };
@@ -479,6 +481,7 @@ export async function botRunVeronikaSpread(input: {
     });
 
     await ensureSpreadReadingInChatMessages({
+      captureGeneration,
       sessionId: session.id,
       profileUserId,
       characterId: "veronika",
@@ -578,6 +581,7 @@ export async function botRunCatalogIntent(input: {
   }
 
   const profileUserId = resolved.profileUserId;
+  const captureGeneration = await captureMemoryGeneration(profileUserId);
   const user = await getUserById(profileUserId);
   if (!user) {
     return { ok: false, error: "internal", message: "Профиль не найден." };
@@ -826,6 +830,7 @@ export async function botRunCatalogIntent(input: {
     });
 
     await ensureSpreadReadingInChatMessages({
+      captureGeneration,
       sessionId: session.id,
       profileUserId,
       characterId: masterId,

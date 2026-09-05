@@ -1,3 +1,4 @@
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 import { randomBytes, randomUUID } from "crypto";
 import { query, queryClient, withTransaction } from "@/lib/db";
 import { generateReading } from "@/lib/chat-prompts";
@@ -186,6 +187,7 @@ export async function createJointReadingInvite(params: {
   reuseExisting?: boolean;
   runeCharged?: boolean;
 }): Promise<JointReadingRow> {
+  const captureGeneration = await captureMemoryGeneration(params.initiatorUserId);
   if (params.reuseExisting !== false) {
     const reconciled = await reconcileActiveJointInviteForCreation({
       userId: params.initiatorUserId,
@@ -199,7 +201,8 @@ export async function createJointReadingInvite(params: {
         reconciled.row.initiator_name?.trim() ||
         reconciled.row.partner_name?.trim()
       ) {
-        captureJointInviteMemory({
+        await captureJointInviteMemory({
+      captureGeneration,
           userId: reconciled.row.initiator_user_id,
           jointId: reconciled.row.id,
           initiatorName: reconciled.row.initiator_name,
@@ -234,7 +237,8 @@ export async function createJointReadingInvite(params: {
         ]
       );
       const created = mapRow(res.rows[0] as Record<string, unknown>);
-      captureJointInviteMemory({
+      await captureJointInviteMemory({
+      captureGeneration,
         userId: created.initiator_user_id,
         jointId: created.id,
         initiatorName: created.initiator_name,
@@ -479,6 +483,8 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
   }
 
   try {
+    const captureGeneration = await captureMemoryGeneration(row.initiator_user_id, row.created_at);
+    const partnerCaptureGeneration = row.partner_user_id ? await captureMemoryGeneration(row.partner_user_id, row.created_at) : null;
     const synastry = await resolveJointSynastry(row);
     const combined = await generateCombinedReading(row, synastry);
     if (!combined?.trim()) {
@@ -496,7 +502,8 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
       (await getJointReadingByToken(row.token)) ??
       ({ ...row, combined_reading: combined, status: "completed" } as JointReadingRow);
     if (completed.combined_reading?.trim()) {
-      captureJointCombinedMemory({
+      await captureJointCombinedMemory({
+        captureGeneration, partnerCaptureGeneration,
         initiatorUserId: completed.initiator_user_id,
         partnerUserId: completed.partner_user_id,
         jointId: completed.id,
@@ -538,6 +545,7 @@ export async function submitJointReadingSide(params: {
   characterKey: string;
   profileName?: string | null;
 }): Promise<JointSubmitResult> {
+  const captureGeneration = await captureMemoryGeneration(params.userId);
   const existing = await getJointReadingByToken(params.token);
   if (!existing || existing.status === "expired") {
     return { ok: false, error: "Приглашение не найдено или истекло." };
@@ -637,11 +645,12 @@ export async function submitJointReadingSide(params: {
 
   // Capture names when a side submits (invite may have been created without them).
   if (updated.initiator_name?.trim() || updated.partner_name?.trim()) {
-    captureJointInviteMemory({
+    await captureJointInviteMemory({
+      captureGeneration,
       userId: isInitiator ? updated.initiator_user_id : params.userId,
       jointId: updated.id,
-      initiatorName: updated.initiator_name,
-      partnerName: updated.partner_name,
+      initiatorName: isInitiator ? updated.initiator_name : updated.partner_name,
+      partnerName: isInitiator ? updated.partner_name : updated.initiator_name,
       intentSlug: updated.intent_slug,
     });
   }

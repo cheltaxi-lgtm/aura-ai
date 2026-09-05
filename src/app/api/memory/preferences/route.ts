@@ -162,9 +162,7 @@ export async function PUT(request: NextRequest) {
 
   const before = await getMemoryPreferences(profileUserId);
   const enablingMemory =
-    (patch.memoryEnabled === true && !before.memoryEnabled) ||
-    (patch.autoCaptureEnabled === true && !before.autoCaptureEnabled) ||
-    (patch.sensitiveCaptureEnabled === true && !before.sensitiveCaptureEnabled);
+    patch.memoryEnabled === true || patch.autoCaptureEnabled === true || patch.sensitiveCaptureEnabled === true;
   if (enablingMemory && body.pdConsent !== true) {
     return NextResponse.json(
       {

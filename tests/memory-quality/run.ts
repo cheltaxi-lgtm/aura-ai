@@ -145,6 +145,7 @@ function main() {
   ];
 
   const gates: Array<{ name: string; ok: boolean; detail: string }> = [
+    { name: "context budget and security", ok: budgetFails === 0, detail: String(budgetFails) },
     { name: "cross-user leak", ok: leaks === 0, detail: String(leaks) },
     { name: "manual overwrite", ok: manualOw === 0, detail: String(manualOw) },
     { name: "user-confirmed overwrite", ok: confirmedOw === 0, detail: String(confirmedOw) },

@@ -582,6 +582,7 @@ export async function botPhotoInterpret(input: {
       }
 
       const historyId = await persistPhotoReadingResult({
+          captureGeneration: memoryCtx.captureGeneration ?? null,
         profileUserId,
         characterId,
         analysisBody: generated.reply,

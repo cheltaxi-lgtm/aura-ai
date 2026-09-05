@@ -98,7 +98,9 @@ assert(
   "purgeAllUserMemory revokes consent, clears jobs/reminders, keeps tombstones",
   userFacts.includes("purgeAllUserMemory") &&
     userFacts.includes("revokeMemoryConsent") &&
-    userFacts.includes("purgeMemoryExtractionJobs") &&
+    userFacts.includes("DELETE FROM memory_extraction_jobs WHERE user_id = $1") &&
+    userFacts.includes("revokeMemoryConsent(userId, client)") &&
+    userFacts.includes("withUserMemoryLock(userId, purge)") &&
     userFacts.includes("event_reminder") &&
     userFacts.includes("addTombstone") &&
     userFacts.includes("tombstonesAdded") &&
@@ -494,8 +496,8 @@ assert(
 
 const installCrons = read("proxmox-setup/install-crons.sh");
 assert(
-  "install-crons schedules memory-extract every 5 minutes",
-  installCrons.includes("cron-memory-extract.sh") && installCrons.includes("*/5 * * * *")
+  "install-crons schedules memory-extract each minute without overlapping cron runs",
+  installCrons.includes("* * * * * $REPO/proxmox-setup/cron-memory-extract.sh") && read("proxmox-setup/cron-memory-extract.sh").includes("flock -n 9")
 );
 assert(
   "install-crons hardens cron wrappers to mode 750 (not world-writable)",

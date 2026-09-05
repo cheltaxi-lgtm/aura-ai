@@ -1,3 +1,4 @@
+import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb, query } from "@/lib/db";
 import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
@@ -141,6 +142,7 @@ function classifyReadingFailureCode(error: unknown): string {
 }
 
 async function persistReadingToSession(input: {
+  captureGeneration?: string | null;
   sessionId: string | undefined;
   profileUserId: string;
   characterId: string;
@@ -152,6 +154,7 @@ async function persistReadingToSession(input: {
   customQuestion?: string;
 }): Promise<string | null> {
   return ensureSpreadReadingInChatMessages({
+    captureGeneration: input.captureGeneration ?? null,
     sessionId: input.sessionId,
     profileUserId: input.profileUserId,
     characterId: input.characterId,
@@ -365,6 +368,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ reading: "", skipReading: true });
   }
 
+  const originMemoryGeneration = await captureMemoryGenerationForRequest(request, authed.profileUserId);
   const serverProfile = await getUserById(authed.profileUserId);
   if (serverProfile) {
     userName = normalizePersonDisplayNameOr(serverProfile.name, "друг");
@@ -922,6 +926,7 @@ export async function POST(request: NextRequest) {
             let reopenHistoryId: string | undefined;
             try {
               await persistReadingToSession({
+              captureGeneration: originMemoryGeneration,
                 sessionId,
                 profileUserId: authed.profileUserId,
                 characterId,
@@ -1037,6 +1042,7 @@ export async function POST(request: NextRequest) {
                 let reopenHistoryId: string | undefined;
                 try {
                   await persistReadingToSession({
+              captureGeneration: originMemoryGeneration,
                     sessionId,
                     profileUserId: authed.profileUserId,
                     characterId,
@@ -1448,6 +1454,7 @@ export async function POST(request: NextRequest) {
 
           try {
             await persistReadingToSession({
+              captureGeneration: originMemoryGeneration,
               sessionId,
               profileUserId: authed.profileUserId,
               characterId,
@@ -1659,6 +1666,7 @@ export async function POST(request: NextRequest) {
 
         try {
           await persistReadingToSession({
+              captureGeneration: originMemoryGeneration,
             sessionId,
             profileUserId: authed.profileUserId,
             characterId,

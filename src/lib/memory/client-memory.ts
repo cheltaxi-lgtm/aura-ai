@@ -9,11 +9,12 @@ import {
   completeMemoryExtractionJob,
   enqueueMemoryExtraction,
   failMemoryExtractionJob,
+  saveMemoryExtractionResult,
 } from "@/lib/memory/extraction-jobs";
 import {
   buildClientMemoryPack,
   emptyMemoryMetrics,
-  serializeClientMemoryPack,
+  serializeClientMemoryPackWithFacts,
   type MemoryRetrievalMetrics,
 } from "@/lib/memory/client-memory-pack";
 import { memoryBudgetFor, resolveMemoryDepth, type MemoryDepth } from "@/lib/memory/memory-budget";
@@ -29,6 +30,7 @@ import {
   reembedMissingFacts,
   searchFacts,
   upsertFacts,
+  type UserFact,
 } from "@/lib/memory/user-facts";
 
 /**
@@ -44,7 +46,7 @@ export async function loadClientMemoryBlock(params: {
   product?: string | null;
   upcomingWithinDays?: number | null;
   upcomingWindow?: { start: string; end: string } | null;
-}): Promise<{ block: string; metrics: MemoryRetrievalMetrics }> {
+}): Promise<{ block: string; metrics: MemoryRetrievalMetrics; facts?: UserFact[] }> {
   const { userId, queryText = "", sessionId } = params;
   const started = Date.now();
   if (!userId) {
@@ -80,13 +82,14 @@ export async function loadClientMemoryBlock(params: {
       product: params.product,
       queryText,
     });
-    const block = serializeClientMemoryPack(pack, memoryBudgetFor(depth));
+    const { block, facts } = serializeClientMemoryPackWithFacts(pack, memoryBudgetFor(depth));
     pack.metrics.memory_context_chars = block.length;
     pack.metrics.memory_retrieval_ms = Date.now() - started;
     if (!block.includes("<fact ")) {
+      pack.metrics.memory_context_chars = 0;
       return { block: "", metrics: pack.metrics };
     }
-    return { block, metrics: pack.metrics };
+    return { block, metrics: pack.metrics, facts };
   } catch (err) {
     console.warn("[memory] load failed:", err instanceof Error ? err.message : err);
     return { block: "", metrics: emptyMemoryMetrics(Date.now() - started) };
@@ -100,6 +103,7 @@ const FACTLESS_TURN_RE =
   /^(спасибо[!.\s]*|благодарю[!.\s]*|привет[!.\s]*|здравствуй(те)?[!.\s]*|да[!.\s]*|нет[!.\s]*|ок(ей)?[!.\s]*|хорошо[!.\s]*|понятно[!.\s]*|ясно[!.\s]*|угу[!.\s]*|ага[!.\s]*|спс[!.\s]*)+$/i;
 
 export async function recordTurn(params: {
+  captureGeneration: string | null;
   userId: string;
   characterId?: string;
   userMessage: string;
@@ -107,14 +111,14 @@ export async function recordTurn(params: {
   sourceType?: string;
   sourceEntityId?: string | null;
 }): Promise<void> {
-  if (!params.userId || !params.userMessage?.trim()) return;
+  if (!params.userId || !params.userMessage?.trim() || params.captureGeneration == null) return;
   const userMessage = params.userMessage.trim();
   // Skip trivial turns early — no outbox noise / embedding burn.
-  if (userMessage.length < 8) return;
   if (userMessage.length < 40 && FACTLESS_TURN_RE.test(userMessage)) return;
   try {
     if (!(await canAutoCapture(params.userId))) return;
     await enqueueMemoryExtraction({
+      captureGeneration: params.captureGeneration,
       userId: params.userId,
       sourceType: params.sourceType ?? "chat",
       sourceEntityId: params.sourceEntityId ?? null,
@@ -135,14 +139,17 @@ export async function processMemoryExtractionJobs(
   limit = 10,
   userId?: string
 ): Promise<{ processed: number; stored: number; failed: number }> {
-  const jobs = await claimMemoryExtractionJobs(limit, userId);
+  let processed = 0;
   let stored = 0;
   let failed = 0;
 
-  for (const job of jobs) {
+  for (let i = 0; i < Math.min(50, Math.max(1, limit)); i++) {
+    const [job] = await claimMemoryExtractionJobs(1, userId);
+    if (!job) break;
+    processed += 1;
     try {
       if (!(await canAutoCapture(job.userId))) {
-        await completeMemoryExtractionJob(job.id);
+        await completeMemoryExtractionJob(job.id, job.claimToken);
         continue;
       }
       const allowSensitive = await canCaptureSensitive(job.userId);
@@ -154,11 +161,12 @@ export async function processMemoryExtractionJobs(
       const known = await searchFacts(job.userId, job.userMessage, { topK: 12 }).catch(
         () => []
       );
-      const extraction = await extractFactsFromTurnDetailed(
+      const extraction = job.extractionResult ?? await extractFactsFromTurnDetailed(
         job.userMessage,
         job.assistantReply ?? "",
         known.map((f) => f.fact)
       );
+      if (!job.extractionResult && !(await saveMemoryExtractionResult(job.id, job.claimToken, extraction))) continue;
       const filtered = extraction.facts.filter((f) => {
         if (!allowSensitive && isSensitiveFact(f)) return false;
         if ((f.confidence ?? 1) < 0.85 && !draftCaptureEnabled) return false;
@@ -174,25 +182,28 @@ export async function processMemoryExtractionJobs(
             sourceType: job.sourceType,
             sourceEntityId: job.sourceEntityId,
             allowSensitive,
+            captureGeneration: job.captureGeneration,
+            extractionClaim: { jobId: job.id, claimToken: job.claimToken },
           }))
         );
         stored += storedForJob;
       }
-      await completeMemoryExtractionJob(job.id, {
+      await completeMemoryExtractionJob(job.id, job.claimToken, {
         extractedCount: extraction.parsedCount,
         storedCount: storedForJob,
         groundingRejectedCount: extraction.groundingRejectedCount,
       });
-    } catch (err) {
+    } catch {
       failed += 1;
       await failMemoryExtractionJob(
         job.id,
-        err instanceof Error ? err.message : String(err)
+        "memory_extraction_failed",
+        job.claimToken
       ).catch(() => undefined);
     }
   }
 
-  return { processed: jobs.length, stored, failed };
+  return { processed, stored, failed };
 }
 
 export async function loadClientMemoryBlockText(params: {

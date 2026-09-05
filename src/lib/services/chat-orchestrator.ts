@@ -601,6 +601,8 @@ export class ChatOrchestrator {
     }
   }
 
+  private memoryCaptureGeneration: string | null = null;
+
   private async loadPromptMemory(): Promise<void> {
     if (!this.profileUserId) return;
 
@@ -642,6 +644,7 @@ export class ChatOrchestrator {
         ? buildPeriodSpreadAnchorBlock(this.periodSpreadScope, cardNames)
         : ctx.sessionAnchorBlock;
 
+    this.memoryCaptureGeneration = ctx.captureGeneration ?? null;
     this.memoryQuery = ctx.queryText;
     this.clientMemoryBlock = ctx.clientBlock;
     this.memoryBlock = [sessionAnchor, ctx.pastSessionsBlock, ctx.factsBlock]
@@ -1447,7 +1450,8 @@ export class ChatOrchestrator {
     }
 
     if (this.profileUserId && !llmFailed && finalReply) {
-      void ClientMemory.recordTurn({
+      await ClientMemory.recordTurn({
+        captureGeneration: this.memoryCaptureGeneration,
         userId: this.profileUserId,
         characterId: this.characterId,
         userMessage: this.lastUserMsg,

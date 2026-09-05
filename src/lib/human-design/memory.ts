@@ -4,14 +4,16 @@ import { query } from "@/lib/db";
 
 /**
  * Persist the chart digest as a durable cross-master memory fact.
- * Fire-and-forget: memory must never break chart/report flows.
+ * Awaited persistence: failures do not break chart/report flows.
  */
-export function rememberHdChartFact(userId: string, chart: HdChart, chartId: string): void {
-  void (async () => {
+export async function rememberHdChartFact(userId: string, chart: HdChart, chartId: string, captureGeneration: string | null): Promise<void> {
+  if (captureGeneration == null) return;
+  await (async () => {
     const { canAutoCapture } = await import("@/lib/memory/preferences");
     if (!(await canAutoCapture(userId))) return;
     const { upsertFact } = await import("@/lib/memory/user-facts");
     await upsertFact(userId, {
+      captureGeneration,
       fact: formatHdFactLine(chart),
       category: "astro",
       salience: 3,
@@ -26,18 +28,17 @@ export function rememberHdChartFact(userId: string, chart: HdChart, chartId: str
 }
 
 /**
- * Remove the durable fact tied to a deleted chart. Fire-and-forget —
- * chart deletion must succeed even if memory cleanup fails.
+ * Remove every durable fact tied to a deleted/demoted chart.
  */
-export function forgetHdChartFact(userId: string, chartId: string): void {
-  void (async () => {
+export async function forgetHdChartFact(userId: string, chartId: string): Promise<void> {
+  await (async () => {
     const { rows } = await query<{ id: string }>(
       `SELECT id FROM user_facts
         WHERE user_id = $1 AND source_type = 'human_design' AND source_entity_id = $2`,
       [userId, chartId]
     );
-    if (!rows[0]) return;
+    if (!rows.length) return;
     const { deleteFact } = await import("@/lib/memory/user-facts");
-    await deleteFact(userId, rows[0].id);
+    for (const row of rows) await deleteFact(userId, row.id);
   })().catch((error) => console.warn("[human-design] memory forget failed:", error));
 }

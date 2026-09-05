@@ -1,3 +1,4 @@
+import { recordInitialMemoryChoice } from "@/lib/memory/preferences";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { query } from "@/lib/db";
 import {
@@ -269,6 +270,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
 
   it("dirty race A: write during claimed rebuild keeps the user dirty", async () => {
     const user = await createTestUser({ name: "Dirty A" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await markUserMemoryIntelligenceDirty(user.id);
     const claims = await claimDirtyIntelligenceUsers(1);
     expect(claims).toHaveLength(1);
@@ -283,6 +285,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
 
   it("dirty race B: successful rebuild without new writes clears dirty", async () => {
     const user = await createTestUser({ name: "Dirty B" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await upsertFact(user.id, {
       fact: "Клиент работает аналитиком",
       category: "work",
@@ -304,6 +307,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
 
   it("dirty race C: failed rebuild stays retryable", async () => {
     const user = await createTestUser({ name: "Dirty C" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await markUserMemoryIntelligenceDirty(user.id);
     const claims = await claimDirtyIntelligenceUsers(1);
     expect(claims).toHaveLength(1);
@@ -314,6 +318,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
 
   it("rebuild past the first 400 facts still sees an older distinctive fact", async () => {
     const user = await createTestUser({ name: "Intel 1000" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await query(
       `INSERT INTO user_facts
          (user_id, fact, category, predicate_key, status, archive_tier, salience, source_type, created_at)
@@ -353,6 +358,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
 
   it("flag-on integration: work / family / health / goals / Sergey / stale / exclusion / fallback", async () => {
     const user = await createTestUser({ name: "Intel FlagOn" });
+    await recordInitialMemoryChoice(user.id, "enabled");
     await upsertFact(user.id, {
       fact: "Клиент работает аналитиком",
       category: "work",
@@ -450,6 +456,7 @@ describe.skipIf(!hasTestDb)("Memory Intelligence P1 hardening (db)", () => {
     expect(sergey.expansion.entityKeys).toContain(SERGEY);
 
     const emptyUser = await createTestUser({ name: "Intel Fallback" });
+    await recordInitialMemoryChoice(emptyUser.id, "enabled");
     await upsertFact(emptyUser.id, {
       fact: "Клиент работает аналитиком",
       category: "work",

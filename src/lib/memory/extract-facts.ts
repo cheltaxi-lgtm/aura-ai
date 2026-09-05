@@ -10,6 +10,7 @@ import {
   boostFactSalience,
   isQualityMemoryFact,
   isValidFactCategory,
+  isValidMemoryDate,
 } from "@/lib/memory/user-fact-input";
 import type { FactInput } from "@/lib/memory/user-facts";
 
@@ -97,7 +98,8 @@ export function parseExtractedFactPayload(raw: string): FactInput[] {
   return parseFacts(raw);
 }
 
-function parseFacts(raw: string): FactInput[] {
+function parseFacts(raw: string, strict = false): FactInput[] {
+  const invalid = (): FactInput[] => { if (strict) throw new Error("memory_extraction_invalid_payload"); return []; };
   let text = raw.trim();
   const arrMatch = text.match(/\[[\s\S]*\]/);
   if (arrMatch) text = arrMatch[0];
@@ -107,11 +109,11 @@ function parseFacts(raw: string): FactInput[] {
     parsed = JSON.parse(text);
   } catch {
     const objMatch = raw.match(/\{[\s\S]*\}/);
-    if (!objMatch) return [];
+    if (!objMatch) return invalid();
     try {
       parsed = JSON.parse(objMatch[0]);
     } catch {
-      return [];
+      return invalid();
     }
   }
 
@@ -122,9 +124,9 @@ function parseFacts(raw: string): FactInput[] {
     const obj = parsed as Record<string, unknown>;
     if (Array.isArray(obj.facts)) items = obj.facts as RawFact[];
     else if (typeof obj.fact === "string") items = [obj as RawFact];
-    else return [];
+    else return invalid();
   } else {
-    return [];
+    return invalid();
   }
 
   const out: FactInput[] = [];
@@ -139,7 +141,7 @@ function parseFacts(raw: string): FactInput[] {
         : "other";
 
     const eventDate =
-      typeof item.eventDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(item.eventDate)
+      typeof item.eventDate === "string" && isValidMemoryDate(item.eventDate)
         ? item.eventDate
         : null;
 
@@ -238,7 +240,7 @@ export async function extractFactsFromTurnDetailed(
   groundingRejectedCount: number;
 }> {
   const user = userMessage?.trim();
-  if (!user || user.length < 8) {
+  if (!user) {
     return { facts: [], parsedCount: 0, groundingRejectedCount: 0 };
   }
   if (user.length < 40 && FACTLESS_RE.test(user)) {
@@ -272,9 +274,9 @@ export async function extractFactsFromTurnDetailed(
     priority: "background",
     modelOverride: extractModelOverride(),
   });
-  if (!raw) return { facts: [], parsedCount: 0, groundingRejectedCount: 0 };
+  if (!raw) throw new Error("memory_extraction_empty");
 
-  const parsed = parseFacts(raw);
+  const parsed = parseFacts(raw, true);
   const facts = filterGroundedFacts(user, parsed);
   return {
     facts,

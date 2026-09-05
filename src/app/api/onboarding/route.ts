@@ -1,3 +1,4 @@
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb, query } from "@/lib/db";
 import {
@@ -106,6 +107,7 @@ export async function POST(request: NextRequest) {
     };
     const astroMeta = astroMetaFromBirthDate(String(birthDate), consent) as AstroMeta | undefined;
     let profileUserId = await getProfileUserIdForAccount(auth.sub);
+    const captureGeneration = profileUserId ? await captureMemoryGeneration(profileUserId) : null;
     if (profileUserId) {
       const linkedUser = await getUserById(profileUserId);
       if (!linkedUser) {
@@ -171,11 +173,12 @@ export async function POST(request: NextRequest) {
     const trimmedMainQuestion =
       typeof mainQuestion === "string" ? mainQuestion.trim() : "";
     if (trimmedMainQuestion.length >= 8) {
-      void import("@/lib/memory/preferences")
+      await import("@/lib/memory/preferences")
         .then(({ canAutoCapture }) => canAutoCapture(user!.id))
         .then((allowed) => {
-          if (!allowed) return;
+          if (!allowed || captureGeneration == null) return;
           return upsertFact(user!.id, {
+              captureGeneration,
             fact: `Главный запрос клиента: ${trimmedMainQuestion}`,
             category: "goal",
             salience: 4,

@@ -10,6 +10,8 @@ const queryMock = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   query: (...args: unknown[]) => queryMock(...args),
+  queryClient: (_client: unknown, ...args: unknown[]) => queryMock(...args),
+  withTransaction: (fn: (client: unknown) => unknown) => fn({}),
 }));
 
 vi.mock("@/lib/llm", () => ({
@@ -61,9 +63,11 @@ describe("saveMessage FK guard", () => {
 
 describe("upsertSessionMemoryFromChat FK guard", () => {
   it("resurrects the session stub and retries once on 23503", async () => {
-    queryMock
-      .mockRejectedValueOnce(FK_ERROR)
-      .mockResolvedValue({ rows: [] });
+    let failed = false;
+    queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("INSERT INTO session_memories") && !failed) { failed = true; throw FK_ERROR; }
+      return { rows: [] };
+    });
 
     await upsertSessionMemoryFromChat({
       userId: "user-1",

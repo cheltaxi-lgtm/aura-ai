@@ -2,7 +2,7 @@
  * Deterministic current-state snapshots from ACTIVE raw facts.
  * IDs only — no derived prose. Fully rebuildable.
  */
-import { query } from "@/lib/db";
+import { query, queryClient, type PoolClient } from "@/lib/db";
 import { assessFactFreshness } from "@/lib/memory/freshness";
 import {
   domainForFact,
@@ -183,20 +183,21 @@ export function computeCurrentStateSnapshots(
 
 export async function persistCurrentStateSnapshots(
   userId: string,
-  snapshots: CurrentStateSnapshot[]
+  snapshots: CurrentStateSnapshot[], client?: PoolClient
 ): Promise<void> {
+  const run: typeof query = client ? (queryClient.bind(null, client) as typeof query) : query;
   const domains = snapshots.map((snapshot) => snapshot.domain);
   if (!domains.length) {
-    await query(`DELETE FROM user_memory_state_snapshots WHERE user_id = $1`, [userId]);
+    await run(`DELETE FROM user_memory_state_snapshots WHERE user_id = $1`, [userId]);
     return;
   }
-  await query(
+  await run(
     `DELETE FROM user_memory_state_snapshots
       WHERE user_id = $1 AND NOT (domain = ANY($2::text[]))`,
     [userId, domains]
   );
   for (const snapshot of snapshots) {
-    await query(
+    await run(
       `INSERT INTO user_memory_state_snapshots (
          user_id, domain, state_json, supporting_fact_ids, computed_at, algorithm_version
        ) VALUES ($1, $2, $3::jsonb, $4::uuid[], $5::timestamptz, $6)

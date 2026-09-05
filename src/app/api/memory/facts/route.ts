@@ -1,3 +1,4 @@
+import { readMemoryWriteConsent, withUserMemoryLock } from "@/lib/memory/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
@@ -190,13 +191,19 @@ export async function POST(request: NextRequest) {
   }
 
   // Manual add implies the user wants memory usable; enable read without auto-capture.
-  await updateMemoryPreferences(profileUserId, { memoryEnabled: true }).catch(() => undefined);
+  const captureGeneration = await withUserMemoryLock(profileUserId, async (client) => {
+    await updateMemoryPreferences(profileUserId, { memoryEnabled: true }, client);
+    return (await readMemoryWriteConsent(profileUserId, client))?.generation;
+  });
 
-  await upsertFact(profileUserId, {
+  const stored = await upsertFact(profileUserId, {
     ...input,
+    captureGeneration,
     sourceType: "user",
     allowSensitive: true,
   });
+
+  if (!stored) return NextResponse.json({ error: "memory_changed", message: "Факт не сохранён: память была очищена или этот факт ранее удалён. Обновите страницу." }, { status: 409 });
 
   const matched = await searchFacts(profileUserId, input.fact, { topK: 1 });
   const created = matched[0] ?? existing.find((f) => f.fact === input.fact);

@@ -259,7 +259,7 @@ describe.skipIf(!hasTestDb)("notifications-hardening (db)", () => {
       (
         await createNotification({
           userId: user.id,
-          type: "event_reminder",
+          type: "daily_reminder",
           title: "a",
           body: "a",
           idempotencyKey: "event_reminder:fact-a:2030-01-01",
@@ -270,7 +270,7 @@ describe.skipIf(!hasTestDb)("notifications-hardening (db)", () => {
       (
         await createNotification({
           userId: user.id,
-          type: "event_reminder",
+          type: "daily_reminder",
           title: "b",
           body: "b",
           idempotencyKey: "event_reminder:fact-b:2030-01-01",

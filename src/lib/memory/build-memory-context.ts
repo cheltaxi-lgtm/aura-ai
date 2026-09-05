@@ -27,6 +27,9 @@ import { recordMemoryProductEvent } from "@/lib/memory/product-analytics";
 import type { MemoryDepth } from "@/lib/memory/memory-budget";
 import type { MemoryRetrievalMetrics } from "@/lib/memory/client-memory-pack";
 import { emptyMemoryMetrics } from "@/lib/memory/client-memory-pack";
+import { readMemoryWriteConsent } from "@/lib/memory/write-guard";
+import { saveMemoryContextReceipt } from "@/lib/memory/context-receipts";
+import { toMemorySourceType } from "@/lib/memory/product-analytics";
 
 export interface MemoryContextParams {
   userId?: string | null;
@@ -60,6 +63,8 @@ export interface MemoryContextParams {
 }
 
 export interface MemoryContext {
+  /** Server consent at prompt preparation; never refresh it after generation. */
+  captureGeneration?: string | null;
   /** The composed query text every block below was gated against. */
   queryText: string;
   /** ПРОФИЛЬ КЛИЕНТА block (sync, no DB/network call). */
@@ -90,6 +95,7 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
       ? await canSessionReadLongTermMemory(params.sessionId, userId).catch(() => false)
       : false);
   const memoryOn = consentOn && sessionAllowsLongTerm;
+  const consentAtStart = memoryOn ? await readMemoryWriteConsent(userId).catch(() => null) : null;
 
   const [factsLoaded, pastSessionsBlock, sessionAnchorBlock] = await Promise.all([
     memoryOn
@@ -102,7 +108,7 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
           upcomingWithinDays: params.upcomingWithinDays,
           upcomingWindow: params.upcomingWindow,
         })
-      : Promise.resolve({ block: "", metrics: emptyMemoryMetrics() }),
+      : Promise.resolve({ block: "", metrics: emptyMemoryMetrics(), facts: [] }),
     memoryOn && includePastSessions
       ? buildMemoryBlock(userId, params.characterId, params.sessionId ?? null, queryText)
       : Promise.resolve(""),
@@ -117,18 +123,26 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
         )
       : Promise.resolve(""),
   ]);
-  const factsBlock = factsLoaded.block;
-  const retrievalMetrics = factsLoaded.metrics;
+  const consentAfter = memoryOn ? await readMemoryWriteConsent(userId).catch(() => null) : null;
+  const sessionStillAllows = !params.sessionId || (userId && await canSessionReadLongTermMemory(params.sessionId, userId).catch(() => false));
+  const stillAllowed = Boolean(sessionStillAllows && consentAfter?.memoryEnabled && consentAtStart?.generation === consentAfter.generation);
+  const factsBlock = stillAllowed ? factsLoaded.block : "";
+  const retrievalMetrics = stillAllowed ? factsLoaded.metrics : emptyMemoryMetrics();
+  if (stillAllowed) {
+    await saveMemoryContextReceipt({ userId, sessionId: params.sessionId, product: params.product,
+      generation: consentAtStart?.generation, facts: factsLoaded.facts ?? [],
+    }).catch(() => console.warn("[memory] context receipt unavailable"));
+  }
 
   // Profile identity fields stay available; thematic fields remain relevance-gated.
   const clientBlock = params.profile ? buildClientBlock(params.profile, queryText) : "";
 
-  if (userId && (factsBlock || pastSessionsBlock)) {
+  if (userId && stillAllowed && (factsBlock || pastSessionsBlock)) {
     void recordMemoryProductEvent({
       event: "memory_injected",
       userId,
       sessionId: params.sessionId ?? null,
-      sourceType: "chat",
+      sourceType: toMemorySourceType(params.product),
       memoryEnabled: true,
       numericValue: retrievalMetrics.memory_retrieval_ms,
       metrics: {
@@ -145,9 +159,10 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
   }
 
   return {
+    captureGeneration: stillAllowed && consentAtStart?.autoCaptureEnabled ? consentAtStart.generation : null,
     queryText,
     clientBlock,
-    pastSessionsBlock,
+    pastSessionsBlock: stillAllowed ? pastSessionsBlock : "",
     sessionAnchorBlock,
     factsBlock,
     retrievalMetrics,

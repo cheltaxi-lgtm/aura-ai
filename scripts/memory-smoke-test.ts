@@ -1,3 +1,4 @@
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 /**
  * Deploy-gating smoke test for long-term memory — runs the REAL production code
  * (imports searchFacts / loadClientMemoryBlock / events / critical), not SQL
@@ -360,6 +361,7 @@ async function main() {
     );
     ok(!(await needsMemoryInitialChoice(U)), "explicit decline is not prompted repeatedly");
 
+    await recordInitialMemoryChoice(U, "enabled");
     await upsertFacts(U, [
       { fact: `У клиента сын Артём, выпускной ${eventDate}`, category: "event", eventDate, salience: 3 },
       { fact: "Клиент работает программистом и думает сменить работу", category: "work", salience: 3 },
@@ -367,6 +369,7 @@ async function main() {
       { fact: "У клиента ипотека, переживает из-за долгов", category: "money", salience: 4 },
     ]);
 
+    await updateMemoryPreferences(U, { memoryEnabled: false });
     // Fail-closed without consent: facts exist but must not inject.
     const denied = await loadClientMemoryBlock({
       userId: U,
@@ -416,6 +419,7 @@ async function main() {
 
     // Auto-capture off ⇒ recordTurn must not enqueue.
     await recordTurn({
+      captureGeneration: await captureMemoryGeneration(U),
       userId: U,
       userMessage: "У меня новая работа в банке",
       assistantReply: "Понял.",
@@ -446,6 +450,7 @@ async function main() {
       "fresh session suppresses long-term facts and past sessions"
     );
     await recordTurn({
+      captureGeneration: await captureMemoryGeneration(U),
       userId: U,
       userMessage: "У меня новая работа в банке",
       assistantReply: "Понял.",
@@ -453,6 +458,7 @@ async function main() {
       sourceEntityId: sessionId,
     });
     await recordTurn({
+      captureGeneration: await captureMemoryGeneration(U),
       userId: U,
       userMessage: "Ещё у меня сын Артём учится в пятом классе",
       assistantReply: "Хорошо.",

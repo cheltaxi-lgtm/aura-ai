@@ -23,7 +23,18 @@ export const MEMORY_PRODUCT_EVENTS = [
 ] as const;
 
 export type MemoryProductEvent = (typeof MEMORY_PRODUCT_EVENTS)[number];
-export const MEMORY_SOURCE_TYPES = ["reading", "photo", "ritual", "daily", "chat", "cabinet"] as const;
+export const MEMORY_SOURCE_TYPES = ["reading", "photo", "ritual", "daily", "chat", "cabinet", "natal", "hd", "matrix", "joint", "palm", "aura"] as const;
+export function toMemorySourceType(product?: string | null): (typeof MEMORY_SOURCE_TYPES)[number] {
+  const value = product ?? "chat";
+  if (value.includes("intention")) return "reading";
+  if (value === "spread") return "reading";
+  if (value === "numerology") return "matrix";
+  if (value.startsWith("joint")) return "joint";
+  if (value === "human_design") return "hd";
+  if (value.includes("photo")) return "photo";
+  if (value.includes("ritual")) return "ritual";
+  return MEMORY_SOURCE_TYPES.find(source => source === value) ?? "chat";
+}
 export const MEMORY_MOMENTS_MODES = ["active", "quiet"] as const;
 export const MEMORY_FACT_CATEGORIES = [
   "identity",

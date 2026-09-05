@@ -1,3 +1,4 @@
+import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 import { NextRequest, NextResponse } from "next/server";
 import {
   profileAuthFailureResponse,
@@ -79,6 +80,7 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  const captureGeneration = userId ? await captureMemoryGeneration(userId) : null;
   const subject =
     body.subjectKind === "other"
       ? {
@@ -110,7 +112,7 @@ export async function POST(request: NextRequest) {
     );
     // Memory facts describe the client — only their own self charts belong there.
     if (userId && row.userId === userId && row.subjectKind === "self") {
-      rememberHdChartFact(userId, row.chart, row.id);
+      await rememberHdChartFact(userId, row.chart, row.id, captureGeneration);
     }
     return NextResponse.json({
       // Creator just submitted birth inputs — return the owner shape so the
@@ -225,7 +227,7 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
   }
   if (deleted.subjectKind === "self") {
-    forgetHdChartFact(resolved.profileUserId, deleted.id);
+    await forgetHdChartFact(resolved.profileUserId, deleted.id);
   }
   return NextResponse.json({
     ok: true,

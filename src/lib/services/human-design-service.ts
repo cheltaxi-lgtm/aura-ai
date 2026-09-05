@@ -377,7 +377,7 @@ async function demoteOtherSelfCharts(
   if (rows.length === 0) return;
   const { forgetHdChartFact } = await import("@/lib/human-design/memory");
   for (const row of rows) {
-    forgetHdChartFact(userId, row.id);
+    await forgetHdChartFact(userId, row.id);
   }
 }
 /**

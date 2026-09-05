@@ -21,7 +21,7 @@ vi.mock("@/lib/photo-spread-redraw", () => ({
   normalizeRedrawSpreadInput: (s: unknown) => s, isPhotoSpreadComplete: () => true,
   isRecognizedSpread: () => ({ ok: true }), buildSpreadSummaryForLlm: () => "spread", redrawSpreadToTarotCards: () => [],
 }));
-vi.mock("@/lib/memory/build-memory-context", () => ({ buildMemoryContext: async () => null, appendMemoryContextToPrompt: (s: string) => s }));
+vi.mock("@/lib/memory/build-memory-context", () => ({ buildMemoryContext: async () => ({ captureGeneration: null, clientBlock: "", factsBlock: "", pastSessionsBlock: "", sessionAnchorBlock: "" }), appendMemoryContextToPrompt: (s: string) => s }));
 vi.mock("@/lib/rune-settings", () => ({ getRuneSettings: async () => ({ enabled: true }) }));
 vi.mock("@/lib/rune-service", () => ({ isRuneBillingActive: () => true }));
 vi.mock("@/lib/services/billing-service", () => ({

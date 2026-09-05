@@ -12,6 +12,9 @@ import {
 import { CHARACTERS } from "@/lib/characters";
 import { listJointReadingsForUser, buildJointReadingUrl } from "@/lib/joint-reading-service";
 import { listFacts } from "@/lib/memory/user-facts";
+import { getMemoryPreferences } from "@/lib/memory/preferences";
+import { listMemoryContextReceipts } from "@/lib/memory/context-receipts";
+import { memorySourceLabel } from "@/lib/memory/presentation";
 import { listUserMatrixReports } from "@/lib/services/numerology-report-service";
 import { getStoredNatalChart } from "@/lib/services/natal-chart-service";
 import { bigThree } from "@/lib/natal/presentation";
@@ -86,6 +89,8 @@ export async function botCabinetOverview(telegramUserId: number) {
     stats,
     sessionsMeta,
     unlimited,
+    memoryPreferences,
+    memoryReceipts,
   ] = await Promise.all([
     getRuneBalance(pid),
     getStoredNatalChart(pid),
@@ -105,6 +110,8 @@ export async function botCabinetOverview(telegramUserId: number) {
     })),
     getCabinetSessions(pid, 1, 0).catch(() => ({ sessions: [], total: 0 })),
     resolveUnlimitedAccess({ accountId: aid, profileUserId: pid }).catch(() => false),
+    getMemoryPreferences(pid),
+    listMemoryContextReceipts(pid),
   ]);
 
   const western = natal?.western ?? null;
@@ -178,7 +185,11 @@ export async function botCabinetOverview(telegramUserId: number) {
       id: f.id,
       fact: f.fact.slice(0, 180),
       category: f.category,
+      source: memorySourceLabel(f.sourceType),
+      capturedAt: f.sourceCapturedAt,
     })),
+    memoryStatus: { enabled: memoryPreferences.memoryEnabled, autoCapture: memoryPreferences.autoCaptureEnabled },
+    memoryContexts: memoryReceipts.map(r => ({ product: memorySourceLabel(r.product), factsCount: r.facts.length })),
     support: {
       tickets: tickets.slice(0, 5).map((t) => ({
         id: t.id,
@@ -205,6 +216,7 @@ export async function botCabinetOverview(telegramUserId: number) {
       url: `${site}/photo-rasklad?${utm}`,
     },
     urls: {
+      memory: `${site}/cabinet?tab=memory&${utm}`,
       cabinet: `${site}/cabinet?${utm}`,
       runes: `${site}/cabinet?shop=1&${utm}`,
       astrology: `${site}/cabinet/astrology?${utm}`,

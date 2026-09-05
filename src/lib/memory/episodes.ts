@@ -3,7 +3,7 @@
  * Grouped by user + domain + entity/subject, then split by temporal gap
  * unless a predicate transition keeps the chapter open. No LLM. No graph DB.
  */
-import { query } from "@/lib/db";
+import { query, queryClient, type PoolClient } from "@/lib/db";
 import {
   domainForFact,
   INTELLIGENCE_CLEAN_USER_SQL,
@@ -186,19 +186,20 @@ export function computeEpisodes(facts: UserFact[], now = new Date()): MemoryEpis
   return episodes.sort((a, b) => a.episodeKey.localeCompare(b.episodeKey));
 }
 
-export async function persistEpisodes(userId: string, episodes: MemoryEpisode[]): Promise<void> {
+export async function persistEpisodes(userId: string, episodes: MemoryEpisode[], client?: PoolClient): Promise<void> {
+  const run: typeof query = client ? (queryClient.bind(null, client) as typeof query) : query;
   const keys = episodes.map((episode) => episode.episodeKey);
   if (!keys.length) {
-    await query(`DELETE FROM user_memory_episodes WHERE user_id = $1`, [userId]);
+    await run(`DELETE FROM user_memory_episodes WHERE user_id = $1`, [userId]);
     return;
   }
-  await query(
+  await run(
     `DELETE FROM user_memory_episodes
       WHERE user_id = $1 AND NOT (episode_key = ANY($2::text[]))`,
     [userId, keys]
   );
   for (const episode of episodes) {
-    await query(
+    await run(
       `INSERT INTO user_memory_episodes (
          user_id, domain, entity_key, start_at, end_at, status,
          supporting_fact_ids, episode_key, computed_at, algorithm_version

@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import { Check, Loader2, Pencil, Sparkles, Trash2, X } from "lucide-react";
 
 type MemoryActivity = {
@@ -23,6 +23,8 @@ export default function MemoryMoments({
   const [busyId, setBusyId] = useState<string | null>(null);
   const [editing, setEditing] = useState<MemoryActivity | null>(null);
   const [draft, setDraft] = useState("");
+  const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [momentsEnabled, setMomentsEnabled] = useState(false);
 
   useEffect(() => {
@@ -49,28 +51,40 @@ export default function MemoryMoments({
     };
   }, [active, sessionId]);
 
-  const load = useCallback(async () => {
-    if (!active || !momentsEnabled || !sessionId) return;
-    const res = await fetch(
-      `/api/memory/activity?sourceEntityId=${encodeURIComponent(sessionId)}`,
-      { credentials: "include", cache: "no-store" }
-    ).catch(() => null);
-    if (!res?.ok) return;
-    const data = (await res.json().catch(() => ({}))) as {
-      activities?: MemoryActivity[];
-    };
-    if (Array.isArray(data.activities)) setItems(data.activities);
-  }, [active, momentsEnabled, sessionId]);
-
   useEffect(() => {
-    if (!active || !momentsEnabled || !sessionId) {
-      setItems([]);
-      return;
-    }
+    setItems([]);
+    setError(null);
+    setNotice(null);
+    if (!active || !momentsEnabled || !sessionId) return;
+    const controller = new AbortController();
+    let timer: number | undefined;
+    let failures = 0;
+    const load = async () => {
+      let delay = 30_000;
+      try {
+        if (document.visibilityState !== 'visible') return;
+        const res = await fetch(`/api/memory/activity?sourceEntityId=${encodeURIComponent(sessionId)}`, {
+          credentials: 'include', cache: 'no-store', signal: controller.signal,
+        });
+        const data = await res.json();
+        if (res.status === 429) {
+          delay = Math.max(30_000, Number(data.retryAfterSec || 60) * 1000);
+        } else if (!res.ok) {
+          throw new Error('memory_activity_unavailable');
+        } else {
+          failures = 0;
+          if (!controller.signal.aborted && Array.isArray(data.activities)) setItems(data.activities);
+        }
+      } catch {
+        failures += 1;
+        delay = Math.min(300_000, 30_000 * 2 ** failures);
+      } finally {
+        if (!controller.signal.aborted) timer = window.setTimeout(() => void load(), delay);
+      }
+    };
     void load();
-    const timer = window.setInterval(() => void load(), 4_000);
-    return () => window.clearInterval(timer);
-  }, [active, load, momentsEnabled, sessionId]);
+    return () => { controller.abort(); window.clearTimeout(timer); };
+  }, [active, momentsEnabled, sessionId]);
 
   const markSeen = async (activityId: string, dismissed = false) => {
     await fetch("/api/memory/activity", {
@@ -87,6 +101,7 @@ export default function MemoryMoments({
     fact?: string
   ) => {
     setBusyId(item.id);
+    setError(null);
     try {
       const res = await fetch("/api/memory/facts/action", {
         method: "POST",
@@ -94,11 +109,14 @@ export default function MemoryMoments({
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factId: item.factId, action, fact }),
       });
-      if (!res.ok) return;
+      if (!res.ok) throw new Error("memory_action_failed");
       await markSeen(item.id);
       setItems((current) => current.filter((candidate) => candidate.id !== item.id));
       setEditing(null);
       setDraft("");
+      setNotice(action === "forget" ? "Факт удалён из памяти." : action === "change" ? "Изменение сохранено для следующих обращений." : "Факт подтверждён.");
+    } catch {
+      setError("Не удалось сохранить изменение. Проверьте соединение и попробуйте ещё раз.");
     } finally {
       setBusyId(null);
     }
@@ -109,7 +127,7 @@ export default function MemoryMoments({
     await markSeen(item.id, true);
   };
 
-  if (!items.length) return null;
+  if (!items.length) return notice ? <p role="status" className="mb-2 rounded-xl bg-emerald-400/8 px-3 py-2 text-xs text-emerald-200">{notice}</p> : null;
   const item = items[0];
 
   return (
@@ -120,7 +138,7 @@ export default function MemoryMoments({
         </span>
         <div className="min-w-0 flex-1">
           <p className="text-[10px] font-semibold uppercase tracking-[0.16em] text-aura-champagne/65">
-            {item.proposal ? "Предлагаю запомнить" : "Запомнила"}
+            {item.proposal ? "Предлагаю запомнить" : "Сохранено в вашей памяти"}
           </p>
           {editing?.id === item.id ? (
             <div className="mt-2 space-y-2">
@@ -198,6 +216,7 @@ export default function MemoryMoments({
           )}
         </button>
       </div>
+      {error ? <p role="alert" className="mt-2 text-xs text-red-200">{error}</p> : null}
       {items.length > 1 ? (
         <p className="mt-2 text-right text-[10px] text-white/28">
           Ещё сохранено: {items.length - 1}

@@ -22,6 +22,8 @@ import {
 } from "lucide-react";
 import BodyPortal from "@/components/BodyPortal";
 import LegalDocLink from "@/components/legal/LegalDocLink";
+import MemoryContextReceipt from "@/components/MemoryContextReceipt";
+import { memoryDisplayDate, memorySourceLabel } from "@/lib/memory/presentation";
 import {
   FACT_CATEGORY_ACCENTS,
   FACT_CATEGORY_LABELS,
@@ -126,6 +128,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
   const [addModalOpen, setAddModalOpen] = useState(false);
   const [editingFact, setEditingFact] = useState<MemoryFact | null>(null);
   const [draft, setDraft] = useState("");
@@ -411,6 +414,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   };
 
   const displayedFacts = facts.filter((fact) => {
+    if (search.trim() && !`${fact.fact} ${memorySourceLabel(fact.sourceType)}`.toLocaleLowerCase("ru-RU").includes(search.trim().toLocaleLowerCase("ru-RU"))) return false;
     if (view === "changes") return fact.status === "superseded";
     if (view === "events") return Boolean(fact.eventDate) && fact.status !== "superseded";
     return fact.status !== "superseded";
@@ -433,6 +437,20 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             </div>
           </div>
         ) : null}
+
+        {!loading ? <div className="rounded-2xl border border-amber-200/15 bg-gradient-to-br from-amber-100/[0.08] to-transparent p-4">
+          <p className="text-xs font-medium text-amber-100/70">Ваша история · для всех мастеров</p>
+          <p className="mt-2 text-lg font-medium text-white">{prefs.memoryEnabled ? "Важное остаётся с вами" : "Вы выбираете, что помнить"}</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/55">{prefs.memoryEnabled
+            ? "Сведения из памяти помогают продолжать разговор по теме. Меняйте их здесь — следующие обращения будут учитывать исправления."
+            : "Память выключена. Сохранённые сведения не передаются мастерам из долгосрочной памяти."}</p>
+          <div className="mt-3 flex flex-wrap gap-2 text-xs">
+            <span className="rounded-full bg-white/5 px-3 py-1.5 text-white/65">{facts.filter(f => f.status === "active").length} актуальных</span>
+            <span className="rounded-full bg-white/5 px-3 py-1.5 text-white/65">{facts.filter(f => f.status === "draft").length} ждут подтверждения</span>
+            <span className="rounded-full bg-white/5 px-3 py-1.5 text-white/65">{!prefs.memoryEnabled ? "Автозапоминание приостановлено" : prefs.autoCaptureEnabled ? "Автозапоминание включено" : "Только ваши записи"}</span>
+          </div>
+        </div> : null}
+        <MemoryContextReceipt active={!loading && prefs.memoryEnabled} refreshKey={facts.map(f => `${f.id}:${f.fact}`).join("|")} />
 
         <div className="space-y-2">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
@@ -462,14 +480,14 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
             hint="Факты из списка ниже могут попадать в ответы мастера, если тема совпадает."
             onChange={(memoryEnabled) => void patchPrefs({ memoryEnabled })}
           />
-          {prefs.cabinetMode === "advanced" ? <PrefToggle
+          <PrefToggle
             checked={prefs.autoCaptureEnabled}
             disabled={!prefs.memoryEnabled}
             busy={prefsSaving}
-            label="Автозапоминание из чата"
-            hint="Система сможет извлекать факты из ваших сообщений в фоне. Без этого — только ручные записи."
+            label="Запоминать важное из обращений"
+            hint="Сохранять факты из ваших слов для следующих обращений. Новые сведения можно проверить и исправить."
             onChange={(autoCaptureEnabled) => void patchPrefs({ autoCaptureEnabled })}
-          /> : null}
+          />
           {prefs.cabinetMode === "advanced" ? <PrefToggle
             checked={prefs.sensitiveCaptureEnabled}
             disabled={!prefs.memoryEnabled || !prefs.autoCaptureEnabled}
@@ -528,6 +546,12 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           ))}
         </div>
 
+        <label className="block">
+          <span className="mb-2 block text-xs text-white/50">Найти в памяти</span>
+          <input value={search} onChange={event => setSearch(event.target.value)} type="search" placeholder="Человек, событие или важная деталь"
+            className="w-full rounded-xl border border-white/10 bg-black/20 px-4 py-3 text-sm text-white outline-none focus:border-amber-200/40" />
+        </label>
+
         <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
           {!loading && facts.length > 0 ? (
             <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-amber-400/70">
@@ -579,10 +603,9 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-aura-gold/10 text-aura-champagne">
                 <Sparkles className="h-6 w-6" aria-hidden />
               </div>
-              <p className="mt-4 text-base font-medium text-white/85">Пока пусто</p>
+              <p className="mt-4 text-base font-medium text-white/85">{search.trim() ? "Ничего не найдено" : view === "changes" ? "Пока без изменений" : view === "events" ? "Пока нет событий с датой" : "Начнём с того, что важно вам"}</p>
               <p className="mx-auto mt-2 max-w-sm text-sm leading-relaxed text-white/45">
-                Добавьте факты о себе — семья, работа, планы. Мастер подхватит их после включения
-                памяти, когда тема сеанса совпадёт.
+                {search.trim() ? "Попробуйте другое слово или очистите поиск." : "Например: «Я ищу работу дизайнером». Сохраните факт — он будет доступен мастерам, когда вы вернётесь к этой теме с включённой памятью."}
               </p>
             </div>
           ) : (
@@ -616,7 +639,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                             {FACT_CATEGORY_LABELS[cat]}
                           </span>
                           {f.eventDate ? (
-                            <span className="text-[11px] text-white/35">{f.eventDate}</span>
+                            <span className="text-[11px] text-white/35">{memoryDisplayDate(f.eventDate)}</span>
                           ) : null}
                           {f.salience >= 5 ? (
                             <span className="text-[10px] font-medium text-amber-400/80">важное</span>
@@ -638,11 +661,11 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                         <p className="text-[15px] leading-relaxed text-white/92">
                           {formatMemoryFactForDisplay(f.fact)}
                         </p>
-                        {f.evidenceQuote ? (
-                          <p className="mt-2 border-l border-white/10 pl-2 text-[11px] italic text-white/35">
-                            Из вашего сообщения: «{f.evidenceQuote}»
-                          </p>
-                        ) : null}
+                        <p className="mt-2 text-xs text-white/65">{memorySourceLabel(f.sourceType)}{f.sourceCapturedAt ? ` · ${memoryDisplayDate(f.sourceCapturedAt)}` : ""}</p>
+                        {f.evidenceQuote ? <details className="mt-2 text-xs text-white/50">
+                          <summary className="cursor-pointer">Из ваших слов</summary>
+                          <blockquote className="mt-2 border-l border-amber-200/20 pl-3">{f.evidenceQuote}</blockquote>
+                        </details> : null}
                         {stale || f.status === "draft" ? (
                           <button
                             type="button"

@@ -62,6 +62,7 @@ export function formatSpreadReadingWithCards(
   return [images, textBlock].filter(Boolean).join("\n\n");
 }
 export type PersistSpreadReadingInput = {
+  captureGeneration?: string | null;
   profileUserId: string;
   characterId: string;
   reading: string;
@@ -175,7 +176,8 @@ export async function ensureSpreadReadingInChatMessages(
   // would just burn an embedding call on every spread for nothing.
   const userTurnText = input.customQuestion?.trim();
   if (!alreadySaved && userTurnText) {
-    void ClientMemory.recordTurn({
+    await ClientMemory.recordTurn({
+      captureGeneration: input.captureGeneration ?? null,
       userId: input.profileUserId,
       characterId: input.characterId,
       userMessage: userTurnText,
