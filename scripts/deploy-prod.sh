@@ -289,20 +289,6 @@ if systemctl list-unit-files zovus-telegram-bot.service >/dev/null 2>&1; then
   systemctl is-active zovus-telegram-bot
 fi
 
-# New releases must demonstrate a functioning update consumer, not just a live
-# Node process. The rollback above deliberately retains /health for old releases
-# that predate /ready. Keep rollback armed throughout this bounded gate.
-BOT_READY_CODE=""
-for _ in $(seq 1 20); do
-  BOT_READY_CODE="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/ready || true)"
-  [ "$BOT_READY_CODE" = "200" ] && break
-  sleep 2
-done
-if [ "$BOT_READY_CODE" != "200" ]; then
-  echo "ERROR: bot readiness never returned 200 (last: ${BOT_READY_CODE:-none}; bounded to 100s)" >&2
-  exit 1
-fi
-
 # Enforced HTTP health gate: `is-active` proves process liveness, not serving
 # correctness (a boot-looping / ChunkLoadError release would still be "active").
 echo "Waiting for local /api/health (127.0.0.1:3000)..."
@@ -317,6 +303,22 @@ if [ "$HEALTH_CODE" != "200" ]; then
   exit 1
 fi
 echo "Local health gate: HTTP 200"
+
+# Bot readiness depends on a recent successful site probe (every 30 seconds).
+# Warm the site before spending the bounded bot readiness budget.
+# New releases must demonstrate a functioning update consumer, not just a live
+# Node process. The rollback above deliberately retains /health for old releases
+# that predate /ready. Keep rollback armed throughout this bounded gate.
+BOT_READY_CODE=""
+for _ in $(seq 1 20); do
+  BOT_READY_CODE="$(curl -sS --max-time 3 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/ready || true)"
+  [ "$BOT_READY_CODE" = "200" ] && break
+  sleep 2
+done
+if [ "$BOT_READY_CODE" != "200" ]; then
+  echo "ERROR: bot readiness never returned 200 (last: ${BOT_READY_CODE:-none}; bounded to 100s)" >&2
+  exit 1
+fi
 # Keep rollback armed until public traffic and every service pass.
 for path in /api/health / /auth/user/register /numerology/destiny-matrix /apple-icon.svg; do
   CODE="$(curl -sS --max-time 20 -o /dev/null -w '%{http_code}' "https://zovus.ru$path" || true)"
