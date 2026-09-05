@@ -2,7 +2,6 @@
 
 import { useEffect, useState } from "react";
 import { createPortal } from "react-dom";
-import Link from "next/link";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { CheckCircle2, Loader2, X } from "lucide-react";
 
@@ -115,7 +114,7 @@ export default function ActiveReportsTray() {
                   </div>
                 ))}
                 {ready.map((item) => (
-                  <Link
+                  <a
                     key={item.jobId}
                     href={item.destination ?? "/cabinet"}
                     onClick={() => setOpen(false)}
@@ -126,7 +125,7 @@ export default function ActiveReportsTray() {
                     <span className="ml-auto shrink-0 text-[11px] text-emerald-200/80">
                       Открыть
                     </span>
-                  </Link>
+                  </a>
                 ))}
               </div>
             </motion.div>

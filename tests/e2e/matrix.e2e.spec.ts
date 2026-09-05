@@ -269,6 +269,8 @@ async function installMatrixBackend(page: Page) {
 }
 
 test.describe("Matrix E2E", () => {
+  test.describe.configure({ mode: "serial" });
+
   test("guest calc, auth resume, history, report idempotency, mobile, ownership", async ({
     page,
   }) => {
@@ -379,14 +381,6 @@ test.describe("Matrix E2E", () => {
     expect(backend.getChargeCount()).toBe(1);
     expect(backend.getBalance()).toBe(200);
 
-    await page.goto("/cabinet");
-    const history = await page.evaluate(async () => {
-      const res = await fetch("/api/cabinet");
-      return res.json();
-    });
-    expect(history.sessionsTotal).toBe(1);
-    expect(history.sessions[0]?.spreadId).toContain("destiny_matrix");
-
     const ownership = await page.evaluate(async () => {
       const getSnap = await fetch(
         "/api/numerology/matrix-snapshot?subjectId=22222222-2222-4222-8222-222222222222"
@@ -417,6 +411,14 @@ test.describe("Matrix E2E", () => {
     expect(ownership.del).toBe(403);
     expect(ownership.retry).toBe(403);
 
+    await page.goto("/cabinet");
+    const history = await page.evaluate(async () => {
+      const res = await fetch("/api/cabinet");
+      return res.json();
+    });
+    expect(history.sessionsTotal).toBe(1);
+    expect(history.sessions[0]?.spreadId).toContain("destiny_matrix");
+
     await page.setViewportSize({ width: 390, height: 844 });
     await page.goto("/numerology/destiny-matrix");
     const mobileDate = page.locator('input[type="date"]').first();
@@ -433,5 +435,61 @@ test.describe("Matrix E2E", () => {
       () => document.documentElement.scrollWidth > document.documentElement.clientWidth + 2
     );
     expect(overflow).toBe(false);
+  });
+
+  test("ready-report tray performs a full navigation to the exact Matrix session", async ({
+    page,
+  }) => {
+    test.setTimeout(60_000);
+    await installMatrixBackend(page);
+    await confirmAge(page);
+    await page.setViewportSize({ width: 390, height: 844 });
+
+    const destination =
+      "/?master=numerolog&resume=chat&sessionId=55555555-5555-4555-8555-555555555555";
+    await page.route("**/api/jobs/reports", async (route) => {
+      await route.fulfill({
+        json: {
+          reports: [
+            {
+              jobId: JOB_A,
+              kind: "numerology_reading",
+              status: "completed",
+              productTitle: "Разбор матрицы",
+              etaRangeSec: null,
+              destination,
+              createdAt: "2026-09-05T07:00:00.000Z",
+              startedAt: "2026-09-05T07:00:01.000Z",
+              completedAt: "2026-09-05T07:05:00.000Z",
+              heartbeatAt: "2026-09-05T07:05:00.000Z",
+              attempts: 1,
+              nextAttemptAt: null,
+              billingState: "charged",
+              refunded: false,
+              queuePosition: null,
+              notification: { in_app: "delivered" },
+            },
+          ],
+        },
+      });
+    });
+
+    await page.goto("/");
+    const cookieChoice = page.getByRole("button", {
+      name: "Только необходимые",
+      exact: true,
+    });
+    if (await cookieChoice.isVisible()) await cookieChoice.click();
+    await page.getByRole("button", { name: "Отчёт готов", exact: true }).click();
+    const reportLink = page.getByRole("link", { name: /Разбор матрицы.*Открыть/i });
+    await expect(reportLink).toHaveAttribute("href", destination);
+
+    const documentNavigation = page.waitForRequest(
+      (request) =>
+        request.resourceType() === "document" &&
+        request.url().includes("sessionId=55555555-5555-4555-8555-555555555555")
+    );
+    await reportLink.click();
+    await documentNavigation;
   });
 });

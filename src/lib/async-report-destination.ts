@@ -36,6 +36,15 @@ export function resolveAsyncReportDestination(input: {
   }
 
   if (kind === "numerology_reading") {
+    const sessionId =
+      (typeof result.sessionId === "string" && result.sessionId.trim()) ||
+      (typeof jobInput.sessionId === "string" && jobInput.sessionId.trim()) ||
+      "";
+    // The same resolver is used when a job is merely accepted. Only a completed
+    // result may deep-link into the saved chat session.
+    if (sessionId && Object.keys(result).length > 0) {
+      return `/?master=numerolog&resume=chat&sessionId=${encodeURIComponent(sessionId)}`;
+    }
     const toolId =
       typeof jobInput.numerologToolId === "string" && jobInput.numerologToolId.trim()
         ? jobInput.numerologToolId.trim()
