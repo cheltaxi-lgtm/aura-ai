@@ -140,8 +140,10 @@ describe("guest-registration-conversion", () => {
     expect(guest).not.toContain("Сохранить расклад и продолжить");
     expect(guest).not.toContain("3 карты дня бесплатно раз в сутки");
     expect(guest).not.toContain("Регистрация по email");
-    expect(guest).toContain("Получить трактовку");
-    expect(guest).toContain("Получить полный разбор");
+    expect(guest).toContain("Повторить сохранение");
+    expect(guest).toContain("<GuestReadingContinue onContinue={openFullReadingGate}");
+    const cta = await fs.readFile("src/components/GuestReadingContinue.tsx", "utf8");
+    expect(cta).toContain("Получить полный разбор");
     expect(guest).toContain("Получите полный разбор этих карт");
     expect(guest).not.toContain("Полный разбор этих карт готов");
     expect(guest).toContain("Эти три карты сохранены и не изменятся");

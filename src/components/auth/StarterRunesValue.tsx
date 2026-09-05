@@ -97,9 +97,16 @@ export default function StarterRunesValue({
       : null;
 
   if (variant === "line") {
+    const readingPrice = config.costs.READING;
+    const extraReadings = product === "home_hero" && readingPrice > 0
+      ? Math.floor(starter / readingPrice)
+      : 0;
     return (
       <p className={`editorial-hero__starter-line ${className}`.trim()}>
         При первой регистрации — стартовые {starter} ᚢ
+        {extraReadings > 0
+          ? ` · хватит ещё на ${extraReadings} ${pluralRu(extraReadings, "расклад", "расклада", "раскладов")} Таро`
+          : product === "home_hero" ? " — на следующие разборы" : ""}
       </p>
     );
   }

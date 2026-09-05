@@ -16,6 +16,7 @@ const INLINE_CTA_SELECTORS = [
   `#${GUEST_SPREAD_PICKER_ID}`,
   ".aura-landing-hero__actions",
   ".editorial-hero__actions",
+  ".editorial-hero__question .hero-question__submit",
   ".aura-landing-section--final",
   "#guest-teaser-auth",
 ] as const;

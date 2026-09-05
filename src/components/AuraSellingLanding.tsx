@@ -32,6 +32,7 @@ import LandingStickyCta from "@/components/seo/LandingStickyCta";
 import LandingClosingBand from "@/components/seo/LandingClosingBand";
 import {
   buildLandingOfferCopy,
+  LANDING_HERO_VERSION,
   landingHeroExpectationCopy,
   LANDING_QUESTION_KEY,
   resolveLandingHeroVariant,
@@ -307,7 +308,7 @@ export default function AuraSellingLanding({
     const sendCurrentView = () => {
       if (!showHero || isLoggedIn || landingViewSent.current || !hasCookieConsent() || !window.ym) return;
       landingViewSent.current = true;
-      trackLandingView({ hero_variant: variant });
+      trackLandingView({ hero_variant: variant, hero_version: LANDING_HERO_VERSION });
     };
     sendCurrentView();
     window.addEventListener(METRIKA_READY_EVENT, sendCurrentView);

@@ -8,8 +8,7 @@ import {
   signSessionClaim,
   verifySessionClaimForId,
 } from "@/lib/session-claim";
-import { landingHeroExpectationCopy } from "@/lib/landing-offer";
-import { EDITORIAL_HERO } from "@/lib/editorial-landing-content";
+import { LANDING_HERO_CONTROL_SUBTITLE, landingHeroExpectationCopy, resolveLandingHeroVariant } from "@/lib/landing-offer";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 
@@ -112,8 +111,10 @@ describe("guest-claim-binding", () => {
     expect(complete).not.toMatch(/NextResponse\.json\(\s*\{[^}]*token/);
   });
 
-  it("guest editorial control subtitle stays the live A variant", () => {
-    expect(landingHeroExpectationCopy("a")).toBe(EDITORIAL_HERO.subtitle);
+  it("guest offer uses one coordinated version and retains legacy variants", () => {
+    expect(resolveLandingHeroVariant()).toBe("a");
+    expect(landingHeroExpectationCopy("a")).toBe(LANDING_HERO_CONTROL_SUBTITLE);
+    expect(landingHeroExpectationCopy("a")).toContain("бесплатно после регистрации");
     expect(landingHeroExpectationCopy("b")).not.toBe(landingHeroExpectationCopy("c"));
   });
 });

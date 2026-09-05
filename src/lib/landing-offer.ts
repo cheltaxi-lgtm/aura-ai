@@ -30,7 +30,8 @@ export const LANDING_FAQ_ITEMS = [
 
 export type LandingHeroVariant = "a" | "b" | "c";
 
-const HERO_VARIANT_STORAGE_KEY = "zovus_hero_variant";
+/** One coordinated guest offer while traffic is too small for an A/B/C test. */
+export const LANDING_HERO_VERSION = "guest-clarity-v1";
 
 const HERO_VARIANTS: Record<
   LandingHeroVariant,
@@ -54,7 +55,7 @@ const HERO_VARIANTS: Record<
 
 /** Guest editorial control copy (variant A). B/C use HERO_VARIANTS expectation lines. */
 export const LANDING_HERO_CONTROL_SUBTITLE =
-  "Задайте вопрос — три карты покажут, что происходит и какой шаг выбрать дальше.";
+  "Выберите 3 карты и получите краткую трактовку от ИИ. Первый полный разбор этих же карт — бесплатно после регистрации.";
 
 export function landingHeroExpectationCopy(variant: LandingHeroVariant): string {
   if (variant === "a") return LANDING_HERO_CONTROL_SUBTITLE;
@@ -62,17 +63,9 @@ export function landingHeroExpectationCopy(variant: LandingHeroVariant): string 
 }
 
 export function resolveLandingHeroVariant(): LandingHeroVariant {
-  if (typeof window === "undefined") return "a";
-  try {
-    const stored = localStorage.getItem(HERO_VARIANT_STORAGE_KEY);
-    if (stored === "a" || stored === "b" || stored === "c") return stored;
-    const roll = Math.random();
-    const variant: LandingHeroVariant = roll < 0.34 ? "a" : roll < 0.67 ? "b" : "c";
-    localStorage.setItem(HERO_VARIANT_STORAGE_KEY, variant);
-    return variant;
-  } catch {
-    return "a";
-  }
+  // Keep the public variant API for existing callers and historical analytics.
+  // All new visits use the same offer; previous browser assignments are ignored.
+  return "a";
 }
 
 export function buildLandingOfferCopy(

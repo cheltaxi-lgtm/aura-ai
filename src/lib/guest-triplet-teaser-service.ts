@@ -251,12 +251,17 @@ export function validateGuestTeaserQuality(
   cardNames: string[],
   meaningHints: string[] = []
 ): TeaserQualityResult {
-  const cleaned = truncateTeaserText(text);
+  // Validate the entire cleaned answer: clipping can remove its useful last sentence.
+  const cleaned = truncateTeaserText(text, Number.POSITIVE_INFINITY);
   if (cleaned.length < TEASER_MIN_CHARS) {
     return { ok: false, reason: "too_short" };
   }
   if (cleaned.length > TEASER_MAX_CHARS) {
     return { ok: false, reason: "too_long" };
+  }
+
+  if (!/[.!?][»”")]*$/u.test(cleaned)) {
+    return { ok: false, reason: "unfinished_answer" };
   }
 
   const lower = cleaned.toLowerCase();
@@ -705,7 +710,7 @@ export async function resolveGuestTeaser(input: {
         })
       );
 
-      const text = truncateTeaserText(result.text ?? "");
+      const text = truncateTeaserText(result.text ?? "", Number.POSITIVE_INFINITY);
       return { text: text || null, timedOut: result.text == null };
     } finally {
       teaserInflight = Math.max(0, teaserInflight - 1);

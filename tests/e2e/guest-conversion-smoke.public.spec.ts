@@ -1,10 +1,13 @@
 import { expect, test, type Page } from "@playwright/test";
 
+// Each flow shares a cold Next dev server; keep this suite sequential for stable hydration.
+test.describe.configure({ mode: "default" });
+
 const AUTH_GATE = "#guest-teaser-auth";
 const REAL_CHROME_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
-async function startGuestQuestion(page: Page, entry = "/?app=1") {
+async function startGuestQuestion(page: Page, entry = "/?app=1", questionText = "Вернётся ли он ко мне?", keepCookieBanner = false) {
   await page.route("**/api/auth/oauth/providers", async (route) => {
     await route.fulfill({
       status: 200,
@@ -14,19 +17,20 @@ async function startGuestQuestion(page: Page, entry = "/?app=1") {
   });
   await page.goto(entry);
   const necessaryCookies = page.getByRole("button", { name: "Только необходимые", exact: true });
-  if (await necessaryCookies.isVisible()) await necessaryCookies.click();
+  if (!keepCookieBanner && await necessaryCookies.isVisible()) await necessaryCookies.click();
   const question = page.locator("#hero-question");
   await expect(question).toBeVisible({ timeout: 20_000 });
-  await question.fill("Вернётся ли он ко мне?");
-  await page.getByRole("button", { name: /Начать разбор/i }).click();
+  await question.fill(questionText);
+  await page.getByRole("button", { name: /Открыть 3 карты бесплатно/i }).click();
 
   const ageConfirm = page.getByRole("button", { name: /Мне есть 18 лет/i });
-  if (await ageConfirm.isVisible({ timeout: 4_000 }).catch(() => false)) {
+  await expect(ageConfirm.or(page.getByRole("heading", { name: "Выберите три карты" }))).toBeVisible({ timeout: 20000 });
+  if (await ageConfirm.isVisible()) {
     await ageConfirm.click();
   }
 
   await expect(page.getByRole("heading", { name: "Выберите три карты" })).toBeVisible({
-    timeout: 15_000,
+    timeout: 30_000,
   });
 }
 
@@ -37,17 +41,8 @@ async function pickAndRevealTriplet(page: Page) {
   await slots.nth(1).click();
   await slots.nth(2).click();
 
-  await expect(page.getByText(/Нажмите на каждую карту/i)).toBeVisible({ timeout: 15_000 });
-  for (const pos of ["Прошлое", "Настоящее", "Будущее"]) {
-    const flip = page.getByRole("button", { name: `Открыть ${pos}` });
-    if (await flip.count()) {
-      await flip.click();
-    }
-  }
+  // The third choice now saves automatically; no repeated flips or submit tap.
 
-  const finish = page.getByRole("button", { name: /Получить трактовку/i });
-  await expect(finish).toBeEnabled({ timeout: 15_000 });
-  await finish.click();
 }
 
 async function expectAuthGateVisuals(page: Page) {
@@ -159,4 +154,93 @@ test.describe("mobile cache recovery with API fixtures", () => {
       expect(errors).toEqual([]);
     });
   }
+});
+
+
+test.describe("short guest flow regressions", () => {
+  test.use({ reducedMotion: "reduce" });
+  test.setTimeout(90_000);
+  for (const width of [360, 390, 430]) {
+    test("long result keeps CTA reachable at " + width + "px", async ({ page }) => {
+      await page.setViewportSize({ width, height: 844 });
+      await page.route("**/api/age-gate/confirm", route => route.fulfill({ json: { ok: true, confirmed: true } }));
+      let completions = 0;
+      let savedCards: unknown;
+      await page.route("**/api/guest-triplet/complete", route => {
+        completions++;
+        savedCards = route.request().postDataJSON().cards;
+        return route.fulfill({ json: { ok: true } });
+      });
+      const longText = "Сравните свои ожидания с тем, что известно о ситуации. ".repeat(10).slice(0, 500);
+      await page.route("**/api/guest-triplet/teaser", route => route.fulfill({ json: { text: longText } }));
+      await startGuestQuestion(page, width === 430 ? "/" : "/?app=1", "Как мне прояснить ситуацию на работе и спокойно обсудить ожидания с коллегами? ".repeat(3), width === 430);
+      const slots = page.locator("button.deck-pick__slot");
+      await slots.nth(0).click();
+      const firstName = await slots.nth(0).locator("img").first().getAttribute("alt");
+      expect(firstName).toBeTruthy();
+      await slots.nth(1).click();
+      await slots.nth(2).click();
+      await expect(page.locator(".guest-spread-teaser__text")).toHaveText(longText);
+      expect(completions).toBe(1);
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem("zovus_guest_resume_ui_v1")!).cards)).toEqual(savedCards);
+      if (width === 360) await page.addStyleTag({ content: "html { font-size: 24px !important; }" });
+      await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20000 });
+      if (width !== 430) await expect(page.getByRole("navigation", { name: "Навигация приложения" })).toBeVisible();
+      const cta = page.getByRole("button", { name: "Получить полный разбор", exact: true });
+      await expect(cta).toBeInViewport();
+      if (width === 430) await expect(page.getByRole("dialog", { name: "Уведомление о cookie" })).toBeVisible();
+      // Check actual hit target before Playwright has an opportunity to scroll.
+      expect(await cta.evaluate(el => { const r=el.getBoundingClientRect(); return [r.top + 3, r.y+r.height/2, r.bottom - 3].every(y => el.contains(document.elementFromPoint(r.x+r.width/2, y))); })).toBe(true);
+      await expect.poll(() => page.locator("#guest-spread-picker img").evaluateAll(imgs => imgs.every(img => (img as HTMLImageElement).complete && (img as HTMLImageElement).naturalWidth > 0))).toBe(true);
+      await page.screenshot({ path: "test-results/guest-result-" + width + ".png", fullPage: false });
+      await cta.click();
+      await expect(page.locator(AUTH_GATE)).toBeInViewport();
+      await page.getByRole("button", { name: "Продолжить по email", exact: true }).click();
+      await expect(page).toHaveURL(/method=email/);
+      await expect(page.getByLabel("Имя *", { exact: true })).toBeVisible({ timeout: 20000 });
+      await expect(page.getByRole("heading", { name: "Откройте полный разбор этих карт" })).toBeVisible();
+      const order = await page.locator('input[id$="-name"], input[id$="-email"], input[id$="-password"], #terms-consent').evaluateAll(els => els.map(el => el.id));
+      expect(order.slice(0, 3)).toEqual(["user-register-name", "user-register-email", "user-register-password"]);
+      expect(await page.evaluate(() => JSON.parse(localStorage.getItem("zovus_guest_resume_ui_v1")!).cards)).toEqual(savedCards);
+      await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20000 });
+      await expect(page.getByText(/При первой регистрации — стартовые/).first()).toBeVisible({ timeout: 20000 });
+      await page.screenshot({ path: "test-results/guest-register-" + width + ".png", fullPage: true });
+    });
+  }
+
+  test("failed automatic save waits for retry and keeps the exact cards", async ({ page }) => {
+    await page.route("**/api/age-gate/confirm", route => route.fulfill({ json: { ok: true, confirmed: true } }));
+    const requests: unknown[] = [];
+    await page.route("**/api/guest-triplet/complete", route => {
+      requests.push(route.request().postDataJSON());
+      return route.fulfill({ status: requests.length === 1 ? 503 : 200, json: { ok: requests.length > 1 } });
+    });
+    await page.route("**/api/guest-triplet/teaser", route => route.fulfill({ json: { text: "Результат после повторного сохранения." } }));
+    await startGuestQuestion(page);
+    await pickAndRevealTriplet(page);
+    await expect(page.locator("#guest-spread-picker").getByRole("alert")).toContainText("Не удалось сохранить");
+    await expect(page.getByRole("button", { name: "Получить полный разбор", exact: true })).toHaveCount(0);
+    await expect(page.getByRole("button", { name: "Повторить сохранение", exact: true })).toBeEnabled();
+    expect(requests).toHaveLength(1);
+    await page.getByRole("button", { name: "Повторить сохранение", exact: true }).click();
+    await expect(page.locator(".guest-spread-teaser__text")).toBeVisible();
+    expect(requests).toHaveLength(2);
+    expect(requests[1]).toEqual(requests[0]);
+  });
+
+  test("leaving while saving cannot reopen the result", async ({ page }) => {
+    await page.route("**/api/age-gate/confirm", route => route.fulfill({ json: { ok: true, confirmed: true } }));
+    let release!: () => void;
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    await page.route("**/api/guest-triplet/complete", async route => { await pending; await route.fulfill({ json: { ok: true } }).catch(() => undefined); });
+    await startGuestQuestion(page);
+    const request = page.waitForRequest("**/api/guest-triplet/complete");
+    await pickAndRevealTriplet(page);
+    await request;
+    await page.getByRole("button", { name: "На главную", exact: true }).click();
+    release();
+    await expect(page.locator(".editorial-hero")).toBeInViewport();
+    await expect(page.locator(".guest-spread-teaser")).toHaveCount(0);
+    expect(await page.evaluate(() => localStorage.getItem("zovus_guest_resume_ui_v1"))).toBeNull();
+  });
 });

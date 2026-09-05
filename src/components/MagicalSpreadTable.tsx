@@ -31,6 +31,8 @@ interface MagicalSpreadTableProps {
   underSiteHeader?: boolean;
   standalone?: boolean;
   tableCards?: TableCardFace[];
+  /** Guest preview only: reveal selected cards without exposing the remaining deck. */
+  revealedPicks?: Array<{ name: string; reversed?: boolean }>;
 }
 
 const SYSTEM_THEME: Record<DeckSystem, string> = {
@@ -74,6 +76,7 @@ export default function MagicalSpreadTable({
   underSiteHeader = false,
   standalone = false,
   tableCards,
+  revealedPicks,
 }: MagicalSpreadTableProps) {
   const reduceMotion = useReducedMotion();
   const faceUp = system === "numerology" && (tableCards?.length ?? 0) > 0;
@@ -89,6 +92,7 @@ export default function MagicalSpreadTable({
   const trayFace = (pickOrder: number) => {
     const idx = pickedIndices[pickOrder];
     if (idx === undefined) return { name: "?", meaning: "" };
+    if (revealedPicks?.[pickOrder]) return { ...revealedPicks[pickOrder], meaning: "" };
     if (faceUp) return { name: tableCards?.[idx]?.name ?? String(idx + 1), meaning: "" };
     return { name: "?", meaning: "" };
   };
@@ -137,7 +141,8 @@ export default function MagicalSpreadTable({
             const order = pickedIndices.indexOf(index);
             const selected = order >= 0;
             const dimmed = pickComplete && !selected;
-            const cardData = faceUp
+            const pickedFace = selected ? revealedPicks?.[order] : undefined;
+            const cardData = pickedFace ? { ...pickedFace, meaning: "" } : faceUp
               ? { name: tableCards?.[index]?.name ?? String(index + 1), meaning: "" }
               : { name: "?", meaning: "" };
 
@@ -178,8 +183,9 @@ export default function MagicalSpreadTable({
                     system={system}
                     masterId={masterId}
                     size={size}
-                    faceDown={!faceUp}
-                    hideCaption={!faceUp}
+                    faceDown={!faceUp && !pickedFace}
+                    reversed={pickedFace?.reversed}
+                    hideCaption={!faceUp && !pickedFace}
                     interactive={false}
                     className="deck-pick__card w-full"
                   />
@@ -219,8 +225,9 @@ export default function MagicalSpreadTable({
                       system={system}
                       masterId={masterId}
                       size="sm"
-                      faceDown={!faceUp}
-                      hideCaption={!faceUp}
+                      faceDown={!faceUp && !revealedPicks?.[i]}
+                      reversed={revealedPicks?.[i]?.reversed}
+                      hideCaption={!faceUp && !revealedPicks?.[i]}
                       interactive={false}
                       className="h-full w-full"
                     />

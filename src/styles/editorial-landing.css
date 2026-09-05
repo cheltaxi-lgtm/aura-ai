@@ -3971,3 +3971,26 @@ button.editorial-reviews__star:focus-visible {
   text-decoration: underline;
   text-underline-offset: 0.15em;
 }
+
+/* A single guest CTA must fit without squeezing the question on tablets. */
+.editorial-landing--guest-conversion .editorial-hero__question .hero-question__row {
+  flex-direction: column;
+}
+.editorial-landing--guest-conversion .editorial-hero__question .hero-question__input {
+  min-width: 0;
+  width: 100%;
+}
+.editorial-landing--guest-conversion .editorial-hero__question .hero-question__submit {
+  width: 100%;
+  white-space: normal;
+}
+
+/* The mobile dock mounts after the splash; reserve its full rail and home button. */
+html.app-shell-has-tabs {
+  --guest-continue-nav-offset: calc(4.25rem + env(safe-area-inset-bottom, 0px));
+}
+@media (min-width: 768px) {
+  html.app-shell-has-tabs:not([data-native-app="1"]) {
+    --guest-continue-nav-offset: 0px;
+  }
+}

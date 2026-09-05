@@ -252,7 +252,8 @@ section("static: guest finish lands on done teaser, not idle");
     src.includes("buildGuestNarrativeFallback"),
     "done uses narrative fallback helper (not dictionary Past/Present/Future)"
   );
-  assert.ok(src.includes("Получить полный разбор"), "done primary CTA");
+  assert.ok(src.includes("<GuestReadingContinue onContinue={openFullReadingGate}"), "done primary CTA");
+  assert.ok(readSrc("src/components/GuestReadingContinue.tsx").includes("Получить полный разбор"));
   assert.ok(src.includes("Карты зафиксированы"), "continuity microcopy");
   assert.ok(src.includes("SocialAuthButtons"), "auth on done screen");
   assert.ok(src.includes("trackGuestTeaserView"), "teaser view metric");

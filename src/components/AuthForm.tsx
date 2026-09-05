@@ -562,7 +562,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           onClick={() => setShowEmailRegister(false)}
           className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
         >
-          ← Назад к Яндекс, VK или email
+          ← Другой способ входа
         </button>
       ) : null}
       {role === "user" && !isUserRegister ? (
@@ -582,14 +582,12 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           />
         </>
       ) : null}
-      {isUserRegister ? (
-        <p className="text-center text-sm text-aura-ivory/60">Создайте аккаунт по email</p>
-      ) : null}
       {mode === "register" && !isUserRegister ? (
         <>
           <div>
-            <label className={labelClass}>Имя *</label>
+            <label htmlFor={`${role}-${mode}-name`} className={labelClass}>Имя *</label>
             <input
+              id={`${role}-${mode}-name`}
               type="text"
               required
               value={name}
@@ -629,8 +627,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       {mode === "register" && isUserRegister ? (
         <>
           <div>
-            <label className={labelClass}>Имя *</label>
+            <label htmlFor={`${role}-${mode}-name`} className={labelClass}>Имя *</label>
             <input
+              id={`${role}-${mode}-name`}
               type="text"
               required
               value={name}
@@ -640,16 +639,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               className={fieldClass}
             />
           </div>
-          {legalConsentFields}
         </>
       ) : null}
 
-      <div className={isUserRegister ? "border-t border-white/10 pt-5" : ""}>
-        <p className={isUserRegister ? "mb-4 text-center text-xs text-aura-ivory/45" : "hidden"}>
-          {guestConversion
-            ? "Откройте полный разбор этих карт — они уже сохранены и не изменятся."
-            : "Откройте полный разбор и сохраните его в Zovus"}
-        </p>
+      <div>
         <div className="space-y-4">
           <div>
             <label htmlFor={`${role}-${mode}-email`} className={labelClass}>
@@ -717,7 +710,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       {isUserRegister ? (
         <details className="rounded-xl border border-white/8 bg-white/[0.02] p-4">
           <summary className="cursor-pointer text-sm text-aura-ivory/55">
-            Дата рождения (необязательно) — пропустить отдельный шаг
+            Дата рождения — необязательно
           </summary>
           <div className="mt-4 space-y-3">
             <p className="text-xs leading-relaxed text-aura-ivory/45">
@@ -749,6 +742,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           </div>
         </details>
       ) : null}
+
+      {isUserRegister ? legalConsentFields : null}
 
       <div className="auth-salon-error-slot space-y-2 text-center" aria-live="polite">
         {emailExists ? (

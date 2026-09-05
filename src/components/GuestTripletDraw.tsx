@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
 import { getDeckPositionsForUi, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
@@ -48,6 +48,7 @@ import {
   trackGuestTeaserView,
   trackGuestIntroBlockedAuthenticated,
 } from "@/lib/seo/metrika";
+import GuestReadingContinue from "@/components/GuestReadingContinue";
 import DeckCard from "@/components/DeckCard";
 import MagicalSpreadTable from "@/components/MagicalSpreadTable";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
@@ -112,6 +113,11 @@ export default function GuestTripletDraw({
   className = "",
   startRequest = null,
 }: GuestTripletDrawProps) {
+  const reduceMotion = useReducedMotion();
+  const completionInFlight = useRef(false);
+  const completionVersion = useRef(0);
+  const completionRequest = useRef<AbortController | null>(null);
+  const selectedIndicesRef = useRef<number[]>([]);
   const masterId = GUEST_TRIPLET_MASTER_ID;
   const system = resolveMasterDeckSystem(masterId);
   const positions = getDeckPositionsForUi(system);
@@ -148,6 +154,8 @@ export default function GuestTripletDraw({
   useEffect(() => () => {
     ageFlowVersionRef.current++;
     ageRequestRef.current?.abort();
+    completionVersion.current++;
+    completionRequest.current?.abort();
   }, []);
 
   const oauthReturnTo = useMemo(
@@ -355,6 +363,10 @@ export default function GuestTripletDraw({
   }, [showAuthGate]);
 
   const resetSpreadState = useCallback(() => {
+    completionVersion.current++;
+    completionRequest.current?.abort();
+    completionInFlight.current = false;
+    selectedIndicesRef.current = [];
     setSessionSeed("");
     setPickedIndices([]);
     setDeck([]);
@@ -367,7 +379,7 @@ export default function GuestTripletDraw({
     receiptReadyAtRef.current = null;
     teaserFetchedRef.current = false;
     authGateViewTracked.current = false;
-    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    try { sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY); } catch { /* optional draft */ }
   }, []);
 
   const exitToLanding = useCallback(() => {
@@ -380,21 +392,22 @@ export default function GuestTripletDraw({
     setSavedResume(hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null);
     setStep("idle");
     teaserViewTracked.current = false;
-    window.scrollTo({ top: 0, behavior: "smooth" });
-  }, [resetSpreadState]);
+    window.scrollTo({ top: 0, behavior: reduceMotion ? "auto" : "smooth" });
+  }, [resetSpreadState, reduceMotion]);
 
   const openFullReadingGate = useCallback(() => {
     trackGuestTeaserCta();
     setShowAuthGate(true);
     window.requestAnimationFrame(() => {
       document.getElementById(GUEST_TEASER_AUTH_ID)?.scrollIntoView({
-        behavior: "smooth",
+        behavior: reduceMotion ? "auto" : "smooth",
         block: "start",
       });
     });
-  }, []);
+  }, [reduceMotion]);
 
   const resetPickProgress = useCallback(() => {
+    selectedIndicesRef.current = [];
     setPickedIndices([]);
     setDeck([]);
     setRevealed([false, false, false]);
@@ -551,9 +564,9 @@ export default function GuestTripletDraw({
       if (!seed) return;
       const table = buildSeededTableDeck({ system, seed, tableSize });
       const cards = resolvePickedSpread(table, indices);
-      if (cards.length < CARD_COUNT) return;
       setDeck(cards);
-      setStep("flip");
+      setRevealed(Array.from({ length: CARD_COUNT }, (_, i) => i < cards.length));
+      if (cards.length === CARD_COUNT) setStep("flip");
     },
     [system, tableSize]
   );
@@ -565,39 +578,35 @@ export default function GuestTripletDraw({
         setStep("age");
         return;
       }
-      if (pickedIndices.includes(index)) return;
-      const next = [...pickedIndices, index];
+      const selected = selectedIndicesRef.current;
+      if (step !== "pick" || selected.includes(index) || selected.length >= CARD_COUNT) return;
+      const next = [...selected, index];
+      selectedIndicesRef.current = next;
       setPickedIndices(next);
-      if (next.length >= CARD_COUNT) {
-        const seed = ensureSessionSeed();
-        resolveGuestPicks(next, seed);
-      }
+      const seed = ensureSessionSeed();
+      resolveGuestPicks(next, seed);
+      trackGuestCardRevealed(next.length);
     },
-    [pickedIndices, resolveGuestPicks, ensureSessionSeed, ageConfirming, ageConfirmed]
+    [step, resolveGuestPicks, ensureSessionSeed, ageConfirming, ageConfirmed]
   );
-
-  const handleFlip = (index: number) => {
-    if (revealed[index] || !deck[index]?.name) return;
-    trackGuestCardRevealed(index + 1);
-    setRevealed((prev) => {
-      const next = [...prev];
-      next[index] = true;
-      return next;
-    });
-  };
 
   const allRevealed = revealed.every(Boolean);
 
   const goToEmailRegistration = useCallback(() => {
     trackAuthEmailView("guest_teaser");
-    sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
+    try { sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY); } catch { /* optional draft */ }
     window.location.assign(
       buildRegisterHref(oauthReturnTo, "/", { method: "email" })
     );
   }, [oauthReturnTo]);
 
-  const handleFinish = () => {
-    if (deck.length < CARD_COUNT || !allRevealed || completing) return;
+  const handleFinish = useCallback(() => {
+    if (deck.length !== CARD_COUNT || !allRevealed || completionInFlight.current) return;
+    completionInFlight.current = true;
+    const version = completionVersion.current;
+    const controller = new AbortController();
+    completionRequest.current = controller;
+    const isCurrent = () => !controller.signal.aborted && version === completionVersion.current;
     const teaser = buildGuestTripletTeaser(deck);
     const symbols = deck.map((card, index) => ({
       id: card.id,
@@ -612,6 +621,7 @@ export default function GuestTripletDraw({
     void (async () => {
       try {
         const res = await fetch("/api/guest-triplet/complete", {
+          signal: controller.signal,
           method: "POST",
           credentials: "include",
           headers: { "Content-Type": "application/json" },
@@ -623,6 +633,7 @@ export default function GuestTripletDraw({
             cards: symbols,
           }),
         });
+        if (!isCurrent()) return;
         if (!res.ok) {
           let code = "";
           try {
@@ -631,6 +642,8 @@ export default function GuestTripletDraw({
           } catch {
             /* ignore */
           }
+          if (!isCurrent()) return;
+          completionInFlight.current = false;
           if (
             code === "GUEST_INTRO_NOT_AVAILABLE_AUTHENTICATED" ||
             code === "guest_intro_not_available_authenticated"
@@ -651,11 +664,14 @@ export default function GuestTripletDraw({
           return;
         }
       } catch {
+        if (!isCurrent()) return;
+        completionInFlight.current = false;
         setAgeGateError("Не удалось сохранить расклад. Проверьте соединение и попробуйте ещё раз.");
         setCompleting(false);
         return;
       }
 
+      if (!isCurrent()) return;
       saveGuestTriplet({
         tarotCards: deck,
         deckSystem: system,
@@ -685,7 +701,12 @@ export default function GuestTripletDraw({
       setCompleting(false);
       setStep("done");
     })();
-  };
+  }, [deck, allRevealed, masterId, system, landingQuestion]);
+
+  useEffect(() => {
+    // Exactly one request after the third choice. Errors require an explicit retry.
+    if (step === "flip" && allRevealed && !ageGateError) handleFinish();
+  }, [step, allRevealed, ageGateError, handleFinish]);
 
   const backToLandingButton = (
     <button
@@ -764,6 +785,7 @@ export default function GuestTripletDraw({
         system={system}
         masterId={masterId}
         pickedIndices={pickedIndices}
+        revealedPicks={deck}
         onPick={handleTablePick}
         pickHint={ageGateError || ritualCopy.pickHint}
         personalNote={ritualCopy.personalNote}
@@ -784,7 +806,7 @@ export default function GuestTripletDraw({
           {backToLandingButton}
           <motion.div
             className="glass-panel space-y-3 p-4 sm:space-y-5 sm:p-8"
-            initial={{ opacity: 0, y: 12 }}
+            initial={reduceMotion ? false : { opacity: 0, y: 12 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.45 }}
           >
@@ -854,14 +876,7 @@ export default function GuestTripletDraw({
                     После входа подготовим полный ответ на ваш вопрос. Первый полный разбор этих карт включён бесплатно.
                   </p>
                 </div>
-                <button
-                  type="button"
-                  onClick={openFullReadingGate}
-                  className="btn-primary w-full px-6 py-3.5"
-                  data-guest-cta="full_reading"
-                >
-                  Получить полный разбор
-                </button>
+
                 <p className="text-center text-xs text-aura-ivory/50">
                   Ваш вопрос и эти карты уже сохранены.
                 </p>
@@ -931,6 +946,7 @@ export default function GuestTripletDraw({
               </div>
             )}
           </motion.div>
+          {!showAuthGate ? <GuestReadingContinue onContinue={openFullReadingGate} /> : null}
         </div>
       </GuestSpreadSection>
     );
@@ -943,7 +959,7 @@ export default function GuestTripletDraw({
         <p className="lux-label mb-2 text-center">{ritualCopy.personalNote}</p>
         <p className="mb-2 text-center text-sm text-aura-ivory/60">{ritualCopy.drawHint}</p>
         <p className="mb-8 text-center text-sm font-medium text-aura-champagne/80">
-          {allRevealed ? "Расклад открыт — сохраните результат" : "Нажмите на каждую карту, чтобы открыть"}
+          {ageGateError ? "Карты открыты — повторите сохранение" : "Карты открыты — сохраняем ваш расклад"}
         </p>
 
         {landingQuestion ? (
@@ -956,40 +972,16 @@ export default function GuestTripletDraw({
           {positions.map((pos, i) => (
             <div key={pos} className="flex w-full max-w-[148px] min-w-0 flex-col items-center gap-2">
               <p className="lux-label text-center">{pos}</p>
-              <button
-                type="button"
-                onClick={() => handleFlip(i)}
-                disabled={revealed[i] || !deck[i]?.name}
-                className="perspective-1000 h-[154px] w-full sm:h-[236px] sm:w-[148px]"
-                aria-label={revealed[i] ? deck[i]?.name ?? pos : `Открыть ${pos}`}
-              >
-                <motion.div
-                  className="relative h-full w-full preserve-3d"
-                  animate={{ rotateY: revealed[i] ? 180 : 0 }}
-                  transition={{ duration: 0.55, ease: [0.22, 1, 0.36, 1] }}
-                >
-                  <div className="absolute inset-0 backface-hidden">
-                    <DeckCard
-                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
-                      system={system}
-                      faceDown
-                      showMeaning={false}
-                      size="md"
-                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                    />
-                  </div>
-                  <div className="absolute inset-0 backface-hidden rotate-y-180">
-                    <DeckCard
-                      card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
-                      system={system}
-                      reversed={deck[i]?.reversed}
-                      showMeaning={false}
-                      size="md"
-                      className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
-                    />
-                  </div>
-                </motion.div>
-              </button>
+              <div className="h-[154px] w-full sm:h-[236px] sm:w-[148px]">
+                <DeckCard
+                  card={{ name: deck[i]?.name ?? pos, meaning: deck[i]?.meaning ?? "" }}
+                  system={system}
+                  reversed={deck[i]?.reversed}
+                  showMeaning={false}
+                  size="md"
+                  className="h-full [&_.lux-tarot-card]:h-full [&_.lux-tarot-card]:max-w-none"
+                />
+              </div>
             </div>
           ))}
         </div>
@@ -1004,14 +996,10 @@ export default function GuestTripletDraw({
           <button
             type="button"
             onClick={handleFinish}
-            disabled={!allRevealed || completing}
+            disabled={!allRevealed || completing || !ageGateError}
             className="btn-primary px-10 py-3.5 disabled:cursor-not-allowed disabled:opacity-45"
           >
-            {completing
-              ? "Готовим трактовку…"
-              : allRevealed
-                ? "Получить трактовку"
-                : `Откройте все карты (${revealed.filter(Boolean).length}/${CARD_COUNT})`}
+            {ageGateError && !completing ? "Повторить сохранение" : "Готовим трактовку…"}
           </button>
         </div>
       </div>

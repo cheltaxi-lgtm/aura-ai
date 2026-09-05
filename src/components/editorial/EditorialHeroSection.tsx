@@ -20,7 +20,7 @@ type EditorialHeroSectionProps = {
   onPainChip?: (question: string, intentSlug: string) => void;
   /** Guest conversion funnel: pain chips + live social-proof counters. */
   conversionHero?: boolean;
-  /** A/B/C expectation copy. Defaults to EDITORIAL_HERO.subtitle (control). */
+  /** Current guest offer; historical variants remain available to existing callers. */
   expectationSubtitle?: string;
 };
 
@@ -50,7 +50,7 @@ export default function EditorialHeroSection({
       <div className="editorial-hero__content">
         <p className="editorial-hero__brand">{BRAND_NAME}</p>
         <h1 id="editorial-hero-title" className="editorial-hero__title">
-          {EDITORIAL_HERO.title}
+          {guestConversion ? "Бесплатный расклад Таро по вашему вопросу" : EDITORIAL_HERO.title}
         </h1>
         <p className="editorial-hero__subtitle">
           {expectationSubtitle ?? EDITORIAL_HERO.subtitle}
@@ -60,10 +60,10 @@ export default function EditorialHeroSection({
           onQuestionSubmit={onQuestionSubmit}
           autoFocusDesktop={guestConversion}
           submitVariant={guestConversion ? "gold" : "secondary"}
-          submitLabel={guestConversion ? "Начать разбор" : undefined}
+          submitLabel={guestConversion ? "Открыть 3 карты бесплатно" : undefined}
           placeholder="Например: вернётся ли он?"
           label={guestConversion ? "Ваш вопрос для расклада Таро" : undefined}
-          hint={guestConversion ? "3 карты и краткая трактовка — бесплатно, без регистрации." : "Подберём схему и мастера под ваш вопрос"}
+          hint={guestConversion ? "Без регистрации и банковской карты · 18+" : "Подберём схему и мастера под ваш вопрос"}
           hintOnScrim
         />
         {guestConversion ? (
@@ -92,13 +92,7 @@ export default function EditorialHeroSection({
             })}
           </div>
         ) : null}
-        {guestConversion ? (
-          <div className="editorial-hero__actions editorial-hero__actions--secondary">
-            <button type="button" className="editorial-btn editorial-btn--ghost" onClick={onPrimaryCta}>
-              Открыть 3 карты
-            </button>
-          </div>
-        ) : (
+        {guestConversion ? null : (
           <div className="editorial-hero__actions">
             <button type="button" className="editorial-btn editorial-btn--gold" onClick={onPrimaryCta}>
               {isLoggedIn ? "Продолжить практику" : EDITORIAL_HERO.primaryCta}

@@ -10,11 +10,12 @@ const PICKER = "#guest-spread-picker";
 
 async function startGuestFromHero(page: Page) {
   await page.goto("/?app=1");
-  const button = page.locator(".editorial-hero__actions").getByRole("button", {
+  const button = page.locator(".editorial-hero__question").getByRole("button", {
     name: /Открыть 3 карты/i,
   });
   await expect(button).toBeVisible();
-  await button.click();
+  await page.locator("#hero-question").fill("Как прояснить ситуацию на работе?");
+    await button.click();
   await expect(page.locator(PICKER)).toBeVisible();
 }
 
@@ -49,6 +50,7 @@ test.describe("guest funnel golden path (public)", () => {
 
   test("landing sells daily retention hook without guest-auth demand", async ({ page }) => {
     await page.goto("/?app=1");
+    await page.getByText("Другие возможности Zovus", { exact: true }).click();
     await expect(page.getByRole("heading", { name: /3 карты дня/i })).toBeVisible();
     await expect(page.getByText(/раз в сутки/i).first()).toBeVisible();
     await expect(
@@ -64,8 +66,9 @@ test.describe("guest funnel golden path (public)", () => {
     await expect(gift).toBeVisible({ timeout: 20_000 });
     await expect(gift.getByRole("link", { name: /Получить полный разбор/i })).toHaveCount(0);
     await expect(gift.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
+    await page.locator("#hero-question").fill("Как прояснить ситуацию на работе?");
     await page
-      .locator(".editorial-hero__actions")
+      .locator(".editorial-hero__question")
       .getByRole("button", { name: /Открыть 3 карты/i })
       .click();
     await expect(page.locator(PICKER)).toBeVisible({ timeout: 15_000 });

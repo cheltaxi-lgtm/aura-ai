@@ -34,8 +34,10 @@ describe("starter CTA honesty (source)", () => {
 
   it("full-reading CTA lives in GuestTripletDraw after teaser", () => {
     const src = readFileSync(resolve("src/components/GuestTripletDraw.tsx"), "utf8");
-    expect(src).toMatch(/data-guest-cta="full_reading"/);
-    expect(src).toMatch(/Получить полный разбор/);
+    expect(src).toContain("<GuestReadingContinue onContinue={openFullReadingGate}");
+    const cta = readFileSync(resolve("src/components/GuestReadingContinue.tsx"), "utf8");
+    expect(cta).toMatch(/data-guest-cta="full_reading"/);
+    expect(cta).toMatch(/Получить полный разбор/);
     expect(src).toMatch(/openFullReadingGate/);
   });
 
