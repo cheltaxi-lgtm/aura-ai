@@ -26,11 +26,43 @@ export function resolveAsyncReportDestination(input: {
       : "/cabinet/human-design";
   }
 
-  if (kind === "hd_composite_report") return "/cabinet/human-design";
+  if (kind === "hd_composite_report") {
+    const report = result.report as
+      | { baseChartId?: string; partnerChartId?: string }
+      | undefined;
+    const baseChartId =
+      (typeof report?.baseChartId === "string" && report.baseChartId.trim()) ||
+      (typeof jobInput.baseChartId === "string" && jobInput.baseChartId.trim()) ||
+      "";
+    const partnerChartId =
+      (typeof report?.partnerChartId === "string" && report.partnerChartId.trim()) ||
+      (typeof jobInput.partnerChartId === "string" && jobInput.partnerChartId.trim()) ||
+      "";
+    return baseChartId && partnerChartId
+      ? `/cabinet/human-design?chart=${encodeURIComponent(baseChartId)}&partner=${encodeURIComponent(partnerChartId)}`
+      : "/cabinet/human-design";
+  }
 
-  if (kind === "natal_interpretation") return "/cabinet/astrology?tab=reports";
-  if (kind === "natal_forecast") return "/cabinet/astrology?tab=timing";
-  if (kind === "natal_compatibility") return "/cabinet/astrology?tab=compatibility";
+  if (kind === "natal_interpretation" || kind === "natal_forecast") {
+    const reportId =
+      typeof result.reportId === "string" ? result.reportId.trim() : "";
+    if (reportId) {
+      return `/cabinet/astrology?tab=reports&report=${encodeURIComponent(reportId)}`;
+    }
+    return kind === "natal_forecast"
+      ? "/cabinet/astrology?tab=timing"
+      : "/cabinet/astrology?tab=reports";
+  }
+  if (kind === "natal_compatibility") {
+    const record = result.record as { id?: string } | undefined;
+    const compatibilityId =
+      (typeof record?.id === "string" && record.id.trim()) ||
+      (typeof jobInput.id === "string" && jobInput.id.trim()) ||
+      "";
+    return compatibilityId && Object.keys(result).length > 0
+      ? `/cabinet/astrology?tab=compatibility&compatibility=${encodeURIComponent(compatibilityId)}`
+      : "/cabinet/astrology?tab=compatibility";
+  }
   if (typeof kind === "string" && kind.startsWith("natal_")) {
     return "/cabinet/astrology";
   }
@@ -63,8 +95,24 @@ export function resolveAsyncReportDestination(input: {
     return caseId ? `/pro/case/${encodeURIComponent(caseId)}` : "/pro";
   }
 
-  if (kind === "aura_reading") return "/cabinet";
-  if (kind === "palm_reading") return "/gadanie-po-ladoni";
+  if (kind === "aura_reading") {
+    const readingId =
+      (typeof result.historyId === "string" && result.historyId.trim()) ||
+      (typeof result.snapshotId === "string" && result.snapshotId.trim()) ||
+      "";
+    return readingId
+      ? `/aura?reading=${encodeURIComponent(readingId)}`
+      : "/aura";
+  }
+  if (kind === "palm_reading") {
+    const readingId =
+      (typeof result.snapshotId === "string" && result.snapshotId.trim()) ||
+      (typeof result.historyId === "string" && result.historyId.trim()) ||
+      "";
+    return readingId
+      ? `/gadanie-po-ladoni?reading=${encodeURIComponent(readingId)}`
+      : "/gadanie-po-ladoni";
+  }
 
   return null;
 }

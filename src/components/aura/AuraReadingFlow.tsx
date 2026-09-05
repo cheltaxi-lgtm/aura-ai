@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { Camera, ImagePlus, Loader2, Sparkles, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -105,6 +105,7 @@ export default function AuraReadingFlow() {
   const [phraseIdx, setPhraseIdx] = useState(0);
   const [pastReadings, setPastReadings] = useState<AuraPastItem[] | null>(null);
   const [openingPast, setOpeningPast] = useState(false);
+  const [requestedReadingError, setRequestedReadingError] = useState<string | null>(null);
   const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
   const [confirmPastDeleteId, setConfirmPastDeleteId] = useState<string | null>(null);
   // null = still resolving; guests without the consent cookie get the inline
@@ -130,6 +131,13 @@ export default function AuraReadingFlow() {
   const pollAbortRef = useRef<AbortController | null>(null);
   const claimAttemptedRef = useRef(false);
   const pendingFileRef = useRef<File | Blob | null>(null);
+  const deepLinkedReadingRef = useRef<string | null>(null);
+
+  const requestedReadingId = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const search = new URLSearchParams(window.location.search);
+    return search.get("reading")?.trim() ?? "";
+  }, []);
 
   const auraCost = pricing?.effectiveCost ?? config.costs.AURA_READING ?? 50;
   const auraBaseCost = pricing?.baseCost ?? config.costs.AURA_READING ?? 50;
@@ -225,6 +233,10 @@ export default function AuraReadingFlow() {
   // Resume today's snapshot without a new photo (account or guest cookie).
   useEffect(() => {
     if (authLoading || !featuresLoaded) return;
+    if (requestedReadingId) {
+      setTodayReady(true);
+      return;
+    }
     if (othersOn && creatingOther && !selectedSubjectId) {
       setDayLocked(false);
       setTodayReady(true);
@@ -275,12 +287,20 @@ export default function AuraReadingFlow() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isLoggedIn, featuresLoaded, othersOn, selectedSubjectId, creatingOther]);
+  }, [
+    authLoading,
+    isLoggedIn,
+    featuresLoaded,
+    othersOn,
+    selectedSubjectId,
+    creatingOther,
+    requestedReadingId,
+  ]);
 
   // Post-auth resume: claim the guest snapshot bound by the HttpOnly cookie.
   // Idempotent — NO_CLAIM_TOKEN simply means there is nothing to resume.
   useEffect(() => {
-    if (authLoading || !isLoggedIn || claimAttemptedRef.current) return;
+    if (authLoading || !isLoggedIn || requestedReadingId || claimAttemptedRef.current) return;
     claimAttemptedRef.current = true;
     void fetch("/api/aura/claim", { method: "POST", credentials: "include" })
       .then(async (r) => {
@@ -303,7 +323,7 @@ export default function AuraReadingFlow() {
         }
       })
       .catch(() => undefined);
-  }, [authLoading, isLoggedIn]);
+  }, [authLoading, isLoggedIn, requestedReadingId, refreshSubjects]);
 
   // Past auras archive — loaded whenever the capture step is shown to a
   // logged-in user (covers initial visit and post-reading reset).
@@ -402,10 +422,9 @@ export default function AuraReadingFlow() {
           (subjects.filter((s) => s.kind === "other").length === 0 || recentAck === "new") &&
           !nameClash));
 
-  const openPast = useCallback(async (item: AuraPastItem) => {
-    const id = item.historyId ?? item.snapshotId;
-    if (!id) return;
+  const openPastById = useCallback(async (id: string) => {
     setError(null);
+    if (id === requestedReadingId) setRequestedReadingError(null);
     setOpeningPast(true);
     try {
       const res = await fetch(`/api/aura/readings/${encodeURIComponent(id)}`, {
@@ -414,8 +433,15 @@ export default function AuraReadingFlow() {
       });
       const data = await res.json().catch(() => null);
       const entry = data?.entry;
+      if (res.status === 401) {
+        const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+        window.location.assign(buildLoginHref(returnTo, "/aura"));
+        return;
+      }
       if (!res.ok || !entry?.snapshot) {
-        setError("Не удалось открыть сохранённую ауру. Попробуйте ещё раз.");
+        const message = "Этот готовый разбор ауры недоступен или был удалён.";
+        setError(message);
+        if (id === requestedReadingId) setRequestedReadingError(message);
         return;
       }
       setSnapshot(entry.snapshot as FlowSnapshot);
@@ -431,11 +457,34 @@ export default function AuraReadingFlow() {
       setPhotoUrl(null);
       setStep(entry.report ? "report" : "claimed");
     } catch {
-      setError("Ошибка сети. Попробуйте ещё раз.");
+      const message = "Не удалось открыть готовый разбор. Проверьте интернет и повторите.";
+      setError(message);
+      if (id === requestedReadingId) setRequestedReadingError(message);
     } finally {
       setOpeningPast(false);
     }
-  }, [photoUrl]);
+  }, [photoUrl, requestedReadingId]);
+
+  const openPast = useCallback(
+    async (item: AuraPastItem) => {
+      const id = item.historyId ?? item.snapshotId;
+      if (!id) return;
+      await openPastById(id);
+    },
+    [openPastById]
+  );
+
+  useEffect(() => {
+    if (authLoading || !requestedReadingId) return;
+    if (!isLoggedIn) {
+      const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      window.location.assign(buildLoginHref(returnTo, "/aura"));
+      return;
+    }
+    if (deepLinkedReadingRef.current === requestedReadingId) return;
+    deepLinkedReadingRef.current = requestedReadingId;
+    void openPastById(requestedReadingId);
+  }, [authLoading, isLoggedIn, requestedReadingId, openPastById]);
 
   const deletePast = useCallback(
     async (item: AuraPastItem) => {
@@ -834,6 +883,41 @@ export default function AuraReadingFlow() {
     config.enabled &&
     runeBalance !== null &&
     !canAffordRunes({ enabled: config.enabled, unlimited: pricing?.unlimited, balance: runeBalance, cost: auraCost });
+
+  if (
+    requestedReadingId &&
+    !requestedReadingError &&
+    (authLoading || !isLoggedIn || openingPast || deepLinkedReadingRef.current !== requestedReadingId)
+  ) {
+    return (
+      <div className="mx-auto flex min-h-64 w-full max-w-xl flex-col items-center justify-center gap-4 rounded-3xl border border-amber-300/15 bg-black/35 px-6 text-center">
+        <Loader2 className="h-7 w-7 animate-spin text-amber-200" aria-hidden />
+        <div>
+          <p className="font-display text-xl text-white">Открываем готовый разбор ауры</p>
+          <p className="mt-2 text-sm text-white/50">
+            {authLoading || !isLoggedIn ? "Проверяем вход в аккаунт…" : "Загружаем сохранённый отчёт…"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (requestedReadingId && requestedReadingError) {
+    return (
+      <div className="mx-auto w-full max-w-xl rounded-3xl border border-amber-300/20 bg-black/40 p-6 text-center">
+        <p className="font-display text-xl text-white">Не удалось открыть разбор ауры</p>
+        <p className="mt-3 text-sm leading-6 text-white/55" role="alert">{requestedReadingError}</p>
+        <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+          <button type="button" onClick={() => void openPastById(requestedReadingId)} className="btn-luxe btn-luxe--md btn-luxe--gold">
+            Повторить
+          </button>
+          <button type="button" onClick={() => window.location.assign("/aura")} className="btn-luxe btn-luxe--md btn-luxe--ghost">
+            К моим разборам
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="aura-flow mx-auto w-full max-w-xl">

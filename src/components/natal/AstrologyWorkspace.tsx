@@ -165,6 +165,15 @@ export default function AstrologyWorkspace() {
   const [historyError, setHistoryError] = useState("");
   const [notice, setNotice] = useState("");
   const [selectedReportId, setSelectedReportId] = useState<string | null>(null);
+  const [deepLinkError, setDeepLinkError] = useState("");
+  const requestedReportId = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("report")?.trim() ?? "";
+  }, []);
+  const requestedCompatibilityId = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    return new URLSearchParams(window.location.search).get("compatibility")?.trim() ?? "";
+  }, []);
   const [freshReports, setFreshReports] = useState<Partial<Record<NatalTradition, FreshReport>>>({});
   const [acceptedReport, setAcceptedReport] = useState<{
     report: AcceptedAsyncReport;
@@ -200,6 +209,19 @@ export default function AstrologyWorkspace() {
       }
       const nextReports = data.reports ?? [];
       setReports(nextReports);
+      const activeRequestedReportId =
+        new URLSearchParams(window.location.search).get("report")?.trim() ?? "";
+      if (
+        activeRequestedReportId &&
+        !nextReports.some((report) => report.id === activeRequestedReportId)
+      ) {
+        setSelectedReportId(activeRequestedReportId);
+        setDeepLinkError(
+          "Этот готовый отчёт недоступен или был удалён. Выберите сохранённую версию из архива."
+        );
+      } else {
+        setDeepLinkError("");
+      }
       return nextReports;
     } catch (reason) {
       setHistoryError(reason instanceof Error ? reason.message : "Не удалось загрузить историю");
@@ -275,6 +297,7 @@ export default function AstrologyWorkspace() {
   }, [loadChart, loadHistory]);
 
   useEffect(() => {
+    if (requestedReportId || requestedCompatibilityId) return;
     const pendingJobId = window.localStorage.getItem("aura:natal-active-job");
     if (!pendingJobId) return;
     let active = true;
@@ -308,7 +331,7 @@ export default function AstrologyWorkspace() {
     return () => {
       active = false;
     };
-  }, [loadHistory, selectTab]);
+  }, [loadHistory, requestedCompatibilityId, requestedReportId, selectTab]);
 
   const requestInterpretation = async (tradition: NatalTradition, opts?: { forceWait?: boolean }) => {
     if (!chart?.[tradition]) {
@@ -631,13 +654,14 @@ export default function AstrologyWorkspace() {
         });
         await loadChart();
       }
-      await loadHistory();
       if (selectedReportId === report.id) {
         setSelectedReportId(null);
+        setDeepLinkError("");
         const url = new URL(window.location.href);
         url.searchParams.delete("report");
         window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
       }
+      await loadHistory();
       setNotice("Отчёт удалён без возврата рун. Теперь можно заказать новую версию.");
     } catch (reason) {
       setError(
@@ -822,6 +846,7 @@ export default function AstrologyWorkspace() {
         </nav>
 
         {error ? <div className="mt-4 rounded-xl border border-rose-400/25 bg-rose-400/[0.07] px-4 py-3 text-sm text-rose-200" role="alert">{error}</div> : null}
+        {deepLinkError ? <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] px-4 py-3 text-sm text-amber-100" role="alert">{deepLinkError}</div> : null}
         {notice ? <div className="mt-4 rounded-xl border border-emerald-400/20 bg-emerald-400/[0.06] px-4 py-3 text-sm text-emerald-200/80" role="status">{notice}</div> : null}
         {needsRebuild ? (
           <div className="mt-4 rounded-xl border border-amber-300/25 bg-amber-300/[0.08] px-4 py-3 text-sm text-amber-100" role="status">
@@ -836,7 +861,7 @@ export default function AstrologyWorkspace() {
           {tab === "jyotish" && (chart.vedic ? <Jyotish chart={chart} vedic={chart.vedic} savedReport={currentVedicReport} freshReport={freshReports.vedic} fallbackText={vedicReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} /> : <Unavailable title="Расчёт джйотиш отсутствует" />)}
           {tab === "timing" && <Timing chart={chart} reports={reports} busy={busy} forecastCost={cost("FORECAST_REPORT")} onRequestForecast={requestForecast} />}
           {tab === "compatibility" && <NatalCompatibility />}
-          {tab === "reports" && <Reports chart={chart} reports={reports} loading={historyLoading} error={historyError} deletingReportId={deletingReportId} onDelete={deleteReport} onReload={loadHistory} selectedReportId={selectedReportId} onSelectReport={setSelectedReportId} />}
+          {tab === "reports" && <Reports chart={chart} reports={reports} loading={historyLoading} error={historyError} deletingReportId={deletingReportId} onDelete={deleteReport} onReload={loadHistory} selectedReportId={selectedReportId} onSelectReport={(reportId) => { setSelectedReportId(reportId); setDeepLinkError(""); }} />}
           {tab === "settings" && <NatalSettings />}
         </div>
       </div>
@@ -1266,9 +1291,9 @@ function Reports({ chart, reports, loading, error, deletingReportId, onDelete, o
     || (filter === "forecast" ? report.reportType.startsWith("forecast:") : report.reportType === "interpretation");
   const currentReports = reports.filter((report) => currentIds.has(report.id) && matchesFilter(report));
   const archivedReports = reports.filter((report) => !currentIds.has(report.id) && matchesFilter(report));
-  const selected = reports.find((report) => report.id === selectedReportId && matchesFilter(report))
-    ?? currentReports[0]
-    ?? null;
+  const selected = selectedReportId
+    ? reports.find((report) => report.id === selectedReportId && matchesFilter(report)) ?? null
+    : currentReports[0] ?? null;
   const selectReport = (reportId: string) => {
     onSelectReport(reportId);
     const url = new URL(window.location.href);

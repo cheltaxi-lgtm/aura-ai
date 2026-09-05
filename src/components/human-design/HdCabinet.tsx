@@ -60,7 +60,9 @@ export default function HdCabinet() {
   const [partnerId, setPartnerId] = useState<string | null>(null);
   const [savingMeta, setSavingMeta] = useState(false);
   const [metaError, setMetaError] = useState<string | null>(null);
+  const [deepLinkError, setDeepLinkError] = useState<string | null>(null);
   const loadSeq = useRef(0);
+  const deepLinkAppliedRef = useRef(false);
   const [loadError, setLoadError] = useState(false);
 
   const load = useCallback(() => {
@@ -140,6 +142,57 @@ export default function HdCabinet() {
     return otherCharts.find((c) => c.id === otherId) ?? otherCharts[0] ?? null;
   }, [otherCharts, otherId]);
 
+  useEffect(() => {
+    if (deepLinkAppliedRef.current || charts === null || loadError) return;
+
+    const search = new URLSearchParams(window.location.search);
+    const chartId = search.get("chart")?.trim() ?? "";
+    const partnerChartId = search.get("partner")?.trim() ?? "";
+    deepLinkAppliedRef.current = true;
+    if (!chartId && !partnerChartId) return;
+
+    const requestedChart = chartId ? charts.find((chart) => chart.id === chartId) ?? null : null;
+    const requestedPartner = partnerChartId
+      ? charts.find((chart) => chart.id === partnerChartId) ?? null
+      : null;
+    if ((chartId && !requestedChart) || (partnerChartId && !requestedPartner)) {
+      setDeepLinkError("Эта сохранённая карта или пара недоступна. Выберите расчёт из кабинета.");
+      return;
+    }
+
+    const requested = [requestedChart, requestedPartner].filter(
+      (chart): chart is HdChartListItem => Boolean(chart)
+    );
+    const requestedSelf = requested.find((chart) => chart.subjectKind !== "other") ?? null;
+    const requestedOther = requested.find((chart) => chart.subjectKind === "other") ?? null;
+
+    if (partnerChartId) {
+      if (requestedSelf && requestedOther) {
+        setFolder("self");
+        setOtherId(requestedOther.id);
+        setPartnerId(requestedOther.id);
+        setCreating(false);
+      } else {
+        setDeepLinkError("Эта пара карт недоступна. Выберите две карты из кабинета.");
+      }
+      return;
+    }
+
+    const chart = requested[0] ?? null;
+    if (chart?.subjectKind === "other") {
+      setFolder("others");
+      setOtherId(chart.id);
+      setPartnerId(null);
+      setCreating(false);
+    } else if (chart) {
+      setFolder("self");
+      setPartnerId(null);
+      setCreating(false);
+    } else {
+      setDeepLinkError("Эта сохранённая карта недоступна или была удалена. Выберите карту из кабинета.");
+    }
+  }, [charts, loadError]);
+
   const openFolder = (next: HdFolder) => {
     setPartnerId(null);
     setFolder(next);
@@ -167,6 +220,28 @@ export default function HdCabinet() {
         <p className="text-sm text-red-300/80">Не удалось загрузить карты. Проверьте соединение.</p>
         <button type="button" onClick={load} className="hd-bodygraph__export">
           Повторить
+        </button>
+      </div>
+    );
+  }
+
+  if (deepLinkError) {
+    return (
+      <div className="space-y-4 rounded-2xl border border-amber-300/20 bg-black/35 p-5">
+        <h1 className="font-display text-2xl font-bold">Дизайн Человека</h1>
+        <p className="text-sm leading-6 text-amber-100" role="alert">{deepLinkError}</p>
+        <button
+          type="button"
+          onClick={() => {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("chart");
+            url.searchParams.delete("partner");
+            window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+            setDeepLinkError(null);
+          }}
+          className="hd-bodygraph__export"
+        >
+          Открыть мои карты
         </button>
       </div>
     );

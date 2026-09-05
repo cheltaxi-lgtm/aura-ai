@@ -42,6 +42,7 @@ import {
 } from "../src/lib/async-report-circuit-breaker";
 import {
   isAsyncReportInProcessEnabled,
+  isNotifiedReportJobKind,
   isReportJobKind,
   isReportJobRetryEnabled,
   reportKindsAsAsyncJobKinds,
@@ -96,7 +97,7 @@ async function maybeNotifyReportReady(
   job: AsyncJobRow,
   result: Record<string, unknown>
 ): Promise<void> {
-  if (!isReportJobKind(job.kind)) return;
+  if (!isNotifiedReportJobKind(job.kind)) return;
   await enqueueReportReadyDeliveries(job, result);
   // Flush immediately; failures stay pending for the periodic tick.
   await processDueReportReadyDeliveries().catch((error) =>

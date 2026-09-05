@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
@@ -128,6 +128,7 @@ export default function PalmReadingFlow() {
   const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
   const [confirmPastDeleteId, setConfirmPastDeleteId] = useState<string | null>(null);
   const [openingPast, setOpeningPast] = useState(false);
+  const [requestedReadingError, setRequestedReadingError] = useState<string | null>(null);
   const [preparingImage, setPreparingImage] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -137,6 +138,13 @@ export default function PalmReadingFlow() {
   const pollAbortRef = useRef<AbortController | null>(null);
   const pendingFileRef = useRef<File | Blob | null>(null);
   const previewDataRef = useRef<string | null>(null);
+  const deepLinkedReadingRef = useRef<string | null>(null);
+
+  const requestedReadingId = useMemo(() => {
+    if (typeof window === "undefined") return "";
+    const search = new URLSearchParams(window.location.search);
+    return search.get("reading")?.trim() ?? "";
+  }, []);
 
   const palmCost = pricing?.effectiveCost ?? config.costs.PALM_READING ?? 100;
   const palmBaseCost = pricing?.baseCost ?? config.costs.PALM_READING ?? 100;
@@ -198,6 +206,7 @@ export default function PalmReadingFlow() {
 
   useEffect(() => {
     if (authLoading) return;
+    if (requestedReadingId) return;
     let cancelled = false;
     void (async () => {
         // Auth redirects remount the flow; the HttpOnly claim cookie is the
@@ -240,7 +249,7 @@ export default function PalmReadingFlow() {
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isLoggedIn]);
+  }, [authLoading, isLoggedIn, requestedReadingId]);
 
   const resetAll = useCallback(() => {
     pollAbortRef.current?.abort();
@@ -291,12 +300,11 @@ export default function PalmReadingFlow() {
     return () => window.clearTimeout(timer);
   }, [confirmPastDeleteId]);
 
-  const openPast = useCallback(
-    async (item: PalmPastItem) => {
-      const id = pastItemId(item);
-      if (!id) return;
+  const openPastById = useCallback(
+    async (id: string) => {
       setOpeningPast(true);
       setError(null);
+      if (id === requestedReadingId) setRequestedReadingError(null);
       try {
         const res = await fetch(`/api/palm/readings/${encodeURIComponent(id)}`, {
           credentials: "include",
@@ -304,8 +312,15 @@ export default function PalmReadingFlow() {
         });
         const data = await res.json().catch(() => null);
         const entry = data?.entry;
+        if (res.status === 401) {
+          const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+          window.location.assign(buildLoginHref(returnTo, "/gadanie-po-ladoni"));
+          return;
+        }
         if (!res.ok || !entry?.snapshot) {
-          setError("Не удалось открыть снимок. Попробуйте ещё раз.");
+          const message = "Этот готовый разбор ладони недоступен или был удалён.";
+          setError(message);
+          if (id === requestedReadingId) setRequestedReadingError(message);
           return;
         }
         revokePalmObjectUrl(photoUrl);
@@ -320,13 +335,36 @@ export default function PalmReadingFlow() {
           setStep("claimed");
         }
       } catch {
-        setError("Ошибка сети. Попробуйте ещё раз.");
+        const message = "Не удалось открыть готовый разбор. Проверьте интернет и повторите.";
+        setError(message);
+        if (id === requestedReadingId) setRequestedReadingError(message);
       } finally {
         setOpeningPast(false);
       }
     },
-    [photoUrl]
+    [photoUrl, requestedReadingId]
   );
+
+  const openPast = useCallback(
+    async (item: PalmPastItem) => {
+      const id = pastItemId(item);
+      if (!id) return;
+      await openPastById(id);
+    },
+    [openPastById]
+  );
+
+  useEffect(() => {
+    if (authLoading || !requestedReadingId) return;
+    if (!isLoggedIn) {
+      const returnTo = `${window.location.pathname}${window.location.search}${window.location.hash}`;
+      window.location.assign(buildLoginHref(returnTo, "/gadanie-po-ladoni"));
+      return;
+    }
+    if (deepLinkedReadingRef.current === requestedReadingId) return;
+    deepLinkedReadingRef.current = requestedReadingId;
+    void openPastById(requestedReadingId);
+  }, [authLoading, isLoggedIn, requestedReadingId, openPastById]);
 
   const deletePast = useCallback(
     async (item: PalmPastItem) => {
@@ -810,6 +848,41 @@ export default function PalmReadingFlow() {
         ) : null}
       </div>
     ) : null;
+
+  if (
+    requestedReadingId &&
+    !requestedReadingError &&
+    (authLoading || !isLoggedIn || openingPast || deepLinkedReadingRef.current !== requestedReadingId)
+  ) {
+    return (
+      <div className="mx-auto flex min-h-64 w-full max-w-xl flex-col items-center justify-center gap-4 rounded-3xl border border-amber-300/15 bg-black/35 px-6 text-center">
+        <Loader2 className="h-7 w-7 animate-spin text-amber-200" aria-hidden />
+        <div>
+          <p className="font-display text-xl text-white">Открываем готовый разбор ладони</p>
+          <p className="mt-2 text-sm text-white/50">
+            {authLoading || !isLoggedIn ? "Проверяем вход в аккаунт…" : "Загружаем сохранённый отчёт…"}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  if (requestedReadingId && requestedReadingError) {
+    return (
+      <div className="mx-auto w-full max-w-xl rounded-3xl border border-amber-300/20 bg-black/40 p-6 text-center">
+        <p className="font-display text-xl text-white">Не удалось открыть разбор ладони</p>
+        <p className="mt-3 text-sm leading-6 text-white/55" role="alert">{requestedReadingError}</p>
+        <div className="mt-5 flex flex-col justify-center gap-3 sm:flex-row">
+          <button type="button" onClick={() => void openPastById(requestedReadingId)} className="btn-luxe btn-luxe--md btn-luxe--gold">
+            Повторить
+          </button>
+          <button type="button" onClick={() => window.location.assign("/gadanie-po-ladoni")} className="btn-luxe btn-luxe--md btn-luxe--ghost">
+            К моим разборам
+          </button>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="mx-auto w-full max-w-xl">

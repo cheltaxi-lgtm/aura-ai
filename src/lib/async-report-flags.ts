@@ -19,8 +19,21 @@ export const REPORT_JOB_KINDS = [
 
 export type ReportJobKind = (typeof REPORT_JOB_KINDS)[number];
 
+/** Jobs surfaced in the persistent report tray and report-ready channels. */
+export const NOTIFIED_REPORT_JOB_KINDS = [
+  ...REPORT_JOB_KINDS,
+  "aura_reading",
+  "palm_reading",
+] as const;
+
+export type NotifiedReportJobKind = (typeof NOTIFIED_REPORT_JOB_KINDS)[number];
+
 export function isReportJobKind(kind: string): kind is ReportJobKind {
   return (REPORT_JOB_KINDS as readonly string[]).includes(kind);
+}
+
+export function isNotifiedReportJobKind(kind: string): kind is NotifiedReportJobKind {
+  return (NOTIFIED_REPORT_JOB_KINDS as readonly string[]).includes(kind);
 }
 
 /**
@@ -51,4 +64,8 @@ export function isReportJobRetryEnabled(): boolean {
 
 export function reportKindsAsAsyncJobKinds(): AsyncJobKind[] {
   return [...REPORT_JOB_KINDS];
+}
+
+export function notifiedReportKindsAsAsyncJobKinds(): AsyncJobKind[] {
+  return [...NOTIFIED_REPORT_JOB_KINDS];
 }

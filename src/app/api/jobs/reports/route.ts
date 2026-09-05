@@ -7,7 +7,7 @@ import {
   type AsyncJobRow,
 } from "@/lib/async-jobs";
 import { getJobKindConfig } from "@/lib/async-job-registry";
-import { reportKindsAsAsyncJobKinds } from "@/lib/async-report-flags";
+import { notifiedReportKindsAsAsyncJobKinds } from "@/lib/async-report-flags";
 import { resolveAsyncReportDestination } from "@/lib/async-report-destination";
 import { ensureDb, query } from "@/lib/db";
 import { profileAuthFailureResponse, resolveProfileUserContext } from "@/lib/require-auth";
@@ -34,7 +34,7 @@ export async function GET() {
 
   const jobs = await listReportJobsForUser(
     resolved.profileUserId,
-    reportKindsAsAsyncJobKinds()
+    notifiedReportKindsAsAsyncJobKinds()
   );
 
   const deliveryByJob = new Map<string, Record<string, DeliveryStatus>>();
@@ -131,7 +131,7 @@ export async function POST(request: NextRequest) {
 
   const dismissed = await dismissReportJobsTrayForUser(
     resolved.profileUserId,
-    reportKindsAsAsyncJobKinds(),
+    notifiedReportKindsAsAsyncJobKinds(),
     jobIds
   );
   return NextResponse.json({ ok: true, dismissed });

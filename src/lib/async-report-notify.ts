@@ -31,6 +31,8 @@ const REPORT_READY_TITLES: Record<string, string> = {
   natal_interpretation: "Натальный разбор готов",
   natal_forecast: "Натальный прогноз готов",
   natal_compatibility: "Натальная совместимость готова",
+  aura_reading: "Разбор ауры готов",
+  palm_reading: "Разбор ладони готов",
 };
 
 const BODY =

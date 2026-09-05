@@ -181,6 +181,19 @@ export default function NatalCompatibility() {
     return new URLSearchParams(window.location.search).get("invite")?.trim() ?? "";
   }, []);
 
+  const selectCompatibility = useCallback((recordId: string) => {
+    setSelectedId(recordId);
+    setError("");
+    const url = new URL(window.location.href);
+    url.searchParams.set("tab", "compatibility");
+    url.searchParams.set("compatibility", recordId);
+    window.history.replaceState(
+      window.history.state,
+      "",
+      `${url.pathname}${url.search}${url.hash}`
+    );
+  }, []);
+
   const loadRecords = useCallback(async () => {
     setLoading(true);
     try {
@@ -189,7 +202,22 @@ export default function NatalCompatibility() {
       if (!response.ok) throw new Error(data.error);
       const next = data.compatibility ?? [];
       setRecords(next);
-      setSelectedId((current) => current ?? next.find((item) => item.status !== "expired")?.id ?? null);
+      const search = new URLSearchParams(window.location.search);
+      const requestedCompatibilityId =
+        search.get("compatibility")?.trim() ?? "";
+      const requestedId = next.some((item) => item.id === requestedCompatibilityId);
+      if (requestedCompatibilityId && !requestedId) {
+        setSelectedId(null);
+        setError("Эта сохранённая совместимость недоступна или была удалена. Выберите запись из архива.");
+        return;
+      }
+      setSelectedId(
+        (current) =>
+          (requestedId ? requestedCompatibilityId : null) ??
+          (current && next.some((item) => item.id === current) ? current : null) ??
+          next.find((item) => item.status !== "expired")?.id ??
+          null
+      );
     } catch (reason) {
       setError(errorMessage(reason instanceof Error ? reason.message : undefined));
     } finally {
@@ -309,7 +337,7 @@ export default function NatalCompatibility() {
       setManual(EMPTY_MANUAL);
       setManualConsent(false);
       setCitySelected(false);
-      setSelectedId(data.record.id);
+      selectCompatibility(data.record.id);
       setNotice(data.reused ? "Открыт ранее созданный расчёт этой пары." : "Синастрия рассчитана. Теперь можно заказать полный отчёт.");
       await loadRecords();
     } catch (reason) {
@@ -344,7 +372,7 @@ export default function NatalCompatibility() {
       url.searchParams.set("tab", "compatibility");
       url.searchParams.set("invite", data.token);
       setInviteUrl(url.toString());
-      setSelectedId(data.record.id);
+      selectCompatibility(data.record.id);
       setInvitePartnerLabel("");
       setNotice("Приглашение создано. Отправьте приватную ссылку второму человеку.");
       await navigator.clipboard.writeText(url.toString()).catch(() => undefined);
@@ -380,7 +408,7 @@ export default function NatalCompatibility() {
       const data = await responseJson<{ record?: CompatibilityRecord; error?: string }>(response);
       if (!response.ok || !data.record) throw new Error(data.error);
       setInviteRecord(data.record);
-      setSelectedId(data.record.id);
+      selectCompatibility(data.record.id);
       setParticipantConsent(false);
       setNotice("Ваши натальные карты сопоставлены. Инициатор может заказать полный отчёт.");
       const url = new URL(window.location.href);
@@ -453,8 +481,7 @@ export default function NatalCompatibility() {
       if (!settledOk || !data.record) {
         throw new Error(data.message || data.error || "generation_failed");
       }
-      setSelectedId(data.record.id);
-      setError("");
+      selectCompatibility(data.record.id);
       setNotice("Полный отчёт совместимости готов.");
       await loadRecords();
     } catch (reason) {
@@ -483,7 +510,16 @@ export default function NatalCompatibility() {
       });
       const data = await responseJson<{ deleted?: boolean; error?: string }>(response);
       if (!response.ok || !data.deleted) throw new Error(data.error);
-      setSelectedId((current) => (current === record.id ? null : current));
+      if (selectedId === record.id) {
+        setSelectedId(null);
+        const url = new URL(window.location.href);
+        url.searchParams.delete("compatibility");
+        window.history.replaceState(
+          window.history.state,
+          "",
+          `${url.pathname}${url.search}${url.hash}`
+        );
+      }
       setNotice("Отчёт удалён, приватные ссылки отозваны.");
       await loadRecords();
     } catch (reason) {
@@ -696,7 +732,7 @@ export default function NatalCompatibility() {
               >
                 <button
                   type="button"
-                  onClick={() => setSelectedId(record.id)}
+                  onClick={() => selectCompatibility(record.id)}
                   className="block w-full pr-10 text-left"
                 >
                   <p className="text-sm font-medium text-white">{record.ownerLabel} и {record.partnerLabel}</p>
