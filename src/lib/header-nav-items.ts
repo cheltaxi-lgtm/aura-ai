@@ -125,7 +125,7 @@ export function buildHeaderNavSections(
           ? [
               {
                 id: "photo",
-                label: callbacks.photoNavLabel,
+                label: "Расклад Таро по фото",
                 icon: Camera,
                 onClick: callbacks.onNavPhoto,
               } satisfies HeaderNavItem,
