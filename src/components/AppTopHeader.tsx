@@ -124,6 +124,7 @@ export default function AppTopHeader({
   return (
     <header
       ref={headerRef}
+      data-authenticated={isLoggedIn ? "true" : "false"}
       className="app-top-header fixed top-0 left-0 right-0 border-b border-white/5 bg-black/80 backdrop-blur-md max-md:bg-[#0a0908] max-md:backdrop-blur-none"
     >
       <div className="mx-auto flex min-w-0 max-w-7xl items-center justify-between gap-2 px-4 py-2.5 sm:gap-3 sm:px-6 sm:py-3">

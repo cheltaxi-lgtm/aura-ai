@@ -48,9 +48,9 @@ export default function EditorialHeroSection({
         <div className="editorial-hero__overlay" aria-hidden />
       </div>
       <div className="editorial-hero__content">
-        <p className="editorial-hero__brand">{BRAND_NAME}</p>
+        <p className="editorial-hero__brand">{guestConversion ? "Таро · пространство для вашего вопроса" : BRAND_NAME}</p>
         <h1 id="editorial-hero-title" className="editorial-hero__title">
-          {guestConversion ? "Бесплатный расклад Таро по вашему вопросу" : EDITORIAL_HERO.title}
+          {guestConversion ? <>Когда вопрос не отпускает —<br /><em>начните с трёх карт.</em></> : EDITORIAL_HERO.title}
         </h1>
         <p className="editorial-hero__subtitle">
           {expectationSubtitle ?? EDITORIAL_HERO.subtitle}
@@ -58,7 +58,7 @@ export default function EditorialHeroSection({
         <HeroQuestionField
           className="editorial-hero__question"
           onQuestionSubmit={onQuestionSubmit}
-          autoFocusDesktop={guestConversion}
+          autoFocusDesktop={false}
           submitVariant={guestConversion ? "gold" : "secondary"}
           submitLabel={guestConversion ? "Открыть 3 карты бесплатно" : undefined}
           placeholder="Например: вернётся ли он?"

@@ -29,18 +29,18 @@ export default function HomeAuraBanner() {
         <div className="ritual-cta-banner__copy">
           <p className="aura-promo-banner__badge-row">
             <span className="aura-promo-banner__badge">Новинка</span>
-            <span className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
-              7 слоёв поля · чакры · цветовая карта
+            <span className="text-xs font-medium tracking-wide text-amber-200/80">
+              Цвет · символы · личная интерпретация
             </span>
           </p>
           <h2 id="home-aura-banner-title" className="ritual-cta-banner__title">
             Ваша аура по фото
           </h2>
           <p className="ritual-cta-banner__text">
-            Камера видит лицо — мастер читает поле: доминирующий цвет, состояние чакр
-            и цветовую карту вашей ауры. Снимок за полминуты, фото не сохраняется.
+            Взгляните на себя через язык цвета. ИИ создаст символический портрет
+            по вашему фото и предложит темы для размышления.
           </p>
-          <p className="mt-1 text-xs text-white/40">
+          <p className="mt-2 text-sm text-white/75">
             Снимок бесплатно · первый разбор — половина цены (полная стоимость{" "}
             {formatRunes(cost("AURA_READING"))})
           </p>

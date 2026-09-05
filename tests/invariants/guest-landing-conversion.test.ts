@@ -73,7 +73,6 @@ describe("guest landing conversion cleanup", () => {
       "<EditorialReviewsSection",
       "<LandingSeoHub",
       "<LandingClosingBand",
-      "<LandingStickyCta",
     ];
     let last = -1;
     for (const marker of markers) {
@@ -118,7 +117,7 @@ describe("guest landing conversion cleanup", () => {
 
   it("guest extra features show PhotoTarot + Numerology, not a core-product catalog", () => {
     const extra = readSrc("src/components/editorial/EditorialExtraFeaturesSection.tsx");
-    expect(extra).toContain("ФотоТаро");
+    expect(extra).toContain("Расклад Таро по фото");
     expect(extra).toContain("Нумерология");
     expect(extra).toContain("/landing/practices/photo-tarot.jpg");
     expect(extra).toContain("/landing/practices/numerology.jpg");
@@ -170,8 +169,11 @@ describe("guest landing conversion cleanup", () => {
     expect(finalCta).toContain('StarterRunesValue variant="line" generic product="home_final"');
   });
 
-  it("sticky CTA label is unchanged", () => {
+  it("guest reading area has no overlapping sticky CTA; fixed header retains start", () => {
     const guest = guestLandingBranch();
-    expect(guest).toContain('label="Открыть 3 карты"');
+    expect(guest).not.toContain("<LandingStickyCta");
+    const header = readSrc("src/components/AppTopHeader.tsx");
+    expect(header).toContain("onClick={onStartReading}");
+    expect(header).toContain("fixed top-0");
   });
 });

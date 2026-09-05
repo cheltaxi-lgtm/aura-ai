@@ -50,7 +50,7 @@ for (const width of [768, 1440]) {
     await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20000 });
     const bounds = await hero.locator(".hero-question__row").evaluate(el => ({ width: el.clientWidth, scroll: el.scrollWidth }));
     expect(bounds.scroll).toBeLessThanOrEqual(bounds.width + 1);
-    await expect(page.locator(".landing-sticky-cta")).toHaveAttribute("aria-hidden", "true");
+    await expect(page.locator(".landing-sticky-cta")).toHaveCount(0);
     await page.screenshot({ path: "test-results/guest-hero-" + width + ".png", fullPage: false });
   });
 }

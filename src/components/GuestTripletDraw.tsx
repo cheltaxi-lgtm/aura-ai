@@ -723,11 +723,11 @@ export default function GuestTripletDraw({
       <div className="guest-resume-banner px-4 pb-4">
       <aside className="mx-auto max-w-lg rounded-2xl border border-aura-gold/25 bg-black/40 p-4" aria-label="Сохранённый расклад">
         <p className="font-medium text-aura-champagne">Ваши три карты сохранены</p>
-        <p className="mt-1 text-sm text-white/70">Войдите, чтобы продолжить полный разбор этих карт. Пересчёта не будет.</p>
+        <p className="mt-1 text-sm text-white/70">Вернитесь к своему вопросу и продолжите разбор тех же карт.</p>
         <a
           href={buildRegisterHref(resolveRegistrationReturnTo({ guestSpread: true, guestMasterId: savedResume.masterId, guestQuestion: savedResume.question || undefined }))}
           onClick={() => trackGuestTeaserCta()}
-          className="btn-luxe btn-luxe--md btn-luxe--gold mt-3 w-full"
+          className="guest-resume-banner__link btn-luxe btn-luxe--md btn-luxe--ghost mt-3 w-full"
         >Продолжить сохранённый расклад</a>
       </aside>
       </div>

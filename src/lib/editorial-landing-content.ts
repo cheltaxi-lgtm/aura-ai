@@ -24,7 +24,7 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
   {
     id: "matrix",
     title: "Матрица судьбы",
-    text: "Схема по дате рождения",
+    text: "Сильные стороны и жизненные темы по дате рождения",
     cta: "Рассчитать бесплатно",
     href: "/numerology/destiny-matrix",
     kind: "link" as const,
@@ -32,7 +32,7 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
   {
     id: "natal",
     title: "Натальная карта",
-    text: "Планеты, дома, аспекты",
+    text: "Карта рождения и её персональная расшифровка",
     cta: "Построить карту",
     href: "/natalnaya-karta",
     kind: "link" as const,
@@ -40,7 +40,7 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
   {
     id: "hd",
     title: "Дизайн человека",
-    text: "Тип, стратегия, центры",
+    text: "Ваш тип, стратегия и особенности взаимодействия",
     cta: "Рассчитать бодиграф",
     href: "/dizayn-cheloveka/rasschitat",
     kind: "link" as const,
@@ -56,7 +56,7 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
   {
     id: "aura",
     title: "Аура по фото",
-    text: "Цвета, слои и чакры поля",
+    text: "Символический портрет в цветах по вашему фото",
     cta: "Увидеть ауру",
     href: "/aura",
     kind: "link" as const,
@@ -64,7 +64,7 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
   {
     id: "palm",
     title: "Гадание по ладони",
-    text: "Линии, холмы, тип руки",
+    text: "Линии и форма руки в традиции хиромантии",
     cta: "Снять ладонь",
     href: "/gadanie-po-ladoni",
     kind: "link" as const,
@@ -214,22 +214,22 @@ export const EDITORIAL_SESSION_STEPS = [
   {
     icon: "question" as const,
     title: "Сформулируйте вопрос",
-    text: "Достаточно одной честной формулировки — о связи, решении или внутреннем состоянии.",
+    text: "Напишите, что вас волнует. Можно начать с готового вопроса.",
   },
   {
     icon: "cards" as const,
-    title: "Откройте символы",
-    text: "Три карты открываются под ваш запрос — ещё до регистрации.",
+    title: "Откройте свои карты",
+    text: "Откройте карты и прочитайте краткий ответ — бесплатно, без аккаунта.",
   },
   {
     icon: "book" as const,
     title: "Получите трактовку",
-    text: "Сначала короткий смысл символов, затем полный разбор у выбранного мастера.",
+    text: "Зарегистрируйтесь, чтобы бесплатно получить первый полный разбор тех же карт.",
   },
   {
     icon: "chat" as const,
     title: "Продолжите диалог",
-    text: "Уточняйте детали в чате — мастер удерживает нить разговора в рамках сеанса.",
+    text: "Перечитайте сохранённый ответ или задайте уточнение. Стоимость видна до отправки.",
   },
 ] as const;
 
@@ -237,7 +237,7 @@ export const EDITORIAL_SESSION_STEPS = [
 export const EDITORIAL_PRACTICES = [
   {
     id: "photo",
-    title: "ФотоТаро",
+    title: "Расклад Таро по фото",
     subtitle: "Сфотографируйте свой расклад — мастер разберёт каждую позицию.",
     image: "/landing/practices/photo-tarot.jpg",
     cta: "Загрузить фото расклада",
@@ -305,7 +305,7 @@ export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Дизайн Человека", href: "/dizayn-cheloveka" },
   { label: "Таро", href: "/taro" },
   { label: "Гадание", href: "/gadanie" },
-  { label: "Фото-расклад", href: "/photo-rasklad" },
+  { label: "Расклад Таро по фото", href: "/photo-rasklad" },
   { label: "Гадание по ладони", href: "/gadanie-po-ladoni" },
   { label: "Расклады", href: "/rasklady" },
   { label: "Руны", href: "/runy" },

@@ -21,7 +21,7 @@ const SERVICES = [
   { href: "/rasklady", label: "Расклады Таро" },
   { href: "/natalnaya-karta", label: "Натальная карта" },
   { href: "/dizayn-cheloveka", label: "Дизайн Человека" },
-  { href: "/photo-rasklad", label: "Фото-расклад" },
+  { href: "/photo-rasklad", label: "Расклад Таро по фото" },
   { href: "/aura", label: "Аура по фото" },
   { href: "/gadanie-po-ladoni", label: "Гадание по ладони" },
   { href: "/numerology", label: "Нумерология" },
@@ -59,7 +59,7 @@ const SERVICE_DETAILS = [
   },
   {
     href: "/photo-rasklad",
-    title: "Фото-расклад",
+    title: "Расклад Таро по фото",
     text: "Загрузите фото своих карт — распознаем расклад и разберём позиции с выбранным мастером.",
     icon: Camera,
   },

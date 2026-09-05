@@ -107,7 +107,7 @@ export default function AppTopHeaderAccount({
 
   if (!user) {
     return (
-      <Link href="/auth" className={pillClass} title="Войти">
+      <Link href="/auth" className={`${pillClass} app-top-header__login`} title="Войти">
         <LogIn className="h-3.5 w-3.5 shrink-0" aria-hidden />
         Войти
       </Link>

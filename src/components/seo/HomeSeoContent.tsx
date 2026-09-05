@@ -32,6 +32,8 @@ export default function HomeSeoContent() {
 
   return (
     <section className="home-seo-panel" aria-label="Zovus — матрица, натал, дизайн человека и Таро">
+      <details className="home-seo-panel__disclosure">
+      <summary>Найдите свой вопрос · каталог практик Zovus</summary>
       <div className="home-seo-panel__top">
         <div className="home-seo-panel__intro">
           <p className="home-seo-panel__eyebrow">Каталог</p>
@@ -47,8 +49,8 @@ export default function HomeSeoContent() {
             <Link href="/dizayn-cheloveka/rasschitat">дизайна человека</Link>
             ,{" "}
             <Link href="/dizayn-cheloveka/sovmestimost">совместимости по Дизайну Человека</Link> или
-            открыть три карты Таро бесплатно до регистрации. Первый расклад после входа не
-            перетягивается и это не карта дня. Три карты дня — отдельный ритуал раз в сутки.
+            открыть три карты Таро бесплатно до регистрации. После входа вы продолжите разбор
+            этих же карт. Три карты дня доступны отдельно, бесплатно раз в сутки.
           </p>
           <p>
             Можно выбрать готовый вопрос в каталоге, загрузить{" "}
@@ -107,6 +109,7 @@ export default function HomeSeoContent() {
         </ul>
       </div>
 
+      </details>
     </section>
   );
 }

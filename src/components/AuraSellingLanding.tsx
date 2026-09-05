@@ -415,7 +415,6 @@ export default function AuraSellingLanding({
         <EditorialPreviewSection />
         <EditorialStarterGiftSection />
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
-        <HomeAuraBanner />
         <EditorialSessionStepsSection />
         {showMasters ? (
           <MastersShowcase
@@ -432,13 +431,14 @@ export default function AuraSellingLanding({
             showExpertCta={false}
             showDisclaimer={false}
             title="Выберите наставника"
-            subtitle="Каждый мастер ведёт в своей традиции — Таро, руны, астрология или нумерология."
+            subtitle="ИИ-наставники с разными подходами. Выберите голос, с которым вам комфортно обсуждать свой вопрос."
             className="aura-landing-masters"
           />
         ) : null}
-        <details className="mx-auto my-6 max-w-6xl px-5">
+        <details className="editorial-more mx-auto my-6 max-w-6xl px-5">
         <summary className="cursor-pointer rounded-2xl border border-aura-gold/25 px-5 py-4 text-aura-champagne">Другие возможности Zovus</summary>
         <EditorialBirthToolsSection />
+        <HomeAuraBanner />
         <EditorialDailyCardsSection
           isLoggedIn={false}
           onGuestCta={() => startGuestSpread()}
@@ -447,6 +447,8 @@ export default function AuraSellingLanding({
         </details>
         <EditorialReviewsSection />
         {showTariffs ? (
+          <details className="editorial-more mx-auto my-6 max-w-6xl px-5">
+          <summary>Все разделы Zovus</summary>
           <LandingSeoHub
             rubPerRune={config.rubPerRune}
             readingCost={ready && config.enabled ? cost("READING") : undefined}
@@ -454,9 +456,10 @@ export default function AuraSellingLanding({
             hideFaq
             hidePricingNote
           />
+          </details>
         ) : null}
         <LandingClosingBand onOpenCards={() => handlePrimaryCta("final")} />
-        <LandingStickyCta label="Открыть 3 карты" onClick={() => handlePrimaryCta("sticky")} />
+        {/* The fixed header already offers a persistent start; keep the reading area unobstructed. */}
       </div>
     );
   }

@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { EDITORIAL_PRODUCT_ENTRIES } from "@/lib/editorial-landing-content";
+import { EDITORIAL_PRODUCT_ENTRIES, EDITORIAL_SECTION_IDS } from "@/lib/editorial-landing-content";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 type EditorialProductEntriesProps = {
@@ -17,7 +17,8 @@ export default function EditorialProductEntries({ onTarotCta }: EditorialProduct
 
   return (
     <section
-      className="editorial-product-entries"
+      id={EDITORIAL_SECTION_IDS.practices}
+      className="editorial-product-entries scroll-mt-24"
       aria-label="Направления Zovus"
     >
       <div className="editorial-landing__inner">

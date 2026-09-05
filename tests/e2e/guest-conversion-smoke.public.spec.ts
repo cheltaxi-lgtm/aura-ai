@@ -237,7 +237,7 @@ test("late registration offer hides competing sticky CTA", async ({ page }) => {
   await expect(cta).toBeVisible();
   await cta.scrollIntoViewIfNeeded();
   await expect(cta).toBeInViewport();
-  await expect(page.locator(".landing-sticky-cta")).toHaveAttribute("aria-hidden", "true");
+  await expect(page.locator(".landing-sticky-cta")).toHaveCount(0);
   await cta.click();
   await expect(page).toHaveURL(/\/auth\/user\/register(?:\?|$)/);
 });

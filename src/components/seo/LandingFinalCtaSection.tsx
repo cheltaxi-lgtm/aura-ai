@@ -41,12 +41,12 @@ export default function LandingFinalCtaSection({ onOpenCards }: LandingFinalCtaS
       aria-labelledby="landing-final-cta-title"
     >
       <h2 id="landing-final-cta-title" className="landing-final-cta__title">
-        Вопрос уже сформулирован —{" "}
-        <span className="landing-final-cta__title-keep">осталось открыть карты</span>
+        Дайте своему вопросу{" "}
+        <span className="landing-final-cta__title-keep">место и время</span>
       </h2>
       <p className="landing-final-cta__sub">
-        Откройте три карты и получите короткий ориентир. Полный разбор сохранится за этими же картами
-        после регистрации.
+        Начните с трёх карт и краткой трактовки. Первый полный разбор этих же карт — бесплатно
+        после регистрации. Вернуться к нему можно в личном кабинете.
       </p>
       <button type="button" className="editorial-btn editorial-btn--gold" onClick={onOpenCards}>
         Открыть 3 карты

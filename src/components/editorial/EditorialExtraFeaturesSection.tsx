@@ -31,7 +31,7 @@ export default function EditorialExtraFeaturesSection() {
     <section
       ref={ref}
       className={`editorial-section editorial-extra-features ${className} salon-reveal--stagger`}
-      aria-label="ФотоТаро и нумерология"
+      aria-label="Расклад Таро по фото и нумерология"
     >
       <div className="editorial-landing__inner">
         <article
@@ -46,7 +46,7 @@ export default function EditorialExtraFeaturesSection() {
             />
           </div>
           <div className="editorial-extra-feature__copy">
-            <p className="editorial-extra-feature__eyebrow">ФотоТаро</p>
+            <p className="editorial-extra-feature__eyebrow">Расклад Таро по фото</p>
             <h2 className="editorial-extra-feature__title">Уже разложили карты сами?</h2>
             <p className="editorial-extra-feature__text">
               Загрузите фотографию расклада — Zovus поможет разобрать каждую позицию, сочетание
@@ -58,7 +58,7 @@ export default function EditorialExtraFeaturesSection() {
                   Для нового пользователя — бесплатно на стартовые руны
                 </p>
                 <p className="editorial-extra-feature__offer-note">
-                  При первой регистрации — {starter} ᚢ · ФотоТаро — {photoCost} ᚢ
+                  При первой регистрации — {starter} ᚢ · Разбор по фото — {photoCost} ᚢ
                 </p>
               </div>
             ) : photoReady ? (
@@ -72,7 +72,7 @@ export default function EditorialExtraFeaturesSection() {
               </div>
             ) : null}
             <Link href={photoHref} className="editorial-btn editorial-btn--gold">
-              {photoFree ? "Попробовать ФотоТаро бесплатно" : "Открыть ФотоТаро"}
+              {photoFree ? "Разобрать свой расклад бесплатно" : "Разобрать свой расклад"}
             </Link>
           </div>
         </article>

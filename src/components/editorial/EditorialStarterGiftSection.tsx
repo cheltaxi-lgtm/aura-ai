@@ -103,11 +103,11 @@ export default function EditorialStarterGiftSection() {
           <div className="editorial-starter-pack__copy">
             <p className="editorial-starter-pack__eyebrow">Начните бесплатно</p>
             <h2 id="editorial-starter-gift-title" className="editorial-starter-pack__title">
-              Сохраните свои разборы и возвращайтесь к ним
+              Ваш первый разбор — начало личной истории
             </h2>
             <p className="editorial-starter-gift__amount">При первой регистрации — {starter} ᚢ</p>
             <ul className="editorial-starter-gift__points">
-              <li>История разборов в личном кабинете</li>
+              <li>Сохранённые разборы — перечитывайте, когда захотите</li>
               <li>3 карты дня бесплатно раз в сутки</li>
               <li>{starter} ᚢ на дополнительные разборы — цена видна до начала</li>
             </ul>
@@ -121,7 +121,7 @@ export default function EditorialStarterGiftSection() {
                 Создать бесплатный аккаунт
               </Link>
             </div>
-            <p className="editorial-starter-pack__fine">Банковская карта для регистрации не нужна.</p>
+            <p className="editorial-starter-pack__fine">Без банковской карты. Решение о платных разборах — за вами.</p>
             <details className="editorial-starter-gift__details">
             <summary>На что хватит {starter} ᚢ</summary>
             <p className="editorial-starter-pack__fine">Примеры на выбор: весь подарок на один из форматов. Количество указано по обычной цене, без дополнительных уточнений.</p>
