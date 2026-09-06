@@ -12,6 +12,7 @@ import AuraSubjectPicker, {
   type AuraPickerSubject,
 } from "@/components/aura/AuraSubjectPicker";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { useAuth } from "@/lib/useAuth";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
@@ -99,6 +100,7 @@ export default function AuraReadingFlow() {
   const [snapshot, setSnapshot] = useState<FlowSnapshot | null>(null);
   const [snapshotId, setSnapshotId] = useState<string | null>(null);
   const [report, setReport] = useState<string | null>(null);
+  const [exportHistoryId, setExportHistoryId] = useState<string | null>(null);
   const [pricing, setPricing] = useState<AuraPricing | null>(null);
   const [runeBalance, setRuneBalance] = useState<number | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -262,7 +264,7 @@ export default function AuraReadingFlow() {
           }
           if (typeof data.subjectName === "string") setDraftName(data.subjectName);
           if (data.paid === true && typeof data.report === "string" && data.report.trim()) {
-            setReport(data.report);
+            setReport(data.report); setExportHistoryId(data.historyId ?? null);
             setStep("report");
           } else if (data.claimed === true || isLoggedIn) {
             setStep("claimed");
@@ -274,7 +276,7 @@ export default function AuraReadingFlow() {
           if (othersOn && (selectedSubjectId || creatingOther)) {
             setSnapshot(null);
             setSnapshotId(null);
-            setReport(null);
+            setReport(null); setExportHistoryId(null);
             setReusedKind(null);
             setStep("capture");
           }
@@ -358,7 +360,7 @@ export default function AuraReadingFlow() {
     setPhotoUrl(null);
     setSnapshot(null);
     setSnapshotId(null);
-    setReport(null);
+    setReport(null); setExportHistoryId(null);
     setReusedKind(null);
     setDayLocked(false);
     setSimilarColorHint(null);
@@ -404,7 +406,7 @@ export default function AuraReadingFlow() {
     setDayLocked(false);
     setSnapshot(null);
     setSnapshotId(null);
-    setReport(null);
+    setReport(null); setExportHistoryId(null);
     setReusedKind(null);
     setSimilarColorHint(null);
     setError(null);
@@ -446,7 +448,7 @@ export default function AuraReadingFlow() {
       }
       setSnapshot(entry.snapshot as FlowSnapshot);
       setSnapshotId(typeof entry.snapshotId === "string" ? entry.snapshotId : null);
-      setReport(typeof entry.report === "string" ? entry.report : null);
+      setReport(typeof entry.report === "string" ? entry.report : null); setExportHistoryId(entry.historyId ?? null);
       if (entry.subjectKind === "other" || entry.subjectKind === "self") {
         setSubjectKind(entry.subjectKind);
         setCreatingOther(false);
@@ -759,7 +761,7 @@ export default function AuraReadingFlow() {
           const data = await res.json().catch(() => null);
           if (!data) continue;
           if (data.status === "completed" && data.result?.report) {
-            setReport(String(data.result.report));
+            setReport(String(data.result.report)); setExportHistoryId(data.result.historyId ?? null);
             // Paid payload carries the full snapshot (layers + chakras).
             if (data.result.snapshot && typeof data.result.snapshot === "object") {
               setSnapshot(data.result.snapshot as AuraSnapshot);
@@ -855,7 +857,7 @@ export default function AuraReadingFlow() {
 
       // Sync fallback (worker not configured): report arrives inline.
       if (typeof data?.report === "string") {
-        setReport(data.report);
+        setReport(data.report); setExportHistoryId(data.historyId ?? null);
         if (data.snapshot && typeof data.snapshot === "object") {
           setSnapshot(data.snapshot as AuraSnapshot);
         }
@@ -1344,6 +1346,7 @@ export default function AuraReadingFlow() {
             />
 
             <div className="photo-flow-panel">
+              {exportHistoryId && <ReportExportActions path={`/cabinet/readings/${exportHistoryId}/print`} />}
               <PremiumReadingBody content={report} className="text-sm text-white/85" />
             </div>
 

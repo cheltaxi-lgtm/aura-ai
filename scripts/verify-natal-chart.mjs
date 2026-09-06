@@ -1304,7 +1304,7 @@ async function main() {
     "hardening migration disables untouched legacy backfill without overriding explicit opt-ins"
   );
   assert(
-    printableReport.includes("@media print") &&
+    readFileSync(new URL("../src/styles/report-document.css", import.meta.url), "utf8").includes("@media print") &&
       printableReport.includes('data-print-toc="true"') &&
       printableReport.includes('data-evidence-appendix="true"') &&
       printableReport.includes('data-legacy-printable="true"'),
@@ -1352,8 +1352,8 @@ async function main() {
     );
   }
   assert(
-    printableReport.includes("Приложение: расчётные данные") &&
-      printableReport.includes("NatalStructuredReportView") &&
+    printableReport.includes("Расчётные данные") &&
+      printableReport.includes("ReportRichText") &&
       !natalStructuredReportView.includes("Основано на") &&
       !natalStructuredReportView.includes("Показать расчёт:") &&
       astrologyWorkspace.includes("NatalStructuredReportView") &&

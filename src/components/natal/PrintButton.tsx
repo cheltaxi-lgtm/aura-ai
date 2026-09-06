@@ -1,8 +1,12 @@
 "use client";
+import { usePathname } from "next/navigation";
+import PdfDownloadButton from "@/components/reports/PdfDownloadButton";
 
 export default function PrintButton() {
-  return <button type="button" onClick={() => window.print()}
-    className="print:hidden rounded-lg border border-black/20 px-4 py-2 text-sm">
-    Печать / сохранить PDF
-  </button>;
+  const path = usePathname();
+  const pro = path?.match(/^\/r\/([^/]+)\/print$/)?.[1];
+  return <div className="report-document__actions print:hidden">
+    <PdfDownloadButton path={path ?? undefined} endpoint={pro ? `/api/pro/public/report/${encodeURIComponent(pro)}/pdf` : undefined} />
+    <button type="button" onClick={() => window.print()}>Печать</button>
+  </div>;
 }

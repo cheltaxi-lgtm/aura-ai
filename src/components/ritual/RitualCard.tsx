@@ -1,6 +1,7 @@
 "use client";
 
 import { useRef, useState } from "react";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 import ShareButton from "@/components/share/ShareButton";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { ritualToSharePayload } from "@/lib/share/payload-builders";
@@ -230,6 +231,7 @@ export default function RitualCard({ ritual, onDone }: Props) {
         >
           {saving ? "…" : "📥 Сохранить"}
         </button>
+        {["completed", "reviewed"].includes(ritual.status) && <ReportExportActions path={`/cabinet/readings/${ritual.id}/print`} />}
         <ShareButton
           payload={sharePayload}
           variant="pill"

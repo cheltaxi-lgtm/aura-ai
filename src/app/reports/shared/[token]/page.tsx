@@ -1,5 +1,5 @@
 import { notFound } from "next/navigation";
-import PrintButton from "@/components/natal/PrintButton";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
 import { getActivePublicReportShare } from "@/lib/services/public-report-share-service";
@@ -25,7 +25,7 @@ export default async function SharedReportPage({ params }: { params: Promise<{ t
                 ? "Отчёт об отношениях"
                 : "Астрологический отчёт"
           }</h1></div>
-        <PrintButton />
+        <ReportExportActions path={`/reports/shared/${encodeURIComponent(token)}/print`} />
       </div>
       {typeof report.summary === "string" ? (
         <div className="mt-6">

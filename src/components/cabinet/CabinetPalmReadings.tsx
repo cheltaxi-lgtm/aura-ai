@@ -1,4 +1,5 @@
 "use client";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
@@ -154,6 +155,7 @@ export default function CabinetPalmReadings({ readings, onDelete, deletingId = n
                 {active.paid && snapshotOf(active)?.majorLines ? (
                   <PalmInsightCards snapshot={snapshotOf(active)!} />
                 ) : null}
+                {active.paid && <ReportExportActions path={`/cabinet/readings/${active.id}/print`} />}
                 {active.contextData.report ? (
                   <PremiumReadingBody content={active.contextData.report} className="text-sm text-white/85" />
                 ) : (

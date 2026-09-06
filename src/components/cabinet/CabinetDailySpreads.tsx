@@ -1,4 +1,5 @@
 "use client";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useState, useEffect } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -112,6 +113,7 @@ export default function CabinetDailySpreads({ readings }: Props) {
                 </div>
 
                 <div className="lux-scroll flex-1 overflow-y-auto px-5 py-5">
+                  <ReportExportActions path={`/cabinet/readings/${active.id}/print`} />
                   {active.cards.length >= 3 ? (
                     <DeckCardsRow
                       cards={active.cards.map((c) => ({

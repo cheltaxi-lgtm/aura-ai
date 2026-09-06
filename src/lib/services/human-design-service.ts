@@ -771,6 +771,12 @@ export async function getHdChartByFingerprint(fingerprint: string): Promise<HdCh
   return mapChartRow(await refreshChartIfEngineStale(rows[0]));
 }
 
+/** Read a persisted chart for an existing report without recalculating or writing. */
+export async function getStoredHdChartById(id: string): Promise<HdChartRow | null> {
+  const { rows } = await query<HdChartDbRow>("SELECT * FROM hd_charts WHERE id = $1", [id]);
+  return rows[0] ? mapChartRow(rows[0]) : null;
+}
+
 export async function getHdChartById(id: string): Promise<HdChartRow | null> {
   const { rows } = await query<HdChartDbRow>("SELECT * FROM hd_charts WHERE id = $1", [id]);
   if (!rows[0]) return null;

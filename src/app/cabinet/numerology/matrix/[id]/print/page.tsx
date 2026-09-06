@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import { partnerDateFromPairStructuredData } from "@/lib/numerology/matrix-pair-ownership";
 import PrintableReport from "@/components/natal/PrintableReport";
 import { buildAuthHref } from "@/lib/post-auth-return";
 import {
@@ -29,6 +30,8 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
   if (!report) notFound();
   // Pre-v3 reports stay printable — they were paid for — but their numbers came from
   // the retired digit-sum reducer and will not match the diagram shown today.
+  const partnerDate = partnerDateFromPairStructuredData(report.structuredData);
+  const title = ({child_matrix: "Матрица ребёнка", matrix_compatibility: "Матрица совместимости", matrix_year_forecast: "Прогноз по матрице на год"} as Record<string, string>)[report.toolId] ?? "Матрица судьбы";
   const isLegacy = isLegacyMatrixCalculationVersion(report.calculationVersion);
   const resolved = resolveMatrixForDisplayDetailed({
     birthDate: report.birthDate,
@@ -46,9 +49,11 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
     : null;
   return (
     <PrintableReport
-      title="Матрица судьбы"
+      title={title}
       meta={[
-        { label: "Дата рождения", value: report.birthDate },
+        { label: report.toolId === "matrix_compatibility" ? "Первый участник · дата рождения" : "Дата рождения", value: report.birthDate },
+        ...(partnerDate ? [{ label: "Второй участник · дата рождения", value: partnerDate }] : []),
+        ...(report.toolId === "matrix_year_forecast" ? [{label:"Год прогноза", value: report.calculationVersion.split("@")[1] || String(new Date(report.createdAt).getFullYear())}] : []),
         { label: "Дата отчёта", value: new Date(report.createdAt).toLocaleString("ru-RU") },
         {
           label: "Методика",
@@ -68,10 +73,10 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
       sections={[]}
       visual={
         diagramSvg ? (
-          <div
+          <figure><div
             className="destiny-matrix-frame destiny-matrix-figure--print w-full max-w-xl"
             dangerouslySetInnerHTML={{ __html: diagramSvg }}
-          />
+          /><figcaption>{report.toolId === "matrix_compatibility" ? "Личная матрица первого участника. Разбор пары приведён в тексте отчёта." : "Матрица по сохранённым расчётным данным"}</figcaption></figure>
         ) : null
       }
       legacyContent={report.content}

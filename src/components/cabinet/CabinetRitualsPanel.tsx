@@ -1,4 +1,5 @@
 "use client";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Trash2, ArrowRight } from "lucide-react";
@@ -322,6 +323,7 @@ export default function CabinetRitualsPanel({
                       </button>
                     </div>
 
+                    {!inProgress && <ReportExportActions path={`/cabinet/readings/${r.id}/print`} />}
                     <div className="mt-3">
                       {awaiting ? (
                         <button

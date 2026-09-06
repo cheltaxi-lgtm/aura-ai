@@ -4,7 +4,7 @@ import PrintableReport from "@/components/natal/PrintableReport";
 import HdStaticBodygraph from "@/components/human-design/HdStaticBodygraph";
 import { buildAuthHref } from "@/lib/post-auth-return";
 import {
-  getHdChartById,
+  getStoredHdChartById,
   getHdCompositeReportById,
 } from "@/lib/services/human-design-service";
 import {
@@ -40,8 +40,8 @@ export default async function HdCompositeReportPrintPage({
   const report = await getHdCompositeReportById(id, auth.profileUserId);
   if (!report || report.status !== "done" || !report.reportText) notFound();
 
-  const base = await getHdChartById(report.baseChartId);
-  const partner = await getHdChartById(report.partnerChartId);
+  const base = await getStoredHdChartById(report.baseChartId);
+  const partner = await getStoredHdChartById(report.partnerChartId);
   if (!base || !partner) notFound();
 
   const labelA =
@@ -58,6 +58,8 @@ export default async function HdCompositeReportPrintPage({
     b: labelB,
   });
 
+  // Legacy reports reference a mutable chart row, not a frozen chart snapshot.
+  const chartNotice = "Схемы и паспорт карты взяты из профиля на дату выгрузки. После обновления карты они могут отличаться от исходных данных разбора. Текст оплаченного отчёта сохранён отдельно.";
   const cleaned = sanitizeHdCompositeReportText(report.reportText);
   const sections = hdReportTextToPrintSections(cleaned);
 
@@ -78,6 +80,7 @@ export default async function HdCompositeReportPrintPage({
         </div>
       }
       meta={[
+        { label: "Карта и текст отчёта", value: chartNotice },
         {
           label: labelA,
           value: `${TYPE_META[conn.typeA].nameRu} · ${conn.profileA} · ${AUTHORITY_NAMES_RU[conn.authorityA]}`,

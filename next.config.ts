@@ -17,7 +17,7 @@ const nextConfig: NextConfig = {
     // with STATUS_STACK_BUFFER_OVERRUN (0xC0000409) on this box. Child-process
     // workers avoid it. Linux CI/prod keep the faster default thread workers.
     ...(process.platform === "win32"
-      ? { workerThreads: false, staticGenerationMaxConcurrency: 4 }
+      ? { workerThreads: false, cpus: 1, staticGenerationMaxConcurrency: 1 }
       : {}),
   },
   images: {

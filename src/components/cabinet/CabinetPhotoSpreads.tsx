@@ -1,4 +1,5 @@
 "use client";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useState, useEffect } from "react";
 import Link from "next/link";
@@ -163,6 +164,7 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                 </div>
               )}
 
+              <ReportExportActions path={`/cabinet/readings/${active.id}/print`} />
               {active.contextData.question ? (
                 <p className="mb-3 text-sm text-gray-400">
                   Вопрос: {active.contextData.question}

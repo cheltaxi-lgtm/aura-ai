@@ -36,6 +36,7 @@ import "../styles/print.css";
 import "./app-shell.css";
 import "../styles/editorial-landing.css";
 import "../styles/pro.css";
+import "../styles/report-document.css";
 
 const inter = Inter({
   subsets: ["latin", "cyrillic"],

@@ -650,14 +650,15 @@ describe("print SVG contract", () => {
   it("print CSS pins A4 and hides UI-only print chrome", () => {
     const css = readFileSync(path.join(ROOT, "src/styles/numerolog.css"), "utf8");
     const printable = readFileSync(
-      path.join(ROOT, "src/components/natal/PrintableReport.tsx"),
+      path.join(ROOT, "src/styles/report-document.css"),
       "utf8"
     );
     expect(css).toMatch(/@media print/);
     expect(css).toMatch(/size:\s*A4 portrait/);
     expect(css).toMatch(/destiny-matrix-figure--print/);
     expect(printable).toMatch(/size: A4 portrait/);
-    expect(printable).toMatch(/print:hidden/);
+    expect(printable).toContain("[data-pdf-toolbar]");
+    expect(readFileSync(path.join(ROOT, "src/components/reports/ReportDocument.tsx"), "utf8")).toContain("data-pdf-toolbar");
   });
 });
 

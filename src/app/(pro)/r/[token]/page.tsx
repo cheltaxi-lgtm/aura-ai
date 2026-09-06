@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
+import PdfDownloadButton from "@/components/reports/PdfDownloadButton";
 import { useParams } from "next/navigation";
 import ProResultCharts, {
   type ChartSnapshot,
@@ -43,21 +45,29 @@ export default function ProReportPublicPage() {
 
   useEffect(() => {
     let cancelled = false;
+    let loading = false;
+    const controller = new AbortController();
     async function load() {
-      const res = await fetch(`/api/pro/public/report/${params.token}`);
-      if (cancelled) return;
-      if (!res.ok) {
-        setErr("Отчёт недоступен");
-        return;
+      if (loading || cancelled) return;
+      loading = true;
+      try {
+        const res = await fetch(`/api/pro/public/report/${params.token}`, { signal: AbortSignal.any([controller.signal, AbortSignal.timeout(20_000)]) });
+        if (!res.ok) throw new Error("Отчёт недоступен");
+        const json = await res.json();
+        if (!json.report || !Array.isArray(json.report.blocks)) throw new Error("report_invalid");
+        if (!cancelled) { setReport(json.report as ReportPayload); setErr(null); }
+      } catch {
+        if (!cancelled) setErr("Не удалось загрузить отчёт. Проверьте соединение; страница повторит попытку автоматически.");
+      } finally {
+        loading = false;
       }
-      const json = await res.json();
-      if (!cancelled) setReport(json.report as ReportPayload);
     }
     void load();
     // Answers arrive asynchronously — poll lightly while the page is open.
     const timer = setInterval(() => void load(), 20_000);
     return () => {
       cancelled = true;
+      controller.abort();
       clearInterval(timer);
     };
   }, [params.token]);
@@ -130,52 +140,13 @@ export default function ProReportPublicPage() {
     }
   }
 
-  async function downloadPdf() {
-    setAskMsg(null);
-    setPdfBusy(true);
-    try {
-      const res = await fetch(`/api/pro/public/report/${params.token}/pdf`, {
-        credentials: "omit",
-      });
-      const ctype = res.headers.get("content-type") || "";
-      if (!res.ok) {
-        const json = ctype.includes("json")
-          ? await res.json().catch(() => ({}))
-          : {};
-        setAskMsg(
-          (json as { message?: string; error?: string }).message ||
-            (json as { error?: string }).error ||
-            `PDF недоступен (${res.status})`
-        );
-        return;
-      }
-      if (!ctype.includes("pdf")) {
-        setAskMsg("Сервер вернул не PDF — попробуйте позже");
-        return;
-      }
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url;
-      a.download = `zovus-pro-report.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      setAskMsg("PDF скачан");
-    } catch {
-      setAskMsg("Не удалось скачать PDF — проверьте сеть и попробуйте снова");
-    } finally {
-      setPdfBusy(false);
-    }
-  }
-
   if (err) {
     return (
       <main className="pro-public mx-auto max-w-lg px-4 py-16 text-center">
         <p className="pro-public__eyebrow">Zovus Pro</p>
-        <h1 className="pro-public__title mt-2 text-2xl">Не найдено</h1>
+        <h1 className="pro-public__title mt-2 text-2xl">Отчёт пока недоступен</h1>
         <p className="mt-2 text-sm text-gray-400">{err}</p>
+        <button type="button" className="mt-5 rounded-lg border px-4 py-2" onClick={() => window.location.reload()}>Повторить загрузку</button>
       </main>
     );
   }
@@ -207,22 +178,9 @@ export default function ProReportPublicPage() {
         </div>
         <div className="flex flex-wrap gap-2">
           {report.pdfAvailable !== false ? (
-          <button
-            type="button"
-            className="rounded-lg border border-[color:var(--pro-border)] px-4 py-2 text-sm text-[color:var(--pro-accent-light)] disabled:opacity-50"
-            disabled={pdfBusy}
-            onClick={() => void downloadPdf()}
-          >
-            {pdfBusy ? "PDF…" : "Скачать PDF"}
-          </button>
+          <PdfDownloadButton endpoint={`/api/pro/public/report/${params.token}/pdf`} />
           ) : null}
-          <button
-            type="button"
-            className="rounded-lg border border-[color:var(--pro-border)] px-4 py-2 text-sm text-[color:var(--pro-accent-light)]"
-            onClick={() => window.print()}
-          >
-            Печать
-          </button>
+          <Link className="rounded-lg border px-4 py-2 text-sm" href={`/r/${params.token}/print`}>Печатная версия</Link>
         </div>
       </div>
 

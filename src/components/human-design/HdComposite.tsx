@@ -602,7 +602,7 @@ export default function HdComposite({ base, partner }: Props) {
       </div>
 
       {/* Paid report */}
-      <div className="hd-panel hd-print-hidden">
+      <div className={report ? "hd-panel" : "hd-panel hd-print-hidden"}>
         <p className="hd-panel__title">Разбор связи от Эвелины</p>
 
         {/* Prefer a ready report over the wait UI — never hide finished text

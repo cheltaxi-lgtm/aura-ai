@@ -1,9 +1,10 @@
+import HdStaticBodygraph from "@/components/human-design/HdStaticBodygraph";
 import { notFound, redirect } from "next/navigation";
 import { requireProfileUserId } from "@/lib/require-auth";
 import PrintableReport from "@/components/natal/PrintableReport";
 import { buildAuthHref } from "@/lib/post-auth-return";
 import {
-  getHdChartById,
+  getStoredHdChartById,
   getHdReportById,
 } from "@/lib/services/human-design-service";
 import {
@@ -44,10 +45,12 @@ export default async function HdReportPrintPage({
   const report = await getHdReportById(id, auth.profileUserId);
   if (!report || report.status !== "done" || !report.reportText) notFound();
 
-  const chart = await getHdChartById(report.chartId);
+  const chart = await getStoredHdChartById(report.chartId);
   if (!chart) notFound();
 
   const typeMeta = TYPE_META[chart.chart.type];
+  // Legacy reports reference a mutable chart row, not a frozen chart snapshot.
+  const chartNotice = "Схемы и паспорт карты взяты из профиля на дату выгрузки. После обновления карты они могут отличаться от исходных данных разбора. Текст оплаченного отчёта сохранён отдельно.";
   const cleaned = sanitizeHdReportText(report.reportText);
   const sections = hdReportTextToPrintSections(cleaned);
   const openCenters = (Object.keys(CENTER_NAMES_RU) as HdCenterKey[]).filter(
@@ -71,7 +74,7 @@ export default async function HdReportPrintPage({
   const coverSections = [
     {
       key: "cover",
-      title: "Обложка · паспорт карты",
+      title: "Паспорт карты из профиля",
       claims: [
         {
           text:
@@ -100,6 +103,7 @@ export default async function HdReportPrintPage({
     <PrintableReport
       title="Zovus · Дизайн Человека — полный разбор"
       meta={[
+        { label: "Карта и текст отчёта", value: chartNotice },
         {
           label: "Данные рождения",
           value: `${chart.birthDate.split("-").reverse().join(".")} · ${
@@ -122,6 +126,7 @@ export default async function HdReportPrintPage({
         },
         { label: "Дата отчёта", value: new Date(report.createdAt).toLocaleString("ru-RU") },
       ]}
+      visual={<HdStaticBodygraph chart={chart.chart} theme="light" idPrefix="hd-report-print" className="w-full max-w-sm" />}
       sections={coverSections}
       legacyContent={coverSections.length > 1 ? null : cleaned}
       methodology="Отчёт Zovus построен строго по рассчитанным данным карты Дизайна Человека: точные эфемериды, истинный лунный узел, 88° солярной дуги. В приложении — активации с color/tone/base, висящие ворота и переменные. Текст — символическая интерпретация Эвелины на основе этих данных."

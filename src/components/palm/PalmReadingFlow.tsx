@@ -6,6 +6,7 @@ import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
 import PalmInsightCards from "@/components/palm/PalmInsightCards";
 import PalmPhotoStage from "@/components/palm/PalmPhotoStage";
@@ -115,6 +116,7 @@ export default function PalmReadingFlow() {
   const [snapshot, setSnapshot] = useState<FlowSnapshot | null>(null);
   const [snapshotId, setSnapshotId] = useState<string | null>(null);
   const [report, setReport] = useState<string | null>(null);
+  const [exportHistoryId, setExportHistoryId] = useState<string | null>(null);
   const [pricing, setPricing] = useState<PalmPricing | null>(null);
   const [runeBalance, setRuneBalance] = useState<number | null>(null);
   const [cameraActive, setCameraActive] = useState(false);
@@ -234,7 +236,7 @@ export default function PalmReadingFlow() {
         const stored = readPalmPreview(nextId);
         if (stored) setPhotoUrl(stored);
         if (data.paid && typeof data.report === "string" && data.report.trim()) {
-          setReport(data.report);
+          setReport(data.report); setExportHistoryId(data.historyId ?? null);
           setStep("report");
         } else {
           setStep(data.claimed ? "claimed" : "teaser");
@@ -262,7 +264,7 @@ export default function PalmReadingFlow() {
     setPhotoUrl(null);
     setSnapshot(null);
     setSnapshotId(null);
-    setReport(null);
+    setReport(null); setExportHistoryId(null);
     setError(null);
     setReusedKind(null);
     setAcceptedEta(null);
@@ -328,10 +330,10 @@ export default function PalmReadingFlow() {
         setSnapshot(entry.snapshot as FlowSnapshot);
         setSnapshotId(typeof entry.snapshotId === "string" ? entry.snapshotId : id);
         if (entry.paid && typeof entry.report === "string" && entry.report.trim()) {
-          setReport(entry.report);
+          setReport(entry.report); setExportHistoryId(entry.historyId ?? null);
           setStep("report");
         } else {
-          setReport(null);
+          setReport(null); setExportHistoryId(null);
           setStep("claimed");
         }
       } catch {
@@ -639,7 +641,7 @@ export default function PalmReadingFlow() {
         const data = await res.json().catch(() => null);
         if (!data) continue;
         if (data.status === "completed" && data.result?.report) {
-          setReport(String(data.result.report));
+          setReport(String(data.result.report)); setExportHistoryId(data.result.historyId ?? null);
           if (data.result.snapshot && typeof data.result.snapshot === "object") {
             setSnapshot(data.result.snapshot as PalmSnapshot);
           }
@@ -716,7 +718,7 @@ export default function PalmReadingFlow() {
         return;
       }
       if (typeof data?.report === "string") {
-        setReport(data.report);
+        setReport(data.report); setExportHistoryId(data.historyId ?? null);
         if (data.snapshot && typeof data.snapshot === "object") {
           setSnapshot(data.snapshot as PalmSnapshot);
         }
@@ -1203,6 +1205,7 @@ export default function PalmReadingFlow() {
             </div>
             <details className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
               <summary className="cursor-pointer text-sm text-white/80">Полный разбор</summary>
+              {exportHistoryId && <ReportExportActions path={`/cabinet/readings/${exportHistoryId}/print`} />}
               <PremiumReadingBody content={report} className="mt-3 text-sm text-white/85" />
             </details>
             <button type="button" onClick={goHome} className="btn-luxe btn-luxe--md btn-luxe--ghost mx-auto block">

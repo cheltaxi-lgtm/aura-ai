@@ -1,4 +1,5 @@
 import { notFound, redirect } from "next/navigation";
+import CompositeSnapshot from "@/components/reports/CompositeSnapshot";
 import PrintableReport from "@/components/natal/PrintableReport";
 import { buildAuthHref } from "@/lib/post-auth-return";
 import { requireProfileUserId } from "@/lib/require-auth";
@@ -24,6 +25,7 @@ export default async function CompatibilityPrintPage({
 
   const evidence = record.evidence
     ? [
+        { id: "overall", label: "Общий индекс синастрии", value: `${record.evidence.overallScore}/100` },
         ...record.evidence.dimensions.map((dimension) => ({
           id: `dimension:${dimension.key}`,
           label: dimension.label,
@@ -47,8 +49,9 @@ export default async function CompatibilityPrintPage({
           label: "Дата",
           value: new Date(record.completedAt ?? record.createdAt).toLocaleString("ru-RU"),
         },
-        { label: "Стоимость", value: `${record.runeCost ?? "—"} ᚢ` },
+
       ]}
+      visual={<CompositeSnapshot chart={record.evidence?.composite} />}
       sections={record.report.sections}
       methodology="Индексы основаны на рассчитанных межкартных аспектах; композит построен по круговым мидпойнтам. Исходные данные рождения и координаты в отчёт не включены."
       disclaimer={record.report.disclaimer}

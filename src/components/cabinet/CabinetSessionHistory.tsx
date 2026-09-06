@@ -1,4 +1,5 @@
 "use client";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useMemo, useState } from "react";
 import Link from "next/link";
@@ -253,6 +254,7 @@ function SessionCard({
         </p>
       )}
 
+      {!["Сеанс в процессе", "Сеанс завершён", ""].includes(session.prediction.trim()) && <ReportExportActions path={hdSession ? `/cabinet/human-design/reports/${session.id}/print` : `/cabinet/readings/${session.id}/print`} />}
       <div className="cabinet-session-card__actions">
         {hdSession ? (
           <>

@@ -1,5 +1,6 @@
+import ReportCharts from "@/components/reports/ReportCharts";
 import { notFound, redirect } from "next/navigation";
-import { query } from "@/lib/db";
+import { getNatalPrintRecord } from "@/lib/reports/natal-print-data";
 import { requireProfileUserId } from "@/lib/require-auth";
 import PrintableReport from "@/components/natal/PrintableReport";
 import { buildAuthHref } from "@/lib/post-auth-return";
@@ -10,20 +11,7 @@ export default async function NatalReportPrintPage({ params }: { params: Promise
   const { id } = await params;
   const auth = await requireProfileUserId();
   if (!auth) redirect(buildAuthHref("/auth/user/login", `/cabinet/astrology/reports/${encodeURIComponent(id)}/print`));
-  const { rows } = await query<{
-    tradition: string; report_type: string; content: string; structured_data: Record<string, unknown> | null;
-    evidence_refs: unknown; birth_fingerprint: string; engine_version: string; ephemeris: string; created_at: string;
-    time_known: boolean | null;
-  }>(
-    `SELECT history.tradition, history.report_type, history.content, history.structured_data, history.evidence_refs,
-            history.birth_fingerprint, history.engine_version, history.ephemeris, history.created_at,
-            (charts.chart_data->>'timeKnown')::boolean AS time_known
-     FROM natal_report_history history
-     LEFT JOIN natal_charts charts ON charts.user_id = history.user_id
-     WHERE history.id = $1 AND history.user_id = $2 LIMIT 1`,
-    [id, auth.profileUserId]
-  );
-  const report = rows[0];
+  const report = await getNatalPrintRecord(auth.profileUserId, id);
   if (!report) notFound();
   const rawSections = Array.isArray(report.structured_data?.sections) ? report.structured_data.sections : [];
   const sections = rawSections.flatMap((value) => {
@@ -57,14 +45,15 @@ export default async function NatalReportPrintPage({ params }: { params: Promise
   return <PrintableReport
     title={report.tradition === "vedic" ? "Отчёт Джйотиш" : "Западный натальный отчёт"}
     meta={[
-      { label: "Версия / fingerprint", value: `${report.engine_version} · ${report.birth_fingerprint}` },
+      { label: "Традиция", value: report.tradition === "vedic" ? "Джйотиш" : "Западная астрология" },
       { label: "Дата", value: new Date(report.created_at).toLocaleString("ru-RU") },
       { label: "Метод", value: report.ephemeris },
-      { label: "Тип", value: report.report_type },
+      { label: "Отчёт", value: report.report_type.startsWith("forecast") ? "Персональный прогноз" : "Натальная интерпретация" },
     ]}
+    visual={report.tradition === "western" && report.chart_data?.western ? <ReportCharts snapshot={{ western: report.chart_data.western, timeKnown: report.time_known ?? false }} /> : undefined}
     sections={sections}
     legacyContent={sections.length ? null : report.content}
-    methodology={typeof report.structured_data?.methodology === "string" ? report.structured_data.methodology : "Legacy report: сохранённый текст исходной интерпретации."}
+    methodology={typeof report.structured_data?.methodology === "string" ? report.structured_data.methodology : "Сохранённый текст исходной интерпретации."}
     disclaimer={typeof report.structured_data?.disclaimer === "string" ? report.structured_data.disclaimer : "Астрологическая интерпретация не является научным прогнозом."}
     evidence={evidence}
     reportType={report.report_type === "forecast" || report.report_type.startsWith("forecast:") ? "forecast" : "interpretation"}

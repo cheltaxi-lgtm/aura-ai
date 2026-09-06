@@ -26,6 +26,7 @@ type VerifiedAuth = {
 
 /** API routes reachable without a valid JWT (handlers may still enforce their own rules). */
 const PUBLIC_API_EXACT = new Set([
+  "/api/reports/pdf",
   "/api/health",
   "/api/pro/health",
   "/api/masters",
