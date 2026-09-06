@@ -337,6 +337,12 @@ done
 [ "$(curl -sS --max-time 5 -o /dev/null -w '%{http_code}' http://127.0.0.1:8787/ready || true)" = "200" ]
 echo "Previous release retained: $PREVIOUS"
 trap - EXIT
+# Snapshot trees contain a full release and are deliberately retained only
+# after every service and public health gate passes. Keep three rollback points
+# so deploy artifacts cannot silently fill the production disk again.
+if ! bash "$APP_DIR/hosting/prune-deploy-snapshots.sh" "$SNAPSHOT_ROOT" "${DEPLOY_SNAPSHOT_KEEP:-3}" --apply; then
+  echo "WARN: deploy snapshot retention failed; release remains healthy" >&2
+fi
 REMOTE
 
 echo "==> Public health gate (https://zovus.ru/api/health)..."
