@@ -42,6 +42,7 @@ import { canAffordRunes } from "@/lib/rune-afford-client";
 import { blobFromBase64, compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
 import { consumePhotoAuthDraft, savePhotoAuthDraft, type PhotoAuthDraft } from "@/lib/photo-auth-draft";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
+import { useDialogFocus } from "@/lib/useDialogFocus";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
 import SpreadReadingRitualPanel from "@/components/SpreadReadingRitualPanel";
 import { prefetchDeckFaces } from "@/lib/prefetch-deck-faces";
@@ -325,6 +326,7 @@ export default function PhotoReadingFlow({
   const { config: runeConfig, cost: runeCost, formatRunes, formatRunesWithRub } = useRuneConfig();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const appCameraBusyRef = useRef(false);
   const [appCameraBusy, setAppCameraBusy] = useState(false);
   const previewObjectUrlRef = useRef<string | null>(null);
@@ -386,6 +388,7 @@ export default function PhotoReadingFlow({
     effectiveCost: number;
     firstPhotoDiscount: boolean;
   } | null>(null);
+  useDialogFocus(dialogRef, open, loading ? undefined : onClose);
 
   const selectedMaster = findShowcaseMaster(masterId, masters);
   const aiMasters = useMemo(
@@ -576,6 +579,17 @@ export default function PhotoReadingFlow({
     setDraftRestored(false);
   }, [open]);
 
+  useEffect(() => () => {
+    const previewUrlToRevoke = previewObjectUrlRef.current;
+    const sourceUrlToRevoke = sourcePhotoUrlRef.current;
+    if (previewUrlToRevoke) URL.revokeObjectURL(previewUrlToRevoke);
+    if (sourceUrlToRevoke && sourceUrlToRevoke !== previewUrlToRevoke) {
+      URL.revokeObjectURL(sourceUrlToRevoke);
+    }
+    previewObjectUrlRef.current = null;
+    sourcePhotoUrlRef.current = null;
+  }, []);
+
   useEffect(() => {
     if (!open || !isLoggedIn) return;
     let draft: PhotoAuthDraft | null = null;
@@ -619,17 +633,12 @@ export default function PhotoReadingFlow({
 
   useEffect(() => {
     if (!open) return;
-    const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key === "Escape" && !loading) onClose();
-    };
     const prevOverflow = document.body.style.overflow;
     document.body.style.overflow = "hidden";
-    window.addEventListener("keydown", onKeyDown);
     return () => {
       document.body.style.overflow = prevOverflow;
-      window.removeEventListener("keydown", onKeyDown);
     };
-  }, [open, loading, onClose]);
+  }, [open]);
 
   const preserveSourcePhoto = (url: string | null) => {
     if (!url) return;
@@ -1444,6 +1453,7 @@ export default function PhotoReadingFlow({
             />
 
             <motion.div
+              ref={dialogRef}
               role="dialog"
               aria-modal="true"
               aria-labelledby="photo-reading-title"
@@ -1481,6 +1491,7 @@ export default function PhotoReadingFlow({
               </div>
               <button
                 type="button"
+                autoFocus
                 onClick={onClose}
                 disabled={loading}
                 className="shrink-0 rounded-full border border-white/10 bg-white/5 p-1.5 text-gray-500 transition-colors hover:text-white disabled:opacity-40"

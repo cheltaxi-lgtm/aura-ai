@@ -11,7 +11,7 @@ import {
 } from "react";
 import { flushSync } from "react-dom";
 import { motion } from "framer-motion";
-import { ArrowLeft } from "lucide-react";
+import { ArrowLeft, Loader2 } from "lucide-react";
 import Link from "next/link";
 import dynamic from "next/dynamic";
 
@@ -25,6 +25,7 @@ import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import DailyBonusClaimer from "@/components/DailyBonusClaimer";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import PersonalMemoryChoice from "@/components/PersonalMemoryChoice";
+import BodyPortal from "@/components/BodyPortal";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { parseInsufficientRunes } from "@/lib/api-errors";
 import { consumeAccountDeletedHomeArrival } from "@/lib/account-deleted";
@@ -65,7 +66,55 @@ import { trackPhotoReadingPhase } from "@/lib/photo-reading-analytics";
 
 const RitualFlow = dynamic(() => import("@/components/ritual/RitualFlow"), { ssr: false });
 const MasterDecksModal = dynamic(() => import("@/components/MasterDecksModal"), { ssr: false });
-const PhotoReadingFlow = dynamic(() => import("@/components/PhotoReadingFlow"), { ssr: false });
+
+function PhotoReadingLoadingFallback() {
+  useEffect(() => {
+    const previousOverflow = document.body.style.overflow;
+    document.body.classList.add("flow-overlay-open");
+    document.body.style.overflow = "hidden";
+    return () => {
+      document.body.classList.remove("flow-overlay-open");
+      document.body.style.overflow = previousOverflow;
+    };
+  }, []);
+
+  return (
+    <BodyPortal>
+      <div
+        className="fixed inset-0 z-[6500] flex items-end justify-center bg-black/80 backdrop-blur-md sm:items-center sm:p-4"
+        data-flow-overlay="true"
+      >
+        <div
+          role="status"
+          aria-label="Открываем фото-расклад"
+          aria-live="polite"
+          className="photo-flow-dialog relative flex min-h-64 w-full max-w-lg flex-col items-center justify-center overflow-hidden rounded-t-3xl border border-white/10 px-6 text-center sm:rounded-3xl"
+        >
+          <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-aura-gold/50 to-transparent" />
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-aura-gold/20 bg-aura-gold/10 shadow-[0_0_40px_rgba(212,175,55,0.12)]">
+            <Loader2 className="h-6 w-6 animate-spin text-aura-gold" />
+          </div>
+          <p className="mt-5 font-display text-lg font-semibold text-white">Открываем фото-расклад</p>
+          <p className="mt-2 max-w-xs text-sm leading-relaxed text-white/55">
+            Готовим защищённую загрузку и ваш черновик…
+          </p>
+          <button
+            type="button"
+            onClick={() => window.location.replace("/")}
+            className="mt-5 text-xs text-aura-champagne/70 underline-offset-4 hover:underline"
+          >
+            Вернуться на главную
+          </button>
+        </div>
+      </div>
+    </BodyPortal>
+  );
+}
+
+const PhotoReadingFlow = dynamic(() => import("@/components/PhotoReadingFlow"), {
+  ssr: false,
+  loading: PhotoReadingLoadingFallback,
+});
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { useAuth } from "@/lib/useAuth";
 import {
@@ -4348,44 +4397,46 @@ export default function HomePage({
         />
       ) : null}
 
-      <PhotoReadingFlow
-        open={photoReadingOpen}
-        onClose={closePhotoReading}
-        masters={masters}
-        isLoggedIn={isLoggedIn}
-        defaultMasterId={
-          photoReadingDefaultMaster ?? lastMasterId ?? recommendedId ?? "veronika"
-        }
-        sessionId={undefined}
-        userName={profile?.name ?? authUser?.name}
-        onSpreadRitualStart={(spread) => {
-          setSpreadRitual({
-            active: true,
-            cards: redrawSpreadToDeckCards(spread),
-            system: spread.system,
-          });
-        }}
-        onSpreadRitualEnd={() => setSpreadRitual({ active: false })}
-        onConfirmSpread={handlePhotoConfirmSpread}
-        onRuneBalanceChange={(balance) => {
-          setRuneBalance(balance);
-          emitRuneBalanceUpdate(balance);
-        }}
-        onContinueChat={handlePhotoContinueChat}
-        onSaved={() => void refreshSavedReadings()}
-        onInsufficientRunes={(payload) => {
-          setInsufficientRunes(payload);
-          handleOpenPaywall({
-            balance: payload.balance,
-            requiredRunes: payload.required,
-            shortage: payload.required - payload.balance,
-          });
-        }}
-        runeBalance={runeBalance}
-        isUnlimited={Boolean(session?.isUnlimited)}
-        onOpenPaywall={() => handleOpenPaywall()}
-        initialMode={photoReadingInitialMode}
-      />
+      {photoReadingOpen ? (
+        <PhotoReadingFlow
+          open
+          onClose={closePhotoReading}
+          masters={masters}
+          isLoggedIn={isLoggedIn}
+          defaultMasterId={
+            photoReadingDefaultMaster ?? lastMasterId ?? recommendedId ?? "veronika"
+          }
+          sessionId={undefined}
+          userName={profile?.name ?? authUser?.name}
+          onSpreadRitualStart={(spread) => {
+            setSpreadRitual({
+              active: true,
+              cards: redrawSpreadToDeckCards(spread),
+              system: spread.system,
+            });
+          }}
+          onSpreadRitualEnd={() => setSpreadRitual({ active: false })}
+          onConfirmSpread={handlePhotoConfirmSpread}
+          onRuneBalanceChange={(balance) => {
+            setRuneBalance(balance);
+            emitRuneBalanceUpdate(balance);
+          }}
+          onContinueChat={handlePhotoContinueChat}
+          onSaved={() => void refreshSavedReadings()}
+          onInsufficientRunes={(payload) => {
+            setInsufficientRunes(payload);
+            handleOpenPaywall({
+              balance: payload.balance,
+              requiredRunes: payload.required,
+              shortage: payload.required - payload.balance,
+            });
+          }}
+          runeBalance={runeBalance}
+          isUnlimited={Boolean(session?.isUnlimited)}
+          onOpenPaywall={() => handleOpenPaywall()}
+          initialMode={photoReadingInitialMode}
+        />
+      ) : null}
 
       <MasterDecksModal
         isOpen={showDecksModal}

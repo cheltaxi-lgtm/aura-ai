@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consumePhotoAuthDraft, savePhotoAuthDraft, PHOTO_AUTH_DRAFT_KEY, PHOTO_AUTH_DRAFT_TTL_MS, type PhotoAuthDraft } from "@/lib/photo-auth-draft";
+import { consumePhotoAuthDraft, enforcePhotoAuthDraftExpiry, savePhotoAuthDraft, PHOTO_AUTH_DRAFT_KEY, PHOTO_AUTH_DRAFT_TTL_MS, type PhotoAuthDraft } from "@/lib/photo-auth-draft";
 
 function storage() {
   const items = new Map<string, string>();
@@ -36,5 +36,13 @@ describe("photo input survives authentication without granting authority", () =>
     const blocked = { ...s, setItem: () => { throw new Error("quota"); } };
     expect(savePhotoAuthDraft(draft, blocked)).toBe(false);
     expect(consumePhotoAuthDraft(s)).toBeNull();
+  });
+  it("enforces the retention deadline while the user remains on the auth page", () => {
+    const s = storage();
+    savePhotoAuthDraft(draft, s, 100);
+    expect(enforcePhotoAuthDraftExpiry(s, 200)).toBe(PHOTO_AUTH_DRAFT_TTL_MS - 100);
+    expect(s.getItem(PHOTO_AUTH_DRAFT_KEY)).not.toBeNull();
+    expect(enforcePhotoAuthDraftExpiry(s, 100 + PHOTO_AUTH_DRAFT_TTL_MS)).toBeNull();
+    expect(s.getItem(PHOTO_AUTH_DRAFT_KEY)).toBeNull();
   });
 });

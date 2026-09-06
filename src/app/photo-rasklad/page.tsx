@@ -64,10 +64,10 @@ export default function PhotoRaskladPage() {
       <div className="mt-4"><PhotoReadingOffer /></div>
 
       <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click">
+        <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click" pendingLabel="Открываем фото-расклад">
           Загрузить фото расклада
         </SeoTrackedCta>
-        <SeoTrackedCta href={buildPhotoMarkUrl()} variant="ghost" trackGoal="photo_landing_cta_click">
+        <SeoTrackedCta href={buildPhotoMarkUrl()} variant="ghost" trackGoal="photo_landing_cta_click" pendingLabel="Открываем выбор карт">
           Отметить карты вручную
         </SeoTrackedCta>
       </div>
@@ -173,7 +173,7 @@ export default function PhotoRaskladPage() {
       />
 
       <div className="mt-10">
-        <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click" trackParams={{ source: "closing" }}>
+        <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click" trackParams={{ source: "closing" }} pendingLabel="Открываем фото-расклад">
           Загрузить свой расклад
         </SeoTrackedCta>
       </div>

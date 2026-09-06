@@ -52,3 +52,34 @@ export function consumePhotoAuthDraft(storage: DraftStorage, now = Date.now()): 
     return null;
   }
 }
+
+/** Remove malformed/expired photo data and return how long a valid draft may remain. */
+export function enforcePhotoAuthDraftExpiry(storage: DraftStorage, now = Date.now()): number | null {
+  try {
+    const raw = storage.getItem(PHOTO_AUTH_DRAFT_KEY);
+    if (!raw) return null;
+    if (raw.length > MAX_BASE64_LENGTH + 30_000) {
+      storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+      return null;
+    }
+    const draft = JSON.parse(raw);
+    const expiresAt = draft?.expiresAt;
+    if (
+      !validDraft(draft) ||
+      !Number.isFinite(expiresAt) ||
+      expiresAt <= now ||
+      expiresAt > now + PHOTO_AUTH_DRAFT_TTL_MS
+    ) {
+      storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+      return null;
+    }
+    return expiresAt - now;
+  } catch {
+    try {
+      storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+    } catch {
+      /* storage unavailable */
+    }
+    return null;
+  }
+}

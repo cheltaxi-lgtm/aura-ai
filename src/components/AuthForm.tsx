@@ -60,6 +60,7 @@ import {
 import SocialAuthButtons, { OAuthErrorBanner } from "@/components/auth/SocialAuthButtons";
 import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
 import type { OAuthMode } from "@/lib/oauth/types";
+import { enforcePhotoAuthDraftExpiry } from "@/lib/photo-auth-draft";
 
 interface AuthFormProps {
   mode: "login" | "register";
@@ -164,6 +165,21 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     document.body.classList.add("auth-recaptcha-hidden");
     return () => document.body.classList.remove("auth-recaptcha-hidden");
   }, []);
+
+  useEffect(() => {
+    if (role !== "user") return;
+    let remainingMs: number | null = null;
+    try {
+      remainingMs = enforcePhotoAuthDraftExpiry(window.sessionStorage);
+    } catch {
+      return;
+    }
+    if (remainingMs === null) return;
+    const expiryTimer = window.setTimeout(() => {
+      enforcePhotoAuthDraftExpiry(window.sessionStorage);
+    }, remainingMs + 50);
+    return () => window.clearTimeout(expiryTimer);
+  }, [role]);
 
   useEffect(() => {
     if (!featuresLoaded || shouldUseAppShellClient() || (isUserRegister && !showEmailRegister)) return;
