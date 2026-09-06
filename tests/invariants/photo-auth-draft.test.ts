@@ -5,7 +5,19 @@ function storage() {
   const items = new Map<string, string>();
   return { getItem: (k: string) => items.get(k) ?? null, setItem: (k: string, v: string) => { items.set(k, v); }, removeItem: (k: string) => { items.delete(k); } };
 }
-const draft: PhotoAuthDraft = { mode: "upload", masterId: "veronika", question: "Как подготовиться к разговору?", image: { base64: "YWJj", mimeType: "image/jpeg" } };
+const draft: PhotoAuthDraft = {
+  mode: "upload",
+  masterId: "veronika",
+  question: "Как подготовиться к разговору?",
+  image: { base64: "YWJj", mimeType: "image/jpeg" },
+  recognized: {
+    detectedCards: ["Шут"],
+    positions: ["Суть вопроса"],
+    deckType: "Таро",
+    spreadType: "Одна карта",
+    confidence: "high",
+  },
+};
 
 describe("photo input survives authentication without granting authority", () => {
   it("restores the photo and question exactly once", () => {
@@ -33,6 +45,8 @@ describe("photo input survives authentication without granting authority", () =>
     const s = storage();
     expect(savePhotoAuthDraft({ ...draft, image: { ...draft.image!, base64: "A".repeat(3_400_004) } }, s)).toBe(false);
     expect(savePhotoAuthDraft({ ...draft, image: { base64: "YWJj", mimeType: "image/svg+xml" } } as unknown as PhotoAuthDraft, s)).toBe(false);
+    expect(savePhotoAuthDraft({ ...draft, recognized: { detectedCards: Array(41).fill("Шут") } }, s)).toBe(false);
+    expect(savePhotoAuthDraft({ ...draft, recognized: { detectedCards: ["Шут"], positions: [] } }, s)).toBe(false);
     const blocked = { ...s, setItem: () => { throw new Error("quota"); } };
     expect(savePhotoAuthDraft(draft, blocked)).toBe(false);
     expect(consumePhotoAuthDraft(s)).toBeNull();

@@ -327,6 +327,7 @@ export default function PhotoReadingFlow({
   const fileInputRef = useRef<HTMLInputElement>(null);
   const cameraInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const confirmResultRef = useRef<HTMLDivElement>(null);
   const appCameraBusyRef = useRef(false);
   const [appCameraBusy, setAppCameraBusy] = useState(false);
   const previewObjectUrlRef = useRef<string | null>(null);
@@ -513,6 +514,12 @@ export default function PhotoReadingFlow({
     }
   }, [step]);
 
+  useEffect(() => {
+    if (!open || step !== "confirm") return;
+    const frame = window.requestAnimationFrame(() => confirmResultRef.current?.focus());
+    return () => window.cancelAnimationFrame(frame);
+  }, [open, step]);
+
   const confirmSpreadKey = useMemo(() => {
     if (!redrawSpread?.cards.length) return "";
     return redrawSpread.cards
@@ -609,6 +616,29 @@ export default function PhotoReadingFlow({
       setPreviewUrl(url);
       setImageData({ ...draft.image, blob });
       setFileOriginalBytes(blob.size);
+      if (draft.recognized) {
+        sourcePhotoUrlRef.current = url;
+        setSourcePhotoUrl(url);
+      }
+    }
+    if (draft.recognized) {
+      const restoredSpread = buildPartialRedrawSpread(
+        draft.masterId,
+        draft.recognized.detectedCards,
+        draft.recognized.deckType,
+        draft.recognized.spreadType
+      );
+      if (draft.recognized.positions) {
+        restoredSpread.cards = restoredSpread.cards.map((card, index) => ({
+          ...card,
+          position: draft.recognized?.positions?.[index] ?? card.position,
+        }));
+      }
+      openConfirmStep(restoredSpread, {
+        confidence: draft.recognized.confidence ?? "unknown",
+        manual: false,
+        notice: "Карты уже распознаны — проверьте расклад и откройте полную расшифровку.",
+      });
     }
     setDraftRestored(true);
     trackPhotoReadingPhase("draft_restored", { mode: draft.mode, has_photo: Boolean(draft.image) });
@@ -704,6 +734,17 @@ export default function PhotoReadingFlow({
       saved = savePhotoAuthDraft({
         mode, masterId, question,
         ...(imageData ? { image: { base64: imageData.base64, mimeType: imageData.mimeType as "image/jpeg" } } : {}),
+        ...(redrawSpread?.cards.length ? {
+          recognized: {
+            detectedCards: redrawSpread.cards.map((card) =>
+              card.reversed ? `${card.name} (перев.)` : card.name
+            ),
+            positions: redrawSpread.cards.map((card) => card.position),
+            ...(redrawSpread.deckType ? { deckType: redrawSpread.deckType } : {}),
+            ...(redrawSpread.spreadType ? { spreadType: redrawSpread.spreadType } : {}),
+            confidence: recognitionConfidence,
+          },
+        } : {}),
       }, window.sessionStorage);
     } catch {
       // Access itself can throw in restricted browsers.
@@ -878,10 +919,6 @@ export default function PhotoReadingFlow({
       blobBytes: imageData?.blob?.size ?? 0,
       originalBytes: fileOriginalBytes,
     });
-    if (!isLoggedIn) {
-      continueThroughAuth("register");
-      return;
-    }
     if (!imageData) {
       setError("Сначала загрузите или сфотографируйте расклад");
       return;
@@ -1120,11 +1157,13 @@ export default function PhotoReadingFlow({
         recognizeCacheKey: mergeBase ? undefined : cacheKey,
       });
       trackPhotoReadingPhase(manual ? "recognize_partial" : "recognize_ok");
-      setPreviewUrl(null);
-      setImageData(null);
-      if (previewObjectUrlRef.current) {
-        URL.revokeObjectURL(previewObjectUrlRef.current);
-        previewObjectUrlRef.current = null;
+      if (isLoggedIn) {
+        setPreviewUrl(null);
+        setImageData(null);
+        if (previewObjectUrlRef.current) {
+          URL.revokeObjectURL(previewObjectUrlRef.current);
+          previewObjectUrlRef.current = null;
+        }
       }
     } catch (err) {
       const errMsg = err instanceof Error ? err.message : String(err);
@@ -1146,6 +1185,10 @@ export default function PhotoReadingFlow({
     if (!redrawSpread?.cards.length) return;
     if (!isPhotoSpreadComplete(redrawSpread)) {
       setError(`Добавьте хотя бы ${PHOTO_MIN_CARD_COUNT} символ в расклад.`);
+      return;
+    }
+    if (!isLoggedIn) {
+      continueThroughAuth("register");
       return;
     }
     if (runesBlocked) {
@@ -1692,7 +1735,13 @@ export default function PhotoReadingFlow({
 
               {/* ── STEP: CONFIRM ── */}
               {step === "confirm" && redrawSpread && (
-                <>
+                <div
+                  ref={confirmResultRef}
+                  tabIndex={-1}
+                  role="region"
+                  aria-label="Результат распознавания: проверьте расклад"
+                  className="outline-none"
+                >
                   {(sourcePhotoUrl ||
                     (!manualMode && recognitionConfidence !== "unknown") ||
                     !isPhotoSpreadComplete(redrawSpread)) && (
@@ -1735,6 +1784,58 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
+                  {!isLoggedIn && confirmFacesReady && isPhotoSpreadComplete(redrawSpread) ? (
+                    <div className="mb-4 overflow-hidden rounded-2xl border border-aura-gold/30 bg-gradient-to-br from-aura-gold/[0.12] via-white/[0.04] to-transparent p-4 sm:p-5">
+                      <div className="flex items-start gap-4">
+                        {redrawSpread.cards[0]?.imagePath ? (
+                          <div className="shrink-0 rounded-xl border border-aura-gold/25 bg-black/30 p-1 shadow-[0_8px_24px_rgba(0,0,0,0.35)]">
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={redrawSpread.cards[0].imagePath}
+                              alt={`Распознанная карта: ${redrawSpread.cards[0].name}`}
+                              className={`h-20 w-14 rounded-lg object-cover ${redrawSpread.cards[0].reversed ? "rotate-180" : ""}`}
+                            />
+                          </div>
+                        ) : null}
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2 text-aura-gold">
+                            <Sparkles className="h-4 w-4 shrink-0" />
+                            <span className="text-xs font-semibold uppercase tracking-[0.16em]">Расклад распознан</span>
+                          </div>
+                          <p className="mt-2 font-display text-lg font-semibold text-white">
+                            {redrawSpread.cards[0]?.name
+                              ? `В центре расклада — «${redrawSpread.cards[0].name}»`
+                              : "Карты готовы к расшифровке"}
+                          </p>
+                          <p className="mt-1.5 text-sm leading-relaxed text-white/65">
+                            {question.trim()
+                              ? `Я уже связал ${redrawSpread.cards.length} ${redrawSpread.cards.length === 1 ? "карту" : "карт"} с вашим вопросом. В полном разборе покажу смысл каждой позиции, ключевую связку и следующий шаг.`
+                              : `Я уже увидел структуру из ${redrawSpread.cards.length} ${redrawSpread.cards.length === 1 ? "карты" : "карт"}. В полном разборе покажу общий сюжет, скрытое напряжение и следующий шаг.`}
+                          </p>
+                        </div>
+                      </div>
+                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
+                        <button
+                          type="button"
+                          onClick={() => continueThroughAuth("register")}
+                          className="btn-luxe btn-luxe--md btn-luxe--gold flex-1"
+                        >
+                          Открыть полную расшифровку
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => continueThroughAuth("login")}
+                          className="px-3 py-2 text-xs text-aura-ivory/55 transition hover:text-aura-champagne"
+                        >
+                          Уже есть аккаунт
+                        </button>
+                      </div>
+                      <div className="mt-3 flex justify-center">
+                        <StarterRunesValue variant="badge" />
+                      </div>
+                    </div>
+                  ) : null}
+
                   <div className="photo-flow-confirm-faces">
                     {!confirmFacesReady ? (
                       <div className="photo-flow-confirm-faces__ritual">
@@ -1776,7 +1877,7 @@ export default function PhotoReadingFlow({
                       </button>
                     </div>
                   )}
-                </>
+                </div>
               )}
 
               {/* ── STEP: RESULT ── */}
@@ -1891,6 +1992,16 @@ export default function PhotoReadingFlow({
                           Попробовать снова
                         </button>
                       )}
+                      {!isLoggedIn && imageData ? (
+                        <button
+                          type="button"
+                          onClick={() => continueThroughAuth("register")}
+                          disabled={loading}
+                          className="rounded-xl border border-aura-gold/25 bg-aura-gold/8 px-3 py-2 text-xs text-aura-gold hover:bg-aura-gold/12"
+                        >
+                          Продолжить с сохранённым фото
+                        </button>
+                      ) : null}
                       <button
                         type="button"
                         onClick={startManualSpread}
@@ -1915,25 +2026,17 @@ export default function PhotoReadingFlow({
               {/* Not logged in */}
               {!isLoggedIn && step === "upload" && (
                 <div className="flex flex-col items-center gap-3 rounded-2xl border border-aura-gold/20 bg-aura-gold/[0.05] px-4 py-5 text-center">
-                  <StarterRunesValue variant="badge" />
-                  <p className="text-sm text-gray-300">
-                    После входа выбранное фото и вопрос вернутся в этой вкладке. Разбор и диалог
-                    сохранятся в кабинете.
+                  <div className="flex h-10 w-10 items-center justify-center rounded-full border border-aura-gold/30 bg-aura-gold/10 text-aura-gold">
+                    <Sparkles className="h-4 w-4" />
+                  </div>
+                  <p className="font-display text-base font-semibold text-white">
+                    Сначала покажем, что увидели на фото
                   </p>
-                  <Link
-                    href={buildRegisterHref(photoAuthReturnTo())}
-                    onClick={(event) => { event.preventDefault(); continueThroughAuth("register"); }}
-                    className="btn-luxe btn-luxe--sm btn-luxe--gold"
-                  >
-                    Создать аккаунт и продолжить
-                  </Link>
-                  <Link
-                    href={buildLoginHref(photoAuthReturnTo())}
-                    onClick={(event) => { event.preventDefault(); continueThroughAuth("login"); }}
-                    className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
-                  >
-                    Уже есть аккаунт? Войти
-                  </Link>
+                  <p className="max-w-sm text-sm leading-relaxed text-gray-300">
+                    Бесплатно распознаем карты и их позиции. Аккаунт понадобится после результата —
+                    чтобы открыть полную трактовку и сохранить расклад.
+                  </p>
+                  <span className="text-xs text-aura-ivory/45">Одно фото · без банковской карты</span>
                 </div>
               )}
 
@@ -1981,7 +2084,7 @@ export default function PhotoReadingFlow({
                         ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})… ${loadingElapsedLabel}`
                         : `Распознаём и перерисовываем… ${loadingElapsedLabel}`
                       : !isLoggedIn
-                        ? "Сохранить фото и продолжить"
+                        ? "Распознать карты бесплатно"
                       : runeConfig.enabled
                         ? `Начать фото-расклад · ${formatRunes(photoCost)}`
                         : "Начать фото-расклад"}
@@ -2007,6 +2110,8 @@ export default function PhotoReadingFlow({
                         <><Loader2 className="h-4 w-4 animate-spin" />Расшифровывает… {loadingElapsedLabel}</>
                       ) : !confirmFacesReady ? (
                         <><Loader2 className="h-4 w-4 animate-spin" />Проявляем карты…</>
+                      ) : !isLoggedIn ? (
+                        <>Открыть полный разбор<ArrowRight className="h-4 w-4" /></>
                       ) : (
                         <>Подтвердить<ArrowRight className="h-4 w-4" /></>
                       )}

@@ -48,6 +48,10 @@ const PUBLIC_API_EXACT = new Set([
   // Diagnostic breadcrumb only (camera/upload failures) — must not depend on
   // login state, otherwise failures from logged-out users vanish silently.
   "/api/photo-reading/client-log",
+  // Guest photo recognition returns a rate-limited preview. The handler still
+  // enforces the signed 18+ cookie, body limits and abuse controls; paid
+  // interpretation routes remain authenticated.
+  "/api/photo-reading/recognize",
   // Guest Aura teaser (pre-auth): vision snapshot + claim cookie. IP rate limit
   // in the handler; claim/report stay auth-gated.
   "/api/aura/teaser",

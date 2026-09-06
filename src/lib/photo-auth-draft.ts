@@ -2,14 +2,54 @@
 export const PHOTO_AUTH_DRAFT_KEY = "zovus_photo_auth_draft_v1";
 export const PHOTO_AUTH_DRAFT_TTL_MS = 30 * 60 * 1000;
 const MAX_BASE64_LENGTH = 3_400_000;
+const MAX_RECOGNIZED_CARDS = 40;
+const MAX_RECOGNIZED_LABEL_LENGTH = 160;
+const MAX_RECOGNIZED_META_LENGTH = 200;
 type DraftStorage = Pick<Storage, "getItem" | "setItem" | "removeItem">;
+
+export type PhotoAuthDraftRecognition = {
+  detectedCards: string[];
+  positions?: string[];
+  deckType?: string;
+  spreadType?: string;
+  confidence?: "high" | "medium" | "low" | "unknown";
+};
 
 export type PhotoAuthDraft = {
   mode: "upload" | "mark";
   masterId: string;
   question: string;
   image?: { base64: string; mimeType: "image/jpeg" | "image/png" | "image/webp" };
+  recognized?: PhotoAuthDraftRecognition;
 };
+
+function validShortText(value: unknown, max = MAX_RECOGNIZED_META_LENGTH): value is string {
+  return typeof value === "string" && value.length <= max;
+}
+
+function validRecognition(value: unknown): value is PhotoAuthDraftRecognition {
+  if (!value || typeof value !== "object") return false;
+  const recognition = value as PhotoAuthDraftRecognition;
+  if (
+    !Array.isArray(recognition.detectedCards) ||
+    recognition.detectedCards.length < 1 ||
+    recognition.detectedCards.length > MAX_RECOGNIZED_CARDS ||
+    !recognition.detectedCards.every((card) => validShortText(card, MAX_RECOGNIZED_LABEL_LENGTH) && card.trim())
+  ) return false;
+  if (
+    recognition.positions !== undefined &&
+    (!Array.isArray(recognition.positions) ||
+      recognition.positions.length !== recognition.detectedCards.length ||
+      !recognition.positions.every((position) => validShortText(position) && position.trim()))
+  ) return false;
+  if (recognition.deckType !== undefined && !validShortText(recognition.deckType)) return false;
+  if (recognition.spreadType !== undefined && !validShortText(recognition.spreadType)) return false;
+  if (
+    recognition.confidence !== undefined &&
+    !["high", "medium", "low", "unknown"].includes(recognition.confidence)
+  ) return false;
+  return true;
+}
 
 function validDraft(value: unknown): value is PhotoAuthDraft {
   if (!value || typeof value !== "object") return false;
@@ -23,6 +63,7 @@ function validDraft(value: unknown): value is PhotoAuthDraft {
     if (typeof b !== "string" || !b.length || b.length > MAX_BASE64_LENGTH || b.length % 4 !== 0) return false;
     if (!/^[A-Za-z0-9+/]+={0,2}$/.test(b)) return false;
   }
+  if (d.recognized !== undefined && !validRecognition(d.recognized)) return false;
   return true;
 }
 
@@ -47,7 +88,21 @@ export function consumePhotoAuthDraft(storage: DraftStorage, now = Date.now()): 
     const expiresAt = d?.expiresAt;
     if (!validDraft(d) || !Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + PHOTO_AUTH_DRAFT_TTL_MS) return null;
     // Whitelist fields: browser state cannot restore a session, balance, or free flag.
-    return { mode: d.mode, masterId: d.masterId, question: d.question, ...(d.image ? { image: { base64: d.image.base64, mimeType: d.image.mimeType } } : {}) };
+    return {
+      mode: d.mode,
+      masterId: d.masterId,
+      question: d.question,
+      ...(d.image ? { image: { base64: d.image.base64, mimeType: d.image.mimeType } } : {}),
+      ...(d.recognized ? {
+        recognized: {
+          detectedCards: [...d.recognized.detectedCards],
+          ...(d.recognized.positions ? { positions: [...d.recognized.positions] } : {}),
+          ...(d.recognized.deckType ? { deckType: d.recognized.deckType } : {}),
+          ...(d.recognized.spreadType ? { spreadType: d.recognized.spreadType } : {}),
+          ...(d.recognized.confidence ? { confidence: d.recognized.confidence } : {}),
+        },
+      } : {}),
+    };
   } catch {
     return null;
   }

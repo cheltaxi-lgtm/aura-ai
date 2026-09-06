@@ -26,6 +26,24 @@ async function fixture(page: Page) {
     if (path === "/api/platform/features") return route.fulfill({ json: { recaptcha: { configured: false, masterEnabled: false, scopes: {} } } });
     if (path === "/api/runes/config") return route.fulfill({ json: { enabled: true, starterRunes: 300, rubPerRune: 5, costs: { VISION_ANALYSIS: 30 } } });
     if (path === "/api/runes/balance") return route.fulfill({ json: { balance: 300 } });
+    if (path === "/api/photo-reading/recognize" && route.request().method() === "POST") return route.fulfill({ json: {
+      guest: !loggedIn,
+      detectedCards: ["Шут"],
+      deckType: "Таро Райдера — Уэйта",
+      spreadType: "Одна карта",
+      confidence: "high",
+      partial: false,
+      redrawSpread: {
+        system: "tarot-veronika",
+        deckType: "Таро Райдера — Уэйта",
+        spreadType: "Одна карта",
+        cards: [{
+          name: "Шут", originalName: "Шут", reversed: false, position: "Суть вопроса",
+          imagePath: "/decks/tarot-veronika/the-fool.webp", shortMeaning: "Новое начало",
+          placeholder: false, order: 0, confidence: "high",
+        }],
+      },
+    } });
     if (path === "/api/photo-reading/pricing") return route.fulfill({ json: { baseCost: 30, effectiveCost: 15, firstPhotoDiscount: true } });
     if (path === "/api/age-gate/confirm") return route.fulfill({ json: { confirmed: true } });
     if (path === "/api/masters") return route.fulfill({ json: { masters: [{ id: "veronika", name: "Вероника", kind: "ai", title: "Таро" }] } });
@@ -43,7 +61,7 @@ async function realisticPhonePhoto() {
     .toBuffer();
 }
 
-test("photo and question survive the registration round trip without an automatic charge", async ({ page }, info) => {
+test("the guest sees recognized cards before registration and resumes them without an automatic charge", async ({ page }, info) => {
   const f = await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/?photo=1");
@@ -53,22 +71,37 @@ test("photo and question survive the registration round trip without an automati
   await expect(dialog.getByRole("button", { name: /Загрузить фото/ })).toBeInViewport();
   await dialog.locator('input[type="file"]').last().setInputFiles("public/decks/tarot-veronika/the-fool.webp");
   await dialog.getByLabel("Ваш вопрос (необязательно)").fill("Как подготовиться к разговору?");
-  const auth = dialog.getByRole("button", { name: "Сохранить фото и продолжить" });
-  await expect(auth).toBeEnabled({ timeout: 15_000 });
-  await auth.click();
+  const recognize = dialog.getByRole("button", { name: "Распознать карты бесплатно" });
+  await expect(recognize).toBeEnabled({ timeout: 15_000 });
+  await recognize.click();
+  await expect(dialog.getByText("Расклад распознан")).toBeVisible({ timeout: 15_000 });
+  await expect(dialog.getByText("В центре расклада — «Шут»")).toBeVisible();
+  await expect(dialog.getByLabel("Результат распознавания: проверьте расклад")).toBeFocused();
+  await expect(dialog.getByAltText("Распознанная карта: Шут")).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Открыть полную расшифровку" })).toBeInViewport();
+  await page.screenshot({ path: info.outputPath("photo-guest-teaser-mobile.png") });
+  await expect(page).not.toHaveURL(/auth\/user\/(login|register)/);
+  expect(f.calls.filter((c) => c === "POST /api/photo-reading/recognize")).toHaveLength(1);
+  expect(f.calls.some((c) => /photo-reading\/(interpret|stream)/.test(c))).toBe(false);
+
+  await dialog.getByRole("button", { name: "Открыть полную расшифровку" }).click();
   await expect(page).toHaveURL(/auth\/user\/register/);
   await page.waitForLoadState("domcontentloaded");
-  expect(f.calls.some((c) => c.includes("/photo-reading/recognize"))).toBe(false);
   const saved = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!), PHOTO_AUTH_DRAFT_KEY);
   expect(saved.question).toBe("Как подготовиться к разговору?");
   expect(saved.image.base64.length).toBeGreaterThan(100);
+  expect(saved.recognized.detectedCards).toEqual(["Шут"]);
   f.login();
-  await page.goto("/?photo=1");
-  await expect(dialog.getByText("Черновик восстановлен. Проверьте вопрос и продолжите разбор.")).toBeVisible({ timeout: 30_000 });
-  await expect(dialog.getByLabel("Ваш вопрос (необязательно)")).toHaveValue(saved.question);
-  await expect(dialog.getByAltText("Ваш расклад")).toBeVisible();
+  try {
+    await page.goto("/?photo=1", { waitUntil: "domcontentloaded" });
+  } catch (error) {
+    if (!(error instanceof Error) || !error.message.includes("ERR_ABORTED")) throw error;
+  }
+  await expect(dialog.getByText("Карты уже распознаны — проверьте расклад и откройте полную расшифровку.")).toBeVisible({ timeout: 30_000 });
+  await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).toBeNull();
-  expect(f.calls.some((c) => /POST .*photo-reading\/(recognize|interpret|stream)/.test(c))).toBe(false);
+  expect(f.calls.filter((c) => c === "POST /api/photo-reading/recognize")).toHaveLength(1);
+  expect(f.calls.some((c) => /POST .*photo-reading\/(interpret|stream)/.test(c))).toBe(false);
   await page.screenshot({ path: info.outputPath("photo-restored-mobile.png") });
 });
 
@@ -101,7 +134,9 @@ test("a realistic phone photo survives the complete email registration route", a
     buffer: await realisticPhonePhoto(),
   });
   await dialog.getByLabel("Ваш вопрос (необязательно)").fill("Что важно увидеть в этой ситуации?");
-  await dialog.getByRole("button", { name: "Сохранить фото и продолжить" }).click();
+  await dialog.getByRole("button", { name: "Распознать карты бесплатно" }).click();
+  await expect(dialog.getByText("Расклад распознан")).toBeVisible({ timeout: 15_000 });
+  await dialog.getByRole("button", { name: "Открыть полную расшифровку" }).click();
 
   await expect(page).toHaveURL(/auth\/user\/register/);
   const savedBeforeRegister = await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY);
@@ -116,9 +151,8 @@ test("a realistic phone photo survives the complete email registration route", a
   await page.getByRole("button", { name: "Создать аккаунт и открыть разбор" }).click();
 
   await expect(dialog).toBeVisible({ timeout: 30_000 });
-  await expect(dialog.getByText("Черновик восстановлен. Проверьте вопрос и продолжите разбор.")).toBeVisible();
-  await expect(dialog.getByLabel("Ваш вопрос (необязательно)")).toHaveValue("Что важно увидеть в этой ситуации?");
-  await expect(dialog.getByAltText("Ваш расклад")).toBeVisible();
+  await expect(dialog.getByText("Карты уже распознаны — проверьте расклад и откройте полную расшифровку.")).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).toBeNull();
 });
 

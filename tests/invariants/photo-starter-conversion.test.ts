@@ -74,17 +74,23 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
     expect(src).toContain("fromServer");
   });
 
-  it("starter value appears on landing, photo modal guest block and register screen", () => {
+  it("starter value moves behind the recognized guest teaser and stays on registration", () => {
     const landing = readSrc("src/app/photo-rasklad/page.tsx");
     expect(landing).toContain('StarterRunesValue variant="badge"');
 
     const modal = readSrc("src/components/PhotoReadingFlow.tsx");
-    // Guest-only block: the welcome promise is shown exclusively to logged-out users.
-    const guestBlock = modal.slice(modal.indexOf("{!isLoggedIn && step === \"upload\" && ("));
-    expect(guestBlock).toContain('StarterRunesValue variant="badge"');
-    expect(guestBlock).toContain("buildRegisterHref(photoAuthReturnTo())");
-    // Existing users get a login path instead of a new-user promise.
-    expect(guestBlock).toContain("buildLoginHref(photoAuthReturnTo())");
+    // The upload step promises real value before asking for an account.
+    const uploadStart = modal.indexOf("{!isLoggedIn && step === \"upload\" && (");
+    const uploadBlock = modal.slice(uploadStart, modal.indexOf("{draftSaveFailedHref", uploadStart));
+    expect(uploadBlock).toContain("Бесплатно распознаем карты");
+    expect(uploadBlock).not.toContain("continueThroughAuth");
+
+    // Registration value and both auth paths appear only after cards are recognized.
+    const teaserStart = modal.indexOf("{!isLoggedIn && confirmFacesReady");
+    const teaserBlock = modal.slice(teaserStart, modal.indexOf("{/* ── STEP: RESULT", teaserStart));
+    expect(teaserBlock).toContain('StarterRunesValue variant="badge"');
+    expect(teaserBlock).toContain('continueThroughAuth("register")');
+    expect(teaserBlock).toContain('continueThroughAuth("login")');
 
     const register = readSrc("src/app/auth/user/register/page.tsx");
     expect(register).toContain('StarterRunesValue variant="badge" generic');
