@@ -46,6 +46,7 @@ TREE_MOVED=0
 SERVICES_STOPPED=0
 RUNTIME_COPIED=0
 NEW_SERVICES_STARTED=0
+MIGRATIONS_STARTED=0
 
 rollback_on_failure() {
   local code=$?
@@ -79,6 +80,11 @@ rollback_on_failure() {
     fi
     if [ "$TREE_MOVED" -eq 1 ]; then
       systemctl stop aura-ai-async-jobs zovus-telegram-bot aura-ai || true
+      if [ "$MIGRATIONS_STARTED" -eq 1 ] && ! timeout 25s /usr/bin/node "$APP_DIR/hosting/restore-matrix-rollback.mjs" "$APP_DIR" "$PREVIOUS" > "$SNAPSHOT/matrix-rollback.log" 2>&1; then
+        echo "NEEDS_FORWARD_RECOVERY: Matrix identities retained; incompatible old code was not restored. Snapshot: $SNAPSHOT" >&2
+        systemctl restart aura-ai aura-ai-async-jobs zovus-telegram-bot || true
+        exit "$code"
+      fi
       if [ "$RUNTIME_COPIED" -eq 1 ]; then
         for relative in public/scene-art telegram-bot/data telegram-bot/backups logs backups; do
           if [ -d "$APP_DIR/$relative" ]; then
@@ -213,6 +219,7 @@ cd "$APP_DIR"
 umask 022
 npm ci
 [ -f data/geonames/cities.min.json ] || npm run build:geonames
+MIGRATIONS_STARTED=1
 npm run migrate
 # Export PRO_* (and core) for Next middleware/build so kill-switch matches .env.local.
 if [ -f "$APP_DIR/.env.local" ]; then

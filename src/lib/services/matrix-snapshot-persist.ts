@@ -54,9 +54,10 @@ async function existingFrozenSnapshot(
     [userId, subjectId]
   );
   const row = found.rows[0];
-  if (!row?.matrix_snapshot || !row.as_of_date) return null;
+  if (!row) throw persistError("matrix_subject_forbidden");
   const existingDob = String(row.birth_date).slice(0, 10);
-  if (existingDob !== birthDate) return null;
+  if (existingDob !== birthDate) throw persistError("matrix_subject_date_mismatch");
+  if (!row.matrix_snapshot || !row.as_of_date) return null;
   return {
     subjectId: row.id,
     birthDate: existingDob,
@@ -133,6 +134,7 @@ export async function persistOwnedMatrixSnapshot(input: {
   calculationVersion = calculationVersion || MATRIX_CALCULATION_VERSION;
 
   return withTransaction(async (client) => {
+    await queryClient(client, "SELECT id FROM users WHERE id = $1 FOR UPDATE", [input.userId]);
     if (kind === "self") {
       const profile = await queryClient<{ birth_date: string | null }>(
         client,
@@ -142,6 +144,7 @@ export async function persistOwnedMatrixSnapshot(input: {
       const existing = profile.rows[0]?.birth_date
         ? String(profile.rows[0].birth_date).slice(0, 10)
         : null;
+      if (existing && existing !== birthDate) throw persistError("matrix_subject_date_mismatch");
       if (!existing) {
         await queryClient(
           client,

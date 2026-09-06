@@ -1427,13 +1427,13 @@ CREATE TABLE IF NOT EXISTS numerology_report_history (
   session_id UUID REFERENCES sessions(id) ON DELETE SET NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
-  CONSTRAINT numerology_report_history_version_unique UNIQUE (
-    user_id,
-    tool_id,
-    subject_id,
-    calculation_version
-  )
+  report_scope TEXT GENERATED ALWAYS AS (CASE WHEN tool_id = 'matrix_compatibility'
+    THEN COALESCE(structured_data->>'partnerDate', structured_data->>'dateB', structured_data->'numerologToolParams'->>'partnerDate', '')
+    ELSE '' END) STORED
 );
+
+CREATE UNIQUE INDEX IF NOT EXISTS numerology_report_identity_unique
+  ON numerology_report_history (user_id, tool_id, subject_id, birth_date, calculation_version, report_scope);
 
 CREATE UNIQUE INDEX IF NOT EXISTS idx_numerology_report_history_charge
   ON numerology_report_history(charge_transaction_id)

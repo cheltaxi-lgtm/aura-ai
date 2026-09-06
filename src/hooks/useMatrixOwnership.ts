@@ -54,11 +54,13 @@ export function useMatrixOwnership(options?: {
     let cancelled = false;
     void (async () => {
       setLoading(true);
+      setOwned(false);
+      setReportId(null);
       let birth = toIsoBirthDateClient(birthOverride) ?? toIsoBirthDateClient(readStoredProfile()?.birthDate);
 
       if (!birthOverride) {
         try {
-          const profileRes = await fetch("/api/profile", { credentials: "include" });
+          const profileRes = await fetch("/api/profile", { credentials: "include", signal: AbortSignal.timeout(20_000) });
           if (profileRes.ok) {
             const data = (await profileRes.json()) as {
               profile?: { birthDate?: string } | null;
@@ -79,7 +81,7 @@ export function useMatrixOwnership(options?: {
             subjectId
               ? `/api/numerology/matrix-report?subjectId=${encodeURIComponent(subjectId)}`
               : `/api/numerology/matrix-report?birthDate=${encodeURIComponent(birth!)}`,
-            { credentials: "include" }
+            { credentials: "include", signal: AbortSignal.timeout(20_000) }
           );
           if (res.ok) {
             const data = (await res.json()) as {
@@ -98,7 +100,7 @@ export function useMatrixOwnership(options?: {
 
         // Metadata fallback (no full report bodies).
         const listRes = await fetch(`/api/numerology/matrix-report?list=1`, {
-          credentials: "include",
+          credentials: "include", signal: AbortSignal.timeout(20_000),
         });
         if (!listRes.ok || cancelled) {
           if (!cancelled) {

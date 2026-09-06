@@ -130,6 +130,7 @@ export async function ensureSelfSubject(userId: string): Promise<MatrixSubject |
       client,
       `UPDATE matrix_subjects
        SET birth_date = $2::date,
+           matrix_snapshot = NULL, as_of_date = NULL, calculation_version = NULL,
            display_name = COALESCE(NULLIF(trim(display_name), ''), $3),
            updated_at = NOW()
        WHERE user_id = $1 AND kind = 'self'
@@ -188,6 +189,9 @@ export async function upsertMatrixSubject(input: {
         client,
         `UPDATE matrix_subjects
          SET display_name = $3,
+             matrix_snapshot = CASE WHEN birth_date IS DISTINCT FROM $4::date THEN NULL ELSE matrix_snapshot END,
+             as_of_date = CASE WHEN birth_date IS DISTINCT FROM $4::date THEN NULL ELSE as_of_date END,
+             calculation_version = CASE WHEN birth_date IS DISTINCT FROM $4::date THEN NULL ELSE calculation_version END,
              birth_date = $4::date,
              birth_time = $5::time,
              birth_city = $6,
@@ -202,6 +206,7 @@ export async function upsertMatrixSubject(input: {
   }
 
   return withTransaction(async (client) => {
+    await queryClient(client, "SELECT id FROM users WHERE id = $1 FOR UPDATE", [input.userId]);
     const count = await queryClient<{ count: string }>(
       client,
       `SELECT count(*)::text AS count FROM matrix_subjects WHERE user_id = $1`,

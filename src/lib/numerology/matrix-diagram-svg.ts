@@ -380,7 +380,7 @@ function nodesLayer(
         n.role === "center"
           ? `<circle cx="${p.x}" cy="${p.y}" r="${CENTER_HALO_RADIUS}" fill="none" stroke="${t.halo}" stroke-width="3.2"/>`
           : "";
-      return `<g data-node="${n.id}" opacity="${visible(n, revealed) ? 1 : 0}">
+      return `<g data-node="${n.id}" role="button" tabindex="${visible(n, revealed) ? 0 : -1}" aria-label="${esc(`${n.label}: ${n.number} — ${n.arcanaName}`)}" opacity="${visible(n, revealed) ? 1 : 0}">
         ${halo}
         <circle cx="${p.x}" cy="${p.y}" r="${r}" fill="${look.fill}" stroke="${look.stroke}" stroke-width="${look.sw}"/>
         <circle data-node-hit="${n.id}" cx="${p.x}" cy="${p.y}" r="${Math.max(r + 10, 22)}" fill="transparent" style="cursor:pointer"/>
@@ -505,7 +505,7 @@ export function buildMatrixDiagramSvg(
     return `<g class="destiny-matrix-svg">${body}</g>`;
   }
 
-  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${matrixViewBoxAttr(compact && !showPeriod)}" role="img" aria-labelledby="${uid}-title" class="destiny-matrix-svg destiny-matrix-svg--interactive">
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="${matrixViewBoxAttr(compact && !showPeriod)}" role="${theme === "print" ? "img" : "group"}" aria-labelledby="${uid}-title" class="destiny-matrix-svg destiny-matrix-svg--interactive">
   ${body}
 </svg>`;
 }

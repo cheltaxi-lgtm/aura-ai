@@ -19,16 +19,19 @@ export function useMatrixSubjects(options?: { enabled?: boolean }) {
   const [subjects, setSubjects] = useState<MatrixSubject[]>([]);
   const [limit, setLimit] = useState<number | null>(null);
   const [costs, setCosts] = useState<MatrixSubjectCosts | undefined>();
+  const [error, setError] = useState<string | null>(null);
 
   const refetch = useCallback(async () => {
     if (!enabled) {
+      setSubjects([]); setLimit(null); setCosts(undefined); setError(null);
       setLoading(false);
       return;
     }
     setLoading(true);
+    setError(null);
     try {
       const res = await fetch("/api/numerology/matrix-subjects", {
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw new Error("subjects_failed");
       const data = (await res.json()) as {
@@ -39,6 +42,8 @@ export function useMatrixSubjects(options?: { enabled?: boolean }) {
       setSubjects(Array.isArray(data.subjects) ? data.subjects : []);
       setLimit(typeof data.limit === "number" ? data.limit : null);
       setCosts(data.costs);
+    } catch {
+      setError("Не удалось загрузить сохранённых людей. Проверьте соединение.");
     } finally {
       setLoading(false);
     }
@@ -51,7 +56,7 @@ export function useMatrixSubjects(options?: { enabled?: boolean }) {
   const create = useCallback(async (body: MatrixSubjectInput): Promise<MatrixSubject> => {
     const res = await fetch("/api/numerology/matrix-subjects", {
       method: "POST",
-      credentials: "include",
+      credentials: "include", signal: AbortSignal.timeout(20_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     });
@@ -69,7 +74,7 @@ export function useMatrixSubjects(options?: { enabled?: boolean }) {
   const remove = useCallback(async (subjectId: string) => {
     const res = await fetch(
       `/api/numerology/matrix-subjects?subjectId=${encodeURIComponent(subjectId)}`,
-      { method: "DELETE", credentials: "include" }
+      { method: "DELETE", credentials: "include", signal: AbortSignal.timeout(20_000) }
     );
     if (!res.ok) {
       const data = (await res.json().catch(() => ({}))) as { error?: string };
@@ -78,5 +83,5 @@ export function useMatrixSubjects(options?: { enabled?: boolean }) {
     setSubjects((current) => current.filter((subject) => subject.id !== subjectId));
   }, []);
 
-  return { loading, subjects, limit, costs, refetch, create, remove };
+  return { loading, subjects, limit, costs, error, refetch, create, remove };
 }

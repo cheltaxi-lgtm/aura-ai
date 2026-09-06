@@ -1,4 +1,6 @@
 "use client";
+import Link from "next/link";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
@@ -96,6 +98,8 @@ export default function MatrixCompatibilityPreview() {
   const [claimError, setClaimError] = useState<string | null>(null);
   const [conflict, setConflict] = useState<ConflictInfo | null>(null);
   const [ownedPair, setOwnedPair] = useState(false);
+  const [ownedPendingId, setOwnedPendingId] = useState<string | null>(null);
+  const [ownedReportId, setOwnedReportId] = useState<string | null>(null);
   const claimStartedRef = useRef(false);
 
   useEffect(() => {
@@ -116,23 +120,26 @@ export default function MatrixCompatibilityPreview() {
   useEffect(() => {
     if (!isLoggedIn || !preview || !pendingId) {
       setOwnedPair(false);
+      setOwnedReportId(null);
       return;
     }
     let cancelled = false;
+    setOwnedPair(false);
+    setOwnedReportId(null);
     void (async () => {
       try {
         const res = await fetch(
           `/api/numerology/matrix-pair-owned?pendingId=${encodeURIComponent(pendingId)}`,
-          { credentials: "include" }
+          { credentials: "include", signal: AbortSignal.timeout(20_000) }
         );
         if (!res.ok) {
-          if (!cancelled) setOwnedPair(false);
+          if (!cancelled) { setOwnedPair(false); setOwnedReportId(null); }
           return;
         }
-        const data = (await res.json()) as { owned?: unknown };
-        if (!cancelled) setOwnedPair(data.owned === true);
+        const data = (await res.json()) as { owned?: unknown; reportId?: string | null };
+        if (!cancelled) { setOwnedPendingId(pendingId); setOwnedPair(data.owned === true); setOwnedReportId(data.owned === true ? data.reportId ?? null : null); }
       } catch {
-        if (!cancelled) setOwnedPair(false);
+        if (!cancelled) { setOwnedPair(false); setOwnedReportId(null); }
       }
     })();
     return () => {
@@ -146,7 +153,7 @@ export default function MatrixCompatibilityPreview() {
     try {
       const res = await fetch("/api/numerology/matrix-pair-claim", {
         method: "POST",
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmReplace }),
       });
@@ -222,7 +229,7 @@ export default function MatrixCompatibilityPreview() {
   async function persistPair(nextA: string, nextB: string, nA: string, nB: string) {
     const res = await fetch("/api/numerology/matrix-pair-guest", {
       method: "POST",
-      credentials: "include",
+      credentials: "include", signal: AbortSignal.timeout(20_000),
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         dateA: nextA,
@@ -402,17 +409,18 @@ export default function MatrixCompatibilityPreview() {
             >
               Использовать данные этой пары
             </button>
-            <a
-              href={FULL_HREF}
+            <Link
+              href="/numerology/matrica-sovmestimosti"
               className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2.5 text-sm text-white/80"
               onClick={() => clearPendingClaimIntent()}
             >
-              Открыть полный разбор без замены
-            </a>
+              Вернуться к расчёту пары
+            </Link>
           </div>
         </div>
       ) : null}
 
+      {error ? <p role="alert" className="mt-3 text-sm text-red-300">{error}</p> : null}
       {!preview ? (
         <form onSubmit={(e) => void onSubmit(e)} className="mt-6 grid gap-4 sm:grid-cols-2">
           <label className="block">
@@ -470,6 +478,8 @@ export default function MatrixCompatibilityPreview() {
         </form>
       ) : (
         <div className="mt-8 space-y-6">
+          {ownedPair && ownedPendingId === pendingId && ownedReportId ? <ReportExportActions path={`/cabinet/numerology/matrix/${ownedReportId}/print`} /> : null}
+          <a className="text-sm text-aura-gold underline" href={`/numerology/destiny-matrix/print?${new URLSearchParams({ birthDate: dateA, partnerDate: dateB, version: preview.version, ...(preview.asOfDate ? {asOfDate: preview.asOfDate} : {}) })}`}>Печатная версия расчёта пары</a>
           <div className="rounded-2xl border border-aura-gold/25 bg-aura-gold/[0.05] p-5">
             <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">
               {MATRIX_LABELS.pairScore}

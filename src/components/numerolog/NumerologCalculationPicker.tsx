@@ -70,6 +70,8 @@ export default function NumerologCalculationPicker({
   );
 
   const subjectPicker = showSubjectPicker ? (
+    <div>
+      {matrixSubjects.error ? <p role="alert" className="mb-3 text-sm text-amber-200">{matrixSubjects.error} <button type="button" onClick={() => void matrixSubjects.refetch()} className="underline">Повторить</button></p> : null}
     <MatrixSubjectPicker
       subjects={matrixSubjects.subjects}
       selectedId={matrixSubjectId}
@@ -86,6 +88,7 @@ export default function NumerologCalculationPicker({
       onCreated={(subject) => onMatrixSubjectIdChange?.(subject.id)}
       onRemove={matrixSubjects.remove}
     />
+    </div>
   ) : null;
 
   const handlePartnerDateChange = (value: string) => {

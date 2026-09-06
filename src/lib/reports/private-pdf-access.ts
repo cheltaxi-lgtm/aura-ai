@@ -3,6 +3,7 @@ import { getSavedReadingDocument } from "./saved-reading";
 import { getJointReadingByToken, resolveJointParticipantRole } from "@/lib/joint-reading-service";
 import { printPathKind } from "./pdf-policy";
 import { getCompatibilityRecord } from "@/lib/services/natal-compatibility-service";
+import { getUserMatrixReportById } from "@/lib/services/numerology-report-service";
 
 /** Check availability before launching Chromium; pages still recheck ownership. */
 export async function privatePdfAvailable(path: string, userId: string): Promise<boolean> {
@@ -14,6 +15,7 @@ export async function privatePdfAvailable(path: string, userId: string): Promise
     return Boolean(row && row.status === "completed" && resolveJointParticipantRole(row,userId));
   }
   if(path.startsWith("/cabinet/readings/")) return Boolean((await getSavedReadingDocument(userId,id))?.body.trim());
+  if(path.startsWith("/cabinet/numerology/matrix/")) return Boolean((await getUserMatrixReportById(userId,id))?.content.trim());
   if(path.startsWith("/cabinet/astrology/compatibility/")) return Boolean((await getCompatibilityRecord(id,userId))?.report);
   const sources: Record<string,string> = {
     "/cabinet/astrology/reports/": "SELECT 1 FROM natal_report_history WHERE id=$1 AND user_id=$2 AND length(trim(content))>0",

@@ -640,7 +640,8 @@ describe("print SVG contract", () => {
     const matrix = destinyMatrix("1990-08-15", AS_OF)!;
     for (const theme of ["print", "dark"] as const) {
       const svg = buildMatrixDiagramSvgFromResult(matrix, { theme, uid: theme });
-      expect(svg).toContain('role="img"');
+      expect(svg).toContain(`role="${theme === "print" ? "img" : "group"}"`);
+      if (theme === "dark") expect(svg).toContain('role="button" tabindex="0"');
       expect(svg).toContain("Матрица судьбы");
       expect(svg).not.toMatch(/matrix-v[0-9]/i);
       expect(svg).not.toContain("structured_data");

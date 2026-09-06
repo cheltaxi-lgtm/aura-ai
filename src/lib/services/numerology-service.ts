@@ -1,3 +1,4 @@
+import { formatMatrixCompatibilityPromptBlock, type MatrixCompatibilityResult } from "@/lib/numerology/matrix-compatibility";
 import { buildNumerologSpreadReading, buildSpreadOpeningFinale } from "@/lib/numerolog/welcome";
 import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
 import { buildNumerologEngineReply, buildRichEngineFacts } from "@/lib/numerology/engine-reply";
@@ -73,6 +74,8 @@ export interface NumerologEngineParams {
   asOfDate?: string | null;
   /** Immutable saved Matrix — AI never recalculates these numbers. */
   matrixSnapshot?: Record<string, unknown> | null;
+  matrixPairResult?: MatrixCompatibilityResult | null;
+  matrixYearResult?: ReturnType<typeof matrixYearForecast>;
 }
 
 /** Keep only matrix-safe memory lines (drop Pythagorean / life-path leaks). */
@@ -203,7 +206,10 @@ export async function generateNumerologStreamReply(
     (params.userName || params.profileName || "друг").trim().split(/\s+/)[0] ||
     "друг";
 
-  const engineFactsRaw =
+  const pairFacts = params.matrixPairResult
+    ? formatMatrixCompatibilityPromptBlock(params.matrixPairResult, firstName)
+    : params.toolId === "matrix_year_forecast" ? params.lastUserMessage : null;
+  const engineFactsRaw = pairFacts ?? (
     buildRichEngineFacts({
       prompt: buildNumerologyChatContext({
         birthDate: params.birthDate,
@@ -215,7 +221,7 @@ export async function generateNumerologStreamReply(
       primaryTopic: engineResult.primaryTopic,
       userMessage: params.lastUserMessage,
       fallbackFacts: engineResult.engineFacts || engineResult.reply.slice(0, 2000),
-    }) || engineResult.reply.slice(0, 2000);
+    }) || engineResult.reply.slice(0, 2000));
   // Matrix: allow narrow memory (filtered) + optional natal bridge. Never raw Pythagorean LP.
   let engineFacts = engineFactsRaw;
   if (engineResult.primaryTopic === "destiny_matrix") {
@@ -258,7 +264,7 @@ export async function generateNumerologStreamReply(
   } else if (params.memoryBlock?.trim()) {
     engineFacts = `${params.memoryBlock.trim()}\n\n${engineFactsRaw}`;
   }
-  const fallback = engineResult.reply;
+  const fallback = pairFacts ?? engineResult.reply;
 
   // Paid/full matrix: zone assembly (never one monolithic LLM blob).
   if (
@@ -451,6 +457,8 @@ export async function generateNumerologSessionReading(input: {
   /** Guest→auth freeze; period zones must match guest snapshot on first open. */
   asOfDate?: string | null;
   matrixSnapshot?: Record<string, unknown> | null;
+  matrixPairResult?: MatrixCompatibilityResult | null;
+  matrixYearResult?: ReturnType<typeof matrixYearForecast>;
   onMatrixProgress?: (progress: {
     done: number;
     total: number;
@@ -480,7 +488,7 @@ export async function generateNumerologSessionReading(input: {
 
   const forecastContext =
     input.toolId === "matrix_year_forecast" && input.birthDate
-      ? matrixYearForecast(input.birthDate)
+      ? input.matrixYearResult ?? matrixYearForecast(input.birthDate)
       : null;
   const message = [
     buildNumerologToolMessage(input.toolId, input.toolParams),
@@ -528,6 +536,8 @@ export async function generateNumerologSessionReading(input: {
     subjectName: input.subjectName,
     asOfDate: input.asOfDate,
     matrixSnapshot: input.matrixSnapshot,
+    matrixPairResult: input.matrixPairResult,
+    matrixYearResult: input.matrixYearResult,
     // Paid session: AI-only. completeNumerologProse walks paid → fallbackModels.
     allowEngineFallback: false,
   });

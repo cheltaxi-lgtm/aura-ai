@@ -5,7 +5,6 @@ import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
 import { buildMatrixFreeSummary, type MatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
-import { matrixToStructuredData } from "@/lib/numerology/destiny-matrix";
 import { hydrateDestinyMatrixFromSnapshot } from "@/lib/numerology/matrix-snapshot";
 import { downloadMatrixShareCardSvg } from "@/lib/numerology/matrix-share-card-svg";
 import { parseBirthDate } from "@/lib/numerology/constants";
@@ -13,6 +12,8 @@ import { readStoredProfile } from "@/lib/home-flow-storage";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { useAuth } from "@/lib/useAuth";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
+import ReportExportActions from "@/components/reports/ReportExportActions";
+import type { MatrixSubject } from "@/lib/services/matrix-subject-service";
 import { PRICING } from "@/lib/config/pricing";
 import { fullMatrixSessionHref } from "@/lib/numerology/matrix-subject-routing";
 import {
@@ -123,6 +124,7 @@ export default function DestinyMatrixPreview() {
   const [conflict, setConflict] = useState<MatrixConflictInfo | null>(null);
   const [guestPersisting, setGuestPersisting] = useState(false);
   const autoRanRef = useRef(false);
+  const calculationRequest = useRef(0);
   const claimStartedRef = useRef(false);
   const pendingBirthRef = useRef<string | null>(null);
 
@@ -131,7 +133,7 @@ export default function DestinyMatrixPreview() {
     try {
       const res = await fetch("/api/numerology/matrix-guest", {
         method: "POST",
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           birthDate: date,
@@ -149,36 +151,24 @@ export default function DestinyMatrixPreview() {
     }
   }, []);
 
-  const persistAuthMatrix = useCallback(
-    async (date: string, personName: string, matrix?: MatrixFreeSummary["matrix"]) => {
-      const subject = selectedSubjectId
-        ? matrixSubjects.subjects.find((item) => item.id === selectedSubjectId)
-        : null;
-      try {
-        await fetch("/api/numerology/matrix-snapshot", {
-          method: "POST",
-          credentials: "include",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            birthDate: date,
-            displayName: personName.trim() || subject?.displayName || null,
-            subjectKind: subject?.kind ?? "self",
-            subjectId: selectedSubjectId,
-            ...(matrix
-              ? {
-                  snapshot: matrixToStructuredData(matrix),
-                  asOfDate: matrix.asOf.date,
-                  calculationVersion: matrix.calculationVersion,
-                }
-              : {}),
-          }),
-        });
-      } catch {
-        /* preview stays local; server persist is best-effort */
-      }
-    },
-    [matrixSubjects.subjects, selectedSubjectId]
-  );
+  const persistAuthMatrix = useCallback(async (date: string, personName: string, subject: MatrixSubject) => {
+    const endpoint = `/api/numerology/matrix-snapshot?subjectId=${encodeURIComponent(subject.id)}`;
+    let response = await fetch(endpoint, { credentials: "include", signal: AbortSignal.timeout(20_000) });
+    if (response.status === 404) {
+      const saved = await fetch("/api/numerology/matrix-snapshot", {
+        method: "POST", credentials: "include", signal: AbortSignal.timeout(20_000),
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ birthDate: date, displayName: personName || subject.displayName, subjectKind: subject.kind, subjectId: subject.id }),
+      });
+      if (!saved.ok) throw new Error("Не удалось сохранить матрицу выбранного человека. Повторите расчёт.");
+      response = await fetch(endpoint, { credentials: "include", signal: AbortSignal.timeout(20_000) });
+    }
+    if (!response.ok) throw new Error("Не удалось открыть сохранённую матрицу. Повторите расчёт.");
+    const data = await response.json();
+    const matrix = hydrateDestinyMatrixFromSnapshot(data.snapshot ?? null);
+    if (!matrix || data.birthDate !== date) throw new Error("Сохранённая матрица не соответствует выбранной дате.");
+    return matrix;
+  }, []);
 
   const runClaim = useCallback(async (confirmReplace = false) => {
     setClaiming(true);
@@ -186,7 +176,7 @@ export default function DestinyMatrixPreview() {
     try {
       const res = await fetch("/api/numerology/matrix-claim", {
         method: "POST",
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirmReplace }),
       });
@@ -224,29 +214,30 @@ export default function DestinyMatrixPreview() {
   }, []);
 
   const runCalculate = useCallback(
-    (date: string, personName: string) => {
-      setError(null);
-      setConflict(null);
-      setClaimError(null);
-      startTransition(() => {
-        const result = buildMatrixFreeSummary(date, { name: personName || undefined });
-        if (!result) {
-          setSummary(null);
-          setError("Введите корректную дату рождения.");
-          return;
-        }
-        setSummary(result);
-        trackSeoEvent("matrix_preview_complete");
-        trackProductFunnel("free_start", { product: "matrix", source: "preview" });
-        trackProductFunnel("free_complete", { product: "matrix", source: "preview" });
-        if (!isLoggedIn) {
-          void persistGuestMatrix(date, personName);
-        } else {
-          void persistAuthMatrix(date, personName, result.matrix);
+    (date: string, personName: string, selected?: MatrixSubject | null) => {
+      autoRanRef.current = true;
+      const request = ++calculationRequest.current;
+      const subject = selected === undefined
+        ? matrixSubjects.subjects.find(item => (selectedSubjectId ? item.id === selectedSubjectId : item.kind === "self") && item.birthDate === date)
+        : selected;
+      setError(null); setConflict(null); setClaimError(null); setSummary(null);
+      startTransition(async () => {
+        try {
+          const matrix = isLoggedIn && subject ? await persistAuthMatrix(date, personName, subject) : undefined;
+          const result = buildMatrixFreeSummary(date, { name: personName || undefined, matrix });
+          if (request !== calculationRequest.current) return;
+          if (!result) throw new Error("Введите корректную дату рождения.");
+          setSummary(result);
+          trackSeoEvent("matrix_preview_complete");
+          trackProductFunnel("free_start", { product: "matrix", source: "preview" });
+          trackProductFunnel("free_complete", { product: "matrix", source: "preview" });
+          if (!isLoggedIn) await persistGuestMatrix(date, personName);
+        } catch (reason) {
+          if (request === calculationRequest.current) setError(reason instanceof Error && reason.name !== "TimeoutError" ? reason.message : "Не удалось загрузить матрицу. Проверьте соединение и повторите расчёт.");
         }
       });
     },
-    [isLoggedIn, persistGuestMatrix, persistAuthMatrix]
+    [isLoggedIn, persistGuestMatrix, persistAuthMatrix, matrixSubjects.subjects, selectedSubjectId]
   );
 
   useEffect(() => {
@@ -279,6 +270,8 @@ export default function DestinyMatrixPreview() {
 
     let cancelled = false;
 
+    const hydrationGeneration = calculationRequest.current;
+    const isCurrent = () => !cancelled && hydrationGeneration === calculationRequest.current;
     async function hydrateFromProfile() {
       let nextName = "";
       let nextDate = "";
@@ -294,7 +287,7 @@ export default function DestinyMatrixPreview() {
 
       if (isLoggedIn) {
         try {
-          const res = await fetch("/api/profile", { credentials: "include" });
+          const res = await fetch("/api/profile", { credentials: "include", signal: AbortSignal.timeout(20_000) });
           if (res.ok) {
             const data = (await res.json()) as {
               profile?: {
@@ -308,6 +301,7 @@ export default function DestinyMatrixPreview() {
             if (profile?.name?.trim()) nextName = profile.name.trim();
             const serverDate = toDateInputValue(profile?.birthDate);
             if (serverDate) nextDate = serverDate;
+            if (!isCurrent()) return;
             setSkyProfileComplete(
               Boolean(profile?.birthTime?.trim() && profile?.birthCity?.trim())
             );
@@ -319,7 +313,7 @@ export default function DestinyMatrixPreview() {
         setSkyProfileComplete(null);
       }
 
-      if (cancelled) return;
+      if (!isCurrent()) return;
 
       // OAuth / Latin full names → short Russian given name (e.g. Gennady Kharitonov → Геннадий)
       nextName = normalizePersonDisplayName(nextName);
@@ -331,7 +325,7 @@ export default function DestinyMatrixPreview() {
       if (isLoggedIn) {
         try {
           const snapRes = await fetch("/api/numerology/matrix-snapshot", {
-            credentials: "include",
+            credentials: "include", signal: AbortSignal.timeout(20_000),
           });
           if (snapRes.ok) {
             const data = (await snapRes.json()) as {
@@ -342,7 +336,7 @@ export default function DestinyMatrixPreview() {
             const date = data.birthDate && parseBirthDate(data.birthDate) ? data.birthDate : "";
             if (matrix && date) {
               const frozen = buildMatrixFreeSummary(date, { name: nextName || undefined, matrix });
-              if (frozen && !cancelled) {
+              if (frozen && isCurrent()) {
                 setBirthDate(date);
                 setSummary(frozen);
                 autoRanRef.current = true;
@@ -355,6 +349,7 @@ export default function DestinyMatrixPreview() {
         }
       }
 
+      if (!isCurrent()) return;
       if (nextDate && parseBirthDate(nextDate)) {
         autoRanRef.current = true;
         runCalculate(nextDate, nextName);
@@ -556,31 +551,38 @@ export default function DestinyMatrixPreview() {
 
       {isLoggedIn ? (
         <div className="mt-5">
+          {matrixSubjects.error ? <p role="alert" className="mb-3 text-sm text-amber-200">{matrixSubjects.error} <button type="button" onClick={() => void matrixSubjects.refetch()} className="underline">Повторить</button></p> : null}
           <MatrixSubjectPicker
+            defaultSelectSelf={false}
             subjects={matrixSubjects.subjects}
             selectedId={selectedSubjectId}
             disabled={matrixSubjects.loading}
             costs={matrixSubjects.costs}
             onSelect={(id) => {
+              autoRanRef.current = true;
+              calculationRequest.current++;
+              setSummary(null);
               setSelectedSubjectId(id);
-              if (!id) return;
+              if (!id) { setBirthDate(""); setName(""); return; }
               const subject = matrixSubjects.subjects.find((item) => item.id === id);
               if (!subject) return;
               setBirthDate(subject.birthDate);
-              if (subject.displayName) setName(subject.displayName);
+              setName(subject.displayName || "");
               setFromProfile(subject.kind === "self");
               if (parseBirthDate(subject.birthDate)) {
-                runCalculate(subject.birthDate, subject.displayName || name);
+                runCalculate(subject.birthDate, subject.displayName || name, subject);
               }
             }}
             onCreate={matrixSubjects.create}
             onCreated={(subject) => {
+              autoRanRef.current = true;
+              calculationRequest.current++;
               setSelectedSubjectId(subject.id);
               setBirthDate(subject.birthDate);
               if (subject.displayName) setName(subject.displayName);
               setFromProfile(false);
               if (parseBirthDate(subject.birthDate)) {
-                runCalculate(subject.birthDate, subject.displayName || name);
+                runCalculate(subject.birthDate, subject.displayName || name, subject);
               }
             }}
             onRemove={matrixSubjects.remove}
@@ -600,6 +602,10 @@ export default function DestinyMatrixPreview() {
             required
             value={birthDate}
             onChange={(e) => {
+              autoRanRef.current = true;
+              calculationRequest.current++;
+              setSelectedSubjectId(null);
+              setSummary(null);
               setBirthDate(e.target.value);
               setFromProfile(false);
             }}
@@ -612,6 +618,8 @@ export default function DestinyMatrixPreview() {
             type="text"
             value={name}
             onChange={(e) => {
+              autoRanRef.current = true;
+              calculationRequest.current++;
               setName(e.target.value);
               setFromProfile(false);
             }}
@@ -633,6 +641,10 @@ export default function DestinyMatrixPreview() {
 
       {summary ? (
         <div className="mt-8 space-y-6">
+          <div className="rounded-xl border border-aura-gold/25 p-4">
+            {matrixOwnership.reportId && !matrixOwnership.loading ? <ReportExportActions path={`/cabinet/numerology/matrix/${matrixOwnership.reportId}/print`} /> : <a className="text-sm text-aura-gold underline" href={`/numerology/destiny-matrix/print?${new URLSearchParams({ birthDate, asOfDate: summary.matrix.asOf.date, version: summary.matrix.calculationVersion })}`}>Печатная версия расчёта</a>}
+          </div>
+          {isLoggedIn ? <a href="/cabinet/numerology/matrix" className="block text-sm text-aura-gold underline">Все сохранённые матрицы и PDF</a> : null}
           <DestinyMatrixGrid
             matrix={summary.matrix}
             revealed={revealed}
@@ -716,13 +728,8 @@ export default function DestinyMatrixPreview() {
                   повторной оплаты за те же числа. Или закажите новый полный разбор.
                 </p>
                 <div className="flex flex-wrap gap-2">
-                  {matrixOwnership.reportId ? (
-                    <a
-                      href={`/cabinet/numerology/matrix/${encodeURIComponent(matrixOwnership.reportId)}/print`}
-                      className="inline-flex items-center justify-center rounded-xl border border-white/20 px-4 py-2.5 text-sm font-medium text-white/80 transition hover:border-white/40 hover:text-white"
-                    >
-                      Печать / PDF
-                    </a>
+                  {matrixOwnership.reportId && !matrixOwnership.loading ? (
+                    <ReportExportActions path={`/cabinet/numerology/matrix/${encodeURIComponent(matrixOwnership.reportId)}/print`} />
                   ) : null}
                   <button
                     type="button"
@@ -747,7 +754,7 @@ export default function DestinyMatrixPreview() {
                         try {
                           const res = await fetch("/api/numerology/matrix-report", {
                             method: "DELETE",
-                            credentials: "include",
+                            credentials: "include", signal: AbortSignal.timeout(20_000),
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                               subjectId,
@@ -793,7 +800,7 @@ export default function DestinyMatrixPreview() {
                         try {
                           const res = await fetch("/api/numerology/matrix-report", {
                             method: "DELETE",
-                            credentials: "include",
+                            credentials: "include", signal: AbortSignal.timeout(20_000),
                             headers: { "Content-Type": "application/json" },
                             body: JSON.stringify({
                               ...(subjectId ? { subjectId } : {}),

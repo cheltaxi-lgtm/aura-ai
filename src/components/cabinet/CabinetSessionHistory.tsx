@@ -376,6 +376,7 @@ export default function CabinetSessionHistory({
 
   return (
     <section id="cabinet-history" className="space-y-4">
+      <Link href="/cabinet/numerology/matrix" className="inline-flex rounded-xl border border-aura-gold/25 px-4 py-3 text-sm text-aura-gold">Все матрицы и PDF →</Link>
       {!hideTitle ? (
         <h2 className="text-lg font-semibold text-white">{title}</h2>
       ) : null}

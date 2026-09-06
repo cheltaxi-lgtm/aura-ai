@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, useRef, useLayoutEffect } from "react";
 import { useReducedMotion } from "framer-motion";
 import {
   DESTINY_MATRIX_UI_SLOT_COUNT,
@@ -35,6 +35,15 @@ export default function DestinyMatrixDiagram({
   const uid = useId().replace(/:/g, "");
   const reduceMotion = useReducedMotion();
   const [narrow, setNarrow] = useState(false);
+  const frameRef = useRef<HTMLDivElement>(null);
+  const keyboardNode = useRef<string | null>(null);
+  const [keyboardMode, setKeyboardMode] = useState(false);
+  useLayoutEffect(() => {
+    if (keyboardMode && keyboardNode.current) {
+      const nodes = frameRef.current?.querySelectorAll<SVGElement>("[data-node]");
+      nodes?.forEach(node => { if (node.getAttribute("data-node") === keyboardNode.current) node.focus(); });
+    }
+  }, [keyboardMode]);
   const [selectedId, setSelectedId] = useState<string | null>(null);
 
   useEffect(() => {
@@ -53,21 +62,33 @@ export default function DestinyMatrixDiagram({
       buildMatrixDiagramSvg(model, {
         theme,
         density,
-        revealed: reduceMotion ? 99 : revealed,
+        revealed: reduceMotion || keyboardMode ? 99 : revealed,
         focusKey: focusKey ?? matrix.focusKey,
         showPeriod: showPeriod ?? true,
         showAgeMarks: showAgeMarks ?? true,
         uid,
       }),
-    [model, theme, density, revealed, focusKey, matrix.focusKey, showPeriod, showAgeMarks, uid, reduceMotion]
+    [model, theme, density, revealed, focusKey, matrix.focusKey, showPeriod, showAgeMarks, uid, reduceMotion, keyboardMode]
   );
   const selected = selectedId ? model.nodes.find((node) => node.id === selectedId) ?? null : null;
 
   return (
     <figure className={`destiny-matrix-figure destiny-matrix-figure--${theme} destiny-matrix-figure--${density}`}>
       <div
+        ref={frameRef}
+        onFocusCapture={(event) => {
+          const node = (event.target as Element).closest("[data-node]");
+          if (node && !keyboardMode) { keyboardNode.current = node.getAttribute("data-node"); setKeyboardMode(true); }
+        }}
         className="destiny-matrix-frame"
         dangerouslySetInnerHTML={{ __html: svg }}
+        onKeyDown={(event) => {
+          if (event.key !== "Enter" && event.key !== " ") return;
+          const hit = (event.target as Element | null)?.closest?.("[data-node]");
+          if (!hit) return;
+          event.preventDefault();
+          setSelectedId(hit.getAttribute("data-node"));
+        }}
         onClick={(event) => {
           const hit = (event.target as Element | null)?.closest?.("[data-node-hit],[data-node]");
           const id = hit?.getAttribute("data-node-hit") || hit?.getAttribute("data-node");

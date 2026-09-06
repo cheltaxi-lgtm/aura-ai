@@ -1,4 +1,5 @@
 "use client";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -779,6 +780,7 @@ export default function ChatWindow({
         </div>
       )}
 
+      {sessionId && ["destiny_matrix", "child_matrix", "matrix_compatibility", "matrix_year_forecast"].includes(numerologSessionToolId ?? "") && !spreadReadingLoading && messages.some(message => message.role === "assistant" && message.content.trim().length > 80) ? <ReportExportActions path={`/cabinet/readings/${sessionId}/print`} /> : null}
       {headerSceneUrl &&
         !hideDestinyCardArt &&
         !spreadCards?.length &&

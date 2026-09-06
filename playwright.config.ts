@@ -1,4 +1,5 @@
 import { defineConfig, devices } from "@playwright/test";
+import { existsSync } from "node:fs";
 
 const localBaseURL = "http://127.0.0.1:3417";
 const fixtureBaseURL = process.env.NATAL_E2E_BASE_URL?.replace(/\/$/, "");
@@ -52,7 +53,7 @@ export default defineConfig({
     {
       name: "matrix-e2e",
       testMatch: /matrix\.e2e\.spec\.ts/,
-      use: { ...devices["Desktop Chrome"] },
+      use: { ...devices["Desktop Chrome"], launchOptions: { executablePath: process.env.MATRIX_TEST_CHROME || (process.platform === "win32" && existsSync("C:/Program Files/Google/Chrome/Application/chrome.exe") ? "C:/Program Files/Google/Chrome/Application/chrome.exe" : undefined) } },
     },
     ...(fixtureBaseURL && storageState
       ? [{

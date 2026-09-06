@@ -2,7 +2,7 @@
  * Free public preview for Matrix pair compatibility (methodology Zovus).
  * Uses existing matrixCompatibility() — does not reimplement scoring.
  */
-import { MATRIX_CALCULATION_VERSION } from "./destiny-matrix";
+import { type DestinyMatrixOptions } from "./destiny-matrix";
 import { MATRIX_LABELS } from "./matrix-labels";
 import { matrixCompatibility, type MatrixCompatKey } from "./matrix-compatibility";
 
@@ -19,6 +19,7 @@ export type MatrixCompatZonePreview = {
 
 export type MatrixCompatFreeSummary = {
   version: string;
+  asOfDate?: string;
   /** Methodology label — not a universal official metric. */
   methodology: "zovus";
   score: number;
@@ -52,9 +53,10 @@ function zoneFromKey(
 /** Compact free preview from existing engine (no formula changes). */
 export function buildMatrixCompatFreeSummary(
   dateA: string,
-  dateB: string
+  dateB: string,
+  options?: DestinyMatrixOptions
 ): MatrixCompatFreeSummary | null {
-  const result = matrixCompatibility(dateA, dateB);
+  const result = matrixCompatibility(dateA, dateB, options);
   if (!result) return null;
 
   const love = zoneFromKey(
@@ -75,7 +77,8 @@ export function buildMatrixCompatFreeSummary(
   const zones = [love, money, comfort].filter(Boolean) as MatrixCompatZonePreview[];
 
   return {
-    version: MATRIX_CALCULATION_VERSION,
+    version: result.matrixA.calculationVersion,
+    asOfDate: result.matrixA.asOf.date,
     methodology: "zovus",
     score: result.score,
     summary: result.summary,

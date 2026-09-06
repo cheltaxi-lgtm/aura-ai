@@ -101,7 +101,8 @@ describe("free-to-paid-conversion", () => {
     const route = read("src/app/api/numerology/matrix-pair-owned/route.ts");
     expect(route).toMatch(/requireProfileUserId/);
     expect(route).toMatch(/hasOwnedMatrixPairForPending/);
-    expect(route).toMatch(/return NextResponse\.json\(\{ owned \}\)/);
+    expect(route).toMatch(/return NextResponse\.json\(\{ owned, reportId: report\?\.id \?\? null \}\)/);
+    expect(route).toContain("ownedMatrixPairReportForPending(auth.profileUserId, pendingId)");
   });
 
   it("cross-product list does not duplicate the pair paid CTA", () => {

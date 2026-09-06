@@ -292,7 +292,8 @@ export async function updateUserProfile(
   if (updated?.birth_date) {
     await query(
       `UPDATE matrix_subjects
-       SET birth_date = $2::date, updated_at = NOW()
+       SET birth_date = $2::date, matrix_snapshot = NULL, as_of_date = NULL,
+           calculation_version = NULL, updated_at = NOW()
        WHERE user_id = $1 AND kind = 'self'
          AND birth_date IS DISTINCT FROM $2::date`,
       [id, updated.birth_date]

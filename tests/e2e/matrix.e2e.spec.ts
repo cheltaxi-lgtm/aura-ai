@@ -1,4 +1,5 @@
 import { expect, test, type Page, type Route } from "@playwright/test";
+import { destinyMatrix, matrixToStructuredData } from "../../src/lib/numerology/destiny-matrix";
 
 const DOB = "1990-08-15";
 const SUBJECT_A = "11111111-1111-4111-8111-111111111111";
@@ -411,7 +412,7 @@ test.describe("Matrix E2E", () => {
     expect(ownership.del).toBe(403);
     expect(ownership.retry).toBe(403);
 
-    await page.goto("/cabinet");
+    // This mocked backend has no server auth cookie; verify its history API in place.
     const history = await page.evaluate(async () => {
       const res = await fetch("/api/cabinet");
       return res.json();
@@ -492,4 +493,63 @@ test.describe("Matrix E2E", () => {
     await reportLink.click();
     await documentNavigation;
   });
+});
+
+test("saved subject switching preserves frozen snapshot and never writes the previous person", async ({ page }) => {
+  await installMatrixBackend(page);
+  await confirmAge(page);
+  const otherDate = "1988-03-03";
+  let snapshotWrites = 0;
+  let releaseHydration!: () => void;
+  const hydrationGate = new Promise<void>(resolve => { releaseHydration = resolve; });
+  const subjects = [{ id: SUBJECT_A, kind: "self", displayName: "Я", birthDate: DOB }, { id: SUBJECT_B, kind: "other", displayName: "Анна", birthDate: otherDate }];
+  await page.route("**/api/profile", route => route.fulfill({ json: { profile: { name: "QA", birthDate: DOB } } }));
+  await page.route("**/api/numerology/matrix-subjects", route => route.fulfill({ json: { subjects, limit: 20 } }));
+  await page.route("**/api/numerology/matrix-snapshot**", async route => {
+    if (route.request().method() === "POST") { snapshotWrites++; return route.fulfill({ status: 500, json: { error: "unexpected_write" } }); }
+    const requestedId = new URL(route.request().url()).searchParams.get("subjectId");
+    if (!requestedId) await hydrationGate;
+    const id = requestedId || SUBJECT_A;
+    const date = id === SUBJECT_B ? otherDate : DOB;
+    return route.fulfill({ json: { subjectId: id, birthDate: date, snapshot: matrixToStructuredData(destinyMatrix(date, { calculationVersion: "matrix-v4", asOfDate: "2024-01-01" })!) } });
+  });
+  await page.goto("/numerology/destiny-matrix");
+  await page.getByRole("button", { name: /^Анна/ }).click();
+  const print = page.getByRole("link", { name: "Печатная версия расчёта", exact: true });
+  await expect(print).toHaveAttribute("href", /birthDate=1988-03-03.*asOfDate=2024-01-01.*version=matrix-v4/);
+  releaseHydration();
+  await expect(page.locator('input[type="date"]').first()).toHaveValue(otherDate);
+  await expect(print).toHaveAttribute("href", /birthDate=1988-03-03/);
+  expect(snapshotWrites).toBe(0);
+  const firstNode = page.locator('g[data-node][role="button"][tabindex="0"]').first();
+  await firstNode.focus(); await firstNode.press("Enter");
+  await expect(page.locator(".destiny-matrix-node-card")).toBeVisible();
+  await page.locator('input[type="date"]').first().fill("1991-02-04");
+  await expect(print).toHaveCount(0);
+  await page.getByRole("button", { name: "Рассчитать бесплатно", exact: true }).click();
+  await expect(print).toHaveAttribute("href", /birthDate=1991-02-04/);
+  expect(snapshotWrites).toBe(0);
+});
+
+test("free matrix has a readable print document and browser PDF action on mobile", async ({ page }) => {
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/numerology/destiny-matrix/print?birthDate=1990-08-15&asOfDate=2024-01-01&version=matrix-v4");
+  await expect(page.locator('[data-pdf-ready="true"]')).toBeVisible();
+  await expect(page.getByRole("heading", { name: "Матрица судьбы · бесплатный расчёт" })).toBeVisible();
+  expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+  await page.evaluate(() => { window.print = () => { document.body.dataset.printed = "yes"; }; });
+  await page.getByRole("button", { name: "Печать / сохранить PDF", exact: true }).click();
+  await expect(page.locator("body")).toHaveAttribute("data-printed", "yes");
+});
+
+test("subject load failure is visible and can be retried", async ({ page }) => {
+  await installMatrixBackend(page); await confirmAge(page);
+  await page.route("**/api/profile", route => route.fulfill({ json: { profile: { name: "QA", birthDate: DOB } } }));
+  let attempts = 0;
+  await page.route("**/api/numerology/matrix-subjects", route => ++attempts === 1 ? route.fulfill({ status: 503, json: {} }) : route.fulfill({ json: { subjects: [{ id: SUBJECT_A, kind: "self", birthDate: DOB }], limit: 20 } }));
+  await page.goto("/numerology/destiny-matrix");
+  await expect(page.locator("#calculate").getByRole("alert")).toContainText("Не удалось загрузить сохранённых людей");
+  await page.getByRole("button", { name: "Повторить", exact: true }).click();
+  await expect(page.locator("#calculate").getByRole("alert")).toHaveCount(0);
+  expect(attempts).toBe(2);
 });

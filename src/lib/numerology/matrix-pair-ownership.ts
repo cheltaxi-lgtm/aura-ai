@@ -2,6 +2,7 @@ import { query } from "@/lib/db";
 import { getMatrixPairGuestPendingMeta } from "@/lib/services/matrix-pair-guest-service";
 import {
   listUserMatrixCompatibilityReports,
+  findStoredMatrixPairReport,
   toIsoBirthDate,
   type NumerologyReportHistoryItem,
 } from "@/lib/services/numerology-report-service";
@@ -106,6 +107,8 @@ export async function findOwnedExactMatrixPairReport(opts: {
   const dateA = toIsoBirthDate(opts.dateA);
   const dateB = toIsoBirthDate(opts.dateB);
   if (!dateA || !dateB) return null;
+  const exact = await findStoredMatrixPairReport(opts.userId, dateA, dateB);
+  if (exact) return exact;
   const rows = await reportsWithPartnerDates(opts.userId);
   const hit = rows.find(
     (row) => toIsoBirthDate(row.report.birthDate) === dateA && row.partnerDate === dateB
@@ -117,6 +120,9 @@ async function userHasExactMatrixPairReport(
   userId: string,
   pair: MatrixPairIdentity
 ): Promise<boolean> {
+  const dateA = toIsoBirthDate(pair.dateA);
+  const dateB = toIsoBirthDate(pair.dateB);
+  if (dateA && dateB && await findStoredMatrixPairReport(userId, dateA, dateB)) return true;
   const withPartner = (await reportsWithPartnerDates(userId)).map((row) => ({
     birthDate: row.report.birthDate,
     partnerDate: row.partnerDate,
@@ -145,6 +151,13 @@ async function userHasExactMatrixPairReport(
 }
 
 /** Server-only exact-pair ownership. Returns boolean only. */
+export async function ownedMatrixPairReportForPending(userId: string, pendingId: string): Promise<NumerologyReportHistoryItem | null> {
+  if (!PENDING_ID_RE.test(pendingId)) return null;
+  const pending = await getMatrixPairGuestPendingMeta(pendingId);
+  if (!pending || (pending.claimedUserId && pending.claimedUserId !== userId)) return null;
+  return findOwnedExactMatrixPairReport({ userId, dateA: pending.dateA, dateB: pending.dateB });
+}
+
 export async function hasOwnedMatrixPairForPending(opts: {
   userId: string;
   pendingId: string;

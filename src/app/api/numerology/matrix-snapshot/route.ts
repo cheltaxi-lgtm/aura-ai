@@ -71,6 +71,9 @@ export async function POST(request: NextRequest) {
     if (code === "subject_limit") {
       return NextResponse.json({ error: "subject_limit" }, { status: 409 });
     }
+    if (code === "matrix_subject_date_mismatch") {
+      return NextResponse.json({ error: "Дата не совпадает с выбранным человеком. Выберите или создайте другой профиль.", code }, { status: 409 });
+    }
     console.warn("[matrix-snapshot] persist failed");
     return NextResponse.json({ error: "persist_failed" }, { status: 500 });
   }

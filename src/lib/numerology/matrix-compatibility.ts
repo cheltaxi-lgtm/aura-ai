@@ -2,12 +2,12 @@
  * Pair destiny-matrix compatibility (matrix-v2) — MVP keys for love/money/comfort/tail/year.
  */
 import { getMatrixArcanaEntry } from "./matrix-arcana-map";
-import { MATRIX_METHODOLOGY_ID } from "./matrix-result";
 import {
   destinyMatrix,
   MATRIX_CALCULATION_VERSION,
   reduceToArcanaNumber,
   type DestinyMatrixResult,
+  type DestinyMatrixOptions,
 } from "./destiny-matrix";
 import { parseBirthDate } from "./constants";
 
@@ -48,32 +48,36 @@ function pairScore(a: number, b: number): number {
   return Math.max(38, 55 - diff);
 }
 
-function titleOf(n: number): string {
-  return getMatrixArcanaEntry(n, MATRIX_CALCULATION_VERSION)?.title ?? `Аркан ${n}`;
+function titleFor(n: number, version: string = MATRIX_CALCULATION_VERSION): string {
+  return getMatrixArcanaEntry(n, version)?.title ?? `Аркан ${n}`;
 }
 
-function noteFor(
+function noteForVersion(
   label: string,
   a: number,
   b: number,
   soft: string,
-  hard: string
+  hard: string,
+  version: string = MATRIX_CALCULATION_VERSION
 ): string {
-  if (a === b) return `${label}: общий аркан ${a} (${titleOf(a)}) — ${soft}`;
+  if (a === b) return `${label}: общий аркан ${a} (${titleFor(a, version)}) — ${soft}`;
   const s = pairScore(a, b);
-  if (s >= 75) return `${label}: ${a} (${titleOf(a)}) и ${b} (${titleOf(b)}) — ${soft}`;
-  return `${label}: ${a} (${titleOf(a)}) и ${b} (${titleOf(b)}) — ${hard}`;
+  if (s >= 75) return `${label}: ${a} (${titleFor(a, version)}) и ${b} (${titleFor(b, version)}) — ${soft}`;
+  return `${label}: ${a} (${titleFor(a, version)}) и ${b} (${titleFor(b, version)}) — ${hard}`;
 }
 
 /** Compare two birth dates via matrix-v2 key points. */
 export function matrixCompatibility(
   dateA: string,
-  dateB: string
+  dateB: string,
+  options?: DestinyMatrixOptions
 ): MatrixCompatibilityResult | null {
   if (!parseBirthDate(dateA) || !parseBirthDate(dateB)) return null;
-  const matrixA = destinyMatrix(dateA);
-  const matrixB = destinyMatrix(dateB);
+  const matrixA = destinyMatrix(dateA, options);
+  const matrixB = destinyMatrix(dateB, options);
   if (!matrixA || !matrixB) return null;
+  const titleOf = (n: number) => titleFor(n, matrixA.calculationVersion);
+  const noteFor = (label: string, a: number, b: number, soft: string, hard: string) => noteForVersion(label, a, b, soft, hard, matrixA.calculationVersion);
 
   const keys: MatrixCompatKey[] = [
     {
@@ -234,8 +238,8 @@ export function matrixCompatibility(
       calculationVersion: matrixB.calculationVersion,
     },
     compatibility: {
-      methodologyId: MATRIX_METHODOLOGY_ID,
-      calculationVersion: MATRIX_CALCULATION_VERSION,
+      methodologyId: matrixA.methodologyId,
+      calculationVersion: matrixA.calculationVersion,
     },
   };
 }
@@ -249,10 +253,15 @@ export function buildMatrixCompatibilityPromptBlock(
 ): string | null {
   const result = matrixCompatibility(dateA, dateB);
   if (!result) return null;
+  return formatMatrixCompatibilityPromptBlock(result, nameA, nameB);
+}
+
+/** Format exactly the result persisted with the paid report. */
+export function formatMatrixCompatibilityPromptBlock(result: MatrixCompatibilityResult, nameA?: string, nameB?: string): string {
   const a = nameA?.trim() || "Вы";
   const b = nameB?.trim() || "Партнёр";
   return [
-    `СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ (${MATRIX_CALCULATION_VERSION}, авторская аналитика Zovus):`,
+    `СОВМЕСТИМОСТЬ МАТРИЦ СУДЬБЫ (${result.compatibility.calculationVersion}, авторская аналитика Zovus):`,
     `${a} × ${b}. Оценка Zovus: ${result.score}/100 — не классическая и не научная метрика.`,
     result.summary,
     ...result.keys.map(
@@ -263,7 +272,7 @@ export function buildMatrixCompatibilityPromptBlock(
     ...result.strengths.map((s) => `• ${s}`),
     "Точки роста:",
     ...result.risks.map((s) => `• ${s}`),
-    `Комфорт пары: ${result.pairComfort} (${titleOf(result.pairComfort)}). Аркан пары на год: ${result.pairYear} (${titleOf(result.pairYear)}).`,
+    `Комфорт пары: ${result.pairComfort} (${titleFor(result.pairComfort, result.matrixA.calculationVersion)}). Аркан пары на год: ${result.pairYear} (${titleFor(result.pairYear, result.matrixA.calculationVersion)}).`,
     "Структура ответа: 2–3 предложения вступления → ключи (каждый со своей практикой) → общий совет на 30 дней. Только «ты»/«вы двое». Без markdown. Не пересчитывай арканы.",
   ].join("\n");
 }

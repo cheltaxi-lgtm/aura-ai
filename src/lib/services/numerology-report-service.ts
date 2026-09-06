@@ -1,5 +1,6 @@
 import { query, queryClient, withTransaction } from "@/lib/db";
 import { parseBirthDate } from "@/lib/numerology/constants";
+import { matrixCalendarYmd } from "@/lib/numerology/matrix-calendar";
 import {
   isLegacyMatrixCalculationVersion,
   MATRIX_CALCULATION_VERSION,
@@ -34,7 +35,7 @@ export function matrixReportVersion(
   at: Date = new Date()
 ): string {
   return isPeriodScopedMatrixTool(toolId)
-    ? `${baseVersion}@${at.getFullYear()}`
+    ? `${baseVersion.split("@")[0]}@${matrixCalendarYmd(at).year}`
     : baseVersion;
 }
 
@@ -53,11 +54,11 @@ function ownedVersionClause(
   if (!isPeriodScopedMatrixTool(toolId)) return "";
   return `AND (${column} LIKE $${versionParam}
            OR (position('@' in ${column}) = 0
-               AND date_part('year', ${createdColumn}) = $${yearParam}))`;
+               AND date_part('year', ${createdColumn} AT TIME ZONE 'Europe/Moscow') = $${yearParam}))`;
 }
 
 function currentPeriodYear(at: Date = new Date()): number {
-  return at.getFullYear();
+  return matrixCalendarYmd(at).year;
 }
 
 export type NumerologyReportHistoryItem = {
@@ -211,6 +212,7 @@ export async function findOwnedMatrixReportBySubject(
      WHERE user_id = $1
        AND tool_id = $2
        AND subject_id = $3::uuid
+       AND birth_date = (SELECT birth_date FROM matrix_subjects WHERE id = $3::uuid AND user_id = $1)
        AND calculation_version = $4
        AND length(trim(content)) > 0
      ORDER BY created_at DESC
@@ -225,6 +227,7 @@ export async function findOwnedMatrixReportBySubject(
      WHERE user_id = $1
        AND tool_id = $2
        AND subject_id = $3::uuid
+       AND birth_date = (SELECT birth_date FROM matrix_subjects WHERE id = $3::uuid AND user_id = $1)
        AND length(trim(content)) > 0
        ${ownedVersionClause(toolId, "calculation_version", "created_at", 4, 5)}
      ORDER BY created_at DESC
@@ -400,6 +403,7 @@ export async function saveMatrixReport(params: {
   sessionId?: string;
   structuredData?: Record<string, unknown> | null;
   calculationVersion?: string;
+  reportDate?: Date;
   toolId?: string;
   subjectId?: string;
   /** When true, replace existing row for this birth date/version (new order). */
@@ -412,13 +416,20 @@ export async function saveMatrixReport(params: {
   const toolId = params.toolId ?? MATRIX_REPORT_TOOL_ID;
   const calculationVersion = matrixReportVersion(
     toolId,
-    params.calculationVersion ?? MATRIX_CALCULATION_VERSION
+    params.calculationVersion ?? MATRIX_CALCULATION_VERSION,
+    params.reportDate
   );
   const content = params.content.trim();
   if (!content) {
     throw new Error("empty_matrix_report_content");
   }
   const overwrite = Boolean(params.overwrite);
+  const data = params.structuredData;
+  const toolParams = data?.numerologToolParams as Record<string, unknown> | undefined;
+  const partnerRaw = data?.partnerDate || data?.dateB || toolParams?.partnerDate;
+  const scope = toolId === "matrix_compatibility" ? toIsoBirthDate(typeof partnerRaw === "string" ? partnerRaw : null) : "";
+  if (scope === null) throw new Error("matrix_partner_date_required");
+  const structuredData = toolId === "matrix_compatibility" ? { ...data, partnerDate: scope } : data;
   let subjectId = params.subjectId?.trim() || null;
   if (subjectId && !UUID_RE.test(subjectId)) {
     throw new Error("matrix_subject_required");
@@ -452,13 +463,13 @@ export async function saveMatrixReport(params: {
          WHERE user_id = $1
            AND tool_id = $2
            AND subject_id = $3::uuid
-           AND calculation_version = $4`,
-        [params.userId, toolId, subjectId, calculationVersion]
+           AND calculation_version = $4 AND birth_date = $5::date AND report_scope = $6`,
+        [params.userId, toolId, subjectId, calculationVersion, birthDate, scope]
       );
     }
 
     const conflictSql = overwrite
-      ? `ON CONFLICT (user_id, tool_id, subject_id, calculation_version) DO UPDATE SET
+      ? `ON CONFLICT (user_id, tool_id, subject_id, birth_date, calculation_version, report_scope) DO UPDATE SET
            content = EXCLUDED.content,
            structured_data = EXCLUDED.structured_data,
            methodology_id = EXCLUDED.methodology_id,
@@ -468,7 +479,7 @@ export async function saveMatrixReport(params: {
            charge_transaction_id = EXCLUDED.charge_transaction_id,
            session_id = EXCLUDED.session_id,
            updated_at = NOW()`
-      : `ON CONFLICT (user_id, tool_id, subject_id, calculation_version) DO NOTHING`;
+      : `ON CONFLICT (user_id, tool_id, subject_id, birth_date, calculation_version, report_scope) DO NOTHING`;
 
     const inserted = await queryClient<NumerologyReportHistoryRow>(
       client,
@@ -495,7 +506,7 @@ export async function saveMatrixReport(params: {
           ? (params.structuredData?.asOf as { date: string }).date
           : null,
         content,
-        params.structuredData ? JSON.stringify(params.structuredData) : null,
+        structuredData ? JSON.stringify(structuredData) : null,
         params.runeCost,
         params.chargeTransactionId ?? null,
         params.sessionId ?? null,
@@ -516,8 +527,8 @@ export async function saveMatrixReport(params: {
            WHERE user_id = $1
              AND tool_id = $2
              AND subject_id = $3::uuid
-             AND calculation_version = $4`,
-          [params.userId, toolId, subjectId, calculationVersion]
+             AND calculation_version = $4 AND birth_date = $5::date AND report_scope = $6`,
+          [params.userId, toolId, subjectId, calculationVersion, birthDate, scope]
         )
       ).rows[0];
 
@@ -535,7 +546,7 @@ export async function saveMatrixReport(params: {
          WHERE user_id = $1
            AND tool_id = $2
            AND subject_id = $3::uuid
-           AND calculation_version = $5
+           AND calculation_version = $5 AND birth_date = $6::date AND report_scope = $7
            AND (session_id IS DISTINCT FROM $4::uuid)`,
         [
           params.userId,
@@ -543,6 +554,8 @@ export async function saveMatrixReport(params: {
           subjectId,
           params.sessionId.trim(),
           calculationVersion,
+          birthDate,
+          scope,
         ]
       );
       existing.session_id = params.sessionId.trim();
@@ -592,6 +605,38 @@ export async function listUserMatrixCompatibilityReports(
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** Recover a paid pair whose old unique key prevented a dedicated report row.
+ * Require its still-owned session, so deleting a consultation cannot revive it. */
+export async function findArchivedMatrixPairReport(userId: string, filter: { id?: string; dateA?: string; dateB?: string }): Promise<NumerologyReportHistoryItem | null> {
+  const dotted = (date?: string) => date?.split("-").reverse().join(".") ?? "";
+  const { rows } = await query<{ id: string; context_data: Record<string, unknown>; created_at: Date; session_id: string }>(
+    `SELECT h.id,h.context_data,h.created_at,s.id AS session_id FROM history h
+     JOIN sessions s ON s.id::text=h.context_data->>'sessionId' AND s.user_id=h.user_id
+     WHERE h.user_id=$1 AND h.is_paid=true AND h.context_data->>'numerologToolId'='matrix_compatibility'
+       AND EXISTS (SELECT 1 FROM numerology_report_history collision
+         WHERE collision.user_id=h.user_id AND collision.tool_id='matrix_compatibility'
+           AND collision.session_id=s.id
+           AND collision.report_scope<>COALESCE(h.context_data->'numerologToolParams'->>'partnerDate',h.context_data->>'partnerDate',''))
+       AND length(trim(COALESCE(h.context_data->>'reading','')))>0
+       AND ($2::text IS NULL OR h.id::text=$2)
+       AND ($3::text IS NULL OR h.context_data->>'birthDate' IN ($3,$4))
+       AND ($5::text IS NULL OR COALESCE(h.context_data->'numerologToolParams'->>'partnerDate',h.context_data->>'partnerDate') IN ($5,$6))
+     ORDER BY h.created_at DESC LIMIT 1`,
+    [userId,filter.id ?? null,filter.dateA ?? null,dotted(filter.dateA),filter.dateB ?? null,dotted(filter.dateB)]);
+  const row=rows[0]; if(!row) return null;
+  const context=row.context_data;
+  const date=toIsoBirthDate(typeof context.birthDate === "string" ? context.birthDate : null);
+  const partnerRaw=(context.numerologToolParams as Record<string,unknown> | undefined)?.partnerDate ?? context.partnerDate;
+  const partnerDate=toIsoBirthDate(typeof partnerRaw === "string" ? partnerRaw : null);
+  if(!date || !partnerDate) return null;
+  return { id:row.id,toolId:"matrix_compatibility",subjectId:null,birthDate:date,calculationVersion:"matrix-unversioned",content:String(context.reading),structuredData:{partnerDate,source:"paid-history"},runeCost:null,sessionId:row.session_id,createdAt:row.created_at.toISOString(),updatedAt:row.created_at.toISOString() };
+}
+
+export async function findStoredMatrixPairReport(userId: string, dateA: string, dateB: string): Promise<NumerologyReportHistoryItem | null> {
+  const {rows}=await query<NumerologyReportHistoryRow>(`SELECT ${SELECT_COLS} FROM numerology_report_history WHERE user_id=$1 AND tool_id='matrix_compatibility' AND birth_date=$2::date AND report_scope=$3 AND length(trim(content))>0 ORDER BY created_at DESC LIMIT 1`,[userId,dateA,dateB]);
+  return rows[0] ? mapRow(rows[0]) : findArchivedMatrixPairReport(userId,{dateA,dateB});
+}
+
 export async function getUserMatrixReportById(
   userId: string,
   reportId: string
@@ -607,7 +652,7 @@ export async function getUserMatrixReportById(
      LIMIT 1`,
     [userId, id]
   );
-  return rows[0] ? mapRow(rows[0]) : null;
+  return rows[0] ? mapRow(rows[0]) : findArchivedMatrixPairReport(userId,{id});
 }
 
 /** Delete one owned matrix report (buy-once unlock reset for that birth date/version row). */

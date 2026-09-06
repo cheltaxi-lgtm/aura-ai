@@ -14,6 +14,7 @@ import { personalYearForecast } from "./forecast";
 import { matrixYearForecast } from "./matrix-year-forecast";
 import { parseBirthDate } from "./constants";
 import { MATRIX_LABELS } from "./matrix-labels";
+import { resolveMatrixForEngine } from "./matrix-snapshot";
 
 export interface NumerologSessionPosition {
   label: string;
@@ -92,6 +93,7 @@ export function buildNumerologSessionResult(input: {
   params?: NumerologToolParams;
   /** Frozen start of the 12-month year-forecast window (tests / replay). */
   fromDate?: Date;
+  matrixSnapshot?: Record<string, unknown> | null;
 }): NumerologSessionResult | null {
   const tool = getNumerologTool(input.toolId);
 
@@ -113,7 +115,7 @@ export function buildNumerologSessionResult(input: {
     if (input.toolId === "destiny_matrix" || input.toolId === "child_matrix") {
       const parsed = parseBirthDate(input.birthDate ?? "");
       if (!parsed) return null;
-      const matrix = destinyMatrix(input.birthDate!);
+      const matrix = resolveMatrixForEngine({ birthDate: input.birthDate!, snapshot: input.matrixSnapshot });
       if (!matrix) return null;
       const points = listMatrixZones(matrix, input.toolId)
         .filter((z) => z.number != null && z.arcanaName)

@@ -1,4 +1,5 @@
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
+import { ensureOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import {
@@ -302,11 +303,16 @@ export async function GET(request: NextRequest) {
       if (request.nextUrl.searchParams.get("sessionInit") === "1") {
         const seedParts = await loadSpreadSeedParts(request, authed.profileUserId, characterId);
         const sessionSeed = resolveSpreadSessionSeed(seedParts);
+        const previewSubject = matrixSubjectId ? await getMatrixSubject(authed.profileUserId, matrixSubjectId) : null;
+        const frozenMatrix = (toolId === "destiny_matrix" || toolId === "child_matrix") && birthDate
+          ? await ensureOwnedMatrixSnapshot({ userId: authed.profileUserId, birthDate, subjectId: previewSubject?.id, subjectKind: previewSubject?.kind, displayName: previewSubject?.displayName })
+          : null;
         const numerologResult = buildNumerologSessionResult({
           toolId,
           birthDate,
           fullName,
           params: toolParams,
+          matrixSnapshot: frozenMatrix?.snapshot,
         });
         if (!numerologResult) {
           return NextResponse.json(

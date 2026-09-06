@@ -11,7 +11,7 @@ import {
   clientSafeMatrixVersionLabel,
 } from "@/lib/numerology/matrix-labels";
 import { buildMatrixDiagramSvgFromResult } from "@/lib/numerology/matrix-diagram-svg";
-import { resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
+import { hydrateDestinyMatrixFromSnapshot, resolveMatrixForDisplayDetailed } from "@/lib/numerology/matrix-snapshot";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { getUserMatrixReportById } from "@/lib/services/numerology-report-service";
 
@@ -47,14 +47,16 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
         uid: "print",
       })
     : null;
+  const partnerMatrix = hydrateDestinyMatrixFromSnapshot(report.structuredData?.partnerMatrix as Record<string, unknown> | null);
+  const partnerSvg = partnerMatrix ? buildMatrixDiagramSvgFromResult(partnerMatrix, {theme:"print", density:"full", uid:"partner-print"}) : null;
   return (
     <PrintableReport
       title={title}
       meta={[
         { label: report.toolId === "matrix_compatibility" ? "Первый участник · дата рождения" : "Дата рождения", value: report.birthDate },
         ...(partnerDate ? [{ label: "Второй участник · дата рождения", value: partnerDate }] : []),
-        ...(report.toolId === "matrix_year_forecast" ? [{label:"Год прогноза", value: report.calculationVersion.split("@")[1] || String(new Date(report.createdAt).getFullYear())}] : []),
-        { label: "Дата отчёта", value: new Date(report.createdAt).toLocaleString("ru-RU") },
+        ...(report.toolId === "matrix_year_forecast" ? [{label:"Год прогноза", value: report.calculationVersion.split("@")[1] || new Date(report.createdAt).toLocaleDateString("en-CA", {year:"numeric",timeZone:"Europe/Moscow"})}] : []),
+        { label: "Дата отчёта", value: new Date(report.createdAt).toLocaleString("ru-RU", {timeZone:"Europe/Moscow"}) },
         {
           label: "Методика",
           value: clientSafeMatrixVersionLabel(
@@ -73,10 +75,10 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
       sections={[]}
       visual={
         diagramSvg ? (
-          <figure><div
+          <><figure><div
             className="destiny-matrix-frame destiny-matrix-figure--print w-full max-w-xl"
             dangerouslySetInnerHTML={{ __html: diagramSvg }}
-          /><figcaption>{report.toolId === "matrix_compatibility" ? "Личная матрица первого участника. Разбор пары приведён в тексте отчёта." : "Матрица по сохранённым расчётным данным"}</figcaption></figure>
+          /><figcaption>{report.toolId === "matrix_compatibility" ? "Личная матрица первого участника. Разбор пары приведён в тексте отчёта." : "Матрица по сохранённым расчётным данным"}</figcaption></figure>{partnerSvg ? <figure><div className="destiny-matrix-frame destiny-matrix-figure--print w-full max-w-xl" dangerouslySetInnerHTML={{__html:partnerSvg}} /><figcaption>Личная матрица второго участника</figcaption></figure> : null}</>
         ) : null
       }
       legacyContent={report.content}
@@ -89,7 +91,7 @@ export default async function MatrixPrintPage({ params }: { params: Promise<{ id
       }
       disclaimer="Нумерологическая интерпретация носит развлекательный и рефлексивный характер."
       evidence={[]}
-      returnHref="/cabinet"
+      returnHref="/cabinet/numerology/matrix"
     />
   );
 }

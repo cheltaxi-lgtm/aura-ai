@@ -1,5 +1,5 @@
 import { addMatrixCalendarMonths, matrixCalendarYmd } from "./matrix-calendar";
-import { arcanaForNumber, destinyMatrix, reduceToArcanaNumber } from "./destiny-matrix";
+import { arcanaForNumber, destinyMatrix, reduceToArcanaNumber, type DestinyMatrixResult } from "./destiny-matrix";
 
 const RU_MONTHS = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -15,6 +15,7 @@ function asOfFor(year: number, month: number, day = 1): { asOfYear: number; asOf
 }
 
 export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
+  matrix: DestinyMatrixResult;
   yearArcana: { number: number; title: string };
   months: Array<{
     year: number;
@@ -68,6 +69,7 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
   );
 
   return {
+    matrix: initial,
     yearArcana: { number: initial.yearArcana.number, title: initial.yearArcana.arcanaName },
     months,
     opportunityMonths,

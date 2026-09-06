@@ -1,3 +1,5 @@
+import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
+import { matrixCompatibility } from "@/lib/numerology/matrix-compatibility";
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb, query } from "@/lib/db";
@@ -483,7 +485,7 @@ export async function POST(request: NextRequest) {
   }
 
   let matrixSnapshot: Record<string, unknown> | null = null;
-  if (isMatrixSubjectTool && resolvedMatrixSubject && birthDate && (await ensureDb())) {
+  if (isMatrixSubjectTool && requestNumerologToolId !== "matrix_year_forecast" && resolvedMatrixSubject && birthDate && (await ensureDb())) {
     try {
       const owned = await ensureOwnedMatrixSnapshot({
         userId: authed.profileUserId,
@@ -499,6 +501,17 @@ export async function POST(request: NextRequest) {
       /* generate still has asOf fallback */
     }
   }
+
+  const matrixYearResult = requestNumerologToolId === "matrix_year_forecast" && birthDate ? matrixYearForecast(birthDate) : null;
+  if (matrixYearResult) {
+    matrixSnapshot = matrixToStructuredData(matrixYearResult.matrix);
+    matrixAsOfDate = matrixYearResult.matrix.asOf.date;
+  }
+
+  // Freeze one pair calculation for both the AI facts and the saved PDF.
+  const matrixPairResult = requestNumerologToolId === "matrix_compatibility" && birthDate
+    ? matrixCompatibility(birthDate, numerologToolParams.partnerDate ?? "")
+    : null;
 
   if (!workerUserId) {
     const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "reading");
@@ -1170,6 +1183,8 @@ export async function POST(request: NextRequest) {
                 : userName),
             asOfDate: matrixAsOfDate,
             matrixSnapshot,
+            matrixPairResult,
+            matrixYearResult,
             onMatrixProgress:
               workerJobId &&
               (toolId === "destiny_matrix" || toolId === "child_matrix")
@@ -1324,6 +1339,8 @@ export async function POST(request: NextRequest) {
               userId: authed.profileUserId,
               birthDateRaw: birthDate,
               subjectId: resolvedMatrixSubject?.id,
+              calculationVersion: matrix?.calculationVersion,
+              reportDate: matrixYearResult ? new Date(matrixYearResult.matrix.asOf.date + "T12:00:00Z") : undefined,
               toolId,
               content: reading,
               runeCost: billingCharge?.spentRunes ?? tool.cost,
@@ -1381,18 +1398,15 @@ export async function POST(request: NextRequest) {
         if (toolId === "matrix_compatibility" && birthDate && (await ensureDb())) {
           try {
             const partnerDate = toIsoBirthDateShared(numerologToolParams.partnerDate ?? "");
-            const pairMatrix = resolveMatrixForEngine({
-              birthDate,
-              snapshot: matrixSnapshot,
-              asOfDate: matrixAsOfDate,
-            });
+            const pairMatrix = matrixPairResult?.matrixA;
             const pairContent = (reading || "").trim();
-            if (pairContent && partnerDate) {
-              await saveMatrixReport({
+            if (pairContent && partnerDate && matrixPairResult) {
+              const savedPair = await saveMatrixReport({
                 userId: authed.profileUserId,
                 birthDateRaw: birthDate,
                 subjectId: resolvedMatrixSubject?.id,
                 toolId: "matrix_compatibility",
+                calculationVersion: pairMatrix?.calculationVersion,
                 content: pairContent,
                 runeCost: billingCharge?.spentRunes ?? tool.cost,
                 chargeTransactionId: billingCharge?.transactionId,
@@ -1400,14 +1414,41 @@ export async function POST(request: NextRequest) {
                 overwrite: forceRegenerate,
                 structuredData: {
                   ...(pairMatrix ? matrixToStructuredData(pairMatrix) : {}),
+                  partnerMatrix: matrixToStructuredData(matrixPairResult.matrixB),
+                  compatibility: matrixPairResult.compatibility,
                   partnerDate,
                   dateB: partnerDate,
                   numerologToolParams,
                 },
               });
+              if (savedPair.status === "already_saved") {
+                reading = savedPair.report.content;
+                if (billingCharge) {
+                  await BillingService.rollbackCharge({ userId: authed.profileUserId, cost: billingCharge.spentRunes, wasFreeQuestion: false, actionType: billingCharge.actionType, transactionId: billingCharge.transactionId });
+                  await trackWorkerJobRefunded(request);
+                  billingCharge = null;
+                  spentRunes = 0;
+                  runeBalance = undefined;
+                }
+                isPaid = true;
+              }
+            } else {
+              throw new Error("matrix_pair_report_incomplete");
             }
           } catch (pairSaveErr) {
             console.error("Matrix pair report save failed:", pairSaveErr);
+            const jobId = getAsyncJobIdFromRequest(request);
+            if (jobId) {
+              const { releaseAsyncJobSaveClaim } = await import("@/lib/async-jobs");
+              await releaseAsyncJobSaveClaim(jobId).catch(() => undefined);
+            }
+            if (billingCharge) {
+              await BillingService.rollbackCharge({ userId: authed.profileUserId, cost: billingCharge.spentRunes, wasFreeQuestion: false, actionType: billingCharge.actionType, transactionId: billingCharge.transactionId });
+              await trackWorkerJobRefunded(request);
+              billingCharge = null;
+              spentRunes = 0;
+            }
+            return { kind: "failed" as const };
           }
         }
 

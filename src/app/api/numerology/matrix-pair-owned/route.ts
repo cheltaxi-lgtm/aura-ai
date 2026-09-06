@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from "next/server";
 
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { hasOwnedMatrixPairForPending } from "@/lib/numerology/matrix-pair-ownership";
+import { hasOwnedMatrixPairForPending, ownedMatrixPairReportForPending } from "@/lib/numerology/matrix-pair-ownership";
 import { requireProfileUserId } from "@/lib/require-auth";
 
 export const runtime = "nodejs";
 
-/** Exact current-pair MATRIX_PAIR_REPORT ownership. Body is { owned } only. */
+/** Exact current-pair ownership plus the owner's printable report ID. */
 export async function GET(request: NextRequest) {
   const auth = await requireProfileUserId();
   if (!auth) {
@@ -25,7 +25,8 @@ export async function GET(request: NextRequest) {
       userId: auth.profileUserId,
       pendingId,
     });
-    return NextResponse.json({ owned });
+    const report = owned ? await ownedMatrixPairReportForPending(auth.profileUserId, pendingId) : null;
+    return NextResponse.json({ owned, reportId: report?.id ?? null });
   } catch {
     console.warn("[matrix-pair] ownership lookup failed");
     return NextResponse.json({ owned: false });
