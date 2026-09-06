@@ -18,6 +18,7 @@ import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import Bodygraph from "./Bodygraph";
 import type { HdChartPayload } from "./HdChartView";
 import HdGenerating from "./HdGenerating";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import {
   parseAcceptedAsyncReport,
@@ -46,7 +47,19 @@ function resolveRelation(partner: HdChartPayload): HdConnectionRelation {
 }
 
 /** Premium Connection Chart: mechanics + bodygraph + paid Evelina report. */
-export default function HdComposite({ base, partner }: Props) {
+export default function HdComposite(props: Props) {
+  return <HdCompositeContent key={`${props.base.id}:${props.partner.id}`} {...props} />;
+}
+
+function HdCompositeContent({ base, partner }: Props) {
+  const lifetime = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller;
+    return () => controller.abort();
+  }, []);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const baseLabel =
     base.subjectKind === "other"
       ? hdChartChipLabel(base)
@@ -223,7 +236,7 @@ export default function HdComposite({ base, partner }: Props) {
 
   const postCompositeReport = async (opts?: { resume?: boolean }) => {
     const resume = Boolean(opts?.resume);
-    if (postInFlightRef.current) return;
+    if (!mounted.current || postInFlightRef.current) return;
     if (!resume) {
       if (busy || waiting || uiGenerating) return;
       if (report) return; // Already paid — no free rebuild.
@@ -260,6 +273,7 @@ export default function HdComposite({ base, partner }: Props) {
         required?: number;
         code?: string;
       };
+      if (!mounted.current) return;
       if (res.status === 401) {
         stopWait();
         setBusy(false);
@@ -301,10 +315,12 @@ export default function HdComposite({ base, partner }: Props) {
               const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
               const result = await waitForAsyncJob({
                 jobId,
+                signal: lifetime.current?.signal,
                 storageKey: `aura:hd-composite-job:${base.id}:${partner.id}`,
                 maxAgeMs: 20 * 60_000,
                 pollIntervalMs: 2500,
               });
+              if (!mounted.current) return;
               const r = result?.report as
                 | { id?: string; status?: string; reportText?: string | null }
                 | undefined;
@@ -344,6 +360,7 @@ export default function HdComposite({ base, partner }: Props) {
       setUiGenerating(true);
       startWait({ baselineText: null });
     } catch {
+      if (!mounted.current) return;
       setBusy(false);
       setUiGenerating(true);
       startWait({ baselineText: null });
@@ -612,14 +629,7 @@ export default function HdComposite({ base, partner }: Props) {
             <HdReportSections text={report} />
             <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
               {reportId ? (
-                <a
-                  href={`/cabinet/human-design/composite-reports/${reportId}/print`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="hd-bodygraph__export"
-                >
-                  Печать / PDF
-                </a>
+                <ReportExportActions path={`/cabinet/human-design/composite-reports/${reportId}/print`} />
               ) : (
                 <button
                   type="button"

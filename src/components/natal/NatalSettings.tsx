@@ -60,6 +60,8 @@ export default function NatalSettings() {
   }, []);
 
   const saveAi = async (patch: Partial<AiPreferences>) => {
+    const previous = ai;
+    setAi((current) => current ? { ...current, ...patch } : current);
     setSaving("ai");
     setError("");
     setNotice("");
@@ -73,6 +75,7 @@ export default function NatalSettings() {
       setAi(data.preferences);
       setNotice("Настройка контекста сохранена.");
     } catch (reason) {
+      setAi(previous);
       setError(reason instanceof Error ? reason.message : "Ошибка сети");
     } finally {
       setSaving(null);
@@ -80,6 +83,8 @@ export default function NatalSettings() {
   };
 
   const saveEvents = async (patch: Partial<EventPreferences>) => {
+    const previous = events;
+    setEvents((current) => current ? { ...current, ...patch } : current);
     setSaving("events");
     setError("");
     setNotice("");
@@ -93,6 +98,7 @@ export default function NatalSettings() {
       setEvents(data.preferences);
       setNotice("Настройки уведомлений сохранены.");
     } catch (reason) {
+      setEvents(previous);
       setError(reason instanceof Error ? reason.message : "Ошибка сети");
     } finally {
       setSaving(null);
@@ -138,12 +144,15 @@ export default function NatalSettings() {
             <div className="mt-4 grid gap-5 lg:grid-cols-3">
               <CheckboxGroup title="Горизонты" values={([7, 30, 90, 365] as TimingHorizon[])} selected={events.horizons}
                 label={(value) => value === 365 ? "1 год" : `${value} дней`}
+                disabled={saving === "events"}
                 onToggle={(value) => void saveEvents({ horizons: toggle(events.horizons, value) })} />
               <CheckboxGroup title="Категории" values={Object.keys(TIMING_CATEGORY_LABELS) as TimingCategory[]} selected={events.categories}
                 label={(value) => TIMING_CATEGORY_LABELS[value]}
+                disabled={saving === "events"}
                 onToggle={(value) => void saveEvents({ categories: toggle(events.categories, value) })} />
               <CheckboxGroup title="Важные планеты" values={IMPORTANCE_PLANET_KEYS} selected={events.planetImportance}
                 label={russianPlanetLabel}
+                disabled={saving === "events"}
                 onToggle={(value) => void saveEvents({ planetImportance: toggle(events.planetImportance, value) })} />
             </div>
           </details>
@@ -163,12 +172,12 @@ function PreferenceCheckbox({ checked, disabled, onChange, label, description }:
   </label>;
 }
 
-function CheckboxGroup<T extends string | number>({ title, values, selected, label, onToggle }: {
-  title: string; values: readonly T[]; selected: readonly T[]; label: (value: T) => string; onToggle: (value: T) => void;
+function CheckboxGroup<T extends string | number>({ title, values, selected, label, disabled, onToggle }: {
+  title: string; values: readonly T[]; selected: readonly T[]; label: (value: T) => string; disabled: boolean; onToggle: (value: T) => void;
 }) {
   return <fieldset><legend className="text-xs text-white/45">{title}</legend><div className="mt-2 flex flex-wrap gap-2">
     {values.map((value) => <label key={value} className="flex min-h-10 items-center gap-2 rounded-lg bg-white/[0.03] px-3 py-2 text-xs text-white/55">
-      <input type="checkbox" checked={selected.includes(value)} onChange={() => onToggle(value)} /> {label(value)}
+      <input type="checkbox" checked={selected.includes(value)} disabled={disabled} onChange={() => onToggle(value)} /> {label(value)}
     </label>)}
   </div></fieldset>;
 }

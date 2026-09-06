@@ -14,6 +14,7 @@ tests/invariants/.vitest-report.json
 # next.js
 /.next/
 /.next-e2e/
+/.next-e2e-full/
 /.next-build-check/
 /out/
 

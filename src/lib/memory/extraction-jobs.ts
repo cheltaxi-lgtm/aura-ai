@@ -1,3 +1,4 @@
+import { isMemorySourceSuppressed } from "@/lib/memory/source-suppression";
 /**
  * Durable outbox for background fact extraction (survives process restart).
  * One user turn ⇒ one job. Soft-dedupe only collapses identical pending spam.
@@ -72,26 +73,27 @@ export async function enqueueMemoryExtraction(params: {
   if (!allowed) return null;
 
   return withUserMemoryLock(params.userId, async (client) => {
-  const consent = await readMemoryWriteConsent(params.userId, client);
-  if (!consent?.memoryEnabled || !consent.autoCaptureEnabled) return null;
-  if (params.captureGeneration !== undefined && params.captureGeneration !== consent.generation) return null;
+    if (await isMemorySourceSuppressed(client, params.userId, params.sourceEntityId)) return null;
+    const consent = await readMemoryWriteConsent(params.userId, client);
+    if (!consent?.memoryEnabled || !consent.autoCaptureEnabled) return null;
+    if (params.captureGeneration !== undefined && params.captureGeneration !== consent.generation) return null;
 
-  const message = userMessage.slice(0, 4000);
-  const assistantReply = params.assistantReply?.trim()?.slice(0, 2000) ?? null;
+    const message = userMessage.slice(0, 4000);
+    const assistantReply = params.assistantReply?.trim()?.slice(0, 2000) ?? null;
 
-  // Soft-dedupe identical pending spam (double-clicks), not distinct turns.
-  const { rows: pending } = await queryClient<{ id: string }>(client,
-    `SELECT id FROM memory_extraction_jobs
-      WHERE user_id = $1
-        AND source_type = $2
-        AND status = 'pending'
-        AND user_message = $3
-        AND capture_generation = $4::bigint
-        AND created_at > NOW() - INTERVAL '5 minutes'
-      LIMIT 1`,
-    [params.userId, params.sourceType, message, consent.generation]
-  );
-  if (pending[0]?.id) return pending[0].id;
+    // Soft-dedupe identical pending spam (double-clicks), not distinct turns.
+    const { rows: pending } = await queryClient<{ id: string }>(client,
+      `SELECT id FROM memory_extraction_jobs
+        WHERE user_id = $1
+          AND source_type = $2
+          AND status = 'pending'
+          AND user_message = $3
+          AND capture_generation = $4::bigint
+          AND created_at > NOW() - INTERVAL '5 minutes'
+        LIMIT 1`,
+      [params.userId, params.sourceType, message, consent.generation]
+    );
+    if (pending[0]?.id) return pending[0].id;
 
     // Retire an old pending twin before the partial unique index can block this generation.
     await queryClient(client, `UPDATE memory_extraction_jobs SET status = 'cancelled', completed_at = NOW()

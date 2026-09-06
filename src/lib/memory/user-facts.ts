@@ -1,3 +1,4 @@
+import { isMemorySourceSuppressed } from "@/lib/memory/source-suppression";
 /**
  * Durable, cross-master client facts (PostgreSQL + pgvector).
  * Governance: status lifecycle, consent-aware purge, tombstones, supersede.
@@ -604,6 +605,7 @@ export async function upsertFact(userId: string, input: FactInput): Promise<bool
     if (consent?.generation !== captureGeneration) return;
     if (!isUserAuthored(input) && (!consent?.memoryEnabled || !consent.autoCaptureEnabled ||
       (isSensitiveFact(input) && !consent.sensitiveCaptureEnabled))) return;
+    if (!isUserAuthored(input) && await isMemorySourceSuppressed(client, userId, input.sourceEntityId)) return;
     if (input.sourceType === "human_design") {
       const source = await queryClient(client, `SELECT id FROM hd_charts WHERE id=$1 AND user_id=$2 AND subject_kind='self' FOR SHARE`, [input.sourceEntityId, userId]);
       if (!source.rows.length) return;
@@ -1393,6 +1395,18 @@ export async function deleteFact(userId: string, factId: string): Promise<boolea
     const row = rows[0];
     if (!row) return null;
     await addTombstone(userId, row.fact, row.predicate_key, 365, client);
+    // Legacy summaries have no complete fact-to-source ledger. Conservatively
+    // retire past chat sources from AI memory, keeping chats and other facts.
+    await queryClient(client, `INSERT INTO user_memory_source_suppressions(user_id, source_entity_id)
+      SELECT $1, id FROM sessions WHERE user_id = $1
+      UNION SELECT $1, source_entity_id FROM user_facts WHERE user_id = $1 AND id = $2 AND source_entity_id IS NOT NULL
+      UNION SELECT $1, source_entity_id FROM user_memory_activity WHERE user_id = $1 AND fact_id = $2 AND source_entity_id IS NOT NULL
+      ON CONFLICT DO NOTHING`, [userId, factId]);
+    await queryClient(client, `UPDATE user_memory_preferences
+      SET capture_generation = capture_generation + 1, capture_changed_at = NOW() WHERE user_id = $1`, [userId]);
+    await queryClient(client, `UPDATE memory_extraction_jobs SET status = 'cancelled', completed_at = NOW()
+      WHERE user_id = $1 AND status IN ('pending', 'running')`, [userId]);
+
     await queryClient(client, `DELETE FROM notifications WHERE user_id = $1 AND type = 'event_reminder' AND data->>'factId' = $2`, [userId, factId]);
     await queryClient(
       client,

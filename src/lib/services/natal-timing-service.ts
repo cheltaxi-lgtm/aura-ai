@@ -6,6 +6,7 @@ import {
   TIMING_ENGINE_VERSION,
   type PersonalTimingResult,
   type TimingCategory,
+  type TimingChartIdentity,
   type TimingHorizon,
 } from "@/lib/natal/timing";
 import { getOrComputeNatalChart } from "./natal-chart-service";
@@ -166,7 +167,7 @@ type CacheRow = {
  * Read-only short timing context for report generation. This deliberately
  * never starts an expensive timing calculation on the interpretation path.
  */
-export async function getCachedPersonalTiming(userId: string): Promise<PersonalTimingResult | null> {
+export async function getCachedPersonalTiming(userId: string, identity: TimingChartIdentity): Promise<PersonalTimingResult | null> {
   const { rows } = await query<{ timing_data: PersonalTimingResult }>(
     `SELECT timing_data
      FROM natal_timing_cache
@@ -174,10 +175,12 @@ export async function getCachedPersonalTiming(userId: string): Promise<PersonalT
        AND horizon_days IN (7, 30)
        AND timing_data IS NOT NULL
        AND engine_version = $2
+       AND birth_fingerprint = $3
+       AND timing_data->'sourceChart' = $4::jsonb
        AND generated_at > NOW() - INTERVAL '48 hours'
      ORDER BY horizon_days ASC, generated_at DESC
      LIMIT 1`,
-    [userId, TIMING_ENGINE_VERSION]
+    [userId, TIMING_ENGINE_VERSION, identity.birthFingerprint, JSON.stringify(identity)]
   );
   return rows[0]?.timing_data ?? null;
 }
@@ -200,9 +203,18 @@ export async function getOrComputePersonalTiming(
        AND engine_version = $4 AND birth_fingerprint = $5`,
     [userId, horizon, windowStart, TIMING_ENGINE_VERSION, chart.birthFingerprint]
   );
+  const sourceChart: TimingChartIdentity = {
+    birthFingerprint: chart.birthFingerprint,
+    engineVersion: chart.engineVersion || "unknown",
+    ephemeris: typeof chart.western.ephemeris === "string" ? chart.western.ephemeris : "unknown",
+  };
   const existing = cached.rows[0];
+  const cachedSource = existing?.timing_data?.sourceChart;
+  const sameSource = cachedSource?.birthFingerprint === sourceChart.birthFingerprint
+    && cachedSource?.engineVersion === sourceChart.engineVersion
+    && cachedSource?.ephemeris === sourceChart.ephemeris;
   const generatedAt = existing?.generated_at ? new Date(existing.generated_at).getTime() : 0;
-  if (!options?.force && existing?.timing_data && generatedAt > reference.getTime() - 6 * 3_600_000) {
+  if (!options?.force && sameSource && existing?.timing_data && generatedAt > reference.getTime() - 6 * 3_600_000) {
     return { timing: existing.timing_data, cached: true };
   }
 
@@ -233,6 +245,7 @@ export async function getOrComputePersonalTiming(
       horizon,
       referenceDate: reference,
     });
+    timing.sourceChart = sourceChart;
     const saved = await query(
       `UPDATE natal_timing_cache
        SET timing_data = $7::jsonb, generated_at = NOW(), claim_token = NULL, claim_at = NULL, updated_at = NOW()

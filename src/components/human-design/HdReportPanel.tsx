@@ -9,6 +9,7 @@ import {
   type HdPublicChart,
 } from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import {
   parseAcceptedAsyncReport,
@@ -49,12 +50,24 @@ interface HdReportPanelProps {
   loginReturnTo: string;
 }
 
-export default function HdReportPanel({
+export default function HdReportPanel(props: HdReportPanelProps) {
+  return <HdReportPanelContent key={`${props.chartId}:${props.authenticated}`} {...props} />;
+}
+
+function HdReportPanelContent({
   chartId,
   chart = null,
   authenticated,
   loginReturnTo,
 }: HdReportPanelProps) {
+  const lifetime = useRef<AbortController | null>(null);
+  useEffect(() => {
+    const controller = new AbortController();
+    lifetime.current = controller;
+    return () => controller.abort();
+  }, []);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const { cost, formatRunesWithRub, ready } = useRuneConfig();
   const [report, setReport] = useState<HdReport | null>(null);
   const [loading, setLoading] = useState(false);
@@ -80,6 +93,7 @@ export default function HdReportPanel({
   const askCost = cost("HD_ASK");
 
   const applyDoneReport = useCallback((r: HdReport) => {
+    if (!mounted.current) return;
     const text =
       typeof r.reportText === "string" ? sanitizeHdReportText(r.reportText) : r.reportText;
     setReport({ ...r, reportText: text, status: "done" });
@@ -116,7 +130,7 @@ export default function HdReportPanel({
 
   /** Silently resume a stale paid pending report on the server (no charge). */
   const resumePendingGeneration = useCallback(async () => {
-    if (postInFlightRef.current) return;
+    if (!mounted.current || postInFlightRef.current) return;
     postInFlightRef.current = true;
     try {
       const res = await fetch("/api/human-design/report", {
@@ -131,6 +145,7 @@ export default function HdReportPanel({
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (!mounted.current) return;
       if (res.status === 402) {
         // Never actually charged — fall back to the normal purchase CTA.
         stopWait();
@@ -263,6 +278,7 @@ export default function HdReportPanel({
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (!mounted.current) return;
       if (res.status === 402) {
         stopWait();
         setLoading(false);
@@ -288,10 +304,12 @@ export default function HdReportPanel({
               const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
               const result = await waitForAsyncJob({
                 jobId,
+                signal: lifetime.current?.signal,
                 storageKey: `aura:hd-report-job:${chartId}`,
                 maxAgeMs: 20 * 60_000,
                 pollIntervalMs: 2500,
               });
+              if (!mounted.current) return;
               const r = result?.report as HdReport | undefined;
               if (r?.status === "done" && r.reportText) {
                 applyDoneReport(r);
@@ -328,6 +346,7 @@ export default function HdReportPanel({
         startWait({ baselineText: null });
       }
     } catch {
+      if (!mounted.current) return;
       setUiGenerating(true);
       startWait({ baselineText: null });
       setError(
@@ -404,6 +423,7 @@ export default function HdReportPanel({
         signal: controller.signal,
       });
       const data = await res.json().catch(() => ({}));
+      if (!mounted.current) return;
       if (res.status === 402) {
         setDialog((prev) => prev.slice(0, -1));
         setQuestion(q);
@@ -414,7 +434,7 @@ export default function HdReportPanel({
         return;
       }
       if (!res.ok || typeof data.answer !== "string") {
-        if (await recoverAskFromHistory(report.id, q)) return;
+        if (!mounted.current || await recoverAskFromHistory(report.id, q)) return;
         setDialog((prev) => prev.slice(0, -1));
         setQuestion(q);
         // Ask errors stay in component error state — never merge into reportText.
@@ -428,7 +448,7 @@ export default function HdReportPanel({
         setIncludedAsks((n) => Math.max(0, n - 1));
       }
     } catch (e) {
-      if (await recoverAskFromHistory(report.id, q)) return;
+      if (!mounted.current || await recoverAskFromHistory(report.id, q)) return;
       setDialog((prev) => prev.slice(0, -1));
       setQuestion(q);
       const timedOut = e instanceof DOMException && e.name === "AbortError";
@@ -706,14 +726,7 @@ export default function HdReportPanel({
             )}
           </div>
           <div className="hd-print-hidden flex flex-wrap gap-2">
-            <a
-              href={`/cabinet/human-design/reports/${report.id}/print`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="hd-bodygraph__export"
-            >
-              Печать / PDF
-            </a>
+            <ReportExportActions path={`/cabinet/human-design/reports/${report.id}/print`} />
           </div>
         </div>
         {error && (

@@ -19,6 +19,7 @@ import { useAuth } from "@/lib/useAuth";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
+import ReportExportActions from "@/components/reports/ReportExportActions";
 import {
   parseAcceptedAsyncReport,
   type AcceptedAsyncReport,
@@ -859,7 +860,7 @@ function CompatibilityViewer({
         showMethodology={Boolean(record.report.disclaimer)}
       />
       <div className="flex flex-wrap gap-3">
-        <Link href={`/cabinet/astrology/compatibility/${record.id}/print`} className="btn-luxe btn-luxe--sm btn-luxe--ghost">Печать / PDF</Link>
+        <ReportExportActions path={`/cabinet/astrology/compatibility/${record.id}/print`} />
         {isOwner ? <button type="button" disabled={busy !== null} onClick={onDelete}
           className="inline-flex min-h-10 items-center gap-2 rounded-lg border border-rose-300/15 px-3 text-xs text-rose-200/70 disabled:opacity-50">
           <Trash2 className="h-4 w-4" /> Удалить

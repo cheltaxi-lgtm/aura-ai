@@ -224,6 +224,8 @@ export async function buildMemoryBlock(
          FROM session_memories
          WHERE user_id = $1
            AND session_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM user_memory_source_suppressions blocked
+             WHERE blocked.user_id = session_memories.user_id AND blocked.source_entity_id = session_memories.session_id)
            AND session_id <> $2
          ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
          LIMIT $3`
@@ -231,6 +233,8 @@ export async function buildMemoryBlock(
          FROM session_memories
          WHERE user_id = $1
            AND session_id IS NOT NULL
+           AND NOT EXISTS (SELECT 1 FROM user_memory_source_suppressions blocked
+             WHERE blocked.user_id = session_memories.user_id AND blocked.source_entity_id = session_memories.session_id)
          ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
          LIMIT $2`,
     excludeSession

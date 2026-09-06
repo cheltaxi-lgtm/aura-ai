@@ -19,7 +19,6 @@ import { generateValidatedNatalReport } from "@/lib/natal/generate-validated-rep
 import { parseTimingHorizon } from "@/lib/natal/timing";
 import {
   claimNatalInterpretationResilient,
-  invalidateNatalReportForRegenerate,
   getOrComputeNatalChart,
   releaseNatalInterpretationClaim,
   saveCurrentNatalInterpretation,
@@ -139,21 +138,13 @@ export async function POST(request: NextRequest) {
       { status: 422 }
     );
   }
-  if (forceRegenerate) {
-    await invalidateNatalReportForRegenerate({
-      userId: auth.profileUserId,
-      tradition: "western",
-      reportType,
-      claimKey,
-    });
-  }
   const claim = await claimNatalInterpretationResilient(
     auth.profileUserId,
     "western",
     chart.birthFingerprint,
     chart.engineVersion,
     expectedEphemeris,
-    { reportType, claimKey }
+    { reportType, claimKey, forceRegenerate }
   );
   if (claim.status === "cached") {
     const payload = {
@@ -299,6 +290,7 @@ ${timingEvidenceIds.join("\n")}`),
       );
     }
     const saved = await saveCurrentNatalInterpretation({
+      forceRegenerate,
       userId: auth.profileUserId,
       tradition: "western",
       interpretation: natalReportToPlainText(report),

@@ -21,10 +21,12 @@ export default defineConfig({
   outputDir: "test-results/playwright",
   use: {
     baseURL: fixtureBaseURL ?? localBaseURL,
+    launchOptions: { executablePath: process.env.PLAYWRIGHT_CHROME_PATH || (process.platform === "win32" && existsSync("C:/Program Files/Google/Chrome/Application/chrome.exe") ? "C:/Program Files/Google/Chrome/Application/chrome.exe" : undefined) },
     trace: "retain-on-failure",
     screenshot: "only-on-failure",
   },
   projects: [
+    { name: "pdf-chromium", testMatch: /pdf\.public\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
     {
       name: "public-chromium",
       testMatch: /(natal|natal-guest|personal-memory|launch-readiness|photo-conversion)\.public\.spec\.ts/,
@@ -57,6 +59,14 @@ export default defineConfig({
     },
     ...(fixtureBaseURL && storageState
       ? [{
+          name: "full-audit-ui",
+          testMatch: /full-audit-ui\.spec\.ts/,
+          use: {
+            ...devices["Desktop Chrome"],
+            baseURL: fixtureBaseURL,
+            storageState,
+          },
+        }, {
           name: "authenticated-natal",
           testMatch: /natal\.authenticated\.spec\.ts/,
           use: {
@@ -77,6 +87,7 @@ export default defineConfig({
         env: {
           ...process.env,
           NEXT_DIST_DIR: ".next-e2e",
+          PORT: "3417",
         },
       },
 });

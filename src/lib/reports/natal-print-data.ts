@@ -9,9 +9,11 @@ export async function getNatalPrintRecord(userId: string, id: string) {
   }>(
     `SELECT history.tradition, history.report_type, history.content, history.structured_data, history.evidence_refs,
             history.birth_fingerprint, history.engine_version, history.ephemeris, history.created_at,
-            (charts.chart_data->>'timeKnown')::boolean AS time_known, charts.chart_data
+            (COALESCE(history.chart_snapshot, charts.chart_data)->>'timeKnown')::boolean AS time_known,
+            COALESCE(history.chart_snapshot, charts.chart_data) AS chart_data
      FROM natal_report_history history
      LEFT JOIN natal_charts charts ON charts.user_id = history.user_id AND charts.chart_data->>'birthFingerprint' = history.birth_fingerprint AND charts.engine_version = history.engine_version
+       AND COALESCE(NULLIF(charts.chart_data #>> '{western,ephemeris}', ''), 'unknown') = history.ephemeris
      WHERE history.id = $1 AND history.user_id = $2 LIMIT 1`,
     [id, userId]
   );

@@ -535,7 +535,7 @@ export async function getCabinetSessions(
        FROM hd_reports r
        JOIN hd_charts c ON c.id = r.chart_id
        WHERE r.user_id = $1
-         AND r.status = 'done'
+         AND (r.status = 'done' OR (r.status = 'pending' AND r.admin_rewrite_started_at IS NOT NULL))
          AND length(trim(r.report_text)) > 0
        ) combined
        ORDER BY session_date DESC
@@ -545,7 +545,9 @@ export async function getCabinetSessions(
     query<{ cnt: string }>(
       `SELECT (COUNT(*) + (
          SELECT COUNT(*) FROM hd_reports r
-         WHERE r.user_id = $1 AND r.status = 'done' AND length(trim(r.report_text)) > 0
+         WHERE r.user_id = $1
+           AND (r.status = 'done' OR (r.status = 'pending' AND r.admin_rewrite_started_at IS NOT NULL))
+           AND length(trim(r.report_text)) > 0
        ))::text AS cnt
        FROM sessions s
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id

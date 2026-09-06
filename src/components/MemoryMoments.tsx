@@ -100,6 +100,7 @@ export default function MemoryMoments({
     action: "confirm" | "change" | "forget",
     fact?: string
   ) => {
+    if (action === "forget" && !window.confirm("Забыть эту запись? Чтобы она не вернулась из старых резюме, прошлые беседы больше не будут использоваться в памяти новых консультаций. Сами беседы и остальные записи сохранятся.")) return;
     setBusyId(item.id);
     setError(null);
     try {

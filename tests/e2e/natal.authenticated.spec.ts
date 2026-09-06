@@ -78,7 +78,16 @@ async function installNatalMocks(page: Page) {
     if (path === "/api/auth/me") {
       return route.fulfill({ json: {
         authenticated: true,
-        user: { sub: "e2e", role: "user", email: "fixture@example.invalid", name: "E2E" },
+        needsProfile: false,
+        needsBirthProfile: false,
+        user: {
+          sub: "e2e",
+          role: "user",
+          email: "fixture@example.invalid",
+          name: "E2E",
+          profileUserId: "e2e-profile",
+          ageConfirmed: true,
+        },
       } });
     }
     if (path === "/api/natal-chart") {
@@ -161,7 +170,7 @@ async function installNatalMocks(page: Page) {
       reportItems = [{
         ...reports[0],
         id: `forecast-${horizon}`,
-        reportType: `forecast:${horizon}`,
+        reportType: `forecast:${horizon}:2026-07-14`,
         content: `Прогноз на ${horizon} дней.`,
       }, ...reportItems];
       return route.fulfill({ json: { forecast: `Прогноз на ${horizon} дней.`, horizon, reportId: `forecast-${horizon}` } });
@@ -237,7 +246,7 @@ test("tabs, unknown-time guard, and recompute work", async ({ page }) => {
     await expect(navigation.getByRole("button", { name: tab })).toBeVisible();
   }
   await expect(page.getByText("Ограниченная точность без времени рождения")).toBeVisible();
-  await expect(page.getByText(/ASC, MC, дома и лагна скрыты/)).toBeVisible();
+  await expect(page.getByText(/Асцендент, середина неба, дома и лагна скрыты/).first()).toBeVisible();
 
   await expect(page.getByRole("heading", { name: "Интерактивное колесо" })).toBeVisible();
   await expect(page.getByRole("button", { name: "Получить новую карту" })).toBeVisible();
@@ -285,8 +294,8 @@ test("stored tradition reports render without a paid LLM call", async ({ page })
     }
   });
 
-  await page.getByRole("button", { name: "Отчёты" }).click();
-  await expect(page.getByRole("heading", { name: "Центр премиальных отчётов" })).toBeVisible();
+  await page.getByRole("button", { name: "Отчёты", exact: true }).click();
+  await expect(page.getByRole("heading", { name: "Архив отчётов и прогнозов" })).toBeVisible();
   await expect(page.getByRole("button", { name: /Западная трактовка/ })).toBeVisible();
   await expect(page.getByText("Стабильный западный отчёт из E2E-фикстуры.")).toBeVisible();
   await page.getByRole("button", { name: /Трактовка джйотиш/ }).click();
@@ -296,7 +305,7 @@ test("stored tradition reports render without a paid LLM call", async ({ page })
 
 test("timing horizon reloads the requested window", async ({ page }) => {
   await page.getByRole("button", { name: "Периоды" }).click();
-  const horizon = page.getByRole("group", { name: "Горизонт расчёта" });
+  const horizon = page.getByRole("group", { name: "Горизонт прогноза" });
   await expect(horizon.getByRole("button", { name: "30 дней" })).toHaveAttribute("aria-pressed", "true");
 
   const response = page.waitForResponse((item) =>
@@ -306,7 +315,7 @@ test("timing horizon reloads the requested window", async ({ page }) => {
   await horizon.getByRole("button", { name: "90 дней" }).click();
   await response;
   await expect(horizon.getByRole("button", { name: "90 дней" })).toHaveAttribute("aria-pressed", "true");
-  await expect(page.getByText("2026-07-14 — 2026-10-12")).toBeVisible();
+  await expect(page.getByText("14 июля 2026 г. — 12 октября 2026 г.", { exact: true })).toBeVisible();
 });
 
 test("paid forecast is created for the selected horizon", async ({ page }) => {
@@ -318,22 +327,20 @@ test("paid forecast is created for the selected horizon", async ({ page }) => {
   );
   await page.getByRole("button", { name: /Подтвердить и получить прогноз/ }).click();
   await response;
-  await expect(page.getByRole("status")).toContainText("готов и сохранён");
-  await expect(page).toHaveURL(/tab=reports/);
-  await expect(page).toHaveURL(/report=forecast-30/);
-  await expect(page.getByRole("heading", { name: "Прогноз · 30 дней" })).toBeVisible();
+  await expect(page.getByRole("status")).toContainText("готов и показан ниже");
+  await expect(page).toHaveURL(/tab=timing/);
   await expect(page.getByText("Прогноз на 30 дней.")).toBeVisible();
 });
 
 test("owned report can be deleted without a refund", async ({ page }) => {
-  await page.getByRole("button", { name: "Отчёты" }).click();
+  await page.getByRole("button", { name: "Отчёты", exact: true }).click();
   await page.getByRole("button", { name: /Западная трактовка/ }).click();
   page.once("dialog", (dialog) => dialog.accept());
   const response = page.waitForResponse((item) =>
     new URL(item.url()).pathname === "/api/natal-chart/history/western-e2e"
     && item.request().method() === "DELETE"
   );
-  await page.getByRole("button", { name: "Удалить" }).click();
+  await page.getByRole("button", { name: "Удалить", exact: true }).click();
   await response;
   await expect(page.getByRole("status")).toContainText("Отчёт удалён без возврата рун");
   await expect(page.getByText("Стабильный западный отчёт из E2E-фикстуры.")).toHaveCount(0);
@@ -360,7 +367,7 @@ test("AI consent toggles save independently", async ({ page }) => {
 });
 
 test("private report share can be created and revoked", async ({ page }) => {
-  await page.getByRole("button", { name: "Отчёты" }).click();
+  await page.getByRole("button", { name: "Отчёты", exact: true }).click();
   await page.getByText("Приватная ссылка (по умолчанию выключена)").click();
   await page.getByLabel("summary", { exact: true }).check();
   await page.getByRole("button", { name: "Создать ссылку" }).click();

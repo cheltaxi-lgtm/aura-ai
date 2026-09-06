@@ -10,6 +10,7 @@ import { isOpenRouterConfigured } from "@/lib/llm";
 import {
   approveHdReportManually,
   beginHdReportQualityResume,
+  beginHdReportRewrite,
   completeHdReport,
   failHdReport,
   getHdChartById,
@@ -17,6 +18,7 @@ import {
   HD_UUID_RE,
   listHdReportsForAdminQa,
   markHdReportNeedsRegeneration,
+  restoreHdReportDone,
 } from "@/lib/services/human-design-service";
 
 export const maxDuration = 800;
@@ -68,19 +70,9 @@ export async function POST(req: NextRequest) {
     }
     const row = await getHdReportAdminDetail(reportId);
     if (!row) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    const chartRow = await getHdChartById(row.chartId);
-    if (!chartRow) return NextResponse.json({ error: "chart_missing" }, { status: 404 });
-
-    await beginHdReportQualityResume(reportId).catch(() => false);
-
-    const chart =
-      chartRow.chart ||
-      calculateHdChart({
-        birthDate: chartRow.birthDate,
-        birthTime: chartRow.birthTime,
-        timezone: chartRow.timezone,
-      });
-
+    if (body.action === "regenerate_section" && !row.chartSnapshot) {
+      return NextResponse.json({ error: "Для старого отчёта без снимка карты доступна только полная перегенерация." }, { status: 409 });
+    }
     const sectionTitle =
       typeof body.sectionTitle === "string" ? body.sectionTitle.trim() : "";
     const onlyTitles =
@@ -91,6 +83,28 @@ export async function POST(req: NextRequest) {
     if (body.action === "regenerate_section" && !sectionTitle) {
       return NextResponse.json({ error: "section_required" }, { status: 400 });
     }
+
+    const chartRow = body.action === "regenerate_section" ? row.chartSnapshot : await getHdChartById(row.chartId);
+    if (!chartRow) return NextResponse.json({ error: "chart_missing" }, { status: 404 });
+
+    const rewritingDoneReport = row.status === "done";
+    const claimed = rewritingDoneReport
+      ? await beginHdReportRewrite(reportId).catch(() => false)
+      : await beginHdReportQualityResume(reportId).catch(() => false);
+    if (!claimed) {
+      return NextResponse.json(
+        { error: "report_state_changed", message: "Статус отчёта уже изменился. Обновите список и повторите попытку." },
+        { status: 409 }
+      );
+    }
+
+    const chart =
+      chartRow.chart ||
+      calculateHdChart({
+        birthDate: chartRow.birthDate,
+        birthTime: chartRow.birthTime,
+        timezone: chartRow.timezone,
+      });
 
     // Generation takes 6–13 min — run it after the response instead of
     // holding the admin browser fetch open. UI polls report status.
@@ -107,33 +121,50 @@ export async function POST(req: NextRequest) {
         });
 
         if (!generated.text) {
-          await failHdReport(reportId, "generation_failed").catch(() => undefined);
+          if (rewritingDoneReport) {
+            await restoreHdReportDone(reportId).catch(() => undefined);
+          } else {
+            await failHdReport(reportId, "generation_failed").catch(() => undefined);
+          }
           return;
         }
 
         if (generated.needsRegeneration) {
-          await markHdReportNeedsRegeneration(
-            reportId,
-            sanitizeHdReportText(generated.text),
-            generated.quality.findings
-          );
+          if (rewritingDoneReport) {
+            await restoreHdReportDone(reportId);
+          } else {
+            await markHdReportNeedsRegeneration(
+              reportId,
+              sanitizeHdReportText(generated.text),
+              generated.quality.findings,
+              chartRow
+            );
+          }
           return;
         }
 
-        await completeHdReport(
+        const saved = await completeHdReport(
           reportId,
           sanitizeHdReportText(generated.text),
           generated.modelId || "openrouter",
           {
+            chartSnapshot: chartRow,
             costRub: generated.costRub,
             llmCalls: generated.llmCalls,
             tokenUsage: generated.usage,
             qualityFindings: [],
           }
         );
+        if (!saved && rewritingDoneReport) {
+          await restoreHdReportDone(reportId).catch(() => undefined);
+        }
       } catch (e) {
         console.error("[admin/hd-reports] regenerate failed", e);
-        await failHdReport(reportId, "generation_exception").catch(() => undefined);
+        if (rewritingDoneReport) {
+          await restoreHdReportDone(reportId).catch(() => undefined);
+        } else {
+          await failHdReport(reportId, "generation_exception").catch(() => undefined);
+        }
       }
     });
     return NextResponse.json({ ok: true, started: true }, { status: 202 });
@@ -142,7 +173,7 @@ export async function POST(req: NextRequest) {
   if (body.action === "validate") {
     const row = await getHdReportAdminDetail(reportId);
     if (!row?.reportText) return NextResponse.json({ error: "no_text" }, { status: 404 });
-    const chartRow = await getHdChartById(row.chartId);
+    const chartRow = row.chartSnapshot;
     const contract = chartRow
       ? buildHdLockedContract(chartRow.chart, { placeLabel: chartRow.placeName })
       : null;

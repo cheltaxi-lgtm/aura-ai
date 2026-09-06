@@ -108,7 +108,8 @@ test("guest entry responds before an age lookup and ignores its response after c
     await route.fulfill({ json: { confirmed: true } }).catch(() => {});
   });
   await page.goto("/?app=1");
-  await page.locator(".editorial-hero__actions").getByRole("button", { name: "Открыть 3 карты", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ваш вопрос для расклада Таро" }).fill("Что мне сейчас важно понять?");
+  await page.getByRole("button", { name: "Открыть 3 карты бесплатно", exact: true }).click();
   await expect(page.locator("#guest-spread-picker")).toBeVisible();
   await expect(page.getByRole("heading", { name: "Сервис только для взрослых 18+" })).toBeVisible();
   const abortedLookup = page.waitForEvent("requestfailed", {
@@ -118,7 +119,7 @@ test("guest entry responds before an age lookup and ignores its response after c
   await abortedLookup;
   releaseLookup();
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  await expect(page.locator(".editorial-hero__actions")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Открыть 3 карты бесплатно", exact: true })).toBeVisible();
   await expect(page.locator("#guest-spread-picker")).toHaveCount(0);
 });
 
@@ -131,7 +132,8 @@ test("a late age confirmation cannot reopen a guest draw after returning to the 
     await route.fulfill({ json: { confirmed: route.request().method() === "POST", ok: true } });
   });
   await page.goto("/?app=1");
-  await page.locator(".editorial-hero__actions").getByRole("button", { name: "Открыть 3 карты", exact: true }).click();
+  await page.getByRole("textbox", { name: "Ваш вопрос для расклада Таро" }).fill("Что мне сейчас важно понять?");
+  await page.getByRole("button", { name: "Открыть 3 карты бесплатно", exact: true }).click();
   await page.getByRole("button", { name: "Мне есть 18 лет — открыть карты", exact: true }).click();
   await expect(page.getByRole("button", { name: "Подтверждаем…", exact: true })).toBeDisabled();
   await page.getByRole("button", { name: "Вернуться", exact: true }).click();
@@ -139,7 +141,7 @@ test("a late age confirmation cannot reopen a guest draw after returning to the 
   releaseConfirmation();
   await (await responded).finished();
   await page.evaluate(() => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
-  await expect(page.locator(".editorial-hero__actions")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Открыть 3 карты бесплатно", exact: true })).toBeVisible();
   await expect(page.locator("#guest-spread-picker")).toHaveCount(0);
 });
 

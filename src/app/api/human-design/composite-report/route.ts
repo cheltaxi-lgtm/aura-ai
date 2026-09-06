@@ -510,7 +510,8 @@ export async function POST(request: NextRequest) {
         { status: 409 }
       );
     }
-    await completeCompositeReport(pending.id, text, "openrouter");
+    const saved = await completeCompositeReport(pending.id, text, "openrouter", base, partner);
+    if (!saved) throw new Error("composite_report_source_mismatch");
     completed = true; // past this point a catch must NOT refund a done report
     const done = await getHdCompositeReport(base.id, partner.id, userId);
     const payload = {

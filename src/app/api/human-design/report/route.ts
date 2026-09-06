@@ -25,6 +25,7 @@ import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
   makeWorkerProgressReporter,
+  shouldRefundBeforeWorkerFail,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobNeedsRegeneration,
@@ -43,6 +44,7 @@ import {
   getHdReportForChart,
   hasRuneRefundForTransaction,
   HD_UUID_RE,
+  isHdReportRewriteInProgress,
   isStalePendingReport,
   lockPendingReportForWorkerResume,
   lockStalePendingReportForResume,
@@ -155,6 +157,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   }
 
+  // Admin rewrites retain the last paid text while the replacement is built.
+  // They can legitimately exceed the normal stale threshold; never delete,
+  // resume or charge this row from the client purchase path.
+  if (existing && isHdReportRewriteInProgress(existing)) {
+    const payload = {
+      report: {
+        ...toPublicHdReport(existing),
+        reportText: sanitizeHdReportText(existing.reportText || ""),
+      },
+      cached: true,
+      refreshing: true,
+    };
+    await trackWorkerJobCompleted(request, payload);
+    return NextResponse.json(payload);
+  }
+
   // Fresh pending: clients must back off (poll UI). Workers must NOT 409 —
   // after deploy/requeue the same pending is still "fresh" and CLAIM_BUSY
   // permanently kills the job while the UI spins forever.
@@ -214,6 +232,7 @@ export async function POST(request: NextRequest) {
     if (!alreadyRefunded) {
       const { rows } = await query(
         `UPDATE hd_reports SET status = 'pending', error = NULL,
+           admin_rewrite_started_at = NULL,
            created_at = now() - make_interval(secs => 601), updated_at = now()
          WHERE id = $1 AND status IN ('error', 'needs_regeneration')
          RETURNING id`,
@@ -465,7 +484,8 @@ export async function POST(request: NextRequest) {
       await markHdReportNeedsRegeneration(
         pending.id,
         sanitizeHdReportText(text),
-        generated.quality.findings
+        generated.quality.findings,
+        chart
       );
       await trackWorkerJobNeedsRegeneration(
         request,
@@ -502,6 +522,7 @@ export async function POST(request: NextRequest) {
       reportText,
       generated?.modelId || "openrouter",
       {
+        chartSnapshot: chart,
         costRub: generated?.costRub ?? null,
         llmCalls: generated?.llmCalls ?? null,
         tokenUsage: generated?.usage ?? null,
@@ -511,13 +532,25 @@ export async function POST(request: NextRequest) {
     if (!saved) {
       // Row vanished mid-flight (watchdog requeue deleted/replaced it). Do NOT
       // mark the async job completed — that was shipping empty "ready" notices.
+      // A synchronous request has no retry queue, so its charge must be
+      // refunded. A worker keeps the charge only while a retry is guaranteed.
+      const refundNow = await shouldRefundBeforeWorkerFail(request, "report_row_lost");
+      if (refundNow) await rollback();
       await trackWorkerJobFailed(
         request,
-        "Строка разбора была сброшена во время генерации. Задача вернётся в очередь.",
-        { errorCode: "report_row_lost" }
+        refundNow
+          ? "Строка разбора была сброшена во время генерации. Оплата возвращена."
+          : "Строка разбора была сброшена во время генерации. Задача вернётся в очередь.",
+        { refunded: refundNow && refundLanded, errorCode: "report_row_lost" }
       );
       return NextResponse.json(
-        { error: "Строка разбора была сброшена во время генерации.", code: "report_row_lost" },
+        {
+          error: refundNow
+            ? "Строка разбора была сброшена во время генерации. Оплата возвращена."
+            : "Строка разбора была сброшена во время генерации. Задача вернётся в очередь.",
+          code: "report_row_lost",
+          refunded: refundNow && refundLanded,
+        },
         { status: 409 }
       );
     }

@@ -99,6 +99,8 @@ export function useHdReportWait(opts: {
     const url = pollUrl();
     if (!url) return;
     let cancelled = false;
+    let inFlight = false;
+    const controller = new AbortController();
     const genAtStart = genIdRef.current;
 
     const giveUp = (message: string) => {
@@ -111,15 +113,16 @@ export function useHdReportWait(opts: {
     };
 
     const tick = async () => {
-      if (cancelled || genIdRef.current !== genAtStart) return;
+      if (cancelled || inFlight || genIdRef.current !== genAtStart) return;
       if (Date.now() - (startedAtRef.current ?? Date.now()) > MAX_WAIT_MS) {
         giveUp(
           "Генерация заняла слишком много времени. Обновите страницу через пару минут — результат сохранится в кабинете."
         );
         return;
       }
+      inFlight = true;
       try {
-        const res = await fetch(url, { credentials: "include" });
+        const res = await fetch(url, { credentials: "include", signal: AbortSignal.any([controller.signal, AbortSignal.timeout(15_000)]) });
         if (cancelled || genIdRef.current !== genAtStart) return;
         if (!res.ok) {
           failCountRef.current += 1;
@@ -187,10 +190,13 @@ export function useHdReportWait(opts: {
           );
         }
       } catch {
+        if (cancelled) return;
         failCountRef.current += 1;
         if (failCountRef.current >= MAX_CONSECUTIVE_FAILURES) {
           giveUp("Сеть нестабильна — не можем проверить статус. Обновите страницу через минуту.");
         }
+      } finally {
+        inFlight = false;
       }
     };
 
@@ -198,6 +204,7 @@ export function useHdReportWait(opts: {
     const id = window.setInterval(() => void tick(), POLL_MS);
     return () => {
       cancelled = true;
+      controller.abort();
       window.clearTimeout(first);
       window.clearInterval(id);
     };

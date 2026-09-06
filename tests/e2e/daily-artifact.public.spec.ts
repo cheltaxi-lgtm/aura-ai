@@ -166,7 +166,7 @@ test.describe("daily artifact + landing copy", () => {
     // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).
     const starter = page.locator(".editorial-starter-gift");
     await expect(starter).toBeVisible();
-    await expect(starter.getByRole("link", { name: /Создать аккаунт и получить/i })).toBeVisible();
+    await expect(starter.getByRole("link", { name: "Создать бесплатный аккаунт", exact: true })).toBeVisible();
     await expect(starter.getByRole("link", { name: /Получить полный разбор/i })).toHaveCount(0);
     await expect(starter.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
 

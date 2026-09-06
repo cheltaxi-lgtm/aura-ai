@@ -1,22 +1,25 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { REPORT_SHARE_SECTION_ALLOWLIST, type ShareReportKind } from "@/lib/natal/report-share";
 
 type Share = {
-  id: string; token: string; reportKind: ShareReportKind; reportId: string;
+  id: string; token?: string; reportKind: ShareReportKind; reportId: string;
   selectedSections: string[]; expiresAt: string; revokedAt: string | null;
 };
 
-export default function ReportShareControls({
-  reportKind,
-  reportId,
-  requireThirdPartyConsent = false,
-}: {
+type Props = {
   reportKind: ShareReportKind;
   reportId: string;
   requireThirdPartyConsent?: boolean;
-}) {
+};
+export default function ReportShareControls(props: Props) {
+  return <ReportShareControlsContent key={`${props.reportKind}:${props.reportId}`} {...props} />;
+}
+function ReportShareControlsContent({ reportKind, reportId, requireThirdPartyConsent = false }: Props) {
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  const [createdUrl, setCreatedUrl] = useState("");
   const allowed = REPORT_SHARE_SECTION_ALLOWLIST[reportKind];
   const [selected, setSelected] = useState<string[]>([]);
   const [days, setDays] = useState(7);
@@ -30,14 +33,16 @@ export default function ReportShareControls({
     setLoading(true);
     setError("");
     try {
-      const response = await fetch("/api/report-shares", { credentials: "include" });
+      const response = await fetch("/api/report-shares", { credentials: "include", signal: AbortSignal.timeout(20_000) });
       const data = await response.json().catch(() => ({})) as { shares?: Share[]; error?: string };
+      if (!mounted.current) return;
       if (!response.ok) throw new Error(data.error || "Не удалось загрузить приватные ссылки.");
       setShares((data.shares ?? []).filter((share) => share.reportKind === reportKind && share.reportId === reportId));
     } catch (reason) {
+      if (!mounted.current) return;
       setError(reason instanceof Error ? reason.message : "Не удалось загрузить приватные ссылки.");
     } finally {
-      setLoading(false);
+      if (mounted.current) setLoading(false);
     }
   }, [reportId, reportKind]);
   useEffect(() => { void load(); }, [load]);
@@ -50,7 +55,7 @@ export default function ReportShareControls({
     setBusy(true); setNotice(""); setError("");
     try {
       const response = await fetch("/api/report-shares", {
-        method: "POST", credentials: "include", headers: { "Content-Type": "application/json" },
+        method: "POST", credentials: "include", signal: AbortSignal.timeout(20_000), headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           reportKind,
           reportId,
@@ -60,34 +65,40 @@ export default function ReportShareControls({
         }),
       });
       const data = await response.json().catch(() => ({})) as { share?: { url: string }; error?: string };
+      if (!mounted.current) return;
       if (!response.ok || !data.share) throw new Error(data.error || "Не удалось создать ссылку.");
       const shareUrl = new URL(data.share.url, window.location.origin);
       if (shareUrl.origin !== window.location.origin) throw new Error("Сервер вернул некорректную приватную ссылку.");
       const url = `${shareUrl.origin}${shareUrl.pathname}`;
+      setCreatedUrl(url);
       try {
         await navigator.clipboard.writeText(url);
         setNotice("Приватная ссылка создана и скопирована.");
       } catch {
-        setNotice("Приватная ссылка создана. Скопируйте её кнопкой ниже.");
+        setNotice("Приватная ссылка создана. Откройте её ниже и скопируйте адрес.");
       }
       await load();
     } catch (reason) {
+      if (!mounted.current) return;
       setError(reason instanceof Error ? reason.message : "Не удалось создать ссылку.");
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   const revoke = async (id: string) => {
     setBusy(true); setNotice(""); setError("");
     try {
-      const response = await fetch(`/api/report-shares/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include" });
+      const response = await fetch(`/api/report-shares/${encodeURIComponent(id)}`, { method: "DELETE", credentials: "include", signal: AbortSignal.timeout(20_000) });
+      if (!mounted.current) return;
       if (!response.ok) throw new Error("Не удалось отозвать ссылку.");
+      setCreatedUrl("");
       setNotice("Приватная ссылка отозвана.");
       await load();
     } catch (reason) {
+      if (!mounted.current) return;
       setError(reason instanceof Error ? reason.message : "Не удалось отозвать ссылку.");
     } finally {
-      setBusy(false);
+      if (mounted.current) setBusy(false);
     }
   };
   const copy = async (token: string) => {
@@ -120,11 +131,12 @@ export default function ReportShareControls({
       Подтверждаю согласие второго участника на публикацию выбранных разделов.
     </label> : null}
     {loading ? <p className="mt-3 text-white/40" role="status">Загружаем активные ссылки…</p> : null}
+    {createdUrl ? <a href={createdUrl} target="_blank" rel="noopener noreferrer" className="mt-3 block break-all text-amber-200 underline">Открыть созданную ссылку</a> : null}
     {notice ? <p className="mt-2 text-emerald-200/70" role="status">{notice}</p> : null}
     {error ? <div className="mt-2 text-rose-300" role="alert"><p>{error}</p><button type="button" onClick={() => void load()} className="mt-1 min-h-9 text-amber-200">Повторить</button></div> : null}
-    {shares.filter((share) => !share.revokedAt).map((share) => <div key={share.id} className="mt-2 flex items-center justify-between gap-2 rounded bg-black/20 p-2">
+    {shares.filter((share) => !share.revokedAt).map((share) => <div key={share.id} className="mt-2 flex flex-wrap items-center justify-between gap-2 rounded bg-black/20 p-2">
       <span className="text-white/40">до {new Date(share.expiresAt).toLocaleString("ru-RU")}</span>
-      <span className="flex gap-3"><button type="button" disabled={busy} onClick={() => void copy(share.token)} className="min-h-9 text-amber-200 disabled:opacity-50">Копировать</button>
+      <span className="flex gap-3">{share.token ? <button type="button" disabled={busy} onClick={() => void copy(share.token!)} className="min-h-9 text-amber-200 disabled:opacity-50">Копировать</button> : null}
         <button type="button" disabled={busy} onClick={() => void revoke(share.id)} className="min-h-9 text-rose-300 disabled:opacity-50">Отозвать</button></span>
     </div>)}
     {!loading && !shares.some((share) => !share.revokedAt) ? <p className="mt-3 text-white/40">Активных приватных ссылок пока нет.</p> : null}

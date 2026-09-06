@@ -416,6 +416,10 @@ export default function AuraSellingLanding({
         <EditorialStarterGiftSection />
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
         <EditorialSessionStepsSection />
+        <EditorialDailyCardsSection
+          isLoggedIn={false}
+          onGuestCta={() => startGuestSpread()}
+        />
         {showMasters ? (
           <MastersShowcase
             masters={masters}
@@ -439,10 +443,6 @@ export default function AuraSellingLanding({
         <summary className="cursor-pointer rounded-2xl border border-aura-gold/25 px-5 py-4 text-aura-champagne">Другие возможности Zovus</summary>
         <EditorialBirthToolsSection />
         <HomeAuraBanner />
-        <EditorialDailyCardsSection
-          isLoggedIn={false}
-          onGuestCta={() => startGuestSpread()}
-        />
         <EditorialExtraFeaturesSection />
         </details>
         <EditorialReviewsSection />

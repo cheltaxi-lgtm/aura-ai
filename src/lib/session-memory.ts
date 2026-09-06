@@ -1,3 +1,4 @@
+import { isMemorySourceSuppressed } from "@/lib/memory/source-suppression";
 import { readMemoryWriteConsent, withUserMemoryLock } from "@/lib/memory/write-guard";
 import { query, queryClient } from "@/lib/db";
 import {
@@ -78,6 +79,8 @@ export async function getSessionMemories(
      WHERE user_id = $1
        AND character_key = $2
        AND session_id IS NOT NULL
+       AND NOT EXISTS (SELECT 1 FROM user_memory_source_suppressions blocked
+             WHERE blocked.user_id = session_memories.user_id AND blocked.source_entity_id = session_memories.session_id)
        AND ($4::uuid IS NULL OR session_id <> $4)
      ORDER BY (outcome_rating IS NOT NULL AND outcome_rating <= 2), session_date DESC
      LIMIT $3`,
@@ -191,6 +194,7 @@ export async function upsertSessionMemoryFromChat(input: {
   const generation = (await readMemoryWriteConsent(input.userId))?.generation;
   const upsert = () => withUserMemoryLock(input.userId, async (client) => {
     if ((await readMemoryWriteConsent(input.userId, client))?.generation !== generation) return;
+    if (await isMemorySourceSuppressed(client, input.userId, input.sessionId)) return;
     const { rows: blocked } = await queryClient(client, `SELECT 1 FROM user_memory_preferences p
       WHERE p.user_id = $1 AND p.memory_purged_at IS NOT NULL AND NOT EXISTS (
         SELECT 1 FROM sessions s WHERE s.id = $2 AND s.user_id = $1 AND s.created_at > p.memory_purged_at)

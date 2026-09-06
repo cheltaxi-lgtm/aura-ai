@@ -4,8 +4,8 @@ import { requireProfileUserId } from "@/lib/require-auth";
 import PrintableReport from "@/components/natal/PrintableReport";
 import { buildAuthHref } from "@/lib/post-auth-return";
 import {
-  getStoredHdChartById,
   getHdReportById,
+  isHdReportReadable,
 } from "@/lib/services/human-design-service";
 import {
   AUTHORITY_NAMES_RU,
@@ -43,14 +43,23 @@ export default async function HdReportPrintPage({
   }
 
   const report = await getHdReportById(id, auth.profileUserId);
-  if (!report || report.status !== "done" || !report.reportText) notFound();
+  if (!report || !isHdReportReadable(report)) notFound();
 
-  const chart = await getStoredHdChartById(report.chartId);
-  if (!chart) notFound();
+  const chart = report.chartSnapshot;
+  if (!chart) {
+    const cleaned = sanitizeHdReportText(report.reportText);
+    const sections = hdReportTextToPrintSections(cleaned);
+    return <PrintableReport
+      title="Zovus · Дизайн Человека — полный разбор"
+      meta={[{ label: "Архивный отчёт", value: "Сохранён исходный текст разбора. Снимок расчётных данных для этого отчёта отсутствует." }]}
+      sections={sections} legacyContent={sections.length ? null : cleaned}
+      returnHref="/cabinet/human-design"
+    />;
+  }
 
   const typeMeta = TYPE_META[chart.chart.type];
-  // Legacy reports reference a mutable chart row, not a frozen chart snapshot.
-  const chartNotice = "Схемы и паспорт карты взяты из профиля на дату выгрузки. После обновления карты они могут отличаться от исходных данных разбора. Текст оплаченного отчёта сохранён отдельно.";
+  // Use the same immutable chart data that grounded this report.
+  const chartNotice = "Схемы и расчётные данные сохранены вместе с этим разбором. Обновления профиля не изменяют отчёт.";
   const cleaned = sanitizeHdReportText(report.reportText);
   const sections = hdReportTextToPrintSections(cleaned);
   const openCenters = (Object.keys(CENTER_NAMES_RU) as HdCenterKey[]).filter(
@@ -74,7 +83,7 @@ export default async function HdReportPrintPage({
   const coverSections = [
     {
       key: "cover",
-      title: "Паспорт карты из профиля",
+      title: "Паспорт карты отчёта",
       claims: [
         {
           text:

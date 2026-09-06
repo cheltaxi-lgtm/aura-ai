@@ -491,6 +491,8 @@ export async function deleteCompatibilityRecord(
   ownerUserId: string
 ): Promise<boolean> {
   return withTransaction(async (client) => {
+    const owned = await queryClient(client, "SELECT id FROM natal_compatibility_reports WHERE id=$1 AND owner_user_id=$2 FOR UPDATE", [id, ownerUserId]);
+    if (!owned.rowCount) return false;
     await queryClient(
       client,
       `UPDATE private_report_shares

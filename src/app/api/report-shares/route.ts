@@ -1,6 +1,6 @@
 import { randomBytes } from "crypto";
 import { NextRequest, NextResponse } from "next/server";
-import { query } from "@/lib/db";
+import { query, queryClient, withTransaction } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { enforcePaidRouteRateLimit, enforceShareCreateRateLimit } from "@/lib/api-guards";
 import {
@@ -56,15 +56,16 @@ export async function POST(request: NextRequest) {
   }
   const days = Number.isFinite(body.expiresInDays)
     ? Math.min(Math.max(Math.floor(body.expiresInDays ?? 7), 1), 90) : 7;
+  return withTransaction(async (client) => {
   let payload: Record<string, unknown>;
   if (body.reportKind === "natal") {
-    const { rows } = await query<{
+    const { rows } = await queryClient<{
       id: string; structured_data: unknown; content: string; evidence_refs: unknown;
       tradition: string; report_type: string; engine_version: string; ephemeris: string; created_at: string;
-    }>(
+    }>(client,
       `SELECT id, structured_data, content, evidence_refs, tradition, report_type,
               engine_version, ephemeris, created_at
-       FROM natal_report_history WHERE id = $1 AND user_id = $2 LIMIT 1`,
+       FROM natal_report_history WHERE id = $1 AND user_id = $2 LIMIT 1 FOR SHARE`,
       [body.reportId, auth.profileUserId]
     );
     const report = rows[0];
@@ -76,14 +77,14 @@ export async function POST(request: NextRequest) {
         engineVersion: report.engine_version, ephemeris: report.ephemeris, createdAt: report.created_at },
     });
   } else if (body.reportKind === "relationship") {
-    const { rows } = await query<{
+    const { rows } = await queryClient<{
       id: string; synastry_data: unknown; combined_reading: string | null;
       initiator_name: string | null; partner_name: string | null; completed_at: string | null;
-    }>(
+    }>(client,
       `SELECT id, synastry_data, combined_reading, initiator_name, partner_name, completed_at
        FROM joint_readings
        WHERE id = $1 AND status = 'completed'
-         AND (initiator_user_id = $2 OR partner_user_id = $2) LIMIT 1`,
+         AND (initiator_user_id = $2 OR partner_user_id = $2) LIMIT 1 FOR SHARE`,
       [body.reportId, auth.profileUserId]
     );
     const report = rows[0];
@@ -95,15 +96,15 @@ export async function POST(request: NextRequest) {
       sections, meta: { reportType: "relationship", completedAt: report.completed_at },
     });
   } else {
-    const { rows } = await query<{
+    const { rows } = await queryClient<{
       id: string; report_data: unknown; evidence_refs: unknown; synastry_snapshot: unknown;
       owner_label: string; partner_label: string; completed_at: string | null;
-    }>(
+    }>(client,
       `SELECT id, report_data, evidence_refs, synastry_snapshot,
               owner_label, partner_label, completed_at
        FROM natal_compatibility_reports
        WHERE id = $1 AND status = 'completed'
-         AND owner_user_id = $2 LIMIT 1`,
+         AND owner_user_id = $2 LIMIT 1 FOR SHARE`,
       [body.reportId, auth.profileUserId]
     );
     const report = rows[0];
@@ -118,7 +119,7 @@ export async function POST(request: NextRequest) {
     });
   }
   const token = randomBytes(32).toString("base64url");
-  const { rows } = await query<{ id: string; expires_at: string }>(
+  const { rows } = await queryClient<{ id: string; expires_at: string }>(client,
     `INSERT INTO private_report_shares
        (owner_user_id, token, report_kind, report_id, selected_sections, public_payload, expires_at)
      VALUES ($1, $2, $3, $4, $5, $6::jsonb, NOW() + ($7 || ' days')::interval)
@@ -128,4 +129,5 @@ export async function POST(request: NextRequest) {
   return NextResponse.json({
     share: { id: rows[0].id, token, expiresAt: rows[0].expires_at, url: `/reports/shared/${token}` },
   }, { status: 201 });
+  });
 }

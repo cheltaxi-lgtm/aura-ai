@@ -1,5 +1,7 @@
 "use client";
 
+import ReportExportActions from "@/components/reports/ReportExportActions";
+
 import { useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
@@ -1815,6 +1817,8 @@ export default function PhotoReadingFlow({
                       </Link>
                     </div>
                   )}
+
+                  {!loading && result?.historyId ? <ReportExportActions path={`/cabinet/readings/${encodeURIComponent(result.historyId)}/print`} /> : null}
 
                   {!loading && resultSharePayload && (
                     <div className="flex justify-center">

@@ -1532,28 +1532,28 @@ CREATE OR REPLACE FUNCTION validate_private_report_share_target()
 RETURNS TRIGGER AS $$
 BEGIN
   IF NEW.report_kind = 'natal' THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM natal_report_history
+    PERFORM 1 FROM natal_report_history
       WHERE id = NEW.report_id AND user_id = NEW.owner_user_id
-    ) THEN
+      FOR KEY SHARE;
+    IF NOT FOUND THEN
       RAISE EXCEPTION 'invalid natal report share target' USING ERRCODE = '23503';
     END IF;
   ELSIF NEW.report_kind = 'relationship' THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM joint_readings
+    PERFORM 1 FROM joint_readings
       WHERE id = NEW.report_id
         AND status = 'completed'
         AND (initiator_user_id = NEW.owner_user_id OR partner_user_id = NEW.owner_user_id)
-    ) THEN
+      FOR KEY SHARE;
+    IF NOT FOUND THEN
       RAISE EXCEPTION 'invalid relationship report share target' USING ERRCODE = '23503';
     END IF;
   ELSIF NEW.report_kind = 'compatibility' THEN
-    IF NOT EXISTS (
-      SELECT 1 FROM natal_compatibility_reports
+    PERFORM 1 FROM natal_compatibility_reports
       WHERE id = NEW.report_id
         AND status = 'completed'
         AND (owner_user_id = NEW.owner_user_id OR participant_user_id = NEW.owner_user_id)
-    ) THEN
+      FOR KEY SHARE;
+    IF NOT FOUND THEN
       RAISE EXCEPTION 'invalid compatibility report share target' USING ERRCODE = '23503';
     END IF;
   END IF;
@@ -2148,6 +2148,7 @@ CREATE TABLE IF NOT EXISTS hd_reports (
   error TEXT,
   quality_findings JSONB,
   quality_updated_at TIMESTAMPTZ,
+  admin_rewrite_started_at TIMESTAMPTZ,
   cost_rub NUMERIC(12, 4),
   llm_calls INTEGER,
   token_usage JSONB,
@@ -2306,3 +2307,18 @@ CREATE INDEX IF NOT EXISTS bot_matrix_operations_session ON bot_matrix_operation
 DROP TRIGGER IF EXISTS erasure_ref_user_id ON bot_matrix_operations;
 CREATE TRIGGER erasure_ref_user_id BEFORE INSERT OR UPDATE OF user_id ON bot_matrix_operations
   FOR EACH ROW EXECUTE FUNCTION enforce_erasure_reference_fence('users', 'user_id');
+
+-- Immutable source data for paid HD reports; legacy rows remain explicitly without snapshots.
+ALTER TABLE natal_report_history ADD COLUMN IF NOT EXISTS chart_snapshot JSONB;
+ALTER TABLE hd_reports ADD COLUMN IF NOT EXISTS chart_snapshot JSONB;
+ALTER TABLE hd_reports ADD COLUMN IF NOT EXISTS admin_rewrite_started_at TIMESTAMPTZ;
+ALTER TABLE hd_composite_reports ADD COLUMN IF NOT EXISTS base_snapshot JSONB;
+ALTER TABLE hd_composite_reports ADD COLUMN IF NOT EXISTS partner_snapshot JSONB;
+
+-- Suppression survives deletion of a fact and prevents late jobs re-learning old sources.
+CREATE TABLE IF NOT EXISTS user_memory_source_suppressions (
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  source_entity_id UUID NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  PRIMARY KEY (user_id, source_entity_id)
+);

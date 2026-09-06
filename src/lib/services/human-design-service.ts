@@ -94,6 +94,8 @@ export type HdReportToneId = "personal" | "child" | "work";
 export type HdReportStatus = "pending" | "done" | "error" | "needs_regeneration";
 
 export interface HdReportRow {
+  adminRewriteStartedAt: string | null;
+  chartSnapshot: HdChartRow | null;
   id: string;
   chartId: string;
   userId: string;
@@ -109,14 +111,31 @@ export interface HdReportRow {
   createdAt: string;
 }
 
+/** A paid report stays readable while an administrator prepares a replacement. */
+export function isHdReportRewriteInProgress(row: HdReportRow): boolean {
+  return row.status === "pending" &&
+    Boolean(row.adminRewriteStartedAt) &&
+    Boolean(row.reportText?.trim());
+}
+
+/** Paid text is readable while done and throughout an atomic admin rewrite. */
+export function isHdReportReadable(row: HdReportRow): row is HdReportRow & { reportText: string } {
+  return Boolean(row.reportText?.trim()) &&
+    (row.status === "done" || isHdReportRewriteInProgress(row));
+}
+
 /** Public wire shape: strips owner id, billing internals and model metadata. */
 export function toPublicHdReport(row: HdReportRow) {
-  const hideText = row.status === "needs_regeneration" || row.status === "pending";
+  const rewriteInProgress = isHdReportRewriteInProgress(row);
+  const hideText = !isHdReportReadable(row);
   return {
     id: row.id,
     chartId: row.chartId,
-    status: row.status,
+    // The replacement is an internal workflow. Clients keep the last paid
+    // version as a complete report until the new text commits atomically.
+    status: rewriteInProgress ? "done" as const : row.status,
     reportText: hideText ? null : row.reportText,
+    refreshing: rewriteInProgress,
     packageId: row.packageId,
     includedAsksRemaining: row.includedAsksRemaining,
     reportTone: row.reportTone,
@@ -152,6 +171,8 @@ interface HdChartDbRow {
 }
 
 interface HdReportDbRow {
+  admin_rewrite_started_at?: string | Date | null;
+  chart_snapshot?: HdChartRow | null;
   id: string;
   chart_id: string;
   user_id: string;
@@ -216,8 +237,12 @@ function mapReportRow(row: HdReportDbRow): HdReportRow {
       ? row.status
       : "error";
   return {
+    adminRewriteStartedAt: row.admin_rewrite_started_at
+      ? toIso(row.admin_rewrite_started_at)
+      : null,
     id: row.id,
     chartId: row.chart_id,
+    chartSnapshot: row.chart_snapshot ?? null,
     userId: row.user_id,
     status,
     reportText: row.report_text,
@@ -1011,7 +1036,7 @@ export async function getHdCompositeReportById(
   userId: string
 ): Promise<HdCompositeReportRow | null> {
   const { rows } = await query<HdCompositeReportDbRow>(
-    `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at
+    `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at, base_snapshot, partner_snapshot
      FROM hd_composite_reports
      WHERE id = $1 AND user_id = $2`,
     [reportId, userId]
@@ -1057,7 +1082,8 @@ export function isStalePendingReport(report: HdReportRow): boolean {
  * entered as a separate chart row must not be sold twice. Reports bake the
  * subject name into the text, so a dedupe hit also requires the same
  * subject kind and (case-insensitive) name. Returns the newest matching
- * done report; the caller serves it cached WITHOUT charging again.
+ * done report (or its retained text during an admin rewrite); the caller
+ * serves it cached WITHOUT charging again.
  */
 export async function findDuplicateDoneHdReport(params: {
   userId: string;
@@ -1072,11 +1098,11 @@ export async function findDuplicateDoneHdReport(params: {
   const { rows } = await query<HdReportDbRow>(
     `SELECT r.id, r.chart_id, r.user_id, r.status, r.report_text, r.model,
             r.transaction_id, r.error, r.package_id, r.included_asks_remaining,
-            r.report_tone, r.created_at
+            r.report_tone, r.created_at, r.chart_snapshot, r.admin_rewrite_started_at
      FROM hd_reports r
      JOIN hd_charts c ON c.id = r.chart_id
      WHERE r.user_id = $1
-       AND r.status = 'done'
+       AND (r.status = 'done' OR (r.status = 'pending' AND r.admin_rewrite_started_at IS NOT NULL))
        AND r.report_text IS NOT NULL
        AND r.chart_id <> $2
        AND c.chart->'birth'->>'date' = $3
@@ -1148,7 +1174,8 @@ export async function completeHdReport(
   reportId: string,
   reportText: string,
   model: string,
-  meta?: {
+  meta: {
+    chartSnapshot: HdChartRow;
     costRub?: number | null;
     llmCalls?: number | null;
     tokenUsage?: unknown;
@@ -1159,11 +1186,13 @@ export async function completeHdReport(
     `UPDATE hd_reports
      SET status = 'done',
          report_text = $2,
+         chart_snapshot = $8::jsonb,
          model = $3,
          cost_rub = COALESCE($4, cost_rub),
          llm_calls = COALESCE($5, llm_calls),
          token_usage = COALESCE($6::jsonb, token_usage),
          quality_findings = COALESCE($7::jsonb, quality_findings),
+         admin_rewrite_started_at = NULL,
          error = NULL,
          updated_at = now()
      WHERE id = $1 AND status IN ('pending', 'needs_regeneration', 'error')`,
@@ -1175,6 +1204,7 @@ export async function completeHdReport(
       meta?.llmCalls ?? null,
       meta?.tokenUsage != null ? JSON.stringify(meta.tokenUsage) : null,
       meta?.qualityFindings != null ? JSON.stringify(meta.qualityFindings) : null,
+      JSON.stringify(meta.chartSnapshot),
     ]
   );
   return (rowCount ?? 0) > 0;
@@ -1185,11 +1215,12 @@ export async function beginHdReportRewrite(reportId: string): Promise<boolean> {
   const result = await query(
     `UPDATE hd_reports
      SET status = 'pending',
+         admin_rewrite_started_at = now(),
          package_id = 'max',
          included_asks_remaining = GREATEST(included_asks_remaining, 5),
          updated_at = now(),
          created_at = now()
-     WHERE id = $1 AND status = 'done'`,
+     WHERE id = $1 AND status = 'done' AND length(trim(report_text)) > 0`,
     [reportId]
   );
   return (result.rowCount ?? 0) > 0;
@@ -1200,6 +1231,7 @@ export async function restoreHdReportDone(reportId: string): Promise<void> {
   await query(
     `UPDATE hd_reports
      SET status = 'done',
+         admin_rewrite_started_at = NULL,
          error = NULL,
          updated_at = now()
      WHERE id = $1
@@ -1216,7 +1248,8 @@ export const restoreHdReportDepthAfterFailedUpgrade = restoreHdReportDone;
 
 export async function failHdReport(reportId: string, error: string): Promise<void> {
   await query(
-    `UPDATE hd_reports SET status = 'error', error = $2, updated_at = now() WHERE id = $1`,
+    `UPDATE hd_reports SET status = 'error', error = $2, updated_at = now()
+     WHERE id = $1 AND admin_rewrite_started_at IS NULL`,
     [reportId, error.slice(0, 500)]
   );
 }
@@ -1225,18 +1258,21 @@ export async function failHdReport(reportId: string, error: string): Promise<voi
 export async function markHdReportNeedsRegeneration(
   reportId: string,
   draftText: string,
-  findings: unknown
+  findings: unknown,
+  chartSnapshot: HdChartRow
 ): Promise<void> {
   await query(
     `UPDATE hd_reports
      SET status = 'needs_regeneration',
+         admin_rewrite_started_at = NULL,
          report_text = $2,
+         chart_snapshot = $4::jsonb,
          error = 'needs_regeneration',
          quality_findings = $3::jsonb,
          quality_updated_at = now(),
          updated_at = now()
-     WHERE id = $1`,
-    [reportId, draftText, JSON.stringify(findings ?? [])]
+     WHERE id = $1 AND admin_rewrite_started_at IS NULL`,
+    [reportId, draftText, JSON.stringify(findings ?? []), JSON.stringify(chartSnapshot)]
   );
 }
 
@@ -1259,6 +1295,7 @@ export async function beginHdReportQualityResume(reportId: string): Promise<bool
   const result = await query(
     `UPDATE hd_reports
      SET status = 'pending',
+         admin_rewrite_started_at = NULL,
          created_at = now(),
          updated_at = now()
      WHERE id = $1
@@ -1319,6 +1356,8 @@ export async function getHdReportAdminDetail(reportId: string): Promise<HdReport
 }
 
 export interface HdCompositeReportRow {
+  baseSnapshot: HdChartRow | null;
+  partnerSnapshot: HdChartRow | null;
   id: string;
   baseChartId: string;
   partnerChartId: string;
@@ -1341,6 +1380,8 @@ export function toPublicHdCompositeReport(row: HdCompositeReportRow) {
 }
 
 interface HdCompositeReportDbRow {
+  base_snapshot?: HdChartRow | null;
+  partner_snapshot?: HdChartRow | null;
   id: string;
   base_chart_id: string;
   partner_chart_id: string;
@@ -1354,6 +1395,8 @@ function mapCompositeRow(r: HdCompositeReportDbRow): HdCompositeReportRow {
   return {
     id: r.id,
     baseChartId: r.base_chart_id,
+    baseSnapshot: r.base_snapshot ?? null,
+    partnerSnapshot: r.partner_snapshot ?? null,
     partnerChartId: r.partner_chart_id,
     status: r.status,
     reportText: r.report_text,
@@ -1391,7 +1434,7 @@ export async function findDuplicateDoneCompositeReport(params: {
   const partnerTz = normalizeHdTimezone(params.partner.timezone);
   const { rows } = await query<HdCompositeReportDbRow>(
     `SELECT r.id, r.base_chart_id, r.partner_chart_id, r.status, r.report_text,
-            r.transaction_id, r.created_at
+            r.transaction_id, r.created_at, r.base_snapshot, r.partner_snapshot
      FROM hd_composite_reports r
      JOIN hd_charts cb ON cb.id = r.base_chart_id
      JOIN hd_charts cp ON cp.id = r.partner_chart_id
@@ -1442,7 +1485,7 @@ export async function getHdCompositeReport(
 ): Promise<HdCompositeReportRow | null> {
   // Match either orientation — legacy rows may predate canonical ordering.
   const { rows } = await query<HdCompositeReportDbRow>(
-    `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at
+    `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at, base_snapshot, partner_snapshot
      FROM hd_composite_reports
      WHERE user_id = $3
        AND (
@@ -1473,7 +1516,7 @@ export async function createPendingCompositeReport(
   const sql = `INSERT INTO hd_composite_reports (base_chart_id, partner_chart_id, user_id, status, transaction_id)
      VALUES ($1, $2, $3, 'pending', $4)
      ON CONFLICT (base_chart_id, partner_chart_id, user_id) DO NOTHING
-     RETURNING id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at`;
+     RETURNING id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at, base_snapshot, partner_snapshot`;
   const params_ = [baseChartId, partnerChartId, params.userId, params.transactionId];
   const { rows } = client
     ? await queryClient<HdCompositeReportDbRow>(client, sql, params_)
@@ -1547,13 +1590,19 @@ export async function sweepGuestPoolHdCharts(
 export async function completeCompositeReport(
   reportId: string,
   reportText: string,
-  model: string
-): Promise<void> {
-  await query(
-    `UPDATE hd_composite_reports SET status = 'done', report_text = $2, model = $3, updated_at = now()
-     WHERE id = $1`,
-    [reportId, reportText, model]
+  model: string,
+  base: HdChartRow,
+  partner: HdChartRow
+): Promise<boolean> {
+  const { rowCount } = await query(
+    `UPDATE hd_composite_reports SET status = 'done', report_text = $2, model = $3,
+       base_snapshot = CASE WHEN base_chart_id = $4 THEN $5::jsonb ELSE $6::jsonb END,
+       partner_snapshot = CASE WHEN partner_chart_id = $4 THEN $5::jsonb ELSE $6::jsonb END,
+       updated_at = now()
+     WHERE id = $1 AND ((base_chart_id = $4 AND partner_chart_id = $7) OR (partner_chart_id = $4 AND base_chart_id = $7))`,
+    [reportId, reportText, model, base.id, JSON.stringify(base), JSON.stringify(partner), partner.id]
   );
+  return (rowCount ?? 0) > 0;
 }
 
 /** Mark a done composite as pending rewrite without wiping the previous text. */
@@ -1640,7 +1689,7 @@ export async function markHdReportChargeRefunded(reportId: string): Promise<void
   await query(
     `UPDATE hd_reports
      SET status = 'error', error = 'charge_refunded', transaction_id = NULL, updated_at = now()
-     WHERE id = $1 AND status = 'pending'`,
+     WHERE id = $1 AND status = 'pending' AND admin_rewrite_started_at IS NULL`,
     [reportId]
   );
 }
@@ -1661,7 +1710,7 @@ export async function markCompositeReportChargeRefunded(reportId: string): Promi
 export async function releaseStalePendingReportLock(reportId: string): Promise<void> {
   await query(
     `UPDATE hd_reports SET created_at = now() - make_interval(secs => $2), updated_at = now()
-     WHERE id = $1 AND status = 'pending'`,
+     WHERE id = $1 AND status = 'pending' AND admin_rewrite_started_at IS NULL`,
     [reportId, STALE_PENDING_MS / 1000 + 1]
   );
 }
@@ -1683,6 +1732,17 @@ export async function releaseStalePendingCompositeLock(reportId: string): Promis
  */
 export async function reconcileHdReportCharges(limit = 50): Promise<number> {
   let refunded = 0;
+  // A crashed admin rewrite already has a delivered paid report. Restore the
+  // retained version after the maximum rewrite window; refunding it would turn
+  // a successful historical purchase into a hidden error row.
+  await query(
+    `UPDATE hd_reports
+     SET status = 'done', admin_rewrite_started_at = NULL, error = NULL, updated_at = now()
+     WHERE status IN ('pending', 'error')
+       AND admin_rewrite_started_at IS NOT NULL
+       AND length(trim(report_text)) > 0
+       AND updated_at < now() - interval '1 hour'`
+  );
   for (const table of ["hd_reports", "hd_composite_reports"] as const) {
     // Identical shape in both tables; the table name cannot be parameterized.
     // transaction_id is UUID in hd_reports but TEXT in hd_composite_reports —
@@ -1698,6 +1758,7 @@ export async function reconcileHdReportCharges(limit = 50): Promise<number> {
        JOIN rune_transactions t ON t.id::text = r.transaction_id::text AND t.type = 'spend'
        WHERE r.status IN ('pending', 'error')
          AND r.transaction_id IS NOT NULL
+         ${table === "hd_reports" ? "AND r.admin_rewrite_started_at IS NULL" : ""}
          AND r.updated_at < now() - interval '1 hour'
          AND NOT EXISTS (
            SELECT 1 FROM rune_transactions rf

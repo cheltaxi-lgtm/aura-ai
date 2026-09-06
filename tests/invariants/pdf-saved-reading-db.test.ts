@@ -27,7 +27,7 @@ describe.skipIf(!hasTestDb)("PDF persisted ownership and historical data", () =>
   it("uses matching natal JSON fingerprint, never a different current chart", async () => {
     const user=await createTestUser();
     const r=await query<{id:string}>(`INSERT INTO natal_report_history(user_id,birth_fingerprint,engine_version,ephemeris,tradition,content) VALUES($1,'original','pdf-test','test','western','Полный сохранённый натальный разбор') RETURNING id`,[user.id]);
-    await query(`INSERT INTO natal_charts(user_id,engine_version,chart_data) VALUES($1,'pdf-test',$2)`,[user.id,JSON.stringify({birthFingerprint:"different",timeKnown:true,western:{sun:{longitude:45}}})]);
+    await query(`INSERT INTO natal_charts(user_id,engine_version,chart_data) VALUES($1,'pdf-test',$2)`,[user.id,JSON.stringify({birthFingerprint:"different",timeKnown:true,western:{ephemeris:"test",sun:{longitude:45}}})]);
     const different=await getNatalPrintRecord(user.id,r.rows[0].id);expect(different?.chart_data).toBeNull();
     await query(`UPDATE natal_charts SET chart_data=jsonb_set(chart_data,'{birthFingerprint}','"original"') WHERE user_id=$1`,[user.id]);
     const matching=await getNatalPrintRecord(user.id,r.rows[0].id);expect(matching?.chart_data).not.toBeNull();

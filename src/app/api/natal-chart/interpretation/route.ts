@@ -14,7 +14,6 @@ import { generateValidatedNatalReport } from "@/lib/natal/generate-validated-rep
 import {
   claimNatalInterpretationResilient,
   getOrComputeNatalChart,
-  invalidateNatalReportForRegenerate,
   releaseNatalInterpretationClaim,
   saveCurrentNatalInterpretation,
 } from "@/lib/services/natal-chart-service";
@@ -137,7 +136,11 @@ export async function POST(request: NextRequest) {
       : "unknown";
   let timing = null;
   try {
-    timing = await getCachedPersonalTiming(ctx.profileUserId);
+    if (expectedBirthFingerprint && expectedEngineVersion) {
+      timing = await getCachedPersonalTiming(ctx.profileUserId, {
+        birthFingerprint: expectedBirthFingerprint, engineVersion: expectedEngineVersion, ephemeris: expectedEphemeris,
+      });
+    }
   } catch {
     // A report remains grounded in natal evidence when no short timing cache exists.
   }
@@ -158,21 +161,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Не удалось подготовить трактовку." }, { status: 500 });
   }
 
-  if (forceRegenerate) {
-    await invalidateNatalReportForRegenerate({
-      userId: ctx.profileUserId,
-      tradition,
-      reportType: "interpretation",
-      claimKey: tradition,
-    });
-  }
-
   const claim = await claimNatalInterpretationResilient(
     ctx.profileUserId,
     tradition,
     expectedBirthFingerprint,
     expectedEngineVersion,
-    expectedEphemeris
+    expectedEphemeris,
+    { forceRegenerate }
   );
   if (claim.status === "cached") {
     const payload = {
@@ -311,6 +306,7 @@ ${evidenceIds.join("\n")}`),
     }
 
     const saved = await saveCurrentNatalInterpretation({
+      forceRegenerate,
       userId: ctx.profileUserId,
       tradition,
       interpretation,

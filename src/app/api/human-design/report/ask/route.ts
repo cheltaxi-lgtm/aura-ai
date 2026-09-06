@@ -20,15 +20,14 @@ import {
 import {
   appendHdReportMessage,
   consumeHdReportIncludedAsk,
-  getHdChartById,
   getHdReportById,
   HD_UUID_RE,
+  isHdReportReadable,
   listHdReportMessages,
 } from "@/lib/services/human-design-service";
 import {
   buildHdAskSystemPrompt,
   formatHdEvidence,
-  HD_ENGINE_VERSION,
   sanitizeHdReportText,
 } from "@/lib/human-design";
 import { getUserById } from "@/lib/users";
@@ -78,26 +77,19 @@ export async function POST(request: NextRequest) {
   }
 
   const report = await getHdReportById(body.reportId, userId);
-  if (!report || report.status !== "done" || !report.reportText) {
+  if (!report || !isHdReportReadable(report)) {
     return NextResponse.json({ error: "Разбор не найден." }, { status: 404 });
   }
-  const chart = await getHdChartById(report.chartId);
-  if (!chart || chart.userId !== userId) {
-    return NextResponse.json({ error: "Карта не найдена." }, { status: 404 });
-  }
-  if (chart.engineVersion !== HD_ENGINE_VERSION) {
-    return NextResponse.json(
-      { error: "Карта рассчитана устаревшим движком. Пересчитайте карту." },
-      { status: 409 }
-    );
-  }
+  const chart = report.chartSnapshot;
 
   if (!isOpenRouterConfigured()) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
   const clientName = normalizePersonDisplayName(profileRow.name) || null;
-  const evidence = formatHdEvidence(chart.chart, { placeLabel: chart.placeName });
+  const evidence = chart
+    ? formatHdEvidence(chart.chart, { placeLabel: chart.placeName })
+    : "Исторический снимок карты не сохранён. Отвечай только по тексту оплаченного разбора, не добавляй расчётные данные современной карты.";
   const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));
 
   // Cap prompt history: every ask re-sends evidence + full report text, so

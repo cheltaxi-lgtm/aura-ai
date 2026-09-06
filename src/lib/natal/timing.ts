@@ -80,7 +80,14 @@ export interface SecondaryProgressionResult {
   angles: null;
 }
 
+export interface TimingChartIdentity {
+  birthFingerprint: string;
+  engineVersion: string;
+  ephemeris: string;
+}
+
 export interface PersonalTimingResult {
+  sourceChart?: TimingChartIdentity;
   version: typeof TIMING_ENGINE_VERSION;
   horizon: TimingHorizon;
   windowStart: string;

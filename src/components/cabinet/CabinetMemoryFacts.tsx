@@ -125,6 +125,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     cabinetMode: "simple",
   });
   const [loading, setLoading] = useState(true);
+  const [prefsLoaded, setPrefsLoaded] = useState(false);
   const [prefsSaving, setPrefsSaving] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -142,11 +143,12 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
 
   const load = useCallback(async () => {
     setLoading(true);
+    setPrefsLoaded(false);
     setError(null);
     try {
       const [factsRes, prefsRes] = await Promise.all([
-        fetch("/api/memory/facts?view=timeline", { credentials: "include" }),
-        fetch("/api/memory/preferences", { credentials: "include" }),
+        fetch("/api/memory/facts?view=timeline", { credentials: "include", signal: AbortSignal.timeout(20_000) }),
+        fetch("/api/memory/preferences", { credentials: "include", signal: AbortSignal.timeout(20_000) }),
       ]);
       const factsData = (await factsRes.json().catch(() => ({}))) as {
         facts?: MemoryFact[];
@@ -160,6 +162,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
       }
       setFacts(Array.isArray(factsData.facts) ? factsData.facts : []);
       if (prefsRes.ok && prefsData.preferences) {
+        setPrefsLoaded(true);
         setPrefs({
           memoryEnabled: Boolean(prefsData.preferences.memoryEnabled),
           autoCaptureEnabled: Boolean(prefsData.preferences.autoCaptureEnabled),
@@ -169,6 +172,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           cabinetMode: prefsData.preferences.cabinetMode === "advanced" ? "advanced" : "simple",
         });
       }
+      if (!prefsRes.ok || !prefsData.preferences) setError("Записи загружены, но настройки памяти временно недоступны. Повторите загрузку.");
     } catch {
       setError("Не удалось загрузить память.");
       setFacts([]);
@@ -207,6 +211,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   };
 
   const patchPrefs = async (patch: Partial<MemoryPrefs>) => {
+    if (!prefsLoaded || prefsSaving) return;
     // Send only changed fields — full prefs + memoryEnabled:true without pdConsent
     // was rejected as consent_required and the UI blinked back to simple.
     const enabling =
@@ -230,7 +235,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     try {
       const res = await fetch("/api/memory/preferences", {
         method: "PUT",
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ...patch,
@@ -279,7 +284,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
       if (editingFact) {
         const res = await fetch("/api/memory/facts", {
           method: "PATCH",
-          credentials: "include",
+          credentials: "include", signal: AbortSignal.timeout(20_000),
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             factId: editingFact.id,
@@ -304,7 +309,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
       } else {
         const res = await fetch("/api/memory/facts", {
           method: "POST",
-          credentials: "include",
+          credentials: "include", signal: AbortSignal.timeout(20_000),
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             fact: text,
@@ -354,7 +359,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     try {
       const res = await fetch("/api/memory/purge", {
         method: "POST",
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ confirm: true }),
       });
@@ -379,12 +384,12 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
   };
 
   const handleDelete = async (factId: string) => {
-    if (!window.confirm("Удалить этот факт из памяти мастера?")) return;
+    if (!window.confirm("Забыть эту запись? Чтобы она не вернулась из старых резюме, прошлые беседы больше не будут использоваться в памяти новых консультаций. Сами беседы и остальные записи сохранятся.")) return;
     setDeletingId(factId);
     try {
       const res = await fetch(`/api/memory/facts?factId=${encodeURIComponent(factId)}`, {
         method: "DELETE",
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
       });
       if (!res.ok) throw new Error("delete_failed");
       setFacts((prev) => prev.filter((f) => f.id !== factId));
@@ -400,7 +405,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
     try {
       const res = await fetch("/api/memory/facts/action", {
         method: "POST",
-        credentials: "include",
+        credentials: "include", signal: AbortSignal.timeout(20_000),
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ factId, action: "confirm" }),
       });
@@ -440,17 +445,17 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
 
         {!loading ? <div className="rounded-2xl border border-amber-200/15 bg-gradient-to-br from-amber-100/[0.08] to-transparent p-4">
           <p className="text-xs font-medium text-amber-100/70">Ваша история · для всех мастеров</p>
-          <p className="mt-2 text-lg font-medium text-white">{prefs.memoryEnabled ? "Важное остаётся с вами" : "Вы выбираете, что помнить"}</p>
-          <p className="mt-2 text-sm leading-relaxed text-white/55">{prefs.memoryEnabled
+          <p className="mt-2 text-lg font-medium text-white">{!prefsLoaded ? "Настройки временно недоступны" : prefs.memoryEnabled ? "Важное остаётся с вами" : "Вы выбираете, что помнить"}</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/55">{!prefsLoaded ? "Состояние настроек пока не подтверждено. Ваши записи сохраняются." : prefs.memoryEnabled
             ? "Сведения из памяти помогают продолжать разговор по теме. Меняйте их здесь — следующие обращения будут учитывать исправления."
             : "Память выключена. Сохранённые сведения не передаются мастерам из долгосрочной памяти."}</p>
           <div className="mt-3 flex flex-wrap gap-2 text-xs">
             <span className="rounded-full bg-white/5 px-3 py-1.5 text-white/65">{facts.filter(f => f.status === "active").length} актуальных</span>
             <span className="rounded-full bg-white/5 px-3 py-1.5 text-white/65">{facts.filter(f => f.status === "draft").length} ждут подтверждения</span>
-            <span className="rounded-full bg-white/5 px-3 py-1.5 text-white/65">{!prefs.memoryEnabled ? "Автозапоминание приостановлено" : prefs.autoCaptureEnabled ? "Автозапоминание включено" : "Только ваши записи"}</span>
+            <span className="rounded-full bg-white/5 px-3 py-1.5 text-white/65">{!prefsLoaded ? "Настройки недоступны" : !prefs.memoryEnabled ? "Автозапоминание приостановлено" : prefs.autoCaptureEnabled ? "Автозапоминание включено" : "Только ваши записи"}</span>
           </div>
         </div> : null}
-        <MemoryContextReceipt active={!loading && prefs.memoryEnabled} refreshKey={facts.map(f => `${f.id}:${f.fact}`).join("|")} />
+        <MemoryContextReceipt active={!loading && prefsLoaded && prefs.memoryEnabled} refreshKey={facts.map(f => `${f.id}:${f.fact}`).join("|")} />
 
         <div className="space-y-2">
           <p className="text-[11px] font-medium uppercase tracking-[0.18em] text-white/35">
@@ -461,7 +466,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
               <button
                 key={mode}
                 type="button"
-                disabled={prefsSaving}
+                disabled={!prefsLoaded || prefsSaving}
                 onClick={() => void patchPrefs({ cabinetMode: mode })}
                 className={`rounded-lg px-3 py-2 text-xs ${
                   prefs.cabinetMode === mode
@@ -475,7 +480,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           </div>
           <PrefToggle
             checked={prefs.memoryEnabled}
-            busy={prefsSaving}
+            busy={!prefsLoaded || prefsSaving}
             label="Использовать память в сеансах"
             hint="Факты из списка ниже могут попадать в ответы мастера, если тема совпадает."
             onChange={(memoryEnabled) => void patchPrefs({ memoryEnabled })}
@@ -483,7 +488,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           <PrefToggle
             checked={prefs.autoCaptureEnabled}
             disabled={!prefs.memoryEnabled}
-            busy={prefsSaving}
+            busy={!prefsLoaded || prefsSaving}
             label="Запоминать важное из обращений"
             hint="Сохранять факты из ваших слов для следующих обращений. Новые сведения можно проверить и исправить."
             onChange={(autoCaptureEnabled) => void patchPrefs({ autoCaptureEnabled })}
@@ -491,7 +496,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           {prefs.cabinetMode === "advanced" ? <PrefToggle
             checked={prefs.sensitiveCaptureEnabled}
             disabled={!prefs.memoryEnabled || !prefs.autoCaptureEnabled}
-            busy={prefsSaving}
+            busy={!prefsLoaded || prefsSaving}
             label="Чувствительные темы"
             hint="Разрешить автозапоминание более личных сведений (здоровье, деньги, отношения)."
             onChange={(sensitiveCaptureEnabled) => void patchPrefs({ sensitiveCaptureEnabled })}
@@ -499,7 +504,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           {prefs.cabinetMode === "advanced" ? <PrefToggle
             checked={prefs.eventRemindersEnabled}
             disabled={!prefs.memoryEnabled}
-            busy={prefsSaving}
+            busy={!prefsLoaded || prefsSaving}
             label="Напоминания о событиях"
             hint="Короткое уведомление перед датами, которые вы сохранили в памяти."
             onChange={(eventRemindersEnabled) => void patchPrefs({ eventRemindersEnabled })}
@@ -507,7 +512,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           <PrefToggle
             checked={prefs.momentsMode === "active"}
             disabled={!prefs.memoryEnabled}
-            busy={prefsSaving}
+            busy={!prefsLoaded || prefsSaving}
             label="Показывать моменты памяти"
             hint="Показывать до двух новых фактов в текущем сеансе."
             onChange={(enabled) =>
@@ -587,17 +592,26 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
           </div>
         ) : null}
 
+        {!loading && error ? (
+          <div className="flex flex-col gap-3 rounded-2xl border border-red-400/20 bg-red-950/20 px-4 py-3 text-sm text-red-300 sm:flex-row sm:items-center sm:justify-between" role="alert">
+            <span>{error}</span>
+            <button
+              type="button"
+              onClick={() => void load()}
+              className="min-h-10 shrink-0 rounded-xl border border-red-300/20 px-4 font-medium text-red-100 transition hover:border-red-200/40 hover:bg-red-200/5"
+            >
+              Повторить
+            </button>
+          </div>
+        ) : null}
+
         <div>
           {loading ? (
             <div className="flex items-center justify-center gap-2 rounded-2xl border border-white/8 bg-black/20 py-12 text-sm text-white/50">
               <Loader2 className="h-4 w-4 animate-spin" aria-hidden />
               Загрузка памяти…
             </div>
-          ) : error ? (
-            <p className="rounded-2xl border border-red-400/20 bg-red-950/20 px-4 py-3 text-sm text-red-300">
-              {error}
-            </p>
-          ) : displayedFacts.length === 0 ? (
+          ) : displayedFacts.length === 0 && !error ? (
             <div className="relative overflow-hidden rounded-2xl border border-dashed border-white/12 bg-gradient-to-br from-aura-raised/30 via-black/20 to-amber-950/15 px-6 py-10 text-center">
               <div className="pointer-events-none absolute -right-8 -top-8 h-28 w-28 rounded-full bg-aura-gold/10 blur-2xl" />
               <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-aura-gold/10 text-aura-champagne">
@@ -608,7 +622,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                 {search.trim() ? "Попробуйте другое слово или очистите поиск." : "Например: «Я ищу работу дизайнером». Сохраните факт — он будет доступен мастерам, когда вы вернётесь к этой теме с включённой памятью."}
               </p>
             </div>
-          ) : (
+          ) : displayedFacts.length > 0 ? (
             <ul className="space-y-3">
               {displayedFacts.map((f) => {
                 const cat = resolveFactCategory(f.category);
@@ -708,7 +722,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                 );
               })}
             </ul>
-          )}
+          ) : null}
         </div>
       </section>
 

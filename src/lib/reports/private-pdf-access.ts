@@ -19,7 +19,7 @@ export async function privatePdfAvailable(path: string, userId: string): Promise
   if(path.startsWith("/cabinet/astrology/compatibility/")) return Boolean((await getCompatibilityRecord(id,userId))?.report);
   const sources: Record<string,string> = {
     "/cabinet/astrology/reports/": "SELECT 1 FROM natal_report_history WHERE id=$1 AND user_id=$2 AND length(trim(content))>0",
-    "/cabinet/human-design/reports/": "SELECT 1 FROM hd_reports WHERE id=$1 AND user_id=$2 AND status='done' AND length(trim(report_text))>0",
+    "/cabinet/human-design/reports/": "SELECT 1 FROM hd_reports WHERE id=$1 AND user_id=$2 AND (status='done' OR (status='pending' AND admin_rewrite_started_at IS NOT NULL)) AND length(trim(report_text))>0",
     "/cabinet/human-design/composite-reports/": "SELECT 1 FROM hd_composite_reports WHERE id=$1 AND user_id=$2 AND status='done' AND length(trim(report_text))>0",
     "/cabinet/numerology/matrix/": "SELECT 1 FROM numerology_report_history WHERE id=$1 AND user_id=$2 AND tool_id IN ('destiny_matrix','child_matrix','matrix_year_forecast','matrix_compatibility') AND length(trim(content))>0",
   };

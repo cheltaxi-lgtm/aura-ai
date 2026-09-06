@@ -4,7 +4,6 @@ import PrintableReport from "@/components/natal/PrintableReport";
 import HdStaticBodygraph from "@/components/human-design/HdStaticBodygraph";
 import { buildAuthHref } from "@/lib/post-auth-return";
 import {
-  getStoredHdChartById,
   getHdCompositeReportById,
 } from "@/lib/services/human-design-service";
 import {
@@ -40,9 +39,18 @@ export default async function HdCompositeReportPrintPage({
   const report = await getHdCompositeReportById(id, auth.profileUserId);
   if (!report || report.status !== "done" || !report.reportText) notFound();
 
-  const base = await getStoredHdChartById(report.baseChartId);
-  const partner = await getStoredHdChartById(report.partnerChartId);
-  if (!base || !partner) notFound();
+  const base = report.baseSnapshot;
+  const partner = report.partnerSnapshot;
+  if (!base || !partner) {
+    const cleaned = sanitizeHdCompositeReportText(report.reportText);
+    const sections = hdReportTextToPrintSections(cleaned);
+    return <PrintableReport
+      title="Zovus · Карта связи"
+      meta={[{ label: "Архивный отчёт", value: "Сохранён исходный текст разбора. Снимок расчётных данных для этого отчёта отсутствует." }]}
+      sections={sections} legacyContent={sections.length ? null : cleaned}
+      returnHref="/cabinet/human-design"
+    />;
+  }
 
   const labelA =
     base.subjectKind === "other" && base.subjectName?.trim()
@@ -58,8 +66,8 @@ export default async function HdCompositeReportPrintPage({
     b: labelB,
   });
 
-  // Legacy reports reference a mutable chart row, not a frozen chart snapshot.
-  const chartNotice = "Схемы и паспорт карты взяты из профиля на дату выгрузки. После обновления карты они могут отличаться от исходных данных разбора. Текст оплаченного отчёта сохранён отдельно.";
+  // Use the same immutable chart data that grounded this report.
+  const chartNotice = "Схемы и расчётные данные сохранены вместе с этим разбором. Обновления профиля не изменяют отчёт.";
   const cleaned = sanitizeHdCompositeReportText(report.reportText);
   const sections = hdReportTextToPrintSections(cleaned);
 
