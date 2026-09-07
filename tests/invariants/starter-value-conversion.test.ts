@@ -106,20 +106,24 @@ describe("starter 300ᚢ conversion pass — product placements", () => {
 
   it("auth screen analytics distinguish product contexts", () => {
     const src = readSrc("src/components/AuthForm.tsx");
+    const context = readSrc("src/lib/auth-product-context.ts");
     expect(src).toContain('trackSeoEvent("photo_auth_view")');
     expect(src).toContain('trackSeoEvent("starter_auth_view"');
-    expect(src).toContain('safe.includes("dizayn-cheloveka")');
-    expect(src).toContain('safe.includes("natalnaya-karta")');
-    expect(src).toContain('safe.includes("numerology")');
+    expect(src).toContain("resolveAuthProduct(safe)");
+    expect(context).toContain('value.includes("dizayn-cheloveka")');
+    expect(context).toContain('value.includes("natalnaya-karta")');
+    expect(context).toContain('value.includes("numerology")');
   });
 
   it("register screen hero supports product contexts via returnTo", () => {
     const src = readSrc("src/components/auth/StarterRunesValue.tsx");
-    expect(src).toContain('returnTo.includes("dizayn-cheloveka")');
-    expect(src).toContain('returnTo.includes("natalnaya-karta")');
-    expect(src).toContain('returnTo.includes("numerology")');
+    const context = readSrc("src/lib/auth-product-context.ts");
+    expect(src).toContain("resolveAuthProduct(returnTo)");
+    expect(context).toContain('value.includes("dizayn-cheloveka")');
+    expect(context).toContain('value.includes("natalnaya-karta")');
+    expect(context).toContain('value.includes("numerology")');
     // Photo context from the Photo Conversion Pass is preserved.
-    expect(src).toContain('returnTo.includes("photo=1")');
+    expect(context).toContain('value.includes("photo=1")');
   });
 });
 

@@ -78,13 +78,13 @@ test("the guest sees recognized cards before registration and resumes them witho
   await expect(dialog.getByText("В центре расклада — «Шут»")).toBeVisible();
   await expect(dialog.getByLabel("Результат распознавания: проверьте расклад")).toBeFocused();
   await expect(dialog.getByAltText("Распознанная карта: Шут")).toBeInViewport();
-  await expect(dialog.getByRole("button", { name: "Открыть полную расшифровку" })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Открыть полный разбор" })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("photo-guest-teaser-mobile.png") });
   await expect(page).not.toHaveURL(/auth\/user\/(login|register)/);
   expect(f.calls.filter((c) => c === "POST /api/photo-reading/recognize")).toHaveLength(1);
   expect(f.calls.some((c) => /photo-reading\/(interpret|stream)/.test(c))).toBe(false);
 
-  await dialog.getByRole("button", { name: "Открыть полную расшифровку" }).click();
+  await dialog.getByRole("button", { name: "Открыть полный разбор" }).click();
   await expect(page).toHaveURL(/auth\/user\/register/);
   await page.waitForLoadState("domcontentloaded");
   const saved = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!), PHOTO_AUTH_DRAFT_KEY);
@@ -105,10 +105,14 @@ test("the guest sees recognized cards before registration and resumes them witho
   await page.screenshot({ path: info.outputPath("photo-restored-mobile.png") });
 });
 
-test("manual entry returns to manual card selection after authentication", async ({ page }) => {
+test("manual entry lets a guest choose cards before authentication and resumes after it", async ({ page }) => {
   const f = await fixture(page);
   await page.goto("/?photo=1&mode=mark");
-  await page.getByRole("button", { name: "Собрать расклад вручную" }).click();
+  await expect(page).not.toHaveURL(/auth\/user\/register/);
+  await expect(page.getByRole("button", { name: "Собрать расклад вручную" })).toHaveCount(0);
+  await page.getByRole("button", { name: "Добавить символ" }).click();
+  await page.locator(".photo-spread-preview__picker-option").first().click();
+  await page.getByRole("button", { name: "Открыть полный разбор" }).click();
   await expect(page).toHaveURL(/auth\/user\/register/);
   await page.waitForLoadState("domcontentloaded");
   const returnTo = new URL(page.url()).searchParams.get("returnTo");
@@ -136,7 +140,7 @@ test("a realistic phone photo survives the complete email registration route", a
   await dialog.getByLabel("Ваш вопрос (необязательно)").fill("Что важно увидеть в этой ситуации?");
   await dialog.getByRole("button", { name: "Распознать карты бесплатно" }).click();
   await expect(dialog.getByText("Расклад распознан")).toBeVisible({ timeout: 15_000 });
-  await dialog.getByRole("button", { name: "Открыть полную расшифровку" }).click();
+  await dialog.getByRole("button", { name: "Открыть полный разбор" }).click();
 
   await expect(page).toHaveURL(/auth\/user\/register/);
   const savedBeforeRegister = await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY);
@@ -218,6 +222,21 @@ test("closing the guest workspace releases the local photo blob", async ({ page 
   await expect(dialog).toHaveCount(0);
   const revoked = await page.evaluate(() => (window as typeof window & { __photoRevokedUrls: string[] }).__photoRevokedUrls);
   expect(revoked).toContain(previewUrl);
+});
+
+test("switching from the guest Tarot picker to Photo never leaves a stale picker underneath", async ({ page }) => {
+  await fixture(page);
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/?spread=1");
+  await expect(page.getByText("Выберите три карты", { exact: true })).toBeVisible({ timeout: 30_000 });
+
+  await page.goto("/?photo=1");
+  const dialog = page.getByRole("dialog", { name: /фото-расклад/ });
+  await expect(dialog).toBeVisible({ timeout: 30_000 });
+  await dialog.getByRole("button", { name: "Закрыть окно" }).click();
+  await expect(page).toHaveURL(/\/photo-rasklad$/, { timeout: 10_000 });
+  await expect(page.getByText("Выберите три карты", { exact: true })).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "Расшифровка Таро по фото онлайн" })).toBeVisible();
 });
 
 test("photo landing shows the live tariff and a consistent starter offer", async ({ page }, info) => {

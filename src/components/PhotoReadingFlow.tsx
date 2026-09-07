@@ -528,8 +528,14 @@ export default function PhotoReadingFlow({
   }, [redrawSpread]);
 
   useEffect(() => {
-    if (step !== "confirm" || !confirmSpreadKey) {
+    if (step !== "confirm") {
       setConfirmFacesReady(false);
+      return;
+    }
+    if (!confirmSpreadKey) {
+      // Confirm without card faces is the empty manual picker, so there is
+      // nothing to preload before the guest can add the first symbol.
+      setConfirmFacesReady(true);
       return;
     }
     setConfirmFacesReady(false);
@@ -651,7 +657,6 @@ export default function PhotoReadingFlow({
       return;
     }
     if (initialMode !== "mark" || markModeBootedRef.current) return;
-    if (!isLoggedIn) return;
     if (runesBlocked) return;
     markModeBootedRef.current = true;
     trackPhotoReadingPhase("manual_mark");
@@ -659,7 +664,7 @@ export default function PhotoReadingFlow({
       manual: true,
       confidence: "unknown",
     });
-  }, [open, initialMode, isLoggedIn, masterId, runesBlocked]);
+  }, [open, initialMode, masterId, runesBlocked]);
 
   useEffect(() => {
     if (!open) return;
@@ -761,10 +766,6 @@ export default function PhotoReadingFlow({
   };
 
   const startManualSpread = () => {
-    if (!isLoggedIn) {
-      continueThroughAuth("register", "mark");
-      return;
-    }
     if (runesBlocked) {
       onInsufficientRunes?.({ balance: runeBalance, required: photoCost });
       onOpenPaywall?.();
@@ -1488,11 +1489,9 @@ export default function PhotoReadingFlow({
             exit={{ opacity: 0 }}
           >
             {/* Backdrop */}
-            <button
-              type="button"
+            <div
               className="absolute inset-0 bg-black/80 backdrop-blur-md"
-              onClick={() => !loading && onClose()}
-              aria-label="Закрыть"
+              aria-hidden="true"
             />
 
             <motion.div
@@ -1509,7 +1508,7 @@ export default function PhotoReadingFlow({
             <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-aura-gold/40 to-transparent" />
 
             <div className="photo-flow-dialog__header relative flex shrink-0 items-center gap-3 px-4 py-3 sm:px-5 sm:py-4">
-              <div className="relative">
+              <div className="relative shrink-0">
                 <MasterAvatar
                   masterId={masterId}
                   masterName={masterDisplayName}
@@ -1537,7 +1536,7 @@ export default function PhotoReadingFlow({
                 autoFocus
                 onClick={onClose}
                 disabled={loading}
-                className="shrink-0 rounded-full border border-white/10 bg-white/5 p-1.5 text-gray-500 transition-colors hover:text-white disabled:opacity-40"
+                className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-400 transition-colors hover:text-white disabled:opacity-40"
                 aria-label="Закрыть окно"
               >
                 <X className="h-4 w-4" />
@@ -1814,23 +1813,11 @@ export default function PhotoReadingFlow({
                           </p>
                         </div>
                       </div>
-                      <div className="mt-4 flex flex-col gap-2 sm:flex-row sm:items-center">
-                        <button
-                          type="button"
-                          onClick={() => continueThroughAuth("register")}
-                          className="btn-luxe btn-luxe--md btn-luxe--gold flex-1"
-                        >
-                          Открыть полную расшифровку
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => continueThroughAuth("login")}
-                          className="px-3 py-2 text-xs text-aura-ivory/55 transition hover:text-aura-champagne"
-                        >
-                          Уже есть аккаунт
-                        </button>
-                      </div>
-                      <div className="mt-3 flex justify-center">
+                      <p className="mt-4 text-xs leading-relaxed text-aura-ivory/55">
+                        Проверьте все карты ниже. Кнопка продолжения появится после списка — ничего
+                        не потеряется при регистрации.
+                      </p>
+                      <div className="mt-3">
                         <StarterRunesValue variant="badge" />
                       </div>
                     </div>
@@ -1976,7 +1963,7 @@ export default function PhotoReadingFlow({
                   animate={{ opacity: 1 }}
                   className="space-y-2"
                 >
-                  <p className="photo-flow-alert">
+                  <p className="photo-flow-alert" role="alert">
                     <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
                     {error}
                   </p>

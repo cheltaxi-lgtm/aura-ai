@@ -237,6 +237,26 @@ export default function HdChartView({
         </p>
       )}
 
+      <section className="rounded-2xl border border-aura-gold/20 bg-aura-gold/[0.06] p-4" aria-labelledby={`hd-start-${payload.id}`}>
+        <p className="text-[11px] uppercase tracking-[0.14em] text-aura-gold/75">С чего начать</p>
+        <h2 id={`hd-start-${payload.id}`} className="mt-2 font-display text-lg text-white">
+          Ваш практический ориентир
+        </h2>
+        <dl className="mt-3 grid gap-3 sm:grid-cols-2">
+          <div>
+            <dt className="text-xs text-white/45">Как двигаться</dt>
+            <dd className="mt-1 text-sm leading-relaxed text-white/80">{typeMeta.strategyRu}</dd>
+          </div>
+          <div>
+            <dt className="text-xs text-white/45">На что опираться в решениях</dt>
+            <dd className="mt-1 text-sm leading-relaxed text-white/80">{AUTHORITY_NAMES_RU[chart.authority]}</dd>
+          </div>
+        </dl>
+        <p className="mt-3 text-xs leading-relaxed text-white/50">
+          Ниже можно изучить центры и каналы. Полный письменный разбор соберёт их в одну понятную картину.
+        </p>
+      </section>
+
       <div className="print:hidden">
         <Bodygraph
           chart={chart}

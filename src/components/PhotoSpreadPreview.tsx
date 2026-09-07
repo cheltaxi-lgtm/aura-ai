@@ -113,7 +113,9 @@ export default function PhotoSpreadPreview({
 
   useEffect(() => {
     if (!faceSlotKeys.length) {
-      onFacesReadyChange?.(false);
+      // An empty manual spread has no artwork to preload. It is ready
+      // immediately so the guest can open the card picker.
+      onFacesReadyChange?.(true);
       return;
     }
     const ready = faceSlotKeys.every((key) => readySlots[key]);

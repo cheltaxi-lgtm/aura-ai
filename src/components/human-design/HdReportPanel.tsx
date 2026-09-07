@@ -24,6 +24,7 @@ import { useHdReportWait } from "./useHdReportWait";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { FREE_TO_PAID, freeToPaidFunnelState } from "@/lib/free-to-paid-conversion";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
+import { onboardingRedirectUrl, persistPostAuthReturnTo } from "@/lib/post-auth-return";
 
 interface HdReport {
   id: string;
@@ -47,17 +48,19 @@ interface HdReportPanelProps {
   chartId: string;
   chart?: HdChart | HdPublicChart | null;
   authenticated: boolean;
+  profileReady: boolean;
   loginReturnTo: string;
 }
 
 export default function HdReportPanel(props: HdReportPanelProps) {
-  return <HdReportPanelContent key={`${props.chartId}:${props.authenticated}`} {...props} />;
+  return <HdReportPanelContent key={`${props.chartId}:${props.authenticated}:${props.profileReady}`} {...props} />;
 }
 
 function HdReportPanelContent({
   chartId,
   chart = null,
   authenticated,
+  profileReady,
   loginReturnTo,
 }: HdReportPanelProps) {
   const lifetime = useRef<AbortController | null>(null);
@@ -104,7 +107,7 @@ function HdReportPanelContent({
 
   const { waiting, startedAt, startWait, stopWait } = useHdReportWait({
     mode: "personal",
-    enabled: authenticated,
+    enabled: profileReady,
     chartId,
     onDone: (r) => applyDoneReport(r as HdReport),
     onError: (msg) => {
@@ -166,7 +169,7 @@ function HdReportPanelContent({
   }, [applyDoneReport, chartId, stopWait]);
 
   useEffect(() => {
-    if (!authenticated) return;
+    if (!profileReady) return;
     let cancelled = false;
     setLoadError(null);
     fetch(`/api/human-design/report?chartId=${encodeURIComponent(chartId)}`)
@@ -211,11 +214,11 @@ function HdReportPanelContent({
     return () => {
       cancelled = true;
     };
-  }, [authenticated, chartId, loadNonce, applyDoneReport, startWait, resumePendingGeneration]);
+  }, [profileReady, chartId, loadNonce, applyDoneReport, startWait, resumePendingGeneration]);
 
   const reportId = report?.id ?? null;
   useEffect(() => {
-    if (!authenticated || !reportId) return;
+    if (!profileReady || !reportId) return;
     let cancelled = false;
     fetch(`/api/human-design/report/ask?reportId=${encodeURIComponent(reportId)}`)
       .then((r) => (r.ok ? r.json() : null))
@@ -241,7 +244,7 @@ function HdReportPanelContent({
     return () => {
       cancelled = true;
     };
-  }, [authenticated, reportId]);
+  }, [profileReady, reportId]);
 
   useEffect(() => {
     dialogEndRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
@@ -476,17 +479,23 @@ function HdReportPanelContent({
         <span className="hd-package__price">
           {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
         </span>
-        <ul className="hd-package__modules">
-          {HD_FULL_REPORT_MODULES.map((m) => (
-            <li key={m.id}>
-              <span aria-hidden="true">✓</span>
-              <span>
-                <em>{m.title}</em>
-                {m.blurb}
-              </span>
-            </li>
-          ))}
-        </ul>
+        <details className="group mt-3 rounded-xl border border-white/10 bg-black/15 px-3 py-2">
+          <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm text-white/70">
+            <span>Показать все разделы</span>
+            <span aria-hidden className="text-aura-gold transition-transform group-open:rotate-180">⌄</span>
+          </summary>
+          <ul className="hd-package__modules mt-3">
+            {HD_FULL_REPORT_MODULES.map((m) => (
+              <li key={m.id}>
+                <span aria-hidden="true">✓</span>
+                <span>
+                  <em>{m.title}</em>
+                  {m.blurb}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </details>
       </div>
     </div>
   );
@@ -549,7 +558,6 @@ function HdReportPanelContent({
           <p className="mt-2 text-xs leading-relaxed text-white/40">
             Гостевая карта хранится 30 дней — после входа она навсегда останется в вашем архиве.
           </p>
-          {modulesCard}
           <StarterRunesValue
             variant="badge"
             costKey="HD_REPORT"
@@ -559,7 +567,7 @@ function HdReportPanelContent({
             className="mt-4"
           />
           <a
-            href={`/auth/user/login?returnTo=${encodeURIComponent(loginReturnTo)}`}
+            href={`/auth/user/register?returnTo=${encodeURIComponent(loginReturnTo)}`}
             className="btn-luxe btn-luxe--gold mt-5 inline-flex"
             onClick={() => {
               trackProductFunnel("auth_cta", {
@@ -575,6 +583,43 @@ function HdReportPanelContent({
           >
             {FREE_TO_PAID.human_design.buyLabel} ·{" "}
             {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
+          </a>
+          <p className="mt-3 text-sm text-white/55">
+            Уже есть аккаунт?{" "}
+            <a
+              href={`/auth/user/login?returnTo=${encodeURIComponent(loginReturnTo)}`}
+              className="text-aura-champagne underline underline-offset-2"
+            >
+              Войти и продолжить
+            </a>
+          </p>
+          {modulesCard}
+        </div>
+      </div>
+    );
+  }
+
+  if (!profileReady) {
+    return (
+      <div className="space-y-5">
+        {journeyBlock}
+        {chart && (
+          <div className="hd-panel">
+            <HdFoundationBrief chart={chart} />
+          </div>
+        )}
+        <div className="hd-panel">
+          <p className="hd-panel__title">Завершите создание профиля</p>
+          <p className="mt-2 text-sm leading-relaxed text-white/60">
+            Бодиграф уже готов. Укажите основные данные профиля, чтобы закрепить карту за аккаунтом
+            и открыть персональный разбор без повторного расчёта.
+          </p>
+          <a
+            href={onboardingRedirectUrl()}
+            className="btn-luxe btn-luxe--gold mt-5 inline-flex"
+            onClick={() => persistPostAuthReturnTo(loginReturnTo)}
+          >
+            Завершить профиль и вернуться
           </a>
         </div>
       </div>

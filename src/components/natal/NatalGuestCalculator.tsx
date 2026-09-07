@@ -11,6 +11,7 @@ import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
+import { formatBirthPlaceLabel } from "@/lib/place-presentation";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import type { NatalGuestSafePayload } from "@/lib/natal/guest-free-summary";
@@ -469,12 +470,11 @@ export default function NatalGuestCalculator() {
                       className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-white/10"
                       onClick={() => {
                         setPlace(p);
-                        setPlaceQuery(p.label);
+                        setPlaceQuery(formatBirthPlaceLabel(p.label));
                         setPlacesOpen(false);
                       }}
                     >
-                      {p.label}
-                      <span className="mt-0.5 block text-[11px] text-white/40">{p.timezone}</span>
+                      {formatBirthPlaceLabel(p.label)}
                     </button>
                   </li>
                 ))}
@@ -514,12 +514,6 @@ export default function NatalGuestCalculator() {
             ) : null}
           </div>
 
-          {result.western ? (
-            <div className="mx-auto w-full min-w-0 max-w-lg">
-              <NatalChartWheel western={result.western} timeKnown={result.timeKnown} size={360} />
-            </div>
-          ) : null}
-
           {result.bigThree.length > 0 ? (
             <div className="flex flex-wrap gap-2">
               {result.bigThree.map((item) => (
@@ -556,9 +550,7 @@ export default function NatalGuestCalculator() {
             </div>
           ) : null}
 
-          <CrossProductNextSteps context="natal" />
-
-          <div className="rounded-2xl border border-aura-gold/25 bg-gradient-to-br from-aura-gold/10 to-transparent p-5">
+          <div data-primary-conversion className="rounded-2xl border border-aura-gold/25 bg-gradient-to-br from-aura-gold/10 to-transparent p-5">
             <p className="text-sm text-white/65">
               {freeToPaidHint(FREE_TO_PAID.natal, ownedNatal)}
             </p>
@@ -621,6 +613,20 @@ export default function NatalGuestCalculator() {
               )}
             </div>
           </div>
+
+          {result.western ? (
+            <details className="group rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2">
+              <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-aura-champagne">
+                <span>Открыть подробную схему карты</span>
+                <span aria-hidden className="text-aura-gold transition-transform group-open:rotate-180">⌄</span>
+              </summary>
+              <div className="mx-auto mt-4 w-full min-w-0 max-w-lg">
+                <NatalChartWheel western={result.western} timeKnown={result.timeKnown} size={360} />
+              </div>
+            </details>
+          ) : null}
+
+          <CrossProductNextSteps context="natal" />
 
           <button
             type="button"

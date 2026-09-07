@@ -89,12 +89,12 @@ function isAbortError(reason: unknown): boolean {
 }
 
 const TABS: Array<{ id: Tab; label: string; icon: typeof Star }> = [
-  { id: "overview", label: "Обзор", icon: Star },
-  { id: "western", label: "Западная", icon: Orbit },
-  { id: "jyotish", label: "Джйотиш", icon: Compass },
+  { id: "overview", label: "Моя карта", icon: Star },
+  { id: "western", label: "Западный разбор", icon: Orbit },
+  { id: "jyotish", label: "Ведический разбор", icon: Compass },
   { id: "timing", label: "Периоды", icon: CalendarClock },
   { id: "compatibility", label: "Совместимость", icon: HeartHandshake },
-  { id: "reports", label: "Отчёты", icon: ScrollText },
+  { id: "reports", label: "Мои отчёты", icon: ScrollText },
   { id: "settings", label: "Настройки", icon: Settings },
 ];
 

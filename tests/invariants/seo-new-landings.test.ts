@@ -269,8 +269,8 @@ describe("seo-new-landings", () => {
     expect(three).not.toMatch(/href="\/\?ask=1&spread=1"[\s\S]{0,80}карта дня/i);
 
     const taro = read("src/app/taro/page.tsx");
-    expect(taro).toContain('href="/?ask=1&spread=1"');
-    expect(taro).toContain("Попробовать первый расклад");
+    expect(taro).toContain('href="/?spread=1"');
+    expect(taro).toContain("Выбрать три карты бесплатно");
     expect(taro).not.toContain("/?spread=triplet");
     expect(taro).toContain("Это не карта дня");
 

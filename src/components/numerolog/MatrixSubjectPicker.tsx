@@ -184,7 +184,7 @@ export default function MatrixSubjectPicker({
                     onClick={() => void removeSubject(subject)}
                     aria-label={`Удалить ${subject.displayName || KIND_LABEL[subject.kind]}`}
                     title="Удалить из списка"
-                    className="border-l border-white/10 px-2 text-white/40 transition hover:bg-red-950/40 hover:text-red-300 disabled:opacity-50"
+                  className="min-h-11 min-w-11 border-l border-white/10 px-2 text-white/40 transition hover:bg-red-950/40 hover:text-red-300 disabled:opacity-50"
                   >
                     {removing ? "…" : "×"}
                   </button>

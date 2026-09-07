@@ -1,5 +1,6 @@
 import { resolveFallbackCity, searchFallbackCities, type FallbackCity } from "./cities-fallback";
 import { resolveGeonamesCity, searchGeonames } from "./geonames";
+import { rankBirthPlaces } from "@/lib/place-presentation";
 
 export type GeocodedPlace = {
   label: string;
@@ -110,7 +111,7 @@ export async function searchBirthPlaces(query: string, limit = 8): Promise<Geoco
     // offline-only path
   }
 
-  return [...merged.values()].slice(0, limit);
+  return rankBirthPlaces([...merged.values()], q).slice(0, limit);
 }
 
 export async function resolveBirthPlace(city: string): Promise<GeocodedPlace | null> {

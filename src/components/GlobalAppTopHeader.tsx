@@ -17,6 +17,7 @@ import {
 import { usePaywallOptional } from "@/contexts/PaywallContext";
 import { useAuth } from "@/lib/useAuth";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { resolveProductHeaderAction } from "@/lib/product-header-action";
 
 function isAdminPath(pathname: string | null): boolean {
   if (!pathname) return false;
@@ -72,6 +73,33 @@ export default function GlobalAppTopHeader() {
   const photoNavLabel = runeConfig.enabled
     ? `Фото · ${formatRunes(runeCost("VISION_ANALYSIS"))}`
     : "Фото расклад";
+  const productAction = resolveProductHeaderAction(pathname);
+  const handlePrimaryAction = () => {
+    if (!productAction) {
+      navigateToStartReading();
+      return;
+    }
+    if (productAction.target?.startsWith("#")) {
+      const target = document.querySelector<HTMLElement>(productAction.target);
+      if (target) {
+        const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        target.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+        if (!target.hasAttribute("tabindex")) target.tabIndex = -1;
+        target.focus({ preventScroll: true });
+      }
+      return;
+    }
+    if (productAction.target) {
+      window.location.assign(productAction.target);
+      return;
+    }
+    const target = document.querySelector<HTMLElement>(
+      "[data-product-primary], main h1, main"
+    );
+    const reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    target?.scrollIntoView({ behavior: reduceMotion ? "auto" : "smooth", block: "start" });
+    target?.focus?.({ preventScroll: true });
+  };
 
   return createPortal(
     <AppTopHeader
@@ -85,7 +113,9 @@ export default function GlobalAppTopHeader() {
       onNavPhoto={() => navigateToPhotoReading()}
       onNavDecks={() => navigateToDecksModal()}
       onNavRitual={() => navigateToRitualFlow()}
-      onStartReading={() => navigateToStartReading()}
+      onStartReading={handlePrimaryAction}
+      primaryActionLabel={productAction?.desktopLabel}
+      primaryActionMobileLabel={productAction?.mobileLabel}
     />,
     document.body
   );

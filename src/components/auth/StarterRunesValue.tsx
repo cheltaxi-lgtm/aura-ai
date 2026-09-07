@@ -5,11 +5,12 @@ import { useRuneConfig } from "@/lib/useRuneConfig";
 import { useAuth } from "@/lib/useAuth";
 import type { RuneActionType } from "@/lib/rune-costs";
 import { trackSeoEvent } from "@/lib/seo/metrika";
+import { resolveAuthProduct, type AuthProduct } from "@/lib/auth-product-context";
 
 /** Plural forms for count phrases: [«разбор», «разбора», «разборов»]. */
 type Unit = [one: string, few: string, many: string];
 
-type HeroContext = "photo" | "hd" | "natal" | "matrix" | "generic";
+type HeroContext = AuthProduct;
 
 type StarterRunesValueProps = {
   /** badge — compact pill; line — quiet hero accent; hero — dominant auth-screen block. */
@@ -40,11 +41,7 @@ function pluralRu(n: number, one: string, few: string, many: string): string {
 }
 
 function detectHeroContext(returnTo: string): HeroContext {
-  if (returnTo.includes("photo=1")) return "photo";
-  if (returnTo.includes("dizayn-cheloveka")) return "hd";
-  if (returnTo.includes("natalnaya-karta")) return "natal";
-  if (returnTo.includes("numerology")) return "matrix";
-  return "generic";
+  return resolveAuthProduct(returnTo);
 }
 
 /**
@@ -142,6 +139,10 @@ export default function StarterRunesValue({
       } else if (matrixCount === 1) {
         line = "Хватит на полный разбор Матрицы судьбы.";
       }
+    } else if (heroContext === "aura") {
+      line = "Снимок ауры сохранится, а полный разбор продолжится с того же места.";
+    } else if (heroContext === "palm") {
+      line = "Снимок ладони сохранится, а полный разбор линий продолжится с того же места.";
     }
 
     return (

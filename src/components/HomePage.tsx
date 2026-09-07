@@ -252,6 +252,13 @@ export interface HomePageProps {
   autoOpenRitualType?: RitualType;
 }
 
+function restorePhotoLandingOnClose(): void {
+  if (typeof window === "undefined") return;
+  // Let the Photo workspace unmount first so object URLs and camera resources
+  // are released before the document navigation.
+  window.setTimeout(() => window.location.assign("/photo-rasklad"), 250);
+}
+
 function resolveDestinyCardUrl(
   readings: StoredReadingRow[],
   cardsKey: string,
@@ -1325,9 +1332,13 @@ export default function HomePage({
         navigateToPhotoReadingHard();
         return;
       }
+      // Product flows are mutually exclusive. Reset the in-progress guest Tarot
+      // picker synchronously before mounting Photo, so closing Photo can never
+      // uncover a stale 78-card surface.
+      resetGuestSpreadFlow({ keepCompletedTriplet: true });
       exitToLandingForNavRef.current?.();
       setPhotoReadingOpen(true);
-      window.history.replaceState(null, "", window.location.pathname);
+      window.history.replaceState(null, "", "/?photo=1");
     },
     [navigateToPhotoReadingHard]
   );
@@ -1343,6 +1354,8 @@ export default function HomePage({
   const closePhotoReading = useCallback(() => {
     setPhotoReadingOpen(false);
     setSpreadRitual({ active: false });
+    resetGuestSpreadFlow({ keepCompletedTriplet: true });
+    restorePhotoLandingOnClose();
   }, [setSpreadRitual]);
 
   const handleBrowseDeck = useCallback((master: ShowcaseMaster) => {
@@ -1369,6 +1382,7 @@ export default function HomePage({
     const params = new URLSearchParams(window.location.search);
     const hash = decodeURIComponent(window.location.hash.slice(1));
     if (params.get("photo") === "1" || hash === "фото-расклад") {
+      resetGuestSpreadFlow({ keepCompletedTriplet: true });
       setPhotoReadingInitialMode(params.get("mode") === "mark" ? "mark" : "upload");
       setPhotoReadingOpen(true);
       window.history.replaceState(null, "", window.location.pathname);

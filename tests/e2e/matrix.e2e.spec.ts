@@ -518,12 +518,13 @@ test("saved subject switching preserves frozen snapshot and never writes the pre
   const print = page.getByRole("link", { name: "Печатная версия расчёта", exact: true });
   await expect(print).toHaveAttribute("href", /birthDate=1988-03-03.*asOfDate=2024-01-01.*version=matrix-v4/);
   releaseHydration();
-  await expect(page.locator('input[type="date"]').first()).toHaveValue(otherDate);
+  await expect(page.getByText(`Анна · ${otherDate}`, { exact: true })).toBeVisible();
   await expect(print).toHaveAttribute("href", /birthDate=1988-03-03/);
   expect(snapshotWrites).toBe(0);
   const firstNode = page.locator('g[data-node][role="button"][tabindex="0"]').first();
   await firstNode.focus(); await firstNode.press("Enter");
   await expect(page.locator(".destiny-matrix-node-card")).toBeVisible();
+  await page.getByRole("button", { name: "Ввести другую дату", exact: true }).click();
   await page.locator('input[type="date"]').first().fill("1991-02-04");
   await expect(print).toHaveCount(0);
   await page.getByRole("button", { name: "Рассчитать бесплатно", exact: true }).click();

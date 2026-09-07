@@ -685,7 +685,13 @@
 }
 
 .aura-past__title {
+  min-height: 2.75rem;
   margin: 0 0 0.625rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  list-style: none;
   font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: 0.18em;

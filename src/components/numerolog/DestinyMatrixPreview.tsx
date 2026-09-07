@@ -479,7 +479,7 @@ export default function DestinyMatrixPreview() {
             onClick={() => void confirmAge()}
             className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
           >
-            {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — рассчитать матрицу"}
+            {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — продолжить к расчёту"}
           </button>
         </div>
       </div>
@@ -594,6 +594,27 @@ export default function DestinyMatrixPreview() {
         </p>
       )}
 
+      {selectedSubjectId ? (
+        <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-aura-gold/20 bg-aura-gold/[0.05] p-4">
+          <div>
+            <p className="text-xs uppercase tracking-[0.12em] text-aura-gold/70">Расчёт выбранного человека</p>
+            <p className="mt-1 text-sm text-white/75">{name || "Без имени"} · {birthDate}</p>
+          </div>
+          <button
+            type="button"
+            onClick={() => {
+              setSelectedSubjectId(null);
+              setSummary(null);
+              setBirthDate("");
+              setName("");
+              setFromProfile(false);
+            }}
+            className="min-h-11 rounded-xl border border-white/15 px-4 text-sm text-white/70"
+          >
+            Ввести другую дату
+          </button>
+        </div>
+      ) : (
       <form onSubmit={onSubmit} className="mt-5 space-y-3">
         <label className="block text-sm text-white/70">
           Дата рождения
@@ -636,6 +657,7 @@ export default function DestinyMatrixPreview() {
           {pending ? "Считаем…" : summary ? "Пересчитать" : "Рассчитать бесплатно"}
         </button>
       </form>
+      )}
 
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
 
@@ -694,8 +716,6 @@ export default function DestinyMatrixPreview() {
             </pre>
           </div>
 
-          <CrossProductNextSteps context="matrix" />
-
           {isLoggedIn && skyProfileComplete === false ? (
             <div className="rounded-2xl border border-sky-400/25 bg-sky-500/[0.06] p-4">
               <p className="text-xs uppercase tracking-[0.14em] text-sky-200/80">Слой «Небо»</p>
@@ -715,7 +735,7 @@ export default function DestinyMatrixPreview() {
             </div>
           ) : null}
 
-          <div className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
+          <div data-primary-conversion className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
             <p className="text-sm font-medium text-aura-gold">
               {ownedFull
                 ? "Полный разбор уже куплен"
@@ -890,6 +910,7 @@ export default function DestinyMatrixPreview() {
               />
             ) : null}
           </div>
+          <CrossProductNextSteps context="matrix" />
         </div>
       ) : null}
     </div>

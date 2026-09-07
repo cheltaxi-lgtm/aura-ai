@@ -135,7 +135,7 @@ export default function NatalnayaKartaPage() {
     <SeoPageShell
       breadcrumbs={[
         { name: "Zovus", path: "/" },
-        { name: "Гадание", path: "/gadanie" },
+        { name: "Астрология", path: "/astrology" },
         { name: "Натальная карта", path: PATH },
       ]}
     >

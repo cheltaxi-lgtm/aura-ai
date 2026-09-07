@@ -61,7 +61,7 @@ export default async function TaroPillarPage() {
       </p>
 
       <div className="mt-8 grid grid-cols-1 gap-3 sm:grid-cols-3 [&>a]:min-w-0 [&>a]:w-full [&>a]:justify-center [&>a]:text-center">
-        <SeoTrackedCta href="/?ask=1&spread=1">Попробовать первый расклад</SeoTrackedCta>
+        <SeoTrackedCta href="/?spread=1">Выбрать три карты бесплатно</SeoTrackedCta>
         <SeoTrackedCta href="/photo-rasklad" variant="ghost">
           Расшифровка по фото
         </SeoTrackedCta>
@@ -72,8 +72,8 @@ export default async function TaroPillarPage() {
 
       <SeoSection title="Гадание на картах Таро — как это работает">
         <p>
-          Вы выбираете тему — связь, будущее, работа — формулируете вопрос и открываете расклад.
-          Наставник связывает выпавшие арканы с вашей ситуацией и отвечает в диалоге.
+          Для первого знакомства выберите три карты бесплатно. Вопрос можно сформулировать заранее
+          или читать общий сюжет карт; в полном раскладе наставник уточнит тему и свяжет арканы с ситуацией.
         </p>
         <h3 className="mt-4 font-medium text-white">С чего начать новичку</h3>
         <p>

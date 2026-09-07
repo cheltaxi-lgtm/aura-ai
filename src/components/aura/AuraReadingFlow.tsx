@@ -922,7 +922,7 @@ export default function AuraReadingFlow() {
   }
 
   return (
-    <div className="aura-flow mx-auto w-full max-w-xl">
+    <div id="aura-calculator" className="aura-flow mx-auto w-full max-w-xl scroll-mt-24">
       <input
         ref={fileInputRef}
         type="file"
@@ -996,14 +996,6 @@ export default function AuraReadingFlow() {
               </div>
             ) : (
               <>
-                <div className="aura-stage mx-auto" aria-hidden>
-                  <div className="aura-stage__halo aura-stage__halo--dim" />
-                  <div className="aura-stage__plate" />
-                </div>
-                <p className="text-center text-sm text-white/60">
-                  Портрет крупным планом, при ровном свете. Фото не сохраняется — только
-                  цвета и состояния поля.
-                </p>
                 {othersOn ? (
                   <AuraSubjectPicker
                     subjects={subjects}
@@ -1086,9 +1078,21 @@ export default function AuraReadingFlow() {
                   </p>
                 ) : null}
 
+                <div className="aura-stage mx-auto" aria-hidden>
+                  <div className="aura-stage__halo aura-stage__halo--dim" />
+                  <div className="aura-stage__plate" />
+                </div>
+                <p className="text-center text-sm text-white/60">
+                  Портрет крупным планом, при ровном свете. Фото не сохраняется — только
+                  цвета и состояния поля.
+                </p>
+
                 {isLoggedIn && pastReadings && pastReadings.length > 0 && (
-                  <div className="aura-past">
-                    <p className="aura-past__title">Ваши ауры</p>
+                  <details className="aura-past group">
+                    <summary className="aura-past__title cursor-pointer">
+                      <span>Прошлые снимки · {pastReadings.length}</span>
+                      <span aria-hidden className="text-aura-gold transition-transform group-open:rotate-180">⌄</span>
+                    </summary>
                     <ul className="aura-past__list">
                       {pastReadings.map((item) => {
                         const itemId = item.snapshotId ?? item.historyId ?? "";
@@ -1152,7 +1156,7 @@ export default function AuraReadingFlow() {
                         );
                       })}
                     </ul>
-                  </div>
+                  </details>
                 )}
               </>
             )}
@@ -1370,7 +1374,7 @@ export default function AuraReadingFlow() {
       </AnimatePresence>
 
       {error && (
-        <p className="mt-4 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-center text-sm text-red-200">
+        <p role="alert" className="mt-4 rounded-xl border border-red-400/25 bg-red-500/10 px-4 py-3 text-center text-sm text-red-200">
           {error}
         </p>
       )}

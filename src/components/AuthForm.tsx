@@ -44,6 +44,7 @@ import {
   resolveGuestSpreadMasterId,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
+import { resolveAuthProduct } from "@/lib/auth-product-context";
 import {
   clearShareRegistrationAttribution,
   resolveRegistrationSource,
@@ -111,15 +112,8 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     setReturnTo(safe);
     captureReturnToFromUrl(window.location.search, fallback);
     if (isUserRegister) {
-      const authProduct = safe.includes("photo=1")
-        ? "photo"
-        : safe.includes("dizayn-cheloveka")
-          ? "hd"
-          : safe.includes("natalnaya-karta")
-            ? "natal"
-            : safe.includes("numerology")
-              ? "matrix"
-              : null;
+      const resolvedProduct = resolveAuthProduct(safe);
+      const authProduct = resolvedProduct === "generic" ? null : resolvedProduct;
       if (authProduct === "photo") {
         trackSeoEvent("photo_auth_view");
       }

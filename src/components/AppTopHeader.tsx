@@ -28,6 +28,8 @@ export interface AppTopHeaderProps {
   onNavDecks: () => void;
   onNavRitual: () => void;
   onStartReading: () => void;
+  primaryActionLabel?: string;
+  primaryActionMobileLabel?: string;
 }
 
 export default function AppTopHeader({
@@ -42,6 +44,8 @@ export default function AppTopHeader({
   onNavDecks,
   onNavRitual,
   onStartReading,
+  primaryActionLabel,
+  primaryActionMobileLabel,
 }: AppTopHeaderProps) {
   const headerRef = useRef<HTMLElement>(null);
   const [tariffsOpen, setTariffsOpen] = useState(false);
@@ -140,7 +144,7 @@ export default function AppTopHeader({
             onClick={onStartReading}
             className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
           >
-            {isLoggedIn ? "Карты дня" : "Получить расклад"}
+            {primaryActionLabel ?? (isLoggedIn ? "Карты дня" : "Получить расклад")}
           </button>
           <AppTopHeaderAccount
             user={authUser}
@@ -163,7 +167,7 @@ export default function AppTopHeader({
             onClick={onStartReading}
             className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
           >
-            Расклад
+            {primaryActionMobileLabel ?? "Расклад"}
           </button>
           {!isLoggedIn ? (
             <AppTopHeaderAccount

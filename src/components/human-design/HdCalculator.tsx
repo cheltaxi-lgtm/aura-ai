@@ -24,6 +24,7 @@ import {
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { trackSeoEvent } from "@/lib/seo/metrika";
+import { formatBirthPlaceLabel } from "@/lib/place-presentation";
 
 interface PlaceSuggestion {
   label: string;
@@ -102,6 +103,7 @@ export default function HdCalculator({
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<HdChartPayload | null>(initialChart);
+  const [authenticated, setAuthenticated] = useState(false);
   /** Session + linked profile — enough for ownership/claim/mine/reports. */
   const [accountReady, setAccountReady] = useState(false);
   /** Account birth anketa complete — prefill only; must not gate guest claim. */
@@ -117,11 +119,14 @@ export default function HdCalculator({
     fetch("/api/auth/me")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
+        const signedIn = Boolean(d?.authenticated);
         const ready = Boolean(d?.authenticated && !d?.needsProfile);
+        setAuthenticated(signedIn);
         setAccountReady(ready);
         setBirthProfileReady(Boolean(ready && !d?.needsBirthProfile));
       })
       .catch(() => {
+        setAuthenticated(false);
         setAccountReady(false);
         setBirthProfileReady(false);
       });
@@ -433,7 +438,7 @@ export default function HdCalculator({
               setResult(c);
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
-            className="px-3.5 py-1.5"
+            className="min-h-11 px-3.5 py-1.5"
           >
             {hdChartChipLabel(c)}
           </button>
@@ -442,7 +447,7 @@ export default function HdCalculator({
             aria-label="Удалить карту"
             title="Удалить карту"
             onClick={() => void deleteMine(c)}
-            className="border-l border-amber-300/20 px-2 py-1.5 text-amber-100/50 transition hover:bg-red-500/15 hover:text-red-300"
+            className="min-h-11 min-w-11 border-l border-amber-300/20 px-2 py-1.5 text-amber-100/50 transition hover:bg-red-500/15 hover:text-red-300"
           >
             ×
           </button>
@@ -484,7 +489,7 @@ export default function HdCalculator({
 
     if (showConnection && canCompare && selfChart && otherForConnection) {
       return (
-        <div className="space-y-5">
+        <div id="hd-calculator" className="space-y-5 scroll-mt-24">
           {mineChips}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-amber-100/80">
@@ -506,7 +511,7 @@ export default function HdCalculator({
     }
 
     return (
-      <div className="space-y-5">
+      <div id="hd-calculator" className="space-y-5 scroll-mt-24">
         {mineChips}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-white/55">{payload_line(result)}</p>
@@ -551,20 +556,21 @@ export default function HdCalculator({
         </div>
         <HdChartSlot slotKey={result.id}>
           <HdChartView payload={result} />
-          <CrossProductNextSteps context="human_design" />
           <HdReportPanel
             chartId={result.id}
             chart={result.chart}
-            authenticated={accountReady}
+            authenticated={authenticated}
+            profileReady={accountReady}
             loginReturnTo={returnTo}
           />
+          <CrossProductNextSteps context="human_design" />
         </HdChartSlot>
       </div>
     );
   }
 
   return (
-    <div className="space-y-5">
+    <div id="hd-calculator" className="space-y-5 scroll-mt-24">
       {mineChips}
 
       <div className="hd-panel">
@@ -708,12 +714,11 @@ export default function HdCalculator({
                     className="hd-places__item"
                     onClick={() => {
                       setPlace(s);
-                      setPlaceQuery(s.label);
+                      setPlaceQuery(formatBirthPlaceLabel(s.label));
                       setPlacesOpen(false);
                     }}
                   >
-                    {s.label}
-                    <small>{s.timezone}</small>
+                    {formatBirthPlaceLabel(s.label)}
                   </button>
                 ))}
             </div>

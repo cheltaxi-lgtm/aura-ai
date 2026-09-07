@@ -85,12 +85,13 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
     expect(uploadBlock).toContain("Бесплатно распознаем карты");
     expect(uploadBlock).not.toContain("continueThroughAuth");
 
-    // Registration value and both auth paths appear only after cards are recognized.
+    // Registration value appears only after cards are recognized. The single primary
+    // action delegates to registration; login remains available on that auth screen.
     const teaserStart = modal.indexOf("{!isLoggedIn && confirmFacesReady");
     const teaserBlock = modal.slice(teaserStart, modal.indexOf("{/* ── STEP: RESULT", teaserStart));
     expect(teaserBlock).toContain('StarterRunesValue variant="badge"');
-    expect(teaserBlock).toContain('continueThroughAuth("register")');
-    expect(teaserBlock).toContain('continueThroughAuth("login")');
+    expect(modal).toMatch(/if \(!isLoggedIn\) \{\s*continueThroughAuth\("register"\);/);
+    expect(modal.match(/Открыть полный разбор/g)).toHaveLength(1);
 
     const register = readSrc("src/app/auth/user/register/page.tsx");
     expect(register).toContain('StarterRunesValue variant="badge" generic');

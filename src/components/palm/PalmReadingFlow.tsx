@@ -762,8 +762,11 @@ export default function PalmReadingFlow() {
 
   const pastArchive =
     isLoggedIn && pastReadings && pastReadings.length > 0 ? (
-      <div className="aura-past">
-        <p className="aura-past__title">Ваши ладони</p>
+      <details className="aura-past group">
+        <summary className="aura-past__title cursor-pointer">
+          <span>Ваши ладони · {pastReadings.length}</span>
+          <span aria-hidden className="text-aura-gold transition-transform group-open:rotate-180">⌄</span>
+        </summary>
         <ul className="aura-past__list">
           {pastReadings.map((item) => {
             const itemId = pastItemId(item);
@@ -810,7 +813,7 @@ export default function PalmReadingFlow() {
             );
           })}
         </ul>
-      </div>
+      </details>
     ) : null;
 
   const captureActions =
@@ -887,7 +890,7 @@ export default function PalmReadingFlow() {
   }
 
   return (
-    <div className="mx-auto w-full max-w-xl">
+    <div id="palm-calculator" className="mx-auto w-full max-w-xl scroll-mt-24">
       <input
         ref={fileInputRef}
         type="file"
@@ -1005,7 +1008,7 @@ export default function PalmReadingFlow() {
                 </p>
               </>
             )}
-            {error && <p className="text-center text-sm text-rose-300/90">{error}</p>}
+            {error && <p role="alert" className="text-center text-sm text-rose-300/90">{error}</p>}
             {pastArchive}
           </motion.div>
         )}
@@ -1203,11 +1206,11 @@ export default function PalmReadingFlow() {
               {photoUrl ? <PalmPhotoStage src={photoUrl} alt="Ваша ладонь" /> : null}
               {snapshot.majorLines ? <PalmInsightCards snapshot={snapshot as PalmSnapshot} /> : null}
             </div>
-            <details className="rounded-2xl border border-white/10 bg-white/[0.03] px-4 py-3">
-              <summary className="cursor-pointer text-sm text-white/80">Полный разбор</summary>
+            <section className="rounded-2xl border border-aura-gold/20 bg-white/[0.03] px-4 py-4" aria-labelledby="palm-full-report-title">
+              <h3 id="palm-full-report-title" className="font-display text-lg text-aura-champagne">Полный разбор</h3>
               {exportHistoryId && <ReportExportActions path={`/cabinet/readings/${exportHistoryId}/print`} />}
               <PremiumReadingBody content={report} className="mt-3 text-sm text-white/85" />
-            </details>
+            </section>
             <button type="button" onClick={goHome} className="btn-luxe btn-luxe--md btn-luxe--ghost mx-auto block">
               К ладоням
             </button>

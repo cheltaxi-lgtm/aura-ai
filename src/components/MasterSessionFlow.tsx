@@ -130,6 +130,19 @@ interface MasterSessionFlowProps {
 
 type Step = "topic" | "master" | "cards" | "scheme" | "calculation" | "ritual" | "reveal" | "pick" | "flip" | "partner";
 
+const STEP_LABELS: Record<Step, string> = {
+  topic: "Тема и вопрос",
+  partner: "Данные человека",
+  master: "Наставник",
+  cards: "Источник карт",
+  scheme: "Схема расклада",
+  calculation: "Параметры расчёта",
+  ritual: "Подготовка",
+  reveal: "Результат расчёта",
+  pick: "Выбор карт",
+  flip: "Открытие карт",
+};
+
 function resolveSessionSpreadId(id?: SpreadId | null): SpreadId {
   if (!id || isDailyOnlySpread(id)) return DEFAULT_SPREAD_ID;
   return id;
@@ -1318,11 +1331,9 @@ export default function MasterSessionFlow({
         aria-modal="true"
         aria-label="Сеанс с мастером"
       >
-        <button
-          type="button"
+        <div
           className="absolute inset-0 bg-black/70 backdrop-blur-sm"
-          onClick={onClose}
-          aria-label="Закрыть"
+          aria-hidden="true"
         />
 
         <motion.div
@@ -1353,20 +1364,25 @@ export default function MasterSessionFlow({
             ) : (
               <span className="w-12" />
             )}
-            <div className="flex items-center gap-1.5">
+            <div className="flex flex-col items-center text-center" aria-live="polite">
+              <span className="text-[11px] font-medium text-amber-200">
+                {STEP_LABELS[step]}
+              </span>
+              <span className="text-[10px] text-white/40">
+                Шаг {currentStepIdx + 1} из {activeSteps.length}
+              </span>
+              <span className="sr-only">
               {activeSteps.map((s, i) => (
                 <span
                   key={s}
-                  className={`h-2 w-2 rounded-full transition-colors ${
-                    i <= currentStepIdx ? "bg-amber-400" : "bg-white/20"
-                  }`}
-                />
+                >{i <= currentStepIdx ? "пройдено" : "впереди"}: {STEP_LABELS[s]}; </span>
               ))}
+              </span>
             </div>
             <button
               type="button"
               onClick={onClose}
-              className="flex h-8 w-8 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white"
+              className="flex h-11 w-11 items-center justify-center rounded-full text-white/60 transition-colors hover:bg-white/10 hover:text-white"
               aria-label="Закрыть"
             >
               <X size={16} aria-hidden />

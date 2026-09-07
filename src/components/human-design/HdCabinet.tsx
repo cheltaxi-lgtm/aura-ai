@@ -532,6 +532,7 @@ export default function HdCabinet() {
               chartId={selfChart.id}
               chart={selfChart.chart}
               authenticated
+              profileReady
               loginReturnTo="/cabinet/human-design"
             />
           </div>
@@ -638,6 +639,7 @@ export default function HdCabinet() {
               chartId={activeOther.id}
               chart={activeOther.chart}
               authenticated
+              profileReady
               loginReturnTo="/cabinet/human-design"
             />
           </div>
