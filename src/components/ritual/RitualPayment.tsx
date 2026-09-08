@@ -1,4 +1,5 @@
 "use client";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 
 import { usePaywall } from "@/contexts/PaywallContext";
 import RuneCost from "@/components/RuneCost";
@@ -72,6 +73,7 @@ export default function RitualPayment({
         )}
       </div>
 
+      {!isUnlimited && <RuneOrderPreview cost={cost} />}
       <div className="mt-6 space-y-3">
         <button
           type="button"

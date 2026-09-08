@@ -133,12 +133,13 @@ const CONTEXT_PRODUCT: Record<CrossProductContext, ProductFunnelProduct> = {
  */
 export function resolveCrossProductRecommendations(
   context: CrossProductContext,
-  options?: { max?: number }
+  options?: { max?: number; topic?: "relationships" | "self" }
 ): CrossProductRec[] {
   const max = Math.min(2, Math.max(1, options?.max ?? 2));
   const self = CONTEXT_PRODUCT[context];
-  const list = CATALOG[context] ?? [];
-  const filtered = list.filter((rec) => rec.product !== self && Boolean(rec.href));
+  const base = CATALOG[context] ?? [];
+  const list = options?.topic === "relationships" ? [CATALOG.matrix[1],...base] : base;
+  const filtered = list.filter((rec,index) => rec.product !== self && Boolean(rec.href) && list.findIndex(r=>r.product===rec.product)===index);
   return filtered.slice(0, max);
 }
 

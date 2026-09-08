@@ -31,6 +31,7 @@ const STORAGE_KEYS = [
   "aura_last_visit",
   "aura_last_triplet_at",
   "aura_runes_before_purchase",
+  "aura_rune_purchase_destination",
   RUNE_PENDING_PAYMENT_KEY,
   // Pending natal report job — otherwise the previous person's report
   // reattaches for whoever opens the workspace next on this browser.
@@ -45,6 +46,7 @@ export function clearClientAuthState(options: { clearPhotoDraft?: boolean } = {}
   for (const key of STORAGE_KEYS) {
     localStorage.removeItem(key);
   }
+  for(const key of Object.keys(localStorage))if(key.startsWith("aura_rune_purchase_destination:"))localStorage.removeItem(key);
   clearChatCache();
   clearGuestTriplet();
   clearGuestResumeUiCache();
@@ -53,6 +55,7 @@ export function clearClientAuthState(options: { clearPhotoDraft?: boolean } = {}
   // lets a DIFFERENT account inherit those charts on its first login.
   clearHdGuestBrowserState();
   try {
+    for(const key of Object.keys(sessionStorage)) if(key.startsWith("aura_rune_attempt:") || key==="aura_rune_active_attempt" || key==="aura_rune_selected_destination")sessionStorage.removeItem(key);
     sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY);
     clearPendingGuestSpreadStart();
   } catch {

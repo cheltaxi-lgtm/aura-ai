@@ -54,7 +54,7 @@ async function fixture(page: Page, options: { loggedIn?: boolean; paid?: boolean
       palmReadingEnabled: true, auraReadingEnabled: true, humanDesignEnabled: true,
       recaptcha: { configured: false, masterEnabled: false, scopes: {} },
     } });
-    if (path === "/api/runes/config") return route.fulfill({ json: { enabled: true, starterRunes: 300, rubPerRune: 2, freeQuestions: 2, costs: { PALM_READING: 100 } } });
+    if (path === "/api/runes/config") return route.fulfill({ json: { enabled: true, starterRunes: 100, rubPerRune: 2, freeQuestions: 2, costs: { PALM_READING: 100 } } });
     if (path === "/api/runes/balance") return route.fulfill({ json: { balance: options.unlimited ? 0 : 300 } });
     if (path === "/api/age-gate/confirm") return route.fulfill({ json: { confirmed: true, ok: true } });
     if (path === "/api/palm/claim") return route.fulfill(options.claimFailure

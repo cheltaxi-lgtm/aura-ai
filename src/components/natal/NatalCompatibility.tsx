@@ -1,4 +1,6 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -866,6 +868,7 @@ function CompatibilityViewer({
           <Trash2 className="h-4 w-4" /> Удалить
         </button> : null}
       </div>
+      <ReadingJourney readingId={record.id} />
       {isOwner ? <ReportShareControls reportKind="compatibility" reportId={record.id} requireThirdPartyConsent /> : null}
     </div> : record.status === "ready" && isOwner ? <div className="mt-7 rounded-2xl border border-amber-300/15 bg-amber-300/[0.04] p-5">
       <h4 className="font-display text-xl text-amber-50">Получить полный разбор</h4>
@@ -874,6 +877,7 @@ function CompatibilityViewer({
         <input type="checkbox" className="mt-0.5 accent-amber-300" checked={aiDataConsent} onChange={(event) => setAiDataConsent(event.target.checked)} />
         Подтверждаю передачу только рассчитанных аспектов внешней языковой модели для создания отчёта. Исходные данные рождения обоих участников не передаются.
       </label>
+      <RuneOrderPreview cost={cost} />
       <button type="button" disabled={busy !== null || !aiDataConsent} onClick={onGenerate}
         className="btn-luxe btn-luxe--md btn-luxe--gold mt-4 disabled:opacity-50">
         {busy === "generate" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}

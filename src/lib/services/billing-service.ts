@@ -1,4 +1,6 @@
 import { NextResponse } from "next/server";
+import { isFirstExperienceEnabled } from "@/lib/first-experience-policy";
+import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 
 import { queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
@@ -181,15 +183,17 @@ async function logFreeQuestionSpend(
   client: PoolClient,
   userId: string,
   balanceAfter: number,
-  actionType: string
-): Promise<void> {
-  await queryClient(
+  actionType: string,
+  idempotencyKey: string | null
+): Promise<string> {
+  const {rows} = await queryClient<{id:string}>(
     client,
     `INSERT INTO rune_transactions
-       (user_id, type, amount, balance_after, description, action_type)
-     VALUES ($1, 'spend', 0, $2, $3, $4)`,
-    [userId, balanceAfter, "Списан бесплатный вопрос", actionType]
+       (user_id, type, amount, balance_after, description, action_type, idempotency_key)
+     VALUES ($1, 'spend', 0, $2, $3, $4, $5) RETURNING id`,
+    [userId, balanceAfter, "Списан бесплатный вопрос", actionType, idempotencyKey]
   );
+  return rows[0].id;
 }
 
 async function findSpendByIdempotencyKey(
@@ -355,10 +359,11 @@ async function executeChargeForSession(
     slotReserved = true;
 
     if (!hasFullAccess && questionIndex < freeQuestionLimit) {
-      await logFreeQuestionSpend(client, userId, balance, actionType);
+      const transactionId=await logFreeQuestionSpend(client, userId, balance, actionType,idempotencyKey);
       return {
         spentRunes: 0,
         wasFreeQuestion: true,
+        transactionId,
         newBalance: balance,
         actionType,
         sessionId,
@@ -458,6 +463,12 @@ async function executeChargeForSession(
     };
   }
 
+  if (isFirstExperienceEnabled() && logged.transactionId) {
+    const gift = await queryClient<{remaining:string}>(client,`SELECT GREATEST(0,COALESCE(SUM(CASE WHEN event IN ('bonus_granted','bonus_refunded') THEN (metadata->>'runes')::numeric WHEN event='bonus_spent' THEN -(metadata->>'runes')::numeric ELSE 0 END),0))::text AS remaining FROM spread_metrics WHERE user_id=$1 AND source='first_experience'`,[userId]);
+    const giftSpent=Math.min(cost,Number(gift.rows[0]?.remaining??0));
+    if(giftSpent>0) await recordJourneyEvent(userId,"bonus_spent",logged.transactionId,{runes:giftSpent},client);
+  }
+
   return {
     spentRunes: cost,
     wasFreeQuestion: false,
@@ -506,9 +517,17 @@ export async function rollbackChargeEx(
 
   let refunded = false;
 
-  if (slotReserved && sessionId) {
+  if (slotReserved && sessionId && cost===0) {
     try {
-      await decrementQuestionCount(sessionId);
+      if(transactionId) {
+        await withTransaction(async client=>{
+          const balance=await lockUserRow(client,userId);
+          const claim=await queryClient(client,`INSERT INTO rune_transactions(user_id,type,amount,balance_after,description,refund_of_transaction_id)
+            SELECT $1,'refund',0,$2,'Возврат бесплатного вопроса',id FROM rune_transactions WHERE id=$3 AND user_id=$1 AND type='spend' AND amount=0
+            ON CONFLICT(refund_of_transaction_id) WHERE type='refund' AND refund_of_transaction_id IS NOT NULL DO NOTHING RETURNING id`,[userId,balance,transactionId]);
+          if(claim.rowCount)await queryClient(client,"UPDATE sessions SET free_questions_used=GREATEST(0,free_questions_used-1),updated_at=NOW() WHERE id=$1 AND user_id=$2",[sessionId,userId]);
+        });
+      }else await decrementQuestionCount(sessionId);
       refunded = true;
     } catch (err) {
       console.error("[BillingService] slot rollback failed:", err);
@@ -522,7 +541,8 @@ export async function rollbackChargeEx(
         cost,
         "Возврат: ошибка генерации",
         actionType as RuneActionType | undefined,
-        transactionId
+        transactionId,
+        slotReserved ? sessionId : undefined
       );
       return { balance, refunded: true };
     } catch (err) {
@@ -794,19 +814,24 @@ export async function chargeChatBilling(
     async rollbackLlmFailure() {
       let runesRefunded = false;
       if (profileUserId && charge) {
-        const newBal = await rollbackCharge({
+        const pendingCharge = charge;
+        charge = undefined;
+        slotReserved = false;
+        const rollback = await rollbackChargeEx({
           userId: profileUserId,
-          cost: charge.spentRunes,
-          wasFreeQuestion: charge.wasFreeQuestion,
+          cost: pendingCharge.spentRunes,
+          wasFreeQuestion: pendingCharge.wasFreeQuestion,
           sessionId: sessionIdForRollback,
-          slotReserved: charge.slotReserved,
-          actionType: charge.actionType,
+          slotReserved: pendingCharge.slotReserved,
+          actionType: pendingCharge.actionType,
+          transactionId: pendingCharge.transactionId,
         });
-        runeBalance = newBal;
-        runesRefunded = charge.spentRunes > 0;
+        runeBalance = rollback.balance;
+        runesRefunded = rollback.refunded && pendingCharge.spentRunes > 0;
         charge = undefined;
       } else if (slotReserved && sessionIdForRollback && dbOk) {
         try {
+          slotReserved = false;
           await decrementQuestionCount(sessionIdForRollback);
           slotReserved = false;
         } catch (rollbackErr) {
@@ -817,18 +842,23 @@ export async function chargeChatBilling(
     },
     async rollbackOnError() {
       if (profileUserId && charge) {
-        const newBal = await rollbackCharge({
+        const pendingCharge = charge;
+        charge = undefined;
+        slotReserved = false;
+        const rollback = await rollbackChargeEx({
           userId: profileUserId,
-          cost: charge.spentRunes,
-          wasFreeQuestion: charge.wasFreeQuestion,
+          cost: pendingCharge.spentRunes,
+          wasFreeQuestion: pendingCharge.wasFreeQuestion,
           sessionId: sessionIdForRollback,
-          slotReserved: charge.slotReserved,
-          actionType: charge.actionType,
+          slotReserved: pendingCharge.slotReserved,
+          actionType: pendingCharge.actionType,
+          transactionId: pendingCharge.transactionId,
         });
-        runeBalance = newBal;
+        runeBalance = rollback.balance;
         charge = undefined;
       } else if (slotReserved && sessionIdForRollback) {
         try {
+          slotReserved = false;
           await decrementQuestionCount(sessionIdForRollback);
         } catch {
           /* ignore */

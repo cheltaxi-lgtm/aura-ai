@@ -2,6 +2,8 @@ import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { RUNE_ACTION_LABELS, type RuneActionType } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { runesFromRubAmount } from "@/lib/rune-purchase-constants";
+import { isFirstExperienceEnabled, STARTER_BONUS_VERSION } from "@/lib/first-experience-policy";
+import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 
 export interface AffordCheck {
   allowed: boolean;
@@ -67,6 +69,7 @@ export async function spendRunesAmount(
   actionType = "ritual",
   client?: PoolClient
 ): Promise<{ success: boolean; balanceAfter: number; cost: number; error?: string }> {
+  if (!client) return withTransaction(tx => spendRunesAmount(userId, amount, description, actionType, tx));
   const run = client
     ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) =>
         queryClient(client, text, params)
@@ -118,6 +121,7 @@ export async function spendRunesAtomic(
   questionIndex?: number,
   client?: PoolClient
 ): Promise<{ success: boolean; balanceAfter: number; cost: number; error?: string }> {
+  if (!client) return withTransaction(tx => spendRunesAtomic(userId, action, questionIndex, tx));
   const run = client
     ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) =>
         queryClient(client, text, params)
@@ -187,11 +191,14 @@ export async function refundRunes(
   amount: number,
   description: string,
   action?: RuneActionType,
-  originalTransactionId?: string
+  originalTransactionId?: string,
+  sessionIdToRestore?: string
 ): Promise<number> {
   if (amount <= 0) {
     return getRuneBalance(userId);
   }
+  if (!Number.isSafeInteger(amount)) throw new Error("invalid_refund_amount");
+  if (!originalTransactionId) throw new Error("refund_source_transaction_required");
 
   return withTransaction(async (client) => {
     const { rows: lockedUsers } = await queryClient<{ rune_balance: number }>(
@@ -215,11 +222,12 @@ export async function refundRunes(
          WHERE source.id = $5
            AND source.user_id = $1
            AND source.type = 'spend'
+           AND -source.amount >= $6
          ON CONFLICT (refund_of_transaction_id)
            WHERE type = 'refund' AND refund_of_transaction_id IS NOT NULL
          DO NOTHING
          RETURNING id`,
-        [userId, currentBalance, description, action ?? null, originalTransactionId]
+        [userId, currentBalance, description, action ?? null, originalTransactionId, amount]
       );
       refundTransactionId = claimed[0]?.id;
       if (!refundTransactionId) {
@@ -265,6 +273,12 @@ export async function refundRunes(
       );
     }
 
+    if(sessionIdToRestore) await queryClient(client,"UPDATE sessions SET free_questions_used=GREATEST(0,free_questions_used-1),updated_at=NOW() WHERE id=$1 AND user_id=$2",[sessionIdToRestore,userId]);
+    if (isFirstExperienceEnabled() && originalTransactionId) {
+      const gift=await queryClient<{runes:string}>(client,"SELECT metadata->>'runes' AS runes FROM spread_metrics WHERE user_id=$1 AND event='bonus_spent' AND idempotency_key=$2",[userId,originalTransactionId]);
+      const restored=Math.min(amount,Number(gift.rows[0]?.runes??0));
+      if(restored>0) await recordJourneyEvent(userId,"bonus_refunded",originalTransactionId,{runes:restored},client);
+    }
     return newBalance;
   });
 }
@@ -480,6 +494,8 @@ export async function creditRunesFromPayment(payment: {
   amountRub?: number;
   /** Snapshot price from payment metadata at create time (survives admin price edits). */
   expectedPriceRub?: number;
+  /** Only from authenticated provider metadata, never from the browser/webhook body. */
+  expectedRunes?: number;
 }): Promise<boolean> {
   const result = await creditRunesFromPaymentDetailed(payment);
   return result === "credited";
@@ -491,6 +507,7 @@ export async function creditRunesFromPaymentDetailed(payment: {
   paymentId: string;
   amountRub?: number;
   expectedPriceRub?: number;
+  expectedRunes?: number;
 }): Promise<CreditRunesResult> {
   if (!payment.userId || !payment.packageId || !payment.paymentId) {
     return "rejected";
@@ -498,6 +515,14 @@ export async function creditRunesFromPaymentDetailed(payment: {
 
   let amount: number;
   let description: string;
+
+  if (payment.expectedRunes !== undefined) {
+    if (!Number.isSafeInteger(payment.expectedRunes) || payment.expectedRunes <= 0 ||
+        !Number.isFinite(payment.amountRub) || !Number.isFinite(payment.expectedPriceRub) ||
+        Number(payment.amountRub) <= 0 || Math.abs(Number(payment.amountRub)-Number(payment.expectedPriceRub))>0.01) return "rejected";
+    amount=payment.expectedRunes;
+    description=`Пополнение: ${amount} ᚢ`;
+  } else {
 
   if (payment.packageId === "custom") {
     if (!payment.amountRub || payment.amountRub <= 0) {
@@ -554,8 +579,12 @@ export async function creditRunesFromPaymentDetailed(payment: {
     description = `Пакет рун «${pkg.name}»: ${amount} ᚢ`;
   }
 
+  }
   try {
     return await withTransaction(async (client) => {
+      // Match spend/grant/refund lock order. Inserting the FK row first can deadlock
+      // concurrent webhook requests while they try to upgrade their user-row lock.
+      await queryClient(client,"SELECT id FROM users WHERE id=$1 FOR UPDATE",[payment.userId]);
       const { rows: claimed } = await queryClient<{ id: string }>(
         client,
         `INSERT INTO rune_transactions
@@ -590,6 +619,10 @@ export async function creditRunesFromPaymentDetailed(payment: {
         [claimed[0].id, amount, updated[0].rune_balance]
       );
 
+      if (isFirstExperienceEnabled()) {
+        const prior = await queryClient<{count:string}>(client,"SELECT count(*)::text AS count FROM rune_transactions WHERE user_id=$1 AND type='purchase' AND amount>0",[payment.userId]);
+        await recordJourneyEvent(payment.userId,Number(prior.rows[0]?.count)===1?"first_topup":"repeat_topup",payment.paymentId,{amountRub:payment.amountRub,runes:amount},client);
+      }
       return "credited";
     });
   } catch (err) {
@@ -675,6 +708,11 @@ export async function grantStarterRunesIfNeeded(
         [userId, settings.starterRunes]
       );
       if (!flagged[0]) return null;
+
+      if (isFirstExperienceEnabled()) {
+        await queryClient(client,"UPDATE users SET starter_bonus_version=$2 WHERE id=$1",[userId,STARTER_BONUS_VERSION]);
+        await recordJourneyEvent(userId,"bonus_granted","starter",{runes:settings.starterRunes,bonusVersion:STARTER_BONUS_VERSION},client);
+      }
 
       const description = `Стартовый пакет: ${settings.starterRunes} ᚢ`;
       await queryClient(

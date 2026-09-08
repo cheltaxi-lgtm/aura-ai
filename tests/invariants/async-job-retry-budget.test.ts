@@ -10,12 +10,13 @@ vi.mock("@/lib/db", () => ({
 }));
 
 vi.mock("@/lib/services/billing-service", () => ({
-  BillingService: { rollbackCharge: (...args: unknown[]) => rollbackChargeMock(...args) },
+  BillingService: { rollbackChargeEx: (...args: unknown[]) => rollbackChargeMock(...args) },
 }));
 
 import {
   isRetryableReportErrorCode,
   reapNeedsRegenerationAsyncJobs,
+  refundChargedAsyncJobIfNeeded,
   REPORT_JOB_MAX_ATTEMPTS,
   REPORT_JOB_MAX_PROVIDER_RESCHEDULES,
   rescheduleOrFailReportJob,
@@ -34,10 +35,17 @@ const CHARGED_RUNNING_JOB = {
 describe("report job retry budget", () => {
   beforeEach(() => {
     queryMock.mockReset();
-    rollbackChargeMock.mockReset();
+    rollbackChargeMock.mockReset().mockResolvedValue({balance:100,refunded:true});
     queryMock.mockResolvedValue({ rows: [] });
   });
 
+  it("never marks a job refunded when ledger restoration failed",async()=>{
+    rollbackChargeMock.mockResolvedValue({balance:0,refunded:false});
+    queryMock.mockImplementation(async(sql:string)=>({rows:sql.includes("FROM async_jobs")?[CHARGED_RUNNING_JOB]:sql.includes("FROM rune_transactions")?[{amount:100,action_type:"HD_REPORT"}]:[]}));
+    expect(await refundChargedAsyncJobIfNeeded("job-1")).toBe(false);
+    expect(rollbackChargeMock).toHaveBeenCalledWith(expect.objectContaining({transactionId:"tx-1"}));
+    expect(queryMock.mock.calls.some(([sql])=>String(sql).includes("SET billing_state = 'refunded'"))).toBe(false);
+  });
   it("classifies retryable vs terminal error codes", () => {
     for (const code of [
       "generation_failed",

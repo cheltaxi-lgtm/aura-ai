@@ -167,18 +167,16 @@ import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
 import { resolveSpreadSymbols } from "@/lib/intention-draw";
-import { getSpreadForSystem, resolveMasterSpread } from "@/lib/spread-context";
+import { getSpreadForSystem } from "@/lib/spread-context";
 import { redrawSpreadToDeckCards, redrawSpreadToTarotCards } from "@/lib/photo-spread-redraw";
 import type { DeckCardInput } from "@/lib/deck-card-utils";
 import { tarotCardsKey } from "@/lib/tarot";
-import { requestSceneImage, tarotCardNames } from "@/lib/scene-images-client";
 import type { Message } from "@/types";
 import { useHomeFlow } from "@/hooks/useHomeFlow";
 import { useChatSession } from "@/hooks/useChatSession";
 import { useChatReadingLoading, useChatActions } from "@/hooks/useChatActions";
 import {
   useOnboardingFlow,
-  masterVisualKey,
   type ChatSessionDeps,
 } from "@/hooks/useOnboardingFlow";
 import { clearPendingReading } from "@/lib/chat-reading-helpers";
@@ -410,9 +408,6 @@ export default function HomePage({
   const chatClearRef = useRef<() => void>(() => {});
   const accountSwitchCleanupRef = useRef<() => void>(() => {});
   const pendingReadingMasterRef = useRef<string | null>(null);
-  const destinyBackfillRef = useRef<string | null>(null);
-  const destinyGenRef = useRef<Set<string>>(new Set());
-
   const {
     step,
     setStepState,
@@ -1867,132 +1862,6 @@ export default function HomePage({
     setChatHeaderImage,
   ]);
 
-  const attachSceneToAssistantMessage = useCallback(
-    async (
-      messageId: string,
-      content: string,
-      characterId: string,
-      scene: "destiny_card" | "scene_illustration",
-      userQuestion?: string
-    ) => {
-      const activeProfile = getActiveProfile();
-      if (!activeProfile) return;
-
-      const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
-      const cardsKey =
-        masterCtx.cardsKey ||
-        spreadKey(activeProfile.tarotCards) ||
-        activeSpreadCardsKey;
-
-      if (scene === "destiny_card" && cardsKey) {
-        const genKey = `${characterId}|destiny_card|${cardsKey}`;
-        const saved = resolveDestinyCardUrl(savedReadings, cardsKey, characterId);
-        if (saved) {
-          destinyGenRef.current.add(genKey);
-          applyDestinyCardToChat(saved, characterId);
-          return;
-        }
-        if (destinyGenRef.current.has(genKey)) {
-          return;
-        }
-        destinyGenRef.current.add(genKey);
-      }
-
-      const url = await requestSceneImage({
-        scene,
-        characterKey: masterVisualKey(characterId),
-        userName: activeProfile.name,
-        zodiac: activeProfile.zodiac,
-        cards: tarotCardNames(
-          chatDisplaySpread?.source === "intention" || chatDisplaySpread?.source === "period"
-            ? chatDisplaySpread.cards?.map((c) => ({ name: c.name }))
-            : activeProfile.tarotCards,
-          chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
-          chatDisplaySpread?.source === "intention" || chatDisplaySpread?.source === "period" ? "new" : "daily"
-        ),
-        spreadId: chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
-        userQuestionText: scene === "scene_illustration" ? userQuestion : undefined,
-        aiResponseText: scene === "scene_illustration" ? content : undefined,
-      });
-
-      if (!url) return;
-
-      if (scene === "destiny_card") {
-        setChatHeaderImage(url);
-      }
-
-      setMessages((prev) => {
-        const updated = prev.map((m) =>
-          m.id === messageId ? { ...m, sceneImageUrl: url } : m
-        );
-        const key = activeSpreadCardsKey || spreadCardsKey;
-        saveChatCache(characterId, updated, key);
-        return updated;
-      });
-    },
-    [
-      chatDisplaySpread,
-      getActiveProfile,
-      spreadCardsKey,
-      masters,
-      savedReadings,
-      applyDestinyCardToChat,
-      activeSpreadCardsKey,
-      setChatHeaderImage,
-      setMessages,
-    ]
-  );
-
-  useEffect(() => {
-    if (sessionOnlyChat) return;
-    if (!selectedCharacter || !activeSpreadCardsKey) return;
-    // Full Matrix / Pythagoras show computed grids — do not generate AI destiny-card art.
-    if (
-      selectedCharacter === "numerolog" ||
-      chatDisplaySpread?.source === "numerolog" ||
-      chatDisplaySpread?.computedOnly
-    ) {
-      return;
-    }
-    if (
-      hasCompleteSpread(
-        chatDisplaySpread?.cards?.map((c) => c.name),
-        chatDisplaySpread?.spreadId ?? DEFAULT_SPREAD_ID,
-        chatDisplaySpread?.source === "photo" ? "photo" : chatDisplaySpread?.source === "intention" || chatDisplaySpread?.source === "period" ? "new" : "daily"
-      )
-    ) {
-      return;
-    }
-
-    const firstAssistant = messages.find((m) => m.role === "assistant");
-    if (!firstAssistant || firstAssistant.sceneImageUrl) return;
-    if (resolveDestinyCardUrl(savedReadings, activeSpreadCardsKey, selectedCharacter)) return;
-
-    const genKey = `${selectedCharacter}|destiny_card|${activeSpreadCardsKey}`;
-    if (destinyGenRef.current.has(genKey)) return;
-    if (!firstAssistant.content || firstAssistant.content.length < 40) return;
-
-    const backfillKey = `${selectedCharacter}|${activeSpreadCardsKey}`;
-    if (destinyBackfillRef.current === backfillKey) return;
-    destinyBackfillRef.current = backfillKey;
-
-    void attachSceneToAssistantMessage(
-      firstAssistant.id,
-      firstAssistant.content,
-      selectedCharacter,
-      "destiny_card"
-    ).then(() => refreshSavedReadings());
-  }, [
-    selectedCharacter,
-    activeSpreadCardsKey,
-    messages,
-    savedReadings,
-    attachSceneToAssistantMessage,
-    refreshSavedReadings,
-    sessionOnlyChat,
-    chatDisplaySpread?.cards?.length,
-  ]);
-
   const {
     loadReading,
     handleSendMessage,
@@ -2075,7 +1944,6 @@ export default function HomePage({
     allSpreadFlipped,
     shouldAutoLoadSpreadReading,
     chatDisplaySpread,
-    attachSceneToAssistantMessage,
     setRetryDraft,
     setAchievementPopup,
     beginNewSpreadSession,

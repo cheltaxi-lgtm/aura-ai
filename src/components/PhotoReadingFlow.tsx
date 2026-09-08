@@ -1,4 +1,5 @@
 "use client";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 
 import ReportExportActions from "@/components/reports/ReportExportActions";
 
@@ -1941,7 +1942,7 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
-                  {!loading && result?.historyId ? <ReportExportActions path={`/cabinet/readings/${encodeURIComponent(result.historyId)}/print`} /> : null}
+                  {!loading && result?.historyId ? <ReportExportActions journey path={`/cabinet/readings/${encodeURIComponent(result.historyId)}/print`} /> : null}
 
                   {!loading && resultSharePayload && (
                     <div className="flex justify-center">
@@ -2058,6 +2059,7 @@ export default function PhotoReadingFlow({
               )}
 
               {/* Runes blocked */}
+              {isLoggedIn && (step === "upload" || step === "confirm") && <RuneOrderPreview cost={photoCost} />}
               {runesBlocked && isLoggedIn && (step === "upload" || step === "confirm") && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-200/80">
                   <span>Нужно {formatRunes(photoCost)}, у вас {formatRunes(runeBalance)}</span>

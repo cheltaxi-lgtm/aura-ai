@@ -2,12 +2,15 @@
 
 import { useEffect, useState } from "react";
 import AdminShell, { AdminTitle, StatCard } from "@/components/admin/AdminShell";
+import FirstExperienceMetrics from "@/components/admin/FirstExperienceMetrics";
+import type { getFirstExperienceAnalytics } from "@/lib/first-experience-analytics";
 
 export default function AdminDashboardPage() {
   const [data, setData] = useState<{
     stats: Record<string, number>;
     chart: { day: string; count: string; total: string }[];
     spreadMetrics?: { spreadId: string; event: string; count: number }[];
+    firstExperience?: Awaited<ReturnType<typeof getFirstExperienceAnalytics>>|{unavailable:true};
   } | null>(null);
 
   useEffect(() => {
@@ -21,6 +24,7 @@ export default function AdminDashboardPage() {
   return (
     <AdminShell>
       <AdminTitle title="Дашборд" subtitle="Обзор портала Zovus" />
+      <FirstExperienceMetrics data={data?.firstExperience} />
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <StatCard label="Аккаунты" value={s?.users ?? "—"} />
         <StatCard label="Профили онбординга" value={s?.profiles ?? "—"} />

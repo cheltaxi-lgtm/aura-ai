@@ -1,4 +1,5 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion } from "framer-motion";
@@ -11,6 +12,8 @@ import AuraMap from "@/components/aura/AuraMap";
 import AuraSubjectPicker, {
   type AuraPickerSubject,
 } from "@/components/aura/AuraSubjectPicker";
+import { rememberRunePurchaseDestination } from "@/lib/rune-purchase-client";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import ReportExportActions from "@/components/reports/ReportExportActions";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
@@ -1326,6 +1329,7 @@ export default function AuraReadingFlow() {
                     </p>
                   </>
                 )}
+                {!pricing?.todayPaid && <RuneOrderPreview cost={auraCost} />}
                 {pricing?.todayPaid && (pricing.todayHistoryId || pricing.todaySnapshotId) ? (
                   <button
                     type="button"
@@ -1353,19 +1357,19 @@ export default function AuraReadingFlow() {
                       Не хватает рун: нужно {formatRunes(auraCost)}, у вас{" "}
                       {formatRunes(runeBalance ?? 0)}.
                     </p>
-                    <Link href="/tariffs" className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex">
+                    <Link onClick={()=>rememberRunePurchaseDestination(snapshotId ? `/aura?reading=${encodeURIComponent(snapshotId)}` : "/aura",auraCost)} href="/tariffs" className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex">
                       Пополнить руны
                     </Link>
                   </div>
                 ) : (
-                  <button
+                  <><button
                     type="button"
                     onClick={() => void startReport()}
                     className="btn-luxe btn-luxe--md btn-luxe--gold"
                   >
                     <Sparkles className="mr-2 h-4 w-4" />
                     Получить полный разбор · {formatRunes(auraCost)}
-                  </button>
+                  </button></>
                 )}
                 {othersOn && isLoggedIn && subjectKind === "self" ? (
                   <button
@@ -1405,10 +1409,11 @@ export default function AuraReadingFlow() {
             <div className="photo-flow-panel">
               {exportHistoryId && <ReportExportActions path={`/cabinet/readings/${exportHistoryId}/print`} />}
               <PremiumReadingBody content={report} className="text-sm text-white/85" />
+              {exportHistoryId && <ReadingJourney readingId={exportHistoryId} />}
             </div>
 
             <div className="flex flex-col items-center gap-3 pt-2">
-              <CrossProductNextSteps context="aura" />
+              <CrossProductNextSteps context="aura" readingId={exportHistoryId ?? undefined} />
               {othersOn && isLoggedIn && subjectKind === "self" ? (
                 <button
                   type="button"

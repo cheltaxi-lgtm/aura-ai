@@ -1,4 +1,6 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
+import PendingReadingResume from "@/components/cabinet/PendingReadingResume";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
@@ -944,6 +946,8 @@ export default function CabinetPage() {
           </div>
         ) : null}
 
+        {!loading && activeTab === "profile" && <ReadingJourney />}
+        {!loading && activeTab === "profile" && <PendingReadingResume />}
         {loading ? (
           <div className="space-y-6">{renderTabSkeleton()}</div>
         ) : (

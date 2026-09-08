@@ -311,13 +311,6 @@ export interface UseChatActionsOptions {
   } | null;
 
   // HomePage callbacks
-  attachSceneToAssistantMessage: (
-    messageId: string,
-    content: string,
-    characterId: string,
-    scene: "destiny_card" | "scene_illustration",
-    userQuestion?: string
-  ) => Promise<void>;
   /** Archive active session and spawn a fresh one — required before every new spread. */
   beginNewSpreadSession?: (masterId: string) => Promise<string | undefined>;
   refreshSessionsList?: (masterId: string) => Promise<void>;
@@ -431,7 +424,6 @@ export function useChatActions(options: UseChatActionsOptions) {
     allSpreadFlipped,
     shouldAutoLoadSpreadReading,
     chatDisplaySpread,
-    attachSceneToAssistantMessage,
     beginNewSpreadSession,
     refreshSessionsList,
     persistSessionMetaToServer,
@@ -2372,16 +2364,6 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
           setRetryDraft(null);
 
-          if (!llmFailed && fullText) {
-            void attachSceneToAssistantMessage(
-              replyId,
-              fullText,
-              selectedCharacter,
-              "scene_illustration",
-              content.trim()
-            );
-          }
-
           if (typeof streamMeta.sessionId === "string" && streamMeta.sessionId) {
             localStorage.setItem("aura_session_id", streamMeta.sessionId);
           }
@@ -2469,16 +2451,6 @@ export function useChatActions(options: UseChatActionsOptions) {
           },
         ]);
 
-        if (!data.llmFailed) {
-          void attachSceneToAssistantMessage(
-            replyId,
-            reply,
-            selectedCharacter,
-            "scene_illustration",
-            content.trim()
-          );
-        }
-
         if (data.achievement?.label) {
           setAchievementPopup(data.achievement);
           setTimeout(() => setAchievementPopup(null), 4000);
@@ -2557,7 +2529,6 @@ export function useChatActions(options: UseChatActionsOptions) {
       pendingNewChatThreadRef,
       setRuneBalance,
       setRetryDraft,
-      attachSceneToAssistantMessage,
       refresh,
       setAchievementPopup,
       showRateLimit,

@@ -53,6 +53,7 @@
     "verify:memory-quality": "npx tsx tests/memory-quality/run.ts",
     "verify:personal-memory-product": "node scripts/verify-personal-memory-product.mjs",
     "maintenance:memory": "node scripts/memory-maintenance.mjs",
+    "maintenance:refund-scene-images": "node scripts/refund-disabled-scene-images.mjs",
     "predeploy:check": "npm run test && npm run build",
     "mobile:sync": "npm run --prefix mobile sync",
     "mobile:icons": "node scripts/generate-android-icons.mjs",

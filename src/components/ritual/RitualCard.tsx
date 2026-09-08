@@ -1,4 +1,5 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
 
 import { useRef, useState } from "react";
 import ReportExportActions from "@/components/reports/ReportExportActions";
@@ -246,6 +247,7 @@ export default function RitualCard({ ritual, onDone }: Props) {
           ✓ Понятно — жду знаков
         </button>
       </div>
+      {["completed","reviewed"].includes(ritual.status) && <ReadingJourney readingId={ritual.id} />}
     </div>
   );
 }

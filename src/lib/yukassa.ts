@@ -83,6 +83,7 @@ export function isYukassaConfigured(): boolean {
 }
 
 export async function createYukassaRunePayment(params: {
+  requestId?: string;
   packageId: string;
   packageName: string;
   priceRub: number;
@@ -94,7 +95,7 @@ export async function createYukassaRunePayment(params: {
   /** Attribution source for analytics. */
   source?: string;
 }) {
-  const orderId = randomUUID();
+  const orderId = params.requestId && /^[0-9a-f-]{36}$/i.test(params.requestId) ? params.requestId : randomUUID();
   const idempotenceKey = `rune-${params.userId}-${params.packageId}-${orderId}`;
   const returnUrl =
     params.returnUrl || buildRunePurchaseReturnUrl(params.appUrl, undefined, orderId);

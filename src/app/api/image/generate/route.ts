@@ -196,14 +196,17 @@ export async function POST(request: NextRequest) {
 
     const result = await generateSceneImage({ ...body, scene });
     if (!result) {
+      let actuallyRefunded = false;
       if (profileUserId && billingCharge) {
         try {
-          runeBalance = await BillingService.rollbackCharge({
+          const refund = await BillingService.rollbackChargeEx({
             userId: profileUserId,
             cost: billingCharge.spentRunes,
             wasFreeQuestion: billingCharge.wasFreeQuestion,
             actionType: billingCharge.actionType,
+            transactionId: billingCharge.transactionId,
           });
+          runeBalance = refund.balance; actuallyRefunded = refund.refunded;
         } catch (refundErr) {
           console.error("Scene art refund failed:", refundErr);
           const { reportError } = await import("@/lib/error-report");
@@ -211,7 +214,7 @@ export async function POST(request: NextRequest) {
         }
       }
       await trackWorkerJobFailed(request, "Image generation failed", {
-        refunded: Boolean(billingCharge),
+        refunded: actuallyRefunded,
         errorCode: "generation_failed",
       });
       return NextResponse.json({ error: "Image generation failed", code: "generation_failed" }, { status: 502 });
@@ -246,21 +249,24 @@ export async function POST(request: NextRequest) {
     console.error("Image generate error:", error);
     const { reportError } = await import("@/lib/error-report");
     reportError(error, { route: "image/generate", scene });
+    let actuallyRefunded = false;
     if (profileUserId && billingCharge) {
       try {
-        await BillingService.rollbackCharge({
+        const refund = await BillingService.rollbackChargeEx({
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: billingCharge.wasFreeQuestion,
           actionType: billingCharge.actionType,
+            transactionId: billingCharge.transactionId,
         });
+        actuallyRefunded = refund.refunded;
       } catch (refundErr) {
         console.error("Scene art refund failed:", refundErr);
         reportError(refundErr, { route: "image/generate", stage: "refund" });
       }
     }
     await trackWorkerJobFailed(request, "Image generation error", {
-      refunded: Boolean(billingCharge),
+      refunded: actuallyRefunded,
       errorCode: "generation_failed",
     });
     return NextResponse.json({ error: "Image generation error" }, { status: 500 });

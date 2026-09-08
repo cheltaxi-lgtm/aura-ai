@@ -7,10 +7,14 @@ import {
 } from "@/lib/cross-product-recommendations";
 import { trackCrossProductClick } from "@/lib/seo/product-funnel";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import { useRuneConfig } from "@/lib/useRuneConfig";
+import type { RuneActionType } from "@/lib/rune-costs";
+const PRICES:Record<string,RuneActionType>={natal:"NATAL_READING",human_design:"HD_REPORT",matrix:"NUMEROLOGY_SESSION",matrix_compatibility:"MATRIX_PAIR_REPORT",aura:"AURA_READING",palm:"PALM_READING"};
 
 type CrossProductNextStepsProps = {
   context: CrossProductContext;
   className?: string;
+  readingId?: string;
 };
 
 /** Short analytics source — avoid substrings blocked by funnel sanitize (e.g. "name"). */
@@ -30,9 +34,12 @@ const ANALYTICS_SOURCE: Record<CrossProductContext, string> = {
 export default function CrossProductNextSteps({
   context,
   className,
+  readingId,
 }: CrossProductNextStepsProps) {
-  const { auraReadingEnabled, palmReadingEnabled, featuresLoaded } = usePlatformFeatures();
-  const items = resolveCrossProductRecommendations(context).filter((item) => {
+  const { auraReadingEnabled, palmReadingEnabled, featuresLoaded, firstExperienceEnabled } = usePlatformFeatures();
+  const {config,fromServer}=useRuneConfig();
+  if (firstExperienceEnabled && readingId) return null;
+  const items = resolveCrossProductRecommendations(context,{max:firstExperienceEnabled?1:2}).filter((item) => {
     if (item.product === "aura") return featuresLoaded && auraReadingEnabled === true;
     if (item.product === "palm") return featuresLoaded && palmReadingEnabled === true;
     return true;
@@ -63,6 +70,7 @@ export default function CrossProductNextSteps({
             >
               {item.title}
             </Link>
+            {firstExperienceEnabled && fromServer && PRICES[item.product] && <p className="mt-2 text-sm leading-relaxed text-white/65">Ещё один способ исследовать себя. Полный разбор: {config.costs[PRICES[item.product]]} ᚢ · эквивалент {Math.round(config.costs[PRICES[item.product]]*config.rubPerRune)} ₽. Состав и условия можно посмотреть до заказа.</p>}
           </li>
         ))}
       </ul>

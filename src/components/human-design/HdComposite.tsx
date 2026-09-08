@@ -1,4 +1,6 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import {
@@ -627,6 +629,7 @@ function HdCompositeContent({ base, partner }: Props) {
         {report ? (
           <div className="hd-report mt-5">
             <HdReportSections text={report} />
+            {reportId && <ReadingJourney readingId={reportId} />}
             <div className="hd-report__actions hd-print-hidden mt-5 flex flex-wrap gap-2">
               {reportId ? (
                 <ReportExportActions path={`/cabinet/human-design/composite-reports/${reportId}/print`} />
@@ -718,6 +721,7 @@ function HdCompositeContent({ base, partner }: Props) {
                 генерации разбора.
               </span>
             </label>
+            <RuneOrderPreview cost={reportCost} />
             <div className="hd-sticky-cta mt-4">
               <button
                 type="button"

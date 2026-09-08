@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Payment not found in YooKassa" }, { status: 404 });
   }
 
-  if (payment.status !== "succeeded") {
+  if (payment.status !== "succeeded" || payment.paid !== true || payment.amount?.currency !== "RUB") {
     return NextResponse.json(
       { error: `Payment status: ${payment.status}` },
       { status: 409 }
@@ -46,8 +46,10 @@ export async function POST(request: NextRequest) {
   const credited = await creditRunesFromPayment({
     userId: metadata.userId,
     packageId: metadata.packageId,
+    expectedRunes: metadata.runesAmount === undefined ? undefined : Number(metadata.runesAmount),
     paymentId: payment.id,
     amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
+    expectedPriceRub: metadata.priceRub === undefined ? undefined : Number(metadata.priceRub),
   });
 
   const balance = await getRuneBalance(metadata.userId);

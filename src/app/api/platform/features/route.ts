@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { isFirstExperienceEnabled } from "@/lib/first-experience-policy";
 import { getRecaptchaScopesConfig } from "@/lib/recaptcha";
 import { listEnabledOAuthProviders } from "@/lib/oauth/config";
 import {
@@ -42,6 +43,7 @@ export async function GET() {
   ]);
 
   return NextResponse.json({
+    firstExperienceEnabled: isFirstExperienceEnabled(),
     expertRegistrationEnabled: features.expertRegistrationEnabled !== false,
     natalChartEnabled,
     jointReadingEnabled,

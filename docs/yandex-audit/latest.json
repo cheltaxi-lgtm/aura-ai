@@ -1,5 +1,5 @@
 {
-  "at": "2026-09-01T03:35:30.992Z",
+  "at": "2026-09-03T04:51:38.448Z",
   "base": "https://zovus.ru",
   "webmaster": {
     "userId": 112696101,
@@ -7,8 +7,8 @@
       "status": 200,
       "body": {
         "sqi": 10,
-        "excluded_pages_count": 54,
-        "searchable_pages_count": 556,
+        "excluded_pages_count": 52,
+        "searchable_pages_count": 549,
         "site_problems": {}
       }
     },
@@ -29,7 +29,7 @@
       "status": 200,
       "body": {
         "daily_quota": 150,
-        "quota_remainder": 150
+        "quota_remainder": 38
       }
     },
     "queries_TOTAL_CLICKS": {
@@ -82,19 +82,19 @@
       "top": [
         {
           "query": "дизайн человека рассчитать",
-          "value": 134
+          "value": 133
         },
         {
           "query": "дизайн человека рассчитать карту бесплатно",
-          "value": 83
+          "value": 79
         },
         {
           "query": "по фото ии таро",
-          "value": 57
+          "value": 60
         },
         {
           "query": "дизайн человека совместимость",
-          "value": 40
+          "value": 41
         },
         {
           "query": "дизайн человека совместимость пары zovus.ru",
@@ -102,23 +102,23 @@
         },
         {
           "query": "рассчитать бодиграф",
-          "value": 32
+          "value": 34
         },
         {
           "query": "расшифровка карт таро по фото",
-          "value": 31
+          "value": 32
         },
         {
           "query": "расшифровка расклада таро по фото",
-          "value": 28
+          "value": 29
         },
         {
           "query": "расшифровать расклад таро по фото",
-          "value": 28
+          "value": 27
         },
         {
           "query": "матрица судьбы и натальная карта чем отличается",
-          "value": 25
+          "value": 26
         }
       ]
     },
@@ -140,7 +140,7 @@
     "login": "cheldriver",
     "production": {
       "http": 200,
-      "units": "15/99480/100000",
+      "units": "15/99630/100000",
       "campaigns": [
         {
           "id": 12264917,
@@ -182,7 +182,7 @@
     "sandbox": {
       "http": 200,
       "error": {
-        "request_id": "3224706832220542577",
+        "request_id": "5137707544685204060",
         "error_code": 513,
         "error_detail": "",
         "error_string": "Ваш логин не подключен к Яндекс.Директу"
@@ -193,39 +193,39 @@
       "http": 200,
       "body": {
         "data": {
-          "ActionsResult": [],
           "Accounts": [
             {
+              "Login": "cheldriver",
               "AccountID": 8498596,
-              "AmountAvailableForTransfer": "0",
+              "Currency": "RUB",
               "SmsNotification": {
-                "SmsTimeTo": "21:00",
                 "MoneyInSms": "No",
-                "SmsTimeFrom": "09:00",
                 "PausedByDayBudgetSms": "Yes",
-                "MoneyOutSms": "No"
+                "MoneyOutSms": "No",
+                "SmsTimeTo": "21:00",
+                "SmsTimeFrom": "09:00"
+              },
+              "Amount": "0",
+              "AgencyName": null,
+              "AccountDayBudget": {
+                "Amount": "1000"
               },
               "EmailNotification": {
                 "Email": "cheldriver@yandex.ru",
                 "PausedByDayBudget": "Yes",
                 "MoneyWarningValue": 20
               },
-              "Currency": "RUB",
-              "Login": "cheldriver",
-              "Amount": "0",
-              "AccountDayBudget": {
-                "Amount": "1000"
-              },
-              "AgencyName": null
+              "AmountAvailableForTransfer": "0"
             }
-          ]
+          ],
+          "ActionsResult": []
         }
       }
     },
     "changesProbe": {
       "http": 202,
       "error": {
-        "request_id": "484657060226392671",
+        "request_id": "6602062773217952923",
         "error_code": 55,
         "error_detail": "Указано неверное значение ключа method при запросе в формате JSON или некорректный SOAPAction",
         "error_string": "Операция не найдена"
@@ -269,455 +269,6 @@
       }
     }
   },
-  "recrawl": [
-    {
-      "url": "https://zovus.ru/aura",
-      "status": 202,
-      "body": {
-        "task_id": "2e0f46a0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 150
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta",
-      "status": 202,
-      "body": {
-        "task_id": "2e5b43c0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 149
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/zolotaya",
-      "status": 202,
-      "body": {
-        "task_id": "2eaaea60-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 148
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/belaya",
-      "status": 202,
-      "body": {
-        "task_id": "2efadf20-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 147
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/fioletovaya",
-      "status": 202,
-      "body": {
-        "task_id": "2f48ff20-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 146
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/indigo",
-      "status": 202,
-      "body": {
-        "task_id": "2f932780-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 145
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/sinyaya",
-      "status": 202,
-      "body": {
-        "task_id": "2fdfc0e0-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 144
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/izumrudnaya",
-      "status": 202,
-      "body": {
-        "task_id": "3028d7d0-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 143
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/rozovaya",
-      "status": 202,
-      "body": {
-        "task_id": "30783050-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 142
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/oranzhevaya",
-      "status": 202,
-      "body": {
-        "task_id": "30c6ec90-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 141
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/krasnaya",
-      "status": 202,
-      "body": {
-        "task_id": "31135ee0-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 140
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/serebristaya",
-      "status": 202,
-      "body": {
-        "task_id": "3161cd00-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 139
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/cveta/dymchataya",
-      "status": 202,
-      "body": {
-        "task_id": "31ad54f0-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 138
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry",
-      "status": 202,
-      "body": {
-        "task_id": "31f903f0-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 137
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry/muladhara",
-      "status": 202,
-      "body": {
-        "task_id": "32463990-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 136
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry/svadhisthana",
-      "status": 202,
-      "body": {
-        "task_id": "32920fa0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 135
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry/manipura",
-      "status": 202,
-      "body": {
-        "task_id": "32db9bc0-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 134
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry/anahata",
-      "status": 202,
-      "body": {
-        "task_id": "332bdea0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 133
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry/vishuddha",
-      "status": 202,
-      "body": {
-        "task_id": "33776690-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 132
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry/ajna",
-      "status": 202,
-      "body": {
-        "task_id": "33c53870-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 131
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chakry/sahasrara",
-      "status": 202,
-      "body": {
-        "task_id": "3413f4b0-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 130
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi",
-      "status": 202,
-      "body": {
-        "task_id": "3461c690-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 129
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi/efirnyy",
-      "status": 202,
-      "body": {
-        "task_id": "34b082d0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 128
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi/emocionalnyy",
-      "status": 202,
-      "body": {
-        "task_id": "34fcce10-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 127
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi/mentalnyy",
-      "status": 202,
-      "body": {
-        "task_id": "3548f240-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 126
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi/astralnyy",
-      "status": 202,
-      "body": {
-        "task_id": "35969d10-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 125
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi/efirnyy-shablon",
-      "status": 202,
-      "body": {
-        "task_id": "35e35d80-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 124
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi/nebesnyy",
-      "status": 202,
-      "body": {
-        "task_id": "362ff6e1-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 123
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/sloi/kauzalnyy",
-      "status": 202,
-      "body": {
-        "task_id": "367e3df0-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 122
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/kak-uznat-cvet",
-      "status": 202,
-      "body": {
-        "task_id": "36ca8930-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 121
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/chtenie-ili-kirlian",
-      "status": 202,
-      "body": {
-        "task_id": "37141550-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 120
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/smeshannoe-pole",
-      "status": 202,
-      "body": {
-        "task_id": "3760d5c0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 119
-      }
-    },
-    {
-      "url": "https://zovus.ru/aura/foto-i-chakry",
-      "status": 202,
-      "body": {
-        "task_id": "37aef5c0-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 118
-      }
-    },
-    {
-      "url": "https://zovus.ru/statyi/kak-uznat-cvet-aury-po-foto",
-      "status": 202,
-      "body": {
-        "task_id": "37fffbf0-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 117
-      }
-    },
-    {
-      "url": "https://zovus.ru/statyi/znachenie-cvetov-aury",
-      "status": 202,
-      "body": {
-        "task_id": "384c2020-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 116
-      }
-    },
-    {
-      "url": "https://zovus.ru/statyi/chtenie-aury-i-effekt-kirliana",
-      "status": 202,
-      "body": {
-        "task_id": "3899a3e0-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 115
-      }
-    },
-    {
-      "url": "https://zovus.ru/",
-      "status": 202,
-      "body": {
-        "task_id": "38e5ef20-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 114
-      }
-    },
-    {
-      "url": "https://zovus.ru/telegram",
-      "status": 202,
-      "body": {
-        "task_id": "393065a0-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 113
-      }
-    },
-    {
-      "url": "https://zovus.ru/about",
-      "status": 202,
-      "body": {
-        "task_id": "397b2a40-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 112
-      }
-    },
-    {
-      "url": "https://zovus.ru/taro",
-      "status": 202,
-      "body": {
-        "task_id": "39c79c90-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 111
-      }
-    },
-    {
-      "url": "https://zovus.ru/gadanie",
-      "status": 202,
-      "body": {
-        "task_id": "3a156e70-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 110
-      }
-    },
-    {
-      "url": "https://zovus.ru/rasklady",
-      "status": 202,
-      "body": {
-        "task_id": "3a5fbde0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 109
-      }
-    },
-    {
-      "url": "https://zovus.ru/rasklady/lyubov",
-      "status": 202,
-      "body": {
-        "task_id": "3aad1a90-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 108
-      }
-    },
-    {
-      "url": "https://zovus.ru/rasklady/zhdat-ili-zabyt",
-      "status": 202,
-      "body": {
-        "task_id": "3afb3a90-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 107
-      }
-    },
-    {
-      "url": "https://zovus.ru/rasklady/kak-otpustit-cheloveka",
-      "status": 202,
-      "body": {
-        "task_id": "3b4785d0-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 106
-      }
-    },
-    {
-      "url": "https://zovus.ru/rasklady/est-li-u-nego-drugaya",
-      "status": 202,
-      "body": {
-        "task_id": "3b969030-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 105
-      }
-    },
-    {
-      "url": "https://zovus.ru/numerology/destiny-matrix",
-      "status": 202,
-      "body": {
-        "task_id": "3be1f111-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 104
-      }
-    },
-    {
-      "url": "https://zovus.ru/natalnaya-karta",
-      "status": 202,
-      "body": {
-        "task_id": "3c2e3c50-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 103
-      }
-    },
-    {
-      "url": "https://zovus.ru/runy",
-      "status": 202,
-      "body": {
-        "task_id": "3c7be720-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 102
-      }
-    },
-    {
-      "url": "https://zovus.ru/photo-rasklad",
-      "status": 202,
-      "body": {
-        "task_id": "3cc684b0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 101
-      }
-    },
-    {
-      "url": "https://zovus.ru/lenormand",
-      "status": 202,
-      "body": {
-        "task_id": "3d15b620-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 100
-      }
-    },
-    {
-      "url": "https://zovus.ru/lenormand/sochetaniya/lisa-i-medved",
-      "status": 202,
-      "body": {
-        "task_id": "3d61b340-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 99
-      }
-    },
-    {
-      "url": "https://zovus.ru/faq",
-      "status": 202,
-      "body": {
-        "task_id": "3dae73b0-a5b6-11f1-937d-c10593444139",
-        "quota_remainder": 98
-      }
-    },
-    {
-      "url": "https://zovus.ru/cards",
-      "status": 202,
-      "body": {
-        "task_id": "3dfce1d1-a5b6-11f1-973d-550a47619383",
-        "quota_remainder": 97
-      }
-    },
-    {
-      "url": "https://zovus.ru/prognoz",
-      "status": 202,
-      "body": {
-        "task_id": "3e48b7e0-a5b6-11f1-aa71-37990ca0c23c",
-        "quota_remainder": 96
-      }
-    },
-    {
-      "url": "https://zovus.ru/statyi",
-      "status": 202,
-      "body": {
-        "task_id": "3e957850-a5b6-11f1-a5fb-2de4cee0a983",
-        "quota_remainder": 95
-      }
-    }
-  ],
+  "recrawl": [],
   "errors": []
 }

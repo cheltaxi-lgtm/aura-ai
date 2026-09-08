@@ -632,7 +632,7 @@ export default function HdCalculator({
             }
             loginReturnTo={returnTo}
           />
-          <CrossProductNextSteps context="human_design" />
+          <CrossProductNextSteps context="human_design" readingId={authenticated ? result.id : undefined} />
         </HdChartSlot>
       </div>
     );

@@ -26,6 +26,7 @@ export default defineConfig({
     screenshot: "only-on-failure",
   },
   projects: [
+    { name: "first-experience", testMatch: /first-experience\.public\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
     { name: "pdf-chromium", testMatch: /pdf\.public\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
     {
       name: "public-chromium",
@@ -82,7 +83,7 @@ export default defineConfig({
     : {
         command: "npx next dev --hostname 127.0.0.1 --port 3417",
         url: localBaseURL,
-        reuseExistingServer: true,
+        reuseExistingServer: process.env.FIRST_EXPERIENCE_E2E_LOCAL !== "1",
         timeout: 120_000,
         env: {
           ...process.env,

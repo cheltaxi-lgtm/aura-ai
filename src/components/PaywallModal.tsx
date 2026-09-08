@@ -2,6 +2,8 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useDialogFocus } from "@/lib/useDialogFocus";
+import RuneOrderSummary from "@/components/RuneOrderSummary";
+import { runeOrderQuote } from "@/lib/rune-order-quote";
 import { createPortal } from "react-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import { X, Sparkles, CreditCard, Smartphone, Loader2 } from "lucide-react";
@@ -12,7 +14,7 @@ import CustomRuneAmountField from "@/components/CustomRuneAmountField";
 import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
-import { storePendingRunePurchase } from "@/lib/rune-purchase-client";
+import { storePendingRunePurchase, prepareRunePurchaseAttempt, readSelectedRuneCost } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
 import { trackPaywallOpen } from "@/lib/seo/metrika";
 import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
@@ -52,14 +54,11 @@ interface PaywallModalProps {
 }
 
 function pickHighlightPackage(packages: RunePackage[], shortage: number): string | undefined {
-  if (shortage <= 0) return undefined;
-  const sorted = [...packages].sort(
-    (a, b) => a.runes + a.bonus_runes - (b.runes + b.bonus_runes)
-  );
-  return sorted.find((p) => p.runes + p.bonus_runes >= shortage)?.id;
+  return runeOrderQuote(shortage,0,1,packages)?.package?.id;
 }
 
 function RuneShopView({
+  required,
   packages,
   currentBalance,
   shortage,
@@ -67,6 +66,7 @@ function RuneShopView({
   rubPerRune,
   onClose,
 }: {
+  required: number;
   packages: RunePackage[];
   currentBalance: number;
   shortage: number;
@@ -74,6 +74,7 @@ function RuneShopView({
   rubPerRune: number;
   onClose: () => void;
 }) {
+  const purchaseLock=useRef(false);
   const [purchasingId, setPurchasingId] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [bonusStatus, setBonusStatus] = useState<{
@@ -135,15 +136,16 @@ function RuneShopView({
   };
 
   const handlePurchase = async (packageId: string) => {
+    if(purchaseLock.current)return;purchaseLock.current=true;
     setPurchasingId(packageId);
     setError(null);
     try {
       const features = await fetchPlatformFeatures();
-      const payload: Record<string, unknown> = { packageId };
+      const payload: Record<string, unknown> = { packageId, requestId: await prepareRunePurchaseAttempt(packageId) };
       const captchaErr = await attachRecaptchaToken(payload, "payments", features);
       if (captchaErr) {
         setError(captchaErr);
-        setPurchasingId(null);
+        setPurchasingId(null);purchaseLock.current=false;
         return;
       }
 
@@ -155,12 +157,12 @@ function RuneShopView({
       const data = await res.json();
       if (res.status === 429) {
         setError("Слишком много попыток покупки. Попробуйте позже.");
-        setPurchasingId(null);
+        setPurchasingId(null);purchaseLock.current=false;
         return;
       }
       if (!res.ok || !data.paymentUrl) {
         setError(data.error ?? "Ошибка оплаты");
-        setPurchasingId(null);
+        setPurchasingId(null);purchaseLock.current=false;
         return;
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
@@ -169,22 +171,25 @@ function RuneShopView({
         pushEcommerceAdd({ id: pkg.id, name: pkg.name, price: pkg.price_rub, category: "runes" });
       }
       openTelegramExternalUrl(data.paymentUrl);
+      // Checkout may open outside the mounted Mini App or return via BFCache.
+      setPurchasingId(null);purchaseLock.current=false;
     } catch {
       setError("Ошибка соединения");
-      setPurchasingId(null);
+      setPurchasingId(null);purchaseLock.current=false;
     }
   };
 
   const handleCustomPurchase = async (amountRub: number) => {
+    if(purchaseLock.current)return;purchaseLock.current=true;
     setPurchasingId("custom");
     setError(null);
     try {
       const features = await fetchPlatformFeatures();
-      const payload: Record<string, unknown> = { customAmount: amountRub };
+      const payload: Record<string, unknown> = { customAmount: amountRub, requestId: await prepareRunePurchaseAttempt(`custom:${amountRub}`) };
       const captchaErr = await attachRecaptchaToken(payload, "payments", features);
       if (captchaErr) {
         setError(captchaErr);
-        setPurchasingId(null);
+        setPurchasingId(null);purchaseLock.current=false;
         return;
       }
 
@@ -196,20 +201,22 @@ function RuneShopView({
       const data = await res.json();
       if (res.status === 429) {
         setError("Слишком много попыток покупки. Попробуйте позже.");
-        setPurchasingId(null);
+        setPurchasingId(null);purchaseLock.current=false;
         return;
       }
       if (!res.ok || !data.paymentUrl) {
         setError(data.error ?? "Ошибка оплаты");
-        setPurchasingId(null);
+        setPurchasingId(null);purchaseLock.current=false;
         return;
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       pushEcommerceAdd({ id: "custom", name: "Произвольная сумма", price: amountRub, category: "runes" });
       openTelegramExternalUrl(data.paymentUrl);
+      // Checkout may open outside the mounted Mini App or return via BFCache.
+      setPurchasingId(null);purchaseLock.current=false;
     } catch {
       setError("Ошибка соединения");
-      setPurchasingId(null);
+      setPurchasingId(null);purchaseLock.current=false;
     }
   };
 
@@ -235,6 +242,7 @@ function RuneShopView({
         </p>
       ) : null}
 
+      <RuneOrderSummary cost={required} balance={currentBalance} rubPerRune={rubPerRune} packages={packages} />
       <LegalOfferNotice className="mb-4 mt-1" />
 
       <div className="space-y-3">
@@ -466,13 +474,15 @@ function LegacyPaywallView({
 
 export default function PaywallModal({ isOpen, onClose, options }: PaywallModalProps) {
   const dialogRef = useRef<HTMLDivElement>(null);
+  const [selectedCost,setSelectedCost]=useState<number|undefined>();
+  useEffect(()=>{if(isOpen)setSelectedCost(readSelectedRuneCost());},[isOpen]);
   const [config, setConfig] = useState<PaywallConfig | null>(null);
   const [loading, setLoading] = useState(false);
   const [mounted, setMounted] = useState(false);
   useDialogFocus(dialogRef, isOpen && mounted, onClose);
 
   const balance = options.currentBalance ?? options.balance ?? 0;
-  const required = options.requiredRunes ?? 0;
+  const required = options.requiredRunes ?? selectedCost ?? 0;
   const shortage = useMemo(
     () => options.shortage ?? Math.max(0, required - balance),
     [options.shortage, required, balance]
@@ -546,6 +556,7 @@ export default function PaywallModal({ isOpen, onClose, options }: PaywallModalP
               </div>
             ) : config.enabled ? (
               <RuneShopView
+                required={required || (shortage>0?balance+shortage:0)}
                 packages={config.packages}
                 currentBalance={balance}
                 shortage={shortage}

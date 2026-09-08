@@ -1,4 +1,5 @@
-import { query, withTransaction } from "@/lib/db";
+import { query, queryClient, withTransaction } from "@/lib/db";
+import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 import { BillingService } from "@/lib/services/billing-service";
 import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 
@@ -601,13 +602,14 @@ export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<bool
   );
   const ledger = rows[0];
   if (!ledger || ledger.amount <= 0) return false;
-  await BillingService.rollbackCharge({
+  const rollback=await BillingService.rollbackChargeEx({
     userId: job.user_id,
     cost: ledger.amount,
     wasFreeQuestion: false,
     transactionId: job.charge_transaction_id,
     actionType: ledger.action_type ?? undefined,
   });
+  if(!rollback.refunded)return false;
   await markAsyncJobRefunded(jobId);
   return true;
 }
@@ -661,7 +663,8 @@ export async function completeAsyncJob(
   jobId: string,
   result: Record<string, unknown>
 ): Promise<boolean> {
-  const { rowCount } = await query(
+  return withTransaction(async client=>{
+  const { rowCount,rows } = await queryClient<{user_id:string;kind:string}>(client,
     `UPDATE async_jobs
      SET status = 'completed',
          result = $2::jsonb,
@@ -677,10 +680,12 @@ export async function completeAsyncJob(
          locked_at = NULL
      WHERE id = $1
        AND status = 'running'
-       AND billing_state IN ('unbilled', 'charged', 'refunded')`,
+       AND billing_state IN ('unbilled', 'charged', 'refunded') RETURNING user_id,kind`,
     [jobId, JSON.stringify(result)]
   );
+  if(rowCount===1 && rows[0].kind!=="image_generate")await recordJourneyEvent(rows[0].user_id,"first_result","first",{product:rows[0].kind},client);
   return rowCount === 1;
+  });
 }
 
 export async function failAsyncJob(

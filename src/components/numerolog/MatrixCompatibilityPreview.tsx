@@ -1,4 +1,5 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
 import Link from "next/link";
 import ReportExportActions from "@/components/reports/ReportExportActions";
 
@@ -11,6 +12,7 @@ import LegalDocLink from "@/components/legal/LegalDocLink";
 import { useAuth } from "@/lib/useAuth";
 import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
@@ -538,7 +540,8 @@ export default function MatrixCompatibilityPreview() {
             </ul>
           </div>
 
-          <CrossProductNextSteps context="matrix_compatibility" />
+          {ownedPair && ownedPendingId === pendingId && ownedReportId && <ReadingJourney readingId={ownedReportId} />}
+          <CrossProductNextSteps context="matrix_compatibility" readingId={ownedReportId ?? undefined} />
 
           <div className="rounded-2xl border border-dashed border-aura-gold/25 bg-aura-gold/[0.04] p-4">
             <p className="text-sm font-medium text-aura-gold">Полный разбор пары пока скрыт</p>
@@ -555,6 +558,7 @@ export default function MatrixCompatibilityPreview() {
                 className="mt-3"
               />
             ) : null}
+            {isLoggedIn && !ownedPair && <RuneOrderPreview action="MATRIX_PAIR_REPORT" />}
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button
                 type="button"

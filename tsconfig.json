@@ -31,9 +31,12 @@
   "include": [
     "**/*.ts",
     "**/*.tsx",
+    ".next-e2e-full/types/**/*.ts",
+    ".next-e2e/types/**/*.ts",
+    ".next-pdf-e2e/types/**/*.ts",
     ".next/types/**/*.ts",
     "next-env.d.ts",
-    ".next-e2e/types/**/*.ts"
+    ".next-e2e-review/types/**/*.ts"
   ],
   "exclude": [
     "node_modules",

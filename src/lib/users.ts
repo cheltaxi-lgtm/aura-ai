@@ -1,5 +1,7 @@
 ﻿import { query, queryClient, withTransaction } from "./db";
 import { deleteUserChatForCharacter } from "./accounts";
+import { recordJourneyEvent } from "@/lib/spread-metrics-store";
+import { isFirstExperienceEnabled } from "@/lib/first-experience-policy";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
 import { buildAstroMeta } from "./astro-profile";
 import { mergeConsentIntoAstroMeta, type AccountConsentSnapshot } from "./registration-consent";
@@ -356,7 +358,8 @@ export async function createHistoryEntry(
     isPaid?: boolean;
   },
   client?: import("./db").PoolClient
-) {
+): Promise<{id:string}> {
+  if(!client && isFirstExperienceEnabled())return withTransaction<{id:string}>(tx=>createHistoryEntry(data,tx));
   const run = client
     ? (text: string, params?: unknown[]) => queryClient<{ id: string }>(client, text, params)
     : (text: string, params?: unknown[]) => query<{ id: string }>(text, params);
@@ -366,6 +369,10 @@ export async function createHistoryEntry(
      RETURNING id`,
     [data.userId, data.characterName, JSON.stringify(data.contextData), data.isPaid ?? false]
   );
+  if(rows[0] && [data.contextData.report,data.contextData.reading,data.contextData.interpretation,data.contextData.analysis].some(v=>typeof v==="string" && v.trim())) {
+    const product=data.contextData.type==="aura_reading"?"aura":data.contextData.type==="palm_reading"?"palm":"tarot";
+    await recordJourneyEvent(data.userId,"first_result","first",{product},client);
+  }
   return rows[0];
 }
 

@@ -138,7 +138,7 @@ import {
   clearLocalTripletDrawAt,
   writeLocalTripletDrawAt,
 } from "@/lib/triplet-cooldown-client";
-import { readPendingReading, clearPendingReading } from "@/lib/chat-reading-helpers";
+import { clearPendingReading } from "@/lib/chat-reading-helpers";
 import {
   PROFILE_KEY,
   FLOW_STEP_KEY,
@@ -4657,65 +4657,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     applyTripletMaster,
   ]);
 
-  useEffect(() => {
-    if (authLoading || !isLoggedIn) return;
-    if (step === "triplet" || step === "onboarding") return;
-
-    const pending = readPendingReading();
-    if (!pending) {
-      pendingReadingResumeRef.current = null;
-      return;
-    }
-
-    const resumeKey = `${pending.masterId}:${pending.required}`;
-    if (pendingReadingResumeRef.current === resumeKey) return;
-    pendingReadingResumeRef.current = resumeKey;
-
-    void (async () => {
-      const deps = chat();
-      try {
-        const res = await fetch("/api/runes/balance");
-        if (!res.ok) return;
-        const data = await res.json();
-        onRuneBalancePayload?.(data);
-
-        if (pending.required > 0 && (data.balance ?? 0) < pending.required) return;
-
-        if (pendingReadingMasterRef) pendingReadingMasterRef.current = null;
-        if (deps) deps.setInsufficientRunes(null);
-
-        if (selectedCharacter === pending.masterId && step === "chat") {
-          if (deps && !chatHasSpreadReading(deps.messages)) {
-            readingInFlightRef.current = true;
-            try {
-              await loadReadingRef.current(pending.masterId);
-              clearPendingReading();
-            } finally {
-              readingInFlightRef.current = false;
-            }
-          } else {
-            clearPendingReading();
-          }
-          return;
-        }
-
-        void openChatWithCharacterRef.current(pending.masterId);
-      } catch {
-        pendingReadingResumeRef.current = null;
-      }
-    })();
-  }, [
-    authLoading,
-    isLoggedIn,
-    selectedCharacter,
-    step,
-    onRuneBalancePayload,
-    pendingReadingMasterRef,
-    readingInFlightRef,
-    chatDepsRef,
-    loadReadingRef,
-    openChatWithCharacterRef,
-  ]);
+  // Stored insufficient-balance intent is a draft, never permission to order.
 
   const handleContinueListedSession = useCallback(
     async (masterId: string, item: SessionListItem) => {

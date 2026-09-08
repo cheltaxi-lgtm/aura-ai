@@ -6,8 +6,6 @@ import type { DeckSystem } from "@/lib/decks/types";
 import { drawSpread, getDeckPositionsForUi } from "@/lib/decks";
 import { buildSpreadTeaser } from "@/lib/spread-teaser";
 import type { SpreadSymbol } from "@/lib/decks/types";
-import { useSceneImage } from "@/hooks/useSceneImage";
-import SceneImage from "@/components/SceneImage";
 import DeckCard from "@/components/DeckCard";
 import ShareButton from "@/components/share/ShareButton";
 import { tripletToSharePayload } from "@/lib/share/payload-builders";
@@ -24,7 +22,6 @@ interface TarotTripletProps {
 
 export default function TarotTriplet({
   userName,
-  zodiac,
   system,
   masterName,
   initialCards,
@@ -43,20 +40,6 @@ export default function TarotTriplet({
 
   const revealedCount = revealed.filter(Boolean).length;
   const allRevealed = revealedCount === 3;
-
-  const cardNames = useMemo(
-    () =>
-      allRevealed
-        ? ([deck[0].name, deck[1].name, deck[2].name] as [string, string, string])
-        : undefined,
-    [allRevealed, deck]
-  );
-
-  const { imageUrl: atmosphereUrl, loading: atmosphereLoading, failed: atmosphereFailed } =
-    useSceneImage(
-      allRevealed ? { scene: "tarot_atmosphere", cards: cardNames, zodiac } : null,
-      allRevealed
-    );
 
   const handleFlip = (index: number) => {
     if (revealed[index]) return;
@@ -129,19 +112,6 @@ export default function TarotTriplet({
           </>
         )}
       </motion.p>
-
-      {allRevealed && atmosphereLoading && !atmosphereFailed && (
-        <p className="mb-6 text-center text-xs text-aura-ivory/40">Рисуем энергию расклада…</p>
-      )}
-
-      {atmosphereUrl && (
-        <SceneImage
-          imageUrl={atmosphereUrl}
-          loading={false}
-          label="Энергия расклада"
-          className="mb-8"
-        />
-      )}
 
       <div className="mb-8 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
         {deck.map((card, i) => (

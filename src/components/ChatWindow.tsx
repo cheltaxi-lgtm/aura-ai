@@ -1,4 +1,6 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 import ReportExportActions from "@/components/reports/ReportExportActions";
 
 import { useState, useRef, useEffect, useCallback, useMemo } from "react";
@@ -1081,6 +1083,7 @@ export default function ChatWindow({
           </AnimatePresence>
           )}
 
+          {sessionId && !storageBlocked && !isLoading && !spreadReadingLoading && messages.some(message=>message.role === "assistant" && message.content.trim().length>80) && <ReadingJourney key={`${sessionId}:${messages.length}`} readingId={sessionId} />}
           {showTypingIndicator && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -1191,6 +1194,7 @@ export default function ChatWindow({
         </p>
       ) : null}
 
+      {paidQuestionNeeded && !hasFullAccess && !readOnly && <RuneOrderPreview cost={questionCost} />}
       <form onSubmit={handleSubmit} className="glass-panel flex flex-col gap-2 p-3">
         {sessionQuestionCapReached ? (
           <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-3 py-2">

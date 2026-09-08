@@ -71,6 +71,7 @@ export async function confirmRunePurchaseForUser(
   const result = await creditRunesFromPaymentDetailed({
     userId: profileUserId,
     packageId: metadata.packageId,
+    expectedRunes: metadata.runesAmount === undefined ? undefined : Number(metadata.runesAmount),
     paymentId: payment.id,
     amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
     expectedPriceRub: parseExpectedPrice(metadata),
@@ -123,6 +124,7 @@ export async function reconcileRecentRunePurchasesForUser(profileUserId: string)
     const result = await creditRunesFromPaymentDetailed({
       userId: profileUserId,
       packageId: metadata.packageId,
+      expectedRunes: metadata.runesAmount === undefined ? undefined : Number(metadata.runesAmount),
       paymentId: payment.id,
       amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
       expectedPriceRub: parseExpectedPrice(metadata),

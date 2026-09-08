@@ -1,217 +1,44 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import Link from "next/link";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
-import {
-  clearPendingRunePurchase,
-  hasFiredRunePurchaseGoal,
-  markRunePurchaseGoalFired,
-  readPendingRuneOrderId,
-  readPendingRunePaymentId,
-  RUNE_BALANCE_BEFORE_KEY,
-} from "@/lib/rune-purchase-client";
+import { clearPendingRunePurchase, hasFiredRunePurchaseGoal, markRunePurchaseGoalFired, readPendingRuneOrderId, readPendingRunePaymentId, readRunePurchaseDestination } from "@/lib/rune-purchase-client";
 import { trackPaymentCancelled, trackRunePurchase } from "@/lib/seo/metrika";
 import { pushEcommercePurchase } from "@/lib/seo/ecommerce";
 
-const LAST_MASTER_KEY = "aura_last_master";
-const PENDING_READING_KEY = "aura_pending_reading";
-
-async function firePurchaseAnalytics(paymentId: string | null): Promise<void> {
-  if (!paymentId || hasFiredRunePurchaseGoal(paymentId)) return;
-  try {
-    const confirmRes = await fetch("/api/runes/confirm", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ paymentId }),
-    });
-    if (!confirmRes.ok) return;
-    const confirmData = await confirmRes.json();
-    if (typeof confirmData.amountRub !== "number") return;
-    trackRunePurchase(confirmData.amountRub, confirmData.packageId);
-    pushEcommercePurchase({
-      paymentId,
-      amountRub: confirmData.amountRub,
-      product: {
-        id: confirmData.packageId ?? "custom",
-        name: confirmData.packageName ?? confirmData.packageId ?? "Пакет рун",
-        price: confirmData.amountRub,
-        category: "runes",
-      },
-    });
-    markRunePurchaseGoalFired(paymentId);
-  } catch {
-    /* analytics optional */
-  }
-}
-
 export default function RunePurchaseSuccessPage() {
-  const [redirectTo, setRedirectTo] = useState<string | null>(null);
-  const [status, setStatus] = useState<
-    "polling" | "ready" | "timeout" | "cancelled" | "rejected"
-  >("polling");
-
-  useEffect(() => {
-    let masterId: string | null = null;
-
-    try {
-      const pendingRaw = localStorage.getItem(PENDING_READING_KEY);
-      if (pendingRaw) {
-        const pending = JSON.parse(pendingRaw) as { masterId?: string };
-        masterId = pending.masterId ?? null;
-      }
-    } catch {
-      masterId = null;
-    }
-
-    if (!masterId) {
-      masterId = localStorage.getItem(LAST_MASTER_KEY);
-    }
-
-    const href = masterId ? `/?master=${encodeURIComponent(masterId)}` : "/";
-    setRedirectTo(href);
-
-    const expectedRaw = localStorage.getItem(RUNE_BALANCE_BEFORE_KEY);
-    const expected = expectedRaw !== null ? Number(expectedRaw) : null;
-    const search = new URLSearchParams(window.location.search);
-    const pendingPaymentId = readPendingRunePaymentId(search);
-    const pendingOrderId = readPendingRuneOrderId(search);
-    let attempts = 0;
-    const maxAttempts = 20;
-    let cancelledTracked = false;
-
-    const markReady = async (balance: number) => {
-      await firePurchaseAnalytics(pendingPaymentId);
-      emitRuneBalanceUpdate(balance);
-      setStatus("ready");
-      clearPendingRunePurchase();
-      window.setTimeout(() => {
-        window.location.href = href;
-      }, 1200);
-    };
-
-    const markCancelled = () => {
-      if (!cancelledTracked) {
-        cancelledTracked = true;
-        trackPaymentCancelled("runes_success_return");
-      }
-      clearPendingRunePurchase();
-      setStatus("cancelled");
-    };
-
-    const poll = async () => {
+  const [destination,setDestination]=useState("/cabinet");
+  const [status,setStatus]=useState<"polling"|"ready"|"timeout"|"cancelled"|"rejected">("polling");
+  useEffect(()=>{
+    const controller=new AbortController(); let timer:ReturnType<typeof setTimeout>|undefined; let attempts=0;
+    setDestination(readRunePurchaseDestination());
+    const search=new URLSearchParams(window.location.search);
+    const orderId=readPendingRuneOrderId(search);
+    const paymentId=orderId && !search.get("paymentId")?null:readPendingRunePaymentId(search);
+    if(!paymentId && !orderId){setStatus("timeout");return ()=>controller.abort();}
+    const poll=async()=>{
       try {
-        const confirmRes = await fetch("/api/runes/confirm", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify(
-            pendingPaymentId
-              ? { paymentId: pendingPaymentId }
-              : pendingOrderId
-                ? { orderId: pendingOrderId }
-                : {}
-          ),
-        });
-        const confirmData = await confirmRes.json().catch(() => ({}));
-        if (confirmRes.status === 422 || confirmData.status === "rejected") {
-          setStatus("rejected");
-          return;
-        }
-        if (confirmRes.ok) {
-          if (confirmData.cancelled || confirmData.status === "cancelled") {
-            markCancelled();
-            return;
+        const response=await fetch("/api/runes/confirm",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(paymentId?{paymentId}:{orderId}),signal:controller.signal});
+        const data=await response.json(); if(controller.signal.aborted) return;
+        if(response.ok && ["credited","already_credited"].includes(data.status) && typeof data.balance==="number"){
+          const confirmedId=typeof data.paymentId==="string"?data.paymentId:paymentId;
+          if(confirmedId)setDestination(readRunePurchaseDestination(confirmedId));
+          if(confirmedId && typeof data.amountRub==="number" && !hasFiredRunePurchaseGoal(confirmedId)){
+            trackRunePurchase(data.amountRub,data.packageId);
+            pushEcommercePurchase({paymentId:confirmedId,amountRub:data.amountRub,product:{id:data.packageId??"custom",name:data.packageName??"Пакет рун",price:data.amountRub,category:"runes"}});
+            markRunePurchaseGoalFired(confirmedId);
           }
-          if (typeof confirmData.balance === "number") {
-            if (confirmData.credited || confirmData.alreadyCredited || confirmData.status === "already_credited") {
-              const goalPaymentId =
-                typeof confirmData.paymentId === "string" ? confirmData.paymentId : pendingPaymentId;
-              if (
-                goalPaymentId &&
-                typeof confirmData.amountRub === "number" &&
-                !hasFiredRunePurchaseGoal(goalPaymentId)
-              ) {
-                trackRunePurchase(confirmData.amountRub, confirmData.packageId);
-                pushEcommercePurchase({
-                  paymentId: goalPaymentId,
-                  amountRub: confirmData.amountRub,
-                  product: {
-                    id: confirmData.packageId ?? "custom",
-                    name: confirmData.packageName ?? confirmData.packageId ?? "Пакет рун",
-                    price: confirmData.amountRub,
-                    category: "runes",
-                  },
-                });
-                markRunePurchaseGoalFired(goalPaymentId);
-              }
-              await markReady(confirmData.balance);
-              return;
-            }
-          }
+          emitRuneBalanceUpdate(data.balance);clearPendingRunePurchase(confirmedId,orderId);setStatus("ready");return;
         }
-
-        const params =
-          expected !== null && Number.isFinite(expected)
-            ? `?expected=${encodeURIComponent(String(expected))}`
-            : "";
-        const res = await fetch(`/api/runes/balance${params}`);
-        if (res.ok) {
-          const data = await res.json();
-          if (typeof data.balance === "number") {
-            if (!data.pending || (expected !== null && data.balance > expected)) {
-              await markReady(data.balance);
-              return;
-            }
-          }
-        }
-      } catch {
-        /* retry */
-      }
-
-      attempts += 1;
-      if (attempts >= maxAttempts) {
-        setStatus("timeout");
-      }
+        if(response.ok && data.status==="cancelled"){trackPaymentCancelled("runes_success_return");clearPendingRunePurchase(typeof data.paymentId==="string"?data.paymentId:paymentId,orderId);setStatus("cancelled");return;}
+        if([401,403,422].includes(response.status) || data.status==="rejected"){setStatus("rejected");return;}
+      }catch{if(controller.signal.aborted)return;}
+      attempts++;if(attempts>=20){setStatus("timeout");return;}
+      timer=setTimeout(()=>void poll(),2000);
     };
-
-    void poll();
-    const interval = window.setInterval(poll, 2000);
-
-    return () => window.clearInterval(interval);
-  }, []);
-
-  const title =
-    status === "cancelled"
-      ? "Оплата не завершена"
-      : status === "rejected"
-        ? "Нужна проверка платежа"
-        : status === "timeout"
-          ? "Ожидаем подтверждение"
-          : status === "ready"
-            ? "Руны получены!"
-            : "Подтверждаем оплату";
-
-  const message =
-    status === "polling"
-      ? "Подтверждаем оплату и обновляем баланс…"
-      : status === "cancelled"
-        ? "Платёж отменён или не был завершён. Вы можете вернуться и попробовать снова — баланс не изменился."
-        : status === "rejected"
-          ? "Оплата прошла, но начисление не подтверждено автоматически. Напишите в поддержку — мы проверим платёж вручную."
-          : status === "timeout"
-            ? "Оплата обрабатывается дольше обычного. Обновите страницу через минуту — руны начислятся автоматически."
-            : "Баланс пополнен. Сейчас вернём вас к мастеру.";
-
-  return (
-    <div className="flex min-h-screen items-center justify-center p-4">
-      <div className="max-w-sm text-center">
-        <div className="mb-4 text-6xl">ᚢ</div>
-        <h1 className="font-display mb-2 text-2xl font-bold text-white">{title}</h1>
-        <p className="mb-6 text-sm text-gray-400">{message}</p>
-        <Link href={redirectTo ?? "/"} className="btn-luxe btn-luxe--md btn-luxe--gold">
-          {status === "cancelled" ? "Вернуться и попробовать снова →" : "Вернуться к мастеру →"}
-        </Link>
-      </div>
-    </div>
-  );
+    void poll();return ()=>{controller.abort();if(timer)clearTimeout(timer);};
+  },[]);
+  const title={polling:"Подтверждаем оплату",ready:"Руны на вашем балансе",timeout:"Ожидаем подтверждение",cancelled:"Оплата не завершена",rejected:"Нужна проверка платежа"}[status];
+  const message={polling:"Проверяем статус платежа. Это может занять немного времени.",ready:"Выберите, когда продолжить. Пополнение не запускает разбор и не списывает руны за него.",timeout:"Подтверждение пока не получено. Можно проверить позже — повторно оплачивать не нужно.",cancelled:"Платёж отменён. Вы можете вернуться к выбранной услуге.",rejected:"Начисление пока не подтверждено. Проверьте вход в свой аккаунт или обратитесь в поддержку."}[status];
+  return <main className="flex min-h-screen items-center justify-center p-4"><section className="w-full max-w-md rounded-2xl border border-aura-gold/25 bg-aura-gold/5 p-6 text-center sm:p-8"><div className="mb-5 text-5xl text-aura-gold" aria-hidden>ᚢ</div><h1 className="font-display text-2xl text-white">{title}</h1><p role="status" className="my-5 text-sm leading-relaxed text-white/65">{message}</p>{status==="timeout" && <button className="btn-luxe btn-luxe--gold mb-3 min-h-11 w-full" onClick={()=>window.location.reload()}>Проверить статус</button>}<Link href={destination} className="btn-luxe btn-luxe--outline min-h-11 w-full">Вернуться к выбору разбора</Link></section></main>;
 }

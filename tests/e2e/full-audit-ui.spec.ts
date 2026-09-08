@@ -61,7 +61,7 @@ async function installAuthenticatedMocks(page: Page, baseURL: string) {
       return route.fulfill({ json: {
         enabled: true,
         costs: { HD_REPORT: 100, HD_COMPOSITE_REPORT: 100 },
-        starterRunes: 300,
+        starterRunes: 100,
         rubPerRune: 2,
       } });
     }

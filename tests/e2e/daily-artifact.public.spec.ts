@@ -153,7 +153,7 @@ test.describe("daily artifact + landing copy", () => {
     page,
   }, testInfo) => {
     await page.route("**/api/runes/config", (route) => route.fulfill({
-      json: { enabled: true, starterRunes: 300, rubPerRune: 2, freeQuestions: 2,
+      json: { enabled: true, starterRunes: 100, rubPerRune: 2, freeQuestions: 2,
         costs: { VISION_ANALYSIS: 30, READING: 15, NUMEROLOGY_SESSION: 100 } },
     }));
     await page.goto("/?app=1");

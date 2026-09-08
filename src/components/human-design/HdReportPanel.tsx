@@ -1,4 +1,5 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import PaywallModal from "@/components/PaywallModal";
@@ -10,6 +11,7 @@ import {
 } from "@/lib/human-design";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import ReportExportActions from "@/components/reports/ReportExportActions";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import {
   parseAcceptedAsyncReport,
@@ -702,6 +704,7 @@ function HdReportPanelContent({
             </p>
           )}
           <div className="hd-sticky-cta mt-4">
+            {!report?.resumeFree && <RuneOrderPreview cost={reportCost} />}
             <button
               type="button"
               onClick={() => void buyReport()}
@@ -783,6 +786,7 @@ function HdReportPanelContent({
         )}
         <div className="mt-4">
           <HdReportSections text={report.reportText ?? ""} />
+          <ReadingJourney readingId={report.id} />
         </div>
       </div>
 
@@ -816,6 +820,7 @@ function HdReportPanelContent({
           </div>
         )}
 
+        {includedAsks===0 && <RuneOrderPreview cost={askCost} />}
         <div className="mt-4 flex gap-2">
           <input
             value={question}

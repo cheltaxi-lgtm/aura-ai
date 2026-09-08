@@ -27,7 +27,7 @@ export async function reconcileAllRecentRunePurchases(
 
   for (const payment of payments) {
     const metadata = payment.metadata ?? {};
-    if (payment.status !== "succeeded") continue;
+    if (payment.status !== "succeeded" || payment.paid !== true || payment.amount?.currency !== "RUB") continue;
     if (metadata.type !== "rune_purchase") continue;
     if (!metadata.userId || !metadata.packageId) continue;
 
@@ -37,6 +37,7 @@ export async function reconcileAllRecentRunePurchases(
     const credited = await creditRunesFromPayment({
       userId: metadata.userId,
       packageId: metadata.packageId,
+      expectedRunes: metadata.runesAmount === undefined ? undefined : Number(metadata.runesAmount),
       paymentId: payment.id,
       amountRub: Number.isFinite(amountRub) ? amountRub : undefined,
       expectedPriceRub: Number.isFinite(expectedPriceRub) ? expectedPriceRub : undefined,

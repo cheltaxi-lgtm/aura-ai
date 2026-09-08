@@ -12,6 +12,7 @@ import {
   runesFromRubAmount,
 } from "@/lib/rune-purchase-constants";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
+import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 
 const CUSTOM_PACKAGE_ID = "custom";
 
@@ -47,7 +48,7 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  let body: { packageId?: string; customAmount?: number | string; recaptchaToken?: string };
+  let body: { packageId?: string; customAmount?: number | string; recaptchaToken?: string; requestId?: string };
   try {
     body = await request.json();
   } catch {
@@ -56,6 +57,7 @@ export async function POST(request: NextRequest) {
 
   const captchaBlock = await enforceRecaptchaScope("payments", body.recaptchaToken, request);
   if (captchaBlock) return captchaBlock;
+  if(body.requestId !== undefined && (typeof body.requestId!=="string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId))) return NextResponse.json({error:"invalid_request_id"},{status:400});
 
   const appUrl = getAppUrl();
   const customAmountRaw = body.customAmount;
@@ -87,6 +89,7 @@ export async function POST(request: NextRequest) {
 
     try {
       const payment = await createYukassaRunePayment({
+        requestId: body.requestId,
         packageId: CUSTOM_PACKAGE_ID,
         packageName: "Произвольная сумма",
         priceRub: amountRub,
@@ -96,6 +99,7 @@ export async function POST(request: NextRequest) {
       });
 
       const paymentUrl = payment.confirmation?.confirmation_url;
+      await recordJourneyEvent(authed.profileUserId,"payment_started",payment.id,{amountRub,runes:totalRunes});
       if (!paymentUrl) {
         return NextResponse.json({ error: "No confirmation URL" }, { status: 502 });
       }
@@ -138,6 +142,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const payment = await createYukassaRunePayment({
+      requestId: body.requestId,
       packageId: pkg.id,
       packageName: pkg.name,
       priceRub: pkg.price_rub,
@@ -147,6 +152,7 @@ export async function POST(request: NextRequest) {
     });
 
     const paymentUrl = payment.confirmation?.confirmation_url;
+    await recordJourneyEvent(authed.profileUserId,"payment_started",payment.id,{amountRub:Number(pkg.price_rub),runes:totalRunes});
     if (!paymentUrl) {
       return NextResponse.json({ error: "No confirmation URL" }, { status: 502 });
     }

@@ -1,6 +1,6 @@
 /** Best-effort: push a proactive reminder into Telegram bot. */
 
-export type BotReminderKind = "daily_cards" | "daily_bonus" | "inactive_7d" | "inactive_14d";
+export type BotReminderKind = "daily_cards" | "daily_bonus" | "inactive_7d" | "inactive_14d" | "reading_followup";
 
 export async function notifyBotReminder(input: {
   telegramUserId: number;

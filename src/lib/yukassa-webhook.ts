@@ -40,6 +40,7 @@ export async function processYukassaWebhook(body: Record<string, unknown>): Prom
     const result = await creditRunesFromPaymentDetailed({
       userId: payment.metadata.userId,
       packageId: payment.metadata.packageId,
+      expectedRunes: payment.metadata.runesAmount === undefined ? undefined : Number(payment.metadata.runesAmount),
       paymentId: payment.id,
       amountRub,
       expectedPriceRub: Number.isFinite(expectedPriceRub) ? expectedPriceRub : undefined,

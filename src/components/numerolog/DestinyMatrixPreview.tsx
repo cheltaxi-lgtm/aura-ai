@@ -1,4 +1,5 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
 
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import DestinyMatrixGrid, {
@@ -21,6 +22,7 @@ import {
   fetchServerAgeGateConfirmed,
 } from "@/lib/age-gate";
 import LegalDocLink from "@/components/legal/LegalDocLink";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
@@ -869,6 +871,7 @@ export default function DestinyMatrixPreview() {
                 ))}
               </ul>
             )}
+            {isLoggedIn && !ownedFull && <RuneOrderPreview action="NUMEROLOGY_SESSION" />}
             <div className="mt-5 flex flex-wrap items-center gap-3">
               <button
                 type="button"
@@ -925,7 +928,8 @@ export default function DestinyMatrixPreview() {
               />
             ) : null}
           </div>
-          <CrossProductNextSteps context="matrix" />
+          {matrixOwnership.reportId && !matrixOwnership.loading && <ReadingJourney readingId={matrixOwnership.reportId} />}
+          <CrossProductNextSteps context="matrix" readingId={matrixOwnership.reportId ?? undefined} />
         </div>
       ) : null}
     </div>

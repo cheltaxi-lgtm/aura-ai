@@ -48,12 +48,12 @@ async function fixture(page: Page) {
         ok: true,
         user: { id: "photo-fixture", email: "photo@example.test", name: "Проверка" },
         profile: { id: "photo-profile", name: "Проверка", birthDate: "", gender: "female", tarotCards: [] },
-        starterRunes: 300,
+        starterRunes: 100,
         needsProfile: false,
       } });
     }
     if (path === "/api/platform/features") return route.fulfill({ json: { recaptcha: { configured: false, masterEnabled: false, scopes: {} } } });
-    if (path === "/api/runes/config") return route.fulfill({ json: { enabled: true, starterRunes: 300, rubPerRune: 5, costs: { VISION_ANALYSIS: 30 } } });
+    if (path === "/api/runes/config") return route.fulfill({ json: { enabled: true, starterRunes: 100, rubPerRune: 5, costs: { VISION_ANALYSIS: 30 } } });
     if (path === "/api/runes/balance") return route.fulfill({ json: { balance: 300 } });
     if (path === "/api/photo-reading/recognize" && route.request().method() === "POST") return route.fulfill({ json: {
       guest: !loggedIn,

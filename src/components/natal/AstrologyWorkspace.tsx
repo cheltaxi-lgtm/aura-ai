@@ -1,4 +1,5 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
 
 import Link from "next/link";
 import { useCallback, useEffect, useMemo, useState } from "react";
@@ -22,6 +23,7 @@ import PremiumReadingBody from "@/components/PremiumReadingBody";
 import NatalStructuredReportView from "@/components/natal/NatalStructuredReportView";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import ReportExportActions from "@/components/reports/ReportExportActions";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 import {
   parseAcceptedAsyncReport,
   type AcceptedAsyncReport,
@@ -1139,7 +1141,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast }: {
             {isNatalReport(currentForecast.structuredData)
               ? <StructuredReport report={currentForecast.structuredData} evidence={currentForecast.evidenceRefs ?? []} />
               : <Interpretation text={currentForecast.content} />}
-            <ReportExportActions path={`/cabinet/astrology/reports/${currentForecast.id}/print`} />
+            <ReportExportActions journey path={`/cabinet/astrology/reports/${currentForecast.id}/print`} />
             <ReportShareControls reportKind="natal" reportId={currentForecast.id} />
           </>
         ) : previousForecast ? (
@@ -1150,9 +1152,10 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast }: {
             {isNatalReport(previousForecast.structuredData)
               ? <StructuredReport report={previousForecast.structuredData} evidence={previousForecast.evidenceRefs ?? []} />
               : <Interpretation text={previousForecast.content} />}
-            <ReportExportActions path={`/cabinet/astrology/reports/${previousForecast.id}/print`} />
+            <ReportExportActions journey path={`/cabinet/astrology/reports/${previousForecast.id}/print`} />
           </div>
         ) : null}
+        <RuneOrderPreview cost={forecastCost} />
         <p className="text-xs leading-5 text-amber-100/60">После подтверждения будет списано {forecastCost} ᚢ.</p>
         <button
           type="button"
@@ -1340,6 +1343,7 @@ function Reports({ chart, reports, loading, error, deletingReportId, onDelete, o
           {deletingReportId === selected.id ? <Loader2 className="h-3.5 w-3.5 motion-safe:animate-spin" /> : <Trash2 className="h-3.5 w-3.5" />} Удалить
         </button>
       </div>
+      <ReadingJourney readingId={selected.id} />
       <ReportShareControls reportKind="natal" reportId={selected.id} />
     </Panel> : null}
     {archivedReports.length ? <Panel title="Архив заменённых версий" eyebrow="Удаление без возврата">
@@ -1398,11 +1402,13 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
   onRequest: (tradition: NatalTradition) => void;
 }) {
   return <Panel title={title} eyebrow={text ? "Готов · сохранён в архиве" : "Отдельная покупка"}>
+    {!text && !isNatalReport(report) && <RuneOrderPreview cost={cost} />}
     {savedReport ? <p className="text-xs text-emerald-100/60">Создан {new Date(savedReport.createdAt).toLocaleString("ru-RU")} · {savedReport.runeCost ?? "—"} ᚢ</p> : null}
     {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
     {text ? <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-4">
       {savedReport ? <ReportExportActions path={`/cabinet/astrology/reports/${savedReport.id}/print`} /> : null}
     </div> : null}
+    {savedReport && <ReadingJourney readingId={savedReport.id} />}
     {savedReport ? <ReportShareControls reportKind="natal" reportId={savedReport.id} /> : null}
   </Panel>;
 }

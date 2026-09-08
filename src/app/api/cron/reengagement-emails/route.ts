@@ -3,6 +3,7 @@ import { isCronSecretValid } from "@/lib/cron-auth";
 import { ensureDb } from "@/lib/db";
 import { requireAdmin } from "@/lib/admin-auth";
 import { runReengagementEmailBatch } from "@/lib/reengagement-email-service";
+import { runReadingFollowups } from "@/lib/reading-followup-service";
 
 export async function GET(request: NextRequest) {
   if (!(await ensureDb())) {
@@ -15,6 +16,7 @@ export async function GET(request: NextRequest) {
   if (!isInternal && !admin) {
     return NextResponse.json({ error: "Forbidden" }, { status: 403 });
   }
+  const readingFollowups=await runReadingFollowups();
 
   const hourParam = request.nextUrl.searchParams.get("hourMsk");
   const hourMsk =
@@ -29,6 +31,7 @@ export async function GET(request: NextRequest) {
   if (!runBonus && !runInactive) {
     return NextResponse.json({
       hourMsk,
+      readingFollowups,
       skipped: true,
       reason: "Outside campaign hours (bonus=19 MSK, inactive=10 MSK)",
       dailyBonus: 0,
@@ -42,5 +45,5 @@ export async function GET(request: NextRequest) {
     inactive: runInactive,
   });
 
-  return NextResponse.json({ hourMsk, skipped: false, ...result });
+  return NextResponse.json({ hourMsk, skipped: false, readingFollowups, ...result });
 }

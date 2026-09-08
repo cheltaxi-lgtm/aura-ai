@@ -1,10 +1,13 @@
 "use client";
+import ReadingJourney from "@/components/ReadingJourney";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
 import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
+import { rememberRunePurchaseDestination } from "@/lib/rune-purchase-client";
+import RuneOrderPreview from "@/components/RuneOrderPreview";
 import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import ReportExportActions from "@/components/reports/ReportExportActions";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
@@ -1157,18 +1160,19 @@ export default function PalmReadingFlow() {
                     )}
                   </div>
                 ) : null}
+                <RuneOrderPreview cost={palmCost} />
                 {blockedByRunes ? (
-                  <Link href="/cabinet?shop=1" className="btn-luxe btn-luxe--md btn-luxe--gold">
+                  <Link onClick={()=>rememberRunePurchaseDestination(snapshotId ? `/gadanie-po-ladoni?reading=${encodeURIComponent(snapshotId)}` : "/gadanie-po-ladoni",palmCost)} href="/cabinet?shop=1" className="btn-luxe btn-luxe--md btn-luxe--gold">
                     Пополнить руны
                   </Link>
                 ) : (
-                  <button
+                  <><button
                     type="button"
                     onClick={() => void startReport()}
                     className="btn-luxe btn-luxe--md btn-luxe--gold"
                   >
                     Открыть полный разбор
-                  </button>
+                  </button></>
                 )}
               </div>
             )}
@@ -1222,12 +1226,13 @@ export default function PalmReadingFlow() {
               <h3 id="palm-full-report-title" className="font-display text-lg text-aura-champagne">Полный разбор</h3>
               {exportHistoryId && <ReportExportActions path={`/cabinet/readings/${exportHistoryId}/print`} />}
               <PremiumReadingBody content={report} className="mt-3 text-sm text-white/85" />
+              {exportHistoryId && <ReadingJourney readingId={exportHistoryId} />}
             </section>
             <button type="button" onClick={goHome} className="btn-luxe btn-luxe--md btn-luxe--ghost mx-auto block">
               К ладоням
             </button>
             {pastArchive}
-            <CrossProductNextSteps context="palm" />
+            <CrossProductNextSteps context="palm" readingId={exportHistoryId ?? undefined} />
             <Link href="/cabinet" className="btn-luxe btn-luxe--md mx-auto block">
               В кабинет
             </Link>

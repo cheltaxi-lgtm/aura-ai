@@ -2,6 +2,7 @@ import { query } from "@/lib/db";
 import { masterDisplay } from "@/lib/cabinet-utils";
 import { getRitualById } from "@/lib/ritual-service";
 import { RITUAL_TYPES } from "@/lib/ritual-config";
+import { getCompatibilityRecord } from "@/lib/services/natal-compatibility-service";
 
 export type SavedReadingDocument = {
   title: string; body: string; date: string; master: string; question?: string;
@@ -45,6 +46,15 @@ export async function getSavedReadingDocument(userId: string, id: string): Promi
     `SELECT n.id,n.content,n.created_at,n.tool_id FROM numerology_report_history n WHERE n.user_id=$2 AND (n.id=$1 OR n.session_id=$1 OR n.session_id IN (SELECT session_id FROM session_memories WHERE id=$1 AND user_id=$2)) ORDER BY n.created_at DESC LIMIT 1`, [id, userId]);
   if (numerology.rows[0]) { const row = numerology.rows[0]; return { title: "Ваш нумерологический разбор", kind: row.tool_id,
     printPath: ["destiny_matrix", "child_matrix", "matrix_year_forecast", "matrix_compatibility"].includes(row.tool_id) ? `/cabinet/numerology/matrix/${row.id}/print` : undefined, body: row.content, date: iso(row.created_at), master: masterDisplay("numerolog").name }; }
+  const natal = await query<{content:string;created_at:Date}>("SELECT content,created_at FROM natal_report_history WHERE id=$1 AND user_id=$2",[id,userId]);
+  if(natal.rows[0]) return {title:"Ваша натальная карта",kind:"natal",printPath:`/cabinet/astrology/reports/${id}/print`,body:natal.rows[0].content,date:iso(natal.rows[0].created_at),master:masterDisplay("astrolog").name};
+  const hd = await query<{report_text:string;created_at:Date}>("SELECT report_text,created_at FROM hd_reports WHERE id=$1 AND user_id=$2 AND status='done'",[id,userId]);
+  if(hd.rows[0]?.report_text) return {title:"Ваш Дизайн человека",kind:"human_design",printPath:`/cabinet/human-design/reports/${id}/print`,body:hd.rows[0].report_text,date:iso(hd.rows[0].created_at),master:masterDisplay("numerolog").name};
+  const composite=await query<{report_text:string;created_at:Date}>("SELECT report_text,created_at FROM hd_composite_reports WHERE id=$1 AND user_id=$2 AND status='done'",[id,userId]);
+  if(composite.rows[0]?.report_text)return {title:"Ваша карта связи",kind:"human_design",printPath:`/cabinet/human-design/composite-reports/${id}/print`,body:composite.rows[0].report_text,date:iso(composite.rows[0].created_at),master:masterDisplay("numerolog").name};
+  const ownedCompatibility=await query("SELECT id FROM natal_compatibility_reports WHERE id=$1 AND (owner_user_id=$2 OR participant_user_id=$2) AND status='completed'",[id,userId]);
+  const compatibility=ownedCompatibility.rows.length ? await getCompatibilityRecord(id,userId) : null;
+  if(compatibility?.report) return {title:"Ваша натальная совместимость",kind:"natal",question:"Отношения",printPath:`/cabinet/astrology/compatibility/${id}/print`,body:compatibility.report.sections.map(s=>`## ${s.title}\n\n${s.claims.map(c=>c.text).join("\n\n")}`).join("\n\n")+`\n\n${compatibility.report.disclaimer}`,date:compatibility.completedAt??compatibility.createdAt,master:masterDisplay("astrolog").name};
   const session = await query<{ id: string; character_key: string; created_at: Date }>(
     `SELECT s.id,s.character_key,s.created_at FROM sessions s
        WHERE s.user_id=$2 AND (s.id=$1 OR EXISTS (
@@ -56,7 +66,7 @@ export async function getSavedReadingDocument(userId: string, id: string): Promi
         AND role IN ('user','assistant') ORDER BY created_at,id LIMIT 501`, [row.id, userId]);
     if (messages.rows.length > 500) throw new Error("report_too_long");
     if (!messages.rows.some(m => m.role === "assistant" && text(m.content))) return null;
-    return { title: "Ваша консультация", kind: "session", date: iso(row.created_at), master: masterDisplay(row.character_key).name,
+    return { title: "Ваша консультация", kind: "session", question: messages.rows.find(m => m.role === "user" && text(m.content))?.content, date: iso(row.created_at), master: masterDisplay(row.character_key).name,
       body: messages.rows.filter(m => text(m.content)).map(m => `## ${m.role === "user" ? "Ваш вопрос" : masterDisplay(row.character_key).name}\n\n${m.content}`).join("\n\n") };
   }
   // The ritual reader is side-effect free; require owner and completed content.

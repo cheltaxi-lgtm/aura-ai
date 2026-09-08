@@ -1,4 +1,5 @@
 import { SignJWT, jwtVerify } from "jose";
+import { query } from "@/lib/db";
 import {
   getAccountDailyCardsReminder,
   getProfileUserIdForAccount,
@@ -12,6 +13,7 @@ export const REMINDER_UNSUBSCRIBE_TOPICS = [
   "daily_cards",
   "daily_bonus",
   "marketing",
+  "reading_followup",
 ] as const;
 
 export type ReminderUnsubscribeTopic = (typeof REMINDER_UNSUBSCRIBE_TOPICS)[number];
@@ -73,6 +75,11 @@ export async function applyReminderUnsubscribe(
   accountId: string,
   topic: ReminderUnsubscribeTopic
 ): Promise<{ ok: true; topic: ReminderUnsubscribeTopic }> {
+  if(topic==="reading_followup") {
+    const userId=await getProfileUserIdForAccount(accountId);
+    if(userId)await query("UPDATE diary_entries SET reminder_consent_at=NULL WHERE user_id=$1 AND reading_id IS NOT NULL",[userId]);
+    return {ok:true,topic};
+  }
   if (topic === "daily_cards") {
     await setAccountDailyCardsReminder(accountId, false);
     return { ok: true, topic };
@@ -96,6 +103,11 @@ export async function isTopicEnabled(
   accountId: string,
   topic: ReminderUnsubscribeTopic
 ): Promise<boolean> {
+  if(topic==="reading_followup") {
+    const userId=await getProfileUserIdForAccount(accountId);if(!userId)return false;
+    const enabled=await query("SELECT 1 FROM diary_entries WHERE user_id=$1 AND reading_id IS NOT NULL AND reminder_consent_at IS NOT NULL LIMIT 1",[userId]);
+    return Boolean(enabled.rowCount);
+  }
   if (topic === "daily_cards") {
     return getAccountDailyCardsReminder(accountId);
   }

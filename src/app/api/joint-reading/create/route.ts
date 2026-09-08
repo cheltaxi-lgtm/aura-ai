@@ -194,19 +194,22 @@ export async function POST(request: NextRequest) {
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (err) {
+    let actuallyRefunded=false;
     if (charge) {
-      await BillingService.rollbackCharge({
+      const rollback=await BillingService.rollbackChargeEx({
         userId: authed.profileUserId,
         cost: charge.spentRunes,
         wasFreeQuestion: charge.wasFreeQuestion,
         actionType: "JOINT_READING",
+        transactionId: charge.transactionId,
       }).catch((rollbackErr) => {
         console.error("Joint reading invite rune rollback failed:", rollbackErr);
       });
-      await trackWorkerJobRefunded(request);
+      actuallyRefunded=rollback?.refunded===true;
+      if(actuallyRefunded)await trackWorkerJobRefunded(request);
     }
     await trackWorkerJobFailed(request, "Joint reading create failed", {
-      refunded: Boolean(charge),
+      refunded: actuallyRefunded,
       errorCode: "generation_failed",
     });
     throw err;

@@ -13,6 +13,7 @@ export interface PlatformRecaptchaConfig {
 }
 
 export interface PlatformFeatures {
+  firstExperienceEnabled?: boolean;
   expertRegistrationEnabled: boolean;
   /** Optional — older call sites construct features without it. */
   humanDesignEnabled?: boolean;
@@ -64,6 +65,7 @@ function parseFeatures(d: Record<string, unknown>): PlatformFeatures {
   const scopesRaw = (recaptchaRaw.scopes ?? {}) as Partial<RecaptchaScopeSettings>;
 
   return {
+    firstExperienceEnabled: d.firstExperienceEnabled === true,
     expertRegistrationEnabled: d.expertRegistrationEnabled !== false,
     // HD defaults on in product; require explicit true from API (matches prior client parse).
     humanDesignEnabled: d.humanDesignEnabled === true,

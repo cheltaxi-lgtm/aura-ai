@@ -216,10 +216,10 @@ const DEFAULTS = {
     scenes: {
       // Static deck art only — never spend image-gen tokens on onboarding avatars.
       zodiac_avatar: false,
-      tarot_atmosphere: true,
-      destiny_card: true,
-      scene_illustration: true,
-      final_report: true,
+      tarot_atmosphere: false,
+      destiny_card: false,
+      scene_illustration: false,
+      final_report: false,
     },
   },
   runes: {
