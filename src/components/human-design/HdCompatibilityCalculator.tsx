@@ -174,12 +174,12 @@ function PersonForm({
             className="hd-field__input"
             disabled={state.timeUnknown}
           />
-          <label className="flex items-center gap-2 text-xs text-white/55">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/55">
             <input
               type="checkbox"
               checked={state.timeUnknown}
               onChange={(e) => onChange({ timeUnknown: e.target.checked })}
-              className="accent-amber-500"
+              className="h-5 w-5 shrink-0 accent-amber-500"
             />
             Не знаю время
           </label>

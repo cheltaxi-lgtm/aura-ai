@@ -592,7 +592,7 @@ export default function AuraReadingFlow() {
         }
         if (res.status === 409 && data?.code === "NAME_EXISTS" && data.subject) {
           setNameClash(data.subject as AuraPickerSubject);
-          setError(data.message ?? "Такое имя уже есть — откройте существующий слот.");
+          setError(data.message ?? "Такое имя уже есть — выберите этого человека из списка.");
           setStep("capture");
           return;
         }

@@ -103,7 +103,7 @@ export default function CabinetPalmReadings({ readings, onDelete, deletingId = n
                   </span>
                   <span className="text-xs text-white/50">{formatDate(row.createdAt)}</span>
                 </span>
-                <span className="text-xs text-white/40">{row.paid ? "Отчёт" : "Тизер"}</span>
+                <span className="text-xs text-white/40">{row.paid ? "Отчёт" : "Краткий результат"}</span>
               </button>
             </li>
           );
@@ -132,7 +132,7 @@ export default function CabinetPalmReadings({ readings, onDelete, deletingId = n
               >
                 <div className="mb-4 flex items-center justify-between gap-3">
                   <h4 id="cabinet-palm-title" className="font-display text-lg text-white">
-                    {active.paid ? "Разбор ладони" : "Тизер ладони"}
+                    {active.paid ? "Разбор ладони" : "Краткий результат по ладони"}
                   </h4>
                   <button
                     ref={closeButtonRef}

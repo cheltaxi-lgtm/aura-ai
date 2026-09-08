@@ -641,7 +641,7 @@ export default function DestinyMatrixPreview() {
               setBirthDate(e.target.value);
               setFromProfile(false);
             }}
-            className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40"
+            className="mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40"
           />
         </label>
         <label className="block text-sm text-white/70">
@@ -657,7 +657,7 @@ export default function DestinyMatrixPreview() {
             }}
             maxLength={40}
             placeholder="Как к вам обращаться"
-            className="mt-1.5 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40"
+            className="mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40"
           />
         </label>
         <button

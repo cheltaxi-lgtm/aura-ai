@@ -629,8 +629,8 @@ export default function NatalCompatibility() {
                 <input type="time" className="ui-input w-full" value={manual.birthTime}
                   disabled={!manual.timeKnown}
                   onChange={(event) => setManual((value) => ({ ...value, birthTime: event.target.value }))} />
-                <label className="mt-2 flex items-center gap-2 text-xs text-white/45">
-                  <input type="checkbox" checked={!manual.timeKnown}
+                <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/45">
+                  <input type="checkbox" className="h-5 w-5 shrink-0" checked={!manual.timeKnown}
                     onChange={(event) => setManual((value) => ({
                       ...value,
                       timeKnown: !event.target.checked,

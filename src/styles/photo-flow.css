@@ -66,6 +66,11 @@
 }
 
 .photo-flow-link {
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  padding-inline: 0.25rem;
   font-size: 0.75rem;
   font-weight: 500;
   color: rgba(232, 199, 126, 0.85);
@@ -349,6 +354,7 @@
 
 .photo-spread-preview__add {
   display: inline-flex;
+  min-height: 2.75rem;
   align-items: center;
   justify-content: center;
   gap: 0.4rem;

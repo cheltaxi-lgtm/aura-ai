@@ -149,7 +149,7 @@ body,
   }
 
   .ui-input {
-    @apply rounded-xl border border-aura-champagne/15 bg-black/40 px-4 py-3 text-sm text-aura-ivory
+    @apply min-h-11 rounded-xl border border-aura-champagne/15 bg-black/40 px-4 py-3 text-sm text-aura-ivory
            placeholder:text-aura-ivory/35 focus-visible:border-aura-champagne/40 focus-visible:outline-none;
     box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.02) inset;
   }

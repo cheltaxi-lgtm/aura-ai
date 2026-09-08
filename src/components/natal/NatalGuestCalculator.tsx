@@ -413,7 +413,7 @@ export default function NatalGuestCalculator() {
               required
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
-              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
+              className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
             />
           </label>
 
@@ -427,9 +427,9 @@ export default function NatalGuestCalculator() {
               disabled={timeUnknown}
               value={birthTime}
               onChange={(e) => setBirthTime(e.target.value)}
-              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 disabled:opacity-40"
+              className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 disabled:opacity-40"
             />
-            <label className="mt-2 flex items-center gap-2 text-sm text-white/60">
+            <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm text-white/60">
               <input
                 type="checkbox"
                 checked={timeUnknown}
@@ -437,6 +437,7 @@ export default function NatalGuestCalculator() {
                   setTimeUnknown(e.target.checked);
                   if (e.target.checked) setBirthTime("");
                 }}
+                className="h-5 w-5 shrink-0"
               />
               Не знаю точное время
             </label>
@@ -458,7 +459,7 @@ export default function NatalGuestCalculator() {
                   setPlace(null);
                   searchPlaces(q);
                 }}
-                className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
+                className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
               />
             </label>
             {placesOpen && places.length > 0 ? (

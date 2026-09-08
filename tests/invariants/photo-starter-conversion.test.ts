@@ -106,6 +106,12 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
     expect(priceLine).not.toContain("₽");
   });
 
+  it("keeps secondary photo actions comfortably tappable on mobile", () => {
+    const css = readSrc("src/styles/photo-flow.css");
+    expect(css).toMatch(/\.photo-flow-link\s*\{[\s\S]{0,240}min-height:\s*2\.75rem/);
+    expect(css).toMatch(/\.photo-spread-preview__add\s*\{[\s\S]{0,240}min-height:\s*2\.75rem/);
+  });
+
   it("photo funnel analytics: auth view + server-confirmed starter grant events", () => {
     const authForm = readSrc("src/components/AuthForm.tsx");
     expect(authForm).toContain('trackSeoEvent("photo_auth_view")');

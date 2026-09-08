@@ -147,7 +147,7 @@ export default function AuraSubjectPicker({
               <p>Это та {nameClash.displayName}?</p>
               <div className="aura-picker__chips">
                 <button type="button" onClick={onConfirmClash} className="aura-picker__chip aura-picker__chip--on">
-                  Да, открыть слот
+                  Да, добавить человека
                 </button>
                 <button type="button" onClick={onDismissClash} className="aura-picker__chip">
                   Нет, другое имя

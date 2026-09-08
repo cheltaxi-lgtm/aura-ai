@@ -25,7 +25,7 @@ export default function PalmMarksHubPage() {
       <h1 className="mt-2 font-display text-3xl font-bold">Знаки на ладони</h1>
       <p className="mt-4 text-white/70">
         Четыре знака, которые читает мастер: звезда, крест, островок и решётка. Это акценты зоны,
-        не порча и не весь характер. На тизере знаки не раскрываем.
+        не порча и не весь характер. В кратком результате знаки не раскрываются.
       </p>
       <div className="mt-6">
         <SeoTrackedCta

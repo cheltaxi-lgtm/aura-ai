@@ -734,12 +734,12 @@ export default function HdCalculator({
             className="hd-field__input"
             disabled={timeUnknown}
           />
-          <label className="flex items-center gap-2 text-xs text-white/55">
+          <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/55">
             <input
               type="checkbox"
               checked={timeUnknown}
               onChange={(e) => setTimeUnknown(e.target.checked)}
-              className="accent-amber-500"
+              className="h-5 w-5 shrink-0 accent-amber-500"
             />
             Не знаю время рождения
           </label>

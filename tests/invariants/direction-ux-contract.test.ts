@@ -120,10 +120,17 @@ describe("direction UX contract", () => {
   it("keeps primary mobile touch targets at least 44px high", () => {
     const globals = read("src/app/globals.css");
     const hd = read("src/components/human-design/HdCalculator.tsx");
+    const hdCss = read("src/styles/human-design.css");
+    const matrix = read("src/components/numerolog/DestinyMatrixPreview.tsx");
+    const natal = read("src/components/natal/NatalGuestCalculator.tsx");
     const photoCss = read("src/styles/photo-flow.css");
     const tarot = read("src/components/GuestTripletDraw.tsx");
     expect(globals.slice(globals.indexOf(".btn-luxe--sm"), globals.indexOf(".btn-luxe--md"))).toContain("min-h-11");
     expect(hd.match(/min-h-11 rounded-full/g)).toHaveLength(2);
+    expect(hd).toContain('className="flex min-h-11 cursor-pointer items-center');
+    expect(hdCss.slice(hdCss.indexOf(".hd-field__input"), hdCss.indexOf("select.hd-field__input"))).toContain("min-height: 2.75rem");
+    expect(matrix.match(/mt-1\.5 min-h-11 w-full/g)).toHaveLength(2);
+    expect(natal).toContain('className="mt-2 flex min-h-11 cursor-pointer items-center');
     expect(photoCss.slice(photoCss.indexOf(".photo-flow-hint button"), photoCss.indexOf(".photo-flow-preview-shell"))).toContain("min-height: 44px");
     expect(tarot).toContain('className="mb-4 inline-flex min-h-11');
   });
@@ -150,5 +157,23 @@ describe("direction UX contract", () => {
     expect(workspace).toContain('search.get("natalClaimed") === "1"');
     expect(matrix).toContain("Удалить старый разбор и создать новый");
     expect(matrix).toContain("Повторить сохранение");
+  });
+
+  it("uses plain customer language for short Aura and Palm results", () => {
+    const customerFiles = [
+      "src/app/aura/page.tsx",
+      "src/app/aura/besplatno/page.tsx",
+      "src/app/aura/cveta/page.tsx",
+      "src/app/aura/chakry/page.tsx",
+      "src/app/aura/sloi/page.tsx",
+      "src/app/gadanie-po-ladoni/page.tsx",
+      "src/app/gadanie-po-ladoni/znaki/page.tsx",
+      "src/components/cabinet/CabinetPalmReadings.tsx",
+      "src/components/aura/AuraSubjectPicker.tsx",
+      "src/components/aura/AuraReadingFlow.tsx",
+    ];
+    for (const file of customerFiles) {
+      expect(read(file), file).not.toMatch(/тизер|слот/i);
+    }
   });
 });
