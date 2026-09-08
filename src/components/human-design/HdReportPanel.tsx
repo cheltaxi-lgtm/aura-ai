@@ -581,9 +581,11 @@ function HdReportPanelContent({
               });
             }}
           >
-            {FREE_TO_PAID.human_design.buyLabel} ·{" "}
-            {ready ? formatRunesWithRub(reportCost) : `${reportCost} ᚢ`}
+            Создать аккаунт и продолжить
           </a>
+          <p className="mt-3 text-xs leading-relaxed text-white/45">
+            Бодиграф сохранится. Стоимость полного разбора вы увидите и подтвердите отдельно.
+          </p>
           <p className="mt-3 text-sm text-white/55">
             Уже есть аккаунт?{" "}
             <a

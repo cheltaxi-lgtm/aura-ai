@@ -232,6 +232,11 @@
 
 .photo-flow-hint button {
   margin-top: 0.35rem;
+  display: inline-flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: center;
+  padding: 0.5rem 0.75rem;
   font-size: 0.8125rem;
   font-weight: 600;
   color: rgba(232, 199, 126, 0.9);

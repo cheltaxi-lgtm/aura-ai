@@ -294,6 +294,12 @@ export default function AstrologyWorkspace() {
     const requestedReport = search.get("report");
     if (requested && TABS.some((item) => item.id === requested)) setTab(requested);
     else if (requestedReport) setTab("reports");
+    if (search.get("natalClaimed") === "1") {
+      setNotice("Карта сохранена. Ниже открыт западный разбор; ведический доступен в соседней вкладке. Стоимость вы подтвердите перед созданием отчёта.");
+      const cleanUrl = new URL(window.location.href);
+      cleanUrl.searchParams.delete("natalClaimed");
+      window.history.replaceState(window.history.state, "", `${cleanUrl.pathname}${cleanUrl.search}${cleanUrl.hash}`);
+    }
     setSelectedReportId(requestedReport);
   }, [loadChart, loadHistory]);
 

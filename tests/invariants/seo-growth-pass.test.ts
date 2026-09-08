@@ -144,8 +144,8 @@ describe("seo-growth-pass", () => {
       expect(page).toContain('path: "/photo-rasklad"');
       // Title intentionally untouched (TOP-3 positions must not be risked).
       expect(page).toContain("Расшифровка Таро по фото онлайн — загрузить расклад");
-      // ИИ claim is true: VISION_ANALYSIS recognition pipeline exists.
-      expect(page).toMatch(/ИИ распознает арканы/);
+      // Recognition remains a real pre-registration product result.
+      expect(page).toMatch(/бесплатно проверьте распознанные карты/i);
       expect(page).toMatch(/FAQPage/);
       expect(page).toMatch(/HowTo/);
       expect(page).toContain('/statyi/rasshifrovka-taro-po-foto');

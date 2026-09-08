@@ -109,11 +109,14 @@ export default function HdCalculator({
   /** Account birth anketa complete — prefill only; must not gate guest claim. */
   const [birthProfileReady, setBirthProfileReady] = useState(false);
   const [mine, setMine] = useState<HdChartPayload[]>([]);
+  const [claimPending, setClaimPending] = useState(false);
+  const [claimError, setClaimError] = useState<string | null>(null);
   const [showConnection, setShowConnection] = useState(false);
   const placeBoxRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const prefillDoneRef = useRef(false);
   const prefilledRef = useRef(false);
+  const claimStartedRef = useRef(false);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -265,26 +268,63 @@ export default function HdCalculator({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // After login, claim every guest chart this browser created — the main
-  // calculator's and the compatibility calculator's alike.
-  // accountReady is enough: guest charts carry their own birth inputs.
-  useEffect(() => {
-    if (!accountReady) return;
-    void claimAllPendingHdCharts().then((claimed) => {
-      if (claimed.length === 0) return;
-      trackProductFunnel("claim_complete", {
-        product: "human_design",
-        source: "guest_claim",
-      });
-      const stored = readStoredFingerprint();
-      if (stored && claimed.includes(stored)) {
-        clearStoredFingerprint();
+  const claimGuestCharts = useCallback(async () => {
+    setClaimPending(true);
+    setClaimError(null);
+    const pendingFingerprint = result?.fingerprint ?? readStoredFingerprint();
+    const hadPendingToken = Boolean(
+      pendingFingerprint && readHdClaimToken(pendingFingerprint)
+    );
+    try {
+      const claimed = await claimAllPendingHdCharts();
+      if (claimed.length > 0) {
+        trackProductFunnel("claim_complete", {
+          product: "human_design",
+          source: "guest_claim",
+        });
+        const stored = readStoredFingerprint();
+        if (stored && claimed.includes(stored)) clearStoredFingerprint();
+        const response = await fetch("/api/human-design/mine", { cache: "no-store" });
+        const data = response.ok ? await response.json() : null;
+        const owned = Array.isArray(data?.charts) ? (data.charts as HdChartPayload[]) : [];
+        if (owned.length) {
+          setMine(owned);
+          setResult((current) => {
+            const targetFingerprint = current?.fingerprint ?? pendingFingerprint;
+            return (
+              owned.find(
+                (item) =>
+                  item.id === current?.id ||
+                  (targetFingerprint && item.fingerprint === targetFingerprint)
+              ) ??
+              current ??
+              owned[0] ??
+              null
+            );
+          });
+        }
+        if (result) onChartCreated?.(result);
       }
-      // Cabinet: claimed charts now belong to the user — refresh the list.
-      if (result) onChartCreated?.(result);
-    });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [accountReady]);
+      if (hadPendingToken && pendingFingerprint && !claimed.includes(pendingFingerprint)) {
+        setClaimError(
+          readHdClaimToken(pendingFingerprint)
+            ? "Не удалось сохранить бодиграф в аккаунте. Повторите попытку, чтобы не потерять карту."
+            : "Срок сохранения гостевого бодиграфа истёк. Постройте карту снова — списаний не будет."
+        );
+      }
+    } catch {
+      setClaimError("Не удалось сохранить бодиграф в аккаунте. Проверьте соединение и повторите попытку.");
+    } finally {
+      setClaimPending(false);
+    }
+  }, [onChartCreated, result]);
+
+  // Claim completes before the report panel may load or charge against the chart.
+  useEffect(() => {
+    if (!accountReady || claimStartedRef.current) return;
+    claimStartedRef.current = true;
+    void claimGuestCharts();
+  }, [accountReady, claimGuestCharts]);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -556,11 +596,40 @@ export default function HdCalculator({
         </div>
         <HdChartSlot slotKey={result.id}>
           <HdChartView payload={result} />
+          {claimPending || (accountReady && Boolean(readHdClaimToken(result.fingerprint))) ? (
+            <div className="hd-panel" role="status">Сохраняем бодиграф в вашем аккаунте…</div>
+          ) : claimError ? (
+            <div className="hd-panel space-y-3" role="alert">
+              <p className="text-sm text-amber-100/80">{claimError}</p>
+              {readHdClaimToken(result.fingerprint) ? (
+                <button type="button" onClick={() => void claimGuestCharts()} className="btn-luxe btn-luxe--md btn-luxe--gold">
+                  Повторить сохранение
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => {
+                    clearStoredFingerprint();
+                    setClaimError(null);
+                    setResult(null);
+                  }}
+                  className="btn-luxe btn-luxe--md btn-luxe--gold"
+                >
+                  Построить карту снова
+                </button>
+              )}
+            </div>
+          ) : null}
           <HdReportPanel
             chartId={result.id}
             chart={result.chart}
             authenticated={authenticated}
-            profileReady={accountReady}
+            profileReady={
+              accountReady &&
+              !claimPending &&
+              !claimError &&
+              !readHdClaimToken(result.fingerprint)
+            }
             loginReturnTo={returnTo}
           />
           <CrossProductNextSteps context="human_design" />
@@ -580,7 +649,7 @@ export default function HdCalculator({
             <button
               type="button"
               onClick={() => switchSubject("self")}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+              className={`min-h-11 rounded-full px-4 py-2 text-xs font-medium transition ${
                 subjectKind === "self"
                   ? "bg-amber-400/90 text-black"
                   : "border border-white/15 text-white/60 hover:border-amber-300/40 hover:text-white/85"
@@ -591,7 +660,7 @@ export default function HdCalculator({
             <button
               type="button"
               onClick={() => switchSubject("other")}
-              className={`rounded-full px-4 py-1.5 text-xs font-medium transition ${
+              className={`min-h-11 rounded-full px-4 py-2 text-xs font-medium transition ${
                 subjectKind === "other"
                   ? "bg-amber-400/90 text-black"
                   : "border border-white/15 text-white/60 hover:border-amber-300/40 hover:text-white/85"

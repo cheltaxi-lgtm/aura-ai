@@ -197,7 +197,6 @@ export default function DestinyMatrixPreview() {
           data.message ||
             "Не удалось сохранить рассчитанную Матрицу. Рассчитайте снова или откройте полный разбор."
         );
-        clearPendingClaimIntent();
         setClaiming(false);
         return;
       }
@@ -490,8 +489,8 @@ export default function DestinyMatrixPreview() {
     <div id="calculate" className="destiny-matrix-preview mt-10 scroll-mt-24">
       <h2 className="font-display text-xl font-semibold text-white">Рассчитать бесплатно</h2>
       <p className="mt-2 text-sm text-white/55">
-        Можно считать для себя, ребёнка, партнёра или любого человека — нужна только дата. Цифры
-        матрицы бесплатны и всегда одинаковые. {PRICING.NUMEROLOGY_SESSION} ᚢ — за персональный
+        Можно считать для себя, ребёнка, партнёра или любого человека — нужна только дата. Схема
+        не меняется при повторном расчёте той же даты. {PRICING.NUMEROLOGY_SESSION} рун — за персональный
         разбор Эвелины с сохранением и {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате.
       </p>
       <p className="mt-2 text-xs text-white/40">
@@ -504,6 +503,14 @@ export default function DestinyMatrixPreview() {
           <div className="mt-3 flex flex-wrap gap-3">
             <button
               type="button"
+              disabled={claiming}
+              className="btn-luxe btn-luxe--sm btn-luxe--gold disabled:opacity-60"
+              onClick={() => void runClaim(false)}
+            >
+              {claiming ? "Сохраняем…" : "Повторить сохранение"}
+            </button>
+            <button
+              type="button"
               className="text-aura-gold underline-offset-2 hover:underline"
               onClick={() => {
                 setClaimError(null);
@@ -512,8 +519,12 @@ export default function DestinyMatrixPreview() {
             >
               Остаться на расчёте
             </button>
-            <a href={FULL_HREF} className="text-aura-gold underline-offset-2 hover:underline">
-              Открыть полный разбор
+            <a
+              href={FULL_HREF}
+              className="inline-flex min-h-11 items-center text-aura-gold underline-offset-2 hover:underline"
+              onClick={() => clearPendingClaimIntent()}
+            >
+              Открыть ранее сохранённые матрицы
             </a>
           </div>
         </div>
@@ -795,7 +806,7 @@ export default function DestinyMatrixPreview() {
                     }}
                     className="inline-flex items-center justify-center rounded-xl border border-aura-gold/40 bg-aura-gold/10 px-4 py-2.5 text-sm font-medium text-aura-gold transition hover:border-aura-gold/60 hover:bg-aura-gold/15"
                   >
-                    Пересчитать · {PRICING.NUMEROLOGY_SESSION} ᚢ
+                    Удалить старый разбор и создать новый · {PRICING.NUMEROLOGY_SESSION} рун
                   </button>
                   <button
                     type="button"
@@ -867,7 +878,9 @@ export default function DestinyMatrixPreview() {
               >
                 {claiming || guestPersisting
                   ? "Сохраняем…"
-                  : freeToPaidCtaLabel(FREE_TO_PAID.matrix, ownedFull)}
+                  : !isLoggedIn
+                    ? "Создать аккаунт и продолжить"
+                    : freeToPaidCtaLabel(FREE_TO_PAID.matrix, ownedFull)}
               </button>
               {!isLoggedIn ? (
                 <button
@@ -897,7 +910,9 @@ export default function DestinyMatrixPreview() {
               ) : null}
             </div>
             <p className="mt-2 text-xs text-white/40">
-              {freeToPaidHint(FREE_TO_PAID.matrix, ownedFull)}
+              {!isLoggedIn
+                ? "Схема и дата сохранятся. Стоимость полного разбора вы увидите и подтвердите отдельно."
+                : freeToPaidHint(FREE_TO_PAID.matrix, ownedFull)}
             </p>
             {!isLoggedIn ? (
               <StarterRunesValue

@@ -1385,7 +1385,6 @@ export default function HomePage({
       resetGuestSpreadFlow({ keepCompletedTriplet: true });
       setPhotoReadingInitialMode(params.get("mode") === "mark" ? "mark" : "upload");
       setPhotoReadingOpen(true);
-      window.history.replaceState(null, "", window.location.pathname);
     }
     if (params.get("runeShop") === "1") {
       openPaywall({ currentBalance: runeBalance });

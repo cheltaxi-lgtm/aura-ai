@@ -54,7 +54,13 @@ function offlineSession(): SessionState {
   };
 }
 
-export function useAuraSession(referrerSlug?: string) {
+export function useAuraSession(
+  referrerSlug?: string,
+  authState: { isLoggedIn: boolean; authLoading: boolean } = {
+    isLoggedIn: false,
+    authLoading: false,
+  }
+) {
   const [session, setSession] = useState<SessionState | null>(null);
   const [loading, setLoading] = useState(true);
 
@@ -74,6 +80,11 @@ export function useAuraSession(referrerSlug?: string) {
   }, []);
 
   const createSession = useCallback(async (refToken?: string | null): Promise<SessionState> => {
+    if (!authState.isLoggedIn && !isAgeGateConfirmed()) {
+      const pending = ageRequiredSession();
+      setSession(pending);
+      return pending;
+    }
     const params = new URLSearchParams(window.location.search);
     const postSession = async () =>
       fetchWithTimeout("/api/session", {
@@ -120,10 +131,11 @@ export function useAuraSession(referrerSlug?: string) {
       setSession(fallback);
       return fallback;
     }
-  }, []);
+  }, [authState.isLoggedIn]);
 
   useEffect(() => {
     async function init() {
+      if (authState.authLoading) return;
       let storageBlocked = false;
       try {
         const probe = "__aura_ls__";
@@ -177,7 +189,7 @@ export function useAuraSession(referrerSlug?: string) {
       setLoading(false);
     }
     init();
-  }, [referrerSlug, refresh, createSession]);
+  }, [referrerSlug, refresh, createSession, authState.authLoading]);
 
   const reconnectSession = useCallback(async (refToken?: string | null): Promise<SessionState> => {
     localStorage.removeItem(SESSION_KEY);

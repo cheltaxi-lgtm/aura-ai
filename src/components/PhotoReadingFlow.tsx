@@ -2,7 +2,7 @@
 
 import ReportExportActions from "@/components/reports/ReportExportActions";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   Camera,
@@ -40,7 +40,13 @@ import {
 } from "@/lib/photo-reading-constants";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { blobFromBase64, compressBlobToLimit, compressImageForUpload } from "@/lib/compress-image-client";
-import { consumePhotoAuthDraft, savePhotoAuthDraft, type PhotoAuthDraft } from "@/lib/photo-auth-draft";
+import {
+  clearPhotoAuthDraft,
+  consumePhotoAuthDraft,
+  enforcePhotoAuthDraftExpiry,
+  savePhotoAuthDraft,
+  type PhotoAuthDraft,
+} from "@/lib/photo-auth-draft";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import { useDialogFocus } from "@/lib/useDialogFocus";
 import PhotoSpreadPreview from "@/components/PhotoSpreadPreview";
@@ -389,7 +395,11 @@ export default function PhotoReadingFlow({
     effectiveCost: number;
     firstPhotoDiscount: boolean;
   } | null>(null);
-  useDialogFocus(dialogRef, open, loading ? undefined : onClose);
+  const discardDraftAndClose = useCallback(() => {
+    clearPhotoAuthDraft(window.sessionStorage);
+    onClose();
+  }, [onClose]);
+  useDialogFocus(dialogRef, open, loading ? undefined : discardDraftAndClose);
 
   const selectedMaster = findShowcaseMaster(masterId, masters);
   const aiMasters = useMemo(
@@ -606,7 +616,9 @@ export default function PhotoReadingFlow({
   useEffect(() => {
     if (!open || !isLoggedIn) return;
     let draft: PhotoAuthDraft | null = null;
+    let remainingMs: number | null = null;
     try {
+      remainingMs = enforcePhotoAuthDraftExpiry(window.sessionStorage);
       draft = consumePhotoAuthDraft(window.sessionStorage);
     } catch {
       // Storage may be disabled; the ordinary upload remains available.
@@ -648,6 +660,12 @@ export default function PhotoReadingFlow({
     }
     setDraftRestored(true);
     trackPhotoReadingPhase("draft_restored", { mode: draft.mode, has_photo: Boolean(draft.image) });
+    if (remainingMs === null) return;
+    const expiryTimer = window.setTimeout(() => {
+      clearPhotoAuthDraft(window.sessionStorage);
+      setDraftRestored(false);
+    }, remainingMs + 50);
+    return () => window.clearTimeout(expiryTimer);
   }, [open, isLoggedIn, aiMasters]);
 
   const markModeBootedRef = useRef(false);
@@ -766,6 +784,7 @@ export default function PhotoReadingFlow({
   };
 
   const startManualSpread = () => {
+    clearPhotoAuthDraft(window.sessionStorage);
     if (runesBlocked) {
       onInsufficientRunes?.({ balance: runeBalance, required: photoCost });
       onOpenPaywall?.();
@@ -783,6 +802,7 @@ export default function PhotoReadingFlow({
       setError("Выберите изображение (JPG, PNG, WebP или HEIC)");
       return;
     }
+    clearPhotoAuthDraft(window.sessionStorage);
     setError("");
     setResult(null);
     setRedrawSpread(null);
@@ -878,6 +898,7 @@ export default function PhotoReadingFlow({
   };
 
   const clearImage = () => {
+    clearPhotoAuthDraft(window.sessionStorage);
     mergeBaseSpreadRef.current = null;
     setMergeBaseCount(null);
     if (previewObjectUrlRef.current) {
@@ -1224,6 +1245,7 @@ export default function PhotoReadingFlow({
           redrawSpread,
           idempotencyKey,
         });
+        clearPhotoAuthDraft(window.sessionStorage);
       } catch (err) {
         setError(
           err instanceof Error && err.message
@@ -1308,6 +1330,8 @@ export default function PhotoReadingFlow({
         trackPhotoReadingPhase("interpret_fail");
         return;
       }
+
+      clearPhotoAuthDraft(window.sessionStorage);
 
       // Charge/job dedupe: first interpret still running — resume without fail UI.
       if (data.pending || (data.reused && !String(data.analysis ?? data.reply ?? "").trim())) {
@@ -1534,7 +1558,7 @@ export default function PhotoReadingFlow({
               <button
                 type="button"
                 autoFocus
-                onClick={onClose}
+                onClick={discardDraftAndClose}
                 disabled={loading}
                 className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-white/10 bg-white/5 text-gray-400 transition-colors hover:text-white disabled:opacity-40"
                 aria-label="Закрыть окно"
@@ -2080,7 +2104,7 @@ export default function PhotoReadingFlow({
               )}
 
               {step === "confirm" && (
-                <div className="flex gap-3">
+                <div className="flex flex-col gap-3 sm:flex-row">
                   <button
                     type="button"
                     onClick={() => void interpret()}
@@ -2098,7 +2122,7 @@ export default function PhotoReadingFlow({
                       ) : !confirmFacesReady ? (
                         <><Loader2 className="h-4 w-4 animate-spin" />Проявляем карты…</>
                       ) : !isLoggedIn ? (
-                        <>Открыть полный разбор<ArrowRight className="h-4 w-4" /></>
+                        <>Создать аккаунт и продолжить<ArrowRight className="h-4 w-4" /></>
                       ) : (
                         <>Подтвердить<ArrowRight className="h-4 w-4" /></>
                       )}
@@ -2118,6 +2142,16 @@ export default function PhotoReadingFlow({
                   >
                     Назад
                   </button>
+                  {!isLoggedIn ? (
+                    <button
+                      type="button"
+                      onClick={() => continueThroughAuth("login")}
+                      disabled={loading}
+                      className="btn-luxe btn-luxe--md btn-luxe--ghost shrink-0 disabled:opacity-40"
+                    >
+                      Уже есть аккаунт
+                    </button>
+                  ) : null}
                 </div>
               )}
 

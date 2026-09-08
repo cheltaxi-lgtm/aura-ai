@@ -710,7 +710,7 @@ export default function GuestTripletDraw({
     <button
       type="button"
       onClick={exitToLanding}
-      className="mb-4 inline-flex items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-aura-gold/25 hover:text-white"
+      className="mb-4 inline-flex min-h-11 items-center gap-2 rounded-xl border border-white/10 bg-black/25 px-4 py-2 text-sm text-gray-300 transition-colors hover:border-aura-gold/25 hover:text-white"
     >
       <ArrowLeft className="h-4 w-4" aria-hidden />
       На главную

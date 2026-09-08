@@ -82,11 +82,17 @@ export function savePhotoAuthDraft(draft: PhotoAuthDraft, storage: DraftStorage,
 export function consumePhotoAuthDraft(storage: DraftStorage, now = Date.now()): PhotoAuthDraft | null {
   try {
     const raw = storage.getItem(PHOTO_AUTH_DRAFT_KEY);
-    storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
-    if (!raw || raw.length > MAX_BASE64_LENGTH + 30_000) return null;
+    if (!raw) return null;
+    if (raw.length > MAX_BASE64_LENGTH + 30_000) {
+      storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+      return null;
+    }
     const d = JSON.parse(raw);
     const expiresAt = d?.expiresAt;
-    if (!validDraft(d) || !Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + PHOTO_AUTH_DRAFT_TTL_MS) return null;
+    if (!validDraft(d) || !Number.isFinite(expiresAt) || expiresAt <= now || expiresAt > now + PHOTO_AUTH_DRAFT_TTL_MS) {
+      storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+      return null;
+    }
     // Whitelist fields: browser state cannot restore a session, balance, or free flag.
     return {
       mode: d.mode,
@@ -104,7 +110,21 @@ export function consumePhotoAuthDraft(storage: DraftStorage, now = Date.now()): 
       } : {}),
     };
   } catch {
+    try {
+      storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+    } catch {
+      /* storage unavailable */
+    }
     return null;
+  }
+}
+
+/** Clear the handoff only after interpretation has started successfully or the user resets it. */
+export function clearPhotoAuthDraft(storage: Pick<Storage, "removeItem">): void {
+  try {
+    storage.removeItem(PHOTO_AUTH_DRAFT_KEY);
+  } catch {
+    /* storage unavailable */
   }
 }
 

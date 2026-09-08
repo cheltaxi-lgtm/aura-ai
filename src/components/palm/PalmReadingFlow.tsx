@@ -195,12 +195,14 @@ export default function PalmReadingFlow() {
         });
       })
       .catch(() => undefined);
-    void fetch("/api/runes/balance", { credentials: "include", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
-      .then((data) => {
-        if (!cancelled && typeof data?.balance === "number") setRuneBalance(data.balance);
-      })
-      .catch(() => undefined);
+    if (isLoggedIn) {
+      void fetch("/api/runes/balance", { credentials: "include", cache: "no-store" })
+        .then((r) => (r.ok ? r.json() : null))
+        .then((data) => {
+          if (!cancelled && typeof data?.balance === "number") setRuneBalance(data.balance);
+        })
+        .catch(() => undefined);
+    }
     return () => {
       cancelled = true;
     };
@@ -941,7 +943,7 @@ export default function PalmReadingFlow() {
                   disabled={ageConfirming}
                   className="btn-luxe btn-luxe--md btn-luxe--gold"
                 >
-                  {ageConfirming ? "Подтверждаем…" : "Мне есть 18"}
+                  {ageConfirming ? "Подтверждаем…" : "Мне исполнилось 18 лет"}
                 </button>
               </div>
             )}
@@ -1125,8 +1127,18 @@ export default function PalmReadingFlow() {
                   }}
                   className="btn-luxe btn-luxe--md btn-luxe--gold"
                 >
-                  Продолжить и получить разбор
+                  Создать аккаунт и продолжить
                 </Link>
+                <Link
+                  href={buildLoginHref("/gadanie-po-ladoni")}
+                  className="inline-flex min-h-11 items-center justify-center text-sm text-aura-champagne/80 underline underline-offset-4"
+                >
+                  Уже есть аккаунт — войти
+                </Link>
+                <p className="text-xs text-white/45">
+                  После входа откроется тот же результат. Файл фото на сервере не хранится;
+                  стоимость полного разбора вы подтвердите отдельно.
+                </p>
               </div>
             )}
 

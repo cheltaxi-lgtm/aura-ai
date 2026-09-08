@@ -272,7 +272,7 @@ describe("seo-new-landings", () => {
     expect(taro).toContain('href="/?spread=1"');
     expect(taro).toContain("Выбрать три карты бесплатно");
     expect(taro).not.toContain("/?spread=triplet");
-    expect(taro).toContain("Это не карта дня");
+    expect(taro).toContain("Карта дня — отдельный ежедневный ритуал");
 
     const gadanie = read("src/app/gadanie/page.tsx");
     expect(gadanie).toContain('href="/?ask=1&spread=1"');

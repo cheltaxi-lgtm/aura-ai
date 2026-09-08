@@ -126,12 +126,14 @@ export default function AuraReadingFlow() {
   const [recentAck, setRecentAck] = useState<false | "new">(false);
   const [nameClash, setNameClash] = useState<AuraPickerSubject | null>(null);
   const [similarColorHint, setSimilarColorHint] = useState<string | null>(null);
+  const [claimStatus, setClaimStatus] = useState<"idle" | "claiming" | "claimed" | "failed">("idle");
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const pollAbortRef = useRef<AbortController | null>(null);
   const claimAttemptedRef = useRef(false);
+  const claimSucceededRef = useRef(false);
   const pendingFileRef = useRef<File | Blob | null>(null);
   const deepLinkedReadingRef = useRef<string | null>(null);
 
@@ -174,6 +176,47 @@ export default function AuraReadingFlow() {
       })
       .catch(() => undefined);
   }, [isLoggedIn, othersOn]);
+
+  const claimGuestSnapshot = useCallback(async () => {
+    setClaimStatus("claiming");
+    setError(null);
+    try {
+      const response = await fetch("/api/aura/claim", {
+        method: "POST",
+        credentials: "include",
+      });
+      const data = await response.json().catch(() => null);
+      if (!response.ok && (data?.code === "NO_CLAIM_TOKEN" || data?.code === "ALREADY_CLAIMED")) {
+        // Normal authenticated visit without a guest handoff. `/today` remains
+        // authoritative and will restore an already-owned snapshot if present.
+        setClaimStatus("idle");
+        return;
+      }
+      if (!response.ok || !data?.ok || !data.snapshot || typeof data.snapshotId !== "string") {
+        throw new Error("Не удалось сохранить результат в аккаунте. Проверьте соединение и повторите попытку.");
+      }
+      claimSucceededRef.current = true;
+      setClaimStatus("claimed");
+      setSnapshot(data.snapshot as FlowSnapshot);
+      setSnapshotId(data.snapshotId);
+      setDayLocked(true);
+      setStep((prev) => (prev === "report" ? prev : "claimed"));
+      if (typeof data.subjectId === "string") setSelectedSubjectId(data.subjectId);
+      if (data.subjectKind === "other" || data.subjectKind === "self") {
+        setSubjectKind(data.subjectKind);
+      }
+      if (typeof data.subjectName === "string") setDraftName(data.subjectName);
+      refreshSubjects();
+      trackProductFunnel("claim_complete", { product: "aura", source: "aura_flow" });
+    } catch (reason) {
+      setClaimStatus("failed");
+      setError(
+        reason instanceof Error
+          ? reason.message
+          : "Не удалось сохранить результат в аккаунте. Повторите попытку."
+      );
+    }
+  }, [refreshSubjects]);
 
   useEffect(() => {
     if (authLoading || !featuresLoaded) return;
@@ -266,7 +309,9 @@ export default function AuraReadingFlow() {
           if (data.paid === true && typeof data.report === "string" && data.report.trim()) {
             setReport(data.report); setExportHistoryId(data.historyId ?? null);
             setStep("report");
-          } else if (data.claimed === true || isLoggedIn) {
+          } else if (data.claimed === true || claimSucceededRef.current) {
+            claimSucceededRef.current = true;
+            setClaimStatus("claimed");
             setStep("claimed");
           } else {
             setStep("teaser");
@@ -304,28 +349,8 @@ export default function AuraReadingFlow() {
   useEffect(() => {
     if (authLoading || !isLoggedIn || requestedReadingId || claimAttemptedRef.current) return;
     claimAttemptedRef.current = true;
-    void fetch("/api/aura/claim", { method: "POST", credentials: "include" })
-      .then(async (r) => {
-        if (!r.ok) return null;
-        return r.json();
-      })
-      .then((data) => {
-        if (data?.ok && data.snapshot && typeof data.snapshotId === "string") {
-          setSnapshot(data.snapshot as FlowSnapshot);
-          setSnapshotId(data.snapshotId);
-          setDayLocked(true);
-          setStep((prev) => (prev === "report" ? prev : "claimed"));
-          if (typeof data.subjectId === "string") setSelectedSubjectId(data.subjectId);
-          if (data.subjectKind === "other" || data.subjectKind === "self") {
-            setSubjectKind(data.subjectKind);
-          }
-          if (typeof data.subjectName === "string") setDraftName(data.subjectName);
-          refreshSubjects();
-          trackProductFunnel("claim_complete", { product: "aura", source: "aura_flow" });
-        }
-      })
-      .catch(() => undefined);
-  }, [authLoading, isLoggedIn, requestedReadingId, refreshSubjects]);
+    void claimGuestSnapshot();
+  }, [authLoading, isLoggedIn, requestedReadingId, claimGuestSnapshot]);
 
   // Past auras archive — loaded whenever the capture step is shown to a
   // logged-in user (covers initial visit and post-reading reset).
@@ -1217,7 +1242,7 @@ export default function AuraReadingFlow() {
 
             {reusedKind === "photo" ? (
               <p role="status" className="text-center text-xs leading-relaxed text-white/60">
-                Это тот же портрет: возвращаю сохранённый снимок, без нового кручения.
+                Это тот же портрет: возвращаю сохранённый результат без повторной съёмки.
               </p>
             ) : null}
             <AuraCadenceHint
@@ -1232,25 +1257,53 @@ export default function AuraReadingFlow() {
 
             {step === "teaser" ? (
               <div className="space-y-3 text-center">
-                <p className="text-sm text-white/55">
-                  Полный разбор — семь слоёв поля, чакры и практика — после регистрации.
-                  {pricing?.firstAuraDiscount !== false && (
-                    <> Первый разбор — {formatRunes(auraCost)} вместо {formatRunes(auraBaseCost)}.</>
-                  )}
-                </p>
-                <Link
-                  href={buildRegisterHref("/aura")}
-                  onClick={() =>
-                    trackProductFunnel("auth_cta", { product: "aura", source: "aura_flow" })
-                  }
-                  className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
-                >
-                  <Sparkles className="mr-2 h-4 w-4" />
-                  Продолжить и получить разбор
-                </Link>
-                <p className="text-xs text-white/40">
-                  Снимок сохранится — после входа вы продолжите с того же портрета.
-                </p>
+                {isLoggedIn ? (
+                  <>
+                    <p className="text-sm text-white/60" role={claimStatus === "claiming" ? "status" : undefined}>
+                      {claimStatus === "claiming"
+                        ? "Сохраняем результат в вашем аккаунте…"
+                        : "Результат ещё не привязан к аккаунту. Повторите сохранение, чтобы продолжить без потери данных."}
+                    </p>
+                    {claimStatus === "failed" ? (
+                      <button
+                        type="button"
+                        onClick={() => void claimGuestSnapshot()}
+                        className="btn-luxe btn-luxe--md btn-luxe--gold"
+                      >
+                        Повторить сохранение
+                      </button>
+                    ) : null}
+                  </>
+                ) : (
+                  <>
+                    <p className="text-sm text-white/55">
+                      Полный разбор — семь слоёв поля, чакры и практика — после регистрации.
+                      {pricing?.firstAuraDiscount !== false && (
+                        <> Первый разбор — {formatRunes(auraCost)} вместо {formatRunes(auraBaseCost)}.</>
+                      )}
+                    </p>
+                    <Link
+                      href={buildRegisterHref("/aura")}
+                      onClick={() =>
+                        trackProductFunnel("auth_cta", { product: "aura", source: "aura_flow" })
+                      }
+                      className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex"
+                    >
+                      <Sparkles className="mr-2 h-4 w-4" />
+                      Создать аккаунт и продолжить
+                    </Link>
+                    <Link
+                      href={buildLoginHref("/aura")}
+                      className="inline-flex min-h-11 items-center justify-center text-sm text-aura-champagne/80 underline underline-offset-4"
+                    >
+                      Уже есть аккаунт — войти
+                    </Link>
+                    <p className="text-xs text-white/40">
+                      После входа откроется тот же результат. Файл фото на сервере не хранится;
+                      стоимость полного разбора вы подтвердите отдельно.
+                    </p>
+                  </>
+                )}
               </div>
             ) : (
               <div className="space-y-3 text-center">

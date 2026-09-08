@@ -600,7 +600,7 @@ export default function NatalGuestCalculator() {
                     }}
                     className="inline-flex items-center justify-center rounded-xl bg-aura-gold px-4 py-2.5 text-sm font-semibold text-black"
                   >
-                    {FREE_TO_PAID.natal.buyLabel}
+                    Создать аккаунт и продолжить
                   </a>
                   <a
                     href={buildLoginHref(RESUME_RETURN)}
@@ -612,6 +612,11 @@ export default function NatalGuestCalculator() {
                 </>
               )}
             </div>
+            {!isLoggedIn ? (
+              <p className="mt-3 text-xs leading-relaxed text-white/45">
+                Карта сохранится. Стоимость полной трактовки вы увидите и подтвердите отдельно.
+              </p>
+            ) : null}
           </div>
 
           {result.western ? (

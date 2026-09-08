@@ -32,6 +32,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/masters",
   "/api/platform/features",
   "/api/platform/status",
+  "/api/stats/public",
   "/api/runes/config",
   "/api/runes/packages",
   "/api/ritual/moon",

@@ -74,7 +74,7 @@ export function useHomeFlow(options: UseHomeFlowOptions) {
   } = options;
 
   const { session, loading: sessionLoading, refresh, reconnectSession, spawnSession } =
-    useAuraSession(referrerSlug);
+    useAuraSession(referrerSlug, { isLoggedIn, authLoading });
 
   const [step, setStepState] = useState<FlowStep>("intro");
   const [flowBootstrapped, setFlowBootstrapped] = useState(false);

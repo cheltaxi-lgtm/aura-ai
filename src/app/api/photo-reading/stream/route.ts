@@ -154,7 +154,10 @@ export async function POST(request: NextRequest) {
   }
 
   const photoSpreadKey = buildPhotoSpreadKey(characterId, confirmedSpread, question);
-  const lockKey = idempotencyKey || photoSpreadKey;
+  // The same confirmed spread must share one lock and one first-charge key even
+  // after a reload gives the browser a different request idempotency key.
+  const lockKey = photoSpreadKey;
+  const billingIdempotencyKey = `photo-reading:${photoSpreadKey}`;
 
   const profileUserId = workerUserId
     ? workerUserId
@@ -262,9 +265,7 @@ export async function POST(request: NextRequest) {
             ? "Фото-расклад (первая скидка 50%)"
             : undefined,
           sessionId,
-          idempotencyKey:
-            idempotencyKey ||
-            (sessionId ? `photo-reading:${sessionId}` : undefined),
+          idempotencyKey: billingIdempotencyKey,
         });
         billingCharge = charge;
         runeBalance = charge.newBalance;

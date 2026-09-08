@@ -86,6 +86,10 @@ export default defineConfig({
         timeout: 120_000,
         env: {
           ...process.env,
+          PRO_MODULE_ENABLED: process.env.PRO_MODULE_ENABLED ?? "true",
+          PALM_MODULE_ENABLED: process.env.PALM_MODULE_ENABLED ?? "true",
+          AURA_MODULE_ENABLED: process.env.AURA_MODULE_ENABLED ?? "true",
+          PLAYWRIGHT_ENABLE_PALM: "true",
           NEXT_DIST_DIR: ".next-e2e",
           PORT: "3417",
         },

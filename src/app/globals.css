@@ -277,7 +277,7 @@ body,
   }
 
   .btn-luxe--sm {
-    @apply min-h-[2.125rem] px-3 py-1.5 text-xs;
+    @apply min-h-11 px-3 py-1.5 text-xs;
   }
 
   .btn-luxe--md {

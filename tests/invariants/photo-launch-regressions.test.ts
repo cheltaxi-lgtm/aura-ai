@@ -1,7 +1,9 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const m = vi.hoisted(() => ({
-  charge: vi.fn(), refund: vi.fn(), prior: vi.fn(), generate: vi.fn(), save: vi.fn(), failed: vi.fn(), events: [] as string[],
+  charge: vi.fn(), refund: vi.fn(), prior: vi.fn(), generate: vi.fn(), save: vi.fn(),
+  find: vi.fn(), fromContext: vi.fn(), failed: vi.fn(), events: [] as string[],
+  lockKeys: [] as string[], lockTail: Promise.resolve(), persisted: false,
 }));
 vi.mock("@/lib/db", () => ({ ensureDb: async () => true }));
 vi.mock("@/lib/settings", () => ({ isPhotoReadingEnabled: async () => true }));
@@ -27,13 +29,18 @@ vi.mock("@/lib/services/billing-service", () => ({
 }));
 vi.mock("@/lib/photo-reading-billing", () => ({ resolvePhotoReadingPricing: async () => ({ effectiveCost: 30, firstPhotoDiscount: false }) }));
 vi.mock("@/lib/photo-reading-idempotency", () => ({
-  buildPhotoSpreadKey: () => "spread-key", findPhotoReadingEntry: async () => null,
+  buildPhotoSpreadKey: () => "spread-key", findPhotoReadingEntry: m.find,
   getPhotoChargeReuseState: m.prior,
-  withPhotoReadingLock: async (_user: string, _key: string, fn: () => Promise<unknown>) => {
-    try { return await fn(); } finally { m.events.push("unlock"); }
+  withPhotoReadingLock: async (_user: string, key: string, fn: () => Promise<unknown>) => {
+    m.lockKeys.push(key);
+    const previous = m.lockTail;
+    let release = () => {};
+    m.lockTail = new Promise<void>((resolve) => { release = resolve; });
+    await previous;
+    try { return await fn(); } finally { m.events.push("unlock"); release(); }
   },
 }));
-vi.mock("@/lib/photo-reading-persist", () => ({ persistPhotoReadingResult: m.save, photoReadingJsonFromContext: vi.fn() }));
+vi.mock("@/lib/photo-reading-persist", () => ({ persistPhotoReadingResult: m.save, photoReadingJsonFromContext: m.fromContext }));
 vi.mock("@/lib/async-job-worker-auth", () => ({ getAsyncJobWorkerUserId: () => null, isAsyncJobWorkerConfigured: () => false }));
 vi.mock("@/lib/async-job-enqueue", () => ({ enqueuePaidAsyncJob: vi.fn() }));
 vi.mock("@/lib/async-job-lifecycle", () => ({
@@ -52,9 +59,9 @@ vi.mock("@/lib/photo-reading-stream", () => ({
 }));
 import { POST } from "@/app/api/photo-reading/stream/route";
 
-function request(async = true) {
+function request(async = true, idempotencyKey = "photo-key") {
   return new NextRequest("http://localhost/api/photo-reading/stream", { method: "POST", body: JSON.stringify({
-    async, question: "test", idempotencyKey: "photo-key", confirmedSpread: { cards: [{ name: "Солнце" }], deckType: "tarot", spreadType: "single" },
+    async, question: "test", idempotencyKey, confirmedSpread: { cards: [{ name: "Солнце" }], deckType: "tarot", spreadType: "single" },
   }) });
 }
 
@@ -62,10 +69,15 @@ describe("photo delivery and refund regressions", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     m.events.length = 0;
+    m.lockKeys.length = 0;
+    m.lockTail = Promise.resolve();
+    m.persisted = false;
     m.charge.mockReset().mockResolvedValue({ spentRunes: 30, newBalance: 270, wasFreeQuestion: false, transactionId: "charge-1" });
     m.refund.mockReset().mockResolvedValue({ balance: 300, refunded: true });
     m.generate.mockReset().mockResolvedValue({ reply: "saved reading", llmFailed: false });
-    m.save.mockImplementation(async () => { m.events.push("save"); return "history"; });
+    m.find.mockReset().mockResolvedValue(null);
+    m.fromContext.mockReset().mockReturnValue({ analysis: "saved reading", saved: true, historyId: "history", cached: true });
+    m.save.mockImplementation(async () => { m.events.push("save"); m.persisted = true; return "history"; });
   });
   it("returns a saved JSON result for async clients when the worker is unavailable", async () => {
     const response = await POST(request());
@@ -100,5 +112,21 @@ describe("photo delivery and refund regressions", () => {
     const response = await POST(request(false));
     expect(await response.text()).toContain("data: done");
     expect(m.events).toEqual(["save", "unlock"]);
+  });
+  it("serializes two browser keys for the same spread and charges only once", async () => {
+    m.find.mockImplementation(async () => m.persisted
+      ? { id: "history", context_data: { analysis: "saved reading" }, is_paid: true, created_at: new Date() }
+      : null);
+    const [first, second] = await Promise.all([
+      POST(request(true, "browser-key-before-reload")),
+      POST(request(true, "browser-key-after-reload")),
+    ]);
+    expect(await first.json()).toMatchObject({ analysis: "saved reading" });
+    expect(await second.json()).toMatchObject({ analysis: "saved reading" });
+    expect(m.lockKeys).toEqual(["spread-key", "spread-key"]);
+    expect(m.charge).toHaveBeenCalledTimes(1);
+    expect(m.charge).toHaveBeenCalledWith(expect.objectContaining({
+      idempotencyKey: "photo-reading:spread-key",
+    }));
   });
 });

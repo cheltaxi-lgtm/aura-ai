@@ -72,7 +72,8 @@ describe("direction UX contract", () => {
     const calculator = read("src/components/human-design/HdCalculator.tsx");
     expect(calculator).toContain("const [authenticated, setAuthenticated]");
     expect(calculator).toContain("authenticated={authenticated}");
-    expect(calculator).toContain("profileReady={accountReady}");
+    expect(calculator).toContain("accountReady &&");
+    expect(calculator).toContain("!readHdClaimToken(result.fingerprint)");
     expect(calculator).not.toContain("authenticated={accountReady}");
   });
 
@@ -98,7 +99,8 @@ describe("direction UX contract", () => {
   it("uses one Photo full-report conversion action", () => {
     const photo = read("src/components/PhotoReadingFlow.tsx");
     const preview = read("src/components/PhotoSpreadPreview.tsx");
-    expect(photo.match(/Открыть полн(?:ую расшифровку|ый разбор)/g)).toHaveLength(1);
+    expect(photo.match(/Создать аккаунт и продолжить/g)).toHaveLength(1);
+    expect(photo).toContain('continueThroughAuth("login")');
     expect(photo).toContain("nothing to preload before the guest can add the first symbol");
     expect(preview).toContain("onFacesReadyChange?.(true)");
     expect(photo).not.toContain('if (!isLoggedIn) return;\n    if (runesBlocked) return;');
@@ -113,5 +115,40 @@ describe("direction UX contract", () => {
     expect(workspace).toContain('label: "Западный разбор"');
     expect(workspace).toContain('label: "Ведический разбор"');
     expect(workspace).toContain('label: "Мои отчёты"');
+  });
+
+  it("keeps primary mobile touch targets at least 44px high", () => {
+    const globals = read("src/app/globals.css");
+    const hd = read("src/components/human-design/HdCalculator.tsx");
+    const photoCss = read("src/styles/photo-flow.css");
+    const tarot = read("src/components/GuestTripletDraw.tsx");
+    expect(globals.slice(globals.indexOf(".btn-luxe--sm"), globals.indexOf(".btn-luxe--md"))).toContain("min-h-11");
+    expect(hd.match(/min-h-11 rounded-full/g)).toHaveLength(2);
+    expect(photoCss.slice(photoCss.indexOf(".photo-flow-hint button"), photoCss.indexOf(".photo-flow-preview-shell"))).toContain("min-height: 44px");
+    expect(tarot).toContain('className="mb-4 inline-flex min-h-11');
+  });
+
+  it("avoids expected guest HTTP errors and gates paid actions until claims finish", () => {
+    const middleware = read("src/middleware.ts");
+    const session = read("src/lib/useSession.ts");
+    const palm = read("src/components/palm/PalmReadingFlow.tsx");
+    const aura = read("src/components/aura/AuraReadingFlow.tsx");
+    expect(middleware).toContain('"/api/stats/public"');
+    expect(session).toContain('if (!authState.isLoggedIn && !isAgeGateConfirmed())');
+    expect(palm).toMatch(/if \(isLoggedIn\) \{\s+void fetch\("\/api\/runes\/balance"/);
+    expect(aura).toContain('setClaimStatus("claiming")');
+    expect(aura).toContain('data?.code === "NO_CLAIM_TOKEN"');
+    expect(aura).not.toContain('data.claimed === true || isLoggedIn');
+    expect(aura).toContain("Повторить сохранение");
+  });
+
+  it("returns Natal to its report choice and labels destructive Matrix replacement", () => {
+    const claim = read("src/app/api/natal-chart/claim/route.ts");
+    const workspace = read("src/components/natal/AstrologyWorkspace.tsx");
+    const matrix = read("src/components/numerolog/DestinyMatrixPreview.tsx");
+    expect(claim).toContain("natalClaimed=1&tab=western");
+    expect(workspace).toContain('search.get("natalClaimed") === "1"');
+    expect(matrix).toContain("Удалить старый разбор и создать новый");
+    expect(matrix).toContain("Повторить сохранение");
   });
 });

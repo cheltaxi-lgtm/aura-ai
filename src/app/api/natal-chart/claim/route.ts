@@ -95,7 +95,7 @@ export async function POST(request: NextRequest) {
     ok: true,
     status: result.status,
     artifactId: result.artifactId,
-    workspacePath: "/cabinet/astrology?natalClaimed=1",
+    workspacePath: "/cabinet/astrology?natalClaimed=1&tab=western",
   });
   clearNatalGuestClaimCookieOnResponse(response, request);
   return response;

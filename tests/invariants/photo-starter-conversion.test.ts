@@ -85,13 +85,14 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
     expect(uploadBlock).toContain("Бесплатно распознаем карты");
     expect(uploadBlock).not.toContain("continueThroughAuth");
 
-    // Registration value appears only after cards are recognized. The single primary
-    // action delegates to registration; login remains available on that auth screen.
+    // Registration value appears only after cards are recognized. The primary action
+    // states that an account is created; existing clients keep a direct login action.
     const teaserStart = modal.indexOf("{!isLoggedIn && confirmFacesReady");
     const teaserBlock = modal.slice(teaserStart, modal.indexOf("{/* ── STEP: RESULT", teaserStart));
     expect(teaserBlock).toContain('StarterRunesValue variant="badge"');
     expect(modal).toMatch(/if \(!isLoggedIn\) \{\s*continueThroughAuth\("register"\);/);
-    expect(modal.match(/Открыть полный разбор/g)).toHaveLength(1);
+    expect(modal.match(/Создать аккаунт и продолжить/g)).toHaveLength(1);
+    expect(modal).toContain('continueThroughAuth("login")');
 
     const register = readSrc("src/app/auth/user/register/page.tsx");
     expect(register).toContain('StarterRunesValue variant="badge" generic');
@@ -111,6 +112,16 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
     expect(authForm).toContain('trackSeoEvent("starter_runes_granted"');
     const modal = readSrc("src/components/PhotoReadingFlow.tsx");
     expect(modal).toContain('trackPhotoReadingPhase("open", { mode: initialMode, authed: isLoggedIn })');
+  });
+
+  it("discards a restored photo only after an explicit replace, reset or close", () => {
+    const modal = readSrc("src/components/PhotoReadingFlow.tsx");
+    expect(modal).toContain("const discardDraftAndClose = useCallback");
+    expect(modal).toMatch(/const startManualSpread = \(\) => \{\s*clearPhotoAuthDraft/);
+    expect(modal).toMatch(/const handleFile = async[\s\S]{0,400}clearPhotoAuthDraft/);
+    expect(modal).toMatch(/const clearImage = \(\) => \{\s*clearPhotoAuthDraft/);
+    expect(modal).toContain("remainingMs = enforcePhotoAuthDraftExpiry(window.sessionStorage)");
+    expect(modal).toContain("onClick={discardDraftAndClose}");
   });
 
   it("landing SEO-critical markup is unchanged (H1, metadata, canonical path)", () => {

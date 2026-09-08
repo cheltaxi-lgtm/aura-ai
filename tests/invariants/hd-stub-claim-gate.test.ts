@@ -24,9 +24,10 @@ describe("hd-stub-claim-gate", () => {
     expect(src).toMatch(/const ready = Boolean\(d\?\.authenticated && !d\?\.needsProfile\)/);
     expect(src).toMatch(/setBirthProfileReady\(Boolean\(ready && !d\?\.needsBirthProfile\)\)/);
 
-    // Claim effect gated by accountReady only.
+    // Claim effect is still gated by accountReady only and now waits for the
+    // claim result before enabling paid report actions.
     expect(src).toMatch(
-      /accountReady is enough[\s\S]{0,200}if \(!accountReady\) return;\s*void claimAllPendingHdCharts/
+      /Claim completes before the report panel[\s\S]{0,220}if \(!accountReady \|\| claimStartedRef\.current\) return;[\s\S]{0,100}void claimGuestCharts/
     );
   });
 

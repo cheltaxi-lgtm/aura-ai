@@ -426,6 +426,9 @@ export async function isAuraReadingEnabled(): Promise<boolean> {
  * Both PALM_MODULE_ENABLED=true and the admin toggle must allow it.
  */
 export async function isPalmReadingEnabled(): Promise<boolean> {
+  if (process.env.NODE_ENV !== "production" && process.env.PLAYWRIGHT_ENABLE_PALM === "true") {
+    return true;
+  }
   if (process.env.PALM_MODULE_ENABLED !== "true") return false;
   const settings = await getSetting("palmReading");
   return settings.enabled === true;

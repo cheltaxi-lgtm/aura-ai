@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { consumePhotoAuthDraft, enforcePhotoAuthDraftExpiry, savePhotoAuthDraft, PHOTO_AUTH_DRAFT_KEY, PHOTO_AUTH_DRAFT_TTL_MS, type PhotoAuthDraft } from "@/lib/photo-auth-draft";
+import { clearPhotoAuthDraft, consumePhotoAuthDraft, enforcePhotoAuthDraftExpiry, savePhotoAuthDraft, PHOTO_AUTH_DRAFT_KEY, PHOTO_AUTH_DRAFT_TTL_MS, type PhotoAuthDraft } from "@/lib/photo-auth-draft";
 
 function storage() {
   const items = new Map<string, string>();
@@ -20,11 +20,13 @@ const draft: PhotoAuthDraft = {
 };
 
 describe("photo input survives authentication without granting authority", () => {
-  it("restores the photo and question exactly once", () => {
+  it("keeps the photo and question until interpretation starts", () => {
     const s = storage();
     expect(savePhotoAuthDraft(draft, s, 100)).toBe(true);
     expect(consumePhotoAuthDraft(s, 200)).toEqual(draft);
-    expect(consumePhotoAuthDraft(s, 201)).toBeNull();
+    expect(consumePhotoAuthDraft(s, 201)).toEqual(draft);
+    clearPhotoAuthDraft(s);
+    expect(consumePhotoAuthDraft(s, 202)).toBeNull();
   });
   it("preserves manual entry without a photo", () => {
     const s = storage();

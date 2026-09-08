@@ -52,8 +52,8 @@ describe("multiproduct-seo-discoverability", () => {
       },
       {
         path: "/numerology/destiny-matrix",
-        title: "Полная матрица судьбы по дате рождения",
-        description: "Полная матрица судьбы онлайн бесплатно",
+        title: "Матрица судьбы онлайн: бесплатная схема и персональный разбор",
+        description: "Бесплатная схема матрицы судьбы по дате рождения",
         file: "src/app/numerology/[slug]/page.tsx",
       },
       {

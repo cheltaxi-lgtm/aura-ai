@@ -101,6 +101,7 @@ describe("aura-subjects", () => {
     const landing = read("src/app/aura/page.tsx");
     expect(landing).toContain("Один снимок себя на календарный день");
     expect(landing).toContain("Можно снять ауру другого человека?");
-    expect(landing).toContain("без выбора слота другой кадр даст другой цвет");
+    expect(landing).toContain("Для каждого человека доступен один результат в день");
+    expect(landing).toContain("Файл фото на сервере не хранится");
   });
 });

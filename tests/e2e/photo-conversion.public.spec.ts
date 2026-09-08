@@ -78,13 +78,13 @@ test("the guest sees recognized cards before registration and resumes them witho
   await expect(dialog.getByText("В центре расклада — «Шут»")).toBeVisible();
   await expect(dialog.getByLabel("Результат распознавания: проверьте расклад")).toBeFocused();
   await expect(dialog.getByAltText("Распознанная карта: Шут")).toBeInViewport();
-  await expect(dialog.getByRole("button", { name: "Открыть полный разбор" })).toBeInViewport();
+  await expect(dialog.getByRole("button", { name: "Создать аккаунт и продолжить" })).toBeInViewport();
   await page.screenshot({ path: info.outputPath("photo-guest-teaser-mobile.png") });
   await expect(page).not.toHaveURL(/auth\/user\/(login|register)/);
   expect(f.calls.filter((c) => c === "POST /api/photo-reading/recognize")).toHaveLength(1);
   expect(f.calls.some((c) => /photo-reading\/(interpret|stream)/.test(c))).toBe(false);
 
-  await dialog.getByRole("button", { name: "Открыть полный разбор" }).click();
+  await dialog.getByRole("button", { name: "Создать аккаунт и продолжить" }).click();
   await expect(page).toHaveURL(/auth\/user\/register/);
   await page.waitForLoadState("domcontentloaded");
   const saved = await page.evaluate((key) => JSON.parse(sessionStorage.getItem(key)!), PHOTO_AUTH_DRAFT_KEY);
@@ -99,7 +99,7 @@ test("the guest sees recognized cards before registration and resumes them witho
   }
   await expect(dialog.getByText("Карты уже распознаны — проверьте расклад и откройте полную расшифровку.")).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeVisible();
-  expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).toBeNull();
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).not.toBeNull();
   expect(f.calls.filter((c) => c === "POST /api/photo-reading/recognize")).toHaveLength(1);
   expect(f.calls.some((c) => /POST .*photo-reading\/(interpret|stream)/.test(c))).toBe(false);
   await page.screenshot({ path: info.outputPath("photo-restored-mobile.png") });
@@ -112,7 +112,7 @@ test("manual entry lets a guest choose cards before authentication and resumes a
   await expect(page.getByRole("button", { name: "Собрать расклад вручную" })).toHaveCount(0);
   await page.getByRole("button", { name: "Добавить символ" }).click();
   await page.locator(".photo-spread-preview__picker-option").first().click();
-  await page.getByRole("button", { name: "Открыть полный разбор" }).click();
+  await page.getByRole("button", { name: "Создать аккаунт и продолжить" }).click();
   await expect(page).toHaveURL(/auth\/user\/register/);
   await page.waitForLoadState("domcontentloaded");
   const returnTo = new URL(page.url()).searchParams.get("returnTo");
@@ -140,7 +140,7 @@ test("a realistic phone photo survives the complete email registration route", a
   await dialog.getByLabel("Ваш вопрос (необязательно)").fill("Что важно увидеть в этой ситуации?");
   await dialog.getByRole("button", { name: "Распознать карты бесплатно" }).click();
   await expect(dialog.getByText("Расклад распознан")).toBeVisible({ timeout: 15_000 });
-  await dialog.getByRole("button", { name: "Открыть полный разбор" }).click();
+  await dialog.getByRole("button", { name: "Создать аккаунт и продолжить" }).click();
 
   await expect(page).toHaveURL(/auth\/user\/register/);
   const savedBeforeRegister = await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY);
@@ -157,7 +157,7 @@ test("a realistic phone photo survives the complete email registration route", a
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByText("Карты уже распознаны — проверьте расклад и откройте полную расшифровку.")).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeVisible();
-  expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).toBeNull();
+  expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).not.toBeNull();
 });
 
 test("the guest gets immediate feedback while the photo workspace is loading", async ({ page }) => {
