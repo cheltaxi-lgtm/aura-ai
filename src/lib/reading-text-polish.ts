@@ -270,9 +270,21 @@ function fixCommonReadingTypos(text: string): string {
   return out;
 }
 
-/** Replace empty emphasis / orphan stars; optionally inject spread card names. */
+/** Restore the exact duplicated-heading signature emitted by the old placeholder repair.
+ * Only repair an identical inserted title followed by an opening about that title;
+ * do not deduplicate ordinary prose or guess missing report content.
+ */
+export function repairLegacyReadingHeadings(text: string): string {
+  return text.replace(/^\*\*([^*\n]+)\*\*\*([^*\n]+)\*\*\*([^*\n]+)\*\*/gm,
+    (match, title: string, inserted: string, opening: string) => {
+      if (title !== inserted || !opening.startsWith(`${title} `)) return match;
+      return `**${title}**\n\n**${opening}**`;
+    });
+}
+
+/** Replace actual empty emphasis, preserving complete existing emphasis tokens. */
 export function polishSpreadReadingText(text: string, cardNames?: string[]): string {
-  let out = text.replace(/\r\n/g, "\n");
+  let out = repairLegacyReadingHeadings(text.replace(/\r\n/g, "\n"));
   const cards = (cardNames ?? []).map((c) => c.trim()).filter(Boolean);
   let cardIdx = 0;
 
@@ -281,13 +293,10 @@ export function polishSpreadReadingText(text: string, cardNames?: string[]): str
     return "";
   };
 
-  // Empty emphasis placeholders → real card names (must run before orphan stripping).
-  out = out.replace(/\*\s+\*/g, nextCard);
-  out = out.replace(/\*\*(?:\s|\u00a0)+\*\*/g, nextCard);
-
-  // Leftover empty emphasis only — keep valid **Name** pairs intact.
-  out = out.replace(/\*\s+\*/g, "");
-  out = out.replace(/\*\*(?:\s|\u00a0)*\*\*/g, "");
+  // An opening placeholder follows whitespace (or starts the string). A valid
+  // closing emphasis marker follows non-whitespace, including in nested spans.
+  // Horizontal spaces only: never consume the gap between separate paragraphs.
+  out = out.replace(/(?<!\S)(\*{1,2})(?!\*)[\t \u00a0]+\1(?!\*)/g, nextCard);
 
   out = stripEnglishLeakageFromRussianText(out);
   out = fixSpokenMinorArcanaNames(out);

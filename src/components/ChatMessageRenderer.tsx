@@ -1,6 +1,6 @@
 "use client";
 
-import { Fragment, memo, useMemo, type ReactNode } from "react";
+import { Children, memo, useMemo, type ReactNode } from "react";
 import Image from "next/image";
 import ReactMarkdown from "react-markdown";
 import type { Components } from "react-markdown";
@@ -86,59 +86,6 @@ function renderCardImageRow(markdown: string): ReactNode {
   );
 }
 
-function renderInlineEmphasis(
-  text: string,
-  keyPrefix: string,
-  variant: ReadingRenderVariant
-): ReactNode[] {
-  const boldClass =
-    variant === "print" ? "font-semibold text-black" : "font-semibold text-aura-gold";
-  const italicClass =
-    variant === "print"
-      ? "font-mystic-display italic text-black/70"
-      : "font-mystic-display italic text-aura-champagne";
-  const nodes: ReactNode[] = [];
-  const pattern = /(\*\*[^*]+\*\*|\*[^*\n]+\*)/g;
-  let lastIndex = 0;
-  let match: RegExpExecArray | null;
-  let partIndex = 0;
-
-  while ((match = pattern.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      nodes.push(
-        <Fragment key={`${keyPrefix}-plain-${partIndex++}`}>
-          {text.slice(lastIndex, match.index)}
-        </Fragment>
-      );
-    }
-
-    const token = match[0];
-    if (token.startsWith("**")) {
-      nodes.push(
-        <strong key={`${keyPrefix}-bold-${partIndex++}`} className={boldClass}>
-          {token.slice(2, -2)}
-        </strong>
-      );
-    } else if (token.startsWith("*")) {
-      nodes.push(
-        <em key={`${keyPrefix}-italic-${partIndex++}`} className={italicClass}>
-          {token.slice(1, -1)}
-        </em>
-      );
-    }
-
-    lastIndex = match.index + token.length;
-  }
-
-  if (lastIndex < text.length) {
-    nodes.push(
-      <Fragment key={`${keyPrefix}-plain-${partIndex}`}>{text.slice(lastIndex)}</Fragment>
-    );
-  }
-
-  return nodes.length ? nodes : [text];
-}
-
 /**
  * Within the markdown path, split run-on prose lines into blank-line-separated
  * paragraphs so react-markdown renders multiple <p> instead of one wall of text.
@@ -163,25 +110,11 @@ function renderPlainBody(
   variant: ReadingRenderVariant
 ): ReactNode {
   const paragraphs = toParagraphs(text);
-  const paraClass =
-    variant === "print"
-      ? "text-[15px] leading-[1.85] tracking-[0.01em] text-black sm:text-base sm:leading-[1.9]"
-      : "text-[15px] leading-[1.85] tracking-[0.01em] text-aura-ivory sm:text-base sm:leading-[1.9]";
   return (
     <div className={`space-y-4 font-body ${className}`}>
-      {paragraphs.map((para, index) => {
-        const lines = para.split("\n");
-        return (
-          <p key={`para-${index}`} className={paraClass}>
-            {lines.map((line, lineIndex) => (
-              <Fragment key={`para-${index}-line-${lineIndex}`}>
-                {lineIndex > 0 && <br />}
-                {renderInlineEmphasis(line, `para-${index}-line-${lineIndex}`, variant)}
-              </Fragment>
-            ))}
-          </p>
-        );
-      })}
+      <ReactMarkdown components={buildMarkdownComponents(variant)}>
+        {paragraphs.map((para) => para.replace(/\n/g, "  \n")).join("\n\n")}
+      </ReactMarkdown>
     </div>
   );
 }
@@ -194,17 +127,17 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
 
   return {
     h2: ({ children }) => {
-      const raw = String(children ?? "").replace(/^\s*✦\s*/, "").trim();
+      const heading = Children.toArray(children);
+      if (typeof heading[0] === "string") heading[0] = heading[0].replace(/^\s*✦\s*/, "");
       if (isPrint) {
         return (
           <header className="mb-3 mt-7 border-b border-black/15 pb-2 first:mt-0">
             <h3 className="font-mystic-display text-xl font-semibold tracking-[0.04em] text-black">
-              {raw}
+              {heading}
             </h3>
           </header>
         );
       }
-      const label = raw ? `✦ ${raw.toUpperCase()}` : "✦";
       return (
         <header className="my-5">
           <div
@@ -212,7 +145,7 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
             aria-hidden
           />
           <h3 className="font-mystic-display text-xl font-semibold uppercase tracking-[0.12em] text-aura-gold">
-            {label}
+            <span aria-hidden="true">✦ </span>{heading}
           </h3>
           <div
             className="mt-3 h-px w-full bg-gradient-to-r from-transparent via-aura-gold/45 to-transparent"
@@ -222,18 +155,19 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
       );
     },
     h3: ({ children }) => {
-      const raw = String(children ?? "").replace(/^\s*✦\s*/, "").trim();
+      const heading = Children.toArray(children);
+      if (typeof heading[0] === "string") heading[0] = heading[0].replace(/^\s*✦\s*/, "");
       if (isPrint) {
         return (
           <header className="mb-2 mt-5 first:mt-0">
-            <h3 className="font-mystic-display text-lg font-semibold text-black">{raw}</h3>
+            <h3 className="font-mystic-display text-lg font-semibold text-black">{heading}</h3>
           </header>
         );
       }
       return (
         <header className="mb-2 mt-6 first:mt-0">
           <h3 className="font-mystic-display text-[1.05rem] font-semibold leading-snug tracking-[0.04em] text-aura-gold sm:text-lg">
-            {raw}
+            {heading}
           </h3>
           <div
             className="mt-2 h-px w-16 bg-gradient-to-r from-aura-gold/55 to-transparent"
@@ -356,7 +290,7 @@ function ChatMessageRenderer({
     );
   }
 
-  const hasBlockMarkdown = /(^#{1,3}\s|^-\s|^---$|^\d+\.\s|!\[[^\]]*\]\([^)]+\))/m.test(
+  const hasBlockMarkdown = /(^#{1,6}\s|^-\s|^---$|^\d+\.\s|!\[[^\]]*\]\([^)]+\))/m.test(
     markdownSource
   );
 

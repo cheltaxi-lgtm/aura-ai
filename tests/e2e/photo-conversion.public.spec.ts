@@ -3,6 +3,35 @@ import { randomBytes } from "node:crypto";
 import sharp from "sharp";
 import { PHOTO_AUTH_DRAFT_KEY } from "../../src/lib/photo-auth-draft";
 
+for (const width of [360, 390, 430]) {
+  test(`saved reading headings remain readable at ${width}px`, async ({ page }, info) => {
+    const f = await fixture(page);
+    f.login();
+    await page.route("**/api/profile", route => route.fulfill({ json: {
+      profile: { id: "photo-profile", name: "Проверка", birthDate: "1990-01-01", birthCity: "Москва", gender: "female", tarotCards: [] },
+      profileUserId: "photo-profile", readings: [], needsOnboarding: false,
+    } }));
+    await page.route("**/api/photo-reading/stream", route => route.fulfill({ json: {
+      analysis: "**8 Пентаклей***8 Пентаклей***8 Пентаклей в позиции «Итог»** — усердие и практика.\n\n## **Ваши ресурсы**\n\nСохраняйте последовательность.\n\n### Солнце в **Овне**\n\nВложенное выделение: ***Сила***.",
+      cached: true, saved: true,
+    } }));
+    await page.setViewportSize({ width, height: 844 });
+    await page.goto("/?photo=1");
+    const dialog = page.getByRole("dialog", { name: /фото-расклад/ });
+    await dialog.locator('input[type="file"]').last().setInputFiles("public/decks/tarot-veronika/the-fool.webp");
+    await dialog.getByRole("button", { name: /Начать фото-расклад/ }).click();
+    await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
+    const reading = page.getByRole("log", { name: "Расклад и сообщения чата" });
+    await expect(reading.getByRole("heading", { name: "Ваши ресурсы", exact: true })).toBeVisible();
+    await expect(reading.getByRole("heading", { name: "Солнце в Овне", exact: true })).toBeVisible();
+    await expect(reading.locator("p").filter({ hasText: "8 Пентаклей" })).toHaveCount(2);
+    await expect(reading).not.toContainText("[object Object]");
+    await reading.getByText("8 Пентаклей", { exact: true }).scrollIntoViewIfNeeded();
+    await page.screenshot({ path: info.outputPath(`reading-headings-${width}.png`) });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+  });
+}
+
 async function fixture(page: Page) {
   let loggedIn = false;
   const calls: string[] = [];
