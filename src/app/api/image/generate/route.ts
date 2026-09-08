@@ -97,6 +97,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Invalid scene type" }, { status: 400 });
   }
 
+  // Paid AI scene art is retained for a possible future rollout, but requires
+  // an explicit server flag in addition to persisted admin settings. This gate
+  // runs before async enqueue and before any rune charge.
+  if (scene !== "zodiac_avatar" && process.env.SCENE_IMAGE_GENERATION_ENABLED !== "true") {
+    return NextResponse.json(
+      { error: "Scene image generation disabled", code: "scene_off" },
+      { status: 403 }
+    );
+  }
+
   // Zodiac spirit = static deck art only. Never call the image model (token burn).
   if (scene === "zodiac_avatar") {
     if (!body.zodiac?.trim()) {

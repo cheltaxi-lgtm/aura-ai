@@ -93,12 +93,49 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
     try{await setSetting("runes",{...original,starterRunes:300});expect((await getRuneSettings()).starterRunes).toBe(100);await setRuneSettings({...await getRuneSettings(),freeQuestions:3});expect((await getSetting("runes")).starterRunes).toBe(300);vi.stubEnv("FIRST_EXPERIENCE_ENABLED","false");expect((await getRuneSettings()).starterRunes).toBe(300);}
     finally{await setSetting("runes",original);}
   });
+  it("turns legacy paid scene flags off idempotently",async()=>{
+    const original=await getSetting("visual");
+    try {
+      await setSetting("visual",{
+        ...original,
+        scenes:{
+          ...original.scenes,
+          tarot_atmosphere:true,
+          destiny_card:true,
+          scene_illustration:true,
+          final_report:true,
+        },
+      });
+      const migration=fs.readFileSync(path.join(PROJECT_ROOT,"scripts/migrations/157_disable_paid_scene_images.sql"),"utf8");
+      await query(migration);
+      await query(migration);
+      const visual=await getSetting("visual");
+      expect(visual.scenes).toMatchObject({
+        tarot_atmosphere:false,
+        destiny_card:false,
+        scene_illustration:false,
+        final_report:false,
+      });
+    } finally {
+      await setSetting("visual",original);
+    }
+  });
   it("grants exactly once under parallel signup/OAuth/cabinet retries; preserves an existing grant",async()=>{
     const user=await createTestUser();const results=await Promise.all(Array.from({length:8},()=>grantStarterRunesIfNeeded(user.id)));
     expect(results.filter(Boolean)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(100);
     expect((await query("SELECT 1 FROM spread_metrics WHERE user_id=$1 AND event='bonus_granted'",[user.id])).rowCount).toBe(1);
     await query("UPDATE users SET rune_balance=287,starter_runes_granted=FALSE WHERE id=$1",[user.id]);
     expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();expect(await getRuneBalance(user.id)).toBe(287);
+  });
+  it("keeps account/profile creation and starter credit in one transaction",()=>{
+    const registration=fs.readFileSync(path.join(PROJECT_ROOT,"src/app/api/auth/user/register/route.ts"),"utf8");
+    const users=fs.readFileSync(path.join(PROJECT_ROOT,"src/lib/users.ts"),"utf8");
+    const runes=fs.readFileSync(path.join(PROJECT_ROOT,"src/lib/rune-service.ts"),"utf8");
+    const telegram=fs.readFileSync(path.join(PROJECT_ROOT,"src/lib/telegram/bot-offer-account.ts"),"utf8");
+    expect(registration).toContain("grantStarterRunesIfNeeded(createdProfile.id, client)");
+    expect(users).toContain("grantStarterRunesIfNeeded(created.id, client)");
+    expect(runes).not.toContain("grantStarterRunesIfNeeded failed:");
+    expect(telegram).toMatch(/await grantStarterRunesIfNeeded\(profileUserId\);[\s\S]*input\.memoryChoice/);
   });
   it("serializes bonus spend and refunds only the original amount once",async()=>{
     const user=await createTestUser();await grantStarterRunesIfNeeded(user.id);

@@ -1,5 +1,6 @@
 ﻿import { query, queryClient, withTransaction } from "./db";
 import { deleteUserChatForCharacter } from "./accounts";
+import { grantStarterRunesIfNeeded } from "./rune-service";
 import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 import { isFirstExperienceEnabled } from "@/lib/first-experience-policy";
 import type { AstroMeta, LifeFocus } from "./astro-profile";
@@ -156,6 +157,7 @@ export async function createUserProfileForAccount(
       "UPDATE user_accounts SET profile_user_id = $2, name = $3 WHERE id = $1",
       [accountId, created.id, created.name]
     );
+    await grantStarterRunesIfNeeded(created.id, client);
     return created;
   });
 }

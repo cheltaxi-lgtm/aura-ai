@@ -163,7 +163,7 @@ export async function finishOAuthLogin(opts: {
     }
   }
 
-  if (accountResult.isNewUser && profileUserId) {
+  if (profileUserId) {
     await grantStarterRunesIfNeeded(profileUserId);
   }
 

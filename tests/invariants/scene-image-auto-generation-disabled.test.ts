@@ -75,6 +75,7 @@ import { POST } from "@/app/api/image/generate/route";
 describe("paid scene-image auto generation is disabled", () => {
   beforeEach(() => {
     vi.resetAllMocks();
+    vi.stubEnv("SCENE_IMAGE_GENERATION_ENABLED", "false");
     mocks.auth.mockResolvedValue({ sub: "account" });
     mocks.profile.mockResolvedValue("profile");
     mocks.rateLimit.mockResolvedValue(null);
@@ -86,6 +87,10 @@ describe("paid scene-image auto generation is disabled", () => {
   });
 
   it.each(disabledScenes)("rejects disabled %s before generation or rune billing", async (scene) => {
+    mocks.getSetting.mockResolvedValue({
+      enabled: true,
+      scenes: Object.fromEntries(disabledScenes.map((item) => [item, true])),
+    });
     const response = await POST(
       new NextRequest("http://localhost/api/image/generate", {
         method: "POST",
@@ -128,6 +133,17 @@ describe("paid scene-image auto generation is disabled", () => {
       expect(defaults).toMatch(new RegExp(`${scene}: false`));
       expect(schema).toMatch(new RegExp(`\\"${scene}\\":false`));
     }
+  });
+
+  it("forces persisted scene settings off and also requires a server flag", () => {
+    const migration = read("scripts/migrations/157_disable_paid_scene_images.sql");
+    for (const scene of disabledScenes) {
+      expect(migration).toContain(`{scenes,${scene}}`);
+    }
+    expect(migration).toContain("WHERE key = 'visual'");
+    expect(read("src/app/api/image/generate/route.ts")).toContain(
+      'process.env.SCENE_IMAGE_GENERATION_ENABLED !== "true"'
+    );
   });
 
   it("does not advertise prices for disabled image actions", () => {

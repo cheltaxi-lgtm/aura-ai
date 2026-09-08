@@ -29,12 +29,16 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
   });
 
   it("every consumer registration path grants starter runes server-side", () => {
-    // Email registration.
+    // Email registration grants inside the account/profile transaction.
     const emailRegister = readSrc("src/app/api/auth/user/register/route.ts");
-    expect(emailRegister).toContain("grantStarterRunesIfNeeded(profile.id)");
-    // OAuth finish (Yandex/VK) — only for genuinely new accounts.
+    expect(emailRegister).toContain("grantStarterRunesIfNeeded(createdProfile.id, client)");
+    // Shared profile creation grants inside the same transaction for OAuth/Telegram paths.
+    expect(readSrc("src/lib/users.ts")).toContain(
+      "grantStarterRunesIfNeeded(created.id, client)"
+    );
+    // OAuth finish (Yandex/VK) retries the idempotent grant for an existing profile too.
     const oauthFinish = readSrc("src/lib/oauth/finish.ts");
-    expect(oauthFinish).toMatch(/isNewUser[\s\S]{0,200}grantStarterRunesIfNeeded/);
+    expect(oauthFinish).toMatch(/if \(profileUserId\) \{\s*await grantStarterRunesIfNeeded/);
     // OAuth register completion.
     expect(readSrc("src/app/api/auth/oauth/register/route.ts")).toContain(
       "grantStarterRunesIfNeeded"
@@ -47,7 +51,8 @@ describe("photo-rasklad conversion pass — starter package authority", () => {
   it("email register response exposes the server-confirmed starter amount", () => {
     const src = readSrc("src/app/api/auth/user/register/route.ts");
     expect(src).toContain("starterRunes: starterGranted");
-    expect(src).toMatch(/grantStarterRunesIfNeeded\(profile\.id\)\.then/);
+    expect(src).toContain("starterGranted: starterGrant?.granted ?? 0");
+    expect(src).toMatch(/withTransaction[\s\S]*grantStarterRunesIfNeeded\(createdProfile\.id, client\)/);
   });
 
   it("photo returnTo survives registration (/?photo=1)", () => {

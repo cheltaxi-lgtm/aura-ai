@@ -117,7 +117,7 @@ export async function POST(request: NextRequest) {
         claimToken
       ).catch(() => false);
     }
-    if (completed.account.isNewUser && profileUserId) {
+    if (profileUserId) {
       await grantStarterRunesIfNeeded(profileUserId);
     }
 

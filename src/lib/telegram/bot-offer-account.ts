@@ -180,7 +180,6 @@ export async function upsertBotOfferProfile(
       astroMeta,
     });
     profileUserId = created.id;
-    await grantStarterRunesIfNeeded(profileUserId);
   } else {
     const current = await getUserById(profileUserId);
     if (!current?.birth_date) {
@@ -195,7 +194,6 @@ export async function upsertBotOfferProfile(
         mainQuestion: current?.main_question ?? undefined,
         astroMeta,
       });
-      await grantStarterRunesIfNeeded(profileUserId);
     } else {
       const currentGender = normalizeUserGender(current.gender) as BinaryGender | null;
       const nextGender = (gender || currentGender) as BinaryGender;
@@ -224,6 +222,10 @@ export async function upsertBotOfferProfile(
       }
     }
   }
+
+  // Retry on every successful profile entry. The grant is ledger-idempotent,
+  // so this heals a prior transient failure without issuing a second bonus.
+  await grantStarterRunesIfNeeded(profileUserId);
 
   if (
     profileUserId &&

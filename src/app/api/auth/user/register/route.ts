@@ -153,8 +153,7 @@ export async function POST(request: NextRequest) {
     }
 
     const passwordHash = await hashPassword(String(password));
-    let starterGranted = 0;
-    const { account, profile } = await withTransaction(async (client) => {
+    const { account, profile, starterGranted } = await withTransaction(async (client) => {
       const accountResult = await queryClient<{ id: string; email: string; name: string }>(
         client,
         `INSERT INTO user_accounts (
@@ -203,12 +202,13 @@ export async function POST(request: NextRequest) {
         "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
         [createdAccount.id, createdProfile.id]
       );
+      const starterGrant = await grantStarterRunesIfNeeded(createdProfile.id, client);
 
-      return { account: createdAccount, profile: createdProfile };
-    });
-
-    await grantStarterRunesIfNeeded(profile.id).then((grant) => {
-      starterGranted = grant?.granted ?? 0;
+      return {
+        account: createdAccount,
+        profile: createdProfile,
+        starterGranted: starterGrant?.granted ?? 0,
+      };
     });
 
     let sessionLinked = false;

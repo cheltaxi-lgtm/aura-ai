@@ -671,17 +671,17 @@ export async function ensureStarterGrantMarker(
 
 /** Одноразовый стартовый бонус при создании профиля */
 export async function grantStarterRunesIfNeeded(
-  userId: string
+  userId: string,
+  client?: PoolClient
 ): Promise<{ granted: number; balance: number } | null> {
   const settings = await getRuneSettings();
   if (settings.starterRunes <= 0) return null;
 
-  try {
-    return await withTransaction(async (client) => {
-      await queryClient(client, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+  const grant = async (transactionClient: PoolClient) => {
+    await queryClient(transactionClient, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
 
       const { rows: priorStarter } = await queryClient<{ id: string }>(
-        client,
+        transactionClient,
         `SELECT id FROM rune_transactions
          WHERE user_id = $1 AND description LIKE 'Стартовый пакет%'
          LIMIT 1`,
@@ -689,7 +689,7 @@ export async function grantStarterRunesIfNeeded(
       );
       if (priorStarter[0]) {
         await queryClient(
-          client,
+          transactionClient,
           `UPDATE users SET starter_runes_granted = TRUE
            WHERE id = $1 AND starter_runes_granted = FALSE`,
           [userId]
@@ -698,7 +698,7 @@ export async function grantStarterRunesIfNeeded(
       }
 
       const { rows: flagged } = await queryClient<{ rune_balance: number }>(
-        client,
+        transactionClient,
         `UPDATE users
          SET
            starter_runes_granted = TRUE,
@@ -710,23 +710,24 @@ export async function grantStarterRunesIfNeeded(
       if (!flagged[0]) return null;
 
       if (isFirstExperienceEnabled()) {
-        await queryClient(client,"UPDATE users SET starter_bonus_version=$2 WHERE id=$1",[userId,STARTER_BONUS_VERSION]);
-        await recordJourneyEvent(userId,"bonus_granted","starter",{runes:settings.starterRunes,bonusVersion:STARTER_BONUS_VERSION},client);
+        await queryClient(transactionClient,"UPDATE users SET starter_bonus_version=$2 WHERE id=$1",[userId,STARTER_BONUS_VERSION]);
+        await recordJourneyEvent(userId,"bonus_granted","starter",{runes:settings.starterRunes,bonusVersion:STARTER_BONUS_VERSION},transactionClient);
       }
 
       const description = `Стартовый пакет: ${settings.starterRunes} ᚢ`;
       await queryClient(
-        client,
+        transactionClient,
         `INSERT INTO rune_transactions
            (user_id, type, amount, balance_after, description)
          VALUES ($1, 'bonus', $2, $3, $4)`,
         [userId, settings.starterRunes, flagged[0].rune_balance, description]
       );
 
-      return { granted: settings.starterRunes, balance: flagged[0].rune_balance };
-    });
-  } catch (err) {
-    console.error("grantStarterRunesIfNeeded failed:", err);
-    return null;
-  }
+    return { granted: settings.starterRunes, balance: flagged[0].rune_balance };
+  };
+
+  // Registration/profile creation can pass its transaction, so a successful
+  // account cannot be committed without the promised starter credit.
+  // Other failures propagate and are retried by the next idempotent auth entry.
+  return client ? grant(client) : withTransaction(grant);
 }
