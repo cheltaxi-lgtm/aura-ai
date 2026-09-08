@@ -414,6 +414,7 @@ export default function AuraSellingLanding({
         />
         <EditorialPreviewSection />
         <EditorialStarterGiftSection />
+        <HomeAuraBanner />
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
         <EditorialSessionStepsSection />
         <EditorialDailyCardsSection
@@ -442,7 +443,6 @@ export default function AuraSellingLanding({
         <details className="editorial-more mx-auto my-6 max-w-6xl px-5">
         <summary className="cursor-pointer rounded-2xl border border-aura-gold/25 px-5 py-4 text-aura-champagne">Другие возможности Zovus</summary>
         <EditorialBirthToolsSection />
-        <HomeAuraBanner />
         <EditorialExtraFeaturesSection />
         </details>
         <EditorialReviewsSection />
