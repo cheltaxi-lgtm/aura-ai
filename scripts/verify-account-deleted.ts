@@ -38,6 +38,7 @@ class MemoryStorage implements Storage {
 
 const storage = new MemoryStorage();
 let pathname = "/";
+let native = false;
 let replacedWith: string | null = null;
 
 Object.defineProperty(globalThis, "sessionStorage", {
@@ -47,7 +48,9 @@ Object.defineProperty(globalThis, "sessionStorage", {
 Object.defineProperty(globalThis, "window", {
   configurable: true,
   value: {
+    Capacitor: { isNativePlatform: () => native },
     location: {
+      search: "",
       get pathname() {
         return pathname;
       },
@@ -70,6 +73,8 @@ assert.equal(storage.getItem(ACCOUNT_DELETED_HOME_KEY), null);
 
 assert.equal(markAccountDeletedHome(), true);
 storage.setItem("zovus_app_shell", "1");
+assert.equal(homeUrlAfterAccountDeletion(), "/", "stale browser flag must not activate app chrome");
+native = true;
 assert.equal(homeUrlAfterAccountDeletion(), "/?app=1");
 assert.equal(redirectHomeAfterAccountDeletion(), true);
 assert.equal(replacedWith, "/?app=1");
@@ -85,6 +90,7 @@ assert.equal(storage.getItem(ACCOUNT_DELETED_HOME_KEY), null);
 assert.equal(consumeAccountDeletedHomeArrival(), false, "arrival consumption is one-shot");
 
 storage.removeItem("zovus_app_shell");
+native = false;
 assert.equal(homeUrlAfterAccountDeletion(), "/");
 
 assert.equal(markAccountDeletedHome(createdAt), true);

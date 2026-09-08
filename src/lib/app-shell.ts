@@ -12,7 +12,7 @@ export function isAppShellSearchParam(search: string): boolean {
   }
 }
 
-/** Client-only: Capacitor native platform or persisted app-shell flag. */
+/** Client-only: actual Capacitor native platform. */
 export function isNativeCapacitorPlatform(): boolean {
   if (typeof window === "undefined") return false;
   const cap = (window as Window & { Capacitor?: { isNativePlatform?: () => boolean } }).Capacitor;
@@ -43,27 +43,10 @@ export function clearAppShellFromDocument(): void {
   delete document.documentElement.dataset.motionLite;
 }
 
-/**
- * Desktop browsers (Windows/macOS/Linux) must not keep sticky app-shell from a
- * past `?app=1` or cabinet visit — that hides the legal/VK footer site-wide.
- * Phones, tablets, and Capacitor keep the sticky flag.
- */
-export function isDesktopBrowserWithoutAppShell(): boolean {
-  if (typeof navigator === "undefined") return false;
-  if (isNativeCapacitorPlatform()) return false;
-  const ua = navigator.userAgent || "";
-  if (/Android|iPhone|iPod|Mobile|webOS/i.test(ua)) return false;
-  // iPadOS 13+ may report Macintosh with touch points.
-  if (/iPad/i.test(ua) || (navigator.maxTouchPoints > 1 && /Macintosh/i.test(ua))) {
-    return false;
-  }
-  return /Windows NT|Macintosh|X11;|CrOS|Linux/i.test(ua);
-}
-
-/** Drop desktop leftovers that incorrectly activate native-shell chrome. */
-export function clearStaleDesktopAppShell(): void {
+/** Drop browser leftovers; a stored flag alone cannot identify a native app. */
+export function clearStaleBrowserAppShell(): void {
   if (typeof window === "undefined") return;
-  if (!isDesktopBrowserWithoutAppShell()) return;
+  if (isNativeCapacitorPlatform()) return;
   if (isAppShellSearchParam(window.location.search)) return;
   try {
     sessionStorage.removeItem("zovus_app_shell");
@@ -76,15 +59,9 @@ export function clearStaleDesktopAppShell(): void {
 export function shouldUseAppShellClient(): boolean {
   if (typeof window === "undefined") return false;
   if (isNativeCapacitorPlatform()) return true;
-  if (isAppShellSearchParam(window.location.search)) return true;
-  try {
-    if (sessionStorage.getItem("zovus_app_shell") !== "1") return false;
-    // Stray sticky flag on desktop must not enable app chrome / hide legal footer.
-    if (isDesktopBrowserWithoutAppShell()) return false;
-    return true;
-  } catch {
-    return false;
-  }
+  // Explicit shell preview/deep links remain supported; ordinary browser
+  // navigation must never become app navigation because of session leftovers.
+  return isAppShellSearchParam(window.location.search);
 }
 
 const SPLASH_DONE_KEY = "zovus_splash_done";

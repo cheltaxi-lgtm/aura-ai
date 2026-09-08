@@ -3,9 +3,7 @@
 import { useEffect } from "react";
 import {
   clearAppShellFromDocument,
-  isAppShellSearchParam,
-  isDesktopBrowserWithoutAppShell,
-  isNativeCapacitorPlatform,
+  shouldUseAppShellClient,
 } from "@/lib/app-shell";
 
 /**
@@ -20,18 +18,7 @@ export default function CabinetAppShellMarker() {
     root.dataset.appShell = "android";
 
     return () => {
-      let stickySession = false;
-      try {
-        stickySession = sessionStorage.getItem("zovus_app_shell") === "1";
-      } catch {
-        stickySession = false;
-      }
-      const keepRealShell =
-        isNativeCapacitorPlatform() ||
-        isAppShellSearchParam(window.location.search) ||
-        (stickySession && !isDesktopBrowserWithoutAppShell());
-
-      if (keepRealShell) {
+      if (shouldUseAppShellClient()) {
         root.dataset.appShell = "android";
         return;
       }

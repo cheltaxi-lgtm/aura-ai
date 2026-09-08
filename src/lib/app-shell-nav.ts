@@ -86,6 +86,7 @@ function isOnHomePage(): boolean {
 }
 
 function persistAppShellFlag(): void {
+  if (!shouldAttachAppQuery()) return;
   try {
     sessionStorage.setItem("zovus_app_shell", "1");
   } catch {
@@ -98,7 +99,7 @@ function shouldAttachAppQuery(): boolean {
   return isNativeCapacitorPlatform() || isAppShellSearchParam(window.location.search);
 }
 
-function resolveAppAwarePath(path: string): string {
+export function resolveAppAwarePath(path: string): string {
   if (!shouldAttachAppQuery()) return path;
   const absolute = new URL(path, appShellNavigationOrigin());
   absolute.searchParams.set("app", "1");
@@ -173,14 +174,14 @@ export function navigateToAppSection(sectionId: string): void {
     homeHandlers.scrollToSection(sectionId);
     return;
   }
-  shellNavigate(`/?app=1#${encodeURIComponent(sectionId)}`);
+  shellNavigate(resolveAppAwarePath(`/#${encodeURIComponent(sectionId)}`));
 }
 
 export function navigateToAppHome(): void {
   primeHomeFlowState();
   persistAppShellFlag();
   if (isOnHomePage()) {
-    window.history.replaceState(null, "", APP_SHELL_ROUTES.home);
+    window.history.replaceState(null, "", resolveAppAwarePath("/?step=masters"));
     const homeHandlers = getAppShellHomeNavHandlers();
     if (homeHandlers.goHome) {
       homeHandlers.goHome();
@@ -189,7 +190,7 @@ export function navigateToAppHome(): void {
     }
     return;
   }
-  shellNavigate(APP_SHELL_ROUTES.home);
+  shellNavigate(resolveAppAwarePath("/?step=masters"));
 }
 
 /** Header CTA «Получить расклад» — on home starts the flow; otherwise opens home. */
@@ -229,7 +230,7 @@ export function navigateToPhotoReading(): void {
     homeHandlers.openPhotoReading();
     return;
   }
-  shellNavigate(APP_SHELL_ROUTES.photoReading);
+  shellNavigate(resolveAppAwarePath("/?photo=1"));
 }
 
 /** Модалка колод — флаг в sessionStorage, затем главная. */
@@ -246,13 +247,13 @@ export function navigateToDecksModal(): void {
   } catch {
     /* private mode */
   }
-  shellNavigate(APP_SHELL_ROUTES.home);
+  shellNavigate(resolveAppAwarePath("/?step=masters"));
 }
 
 /** Кабинет — явная навигация с сохранением app-shell в WebView. */
 export function navigateToCabinet(): void {
   persistAppShellFlag();
-  shellNavigate(APP_SHELL_ROUTES.cabinet);
+  shellNavigate(resolveAppAwarePath("/cabinet"));
 }
 
 /** Совместный расклад — только для залогиненных. */
@@ -287,5 +288,5 @@ export function navigateToRitualFlow(): void {
   } catch {
     /* private mode */
   }
-  shellNavigate(APP_SHELL_ROUTES.home);
+  shellNavigate(resolveAppAwarePath("/?step=masters"));
 }

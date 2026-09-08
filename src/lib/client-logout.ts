@@ -13,6 +13,7 @@ import { clearAuthPending } from "@/lib/auth-pending";
 import { flushWebViewCookies } from "@/lib/webview-cookies";
 import { clearHdGuestBrowserState } from "@/components/human-design/hd-claim";
 import { PHOTO_AUTH_DRAFT_KEY } from "@/lib/photo-auth-draft";
+import { shouldUseAppShellClient } from "@/lib/app-shell";
 
 export const AUTH_LOGOUT_EVENT = "aura:logout";
 
@@ -146,7 +147,7 @@ export async function performClientLogout(options: ClientLogoutOptions = {}): Pr
 
   let target = redirectTo;
   try {
-    if (sessionStorage.getItem("zovus_app_shell") === "1") {
+    if (shouldUseAppShellClient()) {
       const url = new URL(redirectTo, window.location.origin);
       url.searchParams.set("app", "1");
       target = `${url.pathname}${url.search}${url.hash}`;

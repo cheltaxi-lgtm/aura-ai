@@ -26,7 +26,7 @@ export function welcomeEmailHtml(name: string, opts?: { needsOnboarding?: boolea
   const needsOnboarding = opts?.needsOnboarding === true;
   const ctaUrl = needsOnboarding
     ? `${siteUrl}/?step=onboarding&welcome=1`
-    : `${siteUrl}/?app=1`;
+    : `${siteUrl}/?step=masters`;
   const ctaLabel = needsOnboarding ? "Завершить регистрацию" : "Начать расклад";
   const extra = needsOnboarding
     ? `<p style="font-size:14px;color:#555">Остался один шаг — укажите дату рождения, чтобы открыть карты судьбы и личный кабинет.</p>`

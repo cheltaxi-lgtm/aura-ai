@@ -132,6 +132,7 @@ import {
   navigateToDecksModal,
   navigateToPhotoReading as navigateToPhotoReadingHard,
   persistOpenRitualIntent,
+  resolveAppAwarePath,
 } from "@/lib/app-shell-nav";
 import { registerAppShellHomeNavHandlers } from "@/lib/app-shell-nav-bus";
 import RegisterGate from "@/components/RegisterGate";
@@ -1297,7 +1298,7 @@ export default function HomePage({
 
   const scrollToSection = useCallback((sectionId: string) => {
     if (typeof window !== "undefined" && window.location.pathname !== "/") {
-      window.location.href = `/?app=1#${encodeURIComponent(sectionId)}`;
+      window.location.href = resolveAppAwarePath(`/#${encodeURIComponent(sectionId)}`);
       return;
     }
     const needsFlowExit =

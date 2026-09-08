@@ -2,6 +2,45 @@ import { expect, test, type Page } from "@playwright/test";
 
 const SNAPSHOT = { whichHand: "left", handShape: "water", verdict: "love", teaser: "Сохранённый гостевой снимок ладони" };
 
+for (const width of [360, 390, 430]) {
+  test(`mobile web navigation never enables app tabs at ${width}px`, async ({ page }, testInfo) => {
+    await fixture(page, { loggedIn: false });
+    await page.setViewportSize({ width, height: 844 });
+    await page.addInitScript(() => {
+      sessionStorage.setItem("zovus_app_shell", "1");
+      sessionStorage.setItem("zovus_splash_done", "1");
+    });
+    await page.goto("/numerology/destiny-matrix");
+    await page.getByRole("button", { name: "Открыть меню", exact: true }).click();
+    await page.getByRole("button", { name: "Расклад Таро по фото", exact: true }).click();
+    await expect(page).toHaveURL(/photo=1/);
+    expect(new URL(page.url()).searchParams.has("app")).toBe(false);
+    await expect(page.locator(".app-shell-tabs")).toHaveCount(0);
+    await page.reload();
+    await expect(page.getByRole("button", { name: "Открыть меню", exact: true })).toBeVisible();
+    await expect(page.locator(".app-shell-tabs")).toHaveCount(0);
+    await expect.poll(() => page.evaluate(() => sessionStorage.getItem("zovus_app_shell"))).toBeNull();
+    await page.screenshot({ path: testInfo.outputPath(`mobile-web-${width}.png`) });
+  });
+}
+
+test("guest cabinet login return does not switch the website to app mode", async ({ page }) => {
+  await fixture(page, { loggedIn: false });
+  await page.goto("/cabinet");
+  await expect(page).toHaveURL(/\/auth\/user\/login/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe("/cabinet");
+  await expect(page.locator(".app-shell-tabs")).toHaveCount(0);
+});
+
+test("explicit app preview keeps its bottom navigation", async ({ page }, testInfo) => {
+  await fixture(page, { loggedIn: false });
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.addInitScript(() => sessionStorage.setItem("zovus_splash_done", "1"));
+  await page.goto("/numerology/destiny-matrix?app=1");
+  await expect(page.getByRole("navigation", { name: "Навигация приложения" })).toBeVisible();
+  await page.screenshot({ path: testInfo.outputPath("explicit-app-preview.png") });
+});
+
 async function fixture(page: Page, options: { loggedIn?: boolean; paid?: boolean; memory?: boolean; unlimited?: boolean; claimFailure?: boolean } = {}) {
   const calls: string[] = [];
   await page.route("**/api/**", async (route) => {

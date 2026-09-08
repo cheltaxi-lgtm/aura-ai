@@ -1,6 +1,6 @@
 "use client";
 
-import { appShellNavigationOrigin } from "@/lib/app-shell";
+import { appShellNavigationOrigin, shouldUseAppShellClient } from "@/lib/app-shell";
 
 export const AUTH_PENDING_KEY = "zovus_auth_pending";
 
@@ -52,14 +52,7 @@ export function hasAuthPendingQuery(): boolean {
 /** Keep ?app=1 when landing after auth inside the native shell. */
 export function withAppShellAuthParams(destination: string): string {
   const url = new URL(destination, appShellNavigationOrigin());
-  try {
-    if (sessionStorage.getItem("zovus_app_shell") === "1") {
-      url.searchParams.set("app", "1");
-    }
-  } catch {
-    /* ignore */
-  }
-  if (new URLSearchParams(window.location.search).get("app") === "1") {
+  if (shouldUseAppShellClient()) {
     url.searchParams.set("app", "1");
   }
   url.searchParams.set("_auth", String(Date.now()));

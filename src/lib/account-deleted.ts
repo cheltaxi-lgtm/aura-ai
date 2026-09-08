@@ -1,3 +1,5 @@
+import { shouldUseAppShellClient } from "@/lib/app-shell";
+
 /** One-shot marker: after DELETE /api/user/delete, prefer homepage over /auth/login. */
 export const ACCOUNT_DELETED_HOME_KEY = "zovus_account_deleted_home";
 export const ACCOUNT_DELETED_HOME_VERSION = 1;
@@ -36,15 +38,7 @@ function readAccountDeletedHomeMarker(now = Date.now()): AccountDeletedHomeMarke
 }
 
 export function homeUrlAfterAccountDeletion(): string {
-  if (typeof window === "undefined") return "/";
-  try {
-    if (sessionStorage.getItem("zovus_app_shell") === "1") {
-      return "/?app=1";
-    }
-  } catch {
-    /* private mode */
-  }
-  return "/";
+  return shouldUseAppShellClient() ? "/?app=1" : "/";
 }
 
 /** Create the marker once; repeated deletion cleanup must not extend its lifetime. */

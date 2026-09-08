@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { AnimatePresence, motion } from "framer-motion";
 import { usePaywall } from "@/contexts/PaywallContext";
 import { useAuth } from "@/lib/useAuth";
-import { navigateToBirthProfileOnboarding } from "@/lib/app-shell-nav";
+import { navigateToBirthProfileOnboarding, resolveAppAwarePath } from "@/lib/app-shell-nav";
 import {
   persistSessionIntention,
   persistIntentionSpreadState,
@@ -169,7 +169,7 @@ export default function CabinetPage() {
     );
     if (res.status === 401) {
       if (redirectHomeAfterAccountDeletion()) return null;
-      router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath("/cabinet")));
       return null;
     }
     if (res.status === 403) {
@@ -204,7 +204,7 @@ export default function CabinetPage() {
     if (!authUser) {
       // After account deletion, go to guest homepage — never the login wall.
       if (redirectHomeAfterAccountDeletion()) return;
-      router.replace("/auth/user/login?returnTo=" + encodeURIComponent("/cabinet?app=1"));
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath("/cabinet")));
       setLoading(false);
       return;
     }
