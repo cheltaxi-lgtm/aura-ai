@@ -192,8 +192,9 @@ assert(
   userMemory.includes("outcome_rating IS NOT NULL AND outcome_rating <= 2")
 );
 assert(
-  "buildClientBlock gates mainQuestion by relevance",
-  userMemory.includes("isTextRelevantToQuery(query, profile.mainQuestion)")
+  "buildClientBlock excludes historical mainQuestion from the privileged profile block",
+  userMemory.includes("Historical free-form questions never enter a privileged system block") &&
+    !userMemory.includes("isTextRelevantToQuery(query, profile.mainQuestion)")
 );
 assert(
   "buildClientBlock does not inject birthDate on empty query",
