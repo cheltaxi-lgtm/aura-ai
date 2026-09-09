@@ -1,6 +1,7 @@
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { sanitizeChatHistory, type ChatHistoryMessage } from "@/lib/chat-sanitize";
 import {
+  chatReplyRejectionReason,
   isRejectedChatReply,
   stripMemoryLeakFromReply,
   type ChatReplyQualityOpts,
@@ -12,6 +13,7 @@ export interface ChatStreamMeta {
   llmFailed: boolean;
   finishReason?: string | null;
   streamInterrupted?: boolean;
+  rejectionReason?: string | null;
 }
 
 function streamOutputRejected(text: string, qualityOpts?: ChatReplyQualityOpts): boolean {
@@ -52,6 +54,10 @@ export async function createChatResponseStream(params: {
   let fullText = "";
   let upstreamFailed = false;
   let finishReason: string | null = null;
+  let rejectionReason: string | null = null;
+  // Follow-up anti-repeat checks need the full candidate. Do not flash a
+  // rejected second reading before the corrected done payload replaces it.
+  const holdTokensUntilAccepted = Boolean(params.qualityOpts?.previousAssistantReply);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -85,7 +91,15 @@ export async function createChatResponseStream(params: {
               const token = choice?.delta?.content ?? "";
               if (token) {
                 fullText += token;
-                if (streamOutputRejected(fullText, params.qualityOpts)) {
+                if (
+                  streamOutputRejected(
+                    fullText,
+                    holdTokensUntilAccepted ? undefined : params.qualityOpts
+                  )
+                ) {
+                  rejectionReason = params.qualityOpts
+                    ? chatReplyRejectionReason(fullText, params.qualityOpts)
+                    : null;
                   upstreamFailed = true;
                   streamAborted = true;
                   try {
@@ -95,9 +109,11 @@ export async function createChatResponseStream(params: {
                   }
                   break;
                 }
-                controller.enqueue(
-                  encoder.encode(`data: ${JSON.stringify({ token })}\n\n`)
-                );
+                if (!holdTokensUntilAccepted) {
+                  controller.enqueue(
+                    encoder.encode(`data: ${JSON.stringify({ token })}\n\n`)
+                  );
+                }
               }
             } catch {
               /* skip malformed chunk */
@@ -111,6 +127,9 @@ export async function createChatResponseStream(params: {
 
       const rawReply = fullText.trim();
       const rejected = rawReply && streamOutputRejected(rawReply, params.qualityOpts);
+      if (rejected && !rejectionReason && params.qualityOpts) {
+        rejectionReason = chatReplyRejectionReason(rawReply, params.qualityOpts);
+      }
       const reply =
         rawReply && !rejected ? stripMemoryLeakFromReply(rawReply) : "";
       const streamInterrupted = upstreamFailed;
@@ -124,6 +143,7 @@ export async function createChatResponseStream(params: {
           llmFailed,
           finishReason,
           streamInterrupted,
+          rejectionReason,
         });
       } catch (err) {
         console.error("[DB_CHAT_SAVE_FAILED] Stream onComplete error:", err);
@@ -131,6 +151,8 @@ export async function createChatResponseStream(params: {
 
       const resolvedReply =
         typeof metaExtras.reply === "string" ? metaExtras.reply : reply;
+      const resolvedFailed =
+        typeof metaExtras.llmFailed === "boolean" ? metaExtras.llmFailed : llmFailed;
 
       controller.enqueue(
         encoder.encode(
@@ -138,7 +160,7 @@ export async function createChatResponseStream(params: {
             type: "done",
             ...metaExtras,
             reply: resolvedReply,
-            llmFailed: llmFailed || !resolvedReply,
+            llmFailed: resolvedFailed || !resolvedReply,
           })}\n\n`
         )
       );

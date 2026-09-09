@@ -1,5 +1,6 @@
 import { getBloggerBySlug } from "@/lib/session";
 import { isAiMasterId } from "@/lib/showcase-masters";
+import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
 
 export { LLM_CONTEXT_MESSAGES } from "@/lib/chat-limits";
 export const MAX_CHAT_HISTORY = 24;
@@ -80,6 +81,8 @@ export function sanitizeUserProfileForPrompt(
   profile?: SanitizedUserProfile
 ): SanitizedUserProfile | undefined {
   if (!profile) return undefined;
+  const mainQuestion = sanitizeTextField(profile.mainQuestion, 500);
+  const lifeFocus = sanitizeTextField(profile.lifeFocus, 40);
   return {
     ...profile,
     name: sanitizeTextField(profile.name, 80),
@@ -88,8 +91,9 @@ export function sanitizeUserProfileForPrompt(
     birthDate: sanitizeTextField(profile.birthDate, 20),
     birthTime: sanitizeTextField(profile.birthTime, 10),
     birthCity: sanitizeTextField(profile.birthCity, 100),
-    lifeFocus: sanitizeTextField(profile.lifeFocus, 40),
-    mainQuestion: sanitizeTextField(profile.mainQuestion, 500),
+    lifeFocus: lifeFocus && !isInstructionLikeFact(lifeFocus) ? lifeFocus : undefined,
+    mainQuestion:
+      mainQuestion && !isInstructionLikeFact(mainQuestion) ? mainQuestion : undefined,
   };
 }
 

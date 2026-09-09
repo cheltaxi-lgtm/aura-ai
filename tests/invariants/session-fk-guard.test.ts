@@ -65,6 +65,16 @@ describe("upsertSessionMemoryFromChat FK guard", () => {
   it("resurrects the session stub and retries once on 23503", async () => {
     let failed = false;
     queryMock.mockImplementation(async (sql: string) => {
+      if (sql.includes("SELECT capture_generation") && sql.includes("FROM user_memory_preferences")) {
+        return {
+          rows: [{
+            generation: "1",
+            memory_enabled: true,
+            auto_capture_enabled: true,
+            sensitive_capture_enabled: false,
+          }],
+        };
+      }
       if (sql.includes("INSERT INTO session_memories") && !failed) { failed = true; throw FK_ERROR; }
       return { rows: [] };
     });

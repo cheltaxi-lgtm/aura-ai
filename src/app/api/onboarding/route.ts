@@ -17,6 +17,7 @@ import {
   updateUserProfile,
   getLatestHistoryEntry,
   linkSessionToUser,
+  normalizeProfileMainQuestion,
 } from "@/lib/users";
 import { readSessionClaimCookie } from "@/lib/session-claim";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
@@ -80,6 +81,14 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: nameError, code: "INVALID_NAME" }, { status: 400 });
     }
 
+    const normalizedMainQuestion = normalizeProfileMainQuestion(mainQuestion);
+    if (typeof mainQuestion === "string" && mainQuestion.trim() && !normalizedMainQuestion) {
+      return NextResponse.json(
+        { error: "Некорректный главный вопрос", code: "INVALID_MAIN_QUESTION" },
+        { status: 400 }
+      );
+    }
+
     if (!tarotCards?.length) {
       return NextResponse.json({ error: "Сначала выберите карты" }, { status: 400 });
     }
@@ -130,7 +139,7 @@ export async function POST(request: NextRequest) {
           birthTime: normalizedBirthTime,
           birthCity: normalizedBirthCity,
           lifeFocus,
-          mainQuestion,
+          mainQuestion: normalizedMainQuestion ?? undefined,
           astroMeta,
         });
       } catch (error) {
@@ -155,7 +164,7 @@ export async function POST(request: NextRequest) {
         birthTime: normalizedBirthTime,
         birthCity: normalizedBirthCity,
         lifeFocus,
-        mainQuestion,
+        mainQuestion: normalizedMainQuestion ?? undefined,
         astroMeta,
       });
       if (updated) user = updated;
@@ -171,7 +180,7 @@ export async function POST(request: NextRequest) {
     user = verifiedUser;
 
     const trimmedMainQuestion =
-      typeof mainQuestion === "string" ? mainQuestion.trim() : "";
+      normalizedMainQuestion ?? "";
     if (trimmedMainQuestion.length >= 8) {
       await import("@/lib/memory/preferences")
         .then(({ canAutoCapture }) => canAutoCapture(user!.id))
@@ -269,4 +278,3 @@ export async function POST(request: NextRequest) {
     );
   }
 }
-

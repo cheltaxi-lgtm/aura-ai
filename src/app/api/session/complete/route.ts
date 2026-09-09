@@ -12,9 +12,11 @@ import {
   updateSessionChatMeta,
 } from "@/lib/session";
 import {
+  allowsDerivedSessionMemory,
   generateSessionSummary,
   upsertSessionMemoryFromChat,
 } from "@/lib/session-memory";
+import { readMemoryWriteConsent } from "@/lib/memory/write-guard";
 import { query } from "@/lib/db";
 import { topicLabel, type SessionTopicId } from "@/lib/session-topics";
 import { limitSpreadKeyCards, MAX_SPREAD_CARD_COUNT, requiredCardCount } from "@/lib/spreads";
@@ -107,7 +109,12 @@ export async function PATCH(request: NextRequest) {
   const topicFromSpread = topicFromNumerolog ?? topicFromIntention ?? "Сеанс";
 
   let summary: Awaited<ReturnType<typeof generateSessionSummary>> = null;
-  if (transcript.trim() && !archiveOnly) {
+  const memoryConsent = await readMemoryWriteConsent(profileUserId).catch(() => null);
+  if (
+    allowsDerivedSessionMemory(memoryConsent) &&
+    transcript.trim() &&
+    !archiveOnly
+  ) {
     summary = await generateSessionSummary(transcript, cardNames);
   }
 

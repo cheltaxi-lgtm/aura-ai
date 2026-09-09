@@ -9,9 +9,22 @@ import { mergeConsentIntoAstroMeta, type AccountConsentSnapshot } from "./regist
 import { normalizeStoredDisplayName } from "./normalize-person-name";
 import { clearDailyReadingAnchors } from "./rate-limit-anchors";
 import { tarotCardsKey } from "./tarot";
+import { isInstructionLikeFact } from "./memory/injection-guard";
 
 function storedProfileName(name: string): string {
   return normalizeStoredDisplayName(name, name.trim() || "Гость");
+}
+
+export function normalizeProfileMainQuestion(value: unknown): string | null {
+  if (typeof value !== "string") return null;
+  const normalized = value
+    .replace(/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!normalized || normalized.length > 500 || isInstructionLikeFact(normalized)) {
+    return null;
+  }
+  return normalized;
 }
 
 export interface UserRow {
@@ -123,7 +136,7 @@ export async function createUserProfileForAccount(
         data.birthTime ?? null,
         data.birthCity ?? null,
         data.lifeFocus ?? "general",
-        data.mainQuestion ?? null,
+        normalizeProfileMainQuestion(data.mainQuestion),
         JSON.stringify(data.astroMeta ?? {}),
       ]
     );
@@ -182,7 +195,7 @@ export async function createUserProfile(data: CreateUserProfileInput): Promise<U
       data.birthTime ?? null,
       data.birthCity ?? null,
       data.lifeFocus ?? "general",
-      data.mainQuestion ?? null,
+      normalizeProfileMainQuestion(data.mainQuestion),
       JSON.stringify(data.astroMeta ?? {}),
     ]
   );
@@ -288,7 +301,7 @@ export async function updateUserProfile(
       data.birthTime ?? null,
       data.birthCity ?? null,
       data.lifeFocus ?? "general",
-      data.mainQuestion ?? null,
+      normalizeProfileMainQuestion(data.mainQuestion),
       JSON.stringify(astroMeta),
     ]
   );

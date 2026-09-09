@@ -103,7 +103,20 @@ export function loadGuestResumeUiCache(): GuestResumeUiCache | null {
     const raw = localStorage.getItem(GUEST_RESUME_UI_CACHE_KEY);
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
-    return isGuestResumeUiCache(parsed) ? parsed : null;
+    if (!isGuestResumeUiCache(parsed)) {
+      clearGuestResumeUiCache();
+      return null;
+    }
+    const completedAt = Date.parse(parsed.completedAt);
+    if (
+      !Number.isFinite(completedAt) ||
+      completedAt > Date.now() + 5 * 60 * 1000 ||
+      Date.now() - completedAt > GUEST_RESUME_UI_MAX_AGE_MS
+    ) {
+      clearGuestResumeUiCache();
+      return null;
+    }
+    return parsed;
   } catch {
     return null;
   }

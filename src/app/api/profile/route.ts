@@ -40,6 +40,7 @@ import {
 } from "@/lib/russian-name-gender";
 import { resolveCurrentDailyCards } from "@/lib/current-daily-cards";
 import { readHomeRecapHiddenKey } from "@/lib/home-recap";
+import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
 
 export async function GET() {
   if (!(await ensureDb())) {
@@ -163,6 +164,13 @@ export async function PATCH(request: NextRequest) {
 
     const hasCoreField = Boolean(birthDate || name || gender || lifeFocus);
     const hasMainQuestionUpdate = mainQuestion !== undefined;
+    const normalizedMainQuestion = mainQuestion?.trim();
+    if (
+      normalizedMainQuestion &&
+      (normalizedMainQuestion.length > 500 || isInstructionLikeFact(normalizedMainQuestion))
+    ) {
+      return NextResponse.json({ error: "Некорректный главный вопрос" }, { status: 400 });
+    }
     if (!hasCoreField && !hasMainQuestionUpdate) {
       return NextResponse.json({ error: "Нет данных для обновления" }, { status: 400 });
     }
@@ -187,10 +195,10 @@ export async function PATCH(request: NextRequest) {
         birthTime: profile.birth_time ?? undefined,
         birthCity: profile.birth_city ?? undefined,
         lifeFocus: (profile.life_focus ?? "general") as LifeFocus,
-        mainQuestion: mainQuestion ?? undefined,
+        mainQuestion: normalizedMainQuestion || undefined,
         astroMeta: (profile.astro_meta as AstroMeta | undefined) ?? undefined,
       });
-      const trimmedQuestion = mainQuestion?.trim();
+      const trimmedQuestion = normalizedMainQuestion;
       if (trimmedQuestion && trimmedQuestion.length >= 8) {
         await import("@/lib/memory/preferences")
           .then(({ canAutoCapture }) => canAutoCapture(profileUserId!))
@@ -330,4 +338,3 @@ export async function PATCH(request: NextRequest) {
     return NextResponse.json({ error: "Ошибка сохранения профиля" }, { status: 500 });
   }
 }
-

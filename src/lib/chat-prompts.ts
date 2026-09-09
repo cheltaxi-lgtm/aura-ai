@@ -23,12 +23,13 @@ import {
   stripTheaterFromReply,
 } from "@/lib/chat-reply-sanitize";
 import { buildSystemPrompt, fromLegacyContext } from "@/lib/prompts";
-import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, CHAT_CLARIFYING_QUESTION_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
+import { GLOBAL_MASTER_RULES, LANGUAGE_STYLE_RULES, THEMATIC_SPREAD_READING_RULES, CARD_GROUNDED_READING_RULES, CARD_GROUNDED_FOLLOWUP_RULES, CHAT_CLARIFYING_QUESTION_RULE, CHAT_FOLLOWUP_RULE, spreadFinalConclusionRules, responseFormatForSpread, thematicSpreadReadingRules } from "@/lib/prompts/format";
 import {
   isTarotRuneMasterId,
   TAROT_RUNE_THEATER_BAN,
   TAROT_RUNE_MARKDOWN_FORMAT,
   TAROT_RUNE_CHAT_FORMAT,
+  TAROT_RUNE_FOLLOWUP_FORMAT,
   tarotRuneThematicReadingRules,
 } from "@/lib/prompts/tarot-rune-format";
 import { MARINA_PERSONA } from "@/lib/prompts/masters/marina";
@@ -174,7 +175,6 @@ ${genderBlock}
 2. Обращайся по имени «${ctx.userName}» минимум дважды.
 3. Укажи текущую дату: ${ctx.today}.
 4. Пол, знак и дата рождения — только если усиливают чтение конкретного символа, не вместо карт.
-${ctx.mainQuestion ? `5. Главный вопрос: «${ctx.mainQuestion}» — ответь через символы, не пересказывая вопрос.` : ""}
 6. ${paywallRule}
 ${lengthRule}
 8. Не утверждай факт (измена, болезнь, порча, крах), если его не поддерживает конкретный символ и его значение ниже.
@@ -194,12 +194,14 @@ export function buildHumanChatPrompt(
     emoji?: string | null;
   },
   ctx: Partial<UserContext>,
-  knowledge?: string
+  knowledge?: string,
+  options?: { followup?: boolean }
 ): string {
   const parts = [
     buildHumanMasterPersona(blogger, knowledge),
-    CARD_GROUNDED_READING_RULES,
+    options?.followup ? CARD_GROUNDED_FOLLOWUP_RULES : CARD_GROUNDED_READING_RULES,
     CHAT_CLARIFYING_QUESTION_RULE,
+    options?.followup ? CHAT_FOLLOWUP_RULE : "",
   ];
   const tarotRune = isTarotRuneMasterId(blogger.slug ?? "");
 
@@ -229,11 +231,12 @@ export function buildHumanChatPrompt(
       .join("\n");
     parts.push(`Выпавшие карты (единственный источник выводов):\n${cardLines}`);
   }
-  if (ctx.mainQuestion) parts.push(`Главный вопрос: «${ctx.mainQuestion}».`);
   parts.push(
     tarotRune
-      ? `Отвечай на русском. ${TAROT_RUNE_CHAT_FORMAT} Каждый вывод — только по символам расклада с названием карты и её значением из блока выше.`
-      : "Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов. Если символы показывают тень — называй прямо."
+      ? `Отвечай на русском. ${options?.followup ? TAROT_RUNE_FOLLOWUP_FORMAT : TAROT_RUNE_CHAT_FORMAT} Каждый вывод — только по символам расклада с названием карты и её значением из блока выше.`
+      : options?.followup
+        ? "Отвечай на русском. Два–пять предложений, если этого достаточно. Без markdown и без повторного вывода всего расклада."
+        : "Отвечай на русском. От пяти до двенадцати предложений. Без markdown. Каждый вывод — только по символам расклада с названием карты и её значением из блока выше. Тема вопроса — линза, не источник фактов. Если символы показывают тень — называй прямо."
   );
   return parts.join("\n");
 }
@@ -283,6 +286,7 @@ export function buildChatPrompt(
     numerologyBlock?: string;
     natalChartBlock?: string;
     humanDesignBlock?: string;
+    followup?: boolean;
   }
 ): string {
   const { character, user, lastUserMessage } = fromLegacyContext(characterId, ctx, extras);
@@ -293,6 +297,7 @@ export function buildChatPrompt(
     numerologyBlock: extras?.numerologyBlock,
     natalChartBlock: extras?.natalChartBlock,
     humanDesignBlock: extras?.humanDesignBlock,
+    followup: extras?.followup,
   });
 }
 
@@ -666,6 +671,7 @@ export async function regenerateChatReply(
   }
 ): Promise<string | null> {
   const matrixDump = /matrix follow-up dumped tarot positions/i.test(opts.rejectionReason);
+  const repeatedSpread = /repeating previous spread/i.test(opts.rejectionReason);
   const correction = matrixDump
     ? `
 
@@ -675,7 +681,16 @@ export async function regenerateChatReply(
 - запрещены «Позиция N», колода и масти;
 - 5–12 предложений по 2–4 зонам схемы, без списка всех точек;
 - имя субъекта не искажай и не выдумывай.`
-    : `
+    : repeatedSpread
+      ? `
+
+[КОРРЕКЦИЯ — предыдущий ответ повторил уже выданный расклад]
+Ответь только на последнюю реплику клиента и добавь новый вывод:
+- не пересказывай прежний вердикт и не разбирай все символы заново;
+- используй максимум 1–2 релевантных символа;
+- если запрошенной точности в раскладе нет, честно скажи это первой фразой;
+- без блока «Простыми словами» и без приглашения продолжить.`
+      : `
 
 [КОРРЕКЦИЯ — предыдущий ответ отклонён: ${opts.rejectionReason}]
 Ответь заново на последнюю реплику клиента:

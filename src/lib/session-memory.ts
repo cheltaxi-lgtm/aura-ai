@@ -1,5 +1,9 @@
 import { isMemorySourceSuppressed } from "@/lib/memory/source-suppression";
-import { readMemoryWriteConsent, withUserMemoryLock } from "@/lib/memory/write-guard";
+import {
+  readMemoryWriteConsent,
+  withUserMemoryLock,
+  type MemoryWriteConsent,
+} from "@/lib/memory/write-guard";
 import { query, queryClient } from "@/lib/db";
 import {
   isPgForeignKeyViolation,
@@ -11,6 +15,7 @@ import { completeChat } from "@/lib/llm";
 import { limitSpreadKeyCards } from "@/lib/spreads";
 import { SESSION_SUMMARY_PROMPT } from "@/lib/prompts/memory";
 import { isTextRelevantToQuery } from "@/lib/memory/memory-relevance";
+import { isInstructionLikeFact } from "@/lib/memory/injection-guard";
 import {
   recordLifetimeOrphanMemory,
   recordLifetimeSessionActivity,
@@ -181,7 +186,13 @@ export async function ensureSessionMemoryStub(input: {
   });
 }
 
-/** Upsert cabinet session row after each master reply — any character, any session length. */
+export function allowsDerivedSessionMemory(
+  consent: MemoryWriteConsent | null | undefined
+): boolean {
+  return Boolean(consent?.memoryEnabled && consent.autoCaptureEnabled);
+}
+
+/** Store an LLM-derived episodic summary only while auto-memory consent is active. */
 export async function upsertSessionMemoryFromChat(input: {
   userId: string;
   sessionId: string;
@@ -191,9 +202,23 @@ export async function upsertSessionMemoryFromChat(input: {
   prediction: string;
   mood?: string;
 }): Promise<void> {
-  const generation = (await readMemoryWriteConsent(input.userId))?.generation;
+  const initialConsent = await readMemoryWriteConsent(input.userId);
+  if (!allowsDerivedSessionMemory(initialConsent)) {
+    void recordLifetimeSessionActivity({
+      userId: input.userId,
+      sessionId: input.sessionId,
+      characterKey: input.characterKey,
+      cardCount: limitSpreadKeyCards(input.keyCards).length,
+    }).catch((err) => console.warn("[lifetime-stats] session activity:", err));
+    return;
+  }
+  const generation = initialConsent!.generation;
   const upsert = () => withUserMemoryLock(input.userId, async (client) => {
-    if ((await readMemoryWriteConsent(input.userId, client))?.generation !== generation) return;
+    const currentConsent = await readMemoryWriteConsent(input.userId, client);
+    if (
+      !allowsDerivedSessionMemory(currentConsent) ||
+      currentConsent?.generation !== generation
+    ) return;
     if (await isMemorySourceSuppressed(client, input.userId, input.sessionId)) return;
     const { rows: blocked } = await queryClient(client, `SELECT 1 FROM user_memory_preferences p
       WHERE p.user_id = $1 AND p.memory_purged_at IS NOT NULL AND NOT EXISTS (
@@ -242,7 +267,7 @@ export async function upsertSessionMemoryFromChat(input: {
   void pruneSessionMemories(input.userId).catch(() => {});
 }
 
-function parseSessionSummary(
+export function parseSessionSummary(
   text: string,
   cardNames: string[]
 ): Omit<SessionMemory, "date" | "outcomeRating"> | null {
@@ -255,6 +280,11 @@ function parseSessionSummary(
       mood?: string;
     };
     if (!parsed.topicSummary || !parsed.prediction) return null;
+    if (
+      isInstructionLikeFact(parsed.topicSummary) ||
+      isInstructionLikeFact(parsed.prediction) ||
+      (parsed.mood && isInstructionLikeFact(parsed.mood))
+    ) return null;
     return {
       topicSummary: parsed.topicSummary,
       keyCards: limitSpreadKeyCards(
@@ -296,6 +326,8 @@ export async function maybePersistSessionMemory(params: {
   cardNames: string[];
   lastAssistantReply: string;
 }): Promise<void> {
+  const consent = await readMemoryWriteConsent(params.userId).catch(() => null);
+  if (!consent?.memoryEnabled || !consent.autoCaptureEnabled) return;
   const userTurns = params.messages.filter((m) => m.role === "user").length;
   if (userTurns < 3 || userTurns % 3 !== 0) return;
 

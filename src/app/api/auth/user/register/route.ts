@@ -12,6 +12,7 @@ import { getZodiacFromDate, formatZodiacLabel } from "@/utils/zodiac";
 import {
   linkSessionToUser,
   serializeUserProfile,
+  normalizeProfileMainQuestion,
   type UserRow,
 } from "@/lib/users";
 import { sendWelcomeEmail } from "@/lib/email/send";
@@ -66,6 +67,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: nameError }, { status: 400 });
     }
     const trimmedName = normalizeStoredDisplayName(String(name), String(name).trim());
+    const normalizedMainQuestion = normalizeProfileMainQuestion(mainQuestion);
+    if (typeof mainQuestion === "string" && mainQuestion.trim() && !normalizedMainQuestion) {
+      return NextResponse.json({ error: "Некорректный главный вопрос" }, { status: 400 });
+    }
 
     const email = normalizeAuthEmail(String(rawEmail));
 
@@ -127,7 +132,7 @@ export async function POST(request: NextRequest) {
         birthTime,
         birthCity,
         lifeFocus,
-        mainQuestion,
+        mainQuestion: normalizedMainQuestion ?? undefined,
         astroMeta: mergeConsentIntoAstroMeta(
           {
             ...(baseAstroMeta as unknown as Record<string, unknown>),

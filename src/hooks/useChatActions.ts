@@ -2128,6 +2128,7 @@ export function useChatActions(options: UseChatActionsOptions) {
       setIsLoading(true);
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 120000);
+      const replyId = generateId();
 
       try {
         const chatBody: Record<string, unknown> = {
@@ -2257,14 +2258,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         }
 
         const contentType = response.headers.get("content-type") ?? "";
-        const replyId = generateId();
-
         if (contentType.includes("text/event-stream") && response.body) {
-          setMessages((prev) => [
-            ...prev,
-            { id: replyId, role: "assistant", content: "", timestamp: new Date() },
-          ]);
-
           const reader = response.body.getReader();
           const decoder = new TextDecoder();
           let fullText = "";
@@ -2319,6 +2313,14 @@ export function useChatActions(options: UseChatActionsOptions) {
                       content: displayText,
                       ...(doneNumerologyUi ? { numerologyUi: doneNumerologyUi } : {}),
                     };
+                  } else if (displayText || doneNumerologyUi) {
+                    updated.push({
+                      id: replyId,
+                      role: "assistant",
+                      content: displayText,
+                      timestamp: new Date(),
+                      ...(doneNumerologyUi ? { numerologyUi: doneNumerologyUi } : {}),
+                    });
                   }
                   return updated;
                 });
@@ -2350,6 +2352,14 @@ export function useChatActions(options: UseChatActionsOptions) {
                     "Расклад не успел сформироваться полностью. Нажмите «Отправить снова» — повтор без дополнительного списания, если ᚢ уже списаны.",
                   timestamp: new Date(),
                 };
+              } else {
+                updated.push({
+                  id: replyId,
+                  role: "assistant",
+                  content:
+                    "Расклад не успел сформироваться полностью. Нажмите «Отправить снова» — повтор без дополнительного списания, если ᚢ уже списаны.",
+                  timestamp: new Date(),
+                });
               }
               return updated;
             });
@@ -2474,17 +2484,21 @@ export function useChatActions(options: UseChatActionsOptions) {
       } catch (err) {
         const aborted = err instanceof DOMException && err.name === "AbortError";
         setRetryDraft({ content: content.trim(), imageBase64 });
-        setMessages((prev) => [
-          ...prev.slice(0, -1),
-          {
-            id: generateId(),
+        setMessages((prev) => {
+          const errorReply: Message = {
+            id: replyId,
             role: "assistant",
             content: aborted
               ? "Мастер думал слишком долго — повторите вопрос."
               : "Связь прервалась. Нажмите «Отправить снова».",
             timestamp: new Date(),
-          },
-        ]);
+          };
+          const idx = prev.findIndex((message) => message.id === replyId);
+          if (idx < 0) return [...prev, errorReply];
+          const updated = [...prev];
+          updated[idx] = errorReply;
+          return updated;
+        });
         if (session?.sessionId && !session.offline) {
           await refresh(session.sessionId).catch(() => undefined);
         }

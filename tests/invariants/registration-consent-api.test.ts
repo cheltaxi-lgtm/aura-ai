@@ -13,7 +13,12 @@ vi.mock("@/lib/auth", () => ({ hashPassword: vi.fn(async () => "test-hash"), set
 vi.mock("@/lib/api-guards", () => ({ clientIp: () => "127.0.0.1", enforceRegisterRateLimit: vi.fn(async () => null) }));
 vi.mock("@/lib/recaptcha-guard", () => ({ enforceRecaptchaScope: vi.fn(async () => null) }));
 vi.mock("@/lib/rune-service", () => ({ grantStarterRunesIfNeeded: vi.fn(async () => ({ granted: 0 })) }));
-vi.mock("@/lib/users", () => ({ linkSessionToUser: vi.fn(), serializeUserProfile: (p: unknown) => p }));
+vi.mock("@/lib/users", () => ({
+  linkSessionToUser: vi.fn(),
+  serializeUserProfile: (p: unknown) => p,
+  normalizeProfileMainQuestion: (value: unknown) =>
+    typeof value === "string" && value.trim() ? value.trim() : null,
+}));
 vi.mock("@/lib/email/send", () => ({ sendWelcomeEmail: vi.fn() }));
 vi.mock("@/lib/session-claim", () => ({ readSessionClaimCookie: vi.fn() }));
 

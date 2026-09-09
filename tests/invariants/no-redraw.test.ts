@@ -4,6 +4,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   clearGuestResumeUiCache,
   hasActiveGuestResumeIntent,
+  loadGuestResumeUiCache,
   saveGuestResumeUiCache,
 } from "@/lib/guest-resume-ui-cache";
 import * as decks from "@/lib/decks";
@@ -103,6 +104,37 @@ describe("no-redraw", () => {
     const guardIdx = src.indexOf("hasActiveGuestResumeIntent()");
     expect(guardIdx).toBeGreaterThan(-1);
     expect(askIdx).toBeGreaterThan(-1);
+  });
+
+  it("purges stale sensitive guest cache on every read", () => {
+    const store = new Map<string, string>();
+    const storage = {
+      getItem: (k: string) => store.get(k) ?? null,
+      setItem: (k: string, v: string) => void store.set(k, v),
+      removeItem: (k: string) => void store.delete(k),
+    };
+    vi.stubGlobal("window", { localStorage: storage });
+    vi.stubGlobal("localStorage", storage);
+
+    saveGuestResumeUiCache({
+      version: 1,
+      origin: "guest",
+      masterId: "veronika",
+      question: "чувствительный вопрос",
+      system: "tarot-veronika",
+      spreadId: "triplet",
+      teaser: "",
+      cards: [
+        { id: 0, name: "Шут", position: 0, reversed: false },
+        { id: 1, name: "Маг", position: 1, reversed: false },
+        { id: 2, name: "Жрица", position: 2, reversed: false },
+      ],
+      completedAt: new Date(Date.now() - 25 * 60 * 60 * 1000).toISOString(),
+      phase: "receipt_pending_auth",
+    });
+
+    expect(loadGuestResumeUiCache()).toBeNull();
+    expect(store.size).toBe(0);
   });
 
   it("draw spy / SEO once: resume keeps cards (0 draws); no-receipt SEO draws once", () => {

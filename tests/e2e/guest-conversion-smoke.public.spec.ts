@@ -92,6 +92,10 @@ async function runGuestConversionSmoke(page: Page) {
 }
 
 test.describe("guest conversion live smoke", () => {
+  test.skip(
+    process.env.GUEST_CONVERSION_E2E_LIVE !== "1",
+    "live guest persistence is opt-in; run with GUEST_CONVERSION_E2E_LIVE=1 and an isolated TEST_DATABASE_URL"
+  );
   test.use({ userAgent: REAL_CHROME_UA });
   test.setTimeout(90_000);
 
@@ -217,6 +221,79 @@ test.describe("landing question storage failure", () => {
       expect(errors).toEqual([]);
     });
   }
+});
+
+test("authenticated spread follow-up stays one short contextual answer", async ({ page }) => {
+  test.setTimeout(60_000);
+  const sessionId = "77777777-7777-4777-8777-777777777777";
+  const cards = ["5 Кубков", "Звезда", "6 Мечей"];
+  const reading =
+    "5 Кубков показывает прежнее разочарование. Звезда возвращает направление поиска. 6 Мечей завершает переходом к более спокойной работе.";
+  let chatRequests = 0;
+  let releaseChat!: () => void;
+  const chatGate = new Promise<void>((resolve) => { releaseChat = resolve; });
+
+  await page.route("**/api/**", async (route) => {
+    const request = route.request();
+    const path = new URL(request.url()).pathname;
+    if (path === "/api/auth/me") {
+      return route.fulfill({ json: { authenticated: true, user: { sub: "followup-e2e", role: "user", email: "followup@example.invalid", name: "Геннадий", profileUserId: "followup-profile" } } });
+    }
+    if (path === "/api/profile" && request.method() === "GET") {
+      return route.fulfill({ json: { profileUserId: "followup-profile", needsProfile: false, profile: { name: "Геннадий", gender: "male", birthDate: "1980-01-01", zodiac: "Козерог", tarotCards: [] }, readings: [], continueMasterIds: ["veronika"], tripletCooldown: { allowed: false, nextAvailableAt: null }, currentDailyReading: { exists: false }, hasConsultationActivity: true } });
+    }
+    if (path === "/api/masters") {
+      return route.fulfill({ json: { masters: [{ id: "veronika", name: "Вероника", system: "tarot-veronika", role: "Таро" }] } });
+    }
+    if (path === "/api/runes/config") {
+      return route.fulfill({ json: { enabled: true, starterRunes: 100, rubPerRune: 2, freeQuestions: 2, costs: { READING: 15, VISION_ANALYSIS: 30, NUMEROLOGY_SESSION: 100 } } });
+    }
+    if (path === "/api/runes/balance") return route.fulfill({ json: { balance: 30 } });
+    if (path === "/api/session") {
+      return route.fulfill({ json: { sessionId, offline: false, freeQuestionsUsed: 0, freeLimit: 2, hasAccess: true, canChat: true, questionsRemaining: 2, isUnlimited: false, ownerMismatch: false, memoryReadMode: "default" } });
+    }
+    if (path === "/api/sessions") return route.fulfill({ json: { active: { id: sessionId, intention: "Деньги", masterId: "veronika", system: "tarot-veronika", status: "active" }, completed: [] } });
+    if (path === "/api/chat/history") {
+      return route.fulfill({ json: {
+        sessionId, intention: "Деньги", spreadType: "new", spreadId: "triplet", cards,
+        status: "active", hasMore: false, pastSessions: [],
+        messages: [{ id: "reading", role: "assistant", content: reading, timestamp: new Date().toISOString() }],
+        spread: {
+          type: "intention_spread",
+          system: "tarot-veronika",
+          cardsKey: cards.join("|"),
+          intention: "Деньги",
+          spreadId: "triplet",
+          cards: cards.map((name, id) => ({ id, name, meaning: "каноническое значение", position: id, reversed: false })),
+        },
+      } });
+    }
+    if (path === "/api/chat" && request.method() === "POST") {
+      chatRequests += 1;
+      await chatGate;
+      const answer = "Точный месяц этот расклад не показывает. Ближайший честный ориентир — после завершения текущего перехода, а не конкретная дата.";
+      return route.fulfill({
+        status: 200,
+        contentType: "text/event-stream",
+        body: `data: ${JSON.stringify({ type: "done", reply: answer, llmFailed: false, sessionId })}\n\ndata: [DONE]\n\n`,
+      });
+    }
+    return route.fulfill({ status: 200, json: {} });
+  });
+
+  await page.goto(`/?master=veronika&resume=chat&sessionId=${sessionId}`);
+  const input = page.getByPlaceholder("Задайте свой вопрос...");
+  await expect(input).toBeVisible({ timeout: 30_000 });
+  await expect(page.getByText(reading)).toBeVisible();
+  await input.fill("скажи хотя бы в каком месяце");
+  await page.getByRole("button", { name: "Отправить сообщение" }).click();
+  await expect.poll(() => chatRequests).toBe(1);
+  await expect(page.locator(".master-message-bubble")).toHaveCount(1);
+  releaseChat();
+  await expect(page.getByText(/Точный месяц этот расклад не показывает/)).toBeVisible();
+  await expect(page.locator(".master-message-bubble")).toHaveCount(2);
+  await expect(page.getByText(/Вердикт: новую работу/)).toHaveCount(0);
+  expect(chatRequests).toBe(1);
 });
 
 test("late registration offer hides competing sticky CTA", async ({ page }) => {

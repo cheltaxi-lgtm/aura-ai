@@ -647,14 +647,20 @@ export async function getMessages(sessionId: string, characterId: string) {
 export async function getSessionMessagesForLlm(
   sessionId: string,
   characterId: string,
-  limit: number = LLM_CONTEXT_MESSAGES
+  limit: number = LLM_CONTEXT_MESSAGES,
+  ownerUserId?: string | null
 ): Promise<{ role: "user" | "assistant"; content: string }[]> {
   const { rows } = await query<{ role: "user" | "assistant"; content: string }>(
-    `SELECT role, content FROM chat_messages
-     WHERE session_id = $1 AND character_id = $2
-     ORDER BY created_at DESC
+    `SELECT cm.role, cm.content FROM chat_messages cm
+     INNER JOIN sessions s ON s.id = cm.session_id
+     WHERE cm.session_id = $1 AND cm.character_id = $2
+       AND (
+         $4::uuid IS NULL OR
+         (s.user_id = $4 AND (cm.owner_user_id = $4 OR cm.owner_user_id IS NULL))
+       )
+     ORDER BY cm.created_at DESC
      LIMIT $3`,
-    [sessionId, characterId, limit]
+    [sessionId, characterId, limit, ownerUserId ?? null]
   );
   return rows.reverse();
 }

@@ -116,9 +116,49 @@ export function hasDuplicateSymbolInterpretations(text: string): boolean {
 export type ChatReplyQualityOpts = {
   lastUserMessage?: string;
   cardNames?: string[];
+  /** Previous delivered spread, used to reject a paraphrased second reading. */
+  previousAssistantReply?: string;
   /** Destiny Matrix follow-up: reject tarot-style «Позиция N» dumps. */
   rejectTarotPositionDump?: boolean;
 };
+
+function semanticTokens(text: string): Set<string> {
+  const stop = new Set([
+    "который", "которая", "которые", "показывает", "говорит", "расклад",
+    "карта", "карты", "сейчас", "будет", "через", "только", "после",
+  ]);
+  return new Set(
+    normalizeCompareText(text)
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((token) => token.length >= 5 && !stop.has(token))
+  );
+}
+
+/** Detect a new answer that merely rephrases the already delivered spread. */
+export function isSemanticallyDuplicativeReply(
+  reply: string,
+  previousReply?: string,
+  cardNames: string[] = []
+): boolean {
+  const previous = previousReply?.trim() ?? "";
+  const current = reply.trim();
+  if (previous.length < 120 || current.length < 120) return false;
+
+  const normalizedCurrent = normalizeCompareText(current);
+  const mentionedCards = cardNames.filter((name) =>
+    normalizedCurrent.includes(normalizeCompareText(name))
+  );
+  if (cardNames.length >= 2 && mentionedCards.length < Math.min(2, cardNames.length)) {
+    return false;
+  }
+
+  const previousTokens = semanticTokens(previous);
+  const currentTokens = semanticTokens(current);
+  if (currentTokens.size < 8) return false;
+  let shared = 0;
+  for (const token of currentTokens) if (previousTokens.has(token)) shared += 1;
+  return shared / currentTokens.size >= 0.48;
+}
 
 const TAROT_POSITION_DUMP_RE = /Позиция\s+\d+/gi;
 
@@ -133,6 +173,10 @@ export function isRejectedChatReply(text: string, opts?: ChatReplyQualityOpts): 
   if (hasRepeatedPhrase(text)) return true;
   if (hasDuplicateSymbolInterpretations(text)) return true;
   if (opts?.lastUserMessage && isEchoingUserMessage(text, opts.lastUserMessage)) return true;
+  if (
+    opts?.previousAssistantReply &&
+    isSemanticallyDuplicativeReply(text, opts.previousAssistantReply, opts.cardNames)
+  ) return true;
   if (opts?.rejectTarotPositionDump && looksLikeTarotPositionDump(text)) return true;
   return false;
 }
@@ -143,6 +187,12 @@ export function chatReplyRejectionReason(text: string, opts?: ChatReplyQualityOp
   if (hasDuplicateSymbolInterpretations(text)) return "duplicate symbol interpretations";
   if (opts?.lastUserMessage && isEchoingUserMessage(text, opts.lastUserMessage)) {
     return "echoing user message";
+  }
+  if (
+    opts?.previousAssistantReply &&
+    isSemanticallyDuplicativeReply(text, opts.previousAssistantReply, opts.cardNames)
+  ) {
+    return "repeating previous spread";
   }
   if (opts?.rejectTarotPositionDump && looksLikeTarotPositionDump(text)) {
     return "matrix follow-up dumped tarot positions";

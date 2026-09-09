@@ -178,18 +178,20 @@ export function filterLlmMessagesByTopic(
   if (!query) return messages.slice(-limit);
   if (messages.length <= 2) return messages;
 
+  // Preserve the active turn as a contiguous unit. An unanswered referential
+  // follow-up such as «а в каком месяце?» needs the preceding user/assistant
+  // pair even when it shares no lexical tokens. Once an assistant answer is
+  // already present, older unrelated pairs can still be relevance-filtered.
   let lastUserIdx = messages.length - 1;
-  while (lastUserIdx >= 0 && messages[lastUserIdx].role !== "user") {
-    lastUserIdx -= 1;
-  }
-  const tail = lastUserIdx >= 0 ? messages.slice(lastUserIdx) : messages.slice(-2);
-  const head = lastUserIdx > 0 ? messages.slice(0, lastUserIdx) : [];
+  while (lastUserIdx >= 0 && messages[lastUserIdx]?.role !== "user") lastUserIdx -= 1;
+  const tailStart =
+    lastUserIdx === messages.length - 1
+      ? Math.max(0, lastUserIdx - 2)
+      : Math.max(0, lastUserIdx);
+  const tail = messages.slice(tailStart);
+  const head = messages.slice(0, tailStart);
   const relevant = head.filter((m) => isTextRelevantToQuery(query, m.content));
-  const merged = [...relevant, ...tail];
-  if (merged.length <= 1 && messages.length >= 2) {
-    return messages.slice(-Math.min(limit, 4));
-  }
-  return merged.slice(-limit);
+  return [...relevant, ...tail].slice(-limit);
 }
 
 export const MEMORY_USAGE_RULES = `ПРАВИЛА ПАМЯТИ:

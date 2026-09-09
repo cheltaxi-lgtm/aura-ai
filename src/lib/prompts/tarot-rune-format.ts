@@ -47,6 +47,12 @@ export const TAROT_RUNE_CHAT_FORMAT = `
 - Без театральных скобок и *ремарок*.
 - Если уместно — короткий блок «## Простыми словами» (2–3 предложения) в конце.`;
 
+export const TAROT_RUNE_FOLLOWUP_FORMAT = `
+ФОРМАТ УЗКОГО ОТВЕТА В ЧАТЕ (Markdown):
+- Два–пять предложений, если этого достаточно для прямого ответа.
+- Название одной или двух нужных карт/рун можно выделить **жирным**.
+- Без блока «## Простыми словами», без повторного вывода всего расклада и без обязательного вопроса в конце.`;
+
 export function tarotRuneThematicReadingRules(cardCount: number): string {
   const n = Math.max(1, cardCount);
   const minSentences = Math.max(28, n * 4);

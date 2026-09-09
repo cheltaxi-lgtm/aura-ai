@@ -1093,9 +1093,9 @@ export default function ChatWindow({
               <div className="flex items-center gap-3 rounded-2xl rounded-bl-md border border-white/10 bg-black/40 px-4 py-3">
                 <MasterAvatar masterId={characterId} masterName={character.name} size="sm" thumb />
                 <span className="flex gap-1 text-aura-gold">
-                  <span className="animate-bounce [animation-delay:0ms]">·</span>
-                  <span className="animate-bounce [animation-delay:150ms]">·</span>
-                  <span className="animate-bounce [animation-delay:300ms]">·</span>
+                  <span className="animate-bounce motion-reduce:animate-none [animation-delay:0ms]">·</span>
+                  <span className="animate-bounce motion-reduce:animate-none [animation-delay:150ms]">·</span>
+                  <span className="animate-bounce motion-reduce:animate-none [animation-delay:300ms]">·</span>
                 </span>
               </div>
             </motion.div>

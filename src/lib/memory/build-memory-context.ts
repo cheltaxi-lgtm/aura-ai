@@ -47,6 +47,8 @@ export interface MemoryContextParams {
   /** Live "what we've already covered this session" anchor — chat flow only. */
   sessionAnchorFallback?: SessionAnchorFallback;
   includeSessionAnchor?: boolean;
+  /** Chat history already carries the full reply; omit it from the session anchor. */
+  includeSessionPrediction?: boolean;
   /** Default true — chat's period-spread mode turns this off. */
   includePastSessions?: boolean;
   /** compact | standard | deep — adaptive memory budget. */
@@ -119,7 +121,11 @@ export async function buildMemoryContext(params: MemoryContextParams): Promise<M
           params.sessionId,
           params.characterId,
           params.sessionAnchorFallback,
-          queryText
+          queryText,
+          {
+            includePrediction: params.includeSessionPrediction ?? true,
+            includeStoredSummary: memoryOn,
+          }
         )
       : Promise.resolve(""),
   ]);
