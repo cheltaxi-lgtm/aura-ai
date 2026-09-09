@@ -17,6 +17,7 @@ import { applyReminderUnsubscribe } from "@/lib/reminder-unsubscribe";
 import { sendEmail } from "@/lib/email/send";
 import { notifyBotReminder } from "@/lib/telegram/notify-bot-reminder";
 import { getFirstExperienceAnalytics } from "@/lib/first-experience-analytics";
+import { formatBonusVersion, formatCohortDate } from "@/components/admin/FirstExperienceMetrics";
 vi.mock("@/lib/email/send",async original=>({...await original<typeof import("@/lib/email/send")>(),sendEmail:vi.fn().mockResolvedValue(true)}));
 vi.mock("@/lib/telegram/notify-bot-reminder",()=>({notifyBotReminder:vi.fn().mockResolvedValue({delivered:true})}));
 
@@ -25,6 +26,25 @@ const PROJECT_ROOT = path.resolve(__dirname, "../..");
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
 describe("first experience policy and consent",()=>{
   it("fails closed and uses one 100-rune policy",()=>{vi.stubEnv("FIRST_EXPERIENCE_ENABLED","false");expect(isFirstExperienceEnabled()).toBe(false);expect(STARTER_BONUS_RUNES).toBe(100);});
+  it("presents cohort dates and bonus versions as human-readable labels",()=>{
+    expect(formatBonusVersion("legacy")).toBe("Старый сценарий");
+    expect(formatBonusVersion("starter-100-v1")).toBe("Бонус 100 рун");
+    expect(formatCohortDate("2026-09-08")).toContain("8");
+    expect(formatCohortDate("2026-09-08")).not.toContain("2026-09-08");
+  });
+  it("builds a privacy-safe monotonic funnel from unique users",()=>{
+    const analytics=fs.readFileSync(path.join(PROJECT_ROOT,"src/lib/first-experience-analytics.ts"),"utf8");
+    const dashboard=fs.readFileSync(path.join(PROJECT_ROOT,"src/components/admin/FirstExperienceMetrics.tsx"),"utf8");
+    expect(analytics).toContain("COUNT(DISTINCT m.user_id)");
+    expect(analytics).toContain("LEFT JOIN LATERAL");
+    expect(analytics).toContain("event='first_result' AND created_at>=bonus_spent.at");
+    expect(analytics).toContain("event='first_topup' AND created_at>=payment_started.at");
+    expect(analytics).toContain("INTERVAL '89 days'");
+    expect(analytics).not.toContain("SELECT m.event,COUNT(*)::text AS count");
+    expect(dashboard).toContain('className="space-y-3 p-3 md:hidden"');
+    expect(dashboard).toContain('role="region" aria-label="Конверсия по когортам регистрации" tabIndex={0}');
+    expect(dashboard).not.toContain("transition-colors");
+  });
   it("keeps browser fixtures on the current starter policy",()=>{
     const e2eDir=path.join(PROJECT_ROOT,"tests/e2e");
     const stale=fs.readdirSync(e2eDir)
@@ -208,9 +228,36 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
     await creditRunesFromPaymentDetailed({userId:user.id,packageId:"snapshot",paymentId:crypto.randomUUID(),amountRub:500,expectedPriceRub:500,expectedRunes:100});
     await query("UPDATE rune_transactions SET created_at=NOW()-INTERVAL '39 days' WHERE user_id=$1",[user.id]);
     const data=await getFirstExperienceAnalytics();expect(data?.cohorts).toHaveLength(1);
-    expect(data?.cohorts[0]).toMatchObject({users:1,firstPayment7:1,firstPayment30:1,repeatPayment:0});
+    expect(data?.cohorts[0]).toMatchObject({users:1,paid7:1,paid30:1,payers:1,repeatPayers:0,firstPayment7:1,firstPayment30:1,repeatPayment:0});
+    expect(data?.summary).toMatchObject({registrations:1,eligible7:1,paid7:1,eligible30:1,paid30:1,payers:1,repeatPayers:0,firstPayment7:1,firstPayment30:1,repeatPayment:0});
     expect(data?.freeGenerationCost.totalRub).toBeNull();
     await query("UPDATE user_accounts SET email='excluded@zovus.test' WHERE profile_user_id=$1",[user.id]);
     expect((await getFirstExperienceAnalytics())?.cohorts).toHaveLength(0);
+  });
+  it("counts only users who pass funnel stages in chronological order",async()=>{
+    const outOfOrder=await createTestUser();const ordered=await createTestUser();const mixed=await createTestUser();
+    await query("INSERT INTO user_accounts(profile_user_id,email,name) VALUES($1,$2,'Funnel order A'),($3,$4,'Funnel order B'),($5,$6,'Funnel order C')",[outOfOrder.id,`${crypto.randomUUID()}@example.invalid`,ordered.id,`${crypto.randomUUID()}@example.invalid`,mixed.id,`${crypto.randomUUID()}@example.invalid`]);
+    await query(`INSERT INTO spread_metrics(user_id,event,spread_id,source,idempotency_key,metadata,created_at) VALUES
+      ($1,'first_result','journey','first_experience','a-result','{}',NOW()-INTERVAL '3 hours'),
+      ($1,'bonus_granted','journey','first_experience','a-grant','{}',NOW()-INTERVAL '2 hours'),
+      ($1,'bonus_spent','journey','first_experience','a-spent','{}',NOW()-INTERVAL '1 hour'),
+      ($1,'continuation_shown','journey','first_experience','a-continuation','{}',NOW()),
+      ($1,'payment_started','journey','first_experience','a-payment','{}',NOW()+INTERVAL '1 hour'),
+      ($1,'first_topup','journey','first_experience','a-topup','{}',NOW()+INTERVAL '2 hours'),
+      ($2,'bonus_granted','journey','first_experience','b-grant','{}',NOW()-INTERVAL '6 hours'),
+      ($2,'bonus_spent','journey','first_experience','b-spent','{}',NOW()-INTERVAL '5 hours'),
+      ($2,'first_result','journey','first_experience','b-result','{}',NOW()-INTERVAL '4 hours'),
+      ($2,'continuation_shown','journey','first_experience','b-continuation','{}',NOW()-INTERVAL '3 hours'),
+      ($2,'payment_started','journey','first_experience','b-payment','{}',NOW()-INTERVAL '2 hours'),
+      ($2,'first_topup','journey','first_experience','b-topup','{}',NOW()-INTERVAL '1 hour'),
+      ($3,'first_result','journey','first_experience','c-early-result','{}',NOW()-INTERVAL '7 hours'),
+      ($3,'bonus_granted','journey','first_experience','c-grant','{}',NOW()-INTERVAL '6 hours'),
+      ($3,'bonus_spent','journey','first_experience','c-spent','{}',NOW()-INTERVAL '5 hours'),
+      ($3,'first_result','journey','first_experience','c-valid-result','{}',NOW()-INTERVAL '4 hours'),
+      ($3,'continuation_shown','journey','first_experience','c-continuation','{}',NOW()-INTERVAL '3 hours'),
+      ($3,'payment_started','journey','first_experience','c-payment','{}',NOW()-INTERVAL '2 hours'),
+      ($3,'first_topup','journey','first_experience','c-topup','{}',NOW()-INTERVAL '1 hour')`,[outOfOrder.id,ordered.id,mixed.id]);
+    const funnel=new Map((await getFirstExperienceAnalytics())?.funnel.map(item=>[item.event,item.count]));
+    expect(Object.fromEntries(funnel)).toMatchObject({bonus_granted:3,bonus_spent:3,first_result:2,continuation_shown:2,payment_started:2,first_topup:2});
   });
 });
