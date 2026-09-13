@@ -34,6 +34,8 @@ export function openSalonKeyboard(label = "🕯 Открыть салон"): Inl
 export const NAV = {
   matrix: "📜 Матрица",
   photo: "📷 Расклад по фото",
+  hd: "🧬 Дизайн Человека",
+  palm: "✋ Ладонь",
   spread: "🔮 Расклад",
   day: "🃏 Карта дня",
   history: "📚 История",
@@ -162,6 +164,9 @@ export function salonKeyboard(): Keyboard {
     .row()
     .text(NAV.photo)
     .text(NAV.matrix)
+    .row()
+    .text(NAV.hd)
+    .text(NAV.palm)
     .row()
     .text(NAV.profile)
     .text(NAV.about)
@@ -370,6 +375,7 @@ export function historyItemKeyboard(sessionId: string): InlineKeyboard {
 /**
  * Profile hub — buttons by demand:
  * History → Runes → Settings → site → invite → support → delete.
+ * Product shortcuts live in the main reply keyboard and the complete modules hub.
  */
 export function profileKeyboard(opts: {
   linked: boolean;
@@ -382,8 +388,6 @@ export function profileKeyboard(opts: {
   kb.text("🕯 Все разделы", CB.modCabinet).row();
   kb.text("📚 История", CB.profHist).row();
   if (opts.linked) kb.text("Восстановить запрос", "op:list").row();
-  kb.text("🧬 Дизайн Человека", CB.modHd).row();
-  kb.text("✋ Ладонь", CB.modPalm).row();
   kb.text("🪙 Руны", CB.profRunes).text("⚙️ Настройки", CB.profSettings).row();
   if (!opts.linked && opts.linkUrl) {
     webAppButton(kb, `🔗 ${copy.ctaLinkButton}`, opts.linkUrl).row();

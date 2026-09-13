@@ -10,6 +10,8 @@ export const BUTTON_EMOJI_WHITELIST = [
   "\u{1F4F7}", // camera
   "\u{1F464}", // bust
   "\u{1FA99}", // coin
+  "\u{1F9EC}", // DNA
+  "\u{270B}", // raised hand
   "\u{1F4C2}", // open folder
   "\u{2699}\u{FE0F}", // gear
   "\u{2728}", // sparkles

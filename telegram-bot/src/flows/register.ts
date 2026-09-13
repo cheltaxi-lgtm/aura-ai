@@ -68,6 +68,7 @@ import {
   showHd,
   showHistory,
   showMatrix,
+  showPalm,
   showPhoto,
 } from "./cabinet.js";
 import {
@@ -638,6 +639,13 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
       return;
     case NAV.photo:
       await showPhoto(ctx);
+      return;
+    case NAV.hd:
+      await showHd(ctx);
+      return;
+    case NAV.palm:
+      if (!(await ensureOnboarded(ctx))) return;
+      await showPalm(ctx);
       return;
     case NAV.spread:
       await beginCatalog(ctx);
