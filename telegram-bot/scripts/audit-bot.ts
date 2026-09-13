@@ -45,7 +45,15 @@ import {
   expectedDeckSlugs,
 } from "../src/domain/deck/asset-check.js";
 import { localDateKey } from "../src/domain/time/local-date.js";
-import { NAV, NAV_LABELS, salonKeyboard } from "../src/keyboards/index.js";
+import {
+  HOME_NAV,
+  NAV,
+  accountDirectionKeyboard,
+  personalSpaceDirectionKeyboard,
+  readingsDirectionKeyboard,
+  salonKeyboard,
+  selfKnowledgeDirectionKeyboard,
+} from "../src/keyboards/index.js";
 import { isIrreversible, markIrreversible } from "../src/middleware/irreversible.js";
 import { runSafetyCorpus } from "../src/safety/__tests__/run-corpus.js";
 import { botConfig } from "../src/config.js";
@@ -202,14 +210,30 @@ async function main() {
   const bodies = collectBodyCopySamples();
   const bodyBad = bodies.filter((s) => EMOJI_RE.test(s));
   check("body copy has no emoji", bodyBad.length === 0, bodyBad[0]?.slice(0, 60));
-  const buttonBad = Object.values(NAV).filter((label) => hasDisallowedEmoji(label));
+  const buttonBad = [...Object.values(NAV), ...Object.values(HOME_NAV)].filter((label) =>
+    hasDisallowedEmoji(label)
+  );
   check("NAV button emoji whitelisted", buttonBad.length === 0, buttonBad.join(","));
   const menuLabels = salonKeyboard().build().flat().map((button) => button.text);
   check(
-    "all NAV actions visible exactly once on main menu",
-    menuLabels.length === NAV_LABELS.size &&
-      new Set(menuLabels).size === NAV_LABELS.size &&
-      menuLabels.every((label) => NAV_LABELS.has(label))
+    "main menu grouped into four directions plus about",
+    menuLabels.length === Object.keys(HOME_NAV).length + 1 &&
+      new Set(menuLabels).size === menuLabels.length &&
+      Object.values(HOME_NAV).every((label) => menuLabels.includes(label)) &&
+      menuLabels.includes(NAV.about)
+  );
+  const directionLabels = [
+    readingsDirectionKeyboard(),
+    selfKnowledgeDirectionKeyboard(),
+    personalSpaceDirectionKeyboard(),
+    accountDirectionKeyboard(),
+  ].flatMap((keyboard) => keyboard.inline_keyboard.flat().map((button) => button.text));
+  const expectedServices = Object.values(NAV).filter((label) => label !== NAV.about);
+  check(
+    "all services visible exactly once across direction menus",
+    directionLabels.length === expectedServices.length &&
+      new Set(directionLabels).size === expectedServices.length &&
+      expectedServices.every((label) => directionLabels.includes(label))
   );
 
   // 5) localDateKey across TZ

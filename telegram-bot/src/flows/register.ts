@@ -31,9 +31,11 @@ import type { DrawnCard } from "../domain/deck/types.js";
 import { drawnCardsFromSiteCards } from '../domain/reading/present.js';
 import {
   CB,
+  HOME_NAV,
   NAV,
   NAV_LABELS,
   ageKeyboard,
+  accountDirectionKeyboard,
   consentKeyboard,
   continueOnSiteKeyboard,
   ctaKeyboard,
@@ -43,7 +45,10 @@ import {
   inviteKeyboard,
   linkAccountKeyboard,
   profileKeyboard,
+  personalSpaceDirectionKeyboard,
+  readingsDirectionKeyboard,
   salonKeyboard,
+  selfKnowledgeDirectionKeyboard,
   settingsKeyboard,
   timezoneKeyboard,
 } from "../keyboards/index.js";
@@ -491,12 +496,14 @@ export function registerFlows(bot: Bot): void {
 
   bot.callbackQuery(new RegExp(`^${CB.catPrefix}`), async (ctx) => {
     const data = ctx.callbackQuery.data;
+    if (data === CB.catHome && !(await prepareServiceShortcut(ctx))) return;
     if (!(await handleCatalogCallback(ctx, data))) {
       await ctx.answerCallbackQuery().catch(() => undefined);
     }
   });
 
   bot.callbackQuery(/^mod:/, async (ctx) => {
+    if (!(await prepareServiceShortcut(ctx))) return;
     await ctx.answerCallbackQuery();
     const data = ctx.callbackQuery.data;
     if (!(await routeModuleCallback(ctx, data))) {
@@ -566,16 +573,19 @@ export function registerFlows(bot: Bot): void {
   bot.callbackQuery(new RegExp(`^${CB.profPrefix}`), async (ctx) => {
     const data = ctx.callbackQuery.data;
     if (data === CB.profHist) {
+      if (!(await prepareServiceShortcut(ctx))) return;
       await ctx.answerCallbackQuery().catch(() => undefined);
       await showHistory(ctx);
       return;
     }
     if (data === CB.profRunes) {
+      if (!(await prepareServiceShortcut(ctx))) return;
       await ctx.answerCallbackQuery().catch(() => undefined);
       await showRunes(ctx);
       return;
     }
     if (data === CB.profSettings) {
+      if (!(await prepareServiceShortcut(ctx))) return;
       await ctx.answerCallbackQuery().catch(() => undefined);
       await showSettings(ctx);
       return;
@@ -591,6 +601,18 @@ export function registerFlows(bot: Bot): void {
       "Сейчас фото не ожидается. Откройте «Расклад по фото» или нужный раздел в салоне.",
       { reply_markup: salonKeyboard() }
     );
+  });
+
+  bot.callbackQuery(CB.homeDay, async (ctx) => {
+    if (!(await prepareServiceShortcut(ctx))) return;
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await handleDay(ctx);
+  });
+
+  bot.callbackQuery(CB.homeProfile, async (ctx) => {
+    if (!(await prepareServiceShortcut(ctx))) return;
+    await ctx.answerCallbackQuery().catch(() => undefined);
+    await showProfile(ctx);
   });
 
   bot.callbackQuery(new RegExp(`^${CB.chatConfirmPrefix}(.+)$`), async (ctx) => {
@@ -632,12 +654,39 @@ export function registerFlows(bot: Bot): void {
   });
 }
 
+async function prepareServiceShortcut(ctx: Context): Promise<boolean> {
+  const user = await ensureOnboarded(ctx);
+  if (!user) return false;
+  clearFlow(user.telegram_user_id);
+  return true;
+}
+
 async function routeNav(ctx: Context, label: string): Promise<void> {
   const user = await ensureOnboarded(ctx);
   if (!user) return;
   clearFlow(user.telegram_user_id);
 
   switch (label) {
+    case HOME_NAV.readings:
+      await ctx.reply("Выберите формат гадания.", {
+        reply_markup: readingsDirectionKeyboard(),
+      });
+      return;
+    case HOME_NAV.selfKnowledge:
+      await ctx.reply("Выберите направление самопознания.", {
+        reply_markup: selfKnowledgeDirectionKeyboard(),
+      });
+      return;
+    case HOME_NAV.personalSpace:
+      await ctx.reply("Ваши сохранённые материалы и личная память.", {
+        reply_markup: personalSpaceDirectionKeyboard(),
+      });
+      return;
+    case HOME_NAV.account:
+      await ctx.reply("Профиль, баланс и помощь.", {
+        reply_markup: accountDirectionKeyboard(),
+      });
+      return;
     case NAV.matrix:
       await showMatrix(ctx);
       return;

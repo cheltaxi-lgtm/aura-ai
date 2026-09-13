@@ -52,7 +52,17 @@ export const NAV = {
   about: "✨ О салоне",
 } as const;
 
-export const NAV_LABELS = new Set<string>(Object.values(NAV));
+export const HOME_NAV = {
+  readings: "🔮 Гадания",
+  selfKnowledge: "🧬 Самопознание",
+  personalSpace: "📔 Моё пространство",
+  account: "👤 Мой кабинет",
+} as const;
+
+export const NAV_LABELS = new Set<string>([
+  ...Object.values(NAV),
+  ...Object.values(HOME_NAV),
+]);
 
 export const CB = {
   ageYes: "age:yes",
@@ -162,40 +172,62 @@ export const CB = {
   profHist: "prof:hist",
   profRunes: "prof:runes",
   profSettings: "prof:set",
+  homeDay: "home:day",
+  homeProfile: "home:profile",
 } as const;
 
 export function salonKeyboard(): Keyboard {
   return new Keyboard()
-    .text(NAV.spread)
-    .text(NAV.day)
+    .text(HOME_NAV.readings)
+    .text(HOME_NAV.selfKnowledge)
     .row()
-    .text(NAV.photo)
-    .text(NAV.matrix)
+    .text(HOME_NAV.personalSpace)
+    .text(HOME_NAV.account)
     .row()
-    .text(NAV.natal)
-    .text(NAV.hd)
-    .row()
-    .text(NAV.palm)
-    .text(NAV.aura)
-    .row()
-    .text(NAV.rituals)
-    .text(NAV.joint)
-    .row()
-    .text(NAV.diary)
-    .text(NAV.memory)
-    .row()
-    .text(NAV.history)
-    .text(NAV.runes)
-    .row()
-    .text(NAV.profile)
-    .text(NAV.settings)
-    .row()
-    .text(NAV.support)
     .text(NAV.about)
     // resized only — do NOT use persistent(): it pins the bar so users cannot
     // collapse the menu or swipe away from the bot chat comfortably.
     .resized()
     .placeholder("Выберите действие или напишите вопрос…");
+}
+
+export function readingsDirectionKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(NAV.spread, CB.catHome)
+    .text(NAV.day, CB.homeDay)
+    .row()
+    .text(NAV.photo, CB.modPhoto)
+    .text(NAV.palm, CB.modPalm)
+    .row()
+    .text(NAV.aura, CB.modAura)
+    .text(NAV.rituals, CB.modRituals)
+    .row()
+    .text(NAV.joint, CB.modJoint);
+}
+
+export function selfKnowledgeDirectionKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(NAV.matrix, CB.modMatrix)
+    .row()
+    .text(NAV.natal, CB.modNatal)
+    .text(NAV.hd, CB.modHd);
+}
+
+export function personalSpaceDirectionKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(NAV.diary, CB.modDiary)
+    .text(NAV.memory, CB.modMemory)
+    .row()
+    .text(NAV.history, CB.profHist);
+}
+
+export function accountDirectionKeyboard(): InlineKeyboard {
+  return new InlineKeyboard()
+    .text(NAV.profile, CB.homeProfile)
+    .text(NAV.runes, CB.profRunes)
+    .row()
+    .text(NAV.settings, CB.profSettings)
+    .text(NAV.support, CB.modSupport);
 }
 
 export function ageKeyboard(): InlineKeyboard {
