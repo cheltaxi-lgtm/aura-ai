@@ -41,6 +41,7 @@ export async function POST(request: NextRequest) {
     telegram_user_id?: unknown;
     package_id?: unknown;
     custom_amount?: unknown;
+    request_id?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -162,14 +163,22 @@ export async function POST(request: NextRequest) {
   }
 
   try {
+    const requestId =
+      typeof body.request_id === "string" &&
+      /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(body.request_id.trim())
+        ? body.request_id.trim()
+        : undefined;
+    const providerReturnUrl = buildRunePurchaseReturnUrl(appUrl, undefined, requestId);
     const payment = await createYukassaRunePayment({
+      requestId,
       packageId,
       packageName,
       priceRub,
       totalRunes,
       userId: resolved.profileUserId,
       appUrl,
-      returnUrl: `${appUrl.replace(/\/$/, "")}/runes/success`,
+      returnUrl: providerReturnUrl,
+      source: "telegram_bot",
     });
 
     const paymentUrl = payment.confirmation?.confirmation_url;

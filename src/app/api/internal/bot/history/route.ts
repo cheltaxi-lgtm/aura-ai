@@ -19,6 +19,7 @@ export async function POST(request: NextRequest) {
     limit?: unknown;
     action?: unknown;
     session_id?: unknown;
+    offset?: unknown;
   };
   try {
     body = (await request.json()) as typeof body;
@@ -57,7 +58,8 @@ export async function POST(request: NextRequest) {
     });
   }
 
-  const limit = Math.min(40, Math.max(1, Number(body.limit) || 8));
-  const history = await botHistory(resolved.profileUserId, limit);
+  const limit = Math.trunc(Math.min(40, Math.max(1, Number(body.limit) || 8)));
+  const offset = Math.trunc(Math.min(10_000, Math.max(0, Number(body.offset) || 0)));
+  const history = await botHistory(resolved.profileUserId, limit, offset);
   return NextResponse.json({ ok: true, ...history, runeBalance: resolved.runeBalance });
 }

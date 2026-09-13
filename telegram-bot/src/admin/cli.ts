@@ -123,13 +123,16 @@ async function main(): Promise<void> {
         { command: "history", description: "История раскладов" },
         { command: "profile", description: "Профиль" },
         { command: "settings", description: "Настройки" },
+        { command: "runes", description: "Баланс и пополнение" },
+        { command: "cancel", description: "Отменить текущее действие" },
+        { command: "paysupport", description: "Поддержка по оплате" },
         { command: "about", description: "О салоне" },
         { command: "help", description: "Справка" },
         { command: "delete", description: "Удалить данные" },
       ]);
       await bot.api.setMyShortDescription("Приватный цифровой салон Zovus");
       await bot.api.setMyDescription(
-        "Zovus — приватный цифровой салон. Три карты и короткий ориентир от Вероники. Наставник — ИИ в художественном образе. 18+."
+        "Zovus — приватный цифровой салон: расклады, матрица, натальная карта, Дизайн Человека, фото-разборы и личный кабинет. Наставники — ИИ в художественных образах. 18+."
       );
       console.log("presence synced");
       audit("presence_sync", {});

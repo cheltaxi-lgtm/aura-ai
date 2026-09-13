@@ -72,6 +72,8 @@ export const CB = {
   modRituals: "mod:rituals",
   modJoint: "mod:joint",
   modMemory: "mod:memory",
+  modAura: "mod:aura",
+  modDiary: "mod:diary",
   modPhoto: "mod:photo",
   modPalm: "mod:palm",
   modSupport: "mod:support",
@@ -99,6 +101,7 @@ export const CB = {
   mxPagePrefix: "mx:pg:",
   mxOpenPrefix: "mx:o:",
   chatAskPrefix: "chat:ask:",
+  chatConfirmPrefix: "chat:confirm:",
   chatStop: "chat:stop",
   supportNew: "sup:new",
   supportReplyPrefix: "sup:reply:",
@@ -274,11 +277,11 @@ export function continueOnSiteKeyboard(url: string, label: string = copy.continu
   return webAppButton(kb, `🕯 ${label}`, url);
 }
 
-/** Site deep-link only — follow-up chat in the bot is closed. */
 export function chatFollowUpKeyboard(sessionId: string): InlineKeyboard {
-  const kb = new InlineKeyboard();
-  return webAppButton(
-    kb,
+  const kb = new InlineKeyboard()
+    .text("💬 Уточнить в боте", `${CB.chatAskPrefix}${sessionId}`)
+    .row();
+  return webAppButton(kb,
     `🕯 ${copy.continueDiscussionOnSite}`,
     buildSessionChatUrl(sessionId)
   );
@@ -290,6 +293,7 @@ export function readingPagerKeyboard(opts: {
   total: number;
   viewId?: string | null;
   chatUrl?: string | null;
+  sessionId?: string | null;
   /** Destiny matrix actions on the same album keyboard (not a second bubble). */
   matrixActions?: boolean;
   matrixSiteUrl?: string | null;
@@ -308,7 +312,10 @@ export function readingPagerKeyboard(opts: {
     kb.row();
   }
 
-  // One site CTA only — prefer session chat; otherwise matrix/cabinet URL.
+  if (opts.sessionId) {
+    kb.text("💬 Уточнить в боте", `${CB.chatAskPrefix}${opts.sessionId}`).row();
+  }
+
   if (opts.chatUrl) {
     webAppButton(kb, `🕯 ${copy.continueDiscussionOnSite}`, opts.chatUrl).row();
   } else if (opts.matrixSiteUrl) {
@@ -372,6 +379,7 @@ export function profileKeyboard(opts: {
   inviteUrl?: string | null;
 }): InlineKeyboard {
   const kb = new InlineKeyboard();
+  kb.text("🕯 Все разделы", CB.modCabinet).row();
   kb.text("📚 История", CB.profHist).row();
   if (opts.linked) kb.text("Восстановить запрос", "op:list").row();
   kb.text("🧬 Дизайн Человека", CB.modHd).row();
@@ -394,6 +402,42 @@ export function profileKeyboard(opts: {
   }
   kb.text("✉️ Поддержка", CB.modSupport).row();
   kb.text("🗑 Удалить аккаунт", CB.delStart);
+  return kb;
+}
+
+export function chatConfirmKeyboard(cost: number, confirmationId: string): InlineKeyboard {
+  const label = cost > 0 ? `Отправить · ${Math.round(cost)}ᚢ` : "Отправить бесплатно";
+  return new InlineKeyboard()
+    .text(`✅ ${label}`, `${CB.chatConfirmPrefix}${confirmationId}`)
+    .row()
+    .text("❌ Отмена", CB.chatStop);
+}
+
+/** One discoverable hub for every customer-facing Zovus direction. */
+export function cabinetModulesKeyboard(cabinetUrl?: string | null): InlineKeyboard {
+  const kb = new InlineKeyboard()
+    .text("🔮 Расклады", CB.catHome)
+    .text("📜 Матрица", CB.modMatrix)
+    .row()
+    .text("🌌 Натальная карта", CB.modNatal)
+    .text("🧬 Дизайн Человека", CB.modHd)
+    .row()
+    .text("📷 Фото-расклад", CB.modPhoto)
+    .text("✋ Ладонь", CB.modPalm)
+    .row()
+    .text("🌈 Аура", CB.modAura)
+    .text("🕯 Обряды", CB.modRituals)
+    .row()
+    .text("👥 Совместный разбор", CB.modJoint)
+    .row()
+    .text("📔 Дневник", CB.modDiary)
+    .text("🧠 Память", CB.modMemory)
+    .row()
+    .text("✉️ Поддержка", CB.modSupport);
+  if (cabinetUrl) {
+    kb.row();
+    webAppButton(kb, "Открыть полный кабинет", cabinetUrl);
+  }
   return kb;
 }
 
@@ -504,6 +548,8 @@ export function historyPagerKeyboard(opts: {
 
   if (opts.sessionId) {
     kb.text("📜 Открыть", `${CB.histOpenPrefix}${opts.sessionId}`)
+      .text("💬 Уточнить", `${CB.histAskPrefix}${opts.sessionId}`)
+      .row()
       .text("🗑", `${CB.histDelPrefix}${opts.sessionId}`)
       .row();
     webAppButton(

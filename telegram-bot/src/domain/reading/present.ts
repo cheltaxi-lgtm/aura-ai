@@ -1,7 +1,14 @@
-import { InlineKeyboard } from "grammy";
+import { InlineKeyboard, InputFile } from "grammy";
 import type { Context } from "grammy";
 import { randomBytes } from "node:crypto";
-import { setFlow, getFlow } from "../../db/repos.js";
+import {
+  consumeTtsQuota,
+  getFlow,
+  getUser,
+  hasTtsQuota,
+  setFlow,
+} from "../../db/repos.js";
+import { botConfig } from "../../config.js";
 import { getDb, nowIso } from "../../db/client.js";
 import { FULL_DECK, TRIPLET_POSITIONS } from "../deck/cards.js";
 import type { DrawnCard, TarotCardDef } from "../deck/types.js";
@@ -15,6 +22,7 @@ import { CB, readingPagerKeyboard } from "../../keyboards/index.js";
 import { buildMatrixTelegramPages } from "../matrix/format.js";
 import { widenTelegramText } from "../telegram-width.js";
 import { replyPhotoBudget } from "../tg-send.js";
+import { ttsProvider } from "../tts/openrouter-provider.js";
 
 type ReplyMarkup = NonNullable<Parameters<Context["reply"]>[1]>["reply_markup"];
 
@@ -35,6 +43,7 @@ type ReadingViewState = {
   pages: string[];
   page: number;
   chatUrl?: string;
+  sessionId?: string;
   footer?: string;
   matrixActions?: boolean;
   matrixSiteUrl?: string;
@@ -448,6 +457,7 @@ function pagerMarkup(state: ReadingViewState): InlineKeyboard {
     total: state.pages.length,
     viewId: state.viewId,
     chatUrl: state.chatUrl,
+    sessionId: state.sessionId,
     matrixActions: showMatrixActions,
     matrixSiteUrl: state.matrixSiteUrl,
   });
@@ -512,6 +522,7 @@ export async function presentReadingToTelegram(
     pages,
     page: 0,
     chatUrl,
+    sessionId: input.sessionId,
     footer: input.footer?.trim() || undefined,
     matrixActions: Boolean(input.matrixActions),
     matrixSiteUrl,
@@ -578,6 +589,31 @@ export async function presentReadingToTelegram(
       if (question && !pages.length) await ctx.reply(captionFor(question));
     }
   }
+
+  // Voice is an optional companion to the already delivered text. A provider
+  // failure must never hide or delay the saved reading.
+  if (
+    tid &&
+    pages.length &&
+    botConfig.flags.ttsEnabled &&
+    getUser(tid)?.voice_mode === "text_voice" &&
+    hasTtsQuota(tid)
+  ) {
+    try {
+      const speech = plainReadingText(pages.join("\n\n")).trim();
+      if (speech) {
+        const audio = await ttsProvider.synthesize(speech);
+        if (audio.ok) {
+          await ctx.replyWithVoice(new InputFile(audio.ogg, "reading.ogg"), {
+            duration: audio.durationSec,
+          });
+          consumeTtsQuota(tid);
+        }
+      }
+    } catch (err) {
+      console.error("[present-reading] optional voice failed", err);
+    }
+  }
 }
 
 /**
@@ -608,6 +644,7 @@ export async function jumpReadingAlbumPage(
     pages: source.pages as string[],
     page: Number.isFinite(page) ? page : 0,
     chatUrl: typeof source.chatUrl === "string" ? source.chatUrl : undefined,
+    sessionId: typeof source.sessionId === "string" ? source.sessionId : undefined,
     footer: typeof source.footer === "string" ? source.footer : undefined,
     matrixActions: Boolean(source.matrixActions),
     matrixSiteUrl:

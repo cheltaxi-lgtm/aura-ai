@@ -49,6 +49,16 @@ export class InsufficientFundsError extends Error {
   }
 }
 
+/** The atomic charge would exceed the amount the caller explicitly confirmed. */
+export class ConfirmedCostExceededError extends Error {
+  readonly code = "CONFIRMED_COST_EXCEEDED";
+
+  constructor(public readonly confirmed: number, public readonly actual: number) {
+    super(`Confirmed cost ${confirmed} is below actual cost ${actual}`);
+    this.name = "ConfirmedCostExceededError";
+  }
+}
+
 export type BillingChargeResult = {
   spentRunes: number;
   wasFreeQuestion: boolean;
@@ -83,6 +93,8 @@ export type ChargeForSessionParams = {
    * from legacy Capacitor clients still collapses (see CHARGE_IDEM_WINDOW_SEC).
    */
   idempotencyKey?: string;
+  /** Refuse the transaction when the payable amount exceeds explicit user confirmation. */
+  maxCost?: number;
 };
 
 /**
@@ -374,6 +386,10 @@ async function executeChargeForSession(
     }
   }
 
+  if (typeof params.maxCost === "number" && cost > params.maxCost) {
+    throw new ConfirmedCostExceededError(params.maxCost, cost);
+  }
+
   if (cost <= 0) {
     return {
       spentRunes: 0,
@@ -639,6 +655,10 @@ export type ChargeChatBillingParams = {
   runeSettings: { enabled: boolean; freeQuestions?: number };
   freeLimit: number;
   imageBase64?: string;
+  /** Stable caller event id for retry-safe bot/native chat turns. */
+  idempotencyKey?: string;
+  /** Maximum rune amount explicitly confirmed by the caller. */
+  maxCost?: number;
 };
 
 export type ChargeChatBillingResult =
@@ -660,6 +680,7 @@ export async function chargeChatBilling(
     runeSettings,
     freeLimit,
     imageBase64,
+    idempotencyKey,
   } = params;
 
   let session = initialSession;
@@ -733,7 +754,10 @@ export async function chargeChatBilling(
         hasFullAccess: sessionHasFullAccess,
         reserveFreeSlot: actionType === "QUESTION",
         // Per chat turn: session + action + current question counter (stable for double-submit).
-        idempotencyKey: `chat:${session.id}:${actionType}:${session.free_questions_used}`,
+        idempotencyKey:
+          normalizeChargeIdempotencyKey(idempotencyKey) ??
+          `chat:${session.id}:${actionType}:${session.free_questions_used}`,
+        maxCost: params.maxCost,
       });
 
       questionIndex = charge.questionIndex ?? questionIndex;
@@ -757,6 +781,20 @@ export async function chargeChatBilling(
       }
       if (billingErr instanceof InsufficientFundsError) {
         return { ok: false, response: insufficientFundsResponse(billingErr) };
+      }
+      if (billingErr instanceof ConfirmedCostExceededError) {
+        return {
+          ok: false,
+          response: NextResponse.json(
+            {
+              error: "price_changed",
+              message: "Стоимость вопроса изменилась. Подтвердите новую цену.",
+              confirmed: billingErr.confirmed,
+              required: billingErr.actual,
+            },
+            { status: 409 }
+          ),
+        };
       }
       throw billingErr;
     }

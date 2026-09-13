@@ -168,7 +168,7 @@ export async function siteBotPlaces(
   return { ok: Boolean(data.ok), places };
 }
 
-export async function siteHistory(telegramUserId: number, limit = 8) {
+export async function siteHistory(telegramUserId: number, limit = 8, offset = 0) {
   return siteFetch<{
     ok: boolean;
     items?: Array<{
@@ -181,12 +181,15 @@ export async function siteHistory(telegramUserId: number, limit = 8) {
       preview: string;
     }>;
     total?: number;
+    offset?: number;
+    nextOffset?: number | null;
     runeBalance?: number;
     error?: string;
     linkUrl?: string;
   }>("/api/internal/bot/history", {
     telegram_user_id: telegramUserId,
     limit,
+    offset,
     action: "list",
   });
 }
@@ -310,7 +313,7 @@ export async function siteRunes(telegramUserId: number) {
 /** Create YooKassa payment for a package or custom amount. */
 export async function siteRunesPurchase(
   telegramUserId: number,
-  opts: { packageId?: string; customAmountRub?: number }
+  opts: { packageId?: string; customAmountRub?: number; requestId?: string }
 ) {
   return siteFetch<{
     ok: boolean;
@@ -331,6 +334,7 @@ export async function siteRunesPurchase(
     package_id: opts.packageId,
     custom_amount:
       typeof opts.customAmountRub === "number" ? String(opts.customAmountRub) : undefined,
+    request_id: opts.requestId,
   });
 }
 
@@ -403,6 +407,54 @@ export async function siteReading(telegramUserId: number, sessionId: string) {
   }>("/api/internal/bot/reading", {
     telegram_user_id: telegramUserId,
     session_id: sessionId,
+  });
+}
+
+export async function siteChatFollowUp(
+  telegramUserId: number,
+  sessionId: string,
+  message: string,
+  clientEventId: string,
+  expectedCost: number
+) {
+  return siteFetch<{
+    ok: boolean;
+    reply?: string;
+    sessionId?: string;
+    runeBalance?: number;
+    reused?: boolean;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+    cost?: number;
+  }>(
+    "/api/internal/bot/chat",
+    {
+      telegram_user_id: telegramUserId,
+      session_id: sessionId,
+      message,
+      client_event_id: clientEventId,
+      expected_cost: expectedCost,
+    },
+    120_000
+  );
+}
+
+export async function siteChatQuote(telegramUserId: number, sessionId: string) {
+  return siteFetch<{
+    ok: boolean;
+    sessionId?: string;
+    cost?: number;
+    runeBalance?: number;
+    free?: boolean;
+    canAfford?: boolean;
+    error?: string;
+    message?: string;
+    linkUrl?: string;
+  }>("/api/internal/bot/chat", {
+    telegram_user_id: telegramUserId,
+    session_id: sessionId,
+    action: "quote",
   });
 }
 

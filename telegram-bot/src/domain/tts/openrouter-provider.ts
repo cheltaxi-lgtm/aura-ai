@@ -23,6 +23,7 @@ export class OpenRouterTtsProvider implements TtsProvider {
           input: clipped,
           response_format: "opus",
         }),
+        signal: AbortSignal.timeout(15_000),
       });
       if (!res.ok) {
         return { ok: false, reason: `http_${res.status}` };

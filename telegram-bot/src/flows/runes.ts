@@ -16,6 +16,7 @@ import {
 import { renderRuneShopCardImage } from "../render/rune-shop-card.js";
 import { announceWorking } from "./helpers.js";
 import { ensureSiteLinked } from "./site-account.js";
+import { telegramPaymentRequestId } from "../domain/payment-request-id.js";
 
 let runesCopyCounter = 0;
 
@@ -165,6 +166,10 @@ export async function handleRunesText(ctx: Context, text: string): Promise<boole
   try {
     const { data: pay } = await siteRunesPurchase(linked.user.telegram_user_id, {
       customAmountRub: amount,
+      requestId: telegramPaymentRequestId(
+        linked.user.telegram_user_id,
+        String(ctx.update.update_id)
+      ),
     });
     await sendPayLink(ctx, pay);
   } catch (err) {
@@ -222,6 +227,10 @@ export async function handleRunesCallback(ctx: Context, data: string): Promise<b
   try {
     const { data: pay } = await siteRunesPurchase(linked.user.telegram_user_id, {
       packageId,
+      requestId: telegramPaymentRequestId(
+        linked.user.telegram_user_id,
+        ctx.callbackQuery?.id || String(ctx.update.update_id)
+      ),
     });
     await sendPayLink(ctx, pay);
   } catch (err) {

@@ -29,7 +29,13 @@ import {
 import { emailSupportTicketCreated } from "@/lib/email/support-notify";
 import { getAccountDeliverableEmail } from "@/lib/reminder-contacts";
 import { getUserById } from "@/lib/users";
-import { getRuneBalance } from "@/lib/rune-service";
+import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
+import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
+import { hasPaidAccess } from "@/lib/session";
+import {
+  isSessionChatQuestionCapReached,
+  SESSION_CHAT_LIMIT_MESSAGE,
+} from "@/lib/session-limits";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import {
   chargeChatBilling,
@@ -342,15 +348,34 @@ export async function botSupportReply(input: {
   }
 }
 
-async function lastAssistantText(sessionId: string, profileUserId: string): Promise<string> {
+async function assistantReplyForUserMessage(
+  sessionId: string,
+  profileUserId: string,
+  userMessage: string
+): Promise<string> {
   const { rows } = await query<{ content: string }>(
-    `SELECT cm.content
-     FROM chat_messages cm
-     INNER JOIN sessions s ON s.id = cm.session_id AND s.user_id = $2
-     WHERE cm.session_id = $1 AND cm.role = 'assistant'
-     ORDER BY cm.created_at DESC
-     LIMIT 1`,
-    [sessionId, profileUserId]
+    `WITH latest_user AS (
+       SELECT cm.created_at
+       FROM chat_messages cm
+       INNER JOIN sessions s ON s.id = cm.session_id AND s.user_id = $2
+       WHERE cm.session_id = $1
+         AND cm.role = 'user'
+         AND cm.content = $3
+       ORDER BY cm.created_at DESC
+       LIMIT 1
+     )
+     SELECT answer.content
+     FROM latest_user asked
+     JOIN LATERAL (
+       SELECT cm.content
+       FROM chat_messages cm
+       WHERE cm.session_id = $1
+         AND cm.role = 'assistant'
+         AND cm.created_at >= asked.created_at
+       ORDER BY cm.created_at ASC
+       LIMIT 1
+     ) answer ON TRUE`,
+    [sessionId, profileUserId, userMessage]
   );
   return rows[0]?.content?.trim() ?? "";
 }
@@ -387,8 +412,10 @@ export async function botChatFollowUp(input: {
   telegramUserId: number;
   sessionId: string;
   message: string;
+  clientEventId?: string;
+  expectedCost?: number;
 }): Promise<
-  | { ok: true; reply: string; sessionId: string; runeBalance: number }
+  | { ok: true; reply: string; sessionId: string; runeBalance: number; reused?: boolean }
   | { ok: false; error: string; message: string; linkUrl?: string; runeBalance?: number; cost?: number }
 > {
   const gate = await requireLinked(input.telegramUserId);
@@ -419,34 +446,92 @@ export async function botChatFollowUp(input: {
     if (!parsed.ok) {
       return { ok: false, error: "invalid", message: "Не удалось принять сообщение." };
     }
+    const canonicalMessage =
+      parsed.parsed.messages[parsed.parsed.messages.length - 1]?.content ?? message;
 
     const prep = await ChatOrchestrator.prepare(accountId, parsed.parsed);
     if (!prep.ok) {
       return { ok: false, error: "session", message: "Сессия недоступна." };
     }
 
-    const billing = await chargeChatBilling(prep.billingParams);
+    if (typeof input.expectedCost === "number" && prep.billingParams.session) {
+      const { session, unlimited, freeLimit } = prep.billingParams;
+      const settings = await getRuneSettings();
+      const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, settings);
+      const fullAccess = hasPaidAccess(session, { unlimited });
+      const isFree = !fullAccess && session.free_questions_used < freeLimit;
+      const actualCost = useRuneBilling && !isFree
+        ? runeCostFromSettings(settings, "QUESTION")
+        : 0;
+      if (actualCost !== input.expectedCost) {
+        return {
+          ok: false,
+          error: "price_changed",
+          message: "Стоимость вопроса изменилась. Подтвердите новую цену.",
+          runeBalance: await getRuneBalance(profileUserId),
+          cost: actualCost,
+        };
+      }
+    }
+
+    const billing = await chargeChatBilling({
+      ...prep.billingParams,
+      idempotencyKey: input.clientEventId
+        ? `bot-chat:${input.telegramUserId}:${input.clientEventId}`
+        : undefined,
+      maxCost: input.expectedCost,
+    });
     if (!billing.ok) {
       const body = await billing.response.json().catch(() => ({}));
       const bal = typeof body.balance === "number" ? body.balance : undefined;
       const cost = typeof body.required === "number" ? body.required : undefined;
+      const billingError = typeof body.error === "string" ? body.error : "insufficient_runes";
       return {
         ok: false,
-        error: "insufficient_runes",
-        message: "Недостаточно рун для вопроса. Пополните баланс на сайте.",
+        error: billingError,
+        message:
+          typeof body.message === "string"
+            ? body.message
+            : "Недостаточно рун для вопроса. Отправьте /runes и выберите пакет ЮKassa.",
         runeBalance: bal,
         cost,
-        linkUrl: `${siteBase()}/cabinet?shop=1&utm_source=telegram&utm_medium=bot`,
       };
     }
 
     billingHandle = billing.handle;
+    if (billing.handle.charge?.deduplicated) {
+      const priorReply = await assistantReplyForUserMessage(
+        input.sessionId,
+        profileUserId,
+        canonicalMessage
+      );
+      const runeBalance = await getRuneBalance(profileUserId);
+      if (priorReply) {
+        return {
+          ok: true,
+          reply: priorReply,
+          sessionId: input.sessionId,
+          runeBalance,
+          reused: true,
+        };
+      }
+      return {
+        ok: false,
+        error: "pending",
+        message: "Ответ уже формируется. Откройте разбор чуть позже.",
+        runeBalance,
+      };
+    }
     prep.orchestrator.applyBilling(billing.handle, billing.session);
     const response = await prep.orchestrator.run();
     const raw = await response.text();
     let reply = extractReplyFromChatBody(raw, response.headers.get("content-type") || "");
     if (!reply) {
-      reply = await lastAssistantText(input.sessionId, profileUserId);
+      reply = await assistantReplyForUserMessage(
+        input.sessionId,
+        profileUserId,
+        canonicalMessage
+      );
     }
     if (!reply) {
       await billing.handle.rollbackOnError();
@@ -466,4 +551,73 @@ export async function botChatFollowUp(input: {
     }
     return { ok: false, error: "internal", message: "Ошибка чата. Попробуйте позже." };
   }
+}
+
+export async function botChatQuote(input: {
+  telegramUserId: number;
+  sessionId: string;
+}): Promise<
+  | {
+      ok: true;
+      sessionId: string;
+      cost: number;
+      runeBalance: number;
+      free: boolean;
+      canAfford: boolean;
+    }
+  | { ok: false; error: string; message: string; linkUrl?: string }
+> {
+  const gate = await requireLinked(input.telegramUserId);
+  if (!gate.ok) {
+    return { ok: false, error: gate.error, message: gate.message, linkUrl: gate.linkUrl };
+  }
+  const accountId = gate.resolved.accountId!;
+  const profileUserId = gate.resolved.profileUserId!;
+  const { rows } = await query<{ character_key: string | null }>(
+    `SELECT character_key FROM sessions WHERE id = $1 AND user_id = $2 LIMIT 1`,
+    [input.sessionId, profileUserId]
+  );
+  if (!rows[0]) {
+    return { ok: false, error: "session", message: "Сессия недоступна." };
+  }
+
+  const parsed = await parseChatRequest({
+    characterId: rows[0].character_key || "veronika",
+    sessionId: input.sessionId,
+    messages: [{ role: "user", content: "Уточняющий вопрос" }],
+  });
+  if (!parsed.ok) {
+    return { ok: false, error: "invalid", message: "Не удалось проверить стоимость вопроса." };
+  }
+  const prep = await ChatOrchestrator.prepare(accountId, parsed.parsed);
+  if (!prep.ok || !prep.billingParams.session) {
+    return { ok: false, error: "session", message: "Сессия недоступна." };
+  }
+
+  const { session, unlimited, freeLimit } = prep.billingParams;
+  if (isSessionChatQuestionCapReached(session.free_questions_used)) {
+    return { ok: false, error: "session_question_limit", message: SESSION_CHAT_LIMIT_MESSAGE };
+  }
+  const runeBalance = await getRuneBalance(profileUserId);
+  const runeSettings = await getRuneSettings();
+  const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
+  const hasFullAccess = hasPaidAccess(session, { unlimited });
+  const free = !hasFullAccess && session.free_questions_used < freeLimit;
+  if (!useRuneBilling && !hasFullAccess && !free) {
+    return {
+      ok: false,
+      error: "paywall",
+      message: "Для этой сессии уточняющие вопросы сейчас недоступны.",
+    };
+  }
+  const cost = useRuneBilling && !free ? runeCostFromSettings(runeSettings, "QUESTION") : 0;
+
+  return {
+    ok: true,
+    sessionId: input.sessionId,
+    cost,
+    runeBalance,
+    free,
+    canAfford: cost === 0 || runeBalance >= cost,
+  };
 }

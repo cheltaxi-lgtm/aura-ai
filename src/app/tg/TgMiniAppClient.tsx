@@ -35,6 +35,7 @@ function resolveDestination(fallback: string): string {
 export default function TgMiniAppClient({ to }: Props) {
   const router = useRouter();
   const [status, setStatus] = useState<"loading" | "needs_link" | "error">("loading");
+  const [sdkReady, setSdkReady] = useState(false);
   const [message, setMessage] = useState("Открываю Zovus…");
   const initialTo = useMemo(() => to || "/cabinet", [to]);
   const [loginUrl, setLoginUrl] = useState(
@@ -112,11 +113,24 @@ export default function TgMiniAppClient({ to }: Props) {
       void bootstrap(initData, dest);
     }
 
-    // Script may load after first paint.
-    if (window.Telegram?.WebApp) {
+    // Script may load after first paint. Wait for its actual ready event instead
+    // of treating a slow Telegram WebView as a normal browser after 400 ms.
+    if (window.Telegram?.WebApp || sdkReady) {
       run();
     } else {
-      const t = window.setTimeout(run, 400);
+      const t = window.setTimeout(() => {
+        const params = new URLSearchParams(window.location.search);
+        const looksLikeTelegram =
+          params.has("tgWebAppVersion") ||
+          params.has("tgWebAppPlatform") ||
+          params.has("tgWebAppStartParam");
+        if (looksLikeTelegram) {
+          setMessage("Telegram не загрузил интерфейс Mini App. Закройте окно и откройте салон ещё раз.");
+          setStatus("error");
+          return;
+        }
+        router.replace(resolveDestination(initialTo));
+      }, 4000);
       return () => {
         cancelled = true;
         window.clearTimeout(t);
@@ -126,13 +140,14 @@ export default function TgMiniAppClient({ to }: Props) {
     return () => {
       cancelled = true;
     };
-  }, [router, initialTo]);
+  }, [router, initialTo, sdkReady]);
 
   return (
     <>
       <Script
         src="https://telegram.org/js/telegram-web-app.js"
         strategy="beforeInteractive"
+        onReady={() => setSdkReady(true)}
       />
       <main className="mx-auto flex min-h-[100dvh] max-w-lg flex-col items-center justify-center px-6 py-16 text-center">
         <p className="text-xs uppercase tracking-[0.22em] text-[#C4A574]">Zovus</p>

@@ -3,6 +3,7 @@ import path from "node:path";
 import { describe, expect, it } from "vitest";
 import {
   chargeForSession,
+  ConfirmedCostExceededError,
   InsufficientFundsError,
 } from "@/lib/services/billing-service";
 import { isGuestResumeSpreadType } from "@/lib/guest-resume-billing";
@@ -47,6 +48,13 @@ describe("billing-authority", () => {
     expect(err.code).toBe("INSUFFICIENT_FUNDS");
   });
 
+  it("ConfirmedCostExceededError exposes confirmed and current server cost", () => {
+    const err = new ConfirmedCostExceededError(0, 10);
+    expect(err.confirmed).toBe(0);
+    expect(err.actual).toBe(10);
+    expect(err.code).toBe("CONFIRMED_COST_EXCEEDED");
+  });
+
   it("client body flags are not ChargeForSessionParams — paid path needs server cost", () => {
     // Static contract: charge API has no isFree / billingExempt / guestResume knobs.
     const src = readSrc("src/lib/services/billing-service.ts");
@@ -63,6 +71,24 @@ describe("billing-authority", () => {
 
 describe.skipIf(!hasTestDb)("billing-authority (db)", () => {
   installDbLifecycle();
+
+  it("atomically refuses a charge above the user-confirmed maximum", async () => {
+    const user = await createTestUser({ runeBalance: 100 });
+    const beforeTx = await countSpendTransactions(user.id);
+
+    await expect(
+      chargeForSession({
+        userId: user.id,
+        cost: 10,
+        maxCost: 0,
+        actionType: "QUESTION",
+        description: "confirmed-free guard",
+      })
+    ).rejects.toBeInstanceOf(ConfirmedCostExceededError);
+
+    expect(await getUserBalance(user.id)).toBe(100);
+    expect(await countSpendTransactions(user.id)).toBe(beforeTx);
+  });
 
   it("insufficient balance refuses charge with no spend ledger row", async () => {
     const user = await createTestUser({ runeBalance: 0 });

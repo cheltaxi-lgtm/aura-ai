@@ -13,6 +13,7 @@ import {
   siteNatal,
   siteNumerology,
   siteReading,
+  siteChatQuote,
   siteSupport,
 } from "../domain/site-client.js";
 import {
@@ -32,7 +33,9 @@ import { renderMatrixShareCardImage } from "../render/matrix-share-card.js";
 import { showPhoto as showPhotoFlow } from "./photo.js";
 import {
   CB,
+  chatConfirmKeyboard,
   chatFollowUpKeyboard,
+  cabinetModulesKeyboard,
   continueOnSiteKeyboard,
   dialogStopKeyboard,
   historyDeleteConfirmKeyboard,
@@ -66,7 +69,11 @@ type HistoryItem = {
 type HistoryViewState = {
   items: HistoryItem[];
   page: number;
+  offset: number;
+  total: number;
 };
+
+const HISTORY_PAGE_SIZE = 20;
 
 type MatrixListItem = {
   id: string;
@@ -201,9 +208,7 @@ export async function showCabinetOverview(ctx: Context): Promise<void> {
       `Фото: ${data.photo?.items?.length ?? 0}`,
     ];
     await ctx.reply(lines.join("\n"), {
-      reply_markup: data.urls?.cabinet
-        ? continueOnSiteKeyboard(data.urls.cabinet)
-        : salonKeyboard(),
+      reply_markup: cabinetModulesKeyboard(data.urls?.cabinet),
     });
   } catch (err) {
     console.error("[cabinet] overview", err);
@@ -1195,13 +1200,173 @@ export async function beginSupportReply(ctx: Context, ticketId: string): Promise
   });
 }
 
-/** Bot no longer runs follow-up Q&A — send user to the site session chat. */
 export async function beginChatFollowUp(ctx: Context, sessionId: string): Promise<void> {
   if (!ctx.from) return;
-  clearFlow(ctx.from.id);
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data } = await siteChatQuote(linked.user.telegram_user_id, sessionId);
+    if (!data.ok || typeof data.cost !== "number" || typeof data.runeBalance !== "number") {
+      await ctx.reply(data.message || copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      return;
+    }
+    setFlow(ctx.from.id, "chat", "await_message", {
+      sessionId,
+      cost: data.cost,
+      runeBalance: data.runeBalance,
+      free: Boolean(data.free),
+    });
+    const price = data.cost > 0
+      ? `Стоимость вопроса: ${data.cost}ᚢ. Баланс: ${data.runeBalance}ᚢ.`
+      : `Этот вопрос бесплатный. Баланс: ${data.runeBalance}ᚢ.`;
+    const balanceHint = data.canAfford === false
+      ? "\nДля пополнения отправьте /runes — оплата проходит через ЮKassa."
+      : "";
+    await ctx.reply(
+      `Напишите уточняющий вопрос по этому разбору. Контекст карт и предыдущих сообщений сохранён.\n\n${price}${balanceHint}\n\nПеред отправкой бот отдельно попросит подтверждение.`,
+      { reply_markup: dialogStopKeyboard() }
+    );
+  } catch (err) {
+    console.error("[cabinet] chat quote", err);
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+  }
+}
+
+async function executeChatFollowUp(
+  ctx: Context,
+  input: { sessionId: string; message: string; clientEventId: string; cost: number }
+): Promise<void> {
+  if (!ctx.from) return;
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  setFlow(ctx.from.id, "chat", "working", input);
+  await ctx.replyWithChatAction("typing").catch(() => undefined);
+  try {
+    const { siteChatFollowUp } = await import("../domain/site-client.js");
+    const { data } = await siteChatFollowUp(
+      linked.user.telegram_user_id,
+      input.sessionId,
+      input.message,
+      input.clientEventId,
+      input.cost
+    );
+    if (!data.ok || !data.reply) {
+      if (data.error === "price_changed" && typeof data.cost === "number") {
+        const balance = typeof data.runeBalance === "number" ? data.runeBalance : 0;
+        setFlow(ctx.from.id, "chat", "await_confirm", {
+          sessionId: input.sessionId,
+          message: input.message,
+          clientEventId: input.clientEventId,
+          cost: data.cost,
+          runeBalance: balance,
+          confirmationId: `${input.clientEventId}:${data.cost}`,
+        });
+        await ctx.reply(
+          `Стоимость изменилась: ${data.cost}ᚢ. Баланс: ${balance}ᚢ. Подтвердите ещё раз.`,
+          { reply_markup: chatConfirmKeyboard(data.cost, `${input.clientEventId}:${data.cost}`) }
+        );
+        return;
+      }
+      setFlow(ctx.from.id, "chat", "await_message", { sessionId: input.sessionId });
+      const pending = data.error === "pending";
+      await ctx.reply(
+        data.message || (pending ? "Ответ уже формируется. Откройте разбор позже." : copy.siteBridgeDown),
+        { reply_markup: pending ? dialogStopKeyboard() : chatFollowUpKeyboard(input.sessionId) }
+      );
+      return;
+    }
+    setFlow(ctx.from.id, "chat", "await_message", { sessionId: input.sessionId });
+    const chunks = chunkTelegramText(data.reply, 3900);
+    for (let i = 0; i < chunks.length; i += 1) {
+      await ctx.reply(chunks[i]!, {
+        reply_markup: i === chunks.length - 1 ? dialogStopKeyboard() : undefined,
+      });
+    }
+  } catch (err) {
+    console.error("[cabinet] chat follow-up", err);
+    setFlow(ctx.from.id, "chat", "await_message", { sessionId: input.sessionId });
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: dialogStopKeyboard() });
+  }
+}
+
+export async function confirmChatFollowUp(ctx: Context, confirmationId: string): Promise<void> {
+  if (!ctx.from) return;
+  const flow = getFlow(ctx.from.id);
+  const sessionId = flow?.flow === "chat" && typeof flow.data.sessionId === "string"
+    ? flow.data.sessionId : "";
+  const message = flow?.flow === "chat" && typeof flow.data.message === "string"
+    ? flow.data.message : "";
+  const clientEventId = flow?.flow === "chat" && typeof flow.data.clientEventId === "string"
+    ? flow.data.clientEventId : "";
+  const confirmedCost = flow?.flow === "chat" && typeof flow.data.cost === "number"
+    ? flow.data.cost : -1;
+  const currentConfirmationId = flow?.flow === "chat" && typeof flow.data.confirmationId === "string"
+    ? flow.data.confirmationId : "";
+  if (
+    flow?.step !== "await_confirm" ||
+    !sessionId ||
+    !message ||
+    !clientEventId ||
+    !confirmationId ||
+    confirmationId !== currentConfirmationId
+  ) {
+    await ctx.reply("Этот вопрос уже отправлен или отменён.", { reply_markup: salonKeyboard() });
+    return;
+  }
+
+  const linked = await ensureSiteLinked(ctx);
+  if (!linked) return;
+  try {
+    const { data: quote } = await siteChatQuote(linked.user.telegram_user_id, sessionId);
+    if (!quote.ok || typeof quote.cost !== "number" || typeof quote.runeBalance !== "number") {
+      setFlow(ctx.from.id, "chat", "await_message", { sessionId });
+      await ctx.reply(quote.message || copy.siteBridgeDown, { reply_markup: dialogStopKeyboard() });
+      return;
+    }
+    if (quote.cost > quote.runeBalance) {
+      setFlow(ctx.from.id, "chat", "await_message", { sessionId });
+      await ctx.reply(
+        `Недостаточно рун: вопрос стоит ${quote.cost}ᚢ, баланс ${quote.runeBalance}ᚢ. Для пополнения отправьте /runes — оплата через ЮKassa.`,
+        { reply_markup: dialogStopKeyboard() }
+      );
+      return;
+    }
+    if (quote.cost !== confirmedCost) {
+      setFlow(ctx.from.id, "chat", "await_confirm", {
+        sessionId,
+        message,
+        clientEventId,
+        cost: quote.cost,
+        runeBalance: quote.runeBalance,
+        confirmationId: `${clientEventId}:${quote.cost}`,
+      });
+      await ctx.reply(
+        quote.cost > 0
+          ? `Стоимость изменилась: ${quote.cost}ᚢ. Баланс: ${quote.runeBalance}ᚢ. Подтвердите ещё раз.`
+          : `Теперь вопрос бесплатный. Подтвердите отправку ещё раз.`,
+        { reply_markup: chatConfirmKeyboard(quote.cost, `${clientEventId}:${quote.cost}`) }
+      );
+      return;
+    }
+    await executeChatFollowUp(ctx, { sessionId, message, clientEventId, cost: confirmedCost });
+  } catch (err) {
+    console.error("[cabinet] chat confirm", err);
+    setFlow(ctx.from.id, "chat", "await_message", { sessionId });
+    await ctx.reply(copy.siteBridgeDown, { reply_markup: dialogStopKeyboard() });
+  }
+}
+
+export async function showAura(ctx: Context): Promise<void> {
   await ctx.reply(
-    "Вопросы по раскладу — на сайте, в том же сеансе. Нажмите кнопку ниже.",
-    { reply_markup: chatFollowUpKeyboard(sessionId) }
+    "Аура: выберите намерение, загрузите фото и получите личный разбор внутри салона Telegram.",
+    { reply_markup: continueOnSiteKeyboard("/aura", "Открыть разбор ауры") }
+  );
+}
+
+export async function showDiary(ctx: Context): Promise<void> {
+  await ctx.reply(
+    "Дневник хранит заметки и шаги по вашим разборам в общем аккаунте Zovus.",
+    { reply_markup: continueOnSiteKeyboard("/diary", "Открыть дневник") }
   );
 }
 
@@ -1221,7 +1386,7 @@ export async function showHistory(ctx: Context): Promise<void> {
   );
   try {
     // Always refetch from site — never trust a stale local snapshot after deletes.
-    const { data } = await siteHistory(linked.user.telegram_user_id, 40);
+    const { data } = await siteHistory(linked.user.telegram_user_id, HISTORY_PAGE_SIZE, 0);
     if (!data.ok || !data.items?.length) {
       clearFlow(linked.user.telegram_user_id);
       await ctx.reply(copy.historyEmpty, { reply_markup: salonKeyboard() });
@@ -1229,7 +1394,7 @@ export async function showHistory(ctx: Context): Promise<void> {
     }
 
     const items = mapHistoryItems(data.items);
-    const state: HistoryViewState = { items, page: 0 };
+    const state: HistoryViewState = { items, page: 0, offset: 0, total: data.total ?? items.length };
     setFlow(
       linked.user.telegram_user_id,
       "history_view",
@@ -1237,7 +1402,7 @@ export async function showHistory(ctx: Context): Promise<void> {
       state as unknown as Record<string, unknown>
     );
 
-    await renderHistoryAlbumPage(ctx, items[0]!, 0, items.length);
+    await renderHistoryAlbumPage(ctx, items[0]!, 0, state.total);
   } catch (err) {
     console.error("[history] site", err);
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -1302,7 +1467,22 @@ export async function handleHistoryCallback(ctx: Context, data: string): Promise
   try {
     const linked = await ensureSiteLinked(ctx);
     if (!linked) return true;
-    const { data: hist } = await siteHistory(linked.user.telegram_user_id, 40);
+    const requestedPage = Math.max(0, Number.isFinite(page) ? page : 0);
+    let offset = Math.floor(requestedPage / HISTORY_PAGE_SIZE) * HISTORY_PAGE_SIZE;
+    let { data: hist } = await siteHistory(
+      linked.user.telegram_user_id,
+      HISTORY_PAGE_SIZE,
+      offset
+    );
+    if (hist.ok && !hist.items?.length && typeof hist.total === "number" && hist.total > 0) {
+      const lastPage = Math.max(0, hist.total - 1);
+      offset = Math.floor(lastPage / HISTORY_PAGE_SIZE) * HISTORY_PAGE_SIZE;
+      ({ data: hist } = await siteHistory(
+        linked.user.telegram_user_id,
+        HISTORY_PAGE_SIZE,
+        offset
+      ));
+    }
     if (!hist.ok || !hist.items?.length) {
       clearFlow(tid);
       await ctx.answerCallbackQuery({ text: "История пуста" }).catch(() => undefined);
@@ -1310,14 +1490,23 @@ export async function handleHistoryCallback(ctx: Context, data: string): Promise
       return true;
     }
     const items = mapHistoryItems(hist.items);
-    const nextPage = Math.min(Math.max(0, Number.isFinite(page) ? page : 0), items.length - 1);
+    const total = hist.total ?? offset + items.length;
+    const nextPage = Math.min(requestedPage, Math.max(0, total - 1));
+    const localPage = nextPage - offset;
+    const item = items[localPage];
+    if (!item) {
+      await ctx.answerCallbackQuery({ text: "Страница недоступна" }).catch(() => undefined);
+      return true;
+    }
     setFlow(tid, "history_view", "page", {
       items,
       page: nextPage,
+      offset,
+      total,
     } as unknown as Record<string, unknown>);
-    await renderHistoryAlbumPage(ctx, items[nextPage]!, nextPage, items.length);
+    await renderHistoryAlbumPage(ctx, item, nextPage, total);
     await ctx
-      .answerCallbackQuery({ text: `${nextPage + 1} / ${items.length}` })
+      .answerCallbackQuery({ text: `${nextPage + 1} / ${total}` })
       .catch(() => undefined);
   } catch (err) {
     console.error("[history] page edit failed", err);
@@ -1493,14 +1682,52 @@ export async function handleCabinetText(ctx: Context, text: string): Promise<boo
     if (await handlePhotoText(ctx, text)) return true;
   }
 
-  if (flow.flow === "chat" && flow.step === "await_message") {
+  if (flow.flow === "chat" && (flow.step === "await_message" || flow.step === "await_confirm")) {
     const sessionId = typeof flow.data.sessionId === "string" ? flow.data.sessionId : "";
-    clearFlow(ctx.from.id);
-    if (sessionId) {
-      await beginChatFollowUp(ctx, sessionId);
-      return true;
+    if (!sessionId) {
+      clearFlow(ctx.from.id);
+      return false;
     }
-    return false;
+    const linked = await ensureSiteLinked(ctx);
+    if (!linked) return true;
+    const clientEventId = `tg-${ctx.update.update_id}`;
+    try {
+      const { data: quote } = await siteChatQuote(linked.user.telegram_user_id, sessionId);
+      if (!quote.ok || typeof quote.cost !== "number" || typeof quote.runeBalance !== "number") {
+        setFlow(ctx.from.id, "chat", "await_message", { sessionId });
+        await ctx.reply(quote.message || copy.siteBridgeDown, { reply_markup: dialogStopKeyboard() });
+        return true;
+      }
+      if (quote.cost > quote.runeBalance) {
+        setFlow(ctx.from.id, "chat", "await_message", { sessionId });
+        await ctx.reply(
+          `Недостаточно рун: вопрос стоит ${quote.cost}ᚢ, баланс ${quote.runeBalance}ᚢ. Для пополнения отправьте /runes — оплата через ЮKassa.`,
+          { reply_markup: dialogStopKeyboard() }
+        );
+        return true;
+      }
+      const message = text.trim().slice(0, 2000);
+      const confirmationId = `${clientEventId}:${quote.cost}`;
+      setFlow(ctx.from.id, "chat", "await_confirm", {
+        sessionId,
+        message,
+        clientEventId,
+        cost: quote.cost,
+        runeBalance: quote.runeBalance,
+        confirmationId,
+      });
+      await ctx.reply(
+        quote.cost > 0
+          ? `Отправить этот вопрос за ${quote.cost}ᚢ? Баланс: ${quote.runeBalance}ᚢ.`
+          : "Отправить этот вопрос бесплатно?",
+        { reply_markup: chatConfirmKeyboard(quote.cost, confirmationId) }
+      );
+    } catch (err) {
+      console.error("[cabinet] chat quote", err);
+      setFlow(ctx.from.id, "chat", "await_message", { sessionId });
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: dialogStopKeyboard() });
+    }
+    return true;
   }
 
   if (flow.flow === "support" && flow.step === "await_message") {
@@ -1583,6 +1810,12 @@ export async function routeModuleCallback(ctx: Context, data: string): Promise<b
       return true;
     case CB.modMemory:
       await showMemory(ctx);
+      return true;
+    case CB.modAura:
+      await showAura(ctx);
+      return true;
+    case CB.modDiary:
+      await showDiary(ctx);
       return true;
     case CB.modPhoto:
       await showPhoto(ctx);

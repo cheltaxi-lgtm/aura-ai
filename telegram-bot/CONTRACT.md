@@ -55,7 +55,7 @@
 | `POST /natal` | big three / статус натала |
 | `POST /numerology` | матрица: `summary` / `list` / `get` / `run` (buy-once + биллинг как на сайте) |
 | `POST /support` | list / create / reply обращений |
-| `POST /chat` | API follow-up (продуктовый UX бота: deep-link `/?chat_session=` на сайт) |
+| `POST /chat` | нативный follow-up в той же сессии с общим биллингом и памятью |
 | `POST /auth-bridge` | **disabled** (410) |
 
 Env бота: `SITE_INTERNAL_BASE_URL=http://127.0.0.1:3000`, `BOT_INTERNAL_SECRET`, `BOT_REQUIRE_SITE_ACCOUNT=true` (в production `false` — hard-fail на старте).
@@ -96,7 +96,9 @@ Claim **не** заменяет login/link. Для полного продукт
 
 ## UX чтения в боте
 
-Длинный разбор (расклад / матрица) — одно сообщение с pager ‹ ›. Обсуждение продолжается **на сайте** (`/?chat_session=<uuid>`), не чатом внутри бота.
+Длинный разбор (расклад / матрица) — одно сообщение с pager ‹ ›. Обсуждение расклада продолжается прямо в боте; та же сессия доступна на сайте и в Mini App.
+
+Единственный платёжный канал — ЮKassa. Бот создаёт checkout через `/api/internal/bot/runes/purchase` со стабильным `request_id`; повтор одного Telegram update не создаёт новый заказ. Stars остаются отключёнными (`starsEnabled: false`, служебные endpoints отвечают 410). `/paysupport` открывает обращение по спорному платежу.
 
 ## Уведомления (типы)
 

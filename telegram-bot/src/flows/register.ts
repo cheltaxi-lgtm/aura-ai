@@ -4,6 +4,7 @@ import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import {
   applyReferral,
+  clearFlow,
   confirmAge,
   confirmConsent,
   countSessions,
@@ -16,6 +17,7 @@ import {
   listSessions,
   needsUserTimezoneForReminders,
   setReminderMode,
+  setFlow,
   setTimezoneOffset,
   skipTimezonePrompt,
   setUnsubscribed,
@@ -37,6 +39,7 @@ import {
   ctaKeyboard,
   deleteConfirmKeyboard,
   deleteKeyboard,
+  dialogStopKeyboard,
   inviteKeyboard,
   linkAccountKeyboard,
   profileKeyboard,
@@ -56,6 +59,7 @@ import {
 } from "../domain/site-client.js";
 import {
   beginChatFollowUp,
+  confirmChatFollowUp,
   beginSupportReply,
   handleCabinetText,
   handleHistoryCallback,
@@ -258,7 +262,14 @@ export function registerFlows(bot: Bot): void {
 
   bot.command("menu", async (ctx) => {
     if (!(await ensureOnboarded(ctx))) return;
+    if (ctx.from) clearFlow(ctx.from.id);
     await sendMenu(ctx);
+  });
+
+  bot.command("cancel", async (ctx) => {
+    if (!ctx.from) return;
+    clearFlow(ctx.from.id);
+    await ctx.reply("Текущее действие отменено.", { reply_markup: salonKeyboard() });
   });
 
   bot.command("help", async (ctx) => {
@@ -279,6 +290,7 @@ export function registerFlows(bot: Bot): void {
   bot.command("profile", async (ctx) => showProfile(ctx));
   bot.command("history", async (ctx) => showHistory(ctx));
   bot.command("settings", async (ctx) => showSettings(ctx));
+  bot.command("runes", async (ctx) => showRunes(ctx));
 
   bot.callbackQuery(new RegExp(`^${CB.ctaResendPrefix}(.+)$`), async (ctx) => {
     const sessionId = ctx.match?.[1];
@@ -574,6 +586,32 @@ export function registerFlows(bot: Bot): void {
 
   bot.on(["message:photo", "message:document"], async (ctx) => {
     if (await handlePhotoMessage(ctx)) return;
+    await ctx.reply(
+      "Сейчас фото не ожидается. Откройте «Расклад по фото» или нужный раздел в салоне.",
+      { reply_markup: salonKeyboard() }
+    );
+  });
+
+  bot.callbackQuery(new RegExp(`^${CB.chatConfirmPrefix}(.+)$`), async (ctx) => {
+    const confirmationId = ctx.match?.[1] || "";
+    await ctx.answerCallbackQuery();
+    await confirmChatFollowUp(ctx, confirmationId);
+  });
+
+  bot.command("paysupport", async (ctx) => {
+    if (!(await ensureOnboarded(ctx))) return;
+    await ctx.reply(
+      "Опишите проблему с оплатой: способ оплаты, примерное время и что произошло. Не отправляйте данные карты.",
+      { reply_markup: dialogStopKeyboard() }
+    );
+    if (ctx.from) setFlow(ctx.from.id, "support", "await_message", { topic: "payment" });
+  });
+
+  bot.on("message:voice", async (ctx) => {
+    await ctx.reply(
+      "Голосовой ввод пока не распознаётся. Пришлите вопрос текстом — готовый разбор можно получить и голосом в настройках.",
+      { reply_markup: salonKeyboard() }
+    );
   });
 
   bot.on("message:text", async (ctx) => {

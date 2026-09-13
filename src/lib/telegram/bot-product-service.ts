@@ -87,10 +87,12 @@ function historyKind(s: {
   return "spread";
 }
 
-export async function botHistory(profileUserId: string, limit = 8) {
-  const { sessions, total } = await getCabinetSessions(profileUserId, limit, 0);
+export async function botHistory(profileUserId: string, limit = 8, offset = 0) {
+  const { sessions, total } = await getCabinetSessions(profileUserId, limit, offset);
   return {
     total,
+    offset,
+    nextOffset: offset + sessions.length < total ? offset + sessions.length : null,
     items: sessions.map((s) => {
       const kind = historyKind(s);
       const topic =

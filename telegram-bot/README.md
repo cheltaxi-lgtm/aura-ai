@@ -1,6 +1,6 @@
 # Zovus Telegram Bot
 
-Тонкий клиент сайта [zovus.ru](https://zovus.ru): гостевой триплет, карта дня, расклады, руны (ЮKassa), профиль.
+Полноценный Telegram-клиент [zovus.ru](https://zovus.ru): расклады и их обсуждение, карта дня, матрица, история, кабинет, поддержка, голосовые ответы и пополнение рун через ЮKassa.
 
 **Источник правды — Postgres сайта** через internal API (`X-Bot-Internal-Secret` → `/api/internal/bot/**`). Локальная bot-БД хранит только bot-specific state (flow, day cards, processed updates). Контракт: [CONTRACT.md](./CONTRACT.md).
 
@@ -14,13 +14,13 @@ npm run migrate
 npm run dev
 ```
 
-Нужны: `BOT_TOKEN`, `BOT_INTERNAL_SECRET` (= site `BOT_INTERNAL_SECRET`), `SITE_BASE_URL` (https://zovus.ru).
+Нужны: `TELEGRAM_BOT_TOKEN`, `BOT_INTERNAL_SECRET` (= site `BOT_INTERNAL_SECRET`), `ZOVUS_SITE_URL` (https://zovus.ru) и `SITE_INTERNAL_BASE_URL` (обычно loopback URL Next.js-приложения).
 
 Режимы: `BOT_MODE=polling` (локально) или `webhook`.
 
 ## Команды
 
-`/start` · `/menu` · `/spread` · `/again` · `/day` · `/history` · `/profile` · `/settings` · `/about` · `/delete` · `/help`
+`/start` · `/menu` · `/spread` · `/again` · `/day` · `/runes` · `/history` · `/profile` · `/settings` · `/paysupport` · `/cancel` · `/about` · `/delete` · `/help`
 
 ## Админ
 
@@ -34,6 +34,8 @@ npm run admin -- export-csv
 
 ## Важно
 
-- Аккаунты/руны/оплата — на сайте (ЮKassa). Stars checkout отключён (`starsEnabled: false`).
-- Один триплет в сутки на `telegram_user_id` (guest limits + site claim).
+- Аккаунт, история, руны и сессии общие с сайтом; источником данных остаётся Postgres сайта.
+- Единственный платёжный канал — ЮKassa. Stars отключены, старые XTR-счета отклоняются, а checkout создаётся сервером с повторяемым `request_id`.
+- Linked-пользователь может делать расклады по общим правилам и тарифам сайта; локальный суточный лимит относится только к legacy guest-режиму.
+- `/paysupport` создаёт обращение по оплате. Зачисление после webhook/confirm ЮKassa идемпотентно.
 - Ассеты карт: `assets/decks/tarot-veronika` (override: `BOT_DECK_PATH`)

@@ -129,6 +129,8 @@ export const CHECKS = {
     vitestArgs: ["--no-file-parallelism"],
     vitest: [
       "tests/invariants/telegram-bot-bridge.test.ts",
+      "tests/invariants/telegram-photo-retry-regressions.test.ts",
+      "tests/invariants/billing-authority.test.ts",
       "tests/invariants/bot-veronika-idempotency.test.ts",
       "tests/invariants/bot-charge-result-session.test.ts",
       "tests/invariants/account-deletion-bot-purge.test.ts",
