@@ -36,6 +36,13 @@ export const NAV = {
   photo: "📷 Расклад по фото",
   hd: "🧬 Дизайн Человека",
   palm: "✋ Ладонь",
+  natal: "🌌 Натальная карта",
+  aura: "🌈 Аура",
+  rituals: "🕯️ Обряды",
+  joint: "👥 Совместный разбор",
+  diary: "📔 Дневник",
+  memory: "🧠 Память",
+  support: "✉️ Поддержка",
   spread: "🔮 Расклад",
   day: "🃏 Карта дня",
   history: "📚 История",
@@ -165,14 +172,28 @@ export function salonKeyboard(): Keyboard {
     .text(NAV.photo)
     .text(NAV.matrix)
     .row()
+    .text(NAV.natal)
     .text(NAV.hd)
+    .row()
     .text(NAV.palm)
+    .text(NAV.aura)
+    .row()
+    .text(NAV.rituals)
+    .text(NAV.joint)
+    .row()
+    .text(NAV.diary)
+    .text(NAV.memory)
+    .row()
+    .text(NAV.history)
+    .text(NAV.runes)
     .row()
     .text(NAV.profile)
+    .text(NAV.settings)
+    .row()
+    .text(NAV.support)
     .text(NAV.about)
     // resized only — do NOT use persistent(): it pins the bar so users cannot
     // collapse the menu or swipe away from the bot chat comfortably.
-    // История и Руны — в Профиле (inline), не в нижней панели.
     .resized()
     .placeholder("Выберите действие или напишите вопрос…");
 }

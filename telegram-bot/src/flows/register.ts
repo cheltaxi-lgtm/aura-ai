@@ -633,6 +633,10 @@ export function registerFlows(bot: Bot): void {
 }
 
 async function routeNav(ctx: Context, label: string): Promise<void> {
+  const user = await ensureOnboarded(ctx);
+  if (!user) return;
+  clearFlow(user.telegram_user_id);
+
   switch (label) {
     case NAV.matrix:
       await showMatrix(ctx);
@@ -644,8 +648,28 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
       await showHd(ctx);
       return;
     case NAV.palm:
-      if (!(await ensureOnboarded(ctx))) return;
       await showPalm(ctx);
+      return;
+    case NAV.natal:
+      await routeModuleCallback(ctx, CB.modNatal);
+      return;
+    case NAV.aura:
+      await routeModuleCallback(ctx, CB.modAura);
+      return;
+    case NAV.rituals:
+      await routeModuleCallback(ctx, CB.modRituals);
+      return;
+    case NAV.joint:
+      await routeModuleCallback(ctx, CB.modJoint);
+      return;
+    case NAV.diary:
+      await routeModuleCallback(ctx, CB.modDiary);
+      return;
+    case NAV.memory:
+      await routeModuleCallback(ctx, CB.modMemory);
+      return;
+    case NAV.support:
+      await routeModuleCallback(ctx, CB.modSupport);
       return;
     case NAV.spread:
       await beginCatalog(ctx);
@@ -666,11 +690,7 @@ async function routeNav(ctx: Context, label: string): Promise<void> {
       await showSettings(ctx);
       return;
     case NAV.about:
-      {
-        const aboutUser = await ensureOnboarded(ctx);
-        if (!aboutUser) return;
-        await ctx.reply(copy.about, { reply_markup: salonKeyboard() });
-      }
+      await ctx.reply(copy.about, { reply_markup: salonKeyboard() });
       return;
     default:
       return;

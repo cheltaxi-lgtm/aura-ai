@@ -132,9 +132,9 @@ export async function renderSalonHomeCardImage(opts?: {
   ${tiles}
 
   <text x="50%" y="${height - 276}" text-anchor="middle"
-    font-family="${FONT}" font-size="34" fill="#1E1008">Меню внизу — начните</text>
+    font-family="${FONT}" font-size="34" fill="#1E1008">Все услуги — в меню внизу</text>
   <text x="50%" y="${height - 226}" text-anchor="middle"
-    font-family="${FONT}" font-size="30" fill="#5A3210">расклад · карта дня · матрица</text>
+    font-family="${FONT}" font-size="30" fill="#5A3210">выберите свой разбор</text>
   <text x="50%" y="${height - 174}" text-anchor="middle"
     font-family="${FONT}" font-size="28" fill="#6B3E14">18+ · zovus.ru</text>
 </svg>`);

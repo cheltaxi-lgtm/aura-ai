@@ -45,7 +45,7 @@ import {
   expectedDeckSlugs,
 } from "../src/domain/deck/asset-check.js";
 import { localDateKey } from "../src/domain/time/local-date.js";
-import { NAV, NAV_LABELS } from "../src/keyboards/index.js";
+import { NAV, NAV_LABELS, salonKeyboard } from "../src/keyboards/index.js";
 import { isIrreversible, markIrreversible } from "../src/middleware/irreversible.js";
 import { runSafetyCorpus } from "../src/safety/__tests__/run-corpus.js";
 import { botConfig } from "../src/config.js";
@@ -204,7 +204,13 @@ async function main() {
   check("body copy has no emoji", bodyBad.length === 0, bodyBad[0]?.slice(0, 60));
   const buttonBad = Object.values(NAV).filter((label) => hasDisallowedEmoji(label));
   check("NAV button emoji whitelisted", buttonBad.length === 0, buttonBad.join(","));
-  check("NAV labels count", NAV_LABELS.size === 11);
+  const menuLabels = salonKeyboard().build().flat().map((button) => button.text);
+  check(
+    "all NAV actions visible exactly once on main menu",
+    menuLabels.length === NAV_LABELS.size &&
+      new Set(menuLabels).size === NAV_LABELS.size &&
+      menuLabels.every((label) => NAV_LABELS.has(label))
+  );
 
   // 5) localDateKey across TZ
   const at = new Date("2026-07-28T22:30:00.000Z");

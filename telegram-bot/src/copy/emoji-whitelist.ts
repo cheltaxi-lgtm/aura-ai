@@ -12,6 +12,11 @@ export const BUTTON_EMOJI_WHITELIST = [
   "\u{1FA99}", // coin
   "\u{1F9EC}", // DNA
   "\u{270B}", // raised hand
+  "\u{1F30C}", // milky way
+  "\u{1F308}", // rainbow
+  "\u{1F465}", // people
+  "\u{1F4D4}", // notebook
+  "\u{1F9E0}", // brain
   "\u{1F4C2}", // open folder
   "\u{2699}\u{FE0F}", // gear
   "\u{2728}", // sparkles
