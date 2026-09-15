@@ -41,6 +41,7 @@ const PUBLIC_API_EXACT = new Set([
   "/api/age-gate/confirm",
   "/api/session",
   "/api/guest-triplet/complete",
+  "/api/guest-triplet/pending",
   "/api/guest-triplet/teaser",
   "/api/guest-triplet/status",
   "/api/guest-triplet/claim",

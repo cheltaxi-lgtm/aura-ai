@@ -256,6 +256,7 @@ describe("guest-registration-conversion", () => {
   it("uses the dual-cookie server receipt as the conversion authority", async () => {
     const fs = await import("node:fs/promises");
     const pending = await fs.readFile("src/lib/guest-triplet-pending.ts", "utf8");
+    const middleware = await fs.readFile("src/middleware.ts", "utf8");
     const complete = await fs.readFile("src/app/api/guest-triplet/complete/route.ts", "utf8");
     const pendingRoute = await fs.readFile("src/app/api/guest-triplet/pending/route.ts", "utf8");
     const funnel = await fs.readFile("src/lib/guest-registration-funnel.ts", "utf8");
@@ -264,6 +265,7 @@ describe("guest-registration-conversion", () => {
     expect(pending).toContain("readGuestResumeCookie");
     expect(pending).toContain("readGuestBindingCookie");
     expect(pending).toContain("evaluateGuestClaimBinding");
+    expect(middleware).toContain('"/api/guest-triplet/pending"');
     expect(complete.indexOf("resolvePendingGuestResume")).toBeLessThan(
       complete.indexOf("enforceGuestTripletCompleteRateLimit(clientIp(request))")
     );
