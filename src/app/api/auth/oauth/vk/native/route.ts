@@ -10,6 +10,7 @@ import {
   OAUTH_NO_STORE_HEADERS,
 } from "@/lib/oauth/request-security";
 import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
+import { recordPendingGuestRegistrationFunnelEvent } from "@/lib/guest-registration-funnel";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import type { OAuthMode, OAuthTransaction } from "@/lib/oauth/types";
 
@@ -91,6 +92,12 @@ export async function POST(request: NextRequest) {
           ? null
           : (registrationAttribution as Record<string, string> | null),
     };
+
+    if (mode === "register") {
+      await recordPendingGuestRegistrationFunnelEvent(request, "auth_started", {
+        metadata: { method: "oauth:vk" },
+      });
+    }
 
     try {
       const result = await finishOAuthLogin({

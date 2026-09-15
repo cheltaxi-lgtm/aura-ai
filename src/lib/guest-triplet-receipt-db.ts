@@ -20,6 +20,7 @@ import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 
 export type GuestResumeSessionRow = {
   id: string;
+  created_at: Date;
   user_id: string | null;
   character_key: string | null;
   spread_type: string | null;

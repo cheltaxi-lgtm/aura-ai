@@ -86,9 +86,53 @@ export async function getFirstExperienceAnalytics() {
   UNION ALL SELECT 'continuation_shown',COUNT(*) FILTER(WHERE continuation_shown_at IS NOT NULL)::text FROM user_events
   UNION ALL SELECT 'payment_started',COUNT(*) FILTER(WHERE payment_started_at IS NOT NULL)::text FROM user_events
   UNION ALL SELECT 'first_topup',COUNT(*) FILTER(WHERE first_topup_at IS NOT NULL)::text FROM user_events`);
+  const guestRegistrationFunnel=await query<{event:string;count:string}>(`WITH receipts AS (
+    SELECT spread_id,MIN(created_at) AS receipt_issued_at
+    FROM spread_metrics
+    WHERE source='guest_registration_funnel'
+      AND event='receipt_issued'
+      AND created_at>=DATE_TRUNC('day',NOW())-INTERVAL '29 days'
+    GROUP BY spread_id
+  ), receipt_events AS (
+    SELECT r.spread_id,r.receipt_issued_at,
+      auth_started.at AS auth_started_at,
+      account_created.at AS account_created_at,
+      claim_succeeded.at AS claim_succeeded_at
+    FROM receipts r
+    LEFT JOIN LATERAL (
+      SELECT MIN(created_at) AS at FROM spread_metrics
+      WHERE source='guest_registration_funnel' AND spread_id=r.spread_id
+        AND event='auth_started' AND created_at>=r.receipt_issued_at
+    ) auth_started ON TRUE
+    LEFT JOIN LATERAL (
+      SELECT MIN(created_at) AS at FROM spread_metrics
+      WHERE source='guest_registration_funnel' AND spread_id=r.spread_id
+        AND event='account_created' AND created_at>=auth_started.at
+    ) account_created ON auth_started.at IS NOT NULL
+    LEFT JOIN LATERAL (
+      SELECT MIN(created_at) AS at FROM spread_metrics
+      WHERE source='guest_registration_funnel' AND spread_id=r.spread_id
+        AND event='claim_succeeded' AND created_at>=account_created.at
+    ) claim_succeeded ON account_created.at IS NOT NULL
+  )
+  SELECT 'receipt_issued' AS event,COUNT(*)::text AS count FROM receipt_events
+  UNION ALL SELECT 'auth_started',COUNT(*) FILTER(WHERE auth_started_at IS NOT NULL)::text FROM receipt_events
+  UNION ALL SELECT 'account_created',COUNT(*) FILTER(WHERE account_created_at IS NOT NULL)::text FROM receipt_events
+  UNION ALL SELECT 'claim_succeeded',COUNT(*) FILTER(WHERE claim_succeeded_at IS NOT NULL)::text FROM receipt_events`);
+  const guestRegistrationDiagnostics=await query<{event:string;count:string}>(`SELECT event,COUNT(DISTINCT spread_id)::text AS count
+    FROM spread_metrics
+    WHERE source='guest_registration_funnel'
+      AND event IN ('receipt_reused','claim_failed')
+      AND created_at>=DATE_TRUNC('day',NOW())-INTERVAL '29 days'
+    GROUP BY event`);
   return {
     events:events.rows.map(r=>({event:r.event,count:Number(r.count)})),
     funnel:funnel.rows.map(r=>({event:r.event,count:Number(r.count)})),
+    guestRegistration:{
+      days:30,
+      funnel:guestRegistrationFunnel.rows.map(r=>({event:r.event,count:Number(r.count)})),
+      diagnostics:guestRegistrationDiagnostics.rows.map(r=>({event:r.event,count:Number(r.count)})),
+    },
     cohorts,
     summary:{
       ...summary,
@@ -97,6 +141,6 @@ export async function getFirstExperienceAnalytics() {
       repeatPayment:summary.payers>0?summary.repeatPayers/summary.payers:null,
     },
     freeGenerationCost:{knownRub:cost?.known==null?null:Number(cost.known),untracked:Number(cost?.unknown??0),tracked:Number(cost?.tracked??0),totalRub:cost?.known!=null && Number(cost.unknown)===0?Number(cost.known):null},
-    definitions:{firstPayment:"Подтверждённое пополнение. В знаменателе только аккаунты с полными 7/30 днями наблюдения.",repeatPayment:"Доля плательщиков с двумя и более подтверждёнными пополнениями среди регистраций последних 90 дней.",freeCost:"Фактическая стоимость LLM для регистраций последних 90 дней, в доле потраченного подарка. Синхронные генерации без учёта стоимости обозначены как неизвестные. Это расходы, не выручка."},
+    definitions:{firstPayment:"Подтверждённое пополнение. В знаменателе только аккаунты с полными 7/30 днями наблюдения.",repeatPayment:"Доля плательщиков с двумя и более подтверждёнными пополнениями среди регистраций последних 90 дней.",freeCost:"Фактическая стоимость LLM для регистраций последних 90 дней, в доле потраченного подарка. Синхронные генерации без учёта стоимости обозначены как неизвестные. Это расходы, не выручка.",guestRegistration:"Серверная воронка последних 30 дней по сохранённым гостевым раскладам. Этапы считаются только в правильной последовательности и не зависят от согласия на Метрику."},
   };
 }

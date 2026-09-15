@@ -23,6 +23,7 @@ import {
   readSessionClaimCookie,
   verifySessionClaimForId,
 } from "@/lib/session-claim";
+import { recordGuestRegistrationFunnelEvent } from "@/lib/guest-registration-funnel";
 
 export const runtime = "nodejs";
 
@@ -83,6 +84,12 @@ export async function POST(request: NextRequest) {
     });
 
     if (!result.ok) {
+      await recordGuestRegistrationFunnelEvent({
+        event: "claim_failed",
+        receiptId: receipt.id,
+        profileUserId,
+        metadata: { reason: result.code },
+      });
       if (result.code === "already_used") {
         // Burn the fresh guest receipt cookies — this account already used the free landing reading.
         await clearGuestResumeCookie(request);
@@ -109,6 +116,12 @@ export async function POST(request: NextRequest) {
     if (sessionClaim && (await verifySessionClaimForId(receipt.id, sessionClaim))) {
       await clearSessionClaimCookie(request);
     }
+
+    await recordGuestRegistrationFunnelEvent({
+      event: "claim_succeeded",
+      receiptId: receipt.id,
+      profileUserId,
+    });
 
     return NextResponse.json({
       ok: true,

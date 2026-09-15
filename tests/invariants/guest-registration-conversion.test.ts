@@ -23,6 +23,7 @@ import {
   GUEST_RESUME_TRANSITION_TITLE,
 } from "@/lib/guest-triplet-resume";
 import type { RuneConfig } from "@/lib/settings";
+import { pendingGuestResumeToUiCache } from "@/lib/guest-resume-ui-cache";
 
 describe("guest-registration-conversion", () => {
   it("teaser receipt min age is a short consistency window, not a 3s UX delay", () => {
@@ -224,6 +225,57 @@ describe("guest-registration-conversion", () => {
     );
     expect(src).toContain("ensureMinimalConsumerProfile");
     expect(src).toContain("Birth is NOT required");
+  });
+
+  it("restores only a valid server-issued guest summary into the UI cache", () => {
+    const now = new Date().toISOString();
+    const expiresAt = new Date(Date.now() + 60_000).toISOString();
+    const restored = pendingGuestResumeToUiCache({
+      ok: true,
+      status: "issued",
+      masterId: "tarot-veronika",
+      system: "tarot-veronika",
+      spreadId: "triplet",
+      question: "Мой вопрос",
+      teaser: "",
+      completedAt: now,
+      expiresAt,
+      cards: [
+        { id: 1, name: "Первая", position: 0, reversed: false },
+        { id: 2, name: "Вторая", position: 1, reversed: true },
+        { id: 3, name: "Третья", position: 2, reversed: false },
+      ],
+    });
+    expect(restored).toMatchObject({
+      phase: "receipt_pending_auth",
+      question: "Мой вопрос",
+    });
+    expect(pendingGuestResumeToUiCache({ ...restored, ok: true, status: "none" })).toBeNull();
+  });
+
+  it("uses the dual-cookie server receipt as the conversion authority", async () => {
+    const fs = await import("node:fs/promises");
+    const pending = await fs.readFile("src/lib/guest-triplet-pending.ts", "utf8");
+    const complete = await fs.readFile("src/app/api/guest-triplet/complete/route.ts", "utf8");
+    const pendingRoute = await fs.readFile("src/app/api/guest-triplet/pending/route.ts", "utf8");
+    const funnel = await fs.readFile("src/lib/guest-registration-funnel.ts", "utf8");
+    const oauthStart = await fs.readFile("src/app/api/auth/oauth/[provider]/start/route.ts", "utf8");
+    const nativeVk = await fs.readFile("src/app/api/auth/oauth/vk/native/route.ts", "utf8");
+    expect(pending).toContain("readGuestResumeCookie");
+    expect(pending).toContain("readGuestBindingCookie");
+    expect(pending).toContain("evaluateGuestClaimBinding");
+    expect(complete.indexOf("resolvePendingGuestResume")).toBeLessThan(
+      complete.indexOf("enforceGuestTripletCompleteRateLimit(clientIp(request))")
+    );
+    expect(complete).toContain('event: "receipt_reused"');
+    expect(pendingRoute).toContain("serializePendingGuestResume");
+    expect(funnel).toContain('GUEST_REGISTRATION_FUNNEL_SOURCE = "guest_registration_funnel"');
+    expect(funnel).toContain("type FunnelMetadata = {");
+    expect(funnel).toContain("pg_advisory_xact_lock(hashtext($1))");
+    expect(funnel).not.toContain("clientIp");
+    expect(funnel).not.toContain("request.json");
+    expect(oauthStart).toContain('recordPendingGuestRegistrationFunnelEvent(request, "auth_started"');
+    expect(nativeVk).toContain('recordPendingGuestRegistrationFunnelEvent(request, "auth_started"');
   });
 
   it("natal chart APIs use birth profile context", async () => {

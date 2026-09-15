@@ -7,6 +7,7 @@ import { isAgeGateCookieConfirmed } from "@/lib/age-gate-cookie";
 import {
   clientIp,
   enforceGuestTripletCompleteRateLimit,
+  enforceGuestTripletStatusRateLimit,
 } from "@/lib/api-guards";
 import { setGuestBindingCookie, setGuestResumeCookie } from "@/lib/guest-resume-cookie";
 import {
@@ -18,6 +19,11 @@ import {
 import { createIssuedGuestResumeSession } from "@/lib/guest-triplet-receipt-db";
 import { setSessionClaimCookie } from "@/lib/session-claim";
 import { assertTeaserRequestAllowed } from "@/lib/guest-triplet-teaser-service";
+import {
+  resolvePendingGuestResume,
+  serializePendingGuestResume,
+} from "@/lib/guest-triplet-pending";
+import { recordGuestRegistrationFunnelEvent } from "@/lib/guest-registration-funnel";
 
 export const runtime = "nodejs";
 
@@ -59,6 +65,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "forbidden", reason: antibot.reason }, { status: 403 });
   }
 
+  const lookupLimited = await enforceGuestTripletStatusRateLimit(clientIp(request));
+  if (lookupLimited) return lookupLimited;
+
+  // HttpOnly receipt is authoritative. Reuse it even if localStorage was cleared,
+  // so one browser cannot silently mint several free guest completions.
+  const pending = await resolvePendingGuestResume(request);
+  if (pending) {
+    await setGuestResumeCookie(pending.token, request);
+    await setGuestBindingCookie(pending.receipt.id, request);
+    await setSessionClaimCookie(pending.receipt.id, request);
+    await recordGuestRegistrationFunnelEvent({
+      event: "receipt_reused",
+      receiptId: pending.receipt.id,
+    });
+    return NextResponse.json({
+      ok: true,
+      reused: true,
+      ...serializePendingGuestResume(pending),
+    });
+  }
+
   const limited = await enforceGuestTripletCompleteRateLimit(clientIp(request));
   if (limited) return limited;
 
@@ -91,10 +118,15 @@ export async function POST(request: NextRequest) {
     await setGuestResumeCookie(token, request);
     await setGuestBindingCookie(session.id, request);
     await setSessionClaimCookie(session.id, request);
+    await recordGuestRegistrationFunnelEvent({
+      event: "receipt_issued",
+      receiptId: session.id,
+    });
 
     // Never return the opaque token — cookie is the only transport.
     return NextResponse.json({
       ok: true,
+      reused: false,
       expiresAt: session.guest_resume_expires_at,
     });
   } catch (err) {

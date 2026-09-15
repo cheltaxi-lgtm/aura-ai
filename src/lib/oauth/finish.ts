@@ -1,3 +1,4 @@
+import type { NextRequest } from "next/server";
 import { getAuth, setAuthCookie, type CookieRequestContext } from "@/lib/auth";
 import {
   findUserById,
@@ -22,6 +23,7 @@ import {
   type OAuthAccountConsent,
 } from "./accounts";
 import type { OAuthProvider, OAuthUserInfo } from "./types";
+import { recordPendingGuestRegistrationFunnelEvent } from "@/lib/guest-registration-funnel";
 
 export function hasRequiredOAuthConsent(state: OAuthTransaction): boolean {
   return state.acceptedTerms && state.ageConfirmed;
@@ -89,7 +91,7 @@ export async function finishOAuthLogin(opts: {
   provider: OAuthProvider;
   info: OAuthUserInfo;
   pending: OAuthTransaction;
-  request?: CookieRequestContext;
+  request?: NextRequest;
 }): Promise<OAuthFinishResult> {
   if (opts.pending.mode === "link") {
     return finishOAuthLink(opts);
@@ -176,6 +178,13 @@ export async function finishOAuthLogin(opts: {
     },
     opts.request
   );
+
+  if (accountResult.isNewUser && profileUserId && opts.request) {
+    await recordPendingGuestRegistrationFunnelEvent(opts.request, "account_created", {
+      profileUserId,
+      metadata: { method: `oauth:${opts.provider}` },
+    });
+  }
 
   const needsBirth = !profileHasBirthData(row);
   if (accountResult.isNewUser) {

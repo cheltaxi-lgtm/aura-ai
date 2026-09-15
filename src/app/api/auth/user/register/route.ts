@@ -20,6 +20,7 @@ import { mergeConsentIntoAstroMeta } from "@/lib/registration-consent";
 import { readSessionClaimCookie } from "@/lib/session-claim";
 import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
 import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
+import { recordPendingGuestRegistrationFunnelEvent } from "@/lib/guest-registration-funnel";
 
 export async function POST(request: NextRequest) {
   try {
@@ -79,6 +80,10 @@ export async function POST(request: NextRequest) {
 
     const rateLimited = await enforceRegisterRateLimit(clientIp(request));
     if (rateLimited) return rateLimited;
+
+    await recordPendingGuestRegistrationFunnelEvent(request, "auth_started", {
+      metadata: { method: "email" },
+    });
 
     const passwordError = validatePasswordLength(String(password));
     if (passwordError) {
@@ -238,6 +243,11 @@ export async function POST(request: NextRequest) {
       },
       request
     );
+
+    await recordPendingGuestRegistrationFunnelEvent(request, "account_created", {
+      profileUserId: profile.id,
+      metadata: { method: "email" },
+    });
 
     const needsBirthProfile = !profile.birth_date;
     void sendWelcomeEmail(account.email, account.name || account.email, {

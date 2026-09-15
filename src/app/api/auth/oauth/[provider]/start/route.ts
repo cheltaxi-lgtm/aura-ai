@@ -14,6 +14,7 @@ import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { parseAttributionQueryParam } from "@/lib/registration-attribution";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
 import { getAccountConsentSnapshot } from "@/lib/accounts";
+import { recordPendingGuestRegistrationFunnelEvent } from "@/lib/guest-registration-funnel";
 
 type RouteParams = { params: Promise<{ provider: string }> };
 
@@ -96,6 +97,12 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
         oauthAbsoluteUrl(request, oauthErrorRedirect("consent_required", mode, returnTo)),
         { headers: OAUTH_NO_STORE_HEADERS }
       );
+    }
+
+    if (mode === "register") {
+      await recordPendingGuestRegistrationFunnelEvent(request, "auth_started", {
+        metadata: { method: `oauth:${provider}` },
+      });
     }
 
     const codeVerifier = createCodeVerifier();

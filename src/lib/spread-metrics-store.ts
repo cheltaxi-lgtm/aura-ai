@@ -38,6 +38,7 @@ export async function getSpreadMetricsSummary(days = 30): Promise<
      FROM spread_metrics
      WHERE created_at >= NOW() - ($1 || ' days')::INTERVAL
        AND source IS DISTINCT FROM 'first_experience'
+       AND source IS DISTINCT FROM 'guest_registration_funnel'
      GROUP BY spread_id, event
      ORDER BY COUNT(*) DESC, spread_id ASC
      LIMIT 40`,

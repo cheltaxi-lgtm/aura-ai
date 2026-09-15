@@ -260,4 +260,22 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
     const funnel=new Map((await getFirstExperienceAnalytics())?.funnel.map(item=>[item.event,item.count]));
     expect(Object.fromEntries(funnel)).toMatchObject({bonus_granted:3,bonus_spent:3,first_result:2,continuation_shown:2,payment_started:2,first_topup:2});
   });
+  it("counts the guest registration funnel only in chronological receipt order",async()=>{
+    await query("DELETE FROM spread_metrics WHERE source='guest_registration_funnel'");
+    const ordered=crypto.randomUUID();const outOfOrder=crypto.randomUUID();
+    await query(`INSERT INTO spread_metrics(event,spread_id,source,idempotency_key,metadata,created_at) VALUES
+      ('receipt_issued',$1,'guest_registration_funnel','go-issued','{}',NOW()-INTERVAL '8 hours'),
+      ('auth_started',$1,'guest_registration_funnel','go-auth','{"method":"email"}',NOW()-INTERVAL '7 hours'),
+      ('account_created',$1,'guest_registration_funnel','go-account','{"method":"email"}',NOW()-INTERVAL '6 hours'),
+      ('claim_succeeded',$1,'guest_registration_funnel','go-claim','{}',NOW()-INTERVAL '5 hours'),
+      ('receipt_reused',$1,'guest_registration_funnel','go-reuse','{}',NOW()-INTERVAL '4 hours'),
+      ('receipt_issued',$2,'guest_registration_funnel','bad-issued','{}',NOW()-INTERVAL '8 hours'),
+      ('account_created',$2,'guest_registration_funnel','bad-account','{"method":"email"}',NOW()-INTERVAL '7 hours'),
+      ('auth_started',$2,'guest_registration_funnel','bad-auth','{"method":"email"}',NOW()-INTERVAL '6 hours'),
+      ('claim_succeeded',$2,'guest_registration_funnel','bad-claim','{}',NOW()-INTERVAL '5 hours')`,[ordered,outOfOrder]);
+    const analytics=await getFirstExperienceAnalytics();
+    const funnel=Object.fromEntries(analytics?.guestRegistration.funnel.map(item=>[item.event,item.count])??[]);
+    expect(funnel).toMatchObject({receipt_issued:2,auth_started:2,account_created:1,claim_succeeded:1});
+    expect(analytics?.guestRegistration.diagnostics).toContainEqual({event:"receipt_reused",count:1});
+  });
 });

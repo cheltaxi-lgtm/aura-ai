@@ -375,7 +375,9 @@ export async function enforceSessionCreateRateLimit(
   return null;
 }
 
-const GUEST_TRIPLET_COMPLETE_LIMIT = 8;
+// Cookie-less automation used to mint eight anonymous receipts per hour.
+// Normal browsers now reuse their active receipt; this is the NAT-safe fallback.
+const GUEST_TRIPLET_COMPLETE_LIMIT = 3;
 const GUEST_TRIPLET_COMPLETE_WINDOW_MS = 60 * 60 * 1000;
 const GUEST_TRIPLET_CLAIM_LIMIT = 20;
 const GUEST_TRIPLET_CLAIM_WINDOW_MS = 60 * 60 * 1000;

@@ -35,6 +35,13 @@ const ENGAGEMENT_EVENTS = [
   { event: "changes_saved", label: "Отметили изменения" },
 ] as const;
 
+const GUEST_REGISTRATION_STAGES = [
+  { event: "receipt_issued", label: "Сохранили расклад" },
+  { event: "auth_started", label: "Начали регистрацию" },
+  { event: "account_created", label: "Создали аккаунт" },
+  { event: "claim_succeeded", label: "Привязали расклад" },
+] as const;
+
 export function formatBonusVersion(version: string) {
   if (version === "starter-100-v1") return "Бонус 100 рун";
   if (version === "legacy-no-starter-grant") return "Без стартового бонуса";
@@ -123,6 +130,10 @@ export default function FirstExperienceMetrics({data}:{data:AnalyticsData|{unava
   const funnelCount = (event: string) => funnel.get(event) ?? 0;
   const bonusGranted = funnelCount("bonus_granted");
   const bonusSpent = funnelCount("bonus_spent");
+  const guestFunnel = new Map(data.guestRegistration.funnel.map(item => [item.event, item.count]));
+  const guestFunnelCount = (event: string) => guestFunnel.get(event) ?? 0;
+  const guestDiagnostics = new Map(data.guestRegistration.diagnostics.map(item => [item.event, item.count]));
+  const guestReceipts = guestFunnelCount("receipt_issued");
   const visibleCohorts = expanded ? data.cohorts : data.cohorts.slice(0, 12);
   const cost = data.freeGenerationCost;
   const costStatus = cost.tracked + cost.untracked === 0
@@ -177,6 +188,49 @@ export default function FirstExperienceMetrics({data}:{data:AnalyticsData|{unava
           detail={data.summary.payers > 0 ? `${data.summary.repeatPayers} из ${data.summary.payers} плательщиков вернулись` : "Повторные покупки появятся после первых оплат"}
           tone="gold"
         />
+      </div>
+
+      <div className="relative mt-8 rounded-2xl border border-aura-gold/15 bg-black/20 p-4 sm:p-5">
+        <div className="flex flex-wrap items-end justify-between gap-3">
+          <div>
+            <h3 className="font-display text-xl font-semibold text-white">Гостевой расклад → регистрация</h3>
+            <p className="mt-1 text-xs text-white/55">
+              Серверные данные за {data.guestRegistration.days} дней · этапы только в правильной последовательности
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 text-[11px] text-white/55">
+            <span className="rounded-full border border-white/10 px-3 py-1.5">
+              Повтор заблокирован: {number.format(guestDiagnostics.get("receipt_reused") ?? 0)}
+            </span>
+            <span className="rounded-full border border-white/10 px-3 py-1.5">
+              Ошибка привязки: {number.format(guestDiagnostics.get("claim_failed") ?? 0)}
+            </span>
+          </div>
+        </div>
+        <div className="mt-4 grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
+          {GUEST_REGISTRATION_STAGES.map((stage, index) => {
+            const count = guestFunnelCount(stage.event);
+            const previous = index === 0 ? null : guestFunnelCount(GUEST_REGISTRATION_STAGES[index - 1].event);
+            const conversion = previous && previous > 0 ? count / previous : null;
+            const totalConversion = guestReceipts > 0 ? count / guestReceipts : null;
+            return (
+              <div key={stage.event} className="rounded-xl border border-white/[0.08] bg-white/[0.025] p-4">
+                <div className="flex items-center justify-between gap-3">
+                  <span className="text-[10px] font-semibold tracking-[0.18em] text-aura-gold/70">ШАГ {index + 1}</span>
+                  <span className="font-display text-2xl font-semibold tabular-nums text-white">{number.format(count)}</span>
+                </div>
+                <p className="mt-3 text-sm font-medium text-white/85">{stage.label}</p>
+                <p className="mt-1 text-[11px] text-white/55">
+                  {index === 0
+                    ? "Сервер выдал уникальный чек"
+                    : conversion === null
+                      ? "Пока нет основы для расчёта"
+                      : `${percent(conversion)} от прошлого шага · ${percent(totalConversion)} от раскладов`}
+                </p>
+              </div>
+            );
+          })}
+        </div>
       </div>
 
       <div className="relative mt-8">

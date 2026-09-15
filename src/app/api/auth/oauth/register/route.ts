@@ -21,6 +21,7 @@ import {
 } from "@/lib/oauth/request-security";
 import { sendWelcomeEmail } from "@/lib/email/send";
 import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
+import { recordPendingGuestRegistrationFunnelEvent } from "@/lib/guest-registration-funnel";
 
 type RegistrationBody = {
   code?: string;
@@ -130,6 +131,13 @@ export async function POST(request: NextRequest) {
       },
       request
     );
+
+    if (completed.account.isNewUser) {
+      await recordPendingGuestRegistrationFunnelEvent(request, "account_created", {
+        profileUserId: profileUserId ?? null,
+        metadata: { method: `oauth:${completed.pending.provider}` },
+      });
+    }
 
     // Registration completes through fetch, whose Set-Cookie can lag in both
     // browsers and Android WebView. Always provide a one-time document handoff;

@@ -36,6 +36,19 @@ export type GuestResumeUiCache = {
   phase?: GuestResumeUiPhase;
 };
 
+export type PendingGuestResumeResponse = {
+  ok: true;
+  status: "issued";
+  masterId: string;
+  system: string;
+  spreadId: string;
+  question: string;
+  teaser: string;
+  cards: GuestResumeUiCache["cards"];
+  completedAt: string;
+  expiresAt: string | null;
+};
+
 const TERMINAL_PHASES: ReadonlySet<GuestResumeUiPhase> = new Set([
   "idle",
   "reading_ready",
@@ -85,6 +98,36 @@ export function saveGuestResumeUiCache(cache: GuestResumeUiCache): void {
   } catch {
     /* private mode */
   }
+}
+
+export function pendingGuestResumeToUiCache(
+  value: unknown
+): GuestResumeUiCache | null {
+  if (!value || typeof value !== "object") return null;
+  const response = value as Partial<PendingGuestResumeResponse>;
+  if (response.ok !== true || response.status !== "issued") return null;
+  const cache: GuestResumeUiCache = {
+    version: 1,
+    origin: "guest",
+    masterId: typeof response.masterId === "string" ? response.masterId : "",
+    system: typeof response.system === "string" ? response.system : "",
+    spreadId: typeof response.spreadId === "string" ? response.spreadId : "",
+    question: typeof response.question === "string" ? response.question : "",
+    teaser: typeof response.teaser === "string" ? response.teaser : "",
+    cards: Array.isArray(response.cards) ? response.cards : [],
+    completedAt: typeof response.completedAt === "string" ? response.completedAt : "",
+    phase: "receipt_pending_auth",
+  };
+  if (!isGuestResumeUiCache(cache)) return null;
+  const completedAt = Date.parse(cache.completedAt);
+  const expiresAt = typeof response.expiresAt === "string" ? Date.parse(response.expiresAt) : NaN;
+  if (
+    !Number.isFinite(completedAt) ||
+    completedAt > Date.now() + 5 * 60 * 1000 ||
+    Date.now() - completedAt > GUEST_RESUME_UI_MAX_AGE_MS
+  ) return null;
+  if (!Number.isFinite(expiresAt) || expiresAt <= Date.now()) return null;
+  return cache;
 }
 
 export function patchGuestResumeUiCache(

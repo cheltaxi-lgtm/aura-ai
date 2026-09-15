@@ -3,7 +3,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { ArrowLeft } from "lucide-react";
-import { getDeckPositionsForUi, resolveMasterDeckSystem } from "@/lib/decks";
+import { getDeckDefinition, getDeckPositionsForUi, resolveMasterDeckSystem } from "@/lib/decks";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import {
   buildSeededTableDeck,
@@ -13,7 +13,14 @@ import {
 import { buildGuestSpreadSeed } from "@/lib/spread-seed";
 import { getSpreadRitualCopy } from "@/lib/spread-ritual-copy";
 import { saveGuestTriplet } from "@/lib/guest-triplet";
-import { hasActiveGuestResumeIntent, loadGuestResumeUiCache, saveGuestResumeUiCache, type GuestResumeUiCache } from "@/lib/guest-resume-ui-cache";
+import {
+  hasActiveGuestResumeIntent,
+  loadGuestResumeUiCache,
+  pendingGuestResumeToUiCache,
+  saveGuestResumeUiCache,
+  type GuestResumeUiCache,
+  type PendingGuestResumeResponse,
+} from "@/lib/guest-resume-ui-cache";
 import {
   buildGuestNarrativeFallback,
   buildGuestTripletTeaser,
@@ -145,6 +152,7 @@ export default function GuestTripletDraw({
   const [teaserText, setTeaserText] = useState("");
   const [teaserLoading, setTeaserLoading] = useState(false);
   const [teaserPaused, setTeaserPaused] = useState(false);
+  const [restoredExistingReceipt, setRestoredExistingReceipt] = useState(false);
   /** Auth gate only after explicit conversion CTA — not immediately after teaser. */
   const [showAuthGate, setShowAuthGate] = useState(false);
   const receiptReadyAtRef = useRef<number | null>(null);
@@ -309,6 +317,21 @@ export default function GuestTripletDraw({
     try { sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY); } catch { /* optional draft */ }
     setSavedResume(hasActiveGuestResumeIntent() ? loadGuestResumeUiCache() : null);
     setDraftRestored(true);
+    void fetch("/api/guest-triplet/pending", {
+      credentials: "include",
+      signal: controller.signal,
+    })
+      .then(async (response) => (response.ok ? response.json() : null))
+      .then((value: unknown) => {
+        if (controller.signal.aborted) return;
+        const restored = pendingGuestResumeToUiCache(value);
+        if (!restored) return;
+        saveGuestResumeUiCache(restored);
+        setSavedResume(restored);
+      })
+      .catch(() => {
+        /* local cache remains a safe recovery hint */
+      });
   }, [draftRestored]);
 
   useEffect(() => {
@@ -377,6 +400,7 @@ export default function GuestTripletDraw({
     setTeaserText("");
     setTeaserLoading(false);
     setShowAuthGate(false);
+    setRestoredExistingReceipt(false);
     receiptReadyAtRef.current = null;
     teaserFetchedRef.current = false;
     authGateViewTracked.current = false;
@@ -474,6 +498,21 @@ export default function GuestTripletDraw({
 
   const handleStartRequest = useCallback(
     (detail?: GuestSpreadStartDetail) => {
+      if (savedResume || hasActiveGuestResumeIntent()) {
+        clearPendingGuestSpreadStart();
+        setStep("idle");
+        window.requestAnimationFrame(() => {
+          const resumeLink = document.querySelector<HTMLAnchorElement>(
+            ".guest-resume-banner__link"
+          );
+          resumeLink?.scrollIntoView({
+            behavior: reduceMotion ? "auto" : "smooth",
+            block: "center",
+          });
+          resumeLink?.focus({ preventScroll: true });
+        });
+        return;
+      }
       const version = ++ageFlowVersionRef.current;
       ageRequestRef.current?.abort();
       const controller = new AbortController();
@@ -502,7 +541,7 @@ export default function GuestTripletDraw({
         beginGuestSpread(nextQuestion);
       });
     },
-    [beginGuestSpread]
+    [beginGuestSpread, reduceMotion, savedResume]
   );
 
   useEffect(() => {
@@ -605,7 +644,6 @@ export default function GuestTripletDraw({
     const controller = new AbortController();
     completionRequest.current = controller;
     const isCurrent = () => !controller.signal.aborted && version === completionVersion.current;
-    const teaser = buildGuestTripletTeaser(deck);
     const symbols = deck.map((card, index) => ({
       id: card.id,
       name: card.name,
@@ -617,6 +655,7 @@ export default function GuestTripletDraw({
     setAgeGateError("");
 
     void (async () => {
+      let completionData: (Partial<PendingGuestResumeResponse> & { reused?: boolean }) | null = null;
       try {
         const res = await fetch("/api/guest-triplet/complete", {
           signal: controller.signal,
@@ -661,6 +700,9 @@ export default function GuestTripletDraw({
           setCompleting(false);
           return;
         }
+        completionData = (await res.json()) as Partial<PendingGuestResumeResponse> & {
+          reused?: boolean;
+        };
       } catch {
         if (!isCurrent()) return;
         completionInFlight.current = false;
@@ -670,27 +712,49 @@ export default function GuestTripletDraw({
       }
 
       if (!isCurrent()) return;
+      const restored = completionData?.reused
+        ? pendingGuestResumeToUiCache({ ...completionData, ok: true, status: "issued" })
+        : null;
+      const effectiveSymbols = restored?.cards ?? symbols;
+      const deckById = new Map(getDeckDefinition(system).symbols.map((card) => [card.id, card]));
+      const effectiveDeck = restored
+        ? effectiveSymbols.map((card) => ({
+            ...(deckById.get(card.id) ?? { id: card.id, name: card.name, meaning: "" }),
+            name: card.name,
+            reversed: card.reversed,
+          }))
+        : deck;
+      const effectiveQuestion = restored?.question ?? (landingQuestion || "");
+      const effectiveTeaser = restored?.teaser || buildGuestTripletTeaser(effectiveDeck);
+      const completedAt = restored?.completedAt ?? new Date().toISOString();
+      if (restored) {
+        setDeck(effectiveDeck);
+        setLandingQuestion(effectiveQuestion);
+        setRestoredExistingReceipt(true);
+      }
       saveGuestTriplet({
-        tarotCards: deck,
+        tarotCards: effectiveDeck,
         deckSystem: system,
-        teaser,
-        completedAt: new Date().toISOString(),
-        question: landingQuestion || undefined,
+        teaser: effectiveTeaser,
+        completedAt,
+        question: effectiveQuestion || undefined,
         masterId,
       });
-      saveGuestResumeUiCache({
+      const resumeCache: GuestResumeUiCache = restored ?? {
         version: 1,
         origin: "guest",
         masterId,
         system,
         spreadId: GUEST_RESUME_SPREAD_ID,
-        question: landingQuestion || "",
-        teaser,
-        cards: symbols,
-        completedAt: new Date().toISOString(),
+        question: effectiveQuestion,
+        teaser: effectiveTeaser,
+        cards: effectiveSymbols,
+        completedAt,
         phase: "receipt_pending_auth",
-      });
-      trackGuestSpreadCompleted();
+      };
+      saveGuestResumeUiCache(resumeCache);
+      setSavedResume(resumeCache);
+      if (!restored) trackGuestSpreadCompleted();
       clearPendingGuestSpreadStart();
       try { sessionStorage.removeItem(GUEST_SPREAD_DRAFT_KEY); } catch { /* optional draft */ }
       receiptReadyAtRef.current = Date.now();
@@ -811,6 +875,12 @@ export default function GuestTripletDraw({
             <p className="text-center text-sm font-medium text-aura-champagne/85">
               Краткий ориентир по вашему раскладу
             </p>
+
+            {restoredExistingReceipt ? (
+              <p className="rounded-xl border border-aura-gold/25 bg-aura-gold/[0.07] px-4 py-3 text-center text-sm text-aura-champagne" role="status">
+                У вас уже был сохранён расклад. Мы восстановили прежний вопрос и те же карты — новый бесплатный расклад не создавался.
+              </p>
+            ) : null}
 
             {landingQuestion ? (
               <p className="rounded-xl border border-white/8 bg-black/20 px-4 py-3 text-center text-sm text-aura-ivory/80">

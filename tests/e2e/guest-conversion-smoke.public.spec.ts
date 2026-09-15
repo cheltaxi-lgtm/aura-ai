@@ -160,6 +160,82 @@ test.describe("mobile cache recovery with API fixtures", () => {
   }
 });
 
+test.describe("server-authoritative pending guest receipt", () => {
+  test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
+  test.setTimeout(90_000);
+
+  test("restores the saved banner when localStorage is empty", async ({ page }) => {
+    await page.route("**/api/guest-triplet/pending", route => route.fulfill({ json: {
+      ok: true,
+      status: "issued",
+      masterId: "veronika",
+      system: "tarot-veronika",
+      spreadId: "triplet",
+      question: "Сохранённый вопрос",
+      teaser: "",
+      completedAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+      cards: [
+        { id: 0, name: "Шут", position: 0, reversed: false },
+        { id: 1, name: "Маг", position: 1, reversed: false },
+        { id: 2, name: "Жрица", position: 2, reversed: true },
+      ],
+    } }));
+    await page.goto("/");
+    const necessaryCookies = page.getByRole("button", { name: "Только необходимые", exact: true });
+    if (await necessaryCookies.isVisible()) await necessaryCookies.click();
+    const resume = page.getByRole("link", { name: "Продолжить сохранённый расклад" });
+    await expect(resume).toBeVisible();
+    const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("zovus_guest_resume_ui_v1")!));
+    expect(restored).toMatchObject({ question: "Сохранённый вопрос", phase: "receipt_pending_auth" });
+    await page.locator("#hero-question").fill("Попытка нового вопроса");
+    await page.getByRole("button", { name: /Открыть 3 карты бесплатно/i }).click();
+    await expect(resume).toBeFocused();
+    await expect(page.getByRole("heading", { name: "Выберите три карты" })).toHaveCount(0);
+  });
+
+  test("uses the original server cards when completion is a receipt reuse", async ({ page }) => {
+    let confirmed = false;
+    await page.route("**/api/age-gate/confirm", route => {
+      if (route.request().method() === "POST") confirmed = true;
+      return route.fulfill({ json: { ok: true, confirmed } });
+    });
+    await page.route("**/api/guest-triplet/pending", route => route.fulfill({ json: { ok: true, status: "none" } }));
+    await page.route("**/api/guest-triplet/complete", route => {
+      const requested = route.request().postDataJSON();
+      return route.fulfill({ json: {
+        ok: true,
+        reused: true,
+        status: "issued",
+        masterId: requested.masterId,
+        system: requested.system,
+        spreadId: "triplet",
+        question: "Первый сохранённый вопрос",
+        teaser: "",
+        completedAt: new Date().toISOString(),
+        expiresAt: new Date(Date.now() + 86_400_000).toISOString(),
+        cards: [
+          { id: 19, name: "Солнце", position: 0, reversed: true },
+          { id: 20, name: "Суд", position: 1, reversed: false },
+          { id: 21, name: "Мир", position: 2, reversed: true },
+        ],
+      } });
+    });
+    await page.route("**/api/guest-triplet/teaser", route => route.fulfill({ json: { text: "Сохранённый краткий результат." } }));
+    await startGuestQuestion(page, "/", "Новый вопрос");
+    await pickAndRevealTriplet(page);
+    await expect(page.getByText(/Получите полный разбор этих карт/i).first()).toBeVisible({ timeout: 20_000 });
+    const restored = await page.evaluate(() => JSON.parse(localStorage.getItem("zovus_guest_resume_ui_v1")!));
+    expect(restored.question).toBe("Первый сохранённый вопрос");
+    expect(restored.cards).toEqual([
+      { id: 19, name: "Солнце", position: 0, reversed: true },
+      { id: 20, name: "Суд", position: 1, reversed: false },
+      { id: 21, name: "Мир", position: 2, reversed: true },
+    ]);
+    await expect(page.getByRole("status")).toContainText("восстановили прежний вопрос и те же карты");
+  });
+});
+
 
 test.describe("landing question storage failure", () => {
   test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
