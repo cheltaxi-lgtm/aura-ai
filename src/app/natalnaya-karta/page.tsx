@@ -4,7 +4,7 @@ import { getCharacterById } from "@/lib/characters";
 import { BRAND_NAME } from "@/lib/brand";
 import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
-import { buildForecastStructuredData } from "@/lib/seo/structured-data";
+import { buildCalculatorStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import NatalLandingCtas from "@/components/seo/NatalLandingCtas";
 import NatalGuestCalculator from "@/components/natal/NatalGuestCalculator";
@@ -13,9 +13,9 @@ import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 const PATH = "/natalnaya-karta";
 
 export const metadata: Metadata = buildSeoMetadata({
-  title: `Натальная карта онлайн — расчёт и расшифровка | ${BRAND_NAME}`,
+  title: `Натальная карта онлайн — рассчитать бесплатно | ${BRAND_NAME}`,
   description:
-    "Натальная карта по дате, времени и месту рождения: западная астрология и джйотиш, прогноз и совместимость. Персональный разбор в Zovus с Гуру Шри Раджем.",
+    "Рассчитайте натальную карту бесплатно по дате, времени и месту рождения. Планеты, дома, аспекты и асцендент; западная карта и джйотиш в Zovus.",
   path: PATH,
 });
 
@@ -53,6 +53,25 @@ const HOW_IT_WORKS = [
     step: "3",
     title: "Полный разбор в кабинете",
     text: "После входа сохраняется эта же карта — дальше трактовка, прогноз и совместимость.",
+  },
+] as const;
+
+const CHART_COMPONENTS = [
+  {
+    title: "Солнце, Луна и асцендент",
+    text: "Солнце описывает базовый вектор личности, Луна — эмоциональные потребности, асцендент — способ проявляться и первое впечатление.",
+  },
+  {
+    title: "Планеты в знаках",
+    text: "Планета отвечает за функцию, а знак — за стиль её проявления: например, Венера говорит об отношениях и ценностях, Марс — о действии и границах.",
+  },
+  {
+    title: "Двенадцать домов",
+    text: "Дома показывают сферы жизни: личность, деньги, обучение, дом, творчество, работа, партнёрство, перемены, мировоззрение, карьера, окружение и внутренний мир.",
+  },
+  {
+    title: "Аспекты",
+    text: "Угловые связи между планетами показывают, какие качества поддерживают друг друга, а где возникает напряжение и требуется осознанная настройка.",
   },
 ] as const;
 
@@ -114,22 +133,50 @@ const RELATED = [
   },
 ] as const;
 
+const GUIDES = [
+  {
+    href: "/statyi/natalnaya-karta-po-date-rozhdeniya",
+    title: "Натальная карта по дате рождения",
+    text: "Какие данные нужны и с чего начинать чтение карты.",
+  },
+  {
+    href: "/statyi/natalnaya-karta-besplatno-online",
+    title: "Как работает бесплатный онлайн-расчёт",
+    text: "Что входит в базовую карту и чем отличается полный разбор.",
+  },
+  {
+    href: "/statyi/natalnaya-karta-bez-vremeni-rozhdeniya",
+    title: "Если неизвестно время рождения",
+    text: "Что остаётся надёжным, а какие элементы нельзя трактовать точно.",
+  },
+  {
+    href: "/statyi/doma-v-natalnoy-karte",
+    title: "Дома в натальной карте",
+    text: "Краткий путеводитель по двенадцати сферам жизни.",
+  },
+] as const;
+
 export default function NatalnayaKartaPage() {
   const master = getCharacterById("shri-raj");
 
-  const structuredData = buildForecastStructuredData({
+  const structuredData = buildCalculatorStructuredData({
     title: "Натальная карта онлайн — расчёт и расшифровка",
     description:
       "Натальная карта по дате, времени и месту рождения: западная астрология и джйотиш, прогноз и совместимость в Zovus.",
     path: PATH,
     faq: FAQ,
+    steps: HOW_IT_WORKS.map((item) => ({ name: item.title, text: item.text })),
+    features: [
+      "Бесплатная карта рождения без регистрации",
+      "Планеты, знаки, дома и аспекты",
+      "Западная астрология и джйотиш",
+      "Персональный прогноз и совместимость",
+    ],
+    bodyText: [
+      ...WHAT_YOU_GET.map((item) => `${item.title}: ${item.text}`),
+      ...CHART_COMPONENTS.map((item) => `${item.title}: ${item.text}`),
+    ].join(" "),
   });
-
-  const bodyBits = [
-    ...WHAT_YOU_GET.map((item) => `${item.title}: ${item.text}`),
-    ...HOW_IT_WORKS.map((item) => `${item.title}: ${item.text}`),
-    ...FAQ.map((item) => `${item.q} ${item.a}`),
-  ].join(" ");
 
   return (
     <SeoPageShell
@@ -141,16 +188,7 @@ export default function NatalnayaKartaPage() {
     >
       <script
         type="application/ld+json"
-        dangerouslySetInnerHTML={{
-          __html: JSON.stringify({
-            ...structuredData,
-            "@graph": (
-              structuredData["@graph"] as Array<Record<string, unknown>>
-            ).map((node) =>
-              node["@type"] === "Article" ? { ...node, text: bodyBits } : node
-            ),
-          }),
-        }}
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
       />
       <SeoPageTracker
         goal="natal_landing_view"
@@ -162,22 +200,28 @@ export default function NatalnayaKartaPage() {
         Натальная карта онлайн — расчёт и расшифровка
       </h1>
       <p className="mt-4 text-white/70">
-        Постройте карту рождения по дате, времени и месту — с разбором в западной традиции или
-        джйотиш. {master?.name ?? "Гуру Шри Радж"} помогает увидеть структуру характера, периоды и
-        совместимость без шаблонного «гороскопа на день».
+        Постройте карту рождения по дате, времени и месту — с разбором в
+        западной традиции или джйотиш. {master?.name ?? "Гуру Шри Радж"}{" "}
+        помогает увидеть структуру характера, периоды и совместимость без
+        шаблонного «гороскопа на день».
       </p>
-      <p className="mt-4 font-medium text-aura-champagne">Карта рождения и основные акценты — бесплатно, без регистрации.</p>
+      <p className="mt-4 font-medium text-aura-champagne">
+        Карта рождения и основные акценты — бесплатно, без регистрации.
+      </p>
       <details className="mt-3 text-sm text-white/60">
-      <summary className="cursor-pointer py-2">Какие данные нужны и что входит в расчёт</summary>
-      <ul className="mt-2 space-y-1.5 text-sm text-white/55">
-        <li>нужны дата, время (если известно) и место рождения;</li>
-        <li>карта считается автоматически — без ручных таблиц;</li>
-        <li>западный разбор и ведическая традиция в одном кабинете;</li>
-        <li>полная трактовка, прогноз и синастрия — по запросу.</li>
-      </ul>
+        <summary className="cursor-pointer py-2">
+          Какие данные нужны и что входит в расчёт
+        </summary>
+        <ul className="mt-2 space-y-1.5 text-sm text-white/55">
+          <li>нужны дата, время (если известно) и место рождения;</li>
+          <li>карта считается автоматически — без ручных таблиц;</li>
+          <li>западный разбор и ведическая традиция в одном кабинете;</li>
+          <li>полная трактовка, прогноз и синастрия — по запросу.</li>
+        </ul>
       </details>
       <p className="mt-4 text-sm text-white/50">
-        {RUNE_ACTION_LABELS.NATAL_READING} · от {DEFAULT_RUNE_COSTS.NATAL_READING} ᚢ
+        {RUNE_ACTION_LABELS.NATAL_READING} · от{" "}
+        {DEFAULT_RUNE_COSTS.NATAL_READING} ᚢ
       </p>
 
       <NatalLandingCtas placement="hero" />
@@ -216,36 +260,67 @@ export default function NatalnayaKartaPage() {
 
       <SeoSection title="Зачем нужна натальная карта">
         <p>
-          Натал отвечает на вопросы «как устроена моя психика и ресурс», «какие темы повторяются»,
-          «куда смотреть в этот период». Это не предсказание «что случится во вторник», а карта
-          склонностей и окон внимания.
+          Натал отвечает на вопросы «как устроена моя психика и ресурс», «какие
+          темы повторяются», «куда смотреть в этот период». Это не предсказание
+          «что случится во вторник», а карта склонностей и окон внимания.
         </p>
         <p>
-          Если нужен быстрый числовой срез по дате без времени рождения — начните с{" "}
-          <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+          Если нужен быстрый числовой срез по дате без времени рождения —
+          начните с{" "}
+          <Link
+            href="/numerology/destiny-matrix"
+            className="text-aura-gold hover:underline"
+          >
             матрицы судьбы
           </Link>
           . Для типа и стратегии по рождению —{" "}
-          <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
+          <Link
+            href="/dizayn-cheloveka/rasschitat"
+            className="text-aura-gold hover:underline"
+          >
             дизайн человека
           </Link>
           . Если вопрос про пару на уровне знаков — загляните в{" "}
-          <Link href="/sovmestimost-znakov-zodiaka" className="text-aura-gold hover:underline">
+          <Link
+            href="/sovmestimost-znakov-zodiaka"
+            className="text-aura-gold hover:underline"
+          >
             совместимость зодиака
           </Link>
           , а персональную синастрию лучше строить уже по двум картам.
         </p>
       </SeoSection>
 
+      <SeoSection title="Как читать основные элементы натальной карты">
+        <div className="grid gap-3 sm:grid-cols-2">
+          {CHART_COMPONENTS.map((item) => (
+            <div
+              key={item.title}
+              className="rounded-xl border border-white/10 bg-white/5 p-4"
+            >
+              <h3 className="font-medium text-white">{item.title}</h3>
+              <p className="mt-1 text-sm text-white/70">{item.text}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-4">
+          Если время рождения неизвестно, положения планет в знаках обычно
+          остаются полезными, но асцендент и дома нельзя считать точными. Не
+          подставляйте случайное время: используйте расчёт без домов или сначала
+          уточните данные рождения.
+        </p>
+      </SeoSection>
+
       <SeoSection title="Западная астрология и джйотиш">
         <p>
-          В кабинете можно работать в двух языках. Западный разбор удобен для домов, аспектов и
-          психологического портрета. Джйотиш добавляет периоды (даши), лунный акцент и кармический
-          каркас — с мастером {master?.name ?? "Шри Раджем"}.
+          В кабинете можно работать в двух языках. Западный разбор удобен для
+          домов, аспектов и психологического портрета. Джйотиш добавляет периоды
+          (даши), лунный акцент и кармический каркас — с мастером{" "}
+          {master?.name ?? "Шри Раджем"}.
         </p>
         <p>
-          Не обязательно «выбирать одну истину»: многие смотрят обе традиции и берут то, что лучше
-          ложится на жизненный вопрос.
+          Не обязательно «выбирать одну истину»: многие смотрят обе традиции и
+          берут то, что лучше ложится на жизненный вопрос.
         </p>
       </SeoSection>
 
@@ -258,6 +333,19 @@ export default function NatalnayaKartaPage() {
             </div>
           ))}
         </div>
+      </SeoSection>
+
+      <SeoSection title="Гайды по натальной карте">
+        <ul className="space-y-3">
+          {GUIDES.map((item) => (
+            <li key={item.href}>
+              <Link href={item.href} className="text-aura-gold hover:underline">
+                {item.title}
+              </Link>
+              <span className="text-sm text-white/50"> — {item.text}</span>
+            </li>
+          ))}
+        </ul>
       </SeoSection>
 
       <SeoSection title="Смотрите также">

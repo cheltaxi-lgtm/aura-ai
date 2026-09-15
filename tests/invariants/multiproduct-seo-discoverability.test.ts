@@ -87,9 +87,11 @@ describe("multiproduct-seo-discoverability", () => {
 
     for (const page of pages) {
       const src = read(page.file);
-      expect(src).toMatch(new RegExp(page.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")));
       expect(src).toMatch(
-        new RegExp(page.description.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        new RegExp(page.title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
+      );
+      expect(src).toMatch(
+        new RegExp(page.description.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")),
       );
       expect(src).not.toMatch(/noIndex:\s*true/);
       expect(src).not.toMatch(/robots:\s*\{\s*index:\s*false/);
@@ -101,7 +103,9 @@ describe("multiproduct-seo-discoverability", () => {
       });
       expect(meta.alternates?.canonical).toBeTruthy();
       expect(String(meta.alternates?.canonical)).toMatch(
-        page.path === "/" ? /\/?$/ : new RegExp(`${page.path.replace(/\//g, "\\/")}$`)
+        page.path === "/"
+          ? /\/?$/
+          : new RegExp(`${page.path.replace(/\//g, "\\/")}$`),
       );
       titles.add(page.title);
       descriptions.add(page.description);
@@ -113,7 +117,9 @@ describe("multiproduct-seo-discoverability", () => {
 
   it("root metadata is multiproduct, not Tarot-only", () => {
     const page = read("src/app/page.tsx");
-    expect(page).toMatch(/Матрица судьбы.*Натальная карта.*Дизайн человека.*Таро/s);
+    expect(page).toMatch(
+      /Матрица судьбы.*Натальная карта.*Дизайн человека.*Таро/s,
+    );
     expect(page).not.toMatch(/absolute:\s*"Расклад Таро онлайн бесплатно/);
     const homeSeo = read("src/components/seo/HomeSeoContent.tsx");
     expect(homeSeo).toMatch(/\/numerology\/destiny-matrix/);
@@ -161,7 +167,7 @@ describe("multiproduct-seo-discoverability", () => {
     expect(matrixPage).toMatch(/breadcrumbs=\{/);
 
     const natal = read("src/app/natalnaya-karta/page.tsx");
-    expect(natal).toMatch(/buildForecastStructuredData/);
+    expect(natal).toMatch(/buildCalculatorStructuredData/);
     expect(natal).toMatch(/breadcrumbs=\{/);
 
     const hd = read("src/app/dizayn-cheloveka/rasschitat/page.tsx");

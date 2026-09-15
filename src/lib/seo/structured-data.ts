@@ -150,7 +150,10 @@ export function buildForecastStructuredData({
   faq: { q: string; a: string }[];
 }) {
   const url = `${getAppUrl()}${path}`;
-  const text = joinContentText([description, ...faq.map((item) => `${item.q} ${item.a}`)]);
+  const text = joinContentText([
+    description,
+    ...faq.map((item) => `${item.q} ${item.a}`),
+  ]);
   return {
     "@context": "https://schema.org",
     "@graph": [
@@ -163,6 +166,92 @@ export function buildForecastStructuredData({
         url,
         author: { "@type": "Organization", name: BRAND_NAME },
         mainEntityOfPage: url,
+      },
+      {
+        "@type": "FAQPage",
+        mainEntity: faq.map((item) => ({
+          "@type": "Question",
+          name: item.q,
+          acceptedAnswer: { "@type": "Answer", text: item.a },
+        })),
+      },
+    ],
+  };
+}
+
+/**
+ * Structured data for a public calculator landing. The calculator, instructions
+ * and FAQ must all be visible on the page that emits this graph.
+ */
+export function buildCalculatorStructuredData({
+  title,
+  description,
+  path,
+  faq,
+  steps,
+  features,
+  bodyText,
+}: {
+  title: string;
+  description: string;
+  path: string;
+  faq: { q: string; a: string }[];
+  steps: { name: string; text: string }[];
+  features: string[];
+  bodyText?: string;
+}) {
+  const url = `${getAppUrl()}${path}`;
+  const calculatorId = `${url}#calculator`;
+  return {
+    "@context": "https://schema.org",
+    "@graph": [
+      {
+        "@type": "WebApplication",
+        "@id": calculatorId,
+        name: title,
+        description,
+        url,
+        applicationCategory: "LifestyleApplication",
+        operatingSystem: "Any",
+        browserRequirements: "Requires JavaScript",
+        isAccessibleForFree: true,
+        featureList: features,
+        offers: {
+          "@type": "Offer",
+          price: "0",
+          priceCurrency: "RUB",
+          description: "Базовый расчёт доступен бесплатно",
+        },
+        provider: { "@type": "Organization", name: BRAND_NAME },
+      },
+      {
+        "@type": "Article",
+        "@id": `${url}#content`,
+        headline: title,
+        description,
+        text: joinContentText([
+          bodyText,
+          description,
+          ...steps.map((step) => `${step.name}: ${step.text}`),
+          ...faq.map((item) => `${item.q} ${item.a}`),
+        ]),
+        url,
+        author: { "@type": "Organization", name: BRAND_NAME },
+        publisher: { "@type": "Organization", name: BRAND_NAME },
+        mainEntityOfPage: url,
+        about: { "@id": calculatorId },
+      },
+      {
+        "@type": "HowTo",
+        name: title,
+        description,
+        totalTime: "PT2M",
+        step: steps.map((item, index) => ({
+          "@type": "HowToStep",
+          position: index + 1,
+          name: item.name,
+          text: item.text,
+        })),
       },
       {
         "@type": "FAQPage",

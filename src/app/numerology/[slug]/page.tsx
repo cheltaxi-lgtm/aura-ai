@@ -4,7 +4,10 @@ import { notFound } from "next/navigation";
 import { getCharacterById } from "@/lib/characters";
 import { PRICING } from "@/lib/config/pricing";
 import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
-import { buildForecastStructuredData } from "@/lib/seo/structured-data";
+import {
+  buildCalculatorStructuredData,
+  buildForecastStructuredData,
+} from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { AdsSeoH1, AdsSeoJsonLd } from "@/components/seo/AdsSeoEnhancements";
@@ -24,13 +27,15 @@ const TOPICS = {
   },
   compatibility: {
     title: "Совместимость по дате рождения",
-    description: "Нумерологический расчёт совместимости пары по датам рождения обоих партнёров.",
+    description:
+      "Нумерологический расчёт совместимости пары по датам рождения обоих партнёров.",
     intro:
       "Совместимость по дате рождения — числовой анализ пары: Эвелина сравнивает числа судьбы двух людей и показывает, где пара усиливает друг друга, а где нужна осознанность.",
   },
   "name-compatibility": {
     title: "Совместимость имён",
-    description: "Совместимость имён и дат рождения — нумерологический разбор пары по именам.",
+    description:
+      "Совместимость имён и дат рождения — нумерологический разбор пары по именам.",
     intro:
       "Совместимость имён учитывает не только буквы имени, но и дату рождения обоих партнёров — Эвелина считает числовые коды по именам и датам и показывает точки притяжения и трения в паре.",
   },
@@ -50,7 +55,8 @@ const TOPICS = {
   },
   "detskaya-matritsa": {
     title: "Детская матрица по дате рождения",
-    description: "Бережный нумерологический разбор ресурсов ребёнка, обучения и поддержки.",
+    description:
+      "Бережный нумерологический разбор ресурсов ребёнка, обучения и поддержки.",
     intro:
       "Детская матрица помогает увидеть сильные стороны ребёнка, его естественный способ учиться и опоры, которые полезно создавать дома — без ярлыков и предсказаний.",
   },
@@ -107,6 +113,21 @@ const MATRIX_FAQ = [
   },
 ] as const;
 
+const MATRIX_STEPS = [
+  {
+    name: "Введите дату рождения",
+    text: "Укажите день, месяц и год — имя, время и место рождения для базовой схемы не нужны.",
+  },
+  {
+    name: "Получите бесплатную схему",
+    text: "Калькулятор сразу рассчитает 16 точек на 22 арканах, зону комфорта, кармический хвост и основные каналы.",
+  },
+  {
+    name: "Выберите тему для разбора",
+    text: "Сначала сопоставьте схему с вопросом о деньгах, отношениях или предназначении, затем при необходимости откройте полный разбор.",
+  },
+] as const;
+
 const MATRIX_PAIR_FAQ = [
   {
     q: "Что показывает совместимость матриц судьбы?",
@@ -137,7 +158,10 @@ export async function generateMetadata({
   const topic = TOPICS[slug as TopicSlug];
   if (!topic) return { title: "Нумерология" };
   return buildSeoMetadataWithOverrides(`/numerology/${slug}`, {
-    title: `${topic.title} — нумерология`,
+    title:
+      slug === "destiny-matrix"
+        ? "Матрица судьбы онлайн — рассчитать бесплатно"
+        : `${topic.title} — нумерология`,
     description: topic.description,
     path: `/numerology/${slug}`,
   });
@@ -162,11 +186,23 @@ export default async function NumerologyTopicPage({
   const seoOv = await getAppliedSeoOverrides(`/numerology/${slug}`);
 
   const matrixStructuredData = isDestinyMatrix
-    ? buildForecastStructuredData({
+    ? buildCalculatorStructuredData({
         title: topic.title,
         description: topic.description,
         path: `/numerology/${slug}`,
         faq: MATRIX_FAQ.map((item) => ({ q: item.q, a: item.a })),
+        steps: MATRIX_STEPS.map((item) => ({
+          name: item.name,
+          text: item.text,
+        })),
+        features: [
+          "Матрица судьбы по дате рождения",
+          "16 расчётных точек на 22 арканах",
+          "Кармический хвост, каналы денег и отношений",
+          "Базовая схема без регистрации",
+        ],
+        bodyText:
+          "Матрица судьбы онлайн по дате рождения. Бесплатный расчёт показывает центральную энергию, зону комфорта, родовые линии, кармический хвост, каналы денег и отношений, возрастные точки и аркан текущего периода.",
       })
     : isMatrixPair
       ? buildForecastStructuredData({
@@ -194,7 +230,9 @@ export default async function NumerologyTopicPage({
       {matrixStructuredData ? (
         <script
           type="application/ld+json"
-          dangerouslySetInnerHTML={{ __html: JSON.stringify(matrixStructuredData) }}
+          dangerouslySetInnerHTML={{
+            __html: JSON.stringify(matrixStructuredData),
+          }}
         />
       ) : null}
       <SeoPageTracker
@@ -207,9 +245,19 @@ export default async function NumerologyTopicPage({
         }
         params={{ topic: slug }}
         funnelProduct={
-          isDestinyMatrix ? "matrix" : isMatrixPair ? "matrix_compatibility" : undefined
+          isDestinyMatrix
+            ? "matrix"
+            : isMatrixPair
+              ? "matrix_compatibility"
+              : undefined
         }
-        funnelSource={isDestinyMatrix ? "destiny_matrix" : isMatrixPair ? "matrix_pair" : undefined}
+        funnelSource={
+          isDestinyMatrix
+            ? "destiny_matrix"
+            : isMatrixPair
+              ? "matrix_pair"
+              : undefined
+        }
       />
       <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
       <AdsSeoH1 path={`/numerology/${slug}`}>{topic.title}</AdsSeoH1>
@@ -260,23 +308,31 @@ export default async function NumerologyTopicPage({
           <MatrixCompatibilityPreview />
           <SeoSection title="Что показывает совместимость матриц">
             <p>
-              Сравниваются ключевые точки двух матриц судьбы: комфорт, любовь, деньги, напряжение и
-              годовой фон. Оценка Zovus — авторская аналитика, не научная метрика и не
-              универсальный официальный показатель «совместимости на всю жизнь».
+              Сравниваются ключевые точки двух матриц судьбы: комфорт, любовь,
+              деньги, напряжение и годовой фон. Оценка Zovus — авторская
+              аналитика, не научная метрика и не универсальный официальный
+              показатель «совместимости на всю жизнь».
             </p>
           </SeoSection>
           <SeoSection title="Что входит в полный разбор">
             <p>
-              {pairCost} ᚢ — разбор пары с Эвелиной: практики по ключам, общий совет и диалог.
-              Бесплатная оценка не списывает руны и не открывает платный отчёт сама по себе.
+              {pairCost} ᚢ — разбор пары с Эвелиной: практики по ключам, общий
+              совет и диалог. Бесплатная оценка не списывает руны и не открывает
+              платный отчёт сама по себе.
             </p>
             <p>
               Можно начать с{" "}
-              <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
+              <Link
+                href="/numerology/destiny-matrix"
+                className="text-aura-gold hover:underline"
+              >
                 личной матрицы
               </Link>
               , а затем сравнить пару. Для астрологического слоя —{" "}
-              <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+              <Link
+                href="/natalnaya-karta"
+                className="text-aura-gold hover:underline"
+              >
                 натальная карта
               </Link>
               .
@@ -300,7 +356,10 @@ export default async function NumerologyTopicPage({
             links={[
               { href: "/numerology/destiny-matrix", label: "Матрица судьбы" },
               { href: "/natalnaya-karta", label: "Натальная карта" },
-              { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн человека" },
+              {
+                href: "/dizayn-cheloveka/rasschitat",
+                label: "Дизайн человека",
+              },
             ]}
           />
         </>
@@ -330,28 +389,86 @@ export default async function NumerologyTopicPage({
 
           <SeoSection title="Что показывает матрица судьбы">
             <p>
-              Центральная энергия — ядро характера и способ принимать решения. Вокруг неё
-              раскрываются каналы ресурса, зоны, где энергия утекает, и сценарии в отношениях.
+              Центральная энергия — ядро характера и способ принимать решения.
+              Вокруг неё раскрываются каналы ресурса, зоны, где энергия утекает,
+              и сценарии в отношениях.
             </p>
             <p>
-              Отдельно читаются родовые линии и аркан текущего года: что усиливается в этом цикле и
-              куда полезнее направлять внимание, а не «что обязательно случится».
+              Отдельно читаются родовые линии и аркан текущего года: что
+              усиливается в этом цикле и куда полезнее направлять внимание, а не
+              «что обязательно случится».
             </p>
             <p>
-              Схема на экране — каркас. Смысл появляется, когда вы соотносите арканы со своей
-              ситуацией: работа, пара, выбор, внутренний конфликт.
+              Схема на экране — каркас. Смысл появляется, когда вы соотносите
+              арканы со своей ситуацией: работа, пара, выбор, внутренний
+              конфликт.
             </p>
           </SeoSection>
 
           <SeoSection title="Как рассчитать матрицу судьбы онлайн">
             <ol className="list-decimal space-y-2 pl-5 text-white/75">
-              <li>Укажите дату рождения в форме выше.</li>
-              <li>Получите схему на 22 арканах и короткие акценты по точкам.</li>
-              <li>
-                Если нужен развёрнутый разбор — откройте сессию с{" "}
-                {evelina?.name ?? "Эвелиной"}: методика та же, диалог и сохранение — в чате.
-              </li>
+              {MATRIX_STEPS.map((item) => (
+                <li key={item.name}>
+                  <strong className="font-medium text-white">
+                    {item.name}.
+                  </strong>{" "}
+                  {item.text}
+                </li>
+              ))}
             </ol>
+          </SeoSection>
+
+          <SeoSection title="Что означают основные зоны матрицы">
+            <ul className="space-y-3 text-white/75">
+              <li>
+                <strong className="font-medium text-white">
+                  Центр и зона комфорта
+                </strong>{" "}
+                — привычный способ восстанавливаться и принимать решения.
+                Подробнее — в материале{" "}
+                <Link
+                  href="/statyi/zona-komforta-matrica"
+                  className="text-aura-gold hover:underline"
+                >
+                  о зоне комфорта и роста
+                </Link>
+                .
+              </li>
+              <li>
+                <strong className="font-medium text-white">Канал денег</strong>{" "}
+                — качества, через которые легче создавать ценность и доход; это
+                не обещание конкретной суммы. Смотрите{" "}
+                <Link
+                  href="/numerology/kanal-deneg"
+                  className="text-aura-gold hover:underline"
+                >
+                  отдельное объяснение денежного канала
+                </Link>
+                .
+              </li>
+              <li>
+                <strong className="font-medium text-white">
+                  Кармический хвост
+                </strong>{" "}
+                — повторяющиеся сценарии и задачи для рефлексии, а не наказание
+                или диагноз. Разбор обозначений есть на странице{" "}
+                <Link
+                  href="/numerology/karmicheskiy-khvost"
+                  className="text-aura-gold hover:underline"
+                >
+                  кармического хвоста
+                </Link>
+                .
+              </li>
+              <li>
+                <strong className="font-medium text-white">
+                  Линии рода и возрастной контур
+                </strong>{" "}
+                — семейные паттерны и смена акцентов по жизненным периодам. Их
+                читают вместе с остальной схемой, а не как отдельное
+                предсказание.
+              </li>
+            </ul>
           </SeoSection>
 
           <SeoSection title="Что вы узнаете из бесплатной схемы">
@@ -359,8 +476,12 @@ export default async function NumerologyTopicPage({
             <p>Ресурсный канал и типичные сценарии в отношениях.</p>
             <p>Родовые линии и аркан текущего года.</p>
             <p>
-              После схемы можно углубить разбор вопросами к Эвелине или перейти к{" "}
-              <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+              После схемы можно углубить разбор вопросами к Эвелине или перейти
+              к{" "}
+              <Link
+                href="/natalnaya-karta"
+                className="text-aura-gold hover:underline"
+              >
                 натальной карте
               </Link>
               , если важен астрологический слой.
@@ -368,15 +489,18 @@ export default async function NumerologyTopicPage({
           </SeoSection>
 
           <SeoSection title="Как устроен полный разбор">
-            <p>Арканы считает фиксированная методика — модель не подменяет цифры.</p>
             <p>
-              {sessionCost} ᚢ — разовая оплата за разбор Эвелины с сохранением и{" "}
-              {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате. Схема матрицы остаётся
-              бесплатной; повторно за ту же дату платить не нужно.
+              Арканы считает фиксированная методика — модель не подменяет цифры.
             </p>
             <p>
-              Дальше в том же пространстве доступны личный год, совместимость по датам и переход к
-              астрологии — без смены «вселенной» сервиса.
+              {sessionCost} ᚢ — разовая оплата за разбор Эвелины с сохранением и{" "}
+              {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате. Схема
+              матрицы остаётся бесплатной; повторно за ту же дату платить не
+              нужно.
+            </p>
+            <p>
+              Дальше в том же пространстве доступны личный год, совместимость по
+              датам и переход к астрологии — без смены «вселенной» сервиса.
             </p>
           </SeoSection>
 
@@ -389,22 +513,32 @@ export default async function NumerologyTopicPage({
                 Совместимость матриц
               </Link>{" "}
               сравнивает две даты по методике Zovus.{" "}
-              <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
+              <Link
+                href="/natalnaya-karta"
+                className="text-aura-gold hover:underline"
+              >
                 Натальная карта
               </Link>{" "}
               требует время и место рождения и говорит языком планет.{" "}
-              <Link href="/dizayn-cheloveka/rasschitat" className="text-aura-gold hover:underline">
+              <Link
+                href="/dizayn-cheloveka/rasschitat"
+                className="text-aura-gold hover:underline"
+              >
                 Дизайн человека
               </Link>{" "}
               даёт тип, стратегию и бодиграф.{" "}
-              <Link href="/numerology/pythagoras-square" className="text-aura-gold hover:underline">
+              <Link
+                href="/numerology/pythagoras-square"
+                className="text-aura-gold hover:underline"
+              >
                 Квадрат Пифагора
               </Link>{" "}
               ближе к структуре характера через повторяющиеся числа даты.
             </p>
             <p>
-              Выбирайте инструмент под вопрос: быстрый срез по дате — матрица; пара — совместимость
-              матриц; глубина характера и периодов — натал; тип и стратегия — дизайн человека.
+              Выбирайте инструмент под вопрос: быстрый срез по дате — матрица;
+              пара — совместимость матриц; глубина характера и периодов — натал;
+              тип и стратегия — дизайн человека.
             </p>
           </SeoSection>
 
@@ -450,10 +584,27 @@ export default async function NumerologyTopicPage({
             excludeHrefs={["/numerology/destiny-matrix"]}
             extraLinks={seoOv.internal_links}
             links={[
-              { href: "/numerology/matrica-sovmestimosti", label: "Совместимость матриц" },
+              {
+                href: "/numerology/matrica-sovmestimosti",
+                label: "Совместимость матриц",
+              },
+              {
+                href: "/statyi/chto-takoe-matrica-sudby",
+                label: "Что такое матрица судьбы",
+              },
+              {
+                href: "/statyi/matrica-sudby-po-date-rozhdeniya",
+                label: "Матрица по дате рождения",
+              },
+              {
+                href: "/statyi/matrica-sudby-oshibki-rascheta",
+                label: "Ошибки расчёта матрицы",
+              },
               { href: "/natalnaya-karta", label: "Натальная карта" },
-              { href: "/dizayn-cheloveka/rasschitat", label: "Дизайн человека" },
-              { href: "/taro", label: "Таро онлайн" },
+              {
+                href: "/natal-ili-matrica",
+                label: "Натальная карта или матрица",
+              },
             ]}
           />
         </>
@@ -470,8 +621,14 @@ export default async function NumerologyTopicPage({
           </div>
 
           <SeoSection title="Как проходит">
-            <p>Вы выбираете расчёт и вводите дату рождения (и при необходимости имя).</p>
-            <p>Эвелина даёт персональную расшифровку с возможностью продолжить в чате.</p>
+            <p>
+              Вы выбираете расчёт и вводите дату рождения (и при необходимости
+              имя).
+            </p>
+            <p>
+              Эвелина даёт персональную расшифровку с возможностью продолжить в
+              чате.
+            </p>
             <p>Результат сохраняется в истории сеансов.</p>
           </SeoSection>
           <SeoRelatedTools
@@ -482,7 +639,10 @@ export default async function NumerologyTopicPage({
       )}
 
       <p className="mt-10">
-        <Link href="/numerology" className="text-sm text-aura-gold hover:underline">
+        <Link
+          href="/numerology"
+          className="text-sm text-aura-gold hover:underline"
+        >
           ← Все направления нумерологии
         </Link>
       </p>
