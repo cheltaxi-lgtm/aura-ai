@@ -70,7 +70,6 @@ describe("guest landing conversion cleanup", () => {
       "<MastersShowcase",
       "<EditorialBirthToolsSection",
       "<EditorialExtraFeaturesSection",
-      "<EditorialReviewsSection",
       "<LandingSeoHub",
       "<LandingClosingBand",
     ];
@@ -85,17 +84,18 @@ describe("guest landing conversion cleanup", () => {
     expect(guest).not.toContain("<EditorialPracticesSection");
   });
 
-  it("guest reviews sit before SeoHub and stay pending until moderation", () => {
+  it("does not publish reviews on the guest landing while preserving real review collection", () => {
     const guest = guestLandingBranch();
-    expect(guest.indexOf("<EditorialReviewsSection")).toBeLessThan(guest.indexOf("<LandingSeoHub"));
-    const reviews = readSrc("src/components/editorial/EditorialReviewsSection.tsx");
-    expect(reviews).not.toContain("<form");
-    expect(reviews).not.toContain("Отправить на модерацию");
+    expect(guest).not.toContain("<EditorialReviewsSection");
+    expect(readSrc("src/components/AuraSellingLanding.tsx")).not.toContain(
+      'import EditorialReviewsSection from'
+    );
+    expect(readSrc("src/lib/editorial-landing-content.ts")).not.toContain(
+      '{ label: "Отзывы", hash:'
+    );
     const form = readSrc("src/components/cabinet/CabinetReviewForm.tsx");
     expect(form).toContain('attachRecaptchaToken(payload, "reviews"');
     expect(form).toContain("Отправить на модерацию");
-    expect(reviews).not.toMatch(/реальн(ые|ый|ых) (покупател|отзыв)/i);
-    expect(reviews).toContain("/api/reviews");
   });
 
   it("SeoHub comes before the final CTA, not after", () => {

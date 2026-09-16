@@ -298,7 +298,6 @@ export type EditorialNavItem =
 export const EDITORIAL_NAV: EditorialNavItem[] = [
   { label: "Практики", hash: EDITORIAL_SECTION_IDS.practices },
   { label: "Мастера", hash: EDITORIAL_SECTION_IDS.masters },
-  { label: "Отзывы", hash: EDITORIAL_SECTION_IDS.reviews },
   { label: "Матрица судьбы", href: "/numerology/destiny-matrix" },
   { label: "Натальная карта", href: "/natalnaya-karta" },
   { label: "Натал или матрица", href: "/natal-ili-matrica" },

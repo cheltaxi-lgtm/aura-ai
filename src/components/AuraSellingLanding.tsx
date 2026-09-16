@@ -66,7 +66,6 @@ import EditorialSessionStepsSection from "@/components/editorial/EditorialSessio
 import EditorialStarterPackSection from "@/components/editorial/EditorialStarterPackSection";
 import EditorialPracticesSection from "@/components/editorial/EditorialPracticesSection";
 import EditorialExtraFeaturesSection from "@/components/editorial/EditorialExtraFeaturesSection";
-import EditorialReviewsSection from "@/components/editorial/EditorialReviewsSection";
 import EditorialDailyCardsSection from "@/components/editorial/EditorialDailyCardsSection";
 import EditorialFreeValueSection from "@/components/editorial/EditorialFreeValueSection";
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
@@ -211,7 +210,7 @@ export interface AuraSellingLandingProps {
   continueMasterIds?: string[];
   spreadReadingDone?: boolean;
   showHero?: boolean;
-  /** Benefits, steps, directions, reviews — for guests only. */
+  /** Benefits, steps, and directions — for guests only. */
   showSellingSections?: boolean;
   /** Slot between quick questions and selling sections (e.g. daily energy for logged-in users). */
   afterQuickQuestions?: ReactNode;
@@ -445,7 +444,6 @@ export default function AuraSellingLanding({
         <EditorialBirthToolsSection />
         <EditorialExtraFeaturesSection />
         </details>
-        <EditorialReviewsSection />
         {showTariffs ? (
           <details className="editorial-more mx-auto my-6 max-w-6xl px-5">
           <summary>Все разделы Zovus</summary>
