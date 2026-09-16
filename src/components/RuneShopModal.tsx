@@ -11,7 +11,7 @@ import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase, prepareRunePurchaseAttempt, readSelectedRuneCost } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
-import { trackPaywallOpen } from "@/lib/seo/metrika";
+import { trackPaywallOpen, trackRuneCheckoutStarted } from "@/lib/seo/metrika";
 import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
@@ -142,6 +142,9 @@ export default function RuneShopModal({
       if (pkg) {
         pushEcommerceAdd({ id: pkg.id, name: pkg.name, price: pkg.price_rub, category: "runes" });
       }
+      if (typeof data.paymentId === "string" && pkg) {
+        await trackRuneCheckoutStarted(data.paymentId, pkg.price_rub);
+      }
       openTelegramExternalUrl(data.paymentUrl);
       // Checkout may open outside the mounted Mini App or return via BFCache.
       setPurchasingId(null);purchaseLock.current=false;
@@ -178,6 +181,9 @@ export default function RuneShopModal({
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       pushEcommerceAdd({ id: "custom", name: "Произвольная сумма", price: amountRub, category: "runes" });
+      if (typeof data.paymentId === "string") {
+        await trackRuneCheckoutStarted(data.paymentId, amountRub);
+      }
       openTelegramExternalUrl(data.paymentUrl);
       // Checkout may open outside the mounted Mini App or return via BFCache.
       setPurchasingId(null);purchaseLock.current=false;

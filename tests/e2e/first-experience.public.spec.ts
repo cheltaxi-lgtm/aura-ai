@@ -87,11 +87,20 @@ for(const width of [390,1280])test(`saved palm intent and exact package quote at
 test("Mini App retains pending attempt and permits retry after confirmed cancellation",async({page})=>{
   test.setTimeout(120_000);await page.setViewportSize({width:390,height:900});const f=await fixture(page);
   await page.goto("/cabinet?shop=1");const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();
+  await page.evaluate(()=>{
+    (window as typeof window & {checkoutGoals:string[]}).checkoutGoals=[];
+    window.ym=(_id,_method,goal,_params,callback)=>{
+      if(goal==="rune_checkout_started")(window as typeof window & {checkoutGoals:string[]}).checkoutGoals.push(goal as string);
+      if(typeof callback==="function")callback();
+    };
+  });
   // Simulate the existing native openLink contract without opening any external URL.
   await page.evaluate(()=>{window.Telegram={WebApp:{initData:"local-fixture",openLink:()=>undefined}};});
   const buy=dialog.getByRole("button",{name:/Для выбранного разбора/});
   await buy.click();await expect.poll(()=>f.orders.length).toBe(1);await expect(buy).toBeEnabled();
+  await expect.poll(()=>page.evaluate(()=>(window as typeof window & {checkoutGoals:string[]}).checkoutGoals.length)).toBe(1);
   await buy.click();await expect.poll(()=>f.orders.length).toBe(2);expect(f.orders[1]).toBe(f.orders[0]);
+  expect(await page.evaluate(()=>(window as typeof window & {checkoutGoals:string[]}).checkoutGoals.length)).toBe(1);
   f.cancel();await expect(buy).toBeEnabled();await buy.click();await expect.poll(()=>f.orders.length).toBe(3);
   expect(f.orders[2]).not.toBe(f.orders[0]);
   f.confirm();await expect(buy).toBeEnabled();await buy.click();await expect.poll(()=>f.orders.length).toBe(4);expect(f.orders[3]).not.toBe(f.orders[2]);
