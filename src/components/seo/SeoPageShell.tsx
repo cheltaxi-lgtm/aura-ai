@@ -7,6 +7,7 @@ export function SeoPageShell({
   backHref = "/",
   backLabel = "На главную",
   breadcrumbs,
+  wide = false,
 }: {
   children: React.ReactNode;
   backHref?: string;
@@ -17,9 +18,10 @@ export function SeoPageShell({
    * Yandex sees the real hierarchy (Главная → Раздел → Сущность).
    */
   breadcrumbs?: BreadcrumbItem[];
+  wide?: boolean;
 }) {
   return (
-    <main className="page-with-site-header mx-auto max-w-2xl px-4 py-10 pb-16 text-white sm:py-12">
+    <main className={`page-with-site-header mx-auto px-4 py-10 pb-16 text-white sm:py-12 ${wide ? "max-w-5xl" : "max-w-2xl"}`}>
       {breadcrumbs ? (
         <SeoBreadcrumbs items={breadcrumbs} />
       ) : (

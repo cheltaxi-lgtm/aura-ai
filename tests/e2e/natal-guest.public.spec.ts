@@ -15,17 +15,13 @@ test.describe("natal guest calculator (public)", () => {
       await ageBtn.click();
     }
 
-    await expect(
-      page.getByRole("heading", { name: /Постройте свою натальную карту/i })
-    ).toBeVisible();
+    await expect(page.locator("#natal-calculator")).toBeVisible();
     await expect(page.getByRole("button", { name: /Построить мою карту/i })).toBeVisible();
     await expect(page.getByText(/Не знаю точное время/i)).toBeVisible();
   });
 
-  test("hero CTA points at on-page calculator for guests", async ({ page }) => {
+  test("calculator is embedded in the hero for guests", async ({ page }) => {
     await page.goto("/natalnaya-karta");
-    const cta = page.getByRole("link", { name: /Построить мою карту/i }).first();
-    await expect(cta).toBeVisible();
-    await expect(cta).toHaveAttribute("href", /#natal-calculator/);
+    await expect(page.locator(".premium-calculator-hero #natal-calculator")).toBeVisible();
   });
 });

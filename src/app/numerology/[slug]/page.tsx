@@ -14,6 +14,7 @@ import { AdsSeoH1, AdsSeoJsonLd } from "@/components/seo/AdsSeoEnhancements";
 import { getAppliedSeoOverrides } from "@/modules/ads/organic/overrides";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import PremiumCalculatorHero from "@/components/seo/PremiumCalculatorHero";
 import DestinyMatrixPreview from "@/components/numerolog/DestinyMatrixPreview";
 import MatrixCompatibilityPreview from "@/components/numerolog/MatrixCompatibilityPreview";
 import type { NumerologToolId } from "@/lib/numerology/tools";
@@ -215,6 +216,7 @@ export default async function NumerologyTopicPage({
 
   return (
     <SeoPageShell
+      wide={isDestinyMatrix}
       backHref="/numerology"
       backLabel="Нумерология"
       breadcrumbs={
@@ -222,7 +224,7 @@ export default async function NumerologyTopicPage({
           ? [
               { name: "Zovus", path: "/" },
               { name: "Нумерология", path: "/numerology" },
-              { name: topic.title, path: `/numerology/${slug}` },
+              { name: isDestinyMatrix ? "Матрица судьбы" : topic.title, path: `/numerology/${slug}` },
             ]
           : undefined
       }
@@ -259,32 +261,40 @@ export default async function NumerologyTopicPage({
               : undefined
         }
       />
-      <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
-      <AdsSeoH1 path={`/numerology/${slug}`}>{topic.title}</AdsSeoH1>
-      <p className="mt-4 text-white/70">{topic.intro}</p>
-      {isDestinyMatrix || isMatrixPair ? (
-        <ul className="mt-4 space-y-1.5 text-sm text-white/55">
-          {isMatrixPair ? (
-            <>
-              <li>нужны две даты рождения;</li>
-              <li>бесплатная оценка по методике Zovus;</li>
-              <li>без регистрации для базового результата;</li>
-              <li>полный разбор пары — с Эвелиной за {pairCost} ᚢ.</li>
-            </>
-          ) : (
-            <>
-              <li>нужна только дата рождения;</li>
-              <li>расчёт за минуту;</li>
-              <li>без сложных анкет;</li>
-              <li>базовый результат сразу на экране — без регистрации.</li>
-            </>
-          )}
-        </ul>
+      {isDestinyMatrix ? (
+        <PremiumCalculatorHero
+          variant="matrix"
+          eyebrow="Исследование личности"
+          title={
+            <AdsSeoH1
+              path={`/numerology/${slug}`}
+              className="font-display max-w-2xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.6rem]"
+            >
+              Рассчитать матрицу судьбы онлайн
+            </AdsSeoH1>
+          }
+          description="Введите дату рождения — бесплатная схема с ключевыми энергиями появится сразу."
+          calculator={<DestinyMatrixPreview embedded />}
+        />
       ) : (
+        <>
+          <p className="text-sm text-aura-gold/80">Нумерология · {topic.title}</p>
+          <AdsSeoH1 path={`/numerology/${slug}`}>{topic.title}</AdsSeoH1>
+          <p className="mt-4 text-white/70">{topic.intro}</p>
+        </>
+      )}
+      {isMatrixPair ? (
+        <ul className="mt-4 space-y-1.5 text-sm text-white/55">
+          <li>нужны две даты рождения;</li>
+          <li>бесплатная оценка по методике Zovus;</li>
+          <li>без регистрации для базового результата;</li>
+          <li>полный разбор пары — с Эвелиной за {pairCost} ᚢ.</li>
+        </ul>
+      ) : !isDestinyMatrix ? (
         <p className="mt-3 text-sm text-white/50">
           С {evelina?.name ?? "Эвелиной"} · от {sessionCost} ᚢ
         </p>
-      )}
+      ) : null}
 
       {isMatrixPair ? (
         <>
@@ -367,25 +377,19 @@ export default async function NumerologyTopicPage({
 
       {isDestinyMatrix ? (
         <>
-          <div className="mt-8 flex flex-wrap gap-3">
-            <SeoTrackedCta
-              href="#calculate"
-              trackGoal="matrix_preview_start"
-              trackParams={{ topic: slug }}
-            >
-              Рассчитать бесплатно
-            </SeoTrackedCta>
-            <SeoTrackedCta
-              href={startHref}
-              variant="ghost"
-              trackGoal="numerology_cta_click"
-              trackParams={{ topic: slug }}
-            >
-              Полный разбор с Эвелиной
-            </SeoTrackedCta>
+          <div className="mt-6 grid gap-3 sm:grid-cols-3">
+            {[
+              ["01", "Бесплатная схема", "16 точек и основные линии без регистрации"],
+              ["02", "Личный смысл", "Энергии отношений, денег и периода"],
+              ["03", "Глубже — по желанию", `Разбор Эвелины за ${sessionCost} рун с сохранением и 3 вопросами в чате`],
+            ].map(([number, title, text]) => (
+              <div key={number} className="rounded-2xl border border-aura-gold/15 bg-white/[0.035] p-5">
+                <span className="text-xs tracking-[0.2em] text-aura-gold/70">{number}</span>
+                <h2 className="mt-3 font-display text-lg text-white">{title}</h2>
+                <p className="mt-2 text-sm leading-relaxed text-white/60">{text}</p>
+              </div>
+            ))}
           </div>
-
-          <DestinyMatrixPreview />
 
           <SeoSection title="Что показывает матрица судьбы">
             <p>

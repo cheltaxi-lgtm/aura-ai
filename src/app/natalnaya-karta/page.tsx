@@ -9,6 +9,7 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import NatalLandingCtas from "@/components/seo/NatalLandingCtas";
 import NatalGuestCalculator from "@/components/natal/NatalGuestCalculator";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import PremiumCalculatorHero from "@/components/seo/PremiumCalculatorHero";
 
 const PATH = "/natalnaya-karta";
 
@@ -180,6 +181,7 @@ export default function NatalnayaKartaPage() {
 
   return (
     <SeoPageShell
+      wide
       breadcrumbs={[
         { name: "Zovus", path: "/" },
         { name: "Астрология", path: "/astrology" },
@@ -195,38 +197,19 @@ export default function NatalnayaKartaPage() {
         funnelProduct="natal"
         funnelSource="natal_landing"
       />
-      <p className="text-sm text-aura-gold/80">Астрология · Натальная карта</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">
-        Натальная карта онлайн — расчёт и расшифровка
-      </h1>
-      <p className="mt-4 text-white/70">
-        Постройте карту рождения по дате, времени и месту — с разбором в
-        западной традиции или джйотиш. {master?.name ?? "Гуру Шри Радж"}{" "}
-        помогает увидеть структуру характера, периоды и совместимость без
-        шаблонного «гороскопа на день».
-      </p>
-      <p className="mt-4 font-medium text-aura-champagne">
-        Карта рождения и основные акценты — бесплатно, без регистрации.
-      </p>
-      <details className="mt-3 text-sm text-white/60">
-        <summary className="cursor-pointer py-2">
-          Какие данные нужны и что входит в расчёт
-        </summary>
-        <ul className="mt-2 space-y-1.5 text-sm text-white/55">
-          <li>нужны дата, время (если известно) и место рождения;</li>
-          <li>карта считается автоматически — без ручных таблиц;</li>
-          <li>западный разбор и ведическая традиция в одном кабинете;</li>
-          <li>полная трактовка, прогноз и синастрия — по запросу.</li>
-        </ul>
-      </details>
-      <p className="mt-4 text-sm text-white/50">
-        {RUNE_ACTION_LABELS.NATAL_READING} · от{" "}
-        {DEFAULT_RUNE_COSTS.NATAL_READING} ᚢ
-      </p>
+      <PremiumCalculatorHero
+        variant="natal"
+        eyebrow="Ваша карта рождения"
+        title={<h1 className="font-display max-w-2xl text-4xl font-semibold leading-[1.08] tracking-tight text-white sm:text-5xl lg:text-[3.5rem]">Натальная карта по дате рождения</h1>}
+        description="Постройте бесплатную карту по дате, времени и месту рождения. Время неизвестно? Покажем основные положения без домов и асцендента."
+        calculator={<NatalGuestCalculator embedded />}
+      />
 
-      <NatalLandingCtas placement="hero" />
-
-      <NatalGuestCalculator />
+      <div className="mt-6 grid gap-3 sm:grid-cols-3">
+        <div className="rounded-2xl border border-aura-gold/15 bg-white/[0.035] p-5"><span className="text-xs tracking-[0.2em] text-aura-gold/70">01</span><h2 className="mt-3 font-display text-lg text-white">Данные рождения</h2><p className="mt-2 text-sm leading-relaxed text-white/60">Дата, время и место; без времени доступен расчёт основных положений.</p></div>
+        <div className="rounded-2xl border border-aura-gold/15 bg-white/[0.035] p-5"><span className="text-xs tracking-[0.2em] text-aura-gold/70">02</span><h2 className="mt-3 font-display text-lg text-white">Бесплатная карта</h2><p className="mt-2 text-sm leading-relaxed text-white/60">Колесо и основные акценты до регистрации и оплаты.</p></div>
+        <div className="rounded-2xl border border-aura-gold/15 bg-white/[0.035] p-5"><span className="text-xs tracking-[0.2em] text-aura-gold/70">03</span><h2 className="mt-3 font-display text-lg text-white">Глубже — по желанию</h2><p className="mt-2 text-sm leading-relaxed text-white/60">{RUNE_ACTION_LABELS.NATAL_READING} за {DEFAULT_RUNE_COSTS.NATAL_READING} рун — отдельный явный запуск.</p></div>
+      </div>
 
       <SeoSection title="Что вы получите">
         <div className="grid gap-3 sm:grid-cols-2">

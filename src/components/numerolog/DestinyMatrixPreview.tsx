@@ -92,7 +92,7 @@ function toDateInputValue(raw: string | null | undefined): string {
   return `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
 }
 
-export default function DestinyMatrixPreview() {
+export default function DestinyMatrixPreview({ embedded = false }: { embedded?: boolean }) {
   const { isLoggedIn, user, loading: authLoading } = useAuth();
   const [birthDate, setBirthDate] = useState("");
   const [name, setName] = useState("");
@@ -453,17 +453,16 @@ export default function DestinyMatrixPreview() {
 
   if (!authLoading && !ageReady) {
     return (
-      <div id="calculate" className="destiny-matrix-preview mt-10 scroll-mt-24">
-        <div className="mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
+      <div id="calculate" className={`destiny-matrix-preview scroll-mt-24 ${embedded ? "" : "mt-10"}`}>
+        <div className={embedded ? "text-left" : "mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center"}>
           <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">
             Подтверждение возраста
           </p>
-          <h2 className="font-display mt-3 text-xl font-semibold text-white">
+          <h2 className="font-display mt-2 text-xl font-semibold text-white">
             Сервис только для взрослых 18+
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-white/60">
-            Расчёт матрицы по дате рождения — развлекательно-ознакомительный сервис. Дата рождения
-            обрабатывается как персональные данные. Подтвердите, что вам исполнилось 18 лет.{" "}
+          <p className="mt-2 text-sm leading-relaxed text-white/60">
+            Матрица — развлекательный расчёт. Дата рождения обрабатывается как персональные данные.{" "}
             <LegalDocLink href="/privacy" className="text-aura-champagne/80 underline-offset-2 hover:underline">
               Политика конфиденциальности
             </LegalDocLink>
@@ -478,7 +477,7 @@ export default function DestinyMatrixPreview() {
             type="button"
             disabled={ageConfirming}
             onClick={() => void confirmAge()}
-            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
           >
             {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — продолжить к расчёту"}
           </button>
@@ -488,16 +487,16 @@ export default function DestinyMatrixPreview() {
   }
 
   return (
-    <div id="calculate" className="destiny-matrix-preview mt-10 scroll-mt-24">
-      <h2 className="font-display text-xl font-semibold text-white">Рассчитать бесплатно</h2>
-      <p className="mt-2 text-sm text-white/55">
+    <div id="calculate" className={`destiny-matrix-preview scroll-mt-24 ${embedded ? "" : "mt-10"}`}>
+      <h2 className={embedded ? "sr-only" : "font-display text-xl font-semibold text-white"}>Рассчитать бесплатно</h2>
+      {!embedded ? <p className="mt-2 text-sm text-white/55">
         Можно считать для себя, ребёнка, партнёра или любого человека — нужна только дата. Схема
         не меняется при повторном расчёте той же даты. {PRICING.NUMEROLOGY_SESSION} рун — за персональный
         разбор Эвелины с сохранением и {PRICING.MATRIX_INCLUDED_QUESTIONS} вопросами в чате.
-      </p>
-      <p className="mt-2 text-xs text-white/40">
+      </p> : null}
+      {!embedded ? <p className="mt-2 text-xs text-white/40">
         Сервис 18+. Дата рождения используется только для расчёта и не публикуется.
-      </p>
+      </p> : null}
 
       {claimError ? (
         <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
@@ -601,11 +600,11 @@ export default function DestinyMatrixPreview() {
             onRemove={matrixSubjects.remove}
           />
         </div>
-      ) : (
+      ) : !embedded ? (
         <p className="mt-4 rounded-xl border border-white/10 bg-white/[0.03] px-3 py-2 text-sm text-white/60">
           Войдите в аккаунт, чтобы сохранять матрицы на разных людей (ребёнок, партнёр и др.).
         </p>
-      )}
+      ) : null}
 
       {selectedSubjectId ? (
         <div className="mt-5 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-aura-gold/20 bg-aura-gold/[0.05] p-4">
@@ -628,7 +627,7 @@ export default function DestinyMatrixPreview() {
           </button>
         </div>
       ) : (
-      <form onSubmit={onSubmit} className="mt-5 space-y-3">
+      <form onSubmit={onSubmit} className={`${embedded ? "space-y-3" : "mt-5 space-y-3"}`}>
         <label className="block text-sm text-white/70">
           Дата рождения
           <input
@@ -665,7 +664,7 @@ export default function DestinyMatrixPreview() {
         <button
           type="submit"
           disabled={pending}
-          className="inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
+          className={`inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60 ${embedded ? "" : "sm:w-auto"}`}
         >
           {pending ? "Считаем…" : summary ? "Пересчитать" : "Рассчитать бесплатно"}
         </button>
@@ -675,7 +674,7 @@ export default function DestinyMatrixPreview() {
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
 
       {summary ? (
-        <div className="mt-8 space-y-6">
+        <div data-calculation-result className="mt-8 space-y-6">
           <div className="rounded-xl border border-aura-gold/25 p-4">
             {matrixOwnership.reportId && !matrixOwnership.loading ? <ReportExportActions path={`/cabinet/numerology/matrix/${matrixOwnership.reportId}/print`} /> : <a className="text-sm text-aura-gold underline" href={`/numerology/destiny-matrix/print?${new URLSearchParams({ birthDate, asOfDate: summary.matrix.asOf.date, version: summary.matrix.calculationVersion })}`}>Печатная версия расчёта</a>}
           </div>

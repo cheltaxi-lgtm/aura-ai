@@ -68,7 +68,7 @@ function hasPendingClaimIntent(): boolean {
   }
 }
 
-export default function NatalGuestCalculator() {
+export default function NatalGuestCalculator({ embedded = false }: { embedded?: boolean }) {
   const { isLoggedIn, loading: authLoading } = useAuth();
   const [ageReady, setAgeReady] = useState(false);
   const [ageConfirming, setAgeConfirming] = useState(false);
@@ -303,17 +303,16 @@ export default function NatalGuestCalculator() {
 
   if (!authLoading && !ageReady) {
     return (
-      <div id="natal-calculator" className="mt-10 scroll-mt-24">
-        <div className="mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center">
+      <div id="natal-calculator" className={`scroll-mt-24 ${embedded ? "" : "mt-10"}`}>
+        <div className={embedded ? "text-left" : "mx-auto max-w-md rounded-2xl border border-white/10 bg-white/[0.03] p-8 text-center"}>
           <p className="text-xs uppercase tracking-[0.14em] text-aura-gold/70">
             Подтверждение возраста
           </p>
-          <h2 className="font-display mt-3 text-xl font-semibold text-white">
+          <h2 className="font-display mt-2 text-xl font-semibold text-white">
             Сервис только для взрослых 18+
           </h2>
-          <p className="mt-3 text-sm leading-relaxed text-white/60">
-            Расчёт натальной карты использует дату, время и место рождения как персональные данные.
-            Подтвердите, что вам исполнилось 18 лет.{" "}
+          <p className="mt-2 text-sm leading-relaxed text-white/60">
+            Карта — развлекательный расчёт. Дата, время и место рождения обрабатываются как персональные данные.{" "}
             <LegalDocLink
               href="/privacy"
               className="text-aura-champagne/80 underline-offset-2 hover:underline"
@@ -331,7 +330,7 @@ export default function NatalGuestCalculator() {
             type="button"
             disabled={ageConfirming}
             onClick={() => void confirmAge()}
-            className="mt-6 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
           >
             {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — построить карту"}
           </button>
@@ -341,14 +340,14 @@ export default function NatalGuestCalculator() {
   }
 
   return (
-    <div id="natal-calculator" className="mt-10 scroll-mt-24">
-      <h2 className="font-display text-xl font-semibold text-white">
+    <div id="natal-calculator" className={`scroll-mt-24 ${embedded ? "" : "mt-10"}`}>
+      <h2 className={embedded ? "sr-only" : "font-display text-xl font-semibold text-white"}>
         Постройте свою натальную карту
       </h2>
-      <p className="mt-2 text-sm text-white/55">
+      {!embedded ? <p className="mt-2 text-sm text-white/55">
         Укажите дату, время и место рождения. Карта появится прямо здесь — регистрация для расчёта
         не нужна.
-      </p>
+      </p> : null}
 
       {claimError ? (
         <div className="mt-5 rounded-xl border border-amber-400/30 bg-amber-400/10 p-4 text-sm text-amber-50">
@@ -403,7 +402,7 @@ export default function NatalGuestCalculator() {
       ) : null}
 
       {!result ? (
-        <form onSubmit={(e) => void onSubmit(e)} className="mt-6 space-y-4">
+        <form onSubmit={(e) => void onSubmit(e)} className={embedded ? "space-y-3" : "mt-6 space-y-4"}>
           <label className="block">
             <span className="mb-1.5 block text-xs uppercase tracking-[0.12em] text-white/45">
               Дата рождения
@@ -501,7 +500,7 @@ export default function NatalGuestCalculator() {
           </button>
         </form>
       ) : (
-        <div className="mt-8 space-y-6">
+        <div data-calculation-result className="mt-8 space-y-6">
           <div>
             <h3 className="font-display text-2xl font-semibold text-white">Ваша карта построена</h3>
             <p className="mt-2 text-sm text-white/60">

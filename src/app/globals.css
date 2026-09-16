@@ -13,6 +13,18 @@
   color-scheme: dark;
 }
 
+/* Let the actual calculator result use the full landing width, and keep
+   the birth-place autocomplete visible outside the hero panel. */
+@media (min-width: 1024px) {
+  .premium-calculator-hero:has([data-calculation-result]) .premium-calculator-hero__grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .premium-calculator-hero:has([data-calculation-result]) .premium-calculator-hero__visual {
+    display: none;
+  }
+}
+
 /* Brass selection on charcoal — replaces the default blue on dark surfaces */
 ::selection {
   background: rgba(201, 162, 74, 0.32);
