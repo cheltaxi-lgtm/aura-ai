@@ -146,7 +146,7 @@
 
 Персональное «Продолжить» учитывает Tarot/Matrix/Natal/HD, но не последний фото-разбор. Фото отсутствует и в списке Explore. Фото-блок общей посадочной также скрывается в авторизованном режиме. Вместо ясного продолжения остаются каталог и дополнительные секции.
 
-Источники: [HomePage.tsx:3684](C:/Users/gamer/Projects/aura-ai/src/components/HomePage.tsx:3684), [HomePage.tsx:4078](C:/Users/gamer/Projects/aura-ai/src/components/HomePage.tsx:4078), [PersonalZovusHome.tsx:295](C:/Users/gamer/Projects/aura-ai/src/components/editorial/PersonalZovusHome.tsx:295), [personal-zovus-home.ts:51](C:/Users/gamer/Projects/aura-ai/src/lib/personal-zovus-home.ts:51).
+Источники: [HomePage.tsx](../src/components/HomePage.tsx), [PersonalZovusHome.tsx](../src/components/editorial/PersonalZovusHome.tsx), [personal-zovus-home.ts](../src/lib/personal-zovus-home.ts).
 
 **Решение:** первым — последний релевантный результат и одно продолжение, не семь равноправных направлений. Карты дня вернуть как понятную вторичную возможность; не навязывать daily человеку, пришедшему только со своей колодой.
 
@@ -154,7 +154,7 @@
 
 `photo_reading` в Journey попадает в общий `tarot`, после чего `tarot` используется как `aura`-контекст рекомендаций. Поэтому персонализация не знает, что человек пришёл за физической колодой и фото. Это доказуемая ошибка модели контекста, но не доказательство того, что каждый пользователь видел нерелевантную рекомендацию.
 
-Источники: [reading-journey.ts:10](C:/Users/gamer/Projects/aura-ai/src/lib/reading-journey.ts:10), [reading-journey.ts:45](C:/Users/gamer/Projects/aura-ai/src/lib/reading-journey.ts:45), [cross-product-recommendations.ts:8](C:/Users/gamer/Projects/aura-ai/src/lib/cross-product-recommendations.ts:8).
+Источники: [reading-journey.ts](../src/lib/reading-journey.ts), [cross-product-recommendations.ts](../src/lib/cross-product-recommendations.ts).
 
 **Решение:** сделать `photo` отдельным контекстом во всех затронутых потребителях. Не предлагать сразу ещё один крупный AI-отчёт; сначала дать открыть/уточнить собственный.
 
@@ -162,7 +162,7 @@
 
 Ссылка после фото-результата ведёт на `/cabinet#мои-расклады`. Кабинет по умолчанию открывает профиль, вкладка истории выбирается через `?tab=`, а нужный якорь находится только внутри истории. Следовательно, ссылка не гарантирует показ обещанного результата.
 
-Источники: [PhotoReadingFlow.tsx:1936](C:/Users/gamer/Projects/aura-ai/src/components/PhotoReadingFlow.tsx:1936), [cabinet/page.tsx:138](C:/Users/gamer/Projects/aura-ai/src/app/cabinet/page.tsx:138), [cabinet/page.tsx:258](C:/Users/gamer/Projects/aura-ai/src/app/cabinet/page.tsx:258), [CabinetPhotoSpreads.tsx:98](C:/Users/gamer/Projects/aura-ai/src/components/cabinet/CabinetPhotoSpreads.tsx:98).
+Источники: [PhotoReadingFlow.tsx](../src/components/PhotoReadingFlow.tsx), [cabinet/page.tsx](../src/app/cabinet/page.tsx), [CabinetPhotoSpreads.tsx](../src/components/cabinet/CabinetPhotoSpreads.tsx).
 
 **Решение:** один канонический owner-checked адрес конкретного результата, сохраняющий цель после login. Можно расширить существующий кабинет параметрами вместо создания нового приложения. Просмотр ранее оплаченного результата не запускает генерацию и не списывает руны.
 
@@ -172,7 +172,7 @@
 
 Поэтому 28 событий `continuation_shown` у 14 профилей нельзя переводить в «14 человек увидели и отвергли предложение». Нулевые saves могут означать отсутствие видимости, а не ненужность дневника.
 
-Источники: [PhotoReadingFlow.tsx:1407](C:/Users/gamer/Projects/aura-ai/src/components/PhotoReadingFlow.tsx:1407), [ChatWindow.tsx:1086](C:/Users/gamer/Projects/aura-ai/src/components/ChatWindow.tsx:1086), [ReadingJourney.tsx:15](C:/Users/gamer/Projects/aura-ai/src/components/ReadingJourney.tsx:15), [ReadingJourney.tsx:47](C:/Users/gamer/Projects/aura-ai/src/components/ReadingJourney.tsx:47).
+Источники: [PhotoReadingFlow.tsx](../src/components/PhotoReadingFlow.tsx), [ChatWindow.tsx](../src/components/ChatWindow.tsx), [ReadingJourney.tsx](../src/components/ReadingJourney.tsx).
 
 **Решение:** компактный блок непосредственно у ответа: «Сохранено», «Уточнить», необязательное «Записать главный вывод». Не открывать новую принудительную модалку. Объединить ручные записи и результат в одном понятном месте; legacy-саммари обозначить отдельно.
 
@@ -214,7 +214,7 @@
 7. D2/D7 напоминания о конкретном разборе сейчас выключены: `READING_FOLLOWUP_DELIVERY_ENABLED=false`, согласий на них ноль. Просто включить флаг недостаточно и небезопасно.
 8. У 9 профилей включена daily-Telegram настройка, но привязка Telegram есть только у одного. Telegram ещё не массовый канал возвращения сайта.
 
-Источники: [auth.ts:158](C:/Users/gamer/Projects/aura-ai/src/lib/auth.ts:158), [reengagement-email-service.ts:179](C:/Users/gamer/Projects/aura-ai/src/lib/reengagement-email-service.ts:179), [reengagement-email-service.ts:249](C:/Users/gamer/Projects/aura-ai/src/lib/reengagement-email-service.ts:249), [email/log.ts:231](C:/Users/gamer/Projects/aura-ai/src/lib/email/log.ts:231), [async-report-notify.ts:168](C:/Users/gamer/Projects/aura-ai/src/lib/async-report-notify.ts:168), [миграция 136](C:/Users/gamer/Projects/aura-ai/scripts/migrations/136_migrate_reminder_defaults_on.sql), [CabinetDailyNotifications.tsx:136](C:/Users/gamer/Projects/aura-ai/src/components/cabinet/CabinetDailyNotifications.tsx:136).
+Источники: [auth.ts](../src/lib/auth.ts), [reengagement-email-service.ts](../src/lib/reengagement-email-service.ts), [email/log.ts](../src/lib/email/log.ts), [async-report-notify.ts](../src/lib/async-report-notify.ts), [миграция 136](../scripts/migrations/136_migrate_reminder_defaults_on.sql), [CabinetDailyNotifications.tsx](../src/components/cabinet/CabinetDailyNotifications.tsx).
 
 ### 6.3. Предлагаемая политика
 
@@ -235,13 +235,13 @@
 
 На живой главной показано около 1687 регистраций и 2715 раскладов; код создаёт календарно-псевдослучайные totals/online. Владелец принял явное продуктовое решение сохранить эту механику. Она не изменяется в рамках retention-плана и не используется как источник внутренних метрик или доказательство результата экспериментов.
 
-Источник: [landing-social-proof.ts:94](C:/Users/gamer/Projects/aura-ai/src/lib/landing-social-proof.ts:94), [LandingSocialProofStats.tsx:95](C:/Users/gamer/Projects/aura-ai/src/components/seo/LandingSocialProofStats.tsx:95).
+Источник: [landing-social-proof.ts](../src/lib/landing-social-proof.ts), [LandingSocialProofStats.tsx](../src/components/seo/LandingSocialProofStats.tsx).
 
 ### Отзывы
 
 Production содержит ровно 72 approved отзыва, **все `source=seed`, ни один не связан с аккаунтом**, средний рейтинг 4,61. API обеспечивает вставку редакционных seed-записей; UI подаёт общий рейтинг как впечатления пользователей.
 
-Источник: [landing-reviews-seed.ts:13](C:/Users/gamer/Projects/aura-ai/src/lib/landing-reviews-seed.ts:13), [landing-reviews.ts:136](C:/Users/gamer/Projects/aura-ai/src/lib/landing-reviews.ts:136), [EditorialReviewsSection.tsx:138](C:/Users/gamer/Projects/aura-ai/src/components/editorial/EditorialReviewsSection.tsx:138).
+Источник: [landing-reviews-seed.ts](../src/lib/landing-reviews-seed.ts), [landing-reviews.ts](../src/lib/landing-reviews.ts), [EditorialReviewsSection.tsx](../src/components/editorial/EditorialReviewsSection.tsx).
 
 **Решение владельца:** публичный блок отзывов убрать. Существующую форму реальных отзывов в кабинете, API и админскую модерацию сохранить. Seed-записи пока не удалять из базы: они перестают выводиться публично вместе с секцией и могут быть удалены отдельно после проверки зависимостей. Начать собирать настоящую обратную связь после результата, без вознаграждения за положительную оценку.
 
@@ -265,7 +265,7 @@ Production содержит ровно 72 approved отзыва, **все `sourc
 - Контракт требует связи с подтверждёнными картами и прямого вывода, что полезно. Но повторяет вердикт в начале и в финале; наличие этих слов не доказывает содержательного качества.
 - На проверенной фото-посадочной природа AI-ответа не объяснена явно рядом с предложением. Добавить спокойное раскрытие «интерпретация ИИ для размышления», сохранив ценность собственной колоды; не создавать впечатления живой консультации с человеком.
 
-Источники: [photo-reading-stream.ts:58](C:/Users/gamer/Projects/aura-ai/src/lib/photo-reading-stream.ts:58), [photo-reading-stream.ts:105](C:/Users/gamer/Projects/aura-ai/src/lib/photo-reading-stream.ts:105), [PhotoReadingFlow.tsx:1274](C:/Users/gamer/Projects/aura-ai/src/components/PhotoReadingFlow.tsx:1274), [photo-reading/stream/route.ts:192](C:/Users/gamer/Projects/aura-ai/src/app/api/photo-reading/stream/route.ts:192), [format.ts:156](C:/Users/gamer/Projects/aura-ai/src/lib/prompts/format.ts:156).
+Источники: [photo-reading-stream.ts](../src/lib/photo-reading-stream.ts), [PhotoReadingFlow.tsx](../src/components/PhotoReadingFlow.tsx), [photo-reading/stream/route.ts](../src/app/api/photo-reading/stream/route.ts), [format.ts](../src/lib/prompts/format.ts).
 
 Нужен ограниченный quality-аудит на 12–15 синтетических сценариях, без чтения личных историй по умолчанию:
 
@@ -467,11 +467,6 @@ Production содержит ровно 72 approved отзыва, **все `sourc
 
 ### Воспроизводимые материалы
 
-- [Read-only SQL-скрипт](C:/Users/gamer/Projects/aura-ai/tmp/retention-research-20260916.mjs).
-- [Первичные агрегаты и схема](C:/Users/gamer/Projects/aura-ai/tmp/retention-db-20260916.jsonl). Старый `recent_registrations` содержит ошибку запроса; исправленный результат в следующем файле. Старый diary-activity заменён в уточнённом расчёте.
-- [Уточнённые активность, jobs, email-overlap](C:/Users/gamer/Projects/aura-ai/tmp/retention-db-refined-20260916.jsonl). `photo_saved.results` в этом промежуточном файле раздут lateral-разворачиванием ключей; не используется в выводах.
-- [Финальные агрегаты photo/когорт/отзывов](C:/Users/gamer/Projects/aura-ai/tmp/retention-db-final-20260916.jsonl). `photo_saved.results=76` посчитано по distinct ID; автоматически планируемый joint-combined исключён.
-- [Метрика, агрегаты](C:/Users/gamer/Projects/aura-ai/tmp/retention-metrika-20260916.json), [скрипт](C:/Users/gamer/Projects/aura-ai/tmp/retention-metrika-20260916.mjs).
-- [Предыдущий анализ 4 сентября](C:/Users/gamer/Projects/aura-ai/docs/conversion-audit-2026-09-04.md), [первый опыт и существующая реализация](C:/Users/gamer/Projects/aura-ai/docs/first-experience-rollout.md).
+Локальные выгрузки и read-only исследовательские скрипты хранятся вне Git: они относятся к внутренней продуктовой аналитике и не нужны для сборки приложения. Связанные versioned-материалы: [предыдущий анализ 4 сентября](conversion-audit-2026-09-04.md) и [первый опыт и существующая реализация](first-experience-rollout.md).
 
 Внутренние материалы не публиковать автоматически. Выгрузки не содержат личных текстов, адресов или фото, но относятся к продуктовой аналитике. Точные значения зависят от времени среза; повторный запуск позднее закономерно изменит зрелость знаменателей.
