@@ -17,4 +17,4 @@ FINDINGS:
 - ...
 ```
 
-If production was not touched, say NOT REQUIRED and do not demand smoke.
+Run this review for requested production checks or an authorized deploy. Otherwise say NOT REQUIRED and do not demand smoke. Reuse current health/smoke evidence; diagnose failures before retrying an unchanged environment.
