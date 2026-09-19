@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS users (
   rune_balance INTEGER NOT NULL DEFAULT 0,
   total_runes_purchased INTEGER NOT NULL DEFAULT 0,
   starter_runes_granted BOOLEAN NOT NULL DEFAULT FALSE,
+  starter_bonus_version TEXT,
   last_daily_bonus TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT users_rune_balance_nonneg CHECK (rune_balance >= 0)
@@ -206,6 +207,25 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_sessions_guest_resume_token_hash
 CREATE INDEX IF NOT EXISTS idx_sessions_guest_resume_expiry
   ON sessions (guest_resume_expires_at)
   WHERE guest_resume_status = 'issued';
+
+CREATE TABLE IF NOT EXISTS spread_metrics (
+  id BIGSERIAL PRIMARY KEY,
+  event TEXT NOT NULL,
+  spread_id TEXT NOT NULL,
+  intention TEXT,
+  character_id TEXT,
+  card_count INT,
+  cost INT,
+  source TEXT,
+  user_id UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  idempotency_key TEXT,
+  metadata JSONB
+);
+
+CREATE UNIQUE INDEX IF NOT EXISTS spread_metric_once
+  ON spread_metrics (user_id, event, idempotency_key)
+  WHERE idempotency_key IS NOT NULL;
 
 -- === Р§Р°С‚ ===
 CREATE TABLE IF NOT EXISTS chat_messages (
@@ -886,6 +906,16 @@ CREATE TABLE IF NOT EXISTS diary_entries (
   entry_text    TEXT NOT NULL,
   cards         TEXT[] DEFAULT '{}',
   session_id    UUID REFERENCES sessions(id) ON DELETE SET NULL,
+  reading_id    UUID,
+  reading_kind  TEXT,
+  reading_completed_at TIMESTAMPTZ,
+  weekly_step   TEXT NOT NULL DEFAULT '',
+  reflection    TEXT NOT NULL DEFAULT '',
+  reminder_consent_at TIMESTAMPTZ,
+  reminder_timezone TEXT,
+  reminder_channel TEXT CHECK (reminder_channel IN ('email', 'telegram')),
+  followup_2_claimed_at TIMESTAMPTZ,
+  followup_7_claimed_at TIMESTAMPTZ,
   created_at    TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 
@@ -895,6 +925,10 @@ CREATE INDEX IF NOT EXISTS idx_diary_user
 CREATE UNIQUE INDEX IF NOT EXISTS idx_diary_entries_user_session
   ON diary_entries (user_id, session_id)
   WHERE session_id IS NOT NULL;
+
+CREATE UNIQUE INDEX IF NOT EXISTS diary_reading_once
+  ON diary_entries (user_id, reading_id)
+  WHERE reading_id IS NOT NULL;
 
 CREATE TABLE IF NOT EXISTS user_achievements (
   id          UUID PRIMARY KEY DEFAULT gen_random_uuid(),
