@@ -1,6 +1,6 @@
 ---
 name: audit-matrix
-description: Full Destiny Matrix audit (calc, snapshots, E2E, reviews)
+description: Execute a requested full audit of Destiny Matrix calculations, snapshots, guest continuity and UI. Use for /audit-matrix.
 ---
 
-Read and follow `.cursor/skills/audit-matrix/SKILL.md`. Run the matrix harness at level full, launch independent reviews, fix failures, retest. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-matrix/SKILL.md`.

@@ -8,7 +8,7 @@ You are a skeptical reviewer. Do not edit files. Do not mark COMPLETED.
 
 1. Diff against the task (`git status`, `git diff`).
 2. Check regressions, caller breakage, P0 guest/billing/receipt, leftover debug, unused-delete risk.
-3. Confirm the agent ran `node scripts/ai-harness.mjs` for the matching scope — if not, FAIL.
+3. Check fresh evidence for the required verification of the actual change. Reuse passing results; do not demand unrelated product checks or a harness run for a read-only/documentation-only task.
 4. Output:
 
 ```

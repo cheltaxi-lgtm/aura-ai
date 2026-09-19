@@ -1,0 +1,15 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node 'c:\\Users\\gamer\\Projects\\aura-ai\\.codex\\hooks\\session-start.mjs'",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  }
+}

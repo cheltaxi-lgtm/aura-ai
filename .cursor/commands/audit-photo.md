@@ -1,6 +1,6 @@
 ---
 name: audit-photo
-description: Full photo-reading audit (aliases, recognition, conversion)
+description: Execute a requested full audit of photo-reading aliases, recognition and starter conversion. Use for /audit-photo.
 ---
 
-Read and follow `.cursor/skills/audit-photo/SKILL.md`. Run the photo harness at level full, launch independent reviews, fix failures, retest. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-photo/SKILL.md`.
