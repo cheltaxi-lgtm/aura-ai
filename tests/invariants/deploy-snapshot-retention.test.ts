@@ -1,5 +1,6 @@
 import { execFileSync } from "node:child_process";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync } from "node:fs";
+import { tmpdir } from "node:os";
 import path from "node:path";
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -25,7 +26,7 @@ afterEach(() => {
 
 describe("deploy snapshot retention", () => {
   it("defaults to a dry run and selects only snapshots older than the retained three", () => {
-    const root = mkdtempSync(path.join(process.cwd(), "tmp/zovus-snapshot-retention-"));
+    const root = mkdtempSync(path.join(tmpdir(), "zovus-snapshot-retention-"));
     roots.push(root);
     for (let index = 1; index <= 5; index += 1) {
       const dir = path.join(root, `release-2026090${index}T000000Z-test`);
@@ -43,7 +44,7 @@ describe("deploy snapshot retention", () => {
   });
 
   it("refuses unsafe values, modes, missing roots and destructive non-production roots", () => {
-    const root = mkdtempSync(path.join(process.cwd(), "tmp/zovus-snapshot-retention-"));
+    const root = mkdtempSync(path.join(tmpdir(), "zovus-snapshot-retention-"));
     roots.push(root);
     expect(() => runRetention(root, "1", "--dry-run")).toThrow();
     expect(() => runRetention(root, "3", "--unknown")).toThrow();
