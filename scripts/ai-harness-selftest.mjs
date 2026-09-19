@@ -9,8 +9,8 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHECKS, SCOPES, STATE_PATH } from "./ai-harness-catalog.mjs";
 import { completedAllowed, evaluateStopGate, isWorkSession } from "./ai-harness-gate.mjs";
-import { parsePorcelain, validateCatalog } from "./ai-harness.mjs";
-import { workspaceFingerprint } from "./ai-harness-fingerprint.mjs";
+import { parsePorcelain, resolvePlan, validateCatalog, verdictOf } from "./ai-harness.mjs";
+import { requiredReviewIds, workspaceFingerprint } from "./ai-harness-fingerprint.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const failures = [];
@@ -41,6 +41,78 @@ for (const scope of Object.keys(SCOPES)) {
     check(`dry-run ${scope} has checks`, Array.isArray(plan.checks) && plan.checks.length > 0);
   }
 }
+
+// Plan based on selected task changes without escalating ambiguity or UI edits to full audits.
+for (const files of [[], ["README.md"], ["docs/matrix-engine.md", ".agents/skills/audit-matrix/SKILL.md"],
+  [".agents/skills/audit-matrix/agents/openai.yaml", ".codex/agents/harness-code-review.toml"]]) {
+  const plan = resolvePlan("auto", "full", files);
+  check(`no product work for ${files.join(",") || "clean checkout"}`,
+    plan.notRequired && !plan.checkIds.length && !plan.requiredReviews.length);
+}
+const unknownPlan = resolvePlan("auto", "fast", ["src/lib/unclassified-service.ts"]);
+check("unknown runtime needs scope without full suite", !unknownPlan.notRequired &&
+  unknownPlan.unscopedFiles.length === 1 && !unknownPlan.checkIds.length && !unknownPlan.scopes.includes("full"));
+const mixedPlan = resolvePlan("auto", "fast", ["src/components/matrix/Diagram.tsx", "src/lib/unclassified-service.ts"]);
+check("mixed known and unknown paths preserve missing scope", mixedPlan.scopes.includes("matrix") && mixedPlan.unscopedFiles.length === 1);
+check("runtime text files retain verification", resolvePlan("auto", "fast", ["public/robots.txt"]).scopes.includes("seo"));
+check("empty unverified plan cannot PASS", verdictOf([], false) === "PARTIAL");
+check("documentation plan is NOT_REQUIRED", verdictOf([], false, true) === "NOT_REQUIRED");
+const matrixUiPlan = resolvePlan("auto", "fast", ["src/components/matrix/Diagram.tsx"]);
+check("matrix UI needs code and visual only", matrixUiPlan.requiredReviews.length === 2 &&
+  matrixUiPlan.requiredReviews.includes("code") && matrixUiPlan.requiredReviews.includes("visual"));
+const calcPlan = resolvePlan("auto", "fast", ["src/lib/numerology/destiny-matrix-v5.ts"]);
+check("matrix engine retains calculation review", calcPlan.requiredReviews.includes("calc") && !calcPlan.requiredReviews.includes("visual"));
+for (const file of ["src/lib/numerology/matrix-reducers.ts", "src/lib/numerology/matrix-compatibility.ts",
+  "src/lib/numerology/constants.ts", "src/lib/numerology/matrix-calendar.ts", "src/lib/natal/geocode.ts",
+  "src/lib/human-design/transits-week.ts", "src/lib/human-design/fingerprint.ts"]) {
+  const plan = resolvePlan("auto", "fast", [file]);
+  check(`calculation dependency selects calc review: ${file}`, plan.requiredReviews.includes("calc") && !plan.unscopedFiles.length);
+}
+const apiPlan = resolvePlan("matrix", "fast", ["src/app/api/matrix/route.ts"]);
+check("matrix API retains security review", apiPlan.requiredReviews.includes("security") && !apiPlan.requiredReviews.includes("visual"));
+const selectedHarness = resolvePlan("auto", "fast", ["scripts/ai-harness.mjs"]);
+check("selected harness files do not select product reviews", selectedHarness.scopes.join() === "harness" && selectedHarness.requiredReviews.join() === "code");
+check("executable Codex hooks retain harness verification", resolvePlan("auto", "fast", [".codex/hooks/completed-gate.mjs"]).checkIds.includes("harness-validate"));
+const combinedPlan = resolvePlan("auto", "fast", ["src/lib/natal/compute.ts", "src/lib/human-design/calculate.ts", "src/lib/numerology/destiny-matrix-v5.ts", "scripts/ai-harness.mjs"]);
+check("multiple scopes keep targeted union and harness checks", !combinedPlan.scopes.includes("full") &&
+  combinedPlan.scopes.length === 4 && combinedPlan.checkIds.includes("harness-validate") && !combinedPlan.checkIds.includes("build"));
+const auditPlan = resolvePlan("matrix", "full", [], { audit: true });
+check("explicit product audit retains all product reviewers", SCOPES.matrix.reviews.every(id => auditPlan.requiredReviews.includes(id)));
+const fullAudit = resolvePlan("full", "full", [], { audit: true });
+check("local full audit excludes production review", !fullAudit.productionRequired && !fullAudit.requiredReviews.includes("production"));
+const prodAudit = resolvePlan("full", "production", [], { audit: true });
+check("production audit includes production review", prodAudit.productionRequired && prodAudit.requiredReviews.includes("production"));
+for (const level of ["fast", "full"]) {
+  const infraPlan = resolvePlan("auto", level, ["hosting/Caddyfile"]);
+  check(`infrastructure ${level} stays local`, infraPlan.scopes.join() === "production" &&
+    infraPlan.checkIds.includes("guards") && !infraPlan.productionRequired &&
+    !infraPlan.checkIds.some(id => id.startsWith("prod-")) && !infraPlan.requiredReviews.includes("production"));
+  for (const scope of Object.keys(SCOPES)) {
+    check(`${scope} ${level} excludes live checks`, !resolvePlan(scope, level, []).checkIds.some(id => id.startsWith("prod-")));
+  }
+}
+const infraProduction = resolvePlan("auto", "production", ["hosting/Caddyfile"]);
+check("explicit production level retains infrastructure live checks", infraProduction.productionRequired &&
+  infraProduction.checkIds.includes("prod-health") && infraProduction.checkIds.includes("prod-smoke") &&
+  infraProduction.requiredReviews.includes("production"));
+check("deployment paths alone do not force production reviewer", !requiredReviewIds(["hosting/Caddyfile"], false).includes("production"));
+check("documentation filenames do not trigger security or calculation review", requiredReviewIds(["docs/billing-engine.md"]).length === 0);
+let rejectedAutoAudit = false;
+try { resolvePlan("auto", "full", [], { audit: true }); } catch { rejectedAutoAudit = true; }
+check("audit requires explicit scope", rejectedAutoAudit);
+
+const docsRun = runNode("scripts/ai-harness.mjs", ["--file", "docs/AI_HARNESS.md", "--json", "--no-state"]);
+check("docs-only CLI exits successfully without PASS claim", docsRun.status === 0 && JSON.parse(docsRun.stdout).verdict === "NOT_REQUIRED");
+const unknownRun = runNode("scripts/ai-harness.mjs", ["--file", "package.json", "--json", "--no-state"]);
+const unknownState = JSON.parse(unknownRun.stdout);
+check("unknown runtime CLI exits PARTIAL", unknownRun.status === 1 && unknownState.verdict === "PARTIAL" &&
+  unknownState.checks.some(row => row.id === "scope-selection" && row.status === "PARTIAL"));
+const selectedRun = runNode("scripts/ai-harness.mjs", ["--file", "scripts/ai-harness.mjs", "--file", "docs/AI_HARNESS.md", "--dry-run", "--json"]);
+const selectedPlan = JSON.parse(selectedRun.stdout);
+check("repeatable --file isolates task planning", selectedRun.status === 0 && selectedPlan.files.length === 2 &&
+  selectedPlan.scopes.join() === "harness" && selectedPlan.requiredReviews.join() === "code");
+const escapingFile = runNode("scripts/ai-harness.mjs", ["--file", "../outside.ts", "--dry-run"]);
+check("--file rejects paths outside repository", escapingFile.status === 1);
 
 const passState = {
   verdict: "PASS",
@@ -73,6 +145,23 @@ check("gate blocks missing run", noState.action === "block" && noState.reason ==
 
 const qa = evaluateStopGate({ status: "completed", dirtyFiles: [], state: null });
 check("gate allows Q&A stop", qa.action === "allow");
+check("gate allows docs-only stop without test state", evaluateStopGate({ status: "completed",
+  dirtyFiles: ["docs/matrix.md", ".agents/skills/audit-matrix/SKILL.md"], state: null,
+}).action === "allow");
+for (const verdict of ["FAIL", "PARTIAL"]) {
+  check(`clean checkout cannot bypass explicit audit ${verdict}`, evaluateStopGate({ status: "completed",
+    dirtyFiles: [], state: { ...passState, audit: true, verdict }, currentFingerprint: passState.diffFingerprint,
+  }).action === "block");
+}
+check("clean checkout cannot bypass stale explicit audit", evaluateStopGate({ status: "completed", dirtyFiles: [],
+  state: { ...passState, audit: true, updatedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString() },
+  currentFingerprint: passState.diffFingerprint,
+}).reason === "stale-state");
+check("docs-only work cannot clear outstanding explicit audit failure", evaluateStopGate({ status: "completed",
+  dirtyFiles: ["README.md"], state: { ...failState, audit: true },
+}).action === "block");
+check("explicit audit result still requires fresh review evidence", !allows({ ...passState, audit: true, reviewEvidence: {} }));
+check("unknown runtime remains a work session", isWorkSession(["config/runtime.yaml"]));
 
 const partialState = { ...passState, verdict: "PARTIAL" };
 check("gate blocks PARTIAL", !allows(partialState));
@@ -215,6 +304,13 @@ const session = spawnSync(process.execPath, [path.join(ROOT, ".cursor/hooks/sess
 });
 check("session-start fail-open", session.status === 0);
 
+const codexSession = spawnSync(process.execPath, [path.join(ROOT, ".codex/hooks/session-start.mjs")], {
+  cwd: ROOT,
+  encoding: "utf8",
+  input: "{}",
+});
+check("codex session-start fail-open", codexSession.status === 0);
+
 const requiredAssets = [
   ".cursor/rules/zovus-ai-harness.mdc",
   ".cursor/skills/zovus-harness/SKILL.md",
@@ -222,6 +318,8 @@ const requiredAssets = [
   ".cursor/commands/full-audit.md",
   ".cursor/agents/harness-code-review.md",
   ".cursor/hooks.json",
+  ".codex/hooks.json",
+  ".codex/hooks/session-start.mjs",
   "docs/AI_HARNESS.md",
 ];
 for (const rel of requiredAssets) {
@@ -231,6 +329,11 @@ for (const rel of requiredAssets) {
 const hooksJson = JSON.parse(fs.readFileSync(path.join(ROOT, ".cursor/hooks.json"), "utf8"));
 check("hooks.json has afterFileEdit", Array.isArray(hooksJson.hooks?.afterFileEdit));
 check("hooks.json has stop", Array.isArray(hooksJson.hooks?.stop));
+
+const codexHooksJson = JSON.parse(fs.readFileSync(path.join(ROOT, ".codex/hooks.json"), "utf8"));
+const codexSessionCommand = String(codexHooksJson.hooks?.SessionStart?.[0]?.hooks?.[0]?.command || "");
+check("codex hooks use repository-relative command", codexSessionCommand === "node .codex/hooks/session-start.mjs");
+check("codex hooks do not contain an absolute Windows path", !/[A-Za-z]:[\\/]/.test(codexSessionCommand));
 
 const npmScripts = Object.values(CHECKS).filter((c) => c.npm).map((c) => c.npm);
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
