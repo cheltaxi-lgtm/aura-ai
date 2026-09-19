@@ -304,6 +304,13 @@ const session = spawnSync(process.execPath, [path.join(ROOT, ".cursor/hooks/sess
 });
 check("session-start fail-open", session.status === 0);
 
+const codexSession = spawnSync(process.execPath, [path.join(ROOT, ".codex/hooks/session-start.mjs")], {
+  cwd: ROOT,
+  encoding: "utf8",
+  input: "{}",
+});
+check("codex session-start fail-open", codexSession.status === 0);
+
 const requiredAssets = [
   ".cursor/rules/zovus-ai-harness.mdc",
   ".cursor/skills/zovus-harness/SKILL.md",
@@ -311,6 +318,8 @@ const requiredAssets = [
   ".cursor/commands/full-audit.md",
   ".cursor/agents/harness-code-review.md",
   ".cursor/hooks.json",
+  ".codex/hooks.json",
+  ".codex/hooks/session-start.mjs",
   "docs/AI_HARNESS.md",
 ];
 for (const rel of requiredAssets) {
@@ -320,6 +329,11 @@ for (const rel of requiredAssets) {
 const hooksJson = JSON.parse(fs.readFileSync(path.join(ROOT, ".cursor/hooks.json"), "utf8"));
 check("hooks.json has afterFileEdit", Array.isArray(hooksJson.hooks?.afterFileEdit));
 check("hooks.json has stop", Array.isArray(hooksJson.hooks?.stop));
+
+const codexHooksJson = JSON.parse(fs.readFileSync(path.join(ROOT, ".codex/hooks.json"), "utf8"));
+const codexSessionCommand = String(codexHooksJson.hooks?.SessionStart?.[0]?.hooks?.[0]?.command || "");
+check("codex hooks use repository-relative command", codexSessionCommand === "node .codex/hooks/session-start.mjs");
+check("codex hooks do not contain an absolute Windows path", !/[A-Za-z]:[\\/]/.test(codexSessionCommand));
 
 const npmScripts = Object.values(CHECKS).filter((c) => c.npm).map((c) => c.npm);
 const pkg = JSON.parse(fs.readFileSync(path.join(ROOT, "package.json"), "utf8"));
