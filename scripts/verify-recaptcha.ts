@@ -54,7 +54,7 @@ const SERVER_SCOPE_FILES: Record<RecaptchaScope, string[]> = {
   reviews: ["app/api/reviews/route.ts"],
 };
 
-/** Client must attach token for each scope somewhere */
+/** Client must attach a token for each scope that has a first-party submission UI. */
 const CLIENT_SCOPE_HINTS: Record<RecaptchaScope, string[]> = {
   register: ["components/AuthForm.tsx"],
   login: ["components/AuthForm.tsx"],
@@ -70,8 +70,12 @@ const CLIENT_SCOPE_HINTS: Record<RecaptchaScope, string[]> = {
     "components/RuneShopModal.tsx",
   ],
   share: ["contexts/ShareContext.tsx"],
-  reviews: ["components/editorial/EditorialReviewsSection.tsx"],
+  // Reviews are read-only in the current first-party UI. Keep POST protected for
+  // compatibility, but do not require a token producer that no longer exists.
+  reviews: [],
 };
+
+const SERVER_ONLY_SCOPES = new Set<RecaptchaScope>(["reviews"]);
 
 function checkStaticWiring() {
   console.log("\n[1] Static wiring");
@@ -103,7 +107,12 @@ function checkStaticWiring() {
 
     const clientHints = CLIENT_SCOPE_HINTS[scope];
     if (!Array.isArray(clientHints) || clientHints.length === 0) {
-      ok(false, `CLIENT_SCOPE_HINTS missing scope "${scope}"`);
+      ok(
+        SERVER_ONLY_SCOPES.has(scope),
+        SERVER_ONLY_SCOPES.has(scope)
+          ? `no first-party submission client for server-only scope "${scope}"`
+          : `CLIENT_SCOPE_HINTS missing scope "${scope}"`
+      );
       continue;
     }
     const clientHit = clientHints.some((file) => {
