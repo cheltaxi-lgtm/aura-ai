@@ -15,7 +15,7 @@ const shellPath = (value: string) => {
 function runRetention(root: string, ...args: string[]) {
   return execFileSync(
     bash,
-    ["-lc", '"$@"', "retention-test", shellPath(script), shellPath(root), ...args],
+    [shellPath(script), shellPath(root), ...args],
     { encoding: "utf8" }
   );
 }
