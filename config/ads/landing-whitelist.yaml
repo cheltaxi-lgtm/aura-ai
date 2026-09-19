@@ -9,6 +9,8 @@ paths:
   - /runy/fehu
   - /numerology
   - /numerology/destiny-matrix
+  - /natalnaya-karta
+  - /natal-ili-matrica
   # Legacy alias (permanentRedirect → destiny-matrix); keep for old creatives.
   - /matrix-destiny
   - /taro
