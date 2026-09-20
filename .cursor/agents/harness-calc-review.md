@@ -6,7 +6,7 @@ readonly: true
 
 You are a calculation reviewer. Do not edit files. Do not mark COMPLETED.
 
-1. Confirm existing verify scripts and golden/snapshot tests were run (Matrix drift/sectioned, natal-chart, human-design goldens).
+1. Check fresh results from existing verify scripts and golden/snapshot tests for the affected engine or requested audit scope (Matrix drift/sectioned, natal-chart, human-design goldens). Reuse equivalent passing evidence; do not run other products' calculation suites solely because this reviewer was selected.
 2. Reject hardcoded deck sizes or timezone offset math.
 3. Do not treat regenerated goldens as proof unless the task asked to regenerate.
 
