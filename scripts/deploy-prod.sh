@@ -209,7 +209,25 @@ if [ -n "$_SITE_SECRET" ] && [ -z "$_BOT_SECRET" ]; then
 elif [ -z "$_SITE_SECRET" ]; then
   echo "WARN: site .env.local missing BOT_INTERNAL_SECRET — bot bridge will fail" >&2
 fi
-unset _BOT_ENV _SITE_ENV _BOT_SECRET _SITE_SECRET
+
+# Existing bot env is preserved across deploys. Upsert the Telegram egress proxy
+# from the site env so transport fixes take effect without rewriting bot secrets.
+# An explicit empty value, or absence of both site keys, disables a stale proxy.
+_TELEGRAM_PROXY=""
+if grep -qE '^TELEGRAM_HTTPS_PROXY=' "$_SITE_ENV" 2>/dev/null; then
+  _TELEGRAM_PROXY="$(grep -E '^TELEGRAM_HTTPS_PROXY=' "$_SITE_ENV" | head -1 | cut -d= -f2- | tr -d '\r')"
+elif grep -qE '^OPENROUTER_HTTPS_PROXY=' "$_SITE_ENV" 2>/dev/null; then
+  _TELEGRAM_PROXY="$(grep -E '^OPENROUTER_HTTPS_PROXY=' "$_SITE_ENV" | head -1 | cut -d= -f2- | tr -d '\r')"
+fi
+mkdir -p "$(dirname "$_BOT_ENV")"
+touch "$_BOT_ENV"
+_BOT_ENV_TMP="$(mktemp "${_BOT_ENV}.tmp.XXXXXX")"
+grep -vE '^TELEGRAM_HTTPS_PROXY=' "$_BOT_ENV" > "$_BOT_ENV_TMP" || true
+printf '\nTELEGRAM_HTTPS_PROXY=%s\n' "$_TELEGRAM_PROXY" >> "$_BOT_ENV_TMP"
+mv -f "$_BOT_ENV_TMP" "$_BOT_ENV"
+chmod 600 "$_BOT_ENV"
+if [ -n "$_TELEGRAM_PROXY" ]; then echo "Telegram egress proxy configured"; else echo "Telegram egress proxy disabled"; fi
+unset _BOT_ENV _BOT_ENV_TMP _SITE_ENV _BOT_SECRET _SITE_SECRET _TELEGRAM_PROXY
 
 grep -q '^TRUST_PROXY=' "$APP_DIR/.env.local" \
   && sed -i 's|^TRUST_PROXY=.*|TRUST_PROXY=true|' "$APP_DIR/.env.local" \

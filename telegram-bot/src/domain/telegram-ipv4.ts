@@ -1,24 +1,40 @@
 /**
- * Force IPv4 for Telegram Bot API traffic.
- * On some VPS (incl. Beget) IPv6 routes to api.telegram.org hang → ETIMEDOUT,
- * which freezes long-poll getUpdates and makes the bot look "dead".
+ * Route Telegram Bot API traffic through an optional HTTPS CONNECT proxy.
+ * Direct mode stays IPv4-only because some VPS IPv6 routes hang. Production can
+ * use a stable egress proxy when the hosting provider's direct route drops packets.
  *
  * IMPORTANT: do NOT set this short-timeout agent as the process-wide dispatcher.
- * siteFetch → localhost matrix/photo runs need minutes; a 30s headersTimeout
+ * siteFetch → localhost matrix/photo runs need minutes; short Telegram timeouts
  * aborts them as "Связь с сайтом недоступна" while the site is still generating.
  */
-import { Agent, fetch as undiciFetch } from "undici";
+import { Agent, ProxyAgent, fetch as undiciFetch, type Dispatcher } from "undici";
+import { botConfig } from "../config.js";
 
-const telegramAgent = new Agent({
-  connect: { family: 4, timeout: 10_000 },
-  /** Long-poll getUpdates holds 1 connection; keep headroom for sendPhoto/sendMessage. */
-  connections: 32,
-  pipelining: 1,
-  keepAliveTimeout: 10_000,
-  keepAliveMaxTimeout: 30_000,
-  headersTimeout: 30_000,
-  bodyTimeout: 45_000,
-} as ConstructorParameters<typeof Agent>[0]);
+export function createTelegramDispatcher(proxyUrl = ""): Dispatcher {
+  if (proxyUrl) {
+    return new ProxyAgent({
+      uri: proxyUrl,
+      connect: { timeout: 10_000 },
+      /** One long poll plus message/media sends; keep below the shared proxy cap. */
+      connections: 16,
+      pipelining: 1,
+      headersTimeout: 30_000,
+      bodyTimeout: 45_000,
+    });
+  }
+  return new Agent({
+    connect: { family: 4, timeout: 10_000 },
+    /** Long-poll getUpdates holds 1 connection; keep headroom for sendPhoto/sendMessage. */
+    connections: 32,
+    pipelining: 1,
+    keepAliveTimeout: 10_000,
+    keepAliveMaxTimeout: 30_000,
+    headersTimeout: 30_000,
+    bodyTimeout: 45_000,
+  } as ConstructorParameters<typeof Agent>[0]);
+}
+
+const telegramAgent = createTelegramDispatcher(botConfig.telegramHttpsProxy);
 
 /** Loopback site bridge — matrix/photo generation can take several minutes. */
 const siteAgent = new Agent({
@@ -36,10 +52,13 @@ let installed = false;
 export function installTelegramIpv4Networking(): void {
   if (installed) return;
   installed = true;
-  console.log("[net] Telegram HTTP pinned to IPv4 (site bridge uses long timeouts)");
+  const route = botConfig.telegramHttpsProxy
+    ? `proxy ${new URL(botConfig.telegramHttpsProxy).host}`
+    : "direct IPv4";
+  console.log(`[net] Telegram HTTP via ${route} (site bridge uses long timeouts)`);
 }
 
-/** grammY-compatible fetch pinned to IPv4. */
+/** grammY-compatible fetch using the configured Telegram-only dispatcher. */
 export function telegramFetch(
   input: Parameters<typeof undiciFetch>[0],
   init?: Parameters<typeof undiciFetch>[1]

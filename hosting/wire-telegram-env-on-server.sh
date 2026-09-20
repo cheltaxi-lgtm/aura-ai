@@ -55,11 +55,17 @@ read_site() {
 
 OPENROUTER="$(read_site OPENROUTER_API_KEY)"
 TTS_KEY="$(read_site BOT_TTS_API_KEY)"
+if grep -qE '^TELEGRAM_HTTPS_PROXY=' "$SITE_ENV"; then
+  TELEGRAM_PROXY="$(read_site TELEGRAM_HTTPS_PROXY)"
+else
+  TELEGRAM_PROXY="$(read_site OPENROUTER_HTTPS_PROXY)"
+fi
 [[ -z "$TTS_KEY" ]] && TTS_KEY="$OPENROUTER"
 
 umask 077
 cat > "$BOT_ENV" <<EOF
 TELEGRAM_BOT_TOKEN=${TG_TOKEN}
+TELEGRAM_HTTPS_PROXY=${TELEGRAM_PROXY}
 ZOVUS_SITE_URL=https://zovus.ru
 BOT_CTA_TARGET_URL=https://zovus.ru
 BOT_MODE=polling
