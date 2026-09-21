@@ -288,6 +288,12 @@ export default function HomePage({
 }: HomePageProps) {
   const { config: runeConfig, cost: runeCost, formatRunes } = useRuneConfig();
   const { isLoggedIn, loading: authLoading, user: authUser, refresh: refreshAuth } = useAuth();
+  const [memoryPrompt, setMemoryPrompt] = useState<{ profileId: string; blocking: boolean } | null>(null);
+  const handleMemoryPromptBlocking = useCallback((blocking: boolean) => {
+    if (authUser?.profileUserId) {
+      setMemoryPrompt({ profileId: authUser.profileUserId, blocking });
+    }
+  }, [authUser?.profileUserId]);
   const { openPaywall, showRateLimit } = usePaywall();
 
   const [accountErasureNotice, setAccountErasureNotice] = useState(false);
@@ -4371,9 +4377,14 @@ export default function HomePage({
       <DailyBonusClaimer
         key={authUser?.profileUserId ?? "guest"}
         enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}
+        suppressVerificationNotice={hasReceivedPersonalValue && (
+          memoryPrompt?.profileId !== authUser?.profileUserId || memoryPrompt?.blocking === true
+        )}
       />
       <PersonalMemoryChoice
+        key={authUser?.profileUserId ?? "guest"}
         enabled={!authLoading && isLoggedIn && Boolean(authUser?.profileUserId) && hasReceivedPersonalValue}
+        onPromptBlockingChange={handleMemoryPromptBlocking}
       />
 
       <SpreadRitualLoader

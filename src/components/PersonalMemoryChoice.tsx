@@ -8,10 +8,13 @@ import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
 
 export default function PersonalMemoryChoice({
   enabled,
+  onPromptBlockingChange,
 }: {
   enabled: boolean;
+  onPromptBlockingChange?: (blocking: boolean) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [resolved, setResolved] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [experiment, setExperiment] = useState<{
@@ -23,6 +26,7 @@ export default function PersonalMemoryChoice({
   useEffect(() => {
     if (!enabled) {
       setOpen(false);
+      setResolved(false);
       return;
     }
     let cancelled = false;
@@ -44,12 +48,22 @@ export default function PersonalMemoryChoice({
             });
           }
         }
+        if (!cancelled && !res.ok) setOpen(false);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setOpen(false);
+      })
+      .finally(() => {
+        if (!cancelled) setResolved(true);
+      });
     return () => {
       cancelled = true;
     };
   }, [enabled]);
+
+  useEffect(() => {
+    onPromptBlockingChange?.(enabled && (!resolved || open));
+  }, [enabled, resolved, open, onPromptBlockingChange]);
 
   useEffect(() => {
     if (!open || trackedShown.current) return;

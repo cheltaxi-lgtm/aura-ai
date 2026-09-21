@@ -95,6 +95,20 @@ describe.skipIf(!hasTestDb)("bonus transactions (isolated PostgreSQL)",()=>{
     expect(await completePayment(paymentId,590)).toBeNull();
     expect((await query("SELECT paid_until FROM sessions WHERE id=$1",[session.id])).rows[0].paid_until).toEqual(expiry);
   });
+  it("a single-session purchase never marks unrelated saved readings as paid",async()=>{
+    const user=await createTestUser();
+    const first=(await query<{id:string}>("INSERT INTO sessions(user_id) VALUES($1) RETURNING id",[user.id])).rows[0];
+    const second=(await query<{id:string}>("INSERT INTO sessions(user_id) VALUES($1) RETURNING id",[user.id])).rows[0];
+    const readings=(await query<{id:string}>(`INSERT INTO history(user_id,character_name,context_data)
+      VALUES($1,'tarot','{}'::jsonb),($1,'natal','{}'::jsonb) RETURNING id`,[user.id])).rows;
+    const paymentId=randomUUID();
+    await recordPayment({sessionId:first.id,yukassaPaymentId:paymentId,amount:190,paymentType:"single"});
+    expect(await completePayment(paymentId,190)).not.toBeNull();
+    expect((await query<{has_single_unlock:boolean}>("SELECT has_single_unlock FROM sessions WHERE id=$1",[first.id])).rows[0].has_single_unlock).toBe(true);
+    expect((await query<{has_single_unlock:boolean}>("SELECT has_single_unlock FROM sessions WHERE id=$1",[second.id])).rows[0].has_single_unlock).toBe(false);
+    expect((await query<{id:string;is_paid:boolean}>("SELECT id,is_paid FROM history WHERE id=ANY($1::uuid[]) ORDER BY id",[readings.map(row=>row.id)])).rows)
+      .toEqual(readings.map(row=>({id:row.id,is_paid:false})).sort((a,b)=>a.id.localeCompare(b.id)));
+  });
   it("binds YooMoney to its specific checkout and deduplicates repeated notifications",async()=>{
     const user=await createTestUser();const session=(await query<{id:string}>("INSERT INTO sessions(user_id) VALUES($1) RETURNING id",[user.id])).rows[0];
     const orders=[randomUUID(),randomUUID()];

@@ -67,7 +67,6 @@ export async function fulfillLegacyPayment(
     }
     await deliverOrder(client,order);
     await queryClient(client,"UPDATE payments SET status='succeeded',updated_at=NOW() WHERE id=$1",[order.id]);
-    await queryClient(client,"UPDATE history SET is_paid=TRUE WHERE user_id=$1",[order.user_id]);
     return order;
   });
 }

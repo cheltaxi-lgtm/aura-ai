@@ -1,12 +1,17 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useLayoutEffect, useState } from "react";
 export default function VerifyEmailPage() {
   const [token,setToken]=useState("");
   const [busy,setBusy]=useState(false);
   const [done,setDone]=useState(false);
   const [message,setMessage]=useState("");
-  useEffect(()=>{
-    const readToken=()=>setToken(new URLSearchParams(window.location.hash.slice(1)).get("token")??"");
+  useLayoutEffect(()=>{
+    const readToken=()=>{
+      const nextToken=new URLSearchParams(window.location.hash.slice(1)).get("token")??"";
+      // Keep the bearer out of browser history and later analytics scripts.
+      if(window.location.hash)window.history.replaceState(null,"",window.location.pathname);
+      setToken(nextToken);
+    };
     readToken();window.addEventListener("hashchange",readToken);
     return()=>window.removeEventListener("hashchange",readToken);
   },[]);
@@ -17,7 +22,7 @@ export default function VerifyEmailPage() {
       const data=await response.json();
       if(!response.ok)throw new Error(data.error);
       setDone(true);setMessage(data.granted>0?`Почта подтверждена. Начислено ${data.granted} рун.`:"Почта подтверждена.");
-      window.history.replaceState(null,"",window.location.pathname);
+      setToken("");
     } catch(error){setMessage(error instanceof Error?error.message:"Ошибка соединения");}
     finally{setBusy(false);}
   }
