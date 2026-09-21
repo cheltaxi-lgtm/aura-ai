@@ -102,7 +102,7 @@ describe.skipIf(!hasTestDb)("bonus transactions (isolated PostgreSQL)",()=>{
     const readings=(await query<{id:string}>(`INSERT INTO history(user_id,character_name,context_data)
       VALUES($1,'tarot','{}'::jsonb),($1,'natal','{}'::jsonb) RETURNING id`,[user.id])).rows;
     const paymentId=randomUUID();
-    await recordPayment({sessionId:first.id,yukassaPaymentId:paymentId,amount:190,paymentType:"single"});
+    await recordPayment({sessionId:first.id,yukassaPaymentId:paymentId,amount:190,paymentType:"single",bonusRunes:0});
     expect(await completePayment(paymentId,190)).not.toBeNull();
     expect((await query<{has_single_unlock:boolean}>("SELECT has_single_unlock FROM sessions WHERE id=$1",[first.id])).rows[0].has_single_unlock).toBe(true);
     expect((await query<{has_single_unlock:boolean}>("SELECT has_single_unlock FROM sessions WHERE id=$1",[second.id])).rows[0].has_single_unlock).toBe(false);

@@ -375,6 +375,13 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
         WHERE user_id = $1`,
       [profile.id]
     );
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'daily_cards:prior-day',
+              created_at = NOW() - INTERVAL '25 hours'
+        WHERE user_id = $1 AND campaign = 'daily_cards'`,
+      [profile.id]
+    );
 
     const second = await sendDailyRemindersForHour(9);
     expect(second).toEqual({ inApp: 1, email: 1, telegram: 0 });
@@ -401,6 +408,13 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
         WHERE user_id = $1`,
       [profile.id]
     );
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'daily_cards:prior-day',
+              created_at = NOW() - INTERVAL '25 hours'
+        WHERE user_id = $1 AND campaign = 'daily_cards'`,
+      [profile.id]
+    );
 
     const second = await sendDailyRemindersForHour(9);
     expect(second.inApp).toBe(1);
@@ -420,6 +434,13 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
           SET sent_date = CURRENT_DATE - 3,
               created_at = NOW() - interval '3 days'
         WHERE user_id = $1 AND channel = 'in_app'`,
+      [profile.id]
+    );
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'daily_cards:prior-slot',
+              created_at = NOW() - INTERVAL '3 days'
+        WHERE user_id = $1 AND campaign = 'daily_cards'`,
       [profile.id]
     );
     await recordTripletDrawAnchor(

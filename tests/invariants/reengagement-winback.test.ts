@@ -204,6 +204,13 @@ describe.skipIf(!hasTestDb)("reengagement-winback (db)", () => {
       [profile.id]
     );
     expect(backdate.rowCount).toBe(1);
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'inactive_7d:prior-episode',
+              created_at = NOW() - INTERVAL '9 days'
+        WHERE user_id = $1 AND campaign = 'inactive_7d'`,
+      [profile.id]
+    );
     const relogin = await query(
       `UPDATE user_accounts SET last_login_at = NOW() - INTERVAL '8 days' WHERE id = $1`,
       [account.id]
@@ -231,10 +238,10 @@ describe.skipIf(!hasTestDb)("reengagement-winback (db)", () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it("synthetic / undeliverable email is not emailed (in-app still allowed)", async () => {
+  it("synthetic / undeliverable email is excluded from email win-back", async () => {
     await seedWinbackUser({ inactiveDays: 8, email: null });
     const result = await runReengagementEmailBatch({ dailyBonus: false, inactive: true });
-    expect(result.inactive7d).toBe(1);
+    expect(result.inactive7d).toBe(0);
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });
