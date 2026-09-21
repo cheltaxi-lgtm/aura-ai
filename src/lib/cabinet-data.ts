@@ -711,6 +711,7 @@ export async function getCabinetAchievements(
   const locked: CabinetAchievementLocked[] = [];
 
   for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
+    if (key === "brave_question") continue;
     if (earnedKeys.has(key)) continue;
     const ach = ACHIEVEMENTS[key];
     let progress = 0;
@@ -732,11 +733,6 @@ export async function getCabinetAchievements(
         progress = maxMasterSessions;
         progressMax = 10;
         progressLabel = `${Math.min(maxMasterSessions, 10)}/10 сеансов`;
-        break;
-      case "brave_question":
-        progress = 0;
-        progressMax = 1;
-        progressLabel = "Спроси о сложном";
         break;
       case "month_in":
         progress = daysWithUs;

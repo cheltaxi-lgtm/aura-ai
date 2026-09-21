@@ -2,6 +2,7 @@ import { query, queryClient, withTransaction } from "@/lib/db";
 import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 import { BillingService } from "@/lib/services/billing-service";
 import { captureMemoryGeneration } from "@/lib/memory/write-guard";
+import { recordProductActivity } from "@/lib/product-activity";
 
 export type AsyncJobKind =
   | "reading"
@@ -96,7 +97,11 @@ export async function createAsyncJob(input: {
       JSON.stringify({ memoryCaptureGeneration }),
     ]
   );
-  return rows[0]!.id;
+  const jobId = rows[0]!.id;
+  const product = input.kind === "photo_reading" ? "photo" : input.kind;
+  await recordProductActivity(input.userId, "request_started", jobId, { product })
+    .catch((error) => console.warn("[async-jobs] product activity failed", error));
+  return jobId;
 }
 
 /** Return an in-flight job with the same dedupe key (preferred) or payload. */

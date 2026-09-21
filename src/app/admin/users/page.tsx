@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn } from "@/components/admin/AdminShell";
 import { TRIPLET_COOLDOWN_MS, formatTripletCooldownRu } from "@/lib/triplet-limit";
 
@@ -73,6 +73,8 @@ function AccountStatusBadge({
 }
 
 export default function AdminUsersPage() {
+  const grantOperation = useRef<{payload:string;id:string}|null>(null);
+  const grantInFlight = useRef(false);
   const [tab, setTab] = useState<"accounts" | "profiles">("accounts");
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
@@ -122,6 +124,21 @@ export default function AdminUsersPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, isUnlimited: next }),
+      });
+      load();
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  const toggleInternal = async (id: string, next: boolean) => {
+    setBusyId(id);
+    try {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      await adminFetch("/api/admin/users", {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id, isInternal: next }),
       });
       load();
     } finally {
@@ -186,9 +203,9 @@ export default function AdminUsersPage() {
   };
 
   const submitGrant = async () => {
-    if (!grantModal) return;
-    const amount = Math.round(Number(grantAmount));
-    if (!Number.isFinite(amount) || amount <= 0) {
+    if (!grantModal || grantInFlight.current) return;
+    const amount = Number(grantAmount);
+    if (!Number.isSafeInteger(amount) || amount <= 0) {
       alert("Укажите положительное количество рун");
       return;
     }
@@ -197,16 +214,20 @@ export default function AdminUsersPage() {
       return;
     }
 
+    const payload = JSON.stringify([grantModal.profileUserId, amount, grantReason.trim()]);
+    if (grantOperation.current?.payload !== payload) grantOperation.current = {payload,id:crypto.randomUUID()};
+    grantInFlight.current = true;
     setGrantBusy(true);
     try {
       const { adminFetch } = await import("@/lib/admin-fetch");
       const res = await adminFetch(`/api/admin/users/${grantModal.profileUserId}/runes`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ amount, reason: grantReason.trim() }),
+        body: JSON.stringify({ amount, reason: grantReason.trim(), operationId: grantOperation.current.id }),
       });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
+        grantOperation.current = null;
         setGrantModal(null);
         setGrantAmount("");
         setGrantReason("");
@@ -218,6 +239,7 @@ export default function AdminUsersPage() {
         alert(data.error ?? "Ошибка начисления");
       }
     } finally {
+      grantInFlight.current = false;
       setGrantBusy(false);
     }
   };
@@ -264,11 +286,12 @@ export default function AdminUsersPage() {
 
       {tab === "accounts" ? (
         <AdminTable
-          headers={["Email", "Имя", "Статус", "Профиль", "Знак", "Сессий", "3 карты", "Безлимит", "Руны", "Создан", "Последняя активность", ""]}
+          headers={["Email", "Имя", "Статус", "Профиль", "Знак", "Сессий", "3 карты", "Безлимит", "Внутренний", "Руны", "Создан", "Последняя активность", ""]}
           rows={items.map((u) => {
             const id = String(u.id);
             const profileUserId = u.profile_user_id ? String(u.profile_user_id) : null;
             const unlimited = Boolean(u.is_unlimited);
+            const internal = Boolean(u.is_internal);
             const lastTriplet = u.last_triplet_draw_at ? String(u.last_triplet_draw_at) : null;
             const tripletStatus = tripletCooldownLabel(lastTriplet);
             const email = String(u.email);
@@ -317,6 +340,15 @@ export default function AdminUsersPage() {
                 } disabled:opacity-50`}
               >
                 {busyId === id ? "…" : unlimited ? "∞ Вкл" : "Выкл"}
+              </button>,
+              <button
+                key="i"
+                type="button"
+                disabled={busyId === id}
+                onClick={() => void toggleInternal(id, !internal)}
+                className={`rounded-lg px-3 py-1.5 text-xs font-medium ${internal ? "bg-sky-400/20 text-sky-300" : "border border-white/10 text-gray-400"} disabled:opacity-50`}
+              >
+                {internal ? "Скрыт" : "Клиент"}
               </button>,
               renderRunesCell(profileUserId, email, u.rune_balance),
               new Date(String(u.created_at)).toLocaleDateString("ru-RU"),

@@ -41,7 +41,7 @@ test("explicit app preview keeps its bottom navigation", async ({ page }, testIn
   await page.screenshot({ path: testInfo.outputPath("explicit-app-preview.png") });
 });
 
-async function fixture(page: Page, options: { loggedIn?: boolean; paid?: boolean; memory?: boolean; unlimited?: boolean; claimFailure?: boolean } = {}) {
+async function fixture(page: Page, options: { loggedIn?: boolean; paid?: boolean; memory?: boolean; receivedValue?: boolean; unlimited?: boolean; claimFailure?: boolean } = {}) {
   const calls: string[] = [];
   await page.route("**/api/**", async (route) => {
     const path = new URL(route.request().url()).pathname;
@@ -70,6 +70,18 @@ async function fixture(page: Page, options: { loggedIn?: boolean; paid?: boolean
     }
     if (path === "/api/palm/pricing") return route.fulfill({ json: { baseCost: 100, effectiveCost: 50, firstPalmDiscount: true, unlimited: options.unlimited === true } });
     if (path === "/api/palm/readings") return route.fulfill({ json: { readings: [] } });
+    if (path === "/api/profile") return route.fulfill({ json: {
+      profile: { id: "launch-profile", name: "Проверка", birthDate: "1990-01-01", gender: "female", tarotCards: [] },
+      profileUserId: "launch-profile",
+      readings: options.receivedValue ? [{
+        id: "11111111-1111-4111-8111-111111111111",
+        characterName: "veronika",
+        createdAt: "2026-09-20T10:00:00.000Z",
+        contextData: { analysis: "Сохранённый персональный разбор" },
+      }] : [],
+      continueMasterIds: [],
+      needsOnboarding: false,
+    } });
     if (path === "/api/memory/preferences") return route.fulfill({ json: { needsInitialChoice: options.memory === true } });
     return route.fulfill({ json: {} });
   });
@@ -119,23 +131,24 @@ test("password recovery reports network failure and allows retry", async ({ page
   await expect(page.getByRole("button", { name: "Отправить ссылку", exact: true })).toBeEnabled();
 });
 
-test("personal memory choice is scrollable and keyboard-contained on a landscape phone", async ({ page }, testInfo) => {
-  await fixture(page, { memory: true });
+test("personal memory choice appears after value and remains scrollable on a landscape phone", async ({ page }, testInfo) => {
+  await fixture(page, { memory: true, receivedValue: true });
   await page.setViewportSize({ width: 844, height: 390 });
   await page.goto("/?app=1");
-  const dialog = page.getByRole("dialog", { name: "Персональная память" });
-  await expect(dialog).toBeVisible();
-  const decline = dialog.getByRole("button", { name: "Не включать", exact: true });
+  const panel = page.getByRole("complementary", { name: "Персональная память" });
+  await expect(panel).toBeVisible();
+  const decline = panel.getByRole("button", { name: "Не включать", exact: true });
   await decline.scrollIntoViewIfNeeded();
   await expect(decline).toBeInViewport();
-  const last = dialog.getByRole("link").last();
-  await last.focus();
-  await page.keyboard.press("Tab");
-  expect(await dialog.evaluate((element) => element.contains(document.activeElement))).toBe(true);
-  await dialog.focus();
-  await page.keyboard.press("Shift+Tab");
-  await expect(last).toBeFocused();
+  await expect(panel.getByRole("button", { name: "Позже", exact: true })).toHaveCount(0);
+  expect(await panel.evaluate((element) => getComputedStyle(element).overflowY)).toBe("auto");
   await page.screenshot({ path: testInfo.outputPath("memory-landscape.png"), fullPage: false });
+});
+
+test("personal memory choice is delayed until a saved personal result exists", async ({ page }) => {
+  await fixture(page, { memory: true, receivedValue: false });
+  await page.goto("/?app=1");
+  await expect(page.getByRole("complementary", { name: "Персональная память" })).toHaveCount(0);
 });
 
 test("guest entry responds before an age lookup and ignores its response after closing", async ({ page }) => {

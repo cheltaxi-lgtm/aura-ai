@@ -53,9 +53,15 @@ import ReadingRecap from "@/components/ReadingRecap";
 import DeckGallery from "@/components/DeckGallery";
 import type {
   PhotoReadingChatPayload,
-  PhotoReadingConfirmPayload,
   PhotoReadingEntryMode,
 } from "@/components/PhotoReadingFlow";
+
+type LegacyPhotoReadingConfirmPayload = {
+  question?: string;
+  detectedCards: string[];
+  redrawSpread: RedrawSpread;
+  idempotencyKey: string;
+};
 import {
   buildPhotoReadingChatMessages,
   buildPhotoReadingPendingMessages,
@@ -168,7 +174,7 @@ import type { DeckSystem } from "@/lib/decks/types";
 import { DEFAULT_DECK_SYSTEM, resolveMasterDeckSystem, spreadKey } from "@/lib/decks";
 import { resolveSpreadSymbols } from "@/lib/intention-draw";
 import { getSpreadForSystem } from "@/lib/spread-context";
-import { redrawSpreadToDeckCards, redrawSpreadToTarotCards } from "@/lib/photo-spread-redraw";
+import { redrawSpreadToDeckCards, redrawSpreadToTarotCards, type RedrawSpread } from "@/lib/photo-spread-redraw";
 import type { DeckCardInput } from "@/lib/deck-card-utils";
 import { tarotCardsKey } from "@/lib/tarot";
 import type { Message } from "@/types";
@@ -2698,7 +2704,7 @@ export default function HomePage({
 
   const handlePhotoConfirmSpread = async (
     masterId: string,
-    payload: PhotoReadingConfirmPayload
+    payload: LegacyPhotoReadingConfirmPayload
   ) => {
     if (!isLoggedIn) return;
 
@@ -3338,6 +3344,32 @@ export default function HomePage({
 
   const inActiveChat = step === "chat" && Boolean(selectedCharacter);
 
+  const latestPhotoReading = useMemo(() => {
+    const row = savedReadings
+      .filter((reading) => reading.id && reading.contextData?.type === "photo_reading")
+      .sort((a, b) => String(b.createdAt ?? "").localeCompare(String(a.createdAt ?? "")))[0];
+    if (!row?.id) return null;
+    return {
+      id: row.id,
+      masterName:
+        findShowcaseMaster(row.characterName, masters)?.name ??
+        getCharacterById(row.characterName)?.name ??
+        null,
+    };
+  }, [masters, savedReadings]);
+
+  const hasReceivedPersonalValue = useMemo(
+    () =>
+      savedReadings.some((reading) =>
+        Boolean(
+          reading.contextData?.reading ||
+          reading.contextData?.analysis ||
+          reading.contextData?.type === "photo_reading"
+        )
+      ) || messages.some((message) => message.role === "assistant" && message.content.trim().length > 80),
+    [messages, savedReadings]
+  );
+
   const guestResumeChatAssist = useMemo(() => {
     // Ref is read on message-driven re-renders after guest resume sets chat.
     const isGuestResume = sessionSpreadMetaRef.current?.spreadType === "guest_resume";
@@ -3711,6 +3743,7 @@ export default function HomePage({
                       "мастером"
                     : null
                 }
+                photoReading={latestPhotoReading}
                 onContinueTarot={
                   hasActiveSpread && recapContinueMasterId
                     ? () => void handleMasterPick(recapContinueMasterId)
@@ -4298,7 +4331,6 @@ export default function HomePage({
             });
           }}
           onSpreadRitualEnd={() => setSpreadRitual({ active: false })}
-          onConfirmSpread={handlePhotoConfirmSpread}
           onRuneBalanceChange={(balance) => {
             setRuneBalance(balance);
             emitRuneBalanceUpdate(balance);
@@ -4337,10 +4369,11 @@ export default function HomePage({
       ) : null}
 
       <DailyBonusClaimer
+        key={authUser?.profileUserId ?? "guest"}
         enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}
       />
       <PersonalMemoryChoice
-        enabled={!authLoading && isLoggedIn && Boolean(authUser?.profileUserId)}
+        enabled={!authLoading && isLoggedIn && Boolean(authUser?.profileUserId) && hasReceivedPersonalValue}
       />
 
       <SpreadRitualLoader

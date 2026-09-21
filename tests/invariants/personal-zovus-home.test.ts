@@ -48,6 +48,12 @@ describe("personal-zovus-home", () => {
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/chipClass|editorial-hero__chip/);
     expect(banner).not.toMatch(/onOpenDailyCards/);
+    const personal = readFileSync(
+      path.join(ROOT, "src/components/editorial/PersonalZovusHome.tsx"),
+      "utf8"
+    );
+    expect(personal).toMatch(/showHeroBlocks \? \([\s\S]*?<header/);
+    expect(personal).toMatch(/personal-zovus-today/);
     const css = readFileSync(
       path.join(ROOT, "src/styles/editorial-landing.css"),
       "utf8"

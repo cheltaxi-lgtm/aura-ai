@@ -7,6 +7,7 @@ import { sendEmail } from "@/lib/email/send";
 import { getSiteUrl } from "@/lib/email/mail-config";
 import { notifyBotReminder } from "@/lib/telegram/notify-bot-reminder";
 import { testAccountEmailSql, testProfileNameSql } from "@/lib/test-accounts";
+import { finishProactiveContact, reserveProactiveContact } from "@/lib/proactive-contact-policy";
 
 /** Personal local time; quiet hours 20:00–09:00. DST handled by Intl/IANA. */
 export function readingFollowupStage(input:{completedAt:Date;now:Date;timezone:string;insight:string;reflection:string}):2|7|null {
@@ -41,22 +42,27 @@ export async function runReadingFollowups(now=new Date(), clock:()=>Date=()=>new
     if(!stage || (row.reminder_channel==="email"?!row.email:!row.telegram_user_id))continue;
     const column=stage===2?"followup_2_claimed_at":"followup_7_claimed_at";
     const content=stage===2?"entry_text":"reflection";
-    // Durable at-most-once claim. Never retry an ambiguous provider outcome or switch channels.
-    // Recheck consent and completed action atomically immediately before delivery.
-    const claim=await query(`WITH eligible AS (SELECT d.id,d.user_id FROM diary_entries d WHERE d.id=$1 AND d.reminder_consent_at=$3::timestamptz AND d.reminder_channel=$4 AND d.reminder_timezone=$5 AND d.${column} IS NULL AND length(trim(d.${content}))=0 AND EXTRACT(HOUR FROM $2::timestamptz AT TIME ZONE d.reminder_timezone) BETWEEN 9 AND 19
-      AND EXISTS(SELECT 1 FROM user_accounts ua JOIN users u ON u.id=ua.profile_user_id LEFT JOIN user_telegram_identities ti ON ti.user_account_id=ua.id WHERE ua.id=$6 AND u.id=d.user_id AND ua.erasure_requested_at IS NULL AND u.erasure_requested_at IS NULL
-      AND (($4='email' AND (${ACCOUNT_DELIVERABLE_EMAIL_SQL})=$7) OR ($4='telegram' AND ti.telegram_user_id::text=$8))) FOR UPDATE OF d), delivery AS (INSERT INTO reengagement_email_log(user_id,template,sent_date,created_at) SELECT user_id,'reading_followup',($2::timestamptz AT TIME ZONE 'UTC')::date,$2 FROM eligible ON CONFLICT(user_id,template,sent_date) DO NOTHING RETURNING user_id) UPDATE diary_entries d SET ${column}=$2 WHERE d.id IN (SELECT id FROM eligible) AND d.user_id IN (SELECT user_id FROM delivery) RETURNING d.id`,[row.id,deliveryNow,row.consent_version,row.reminder_channel,row.reminder_timezone,row.account_id,row.email,row.telegram_user_id]);
-    if(!claim.rowCount)continue;claimed++;
+    const reservation=await reserveProactiveContact(row.user_id,"reading_followup",`reading_followup:${row.reading_id}:${stage}`);
+    if(!reservation)continue;
+    let contactDelivered=false;
     try {
+      // Durable at-most-once claim. Never retry an ambiguous provider outcome or switch channels.
+      // Recheck consent and completed action atomically immediately before delivery.
+      const claim=await query(`WITH eligible AS (SELECT d.id,d.user_id FROM diary_entries d WHERE d.id=$1 AND d.reminder_consent_at=$3::timestamptz AND d.reminder_channel=$4 AND d.reminder_timezone=$5 AND d.${column} IS NULL AND length(trim(d.${content}))=0 AND EXTRACT(HOUR FROM $2::timestamptz AT TIME ZONE d.reminder_timezone) BETWEEN 9 AND 19
+        AND EXISTS(SELECT 1 FROM user_accounts ua JOIN users u ON u.id=ua.profile_user_id LEFT JOIN user_telegram_identities ti ON ti.user_account_id=ua.id WHERE ua.id=$6 AND u.id=d.user_id AND ua.erasure_requested_at IS NULL AND u.erasure_requested_at IS NULL
+        AND (($4='email' AND (${ACCOUNT_DELIVERABLE_EMAIL_SQL})=$7) OR ($4='telegram' AND ti.telegram_user_id::text=$8))) FOR UPDATE OF d), delivery AS (INSERT INTO reengagement_email_log(user_id,template,sent_date,created_at) SELECT user_id,'reading_followup',($2::timestamptz AT TIME ZONE 'UTC')::date,$2 FROM eligible ON CONFLICT(user_id,template,sent_date) DO NOTHING RETURNING user_id) UPDATE diary_entries d SET ${column}=$2 WHERE d.id IN (SELECT id FROM eligible) AND d.user_id IN (SELECT user_id FROM delivery) RETURNING d.id`,[row.id,deliveryNow,row.consent_version,row.reminder_channel,row.reminder_timezone,row.account_id,row.email,row.telegram_user_id]);
+      if(!claim.rowCount)continue;claimed++;
       const unsub=await reminderUnsubscribeUrl(row.account_id,"reading_followup");
       const url=`${getSiteUrl()}/cabinet?readingId=${encodeURIComponent(row.reading_id)}`;
       const title=stage===2?"Что было полезно в разборе?":"Что изменилось за неделю?";
       const body=stage===2?"Если хочется, сохраните свой главный вывод в бесплатном дневнике.":"Можно вернуться к выбранному шагу и записать свои наблюдения. Новый разбор для этого не нужен.";
       const ok=row.reminder_channel==="telegram"?(await notifyBotReminder({telegramUserId:Number(row.telegram_user_id),sourceProfileUserId:row.user_id,kind:"reading_followup",title,body,ctaUrl:url,ctaLabel:"Открыть дневник",unsubscribeUrl:unsub})).delivered:
         await sendEmail({to:row.email!,subject:`Zovus — ${title}`,text:`${body}\n${url}\nОтключить: ${unsub}`,html:`<div style="max-width:520px;margin:auto;padding:32px;font-family:Georgia,serif;line-height:1.7"><p>ZOVUS</p><h1 style="font-size:24px">${title}</h1><p>${body}</p><p><a href="${url}">Открыть дневник</a></p><p><a href="${unsub}">Отключить эти напоминания</a></p></div>`,template:`reading_followup_${stage}`,listUnsubscribeUrl:unsub});
+      contactDelivered=ok;
       if(ok)delivered++;else failed++;
       await query("INSERT INTO reengagement_email_log(user_id,template) VALUES($1,$2) ON CONFLICT(user_id,template,sent_date) DO NOTHING",[row.user_id,`reading_${stage}_${ok?"delivered":"unconfirmed"}`]);
     }catch{failed++;}
+    finally{await finishProactiveContact(reservation.id,contactDelivered);}
   }
   return {enabled:true,claimed,delivered,failed};
 }

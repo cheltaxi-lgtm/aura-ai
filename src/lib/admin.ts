@@ -98,12 +98,13 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
     zodiac: string | null;
     sessions_count: string;
     is_unlimited: boolean;
+    is_internal: boolean;
     last_triplet_draw_at: string | null;
     rune_balance: number | null;
     oauth_provider: string | null;
     has_password: boolean;
   }>(
-    `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited,
+    `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited, ua.is_internal,
             ua.profile_user_id,
             (ua.password_hash IS NOT NULL) AS has_password,
             (
@@ -119,6 +120,7 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count,
             GREATEST(
               ua.last_login_at,
+              u.last_product_activity_at,
               (SELECT MAX(oi.last_login_at) FROM user_oauth_identities oi WHERE oi.user_account_id = ua.id),
               (SELECT MAX(ti.last_login_at) FROM user_telegram_identities ti WHERE ti.user_account_id = ua.id),
               (SELECT MAX(s.updated_at) FROM sessions s WHERE s.user_id = ua.profile_user_id)

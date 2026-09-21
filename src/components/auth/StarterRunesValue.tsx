@@ -154,7 +154,7 @@ export default function StarterRunesValue({
         </p>
         <p className="mt-1.5 text-sm leading-relaxed text-aura-ivory/70">{line}</p>
         <p className="mt-2 text-[11px] leading-relaxed text-aura-ivory/40">
-          ᚢ — руны, внутренняя валюта Zovus. Начисляются один раз при первой регистрации.
+          ᚢ — руны, внутренняя валюта Zovus. Один стартовый подарок на профиль. При регистрации по email нужно подтвердить почту.
         </p>
       </div>
     );

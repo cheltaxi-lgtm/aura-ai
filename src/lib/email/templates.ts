@@ -134,11 +134,12 @@ export function inactiveUserEmailHtml(
   name: string,
   inactiveDays: number,
   siteUrl?: string,
-  unsubscribeUrl?: string
+  unsubscribeUrl?: string,
+  ctaUrlOverride?: string
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
-  const ctaUrl = inactiveWinbackCtaUrl(url);
+  const ctaUrl = ctaUrlOverride || inactiveWinbackCtaUrl(url);
   const body =
     inactiveDays <= 7
       ? `<p>Давно не виделись.</p>
@@ -163,10 +164,11 @@ export function inactiveUserEmailText(
   name: string,
   inactiveDays: number,
   siteUrl?: string,
-  unsubscribeUrl?: string
+  unsubscribeUrl?: string,
+  ctaUrlOverride?: string
 ): string {
   const safeName = name.trim() || "друг";
-  const ctaUrl = inactiveWinbackCtaUrl(siteUrl);
+  const ctaUrl = ctaUrlOverride || inactiveWinbackCtaUrl(siteUrl);
   const lead =
     inactiveDays <= 7
       ? "Давно не виделись. Можно вернуться к своим вопросам, поговорить с мастером или открыть персональный Zovus."

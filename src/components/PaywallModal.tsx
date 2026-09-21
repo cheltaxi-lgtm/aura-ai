@@ -110,14 +110,15 @@ function RuneShopView({
       .catch(() => undefined);
   }, []);
 
-  const claimBonus = async () => {
+  const claimBonus = async (event: { isTrusted: boolean }) => {
+    if (!event.isTrusted || document.visibilityState !== "visible" || claimingBonus) return;
     setClaimingBonus(true);
     setError(null);
     try {
       const res = await fetch("/api/runes/daily", { method: "POST" });
       const data = await res.json();
       if (res.status === 429) {
-        setError("Ежедневный бонус уже получен сегодня.");
+        setError("Слишком много попыток. Повторите через минуту.");
         return;
       }
       if (data.claimed && typeof data.newBalance === "number") {
@@ -310,7 +311,7 @@ function RuneShopView({
             {bonusStatus.available ? (
               <button
                 type="button"
-                onClick={() => void claimBonus()}
+                onClick={(event) => void claimBonus(event)}
                 disabled={claimingBonus}
                 className="btn-luxe btn-luxe--sm btn-luxe--gold disabled:opacity-60"
               >

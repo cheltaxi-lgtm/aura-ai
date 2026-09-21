@@ -1,5 +1,7 @@
 "use client";
 import ReadingJourney from "@/components/ReadingJourney";
+import DailyBonusCard from "@/components/DailyBonusCard";
+import { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import PendingReadingResume from "@/components/cabinet/PendingReadingResume";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -657,6 +659,16 @@ export default function CabinetPage() {
     setShowRitualFlow(true);
   };
 
+  useEffect(() => {
+    const update = (event: Event) => {
+      const balance = (event as CustomEvent<number>).detail;
+      if (!Number.isFinite(balance)) return;
+      setData(current => current ? {...current,profile:{...current.profile,runeBalance:balance},runes:{...current.runes,balance}} : current);
+    };
+    window.addEventListener(RUNE_BALANCE_EVENT,update);
+    return () => window.removeEventListener(RUNE_BALANCE_EVENT,update);
+  },[]);
+
   const handleTopUp = () => {
     openPaywall({
       currentBalance: profile?.runeBalance ?? runes?.balance ?? 0,
@@ -921,6 +933,7 @@ export default function CabinetPage() {
       </div>
 
       <main className="mx-auto max-w-3xl px-4 py-6">
+        <DailyBonusCard key={authUser?.profileUserId??"guest"} enabled={!authLoading&&Boolean(authUser?.profileUserId)&&runesEnabled} />
         {error && (
           <div className="mb-6 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">
             {error}

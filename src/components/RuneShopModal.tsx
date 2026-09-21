@@ -88,7 +88,8 @@ export default function RuneShopModal({
       .finally(() => setPackagesLoading(false));
   }, [isOpen, loadBonusStatus]);
 
-  const claimBonus = async () => {
+  const claimBonus = async (event: { isTrusted: boolean }) => {
+    if (!event.isTrusted || document.visibilityState !== "visible" || claimingBonus) return;
     setClaimingBonus(true);
     setError(null);
     try {
@@ -255,7 +256,7 @@ export default function RuneShopModal({
                   {bonusStatus.available ? (
                     <button
                       type="button"
-                      onClick={() => void claimBonus()}
+                      onClick={(event) => void claimBonus(event)}
                       disabled={claimingBonus}
                             className="btn-luxe btn-luxe--sm btn-luxe--gold disabled:opacity-60"
                     >

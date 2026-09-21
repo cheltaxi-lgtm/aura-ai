@@ -1,3 +1,4 @@
+import { getRuneSettings } from "@/lib/rune-settings";
 import { getAppUrl } from "@/lib/brand";
 import { NextRequest, NextResponse } from "next/server";
 import { createYukassaPayment, isYukassaConfigured, getLegacyPrices, type PaymentPlan } from "@/lib/yukassa";
@@ -51,10 +52,13 @@ export async function POST(request: NextRequest) {
       bloggerSplit = blogger?.split_percent;
     }
 
+    const prices = await getLegacyPrices();
+    const amount = plan === "single" ? prices.single : prices.subscription;
+    const runeSettings = await getRuneSettings();
+    const bonusRunes = plan === "subscription" && runeSettings.enabled ? Math.floor(amount / runeSettings.rubPerRune) : 0;
+
     if (isYukassaConfigured()) {
-      const payment = await createYukassaPayment({ plan, sessionId, returnUrl });
-      const prices = await getLegacyPrices();
-      const amount = plan === "single" ? prices.single : prices.subscription;
+      const payment = await createYukassaPayment({ plan, sessionId, returnUrl, amountRub: amount });
 
       await recordPayment({
         sessionId,
@@ -62,6 +66,7 @@ export async function POST(request: NextRequest) {
         yukassaPaymentId: payment.id,
         amount,
         paymentType: plan,
+        bonusRunes,
         referrerSlug: session.referrer_slug ?? undefined,
         bloggerSplitPercent: bloggerSplit,
       });
@@ -74,13 +79,14 @@ export async function POST(request: NextRequest) {
     }
 
     if (isYoomoneyConfigured()) {
-      const payment = await createYoomoneyPaymentUrl({ plan, sessionId, returnUrl });
+      const payment = await createYoomoneyPaymentUrl({ plan, sessionId, returnUrl, amountRub: amount });
 
       await recordPayment({
         sessionId,
         orderId: payment.orderId,
         amount: payment.amount,
         paymentType: plan,
+        bonusRunes,
         referrerSlug: session.referrer_slug ?? undefined,
         bloggerSplitPercent: bloggerSplit,
       });

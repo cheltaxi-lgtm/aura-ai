@@ -48,7 +48,7 @@ export const PERSONAL_ZOVUS_EXPLORE = [
   },
 ] as const;
 
-export type PersonalContinueKind = "tarot" | "matrix" | "natal" | "hd";
+export type PersonalContinueKind = "photo" | "tarot" | "matrix" | "natal" | "hd";
 
 export type PersonalContinueItem = {
   kind: PersonalContinueKind;
@@ -64,11 +64,23 @@ export type PersonalContinueItem = {
  */
 export function buildPersonalContinueItems(input: {
   tarotMasterName?: string | null;
+  photoReading?: { id: string; masterName?: string | null } | null;
   matrixOwned?: boolean;
   natalChartReady?: boolean;
   hdChartId?: string | null;
 }): PersonalContinueItem[] {
   const items: PersonalContinueItem[] = [];
+
+  if (input.photoReading?.id) {
+    items.push({
+      kind: "photo",
+      title: "ФотоТаро",
+      subtitle: input.photoReading.masterName
+        ? `Вернуться к разбору с ${input.photoReading.masterName}`
+        : "Открыть сохранённый разбор",
+      href: `/cabinet/readings/${encodeURIComponent(input.photoReading.id)}/print`,
+    });
+  }
 
   const master = input.tarotMasterName?.trim();
   if (master) {

@@ -592,7 +592,17 @@ export default function ChatWindow({
     !spreadCardsVisible;
 
   const userTurnCount = messages.filter((m) => m.role === "user").length;
-  const showSessionFeedback = userTurnCount >= 3 && userTurnCount % 3 === 0 && !isLoading;
+  const lastUserIndex = messages.reduce(
+    (lastIndex, message, index) => (message.role === "user" ? index : lastIndex),
+    -1
+  );
+  const showSessionFeedback =
+    userTurnCount >= 1 &&
+    lastUserIndex >= 0 &&
+    messages
+      .slice(lastUserIndex + 1)
+      .some((message) => message.role === "assistant" && message.content.trim().length > 0) &&
+    !isLoading;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1186,7 +1196,7 @@ export default function ChatWindow({
       />
       <MemoryContextReceipt sessionId={sessionId} refreshKey={messages.length} active={Boolean(sessionId) && !memoryFresh && !isLoading} />
       <MemoryMoments sessionId={sessionId} active={!readOnly && !memoryFresh} />
-      <SessionFeedback characterId={characterId} visible={showSessionFeedback && !readOnly} />
+      <SessionFeedback sessionId={sessionId} visible={showSessionFeedback && !readOnly} />
 
       {readOnly ? (
         <p className="glass-panel mb-2 px-4 py-2 text-center text-xs text-gray-400">

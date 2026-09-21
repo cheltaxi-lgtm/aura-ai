@@ -164,9 +164,9 @@ describe("retention-optin (source)", () => {
     expect(homepage).toMatch(/spreadType === ["']guest_resume["']/);
   });
 
-  it("prefs defaults: marketingEmail missing=true, weeklyDigest missing=false", () => {
+  it("prefs defaults: promotional email missing=false, weeklyDigest missing=false", () => {
     const parsed = parseNotificationPrefs({});
-    expect(parsed.marketingEmail).toBe(true);
+    expect(parsed.marketingEmail).toBe(false);
     expect(parsed.weeklyDigestEmail).toBe(false);
     expect(parsed.reminderHourMsk).toBe(9);
     expect(parsed.retentionOptInQuietUntil).toBeNull();
@@ -180,7 +180,7 @@ describe.skipIf(!hasTestDb)("retention-optin (db)", () => {
 
   it("1. shown/decline/prefs do not re-enable consent after unsubscribe", async () => {
     const { account, profile } = await seedAccount("no-implicit");
-    expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(true);
+    expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(false);
     await setAccountMarketingConsent(account.id, false);
     await createHistoryEntry({
       userId: profile.id,
@@ -334,16 +334,16 @@ describe.skipIf(!hasTestDb)("retention-optin (db)", () => {
     expect((await getRetentionOptInSnapshot(account.id, profile.id)).eligible).toBe(false);
   });
 
-  it("default ON hides the P2A prompt without unsubscribe", async () => {
-    const { account, profile } = await seedAccount("default-on");
+  it("default OFF offers the P2A prompt after the first value", async () => {
+    const { account, profile } = await seedAccount("default-off");
     await createHistoryEntry({
       userId: profile.id,
       characterName: "veronika",
       contextData: { type: "spread" },
     });
     const snap = await getRetentionOptInSnapshot(account.id, profile.id);
-    expect(snap.marketingConsent).toBe(true);
-    expect(snap.dailyCardsReminder).toBe(true);
-    expect(snap.eligible).toBe(false);
+    expect(snap.marketingConsent).toBe(false);
+    expect(snap.dailyCardsReminder).toBe(false);
+    expect(snap.eligible).toBe(true);
   });
 });

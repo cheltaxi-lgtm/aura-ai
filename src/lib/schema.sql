@@ -21,6 +21,7 @@ CREATE TABLE IF NOT EXISTS users (
   starter_runes_granted BOOLEAN NOT NULL DEFAULT FALSE,
   starter_bonus_version TEXT,
   last_daily_bonus TIMESTAMPTZ,
+  last_product_activity_at TIMESTAMPTZ,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   CONSTRAINT users_rune_balance_nonneg CHECK (rune_balance >= 0)
 );
@@ -223,6 +224,12 @@ CREATE TABLE IF NOT EXISTS spread_metrics (
   metadata JSONB
 );
 
+CREATE INDEX IF NOT EXISTS idx_spread_metrics_created
+  ON spread_metrics (created_at DESC);
+
+CREATE INDEX IF NOT EXISTS idx_spread_metrics_spread
+  ON spread_metrics (spread_id);
+
 CREATE UNIQUE INDEX IF NOT EXISTS spread_metric_once
   ON spread_metrics (user_id, event, idempotency_key)
   WHERE idempotency_key IS NOT NULL;
@@ -286,6 +293,7 @@ CREATE TABLE IF NOT EXISTS payments (
   yoomoney_operation_id TEXT UNIQUE,
   amount NUMERIC(10, 2) NOT NULL,
   payment_type TEXT NOT NULL CHECK (payment_type IN ('single', 'subscription')),
+  subscription_bonus_runes INTEGER CHECK (subscription_bonus_runes >= 0),
   status TEXT NOT NULL DEFAULT 'pending',
   referrer_slug TEXT,
   influencer_id UUID REFERENCES influencers(id),
@@ -306,15 +314,18 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   name TEXT NOT NULL,
   profile_user_id UUID REFERENCES users(id),
   is_unlimited BOOLEAN NOT NULL DEFAULT FALSE,
+  is_internal BOOLEAN NOT NULL DEFAULT FALSE,
   token_version INTEGER NOT NULL DEFAULT 0,
+  bonus_email_verification_required BOOLEAN NOT NULL DEFAULT FALSE,
+  email_verified_at TIMESTAMPTZ,
   terms_accepted_at TIMESTAMPTZ,
   age_confirmed_at TIMESTAMPTZ,
-  marketing_consent BOOLEAN NOT NULL DEFAULT TRUE,
+  marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
   marketing_consent_at TIMESTAMPTZ,
   registration_attribution JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_login_at TIMESTAMPTZ,
-  daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE,
+  daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
   CONSTRAINT user_accounts_profile_user_id_unique UNIQUE (profile_user_id)
 );
 
@@ -322,7 +333,7 @@ CREATE INDEX IF NOT EXISTS idx_user_accounts_unlimited ON user_accounts(is_unlim
   WHERE is_unlimited = TRUE;
 
 ALTER TABLE user_accounts
-  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE,
+  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
   ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS user_oauth_identities (
@@ -947,6 +958,7 @@ CREATE TABLE IF NOT EXISTS daily_readings (
   reading_text  TEXT NOT NULL,
   cards         JSONB NOT NULL DEFAULT '[]'::jsonb,
   deck_system   TEXT,
+  spread_id     TEXT DEFAULT 'triplet',
   reading_date  DATE NOT NULL DEFAULT CURRENT_DATE,
   UNIQUE(user_id, reading_date)
 );
@@ -1116,8 +1128,13 @@ CREATE INDEX IF NOT EXISTS idx_joint_readings_partner ON joint_readings (partner
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS notification_prefs JSONB NOT NULL DEFAULT '{
-    "dailyEmail": true,
-    "dailyInApp": true,
+    "dailyEmail": false,
+    "dailyInApp": false,
+    "dailyTelegram": false,
+    "bonusEmail": false,
+    "marketingEmail": false,
+    "reportReadyEmail": true,
+    "reportReadyTelegram": true,
     "reminderHourMsk": 9
   }'::jsonb;
 
@@ -1141,6 +1158,36 @@ CREATE TABLE IF NOT EXISTS reengagement_email_log (
 
 CREATE INDEX IF NOT EXISTS idx_reengagement_email_user_template
   ON reengagement_email_log (user_id, template, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS proactive_contact_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  campaign TEXT NOT NULL,
+  contact_key TEXT NOT NULL,
+  status TEXT NOT NULL DEFAULT 'reserved' CHECK (status IN ('reserved','delivered','failed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  delivered_at TIMESTAMPTZ,
+  UNIQUE (user_id, contact_key)
+);
+
+CREATE INDEX IF NOT EXISTS idx_proactive_contact_user_created
+  ON proactive_contact_log (user_id, created_at DESC)
+  WHERE status IN ('reserved','delivered');
+
+CREATE TABLE IF NOT EXISTS reading_feedback (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_id UUID NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  target_type TEXT NOT NULL CHECK (target_type IN ('session','reading')),
+  target_id UUID NOT NULL,
+  useful BOOLEAN NOT NULL,
+  reason TEXT CHECK (reason IS NULL OR reason IN ('too_general','cards_wrong','did_not_answer','too_long','technical','other')),
+  product TEXT NOT NULL DEFAULT 'tarot',
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (user_id, target_type, target_id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_reading_feedback_created ON reading_feedback(created_at DESC);
 
 -- === Natal charts (optional premium module) ===
 CREATE TABLE IF NOT EXISTS natal_charts (

@@ -6,6 +6,7 @@ import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 import { reminderUnsubscribeUrl } from "@/lib/reminder-unsubscribe";
 import { notifyBotReminder } from "@/lib/telegram/notify-bot-reminder";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
+import { finishProactiveContact, reserveProactiveContact } from "@/lib/proactive-contact-policy";
 
 /** Authenticated 3-cards-of-the-day flow (not daily energy, not guest redraw). */
 export const DAILY_CARDS_REMINDER_CTA = "/?dailyCards=1";
@@ -16,7 +17,7 @@ export const DEFAULT_REMINDER_HOUR_MSK = 9;
 export type NotificationPrefs = {
   dailyEmail: boolean;
   dailyInApp: boolean;
-  /** Daily-cards reminder via linked Telegram bot. Default on. */
+  /** Daily-cards reminder via linked Telegram bot. Explicit opt-in only. */
   dailyTelegram: boolean;
   /** Hour in Europe/Moscow (0–23). Default 9:00. */
   reminderHourMsk: number;
@@ -38,12 +39,12 @@ export type NotificationPrefs = {
 };
 
 const DEFAULT_PREFS: NotificationPrefs = {
-  dailyEmail: true,
-  dailyInApp: true,
-  dailyTelegram: true,
+  dailyEmail: false,
+  dailyInApp: false,
+  dailyTelegram: false,
   reminderHourMsk: DEFAULT_REMINDER_HOUR_MSK,
-  bonusEmail: true,
-  marketingEmail: true,
+  bonusEmail: false,
+  marketingEmail: false,
   reportReadyEmail: true,
   reportReadyTelegram: true,
   weeklyDigestEmail: false,
@@ -104,12 +105,12 @@ export function parseNotificationPrefs(raw: unknown): NotificationPrefs {
   const reminderHourMsk =
     fromMsk ?? (fromUtc != null ? (fromUtc + mskOffsetHoursUtc()) % 24 : DEFAULT_PREFS.reminderHourMsk);
   return {
-    dailyEmail: o.dailyEmail !== false,
-    dailyInApp: o.dailyInApp !== false,
-    dailyTelegram: o.dailyTelegram !== false,
+    dailyEmail: o.dailyEmail === true,
+    dailyInApp: o.dailyInApp === true,
+    dailyTelegram: o.dailyTelegram === true,
     reminderHourMsk,
-    bonusEmail: o.bonusEmail !== false,
-    marketingEmail: o.marketingEmail !== false,
+    bonusEmail: o.bonusEmail === true,
+    marketingEmail: o.marketingEmail === true,
     reportReadyEmail: o.reportReadyEmail !== false,
     reportReadyTelegram: o.reportReadyTelegram !== false,
     weeklyDigestEmail: o.weeklyDigestEmail === true,
@@ -129,13 +130,14 @@ export async function updateNotificationPrefs(
   userId: string,
   patch: Partial<NotificationPrefs>
 ): Promise<NotificationPrefs> {
-  const current = await getNotificationPrefs(userId);
-  const next = { ...current, ...patch };
-  await query(`UPDATE users SET notification_prefs = $2::jsonb WHERE id = $1`, [
-    userId,
-    JSON.stringify(next),
-  ]);
-  return next;
+  const res = await query<{ notification_prefs: unknown }>(
+    `UPDATE users
+        SET notification_prefs = COALESCE(notification_prefs, '{}'::jsonb) || $2::jsonb
+      WHERE id = $1
+      RETURNING notification_prefs`,
+    [userId, JSON.stringify(patch)]
+  );
+  return parseNotificationPrefs(res.rows[0]?.notification_prefs);
 }
 
 export type DailyCardsReminderDeliveryPlan = {
@@ -220,9 +222,9 @@ export async function getDailyReminderCandidates(hourMsk: number): Promise<
      ) pref
      WHERE ua.daily_cards_reminder = TRUE
      AND (
-       COALESCE((u.notification_prefs->>'dailyEmail')::boolean, true) = true
-       OR COALESCE((u.notification_prefs->>'dailyInApp')::boolean, true) = true
-       OR ti.telegram_user_id IS NOT NULL
+       COALESCE((u.notification_prefs->>'dailyEmail')::boolean, false) = true
+       OR COALESCE((u.notification_prefs->>'dailyInApp')::boolean, false) = true
+       OR (ti.telegram_user_id IS NOT NULL AND COALESCE((u.notification_prefs->>'dailyTelegram')::boolean, false) = true)
      )
      AND (
        pref.hour_msk = $1
@@ -311,64 +313,79 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
       alreadySentTelegram,
     });
 
-    if (plan.inApp && (await claimReminderSlot(user.userId, "in_app"))) {
-      await dispatchNotification({
-        userId: user.userId,
-        type: "daily_reading_reminder",
-        title: "Карты дня ждут вас",
-        body: "Откройте расклад на сутки — узнайте энергию сегодняшнего дня.",
-        ctaPath: DAILY_CARDS_REMINDER_CTA,
-        ctaLabel: "Открыть карты дня",
-      });
-      inApp++;
-    }
-
-    if (plan.email && user.email && (await claimReminderSlot(user.userId, "email"))) {
-      const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
-      const sent = await sendEmail({
-        to: user.email,
-        subject: "Zovus — ваш расклад на сегодня",
-        html: dailyReminderEmailHtml(user.name, siteUrl, unsub),
-        text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}\nОтключить: ${unsub}`,
-        template: "daily_reminder",
-        listUnsubscribeUrl: unsub,
-      });
-      if (sent) {
-        email++;
-      } else {
-        await query(
-          `DELETE FROM daily_reminder_log
-           WHERE user_id = $1 AND channel = 'email' AND sent_date = CURRENT_DATE`,
-          [user.userId]
-        );
+    if (!plan.inApp && !plan.email && !plan.telegram) continue;
+    const reservation = await reserveProactiveContact(
+      user.userId,
+      "daily_cards",
+      `daily_cards:${new Date().toISOString().slice(0, 10)}`
+    );
+    if (!reservation) continue;
+    let delivered = false;
+    try {
+      if (plan.inApp && (await claimReminderSlot(user.userId, "in_app"))) {
+        await dispatchNotification({
+          userId: user.userId,
+          type: "daily_reading_reminder",
+          title: "Карты дня ждут вас",
+          body: "Откройте расклад на сутки — узнайте энергию сегодняшнего дня.",
+          ctaPath: DAILY_CARDS_REMINDER_CTA,
+          ctaLabel: "Открыть карты дня",
+        });
+        inApp++;
+        delivered = true;
       }
-    }
 
-    if (
-      plan.telegram &&
-      user.telegramUserId != null &&
-      (await claimReminderSlot(user.userId, "telegram"))
-    ) {
-      const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
-      const sent = await notifyBotReminder({
-        telegramUserId: user.telegramUserId,
-        sourceProfileUserId: user.userId,
-        kind: "daily_cards",
-        title: "Карты дня ждут вас",
-        body: "Бесплатный расклад на сутки готов. Откройте, когда будет минута.",
-        ctaUrl: `${siteUrl}${DAILY_CARDS_REMINDER_CTA}`,
-        ctaLabel: "Открыть карты дня",
-        unsubscribeUrl: unsub,
-      });
-      if (sent.delivered) {
-        telegram++;
-      } else {
-        await query(
-          `DELETE FROM daily_reminder_log
-           WHERE user_id = $1 AND channel = 'telegram' AND sent_date = CURRENT_DATE`,
-          [user.userId]
-        );
+      if (plan.email && user.email && (await claimReminderSlot(user.userId, "email"))) {
+        const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
+        const sent = await sendEmail({
+          to: user.email,
+          subject: "Zovus — ваш расклад на сегодня",
+          html: dailyReminderEmailHtml(user.name, siteUrl, unsub),
+          text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}\nОтключить: ${unsub}`,
+          template: "daily_reminder",
+          listUnsubscribeUrl: unsub,
+        });
+        if (sent) {
+          email++;
+          delivered = true;
+        } else {
+          await query(
+            `DELETE FROM daily_reminder_log
+             WHERE user_id = $1 AND channel = 'email' AND sent_date = CURRENT_DATE`,
+            [user.userId]
+          );
+        }
       }
+
+      if (
+        plan.telegram &&
+        user.telegramUserId != null &&
+        (await claimReminderSlot(user.userId, "telegram"))
+      ) {
+        const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
+        const sent = await notifyBotReminder({
+          telegramUserId: user.telegramUserId,
+          sourceProfileUserId: user.userId,
+          kind: "daily_cards",
+          title: "Карты дня ждут вас",
+          body: "Бесплатный расклад на сутки готов. Откройте, когда будет минута.",
+          ctaUrl: `${siteUrl}${DAILY_CARDS_REMINDER_CTA}`,
+          ctaLabel: "Открыть карты дня",
+          unsubscribeUrl: unsub,
+        });
+        if (sent.delivered) {
+          telegram++;
+          delivered = true;
+        } else {
+          await query(
+            `DELETE FROM daily_reminder_log
+             WHERE user_id = $1 AND channel = 'telegram' AND sent_date = CURRENT_DATE`,
+            [user.userId]
+          );
+        }
+      }
+    } finally {
+      await finishProactiveContact(reservation.id, delivered);
     }
   }
 

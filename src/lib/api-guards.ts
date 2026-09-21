@@ -48,6 +48,7 @@ const IMAGE_GEN_WINDOW_MS = 60 * 60 * 1000;
 
 export const PAID_ROUTE_LIMITS = {
   reading_journey: { max: 40, windowMs: 60_000 },
+  reading_feedback: { max: 20, windowMs: 60_000 },
   reading: { max: 10, windowMs: 60_000 },
   numerolog_tool: { max: 12, windowMs: 60_000 },
   photo_reading: { max: 5, windowMs: 60_000 },
@@ -64,7 +65,7 @@ export const PAID_ROUTE_LIMITS = {
   photo_recognize_daily: { max: 24, windowMs: 86_400_000 },
   intention_spread: { max: 10, windowMs: 60_000 },
   image_generate: { max: IMAGE_GEN_LIMIT, windowMs: IMAGE_GEN_WINDOW_MS },
-  daily_bonus: { max: 1, windowMs: 86_400_000 },
+  daily_bonus: { max: 10, windowMs: 60_000 },
   rune_purchase: { max: 10, windowMs: 3_600_000 },
   /** Confirm/reconcile after YooKassa return — tighter than purchase create. */
   rune_confirm: { max: 30, windowMs: 60_000 },
@@ -135,7 +136,7 @@ export async function enforcePaidRouteRateLimit(
 ): Promise<NextResponse | null> {
   const limit = PAID_ROUTE_LIMITS[action];
   const { allowed, retryAfterSec } = await checkRateLimit(
-    rateLimitKey(action, accountId),
+    rateLimitKey(action === "daily_bonus" ? "daily_bonus_v2" : action, accountId),
     limit.max,
     limit.windowMs
   );

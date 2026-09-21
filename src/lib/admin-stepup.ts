@@ -110,6 +110,13 @@ export async function requireAdminStepUp(
 
   const steppedSub = await readStepUpSub();
   if (steppedSub && steppedSub === auth.sub) {
+    const admin = await findAdminById(auth.sub);
+    if (!admin?.is_active) {
+      return {
+        ok: false,
+        response: NextResponse.json({ error: "Forbidden" }, { status: 403 }),
+      };
+    }
     return { ok: true, auth };
   }
 

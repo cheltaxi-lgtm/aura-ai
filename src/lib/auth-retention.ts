@@ -8,7 +8,7 @@ import { localDateStringInTimezone } from "@/lib/natal/time";
 /** Product calendar for retention cohorts (matches daily-reminder Moscow day). */
 export const AUTH_RETENTION_TIMEZONE = "Europe/Moscow";
 
-export type AuthRetentionState = "d1" | "d7" | "later";
+export type AuthRetentionState = "d1" | "d2_6" | "d7" | "later";
 
 /** Whole calendar days between two YYYY-MM-DD labels (dateB − dateA). */
 export function calendarDaysBetween(dateA: string, dateB: string): number | null {
@@ -25,7 +25,7 @@ export function calendarDaysBetween(dateA: string, dateB: string): number | null
 
 /**
  * Resolve retention_return state from server-authoritative createdAt.
- * Registration day (delta 0) → null. Days 2–6 → null (not a measured bucket).
+ * Registration day (delta 0) → null. Every later day is measured.
  */
 export function resolveAuthRetentionState(input: {
   createdAt: string | Date | null | undefined;
@@ -46,6 +46,7 @@ export function resolveAuthRetentionState(input: {
   const delta = calendarDaysBetween(createdDay, today);
   if (delta == null || delta <= 0) return null;
   if (delta === 1) return "d1";
+  if (delta >= 2 && delta <= 6) return "d2_6";
   if (delta === 7) return "d7";
   if (delta > 7) return "later";
   return null;

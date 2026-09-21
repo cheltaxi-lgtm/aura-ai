@@ -3,6 +3,8 @@ import { LLM_CONTEXT_MESSAGES } from "./chat-limits";
 import { getRuneSettings } from "./rune-settings";
 import { getSetting } from "./settings";
 import { creditRunesToUser } from "./rune-service";
+import { fulfillLegacyPayment } from "./legacy-payment-fulfillment";
+import { recordProductActivity } from "./product-activity";
 import { deleteUserTripletForSession } from "./triplet-cleanup";
 import {
   profileHasGuestIntroLifetimeFlag,
@@ -617,20 +619,30 @@ export async function saveMessage(
   ownerUserId?: string | null
 ) {
   const insert = () =>
-    query(
+    query<{ id: string }>(
       `INSERT INTO chat_messages (session_id, character_id, role, content, owner_user_id)
-       VALUES ($1, $2, $3, $4, $5)`,
+       VALUES ($1, $2, $3, $4, $5)
+       RETURNING id`,
       [sessionId, characterId, role, content, ownerUserId ?? null]
     );
+  let messageId: string | undefined;
   try {
-    await insert();
+    messageId = (await insert()).rows[0]?.id;
   } catch (error) {
     if (!isPgForeignKeyViolation(error)) throw error;
     console.warn(
       `[session] saveMessage FK violation — resurrecting session ${sessionId}`
     );
     await resurrectSessionStub(sessionId, ownerUserId ?? null, characterId);
-    await insert();
+    messageId = (await insert()).rows[0]?.id;
+  }
+  if (role === "user" && ownerUserId && messageId) {
+    await recordProductActivity(
+      ownerUserId,
+      "chat_message_sent",
+      messageId,
+      { product: "tarot" }
+    ).catch((error) => console.warn("[session] product activity failed", error));
   }
 }
 
@@ -699,14 +711,16 @@ export async function recordPayment(data: {
   referrerSlug?: string;
   bloggerSplitPercent?: number;
   influencerId?: string;
+  bonusRunes: number;
 }) {
+  if (!Number.isSafeInteger(data.bonusRunes) || data.bonusRunes < 0) throw new Error("invalid_bonus_snapshot");
   const externalId = data.yukassaPaymentId ?? data.yoomoneyOperationId ?? data.orderId;
   const session = await getSession(data.sessionId);
   const userId = session?.user_id ?? null;
 
   await query(
-    `INSERT INTO payments (session_id, user_id, order_id, yukassa_payment_id, yoomoney_operation_id, amount, payment_type, status, referrer_slug, blogger_split_percent, influencer_id)
-     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10)
+    `INSERT INTO payments (session_id, user_id, order_id, yukassa_payment_id, yoomoney_operation_id, amount, payment_type, status, referrer_slug, blogger_split_percent, influencer_id, subscription_bonus_runes)
+     VALUES ($1, $2, $3, $4, $5, $6, $7, 'pending', $8, $9, $10, $11)
      ON CONFLICT (order_id) DO NOTHING`,
     [
       data.sessionId,
@@ -719,155 +733,21 @@ export async function recordPayment(data: {
       data.referrerSlug ?? null,
       data.bloggerSplitPercent ?? null,
       data.influencerId ?? null,
+      data.bonusRunes,
     ]
   );
 }
 
-export async function completePayment(
-  yukassaPaymentId: string,
-  verifiedAmountRub: number
-) {
-  if (!Number.isFinite(verifiedAmountRub)) {
-    console.warn("[completePayment] verifiedAmountRub required", yukassaPaymentId);
-    return null;
-  }
-
-  // Amount must match before flipping status — otherwise retries never unlock.
-  const { rows } = await query<{
-    session_id: string;
-    payment_type: "single" | "subscription";
-    influencer_id: string | null;
-    amount: string;
-    blogger_split_percent: number | null;
-  }>(
-    `UPDATE payments SET status = 'succeeded', updated_at = NOW()
-     WHERE yukassa_payment_id = $1 AND status = 'pending'
-       AND ABS(amount - $2::numeric) < 0.01
-     RETURNING session_id, payment_type, influencer_id, amount::text, blogger_split_percent`,
-    [yukassaPaymentId, verifiedAmountRub]
-  );
-  const payment = rows[0];
-  if (!payment) {
-    const pending = await query<{ amount: string }>(
-      `SELECT amount::text FROM payments
-       WHERE yukassa_payment_id = $1 AND status = 'pending' LIMIT 1`,
-      [yukassaPaymentId]
-    );
-    if (pending.rows[0]) {
-      console.warn(
-        "[completePayment] amount mismatch",
-        yukassaPaymentId,
-        "expected",
-        pending.rows[0].amount,
-        "verified",
-        verifiedAmountRub
-      );
-    }
-    return null;
-  }
-
-  if (payment.payment_type === "subscription") {
-    await unlockSubscription(payment.session_id, 30, `sub-bonus:${yukassaPaymentId}`);
-  } else {
-    await unlockSingleSession(payment.session_id);
-  }
-  return payment;
+export async function completePayment(yukassaPaymentId: string, verifiedAmountRub: number) {
+  return fulfillLegacyPayment({ providerId: yukassaPaymentId }, verifiedAmountRub);
 }
-
-/** Prefer completePayment(yukassaId, amount). Order-id path also requires amount binding. */
-export async function completePaymentByOrderId(
-  orderId: string,
-  verifiedAmountRub: number
-) {
-  if (!Number.isFinite(verifiedAmountRub)) {
-    console.warn("[completePaymentByOrderId] verifiedAmountRub required", orderId);
-    return null;
-  }
-
-  const { rows } = await query<{
-    session_id: string;
-    payment_type: "single" | "subscription";
-    yukassa_payment_id: string | null;
-  }>(
-    `UPDATE payments SET status = 'succeeded', updated_at = NOW()
-     WHERE order_id = $1 AND status = 'pending'
-       AND ABS(amount - $2::numeric) < 0.01
-     RETURNING session_id, payment_type, yukassa_payment_id`,
-    [orderId, verifiedAmountRub]
-  );
-  const payment = rows[0];
-  if (!payment) return null;
-  const bonusKey = payment.yukassa_payment_id
-    ? `sub-bonus:${payment.yukassa_payment_id}`
-    : `sub-bonus:order:${orderId}`;
-  if (payment.payment_type === "subscription") {
-    await unlockSubscription(payment.session_id, 30, bonusKey);
-  } else {
-    await unlockSingleSession(payment.session_id);
-  }
-  return payment;
+export async function completePaymentByOrderId(orderId: string, verifiedAmountRub: number) {
+  return fulfillLegacyPayment({ orderId }, verifiedAmountRub);
 }
-
 export async function completeYoomoneyPayment(data: {
-  operationId: string;
-  sessionId: string;
-  plan: "single" | "subscription";
-  amount: number;
-}): Promise<{
-  influencer_id: string | null;
-  amount: string;
-  blogger_split_percent: number | null;
-} | null> {
-  const { rows } = await query<{
-    id: string;
-    payment_type: "single" | "subscription";
-    influencer_id: string | null;
-    amount: string;
-    blogger_split_percent: number | null;
-  }>(
-    `UPDATE payments
-     SET status = 'succeeded',
-         yoomoney_operation_id = $2,
-         updated_at = NOW()
-     WHERE session_id = $1
-       AND status = 'pending'
-       AND payment_type = $3
-       AND ABS(amount - $4::numeric) < 0.01
-       AND (yoomoney_operation_id IS NULL OR yoomoney_operation_id = $2)
-     RETURNING id, payment_type, influencer_id, amount::text, blogger_split_percent`,
-    [data.sessionId, data.operationId, data.plan, data.amount]
-  );
-
-  const payment = rows[0];
-  if (!payment) {
-    console.warn(
-      "[completeYoomoneyPayment] rejected",
-      data.sessionId,
-      data.plan,
-      data.amount,
-      data.operationId
-    );
-    return null;
-  }
-
-  if (payment.payment_type === "subscription") {
-    await unlockSubscription(data.sessionId, 30, `sub-bonus:ym:${data.operationId}`);
-  } else {
-    await unlockSingleSession(data.sessionId);
-  }
-
-  await query(
-    `UPDATE history SET is_paid = TRUE WHERE user_id IN (
-       SELECT user_id FROM sessions WHERE id = $1 AND user_id IS NOT NULL
-     )`,
-    [data.sessionId]
-  );
-
-  return {
-    influencer_id: payment.influencer_id,
-    amount: payment.amount,
-    blogger_split_percent: payment.blogger_split_percent,
-  };
+  operationId: string; sessionId: string; plan: "single" | "subscription"; amount: number; orderId?: string;
+}) {
+  return fulfillLegacyPayment({ sessionId: data.sessionId, plan: data.plan, operationId: data.operationId, orderId: data.orderId }, data.amount);
 }
 
 /** Mark other active consultations for this master as completed (or remove empty stubs). */

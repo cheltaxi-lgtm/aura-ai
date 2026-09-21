@@ -1,5 +1,5 @@
 /**
- * Default-on reminders: collect a real mailbox (account / Yandex / VK / OAuth)
+ * Explicitly enabled reminders: collect a real mailbox (account / Yandex / VK / OAuth)
  * and allow signed one-click unsubscribe without touching another account.
  */
 import { readFileSync } from "node:fs";
@@ -9,6 +9,7 @@ import {
   createUser,
   getAccountConsentSnapshot,
   getAccountDailyCardsReminder,
+  setAccountDailyCardsReminder,
   setAccountMarketingConsent,
 } from "@/lib/accounts";
 import {
@@ -62,6 +63,8 @@ async function seedProfile(email: string) {
     reminderHourMsk: 9,
     marketingEmail: true,
   });
+  await setAccountDailyCardsReminder(account.id, true);
+  await setAccountMarketingConsent(account.id, true);
   return { account, profile };
 }
 
@@ -133,7 +136,7 @@ describe("reminder-contacts-unsubscribe (unit)", () => {
 
   it("daily telegram channel has its own pref, cabinet toggle and PATCH field", () => {
     const svc = read("src/lib/daily-reminder-service.ts");
-    expect(svc).toMatch(/dailyTelegram: o\.dailyTelegram !== false/);
+    expect(svc).toMatch(/dailyTelegram: o\.dailyTelegram === true/);
     expect(svc).toMatch(/input\.dailyTelegram === true && input\.hasTelegram/);
     const route = read("src/app/api/profile/notifications/route.ts");
     expect(route).toMatch(/patch\.dailyTelegram = body\.dailyTelegram/);
@@ -154,12 +157,14 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
     sendEmailMock.mockResolvedValue(true);
   });
 
-  it("createUser defaults daily reminder and marketing consent ON", async () => {
-    const { account } = await seedProfile(
-      `def-on-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`
+  it("createUser defaults daily reminder and marketing consent OFF", async () => {
+    const account = await createUser(
+      `def-off-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`,
+      "hash",
+      "Контакт"
     );
-    expect(await getAccountDailyCardsReminder(account.id)).toBe(true);
-    expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(true);
+    expect(await getAccountDailyCardsReminder(account.id)).toBe(false);
+    expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(false);
   });
 
   it("synthetic account email is not mailed; VK provider_email is", async () => {

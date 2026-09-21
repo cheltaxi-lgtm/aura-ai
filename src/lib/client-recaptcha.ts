@@ -16,7 +16,7 @@ export async function attachRecaptchaToken(
   scope: RecaptchaScope,
   features: PlatformFeatures
 ): Promise<string | null> {
-  if (shouldUseAppShellClient()) return null;
+  if (shouldUseAppShellClient() && scope !== "register" && scope !== "expertRegister") return null;
   if (!features.recaptcha.masterEnabled || !features.recaptcha.scopes[scope]) return null;
 
   const token = await fetchRecaptchaToken(scope);

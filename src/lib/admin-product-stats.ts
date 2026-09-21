@@ -80,6 +80,16 @@ export type ProductJobRow = {
   completed30d: number;
 };
 
+export type RetentionStats = {
+  registered30d: number;
+  d1Eligible: number;
+  d1Returned: number;
+  r7Eligible: number;
+  r7Returned: number;
+  usefulFeedback30d: number;
+  notUsefulFeedback30d: number;
+};
+
 const SECTION_ACTIONS: { id: ProductSectionId; label: string; actions: RuneActionType[] }[] = [
   { id: "aura", label: "Аура по фото", actions: ["AURA_READING"] },
   { id: "palm", label: "Гадание по ладони", actions: ["PALM_READING"] },
@@ -208,6 +218,7 @@ export async function getProductSectionStats(): Promise<{
   daily: ProductDailyPoint[];
   history: ProductHistoryRow[];
   jobs: ProductJobRow[];
+  retention: RetentionStats;
   totals: {
     spend7d: number;
     spend30d: number;
@@ -222,7 +233,7 @@ export async function getProductSectionStats(): Promise<{
     jobsPending: number;
   };
 }> {
-  const [spend, users, repeats, uniquePayers, daily, jobs, auraSnaps, palmSnaps, history] = await Promise.all([
+  const [spend, users, repeats, uniquePayers, daily, jobs, auraSnaps, palmSnaps, history, retention, feedback] = await Promise.all([
     query<{
       action_type: string;
       type: string;
@@ -398,6 +409,64 @@ export async function getProductSectionStats(): Promise<{
         AND context_data->>'type' <> ''
       GROUP BY 1
     `).catch(() => ({ rows: [] as { typ: string; n7: string; n30: string; n90: string; nall: string }[] })),
+    query<{
+      registered30d: string;
+      d1_eligible: string;
+      d1_returned: string;
+      r7_eligible: string;
+      r7_returned: string;
+    }>(`
+      WITH accounts AS (
+        SELECT ua.profile_user_id AS user_id, ua.created_at AS registered_at
+        FROM user_accounts ua
+        WHERE ua.profile_user_id IS NOT NULL
+          AND ua.is_internal=FALSE
+          AND ua.is_unlimited=FALSE
+          AND ua.email NOT ILIKE '%@example.%'
+          AND ua.email NOT ILIKE '%+test@%'
+      ), activity AS (
+        SELECT user_id,created_at FROM spread_metrics
+        WHERE source='product_activity' AND user_id IS NOT NULL
+        UNION ALL
+        SELECT COALESCE(m.owner_user_id,s.user_id),m.created_at FROM chat_messages m
+        JOIN sessions s ON s.id=m.session_id
+        WHERE m.role='user' AND COALESCE(m.owner_user_id,s.user_id) IS NOT NULL
+        UNION ALL
+        SELECT user_id,created_at FROM history WHERE user_id IS NOT NULL
+        UNION ALL
+        SELECT user_id,created_at FROM async_jobs
+        WHERE user_id IS NOT NULL AND kind NOT IN ('image_generate','tarot_atmosphere','joint_combined')
+        UNION ALL
+        SELECT user_id,created_at FROM rune_transactions
+        WHERE user_id IS NOT NULL AND type='spend' AND action_type IS NOT NULL
+        UNION ALL
+        SELECT user_id,created_at FROM diary_entries WHERE user_id IS NOT NULL
+      )
+      SELECT
+        COUNT(*) FILTER (WHERE registered_at>=NOW()-INTERVAL '30 days')::text AS "registered30d",
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '1 day' AND registered_at>=NOW()-INTERVAL '31 days')::text AS d1_eligible,
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '1 day' AND registered_at>=NOW()-INTERVAL '31 days' AND EXISTS(
+          SELECT 1 FROM activity a WHERE a.user_id=accounts.user_id AND a.created_at>=registered_at+INTERVAL '1 day' AND a.created_at<registered_at+INTERVAL '2 days'
+        ))::text AS d1_returned,
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '7 days' AND registered_at>=NOW()-INTERVAL '37 days')::text AS r7_eligible,
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '7 days' AND registered_at>=NOW()-INTERVAL '37 days' AND EXISTS(
+          SELECT 1 FROM activity a WHERE a.user_id=accounts.user_id AND a.created_at>=registered_at+INTERVAL '1 day' AND a.created_at<registered_at+INTERVAL '8 days'
+        ))::text AS r7_returned
+      FROM accounts
+    `),
+    query<{ useful: string; not_useful: string }>(`
+      SELECT COUNT(*) FILTER (WHERE useful)::text AS useful,
+             COUNT(*) FILTER (WHERE NOT useful)::text AS not_useful
+      FROM reading_feedback
+      WHERE created_at>=NOW()-INTERVAL '30 days'
+        AND NOT EXISTS (
+          SELECT 1 FROM user_accounts ua
+          WHERE ua.profile_user_id=reading_feedback.user_id AND (
+            ua.is_internal=TRUE OR ua.is_unlimited=TRUE
+            OR ua.email ILIKE '%@example.%' OR ua.email ILIKE '%+test@%'
+          )
+        )
+    `),
   ]);
 
   const byId = new Map<ProductSectionId, ProductSectionStats>();
@@ -561,6 +630,8 @@ export async function getProductSectionStats(): Promise<{
   }));
 
   const users30d = n(uniquePayers.rows[0]?.users30d);
+  const retentionRow = retention.rows[0];
+  const feedbackRow = feedback.rows[0];
 
   return {
     sections,
@@ -568,6 +639,15 @@ export async function getProductSectionStats(): Promise<{
     daily: dailyPoints,
     history: historyRows,
     jobs: jobRows.sort((a, b) => b.completed30d - a.completed30d),
+    retention: {
+      registered30d: n(retentionRow?.registered30d),
+      d1Eligible: n(retentionRow?.d1_eligible),
+      d1Returned: n(retentionRow?.d1_returned),
+      r7Eligible: n(retentionRow?.r7_eligible),
+      r7Returned: n(retentionRow?.r7_returned),
+      usefulFeedback30d: n(feedbackRow?.useful),
+      notUsefulFeedback30d: n(feedbackRow?.not_useful),
+    },
     totals: {
       spend7d: sectionsAll.reduce((sum, s) => sum + s.spend7d, 0),
       spend30d: spend30Total,

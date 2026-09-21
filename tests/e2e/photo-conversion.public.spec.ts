@@ -153,6 +153,34 @@ test("manual entry lets a guest choose cards before authentication and resumes a
   await expect(page.getByRole("button", { name: /Назад/, exact: true })).toBeVisible();
 });
 
+test("a new saved photo result stays visible and opens the exact history record", async ({ page }) => {
+  const f = await fixture(page);
+  f.login();
+  const historyId = "22222222-2222-4222-8222-222222222222";
+  await page.route("**/api/photo-reading/stream", route => route.fulfill({ json: {
+    analysis: "**Шут** — перед тобой новый путь.\n\n## Простыми словами\n\nСделай первый небольшой шаг.",
+    cached: false,
+    saved: true,
+    historyId,
+    detectedCards: ["Шут"],
+    runeBalance: 270,
+  } }));
+  await page.goto("/?photo=1");
+  const dialog = page.getByRole("dialog", { name: /фото-расклад/ });
+  await dialog.locator('input[type="file"]').last().setInputFiles("public/decks/tarot-veronika/the-fool.webp");
+  await dialog.getByRole("button", { name: /Начать фото-расклад/ }).click();
+  await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
+
+  await expect(dialog.getByText("Сделай первый небольшой шаг.")).toBeVisible();
+  await expect(dialog.getByText("Этот разбор был полезен?")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Открыть", exact: true })).toHaveAttribute(
+    "href",
+    `/cabinet/readings/${historyId}/print`
+  );
+  await expect(dialog.getByRole("button", { name: "Перейти в чат", exact: true })).toBeVisible();
+  expect(f.calls.some((call) => call.includes("/api/photo-reading/sync-session"))).toBe(false);
+});
+
 test("a realistic phone photo survives the complete email registration route", async ({ page }) => {
   await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
