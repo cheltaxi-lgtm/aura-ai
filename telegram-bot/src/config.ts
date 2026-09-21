@@ -28,6 +28,21 @@ function int(name: string, fallback: number): number {
   return Number.isFinite(n) ? n : fallback;
 }
 
+function optionalHttpUrl(name: string): string {
+  const value = process.env[name]?.trim();
+  if (!value) return "";
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    throw new Error(`Invalid URL in ${name}`);
+  }
+  if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+    throw new Error(`${name} must use http:// or https://`);
+  }
+  return parsed.toString();
+}
+
 const dataDir = resolve(rootDir, process.env.BOT_DATA_DIR?.trim() || "data");
 mkdirSync(dataDir, { recursive: true });
 mkdirSync(resolve(dataDir, "collage-cache"), { recursive: true });
@@ -48,6 +63,7 @@ export const botConfig = {
   backupDir: resolve(dataDir, "backups"),
   lockPath: resolve(dataDir, "bot.lock"),
   token: required("TELEGRAM_BOT_TOKEN"),
+  telegramHttpsProxy: optionalHttpUrl("TELEGRAM_HTTPS_PROXY"),
   siteUrl: (process.env.ZOVUS_SITE_URL?.trim() || "https://zovus.ru").replace(/\/$/, ""),
   ctaTargetUrl: (process.env.BOT_CTA_TARGET_URL?.trim() || "https://zovus.ru").replace(/\/$/, ""),
   publicBaseUrl: (process.env.BOT_PUBLIC_BASE_URL?.trim() || "").replace(/\/$/, ""),

@@ -8,7 +8,7 @@ process.env.BOT_DATA_DIR = mkdtempSync(join(tmpdir(), 'zovus-polling-test-'));
 process.env.TELEGRAM_BOT_TOKEN = '123456:offline';
 const { getDb, migrate } = await import('../../db/client.js');
 const { ensureCriticalColumns, migrateUp } = await import('../../db/migrate-runner.js');
-const { acceptUpdates, pollingOffset, preparePollingInbox, runDurablePolling } = await import('../polling.js');
+const { acceptUpdates, pollingOffset, pollingRetryDelayMs, preparePollingInbox, runDurablePolling } = await import('../polling.js');
 const { claimUpdate, completeUpdate, markUpdateIrreversible, deleteUserData } = await import('../../db/repos.js');
 const { userActivity, hasActiveUserOperation } = await import('../../middleware/activity.js');
 
@@ -27,6 +27,14 @@ async function until(fn: () => boolean) {
   for (let i = 0; i < 200; i++) { if (fn()) return; await delay(10); }
   assert.fail('condition timed out');
 }
+
+assert.equal(pollingRetryDelayMs(1), 500);
+assert.equal(pollingRetryDelayMs(2), 1000);
+assert.equal(pollingRetryDelayMs(4), 4000);
+assert.equal(
+  pollingRetryDelayMs(1, "Call to 'getUpdates' failed! (409: Conflict)"),
+  17_000,
+);
 
 // B arrives through a later fetch while A remains blocked; same-user A2 waits.
 reset();

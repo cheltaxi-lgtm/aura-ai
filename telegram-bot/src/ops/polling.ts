@@ -17,6 +17,14 @@ export interface PollingTransport {
   handle(update: Update): Promise<void>;
 }
 
+export function pollingRetryDelayMs(failureCount: number, message = ""): number {
+  // A stale long poll can remain registered briefly after a broken connection.
+  // Waiting beyond the 15s server timeout prevents a self-conflict retry loop.
+  if (message.includes("409: Conflict")) return 17_000;
+  const attempt = Math.max(1, Math.trunc(failureCount) || 1);
+  return Math.min(4_000, 500 * (2 ** Math.min(3, attempt - 1)));
+}
+
 /** Durable acceptance precedes acknowledgement to Telegram. */
 export function preparePollingInbox(): void {
   getDb().exec(`
@@ -81,6 +89,7 @@ export async function runDurablePolling(
   let fetchFailed = false;
   let fatal: unknown;
   let lastMaintenance = 0;
+  let consecutiveFetchFailures = 0;
   const fetchLoop = (async () => {
     while (!runSignal.aborted && !fetchFailed) {
       if (Date.now() - lastMaintenance > 60_000) {
@@ -98,12 +107,15 @@ export async function runDurablePolling(
       try {
         updates = await transport.fetch(pollingOffset(), runSignal);
         setRuntimeHealth({ lastTransportSuccessAt: Date.now() });
+        consecutiveFetchFailures = 0;
       }
       catch (err) {
         if (runSignal.aborted) break;
         setRuntimeHealth({ lastTransportErrorAt: Date.now() });
-        console.error('[polling] fetch failed', err instanceof Error ? err.message : 'transport error');
-        await delay(1000);
+        consecutiveFetchFailures += 1;
+        const message = err instanceof Error ? err.message : 'transport error';
+        console.error(`[polling] fetch failed at ${new Date().toISOString()} attempt=${consecutiveFetchFailures}`, message);
+        await delay(pollingRetryDelayMs(consecutiveFetchFailures, message));
         continue;
       }
       // Persistence failure is fatal: never acknowledge a batch we could not save.
