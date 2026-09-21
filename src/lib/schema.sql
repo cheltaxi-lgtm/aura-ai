@@ -26,6 +26,10 @@ CREATE TABLE IF NOT EXISTS users (
   CONSTRAINT users_rune_balance_nonneg CHECK (rune_balance >= 0)
 );
 
+CREATE INDEX IF NOT EXISTS idx_users_last_product_activity
+  ON users (last_product_activity_at DESC)
+  WHERE last_product_activity_at IS NOT NULL;
+
 -- === Durable async work ===
 CREATE TABLE IF NOT EXISTS async_jobs (
   id            UUID PRIMARY KEY DEFAULT gen_random_uuid(),
@@ -1135,6 +1139,7 @@ ALTER TABLE users
     "marketingEmail": false,
     "reportReadyEmail": true,
     "reportReadyTelegram": true,
+    "weeklyDigestEmail": false,
     "reminderHourMsk": 9
   }'::jsonb;
 
