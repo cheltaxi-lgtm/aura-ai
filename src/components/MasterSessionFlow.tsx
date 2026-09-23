@@ -1617,7 +1617,7 @@ export default function MasterSessionFlow({
                   Какой расклад взять?
                 </h2>
                 <p className="mt-1 text-center text-sm text-white/60">
-                  Карты дня уже выпали — продолжите с ними или вытащите новые под тему
+                  Сохранённые карты уже открыты — продолжите с ними или вытащите новые под тему
                 </p>
                 <div className="mt-6 grid gap-4 sm:grid-cols-2">
                   <button
@@ -1633,7 +1633,7 @@ export default function MasterSessionFlow({
                       <Sunrise size={24} strokeWidth={1.5} />
                     </span>
                     <p className="mt-2 font-display text-base font-bold text-white">
-                      Карты дня
+                      Сохранённые карты
                     </p>
                     <p className="mt-1 text-xs text-white/60">
                       Быстрый старт — без нового расклада

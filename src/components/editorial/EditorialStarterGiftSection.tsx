@@ -108,7 +108,7 @@ export default function EditorialStarterGiftSection() {
             <p className="editorial-starter-gift__amount">При первой регистрации — {starter} ᚢ</p>
             <ul className="editorial-starter-gift__points">
               <li>Сохранённые разборы — перечитывайте, когда захотите</li>
-              <li>3 карты дня бесплатно раз в сутки</li>
+              <li>Расклад на сутки бесплатно раз в сутки</li>
               <li>{starter} ᚢ на дополнительные разборы — цена видна до начала</li>
             </ul>
             <div className="editorial-starter-pack__actions">

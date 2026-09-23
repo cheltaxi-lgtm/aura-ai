@@ -32,7 +32,7 @@ describe("daily-cards-reminder-optin (source)", () => {
 
   it("Personal Zovus toggle is server-backed, no localStorage/permission", () => {
     const home = read("src/components/editorial/PersonalZovusHome.tsx");
-    expect(home).toMatch(/Напоминать о 3 картах дня/);
+    expect(home).toMatch(/Напоминать о раскладе на сутки/);
     expect(home).toMatch(/\/api\/auth\/daily-cards-reminder/);
     expect(home).toMatch(/trackReminderOpt/);
     expect(home).not.toMatch(/localStorage/);
@@ -42,7 +42,7 @@ describe("daily-cards-reminder-optin (source)", () => {
 
   it("guest homepage does not show the reminder toggle", () => {
     const landing = read("src/components/AuraSellingLanding.tsx");
-    expect(landing).not.toMatch(/Напоминать о 3 картах дня/);
+    expect(landing).not.toMatch(/Напоминать о раскладе на сутки/);
     expect(landing).not.toMatch(/daily-cards-reminder/);
   });
 
@@ -74,7 +74,7 @@ describe("daily-cards-reminder-optin (source)", () => {
     const reminder = read("src/lib/daily-reminder-service.ts");
     expect(reminder).toMatch(/ua\.daily_cards_reminder = TRUE/);
     expect(reminder).toMatch(/dailyCardsReminder/);
-    expect(reminder).toMatch(/checkTripletCooldown/);
+    expect(reminder).toMatch(/isDailyReadingUsedToday/);
   });
 
   it("schema and latest migration default promotional reminders to OFF", () => {

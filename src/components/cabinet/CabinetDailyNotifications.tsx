@@ -91,9 +91,9 @@ export default function CabinetDailyNotifications() {
       </div>
 
       <div className="mt-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-white/35">Карты дня</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-white/35">Расклад на сутки</p>
         <p className="mt-0.5 text-xs text-white/40">
-          Отдельное согласие на напоминание о картах дня включается на главной.
+          Отдельное согласие на напоминание о раскладе на сутки включается на главной.
           Здесь только каналы доставки.
         </p>
         <div className="mt-3 space-y-3">
@@ -117,7 +117,7 @@ export default function CabinetDailyNotifications() {
               className="rounded border-white/20"
             />
             <Mail className="h-4 w-4 text-white/40" />
-            Письмо о картах дня
+            Письмо о раскладе на сутки
           </label>
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
@@ -128,7 +128,7 @@ export default function CabinetDailyNotifications() {
               className="rounded border-white/20"
             />
             <Bell className="h-4 w-4 text-white/40" />
-            Сообщение в Telegram о картах дня
+            Сообщение в Telegram о раскладе на сутки
           </label>
           <label className="block text-xs text-white/45">
             Час напоминания (МСК)

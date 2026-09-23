@@ -96,6 +96,20 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null 
       return route.fulfill({ json: { ok: true, homeRecapHiddenKey } });
     }
 
+    if (path === "/api/daily-reading" && request.method() === "GET") {
+      return route.fulfill({
+        json: {
+          drawn: true,
+          text: "Ваш день раскрывается спокойно: утром выберите главное, днём сохраните фокус, вечером подведите итог.",
+          cards: exactCards,
+          system: "tarot-veronika",
+          spreadId: "triplet",
+          locked: false,
+          purged: false,
+        },
+      });
+    }
+
     if (path === "/api/tarot/daily" && request.method() === "POST") {
       const body = request.postDataJSON() as { cards?: typeof exactCards };
       const cards = body.cards ?? exactCards;
@@ -159,9 +173,10 @@ test.describe("daily artifact + landing copy", () => {
     await page.goto("/?app=1");
     await expect(page.getByText(/не путать со стартовым раскладом/i)).toHaveCount(0);
     await expect(page.getByText(/^После входа$/i)).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: /3 карты дня/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Расклад на сутки — каждый день/i })).toBeVisible();
+    await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20_000 });
     await expect(
-      page.getByRole("button", { name: /Открыть первые 3 карты/i }).first()
+      page.getByRole("button", { name: /Первый расклад по вопросу/i }).first()
     ).toBeVisible();
     // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).
     const starter = page.locator(".editorial-starter-gift");
@@ -171,14 +186,19 @@ test.describe("daily artifact + landing copy", () => {
     await expect(starter.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.locator("#карты-дня").screenshot({
+    const dailySection = page.locator("#карты-дня");
+    await dailySection.scrollIntoViewIfNeeded();
+    await expect(dailySection).toHaveClass(/salon-reveal--in/);
+    await expect(dailySection).toHaveCSS("opacity", "1");
+    await expect(dailySection.locator("h2")).toHaveCSS("opacity", "1");
+    await dailySection.screenshot({
       path: testInfo.outputPath("daily-guest-desktop.png"),
     });
     await starter.screenshot({
       path: testInfo.outputPath("starter-guest-desktop.png"),
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.locator("#карты-дня").screenshot({
+    await dailySection.screenshot({
       path: testInfo.outputPath("daily-guest-mobile.png"),
     });
     await starter.screenshot({
@@ -188,7 +208,7 @@ test.describe("daily artifact + landing copy", () => {
 
   test("Scenario daily guest: before-cards CTA opens guest picker", async ({ page }) => {
     await page.goto("/?app=1");
-    const starterCta = page.locator(".editorial-daily-ritual").getByRole("button", { name: "Открыть первые 3 карты" });
+    const starterCta = page.locator(".editorial-daily-ritual").getByRole("button", { name: "Первый расклад по вопросу" });
     await expect(starterCta).toBeVisible();
     await starterCta.scrollIntoViewIfNeeded();
     await starterCta.click();
@@ -204,31 +224,13 @@ test.describe("daily artifact + landing copy", () => {
     });
     await expect(page.getByRole("button", { name: "Расклад Таро Продолжить с Вероника" })).toBeVisible();
 
-    const viewBtn = page.getByRole("banner").getByRole("button", { name: "Карты дня", exact: true });
+    const viewBtn = page.getByRole("banner").getByRole("button", { name: "Расклад на сутки", exact: true });
     await expect(viewBtn).toBeVisible();
-    const exactHistoryRequest = page.waitForRequest((request) => {
-      const url = new URL(request.url());
-      return url.pathname === "/api/chat/history" && url.searchParams.get("archiveSessionId") === sessionId;
-    });
     await viewBtn.click();
-    // Only the target artifact after the click counts; boot-time session requests do not.
-    await exactHistoryRequest;
-
-    const stored = await page.evaluate(() => {
-      const raw = localStorage.getItem("aura_profile");
-      try {
-        return raw
-          ? (JSON.parse(raw) as { tarotCards?: Array<{ name: string; reversed?: boolean }> })
-          : null;
-      } catch {
-        return null;
-      }
-    });
-    expect(stored?.tarotCards?.length).toBe(3);
-    expect(stored?.tarotCards?.map((c) => c.name)).toEqual(exactCards.map((c) => c.name));
-    expect(stored?.tarotCards?.map((c) => Boolean(c.reversed))).toEqual(
-      exactCards.map((c) => c.reversed)
-    );
+    const dialog = page.getByRole("dialog", { name: "Расклад на сутки" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Ваш день раскрывается спокойно");
+    for (const card of exactCards) await expect(dialog).toContainText(card.name);
   });
 
   test("Scenario B: a server-hidden recap stays absent after reload", async ({ page }) => {

@@ -44,7 +44,7 @@ export const NAV = {
   memory: "🧠 Память",
   support: "✉️ Поддержка",
   spread: "🔮 Расклад",
-  day: "🃏 Карта дня",
+  day: "🃏 Расклад на сутки",
   history: "📚 История",
   profile: "👤 Профиль",
   runes: "🪙 Руны",

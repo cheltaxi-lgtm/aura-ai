@@ -125,7 +125,7 @@ const SECTION_ACTIONS: { id: ProductSectionId; label: string; actions: RuneActio
     ],
   },
   { id: "joint", label: "Совместные расклады", actions: ["JOINT_READING"] },
-  { id: "daily", label: "Карта дня", actions: ["DAILY_AMULET", "DAILY_EXTENDED"] },
+  { id: "daily", label: "Расклад на сутки", actions: ["DAILY_AMULET", "DAILY_EXTENDED"] },
 ];
 
 const JOB_KINDS: Record<ProductSectionId, string[]> = {

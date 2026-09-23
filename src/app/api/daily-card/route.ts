@@ -1,111 +1,17 @@
-import { NextRequest, NextResponse } from "next/server";
-
-import { DAILY_CARDS } from "@/lib/characters";
-import { completeChat } from "@/lib/llm";
-import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { NextResponse } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
-import { enforceDailyCardRateLimit } from "@/lib/api-guards";
-import { stripControlChars, resolveApiCharacterId } from "@/lib/chat-sanitize";
-import { stripStageDirections } from "@/lib/chat-reply-sanitize";
-import { buildSystemPrompt, isCharacterKey } from "@/lib/prompts";
-import { getProfileUserIdForAccount } from "@/lib/accounts";
-import { getUserById } from "@/lib/users";
-import { genderLabelOrUndefined } from "@/lib/russian-name-gender";
 
-export async function POST(request: NextRequest) {
-  const auth = await requireUserAuth();
-  if (!auth) {
+/** Compatibility response for clients that still request the retired single-card product. */
+export async function POST() {
+  if (!(await requireUserAuth())) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
-
-  const rateLimited = await enforceDailyCardRateLimit(auth.sub);
-  if (rateLimited) return rateLimited;
-
-  const body = await request.json().catch(() => ({}));
-  const rawName = typeof body.cardName === "string" ? stripControlChars(body.cardName).trim() : "";
-  const card = DAILY_CARDS.find((c) => c.name === rawName) ?? DAILY_CARDS[0];
-
-  const rawMaster = typeof body.characterId === "string" ? body.characterId : "veronika";
-  const resolved = await resolveApiCharacterId(rawMaster);
-  const characterKey = isCharacterKey(resolved) ? resolved : "veronika";
-
-  const profileUserId = await getProfileUserIdForAccount(auth.sub).catch(() => null);
-  const profile = profileUserId ? await getUserById(profileUserId).catch(() => null) : null;
-
-  const userName =
-    typeof body.userName === "string" && body.userName.trim()
-      ? stripControlChars(body.userName).trim().slice(0, 80)
-      : profile?.name?.trim() || "странник";
-
-  const gender =
-    genderLabelOrUndefined(
-      typeof body.gender === "string" ? body.gender : profile?.gender
-    ) ?? undefined;
-
-  try {
-    const personaPrompt = buildSystemPrompt(
-      characterKey,
-      {
-        name: userName,
-        gender,
-        zodiac:
-          typeof body.zodiac === "string"
-            ? body.zodiac.slice(0, 40)
-            : profile?.zodiac ?? "не указан",
-        birthDate:
-          typeof body.birthDate === "string"
-            ? body.birthDate.slice(0, 20)
-            : profile?.birth_date ?? "не указана",
-        cards: [card.name],
-        isPaid: true,
-      },
-      { mode: "chat", lastUserMessage: "карта дня" }
-    );
-
-    const systemPrompt = await wrapSystemPrompt(
-      `${personaPrompt}
-
-РЕЖИМ КАРТЫ ДНЯ:
-Дай короткое предсказание на сегодня (2–4 предложения) по одной выпавшей карте.
-Сохраняй стиль мастера. Прямо и честно — если карта предупреждает, скажи это.
-Только текст предсказания — без ремарок в скобках и без описания голоса.`
-    );
-
-    const prediction = await completeChat({
-      messages: [
-        { role: "system", content: systemPrompt },
-        {
-          role: "user",
-          content: `Карта дня: «${card.name}». Базовое значение: ${card.meaning}. Дай предсказание на сегодня.`,
-        },
-      ],
-      maxTokens: 220,
-      temperature: 0.88,
-      isPaid: false,
-    });
-
-    const text = stripStageDirections(prediction ?? "").trim();
-    if (!text) {
-      return NextResponse.json(
-        {
-          error: "Не удалось получить предсказание. Попробуйте ещё раз.",
-          code: "generation_failed",
-        },
-        { status: 502 }
-      );
-    }
-    return NextResponse.json({
-      prediction: text,
-      characterId: characterKey,
-      cardName: card.name,
-    });
-  } catch {
-    return NextResponse.json(
-      {
-        error: "Не удалось получить предсказание. Попробуйте ещё раз.",
-        code: "generation_failed",
-      },
-      { status: 502 }
-    );
-  }
+  return NextResponse.json(
+    {
+      error: "daily_card_replaced",
+      message: "Откройте расклад на сутки.",
+      href: "/?daily=1",
+    },
+    { status: 410 }
+  );
 }

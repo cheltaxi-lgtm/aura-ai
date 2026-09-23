@@ -106,7 +106,7 @@ describe("retention-optin (source)", () => {
     expect(cabinet).toMatch(/surface=["']cabinet["']/);
     expect(cabinet).toMatch(/Персональные напоминания Zovus/);
     expect(cabinet).toMatch(/Еженедельный обзор/);
-    expect(cabinet).toMatch(/Карты дня/);
+    expect(cabinet).toMatch(/Расклад на сутки/);
     expect(cabinet).toMatch(/weeklyDigestEmail === true/);
     expect(cabinet).toMatch(/dailyInApp/);
     expect(cabinet).toMatch(/dailyEmail/);

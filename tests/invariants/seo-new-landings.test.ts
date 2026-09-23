@@ -23,8 +23,8 @@ const LANDINGS = [
   {
     file: "src/app/gadanie/karta-dnya/page.tsx",
     path: "/gadanie/karta-dnya",
-    title: "Карта дня онлайн — одна карта и 3 карты дня",
-    h1: "Карта дня онлайн",
+    title: "Расклад на сутки онлайн",
+    h1: "Расклад на сутки онлайн",
   },
   {
     file: "src/app/gadanie/besplatno/page.tsx",
@@ -259,26 +259,26 @@ describe("seo-new-landings", () => {
     expect(karta).toContain("/?ask=1&spread=1");
     expect(karta).toContain("Попробовать первый расклад");
     expect(karta).not.toMatch(/href="\/\?ask=1&spread=1"[\s\S]{0,80}карта дня/i);
-    expect(karta).toContain("не «карта дня»");
-    expect(karta).toContain("/rasklady/karta-dnya");
+    expect(karta).toContain("один ежедневный расклад");
+    expect(karta).toContain('href="/?daily=1"');
 
     const three = read("src/app/taro/tri-karty/page.tsx");
     expect(three).toContain("/?ask=1&spread=1");
     expect(three).toContain("Попробовать первый расклад");
-    expect(three).toContain("не «карта дня»");
+    expect(three).toContain("не карта дня");
     expect(three).not.toMatch(/href="\/\?ask=1&spread=1"[\s\S]{0,80}карта дня/i);
 
     const taro = read("src/app/taro/page.tsx");
     expect(taro).toContain('href="/?spread=1"');
     expect(taro).toContain("Выбрать три карты бесплатно");
     expect(taro).not.toContain("/?spread=triplet");
-    expect(taro).toContain("Карта дня — отдельный ежедневный ритуал");
+    expect(taro).toContain("Ежедневный ритуал — «Расклад на сутки»");
 
     const gadanie = read("src/app/gadanie/page.tsx");
     expect(gadanie).toContain('href="/?ask=1&spread=1"');
     expect(gadanie).toContain("Попробовать первый расклад");
     expect(gadanie).not.toContain("/?spread=triplet");
-    expect(gadanie).toContain("Это не карта дня");
+    expect(gadanie).toContain("расклад на сутки");
   });
 
   it("public numerology calcs use the shared engine and do not persist a receipt", () => {

@@ -64,7 +64,7 @@ export default async function PrognozMonthPage({
       }))}
       intentLinks={[
         { label: "Расклад на месяц", href: "/rasklady/prognoz-na-mesyac" },
-        { label: "Карта дня", href: "/rasklady/karta-dnya" },
+        { label: "Расклад на сутки", href: "/gadanie/karta-dnya" },
         { label: "Ближайшее будущее", href: "/rasklady/blizhayshee-budushchee" },
       ]}
       faq={[

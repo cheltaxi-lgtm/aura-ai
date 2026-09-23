@@ -45,7 +45,7 @@ export async function POST(request: NextRequest) {
         error: "guest_intro_not_available_authenticated",
         code: "GUEST_INTRO_NOT_AVAILABLE_AUTHENTICATED",
         message:
-          "Стартовый расклад с лендинга доступен до входа. Откройте карты дня в салоне — раз в сутки.",
+          "Стартовый расклад с лендинга доступен до входа. После входа откройте расклад на сутки — бесплатно раз в сутки.",
       },
       { status: 403 }
     );

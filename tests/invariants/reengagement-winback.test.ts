@@ -103,12 +103,12 @@ describe("reengagement-winback (unit)", () => {
     expect(inactiveUserEmailText("Анна", 14, "https://zovus.ru")).toMatch(/https:\/\/zovus\.ru\/$/);
   });
 
-  it("Daily Cards CTA stays on dailyCards=1; scheduler still hourly", () => {
+  it("daily reminder CTA opens the canonical daily reading; scheduler still hourly", () => {
     const daily = read("src/lib/email/templates.ts");
     const start = daily.indexOf("export function dailyReminderEmailHtml");
     const fn = daily.slice(start, start + 700);
-    expect(fn).toMatch(/\?dailyCards=1/);
-    expect(fn).not.toMatch(/\?daily=1/);
+    expect(fn).toMatch(/\?daily=1/);
+    expect(fn).not.toMatch(/\?dailyCards=1/);
     const cron = read("proxmox-setup/install-crons.sh");
     expect(cron).toMatch(/cron-reengagement-emails\.sh/);
     expect(cron).toMatch(/5 \* \* \* \*/);

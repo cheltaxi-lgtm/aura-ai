@@ -4605,12 +4605,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
     if (!resumeChat && !hasSpread) {
       localStorage.setItem(PENDING_MASTER_KEY, masterToOpen);
-      applyTripletMaster(masterToOpen);
-      if (activeProfile?.birthDate) {
-        setStep("triplet");
-      } else {
-        setStep("onboarding");
-      }
+      setSessionFlowPreselectedMaster(masterToOpen);
+      setSessionFlowInitialTopic(null);
+      setShowSessionFlow(true);
+      setStep("masters");
       return;
     }
 

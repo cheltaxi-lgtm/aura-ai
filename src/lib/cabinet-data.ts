@@ -615,14 +615,15 @@ export async function getCabinetSessions(
       rawTopic.length >= 8 &&
       rawTopic !== "Свой вопрос" &&
       rawTopic !== topicFromIntention &&
-      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня"].includes(rawTopic);
+      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня", "Расклад на сутки"].includes(rawTopic);
     const resolvedQuestion =
       customQuestion ||
       (r.intention === "custom" && topicLooksLikeQuestion ? rawTopic : null) ||
       (topicLooksLikeQuestion ? rawTopic : null);
+    const displayTopic = rawTopic === "Три карты дня" ? "Расклад на сутки" : rawTopic;
     const topicSummary =
       resolvedQuestion ||
-      (rawTopic && rawTopic !== "Свой вопрос" ? rawTopic : "") ||
+      (displayTopic && displayTopic !== "Свой вопрос" ? displayTopic : "") ||
       topicFromIntention;
 
     const matrixBirth =

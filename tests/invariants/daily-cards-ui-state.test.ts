@@ -84,7 +84,7 @@ describe("daily cards UI state + analytics gating", () => {
   });
 
   it("TEST9: anonymous daily CTA opens the first guest cards, not a free daily claim", () => {
-    expect(EDITORIAL_DAILY_CARDS.guestCta).toBe("Открыть первые 3 карты");
+    expect(EDITORIAL_DAILY_CARDS.guestCta).toBe("Первый расклад по вопросу");
     expect(EDITORIAL_DAILY_CARDS.guestCta).not.toMatch(/Попробовать 3 карты бесплатно/i);
     expect(EDITORIAL_DAILY_CARDS.guestCtaHint).toMatch(/раз в сутки/i);
     expect(EDITORIAL_DAILY_CARDS.body).not.toMatch(/не путать/i);

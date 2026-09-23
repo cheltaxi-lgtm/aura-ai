@@ -210,8 +210,7 @@ import {
   stashTgReceipt,
   takeStashedTgReceipt,
 } from "@/lib/telegram/tg-receipt-client";
-import { resolveDailyCardsUiState } from "@/lib/daily-cards-ui";
-import { isDrawnExtendedDailyReading } from "@/lib/daily-reading-peek";
+import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
 import { productCalendarDate } from "@/lib/product-calendar";
 import {
   GUEST_RESUME_ALREADY_USED_CABINET_CTA,
@@ -347,9 +346,10 @@ export default function HomePage({
   } | null>(null);
   const [dailyEnergySpreadId, setDailyEnergySpreadId] = useState<SpreadId>(DEFAULT_SPREAD_ID);
   const [dailyEnergyAutoOpen, setDailyEnergyAutoOpen] = useState(false);
+  const [dailyReadingUiState, setDailyReadingUiState] = useState<DailyCardsUiState>("loading");
   const autoAskParsedRef = useRef(false);
   const deepLinkSpreadParsedRef = useRef(false);
-  const [pendingDailyCardsOpen, setPendingDailyCardsOpen] = useState(false);
+  const [pendingDailySpreadId, setPendingDailySpreadId] = useState<SpreadId | null>(null);
   const chatSessionDeepLinkParsedRef = useRef(false);
   const numerologDeepLinkParsedRef = useRef(false);
   const masterAutoOpenParsedRef = useRef(false);
@@ -703,19 +703,35 @@ export default function HomePage({
     handleSpreadReadingRitualComplete,
   } = onboarding;
 
-  // Reminder CTA /?dailyCards=1 → authenticated daily 3-cards flow (handleNewReading).
-  // Guests: ignore (no guest triplet / no redraw). Cooldown: handleNewReading no-ops.
+  // One daily artifact powers all daily entry points; keep the legacy email
+  // parameter as an alias so previously sent links still open today's reading.
   useEffect(() => {
-    if (!pendingDailyCardsOpen) return;
     if (authLoading) return;
     if (!isLoggedIn) {
-      setPendingDailyCardsOpen(false);
+      setDailyReadingUiState("loading");
       return;
     }
-    if (!tripletCooldownReady) return;
-    setPendingDailyCardsOpen(false);
-    void handleNewReading();
-  }, [pendingDailyCardsOpen, authLoading, isLoggedIn, tripletCooldownReady, handleNewReading]);
+    let cancelled = false;
+    void (async () => {
+      try {
+        const res = await fetch(`/api/daily-reading?date=${productCalendarDate()}`, {
+          credentials: "include",
+        });
+        if (!res.ok) {
+          if (!cancelled) setDailyReadingUiState("loading");
+          return;
+        }
+        const data = (await res.json()) as { drawn?: boolean; locked?: boolean; text?: string | null };
+        if (cancelled) return;
+        setDailyReadingUiState(
+          data.locked ? "cooldown" : data.drawn && data.text ? "opened" : "available"
+        );
+      } catch {
+        if (!cancelled) setDailyReadingUiState("loading");
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [authLoading, isLoggedIn, authUser?.profileUserId]);
 
   // Transition banner only while resume is actively claiming/loading — never
   // leave "готовит трактовку" sticky on a normal homepage without that phase.
@@ -740,6 +756,14 @@ export default function HomePage({
         collectPartnerInfo?: boolean;
       }
     ) => {
+      if (intent.slug === "karta-dnya") {
+        if (!isLoggedIn) {
+          window.location.href = buildRegisterHref("/?daily=1");
+          return;
+        }
+        setPendingDailySpreadId(DEFAULT_SPREAD_ID);
+        return;
+      }
       // Joint-reading invites let the initiator pick a card depth (3/7/12) that
       // differs from the intent's default spreadId in the registry — honor that
       // override so the flow draws the layout actually stored on the invite,
@@ -780,7 +804,7 @@ export default function HomePage({
       setSeoFlowOpen(true);
       setShowSessionFlow(false);
     },
-    [setShowSessionFlow, setSessionFlowPreselectedMaster]
+    [isLoggedIn, setShowSessionFlow, setSessionFlowPreselectedMaster]
   );
 
   const handleLandingCustomQuestion = useCallback(
@@ -1072,9 +1096,19 @@ export default function HomePage({
     const dailyParam = params.get("daily")?.trim();
     const dailyCardsParam = params.get("dailyCards")?.trim();
 
+    if (!isLoggedIn && (
+      dailyCardsParam === "1" || dailyCardsParam === "true" ||
+      dailyParam === "1" || dailyParam === "true" || dailyParam === "extended" ||
+      spreadParam === "daily-extended"
+    )) {
+      deepLinkSpreadParsedRef.current = true;
+      window.location.replace(buildRegisterHref(dailyParam === "extended" || spreadParam === "daily-extended" ? "/?daily=extended" : "/?daily=1"));
+      return;
+    }
+
     if (dailyCardsParam === "1" || dailyCardsParam === "true") {
       deepLinkSpreadParsedRef.current = true;
-      setPendingDailyCardsOpen(true);
+      setPendingDailySpreadId(DEFAULT_SPREAD_ID);
       const url = new URL(window.location.href);
       url.searchParams.delete("dailyCards");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
@@ -1083,8 +1117,7 @@ export default function HomePage({
 
     if (dailyParam === "1" || dailyParam === "true") {
       deepLinkSpreadParsedRef.current = true;
-      setDailyEnergySpreadId(DEFAULT_SPREAD_ID);
-      setDailyEnergyAutoOpen(true);
+      setPendingDailySpreadId(DEFAULT_SPREAD_ID);
       const url = new URL(window.location.href);
       url.searchParams.delete("daily");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
@@ -1093,8 +1126,7 @@ export default function HomePage({
 
     if (dailyParam === "extended" || spreadParam === "daily-extended") {
       deepLinkSpreadParsedRef.current = true;
-      setDailyEnergySpreadId("daily-extended");
-      setDailyEnergyAutoOpen(true);
+      setPendingDailySpreadId("daily-extended");
       const url = new URL(window.location.href);
       url.searchParams.delete("daily");
       url.searchParams.delete("spread");
@@ -3196,53 +3228,38 @@ export default function HomePage({
     }
   }, [bootstrapping, selectedCharacter, sessionListMaster, step]);
 
-  const handleStartReadingFromHeader = useCallback(() => {
-    exitToLandingForNav();
+  const openDailyReading = useCallback(() => {
     if (!isLoggedIn) {
+      window.location.href = buildRegisterHref(resolveRegistrationReturnTo());
+      return;
+    }
+    exitToLandingForNav();
+    setDailyEnergySpreadId(DEFAULT_SPREAD_ID);
+    setDailyEnergyAutoOpen(true);
+  }, [exitToLandingForNav, isLoggedIn]);
+
+  useEffect(() => {
+    if (!pendingDailySpreadId || authLoading || bootstrapping) return;
+    const spreadId = pendingDailySpreadId;
+    setPendingDailySpreadId(null);
+    if (isLoggedIn) {
+      openDailyReading();
+      setDailyEnergySpreadId(spreadId);
+    }
+  }, [pendingDailySpreadId, authLoading, bootstrapping, isLoggedIn, openDailyReading]);
+
+  const handleStartReadingFromHeader = useCallback(() => {
+    if (!isLoggedIn) {
+      exitToLandingForNav();
       void startPersonalFlow();
       return;
     }
-    void (async () => {
-      try {
-        const res = await fetch(`/api/daily-reading?date=${productCalendarDate()}`, {
-          credentials: "include",
-        });
-        if (res.ok) {
-          const data = (await res.json()) as {
-            drawn?: boolean;
-            text?: string | null;
-            spreadId?: string | null;
-            cards?: unknown[] | null;
-          };
-          if (isDrawnExtendedDailyReading(data)) {
-            setDailyEnergySpreadId("daily-extended");
-            setDailyEnergyAutoOpen(true);
-            return;
-          }
-        }
-      } catch {
-        // Fall through to free 3-card daily.
-      }
-      const dailyState = resolveDailyCardsUiState({
-        cooldownReady: tripletCooldownReady,
-        allowed: effectiveTripletCooldown.allowed,
-        currentDaily: currentDailyReading,
-      });
-      if (dailyState === "opened") {
-        void openCurrentDailyCards();
-        return;
-      }
-      void handleNewReading();
-    })();
+    openDailyReading();
   }, [
     exitToLandingForNav,
     isLoggedIn,
     startPersonalFlow,
-    tripletCooldownReady,
-    effectiveTripletCooldown.allowed,
-    currentDailyReading,
-    openCurrentDailyCards,
-    handleNewReading,
+    openDailyReading,
   ]);
 
   const handleNavRitual = useCallback(() => {
@@ -3728,14 +3745,9 @@ export default function HomePage({
                 showHeroBlocks={false}
                 userName={effectiveProfile.name || authUser?.name}
                 accountCreatedAt={authUser?.createdAt}
-                dailyCardsState={resolveDailyCardsUiState({
-                  cooldownReady: tripletCooldownReady,
-                  allowed: effectiveTripletCooldown.allowed,
-                  currentDaily: currentDailyReading,
-                })}
-                dailyCooldownHint={tripletCooldownHint}
-                onOpenDailyCards={() => void handleNewReading()}
-                onViewTodayDailyCards={() => void openCurrentDailyCards()}
+                dailyCardsState={dailyReadingUiState}
+                onOpenDailyCards={openDailyReading}
+                onViewTodayDailyCards={openDailyReading}
                 onPickRegularSpread={() => {
                   document.getElementById("наставники")?.scrollIntoView({
                     behavior: "smooth",
@@ -3825,7 +3837,7 @@ export default function HomePage({
                           type="button"
                           onClick={() => {
                             setGuestIntroAlreadyUsed(false);
-                            void handleNewReading();
+                            openDailyReading();
                           }}
                           className="btn-primary px-5 py-2 text-sm"
                         >
@@ -3963,9 +3975,7 @@ export default function HomePage({
                     teaser={displayTeaser}
                     lastMasterId={recapContinueMasterId}
                     masters={masters}
-                    cooldownReady={Boolean(tripletCooldown)}
-                    cooldownAllowed={tripletCooldown?.allowed ?? true}
-                    nextAvailableAt={tripletCooldown?.nextAvailableAt}
+                    dailyReadingState={dailyReadingUiState}
                     readingHint={
                       spreadReadingDone
                         ? undefined
@@ -3973,7 +3983,7 @@ export default function HomePage({
                     }
                     readingComplete={spreadReadingDone}
                     onContinue={() => void handleMasterPick(recapContinueMasterId)}
-                    onNewReading={() => void handleNewReading()}
+                    onNewReading={openDailyReading}
                     onClearSpread={handleClearTripletFromMain}
                     onOpenGallery={() => setDeckGalleryOpen(true)}
                   />
@@ -4051,7 +4061,7 @@ export default function HomePage({
                           type="button"
                           onClick={() => {
                             setGuestIntroAlreadyUsed(false);
-                            void handleNewReading();
+                            openDailyReading();
                           }}
                           className="btn-primary px-5 py-2 text-sm"
                         >
@@ -4129,21 +4139,12 @@ export default function HomePage({
                   showMasters
                   showTariffs={false}
                   homeUserName={effectiveProfile.name || authUser?.name}
-                  dailyCardsState={
-                    isLoggedIn
-                      ? resolveDailyCardsUiState({
-                          cooldownReady: tripletCooldownReady,
-                          allowed: effectiveTripletCooldown.allowed,
-                          currentDaily: currentDailyReading,
-                        })
-                      : undefined
-                  }
-                  dailyCooldownHint={isLoggedIn ? tripletCooldownHint : undefined}
+                  dailyCardsState={isLoggedIn ? dailyReadingUiState : undefined}
                   onOpenDailyCards={
-                    isLoggedIn ? () => void handleNewReading() : undefined
+                    isLoggedIn ? openDailyReading : undefined
                   }
                   onViewTodayDailyCards={
-                    isLoggedIn ? () => void openCurrentDailyCards() : undefined
+                    isLoggedIn ? openDailyReading : undefined
                   }
                   onPickRegularSpread={
                     isLoggedIn
@@ -4188,6 +4189,7 @@ export default function HomePage({
                           initialSpreadId={dailyEnergySpreadId}
                           autoOpen={dailyEnergyAutoOpen}
                           onAutoOpenHandled={() => setDailyEnergyAutoOpen(false)}
+                          onDailyReadingStateChange={setDailyReadingUiState}
                           onInsufficientRunes={landingInsufficientRunes}
                           onStartRitual={handleDailyStartRitual}
                           isUnlimited={Boolean(session?.isUnlimited)}

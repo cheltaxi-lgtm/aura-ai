@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import {
   generateSpreadIntentStaticParams,
   getRelatedSpreadIntents,
@@ -61,6 +61,7 @@ export default async function SpreadIntentPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  if (slug === "karta-dnya") redirect("/gadanie/karta-dnya");
   const intent = getSpreadIntentBySlug(slug);
   if (!intent) notFound();
 

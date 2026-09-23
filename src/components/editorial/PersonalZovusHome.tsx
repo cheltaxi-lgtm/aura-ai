@@ -255,7 +255,7 @@ export default function PersonalZovusHome({
 
   const dailyHint =
     dailyCardsState === "loading"
-      ? "Готовим карты дня…"
+      ? "Проверяем расклад на сутки…"
       : dailyCardsState === "available"
         ? EDITORIAL_DAILY_CARDS.authAvailableSubtitle
         : dailyCardsState === "opened"
@@ -362,7 +362,7 @@ export default function PersonalZovusHome({
                 disabled={reminderSaving}
                 onChange={(e) => void saveReminder(e.target.checked)}
               />
-              Напоминать о 3 картах дня
+              Напоминать о раскладе на сутки
             </label>
           ) : null}
         </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { Clock, RefreshCw, Sparkles, Layers } from "lucide-react";
 import { getCharacterById } from "@/lib/characters";
 import { findShowcaseMaster, type ShowcaseMaster } from "@/lib/showcase-masters";
@@ -20,7 +20,7 @@ import {
   type SpreadId,
 } from "@/lib/spreads";
 import { getZodiacFromDate } from "@/utils/zodiac";
-import { useTripletCountdown } from "@/hooks/useTripletCountdown";
+import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import DeckCardsRow from "@/components/DeckCardsRow";
 import ZodiacGlyph from "@/components/ZodiacGlyph";
@@ -37,9 +37,7 @@ interface ReadingRecapProps {
   onContinue?: () => void;
   onNewReading: () => void;
   onClearSpread?: () => void;
-  cooldownReady?: boolean;
-  cooldownAllowed?: boolean;
-  nextAvailableAt?: string | null;
+  dailyReadingState: DailyCardsUiState;
   onUnlock?: () => void;
   unlockLabel?: string;
   readingHint?: string;
@@ -71,9 +69,7 @@ export default function ReadingRecap({
   onContinue,
   onNewReading,
   onClearSpread,
-  cooldownReady = true,
-  cooldownAllowed = true,
-  nextAvailableAt,
+  dailyReadingState,
   onUnlock,
   unlockLabel = "открыть за руны ᚢ",
   readingHint,
@@ -81,11 +77,17 @@ export default function ReadingRecap({
   spreadId: spreadIdProp,
   readingComplete = false,
 }: ReadingRecapProps) {
+  const prefersReducedMotion = useReducedMotion();
   const spreadId = normalizeSpreadId(spreadIdProp ?? DEFAULT_SPREAD_ID);
   const spreadDef = getSpread(spreadId);
-  const countdown = useTripletCountdown(nextAvailableAt);
-  const newReadingAllowed =
-    cooldownReady && cooldownAllowed && !countdown.isOnCooldown;
+  const newReadingAllowed = dailyReadingState === "available" || dailyReadingState === "opened";
+  const dailyActionLabel = dailyReadingState === "opened"
+    ? "Посмотреть расклад"
+    : dailyReadingState === "available"
+      ? "Расклад на сутки"
+      : dailyReadingState === "cooldown"
+        ? "Доступен завтра"
+        : "Проверяем…";
   const cardNames = tarotCards.map((c) => c.name);
   const hasSpread =
     tarotCards.length >= 1 && hasCompleteSpread(cardNames, spreadId, "new");
@@ -118,14 +120,14 @@ export default function ReadingRecap({
         masterName: lastMaster?.name,
       });
     }
-    if (!newReadingAllowed && countdown.hintRu) {
-      return `${userName}, суточный лимит активен — ${countdown.hintRu.toLowerCase()}. Выберите мастера ниже, затем откройте новый расклад.`;
+    if (dailyReadingState === "cooldown") {
+      return `${userName}, расклад на сутки уже использован. Новый будет доступен завтра.`;
     }
     return (
       teaser ??
       `${userName}, выберите мастера и откройте расклад из ${spreadDef.cardCount} карт.`
     );
-  }, [hasSpread, spreadCards, userName, positions, lastMaster, teaser, newReadingAllowed, countdown.hintRu, spreadDef.cardCount]);
+  }, [hasSpread, spreadCards, userName, positions, lastMaster, teaser, dailyReadingState, spreadDef.cardCount]);
 
   const handleNewReading = () => {
     if (!newReadingAllowed) return;
@@ -138,8 +140,9 @@ export default function ReadingRecap({
       className={`glass-panel reading-recap mx-auto mb-5 max-w-xl ${
         hasSpread ? "reading-recap--spread p-6" : "reading-recap--idle p-4 sm:p-5"
       }`}
-      initial={{ opacity: 0, y: 12 }}
+      initial={prefersReducedMotion ? false : { opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
+      transition={prefersReducedMotion ? { duration: 0 } : undefined}
     >
       <div className={`reading-recap__header flex flex-wrap items-start justify-between gap-3 ${hasSpread ? "mb-6" : ""}`}>
         <div className="min-w-0">
@@ -150,7 +153,7 @@ export default function ReadingRecap({
             {hasSpread ? (
               <span className="reading-recap__name font-semibold text-aura-gold">{formatDisplayName(userName)}</span>
             ) : (
-              <span className="text-aura-champagne/70">Новый расклад из 3 карт</span>
+              <span className="text-aura-champagne/70">Расклад на сутки</span>
             )}
             {zodiacSign ? (
               <>
@@ -167,7 +170,7 @@ export default function ReadingRecap({
           type="button"
           onClick={handleNewReading}
           disabled={!newReadingAllowed}
-          title={countdown.tooltip || "Открыть новый расклад из 3 карт"}
+          title={dailyActionLabel}
           className={`btn-new-spread shrink-0 ${newReadingAllowed ? "btn-new-spread--active" : "btn-new-spread--cooldown reading-recap__cooldown"}`}
         >
           {newReadingAllowed ? (
@@ -175,17 +178,13 @@ export default function ReadingRecap({
           ) : (
             <Clock className="h-3.5 w-3.5 opacity-70" aria-hidden />
           )}
-          {newReadingAllowed ? "Новый расклад" : countdown.hms}
+          {dailyActionLabel}
         </button>
       </div>
 
-      {!hasSpread && !newReadingAllowed && countdown.hintRu ? (
-        <p className="mt-2 text-xs tabular-nums text-aura-champagne/75">{countdown.hintRu}</p>
-      ) : null}
-
       {!hasSpread && newReadingAllowed ? (
         <p className="mt-3 text-sm leading-relaxed text-aura-ivory/60">
-          Нажмите «Новый расклад» или выберите наставника в списке ниже.
+          Откройте расклад на сутки или выберите наставника в списке ниже.
         </p>
       ) : null}
 

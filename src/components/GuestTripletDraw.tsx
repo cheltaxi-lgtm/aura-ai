@@ -687,7 +687,7 @@ export default function GuestTripletDraw({
           ) {
             trackGuestIntroBlockedAuthenticated("guest_triplet_complete");
             setAgeGateError(
-              "Стартовый расклад с лендинга доступен до входа. Откройте карты дня в салоне — раз в сутки."
+              "Стартовый расклад с лендинга доступен до входа. После входа откройте расклад на сутки — бесплатно раз в сутки."
             );
             setCompleting(false);
             return;

@@ -769,7 +769,7 @@ export default function CabinetPage() {
                     ["photo", "По фото", photoSpreads.length],
                     ["aura", "Аура", auraReadings.length],
                     ["palm", "Ладонь", palmReadings.length],
-                    ["daily", "Карта дня", dailyReadings.length],
+                    ["daily", "Расклад на сутки", dailyReadings.length],
                     ["joint", "Совместные", null],
                   ] as const
                 ).map(([key, label, count]) => (

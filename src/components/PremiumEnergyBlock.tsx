@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import Link from "next/link";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { Loader2, X, Moon, Users } from "lucide-react";
 import { isAiMasterId, type ShowcaseMaster } from "@/lib/showcase-masters";
 import { resolveMasterDeckSystem, DECK_REGISTRY } from "@/lib/decks";
@@ -22,6 +22,8 @@ import {
 } from "@/lib/daily-retention";
 import type { RitualType } from "@/lib/ritual-config";
 import AsyncJobProgressNotice from "@/components/AsyncJobProgressNotice";
+import { productCalendarDate } from "@/lib/product-calendar";
+import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const GOLD_GRADIENT = "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)";
@@ -50,6 +52,8 @@ export interface PremiumEnergyBlockProps {
   /** Open modal on mount (e.g. from ?daily=extended deep link). */
   autoOpen?: boolean;
   onAutoOpenHandled?: () => void;
+  /** Keeps the home daily entry in sync with this single daily artifact. */
+  onDailyReadingStateChange?: (state: DailyCardsUiState) => void;
   /** Opens paywall when extended daily needs more runes. */
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
   /** Open in-app ritual flow with recommended type from daily reading. */
@@ -60,15 +64,6 @@ export interface PremiumEnergyBlockProps {
   onTalkToMaster?: (masterId: string) => void;
   /** @deprecated Footer only closes modal — kept for call-site compatibility. */
   onOpenNumerologForm?: () => void;
-}
-
-/** User's local calendar date (YYYY-MM-DD) so the daily reset happens at their 00:00. */
-function localDateStr(): string {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${day}`;
 }
 
 function parseDailyEnergyText(text: string): { body: string; quote: string | null } {
@@ -89,14 +84,17 @@ export default function PremiumEnergyBlock({
   initialSpreadId = DEFAULT_SPREAD_ID,
   autoOpen = false,
   onAutoOpenHandled,
+  onDailyReadingStateChange,
   onInsufficientRunes,
   onStartRitual,
   isUnlimited = false,
 }: PremiumEnergyBlockProps) {
   const { config: runeConfig, cost: runeCost } = useRuneConfig();
+  const prefersReducedMotion = useReducedMotion();
   const extendedCost = isUnlimited ? 0 : runeCost("DAILY_EXTENDED");
   const showExtendedPrice = runeConfig.enabled && !isUnlimited;
   const [loaded, setLoaded] = useState(false);
+  const [calendarDate, setCalendarDate] = useState(() => productCalendarDate());
   const [drawnToday, setDrawnToday] = useState(false);
   const [lockedToday, setLockedToday] = useState(false);
   const [open, setOpen] = useState(false);
@@ -149,11 +147,26 @@ export default function PremiumEnergyBlock({
   }, [autoOpen, onAutoOpenHandled]);
 
   useEffect(() => {
+    const timer = window.setInterval(() => setCalendarDate(productCalendarDate()), 60_000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoaded(false);
+    setDrawnToday(false);
+    setLockedToday(false);
+    setText(null);
+    setCards([]);
+    setSystem(null);
+    setRevealed(0);
+    onDailyReadingStateChange?.("loading");
     void (async () => {
       try {
-        const res = await fetch(`/api/daily-reading?date=${localDateStr()}`, {
+        const res = await fetch(`/api/daily-reading?date=${calendarDate}`, {
           credentials: "include",
         });
+        if (cancelled) return;
         if (res.ok) {
           const data = (await res.json()) as {
             text?: string;
@@ -167,6 +180,7 @@ export default function PremiumEnergyBlock({
           if (data.drawn && data.locked && !data.text) {
             setLockedToday(true);
             setDrawnToday(true);
+            onDailyReadingStateChange?.("cooldown");
             setSpreadId(
               data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID
             );
@@ -177,13 +191,17 @@ export default function PremiumEnergyBlock({
             setSpreadId(data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
             setRevealed(Array.isArray(data.cards) ? data.cards.length : 0);
             setDrawnToday(true);
+            onDailyReadingStateChange?.("opened");
+          } else {
+            onDailyReadingStateChange?.("available");
           }
         }
       } finally {
-        setLoaded(true);
+        if (!cancelled) setLoaded(true);
       }
     })();
-  }, []);
+    return () => { cancelled = true; };
+  }, [calendarDate, onDailyReadingStateChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -205,6 +223,7 @@ export default function PremiumEnergyBlock({
         setSpreadId(data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
         setRevealed((data.cards as DailyCard[]).length);
         setDrawnToday(true);
+        onDailyReadingStateChange?.("opened");
       } catch {
         /* ignore resume errors */
       }
@@ -212,7 +231,7 @@ export default function PremiumEnergyBlock({
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [onDailyReadingStateChange]);
 
   useEffect(() => {
     if (!open) return;
@@ -243,7 +262,7 @@ export default function PremiumEnergyBlock({
         url: "/api/daily-reading",
         body: {
           characterKey: master,
-          localDate: localDateStr(),
+          localDate: productCalendarDate(),
           spreadId: activeSpreadId,
         },
         storageKey: "aura:daily-reading-active-job",
@@ -275,6 +294,7 @@ export default function PremiumEnergyBlock({
       if (resStatus === 403 && typed.error === "daily_reading_locked") {
         setLockedToday(true);
         setDrawnToday(true);
+        onDailyReadingStateChange?.("cooldown");
         setErrorMessage(typed.message ?? "Расклад на сегодня уже был — новый будет доступен завтра.");
         return;
       }
@@ -291,6 +311,7 @@ export default function PremiumEnergyBlock({
         setSpreadId(typed.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID);
         setRevealed(0);
         setDrawnToday(true);
+        onDailyReadingStateChange?.("opened");
       } else if (typed.message) {
         setErrorMessage(typed.message);
       } else {
@@ -387,9 +408,9 @@ export default function PremiumEnergyBlock({
           {open && (
             <motion.div
               className="fixed inset-0 z-[6500] flex items-end justify-center sm:items-center sm:p-4"
-              initial={{ opacity: 0 }}
+              initial={prefersReducedMotion ? false : { opacity: 0 }}
               animate={{ opacity: 1 }}
-              exit={{ opacity: 0 }}
+              exit={prefersReducedMotion ? undefined : { opacity: 0 }}
               role="dialog"
               aria-modal="true"
               aria-label="Расклад на сутки"
@@ -411,10 +432,10 @@ export default function PremiumEnergyBlock({
                   boxShadow:
                     "0 0 0 1px rgba(212,175,55,0.12), 0 32px 80px rgba(0,0,0,0.8), 0 0 60px rgba(139,90,200,0.08)",
                 }}
-                initial={{ opacity: 0, y: 32, scale: 0.97 }}
+                initial={prefersReducedMotion ? false : { opacity: 0, y: 32, scale: 0.97 }}
                 animate={{ opacity: 1, y: 0, scale: 1 }}
-                exit={{ opacity: 0, y: 32, scale: 0.97 }}
-                transition={{ type: "spring", damping: 28, stiffness: 260 }}
+                exit={prefersReducedMotion ? undefined : { opacity: 0, y: 32, scale: 0.97 }}
+                transition={prefersReducedMotion ? { duration: 0 } : { type: "spring", damping: 28, stiffness: 260 }}
               >
                 <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-aura-gold/40 to-transparent" />
 
@@ -637,8 +658,9 @@ export default function PremiumEnergyBlock({
                 <AnimatePresence>
                   {allRevealed && text && (
                     <motion.div
-                      initial={{ opacity: 0, y: 8 }}
+                      initial={prefersReducedMotion ? false : { opacity: 0, y: 8 }}
                       animate={{ opacity: 1, y: 0 }}
+                      transition={prefersReducedMotion ? { duration: 0 } : undefined}
                       className="mt-6 rounded-2xl border border-amber-500/12 bg-black/20 p-4"
                     >
                       <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">

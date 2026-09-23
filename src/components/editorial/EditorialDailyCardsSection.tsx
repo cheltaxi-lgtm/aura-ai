@@ -50,7 +50,7 @@ export default function EditorialDailyCardsSection({
         ? EDITORIAL_DAILY_CARDS.authOpenedTitle
         : dailyState === "cooldown"
           ? dailyCooldownHint?.trim()
-            ? `Следующие карты дня появятся ${normalizeCooldownPhrase(dailyCooldownHint)}`
+            ? `Следующий расклад на сутки появится ${normalizeCooldownPhrase(dailyCooldownHint)}`
             : EDITORIAL_DAILY_CARDS.authCooldownTitle
           : EDITORIAL_DAILY_CARDS.authLoadingLabel;
 
@@ -62,7 +62,7 @@ export default function EditorialDailyCardsSection({
         ? EDITORIAL_DAILY_CARDS.authOpenedSubtitle
         : dailyState === "cooldown"
           ? EDITORIAL_DAILY_CARDS.authCooldownSubtitle
-          : "Уточняем доступ к картам дня.";
+          : "Уточняем доступ к раскладу на сутки.";
 
   const ctaLabel = !isLoggedIn
     ? EDITORIAL_DAILY_CARDS.guestCta

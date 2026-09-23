@@ -119,7 +119,7 @@ export default function TariffsModal({
                           {action === "INTENTION_SPREAD"
                             ? "Базовая цена; схема с большим числом карт может стоить дороже"
                             : action === "DAILY_EXTENDED"
-                              ? "Раз в сутки · классический расклад (3 карты) остаётся бесплатным"
+                              ? "Раз в сутки · расклад на сутки остаётся бесплатным"
                               : null}
                         </p>
                       </div>
@@ -166,7 +166,7 @@ export default function TariffsModal({
                   </p>
                   <ul className="mt-2 space-y-1.5 text-sm text-white/65">
                     <li>· Три карты до регистрации — бесплатно</li>
-                    <li>· После входа: классический расклад из 3 карт — раз в сутки</li>
+                    <li>· После входа: расклад на сутки — бесплатно раз в сутки</li>
                     <li>
                       · Первые {config.freeQuestions} вопроса в каждом сеансе с мастером
                     </li>

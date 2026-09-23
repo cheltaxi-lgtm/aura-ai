@@ -157,7 +157,7 @@ describe("guest landing conversion cleanup", () => {
   });
 
   it("daily guest CTA no longer promises a free daily triplet", () => {
-    expect(EDITORIAL_DAILY_CARDS.guestCta).toBe("Открыть первые 3 карты");
+    expect(EDITORIAL_DAILY_CARDS.guestCta).toBe("Первый расклад по вопросу");
     expect(EDITORIAL_DAILY_CARDS.guestCta).not.toMatch(/Попробовать 3 карты бесплатно/i);
     expect(EDITORIAL_DAILY_CARDS.guestCtaHint).toMatch(/раз в сутки/i);
   });

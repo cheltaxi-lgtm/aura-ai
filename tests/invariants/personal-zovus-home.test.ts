@@ -30,8 +30,8 @@ describe("personal-zovus-home", () => {
     expect(home).toMatch(/PersonalZovusHome/);
     expect(home).toMatch(/showHeroBlocks=\{false\}/);
     expect(home).toMatch(/showTariffs=\{false\}/);
-    expect(home).toMatch(/onViewTodayDailyCards=\{\(\) => void openCurrentDailyCards\(\)\}/);
-    expect(home).toMatch(/onOpenDailyCards=\{\(\) => void handleNewReading\(\)\}/);
+    expect(home).toMatch(/onViewTodayDailyCards=\{openDailyReading\}/);
+    expect(home).toMatch(/onOpenDailyCards=\{openDailyReading\}/);
     expect(home).not.toMatch(/<CabinetNatalChart \/>/);
     const landing = readFileSync(
       path.join(ROOT, "src/components/AuraSellingLanding.tsx"),
@@ -80,7 +80,7 @@ describe("personal-zovus-home", () => {
     const [, afterMobile] = header.split("app-top-header__mobile");
     expect(afterMobile).toContain('primaryActionMobileLabel ?? "Расклад"');
     expect(afterMobile).not.toMatch(/3 карты дня/);
-    expect(header).toContain('isLoggedIn ? "Карты дня" : "Получить расклад"');
+    expect(header).toContain('isLoggedIn ? "Расклад на сутки" : "Получить расклад"');
   });
 
   it("explore links cover Matrix, Natal, HD, Tarot, matrix compatibility", () => {

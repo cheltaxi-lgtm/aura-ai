@@ -76,7 +76,7 @@ describe("notifications-hardening (source)", () => {
     expect(src).toMatch(/ON CONFLICT \(user_id, sent_date, channel\) DO NOTHING/);
     expect(src).not.toMatch(/idempotencyKey:\s*`daily_cards:/);
     expect(src).not.toMatch(/toLocaleDateString/);
-    expect(src).toMatch(/checkTripletCooldown/);
+    expect(src).toMatch(/isDailyReadingUsedToday/);
   });
 
   it("report-ready ledger UNIQUE(job_id, channel) is unchanged", () => {

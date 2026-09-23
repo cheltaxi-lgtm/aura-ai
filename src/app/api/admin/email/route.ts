@@ -29,7 +29,7 @@ import { runReengagementEmailBatch } from "@/lib/reengagement-email-service";
 const CRON_JOBS = [
   {
     id: "daily-reading-remind",
-    label: "Карты дня",
+    label: "Расклад на сутки",
     schedule: "Каждый час (UTC cron → час МСК в API)",
     endpoint: "/api/cron/daily-reading-remind",
     description: "In-app + email, если расклад на сегодня ещё не открыт.",

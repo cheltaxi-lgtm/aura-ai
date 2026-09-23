@@ -50,7 +50,7 @@ export default function HomeSeoContent() {
             ,{" "}
             <Link href="/dizayn-cheloveka/sovmestimost">совместимости по Дизайну Человека</Link> или
             открыть три карты Таро бесплатно до регистрации. После входа вы продолжите разбор
-            этих же карт. Три карты дня доступны отдельно, бесплатно раз в сутки.
+            этих же карт. Расклад на сутки доступен отдельно, бесплатно раз в сутки.
           </p>
           <p>
             Можно выбрать готовый вопрос в каталоге, загрузить{" "}
@@ -59,7 +59,7 @@ export default function HomeSeoContent() {
             <Link href="/gadanie">гадания онлайн</Link>
             {" "}и{" "}
             <Link href="/gadanie/besplatno">бесплатного старта</Link>. Есть{" "}
-            <Link href="/gadanie/karta-dnya">карта дня</Link>,{" "}
+            <Link href="/gadanie/karta-dnya">расклад на сутки</Link>,{" "}
             <Link href="/goroskop-na-segodnya">гороскоп на сегодня</Link>,{" "}
             <Link href="/lenormand">Ленорман</Link>,{" "}
             <Link href="/telegram">Telegram-бот</Link> и раздел <Link href="/faq">FAQ</Link>. Полные
