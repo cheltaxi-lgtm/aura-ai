@@ -208,6 +208,15 @@ export async function POST(request: NextRequest) {
         ]
       );
       const createdProfile = profileResult.rows[0]!;
+      if (accountConsent.marketingConsent) {
+        await queryClient(
+          client,
+          `UPDATE users
+           SET notification_prefs = notification_prefs || '{"marketingEmail":true}'::jsonb
+           WHERE id = $1`,
+          [createdProfile.id]
+        );
+      }
       await queryClient(
         client,
         "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",

@@ -146,13 +146,23 @@ export async function createUserProfileForAccount(
     const accountResult = await queryClient<{
       id: string;
       profile_user_id: string | null;
-    }>(client, "SELECT id, profile_user_id FROM user_accounts WHERE id = $1 FOR UPDATE", [
+      marketing_consent: boolean;
+    }>(client, "SELECT id, profile_user_id, marketing_consent FROM user_accounts WHERE id = $1 FOR UPDATE", [
       accountId,
     ]);
     const account = accountResult.rows[0];
     if (!account) throw new Error("Account not found");
     if (account.profile_user_id && account.profile_user_id !== created.id) {
       throw new Error("PROFILE_OWNERSHIP_CONFLICT");
+    }
+    if (account.marketing_consent) {
+      await queryClient(
+        client,
+        `UPDATE users
+         SET notification_prefs = notification_prefs || '{"marketingEmail":true}'::jsonb
+         WHERE id = $1`,
+        [created.id]
+      );
     }
 
     const conflict = await queryClient<{ id: string }>(

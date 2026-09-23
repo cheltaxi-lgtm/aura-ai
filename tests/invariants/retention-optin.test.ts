@@ -346,4 +346,25 @@ describe.skipIf(!hasTestDb)("retention-optin (db)", () => {
     expect(snap.dailyCardsReminder).toBe(false);
     expect(snap.eligible).toBe(true);
   });
+
+  it("a disabled email channel stays off until the user explicitly accepts again", async () => {
+    const { account, profile } = await seedAccount("channel-off");
+    await createHistoryEntry({
+      userId: profile.id,
+      characterName: "veronika",
+      contextData: { type: "spread" },
+    });
+    await recordAccountLegalConsent(account.id, { marketingConsent: true });
+    await updateNotificationPrefs(profile.id, { marketingEmail: false });
+    const before = await getRetentionOptInSnapshot(account.id, profile.id);
+    expect(before.marketingConsent).toBe(true);
+    expect(before.marketingEmail).toBe(false);
+    expect(before.eligible).toBe(false);
+    await applyRetentionOptInAction({
+      accountId: account.id,
+      profileUserId: profile.id,
+      action: "accept",
+    });
+    expect((await getNotificationPrefs(profile.id)).marketingEmail).toBe(true);
+  });
 });

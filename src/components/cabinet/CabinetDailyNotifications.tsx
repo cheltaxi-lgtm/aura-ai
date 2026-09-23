@@ -19,6 +19,7 @@ type Prefs = {
 
 export default function CabinetDailyNotifications() {
   const [prefs, setPrefs] = useState<Prefs | null>(null);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -28,10 +29,17 @@ export default function CabinetDailyNotifications() {
     });
     void (async () => {
       try {
-        const res = await fetch("/api/profile/notifications", { credentials: "include" });
+        const [res, consentRes] = await Promise.all([
+          fetch("/api/profile/notifications", { credentials: "include" }),
+          fetch("/api/profile/retention-optin", { credentials: "include" }).catch(() => null),
+        ]);
         if (!res.ok) return;
         const data = (await res.json()) as { prefs?: Prefs };
         if (data.prefs) setPrefs(data.prefs);
+        if (consentRes?.ok) {
+          const consent = (await consentRes.json()) as { marketingConsent?: boolean };
+          setMarketingConsent(consent.marketingConsent === true);
+        }
       } catch {
         /* ignore */
       }
@@ -72,7 +80,14 @@ export default function CabinetDailyNotifications() {
       </p>
 
       <div className="mt-4">
-        <RetentionOptInCard surface="cabinet" variant="settings" />
+        <RetentionOptInCard
+          surface="cabinet"
+          variant="settings"
+          onAccepted={() => {
+            setMarketingConsent(true);
+            setPrefs((current) => current ? { ...current, marketingEmail: true } : current);
+          }}
+        />
       </div>
 
       <div className="mt-4">
@@ -144,14 +159,19 @@ export default function CabinetDailyNotifications() {
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
-              checked={prefs.marketingEmail}
-              disabled={saving}
+              checked={marketingConsent && prefs.marketingEmail}
+              disabled={saving || !marketingConsent}
               onChange={(e) => void save({ marketingEmail: e.target.checked })}
               className="rounded border-white/20"
             />
             <Sparkles className="h-4 w-4 text-white/40" />
             Персональные напоминания на почту
           </label>
+          {!marketingConsent ? (
+            <p className="text-xs text-white/45">
+              Чтобы включить письма, сначала выберите «Да, напоминать» выше.
+            </p>
+          ) : null}
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
