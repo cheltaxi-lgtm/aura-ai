@@ -1,6 +1,5 @@
 /**
- * P2.4A: explicit authenticated opt-in for future daily-cards reminders.
- * Storage is server-authoritative; no email/push delivery in this change.
+ * Authenticated daily-reading reminder preference and persisted opt-out.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -59,7 +58,7 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(fn).not.toMatch(/userId|email|createdAt|birthDate|sessionId|artifact/i);
   });
 
-  it("registration and daily draw do not write the reminder flag (DB default OFF)", () => {
+  it("registration and daily draw do not overwrite the server reminder default", () => {
     const register = read("src/app/api/auth/user/register/route.ts");
     expect(register).not.toMatch(/daily_cards_reminder\s*=/i);
     expect(register).not.toMatch(/setAccountDailyCardsReminder\(/);
@@ -77,27 +76,29 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(reminder).toMatch(/isDailyReadingUsedToday/);
   });
 
-  it("schema and latest migration default promotional reminders to OFF", () => {
+  it("restores the daily reminder default without blanket-enabling existing accounts", () => {
     const schema = read("src/lib/schema.sql");
     expect(schema).toMatch(
-      /daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE/
+      /daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE/
     );
-    const mig = read("scripts/migrations/159_retention_integrity.sql");
-    expect(mig).toMatch(/daily_cards_reminder SET DEFAULT FALSE/);
-    expect(mig).toMatch(/SET daily_cards_reminder = FALSE/);
+    const mig = read("scripts/migrations/162_restore_daily_reminder_defaults.sql");
+    expect(mig).toMatch(/daily_cards_reminder SET DEFAULT TRUE/);
+    expect(mig).toMatch(/"dailyEmail": true/);
+    expect(mig).toMatch(/"dailyInApp": true/);
+    expect(mig).not.toMatch(/UPDATE user_accounts|UPDATE users/);
   });
 });
 
 describe.skipIf(!hasTestDb)("daily-cards-reminder-optin (db)", () => {
   installDbLifecycle();
 
-  it("default OFF; owner can enable; refresh preserves server-side", async () => {
+  it("default ON; owner can disable; refresh preserves server-side", async () => {
     const account = await createUser(
       `reminder-optin-${Date.now()}@example.com`,
       "hash",
       "Тест"
     );
-    expect(await getAccountDailyCardsReminder(account.id)).toBe(false);
+    expect(await getAccountDailyCardsReminder(account.id)).toBe(true);
 
     expect(await setAccountDailyCardsReminder(account.id, false)).toBe(false);
     expect(await getAccountDailyCardsReminder(account.id)).toBe(false);

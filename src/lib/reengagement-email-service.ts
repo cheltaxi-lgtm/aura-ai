@@ -94,7 +94,9 @@ export async function sendDailyBonusReminderEmails(): Promise<number> {
             u.notification_prefs
      FROM users u
      JOIN user_accounts ua ON ua.profile_user_id = u.id
-     WHERE ua.bonus_email_verification_required=FALSE AND (
+     WHERE ua.erasure_requested_at IS NULL
+       AND u.erasure_requested_at IS NULL
+       AND ua.bonus_email_verification_required=FALSE AND (
          u.last_daily_bonus IS NULL
          OR u.last_daily_bonus <= NOW() - INTERVAL '24 hours'
        )
@@ -181,6 +183,8 @@ async function loadInactiveWinbackRows(
        ORDER BY h.created_at DESC LIMIT 1
      ) latest_reading ON TRUE
      WHERE ua.marketing_consent = true
+       AND ua.erasure_requested_at IS NULL
+       AND u.erasure_requested_at IS NULL
        AND GREATEST(ua.last_login_at, u.last_product_activity_at) IS NOT NULL
        AND ${windowSql}
        AND COALESCE((u.notification_prefs->>'marketingEmail')::boolean, false) = true`

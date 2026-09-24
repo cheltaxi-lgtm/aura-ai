@@ -209,6 +209,8 @@ export async function getDailyReminderCandidates(hourMsk: number, dailyDate = pr
        SELECT ${PREFERRED_HOUR_MSK_SQL} AS hour_msk
      ) pref
      WHERE ua.daily_cards_reminder = TRUE
+     AND ua.erasure_requested_at IS NULL
+     AND u.erasure_requested_at IS NULL
      AND (
        COALESCE((u.notification_prefs->>'dailyEmail')::boolean, false) = true
        OR COALESCE((u.notification_prefs->>'dailyInApp')::boolean, false) = true

@@ -332,7 +332,7 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   registration_attribution JSONB,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   last_login_at TIMESTAMPTZ,
-  daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
+  daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE,
   CONSTRAINT user_accounts_profile_user_id_unique UNIQUE (profile_user_id)
 );
 
@@ -343,7 +343,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_user_accounts_contact_email_lower
   ON user_accounts (lower(contact_email)) WHERE contact_email IS NOT NULL;
 
 ALTER TABLE user_accounts
-  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,
+  ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE,
   ADD COLUMN IF NOT EXISTS last_login_at TIMESTAMPTZ;
 
 CREATE TABLE IF NOT EXISTS user_oauth_identities (
@@ -1138,8 +1138,8 @@ CREATE INDEX IF NOT EXISTS idx_joint_readings_partner ON joint_readings (partner
 
 ALTER TABLE users
   ADD COLUMN IF NOT EXISTS notification_prefs JSONB NOT NULL DEFAULT '{
-    "dailyEmail": false,
-    "dailyInApp": false,
+    "dailyEmail": true,
+    "dailyInApp": true,
     "dailyTelegram": false,
     "bonusEmail": false,
     "marketingEmail": false,
