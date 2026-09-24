@@ -3692,7 +3692,7 @@ export default function HomePage({
             suggestedReplies={guestResumeChatAssist.replies}
             showContinueInChat={guestResumeChatAssist.showContinue}
             retentionOptInSurface={
-              isLoggedIn && (spreadReadingDone || guestResumeChatAssist.showContinue)
+              isLoggedIn && spreadReadingDone && sessionSpreadMetaRef.current?.spreadType !== "guest_resume"
                 ? "post_value"
                 : undefined
             }

@@ -103,7 +103,7 @@ describe("retention-optin (source)", () => {
     expect(chat).toMatch(/retentionOptInSurface === ["']post_value["']/);
     expect(chat).toMatch(/DailyReminderCard/);
     expect(homepage).toMatch(/retentionOptInSurface/);
-    expect(homepage).toMatch(/spreadReadingDone \|\| guestResumeChatAssist\.showContinue/);
+    expect(homepage).toMatch(/spreadReadingDone && sessionSpreadMetaRef\.current\?\.spreadType !== ["']guest_resume["']/);
     expect(cabinet).toMatch(/surface=["']cabinet["']/);
     expect(cabinet).toMatch(/Персональные напоминания Zovus/);
     expect(cabinet).toMatch(/Еженедельный обзор/);
