@@ -12,7 +12,6 @@ import NotificationBell, {
 } from "@/components/NotificationBell";
 import ActiveReportsTray from "@/components/reports/ActiveReportsTray";
 import RuneBalance, { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
-import TariffsModal from "@/components/TariffsModal";
 import type { AuthUser } from "@/lib/useAuth";
 
 export interface AppTopHeaderProps {
@@ -22,8 +21,7 @@ export interface AppTopHeaderProps {
   authLoading: boolean;
   onOpenPaywall: () => void;
   onNavMasters: () => void;
-  /** @deprecated Optional scroll fallback; modal always opens. */
-  onNavTariffs?: () => void;
+  onNavTariffs: () => void;
   onNavPhoto: () => void;
   onNavDecks: () => void;
   onNavRitual: () => void;
@@ -48,21 +46,15 @@ export default function AppTopHeader({
   primaryActionMobileLabel,
 }: AppTopHeaderProps) {
   const headerRef = useRef<HTMLElement>(null);
-  const [tariffsOpen, setTariffsOpen] = useState(false);
   const [runeBalance, setRuneBalance] = useState<number | null>(null);
   const [notificationCount, setNotificationCount] = useState(0);
-
-  const openTariffs = () => {
-    onNavTariffs?.();
-    setTariffsOpen(true);
-  };
 
   const navCallbacks = {
     photoNavLabel,
     onNavPhoto,
     onNavMasters,
     onNavDecks,
-    onNavTariffs: openTariffs,
+    onNavTariffs,
     onNavRitual,
     onStartReading,
   };
@@ -187,7 +179,7 @@ export default function AppTopHeader({
               onNavMasters={onNavMasters}
               onNavDecks={onNavDecks}
               onNavPhoto={onNavPhoto}
-              onNavTariffs={openTariffs}
+              onNavTariffs={onNavTariffs}
               onNavRitual={onNavRitual}
               onStartReading={onStartReading}
             />
@@ -197,12 +189,6 @@ export default function AppTopHeader({
         </div>
       </div>
       {isLoggedIn && authUser?.role === "user" ? <ActiveReportsTray /> : null}
-      <TariffsModal
-        open={tariffsOpen}
-        onClose={() => setTariffsOpen(false)}
-        onOpenPaywall={onOpenPaywall}
-        isLoggedIn={isLoggedIn}
-      />
     </header>
   );
 }

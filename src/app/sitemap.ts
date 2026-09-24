@@ -264,6 +264,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const landingPages: MetadataRoute.Sitemap = [
     staticPage("/taro", 0.95),
+    staticPage("/tariffs", 0.8, "daily"),
     staticPage("/prognoz", 0.85),
     staticPage("/rasklady", 0.85),
     staticPage("/rasklad", 0.7),

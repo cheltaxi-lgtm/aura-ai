@@ -147,7 +147,7 @@ describe("paid scene-image auto generation is disabled", () => {
   });
 
   it("does not advertise prices for disabled image actions", () => {
-    const tariffs = read("src/components/TariffsModal.tsx");
+    const tariffs = read("src/lib/tariff-catalog.ts");
     for (const action of [
       "DESTINY_CARD",
       "SCENE_ILLUSTRATION",
