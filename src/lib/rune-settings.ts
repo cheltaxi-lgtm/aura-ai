@@ -55,7 +55,7 @@ export async function setRuneSettings(
     costs: { ...current.costs, ...(patch.costs ?? {}) },
   };
   // The rollout policy must never overwrite the stored legacy bonus, including
-  // full-form admin saves that submit the displayed effective 100.
+  // full-form admin saves that submit the displayed effective starter bonus.
   const raw = await getSetting("runes");
   await setSetting("runes", isFirstExperienceEnabled() ? {...merged, starterRunes: clampInt(raw.starterRunes, DEFAULT_RUNE_SETTINGS.starterRunes, 0, 100_000)} : merged, adminId);
   return getRuneSettings();

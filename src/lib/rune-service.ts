@@ -683,11 +683,22 @@ export async function grantStarterRunesIfNeeded(
   client?: PoolClient
 ): Promise<{ granted: number; balance: number } | null> {
   const settings = await getRuneSettings();
-  if (!settings.enabled || settings.starterRunes <= 0) return null;
+  if (!settings.enabled) return null;
 
   const grant = async (transactionClient: PoolClient) => {
-    await queryClient(transactionClient, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+    const { rows: lockedUsers } = await queryClient<{ starter_bonus_version: string | null }>(
+      transactionClient,
+      `SELECT starter_bonus_version FROM users WHERE id = $1 FOR UPDATE`,
+      [userId]
+    );
+    if (!lockedUsers[0]) return null;
     if (!(await isBonusIdentityReady(userId, transactionClient))) return null;
+
+    // Preserve the old promise for registrations awaiting verification at release.
+    const promisedOldBonus = lockedUsers[0].starter_bonus_version === "starter-100-v1";
+    const starterRunes = promisedOldBonus ? 100 : settings.starterRunes;
+    const starterBonusVersion = promisedOldBonus ? "starter-100-v1" : STARTER_BONUS_VERSION;
+    if (starterRunes <= 0) return null;
 
       const { rows: priorStarter } = await queryClient<{ id: string }>(
         transactionClient,
@@ -714,25 +725,25 @@ export async function grantStarterRunesIfNeeded(
            rune_balance = rune_balance + $2
          WHERE id = $1 AND starter_runes_granted = FALSE
          RETURNING rune_balance`,
-        [userId, settings.starterRunes]
+        [userId, starterRunes]
       );
       if (!flagged[0]) return null;
 
       if (isFirstExperienceEnabled()) {
-        await queryClient(transactionClient,"UPDATE users SET starter_bonus_version=$2 WHERE id=$1",[userId,STARTER_BONUS_VERSION]);
-        await recordJourneyEvent(userId,"bonus_granted","starter",{runes:settings.starterRunes,bonusVersion:STARTER_BONUS_VERSION},transactionClient);
+        await queryClient(transactionClient,"UPDATE users SET starter_bonus_version=$2 WHERE id=$1",[userId,starterBonusVersion]);
+        await recordJourneyEvent(userId,"bonus_granted","starter",{runes:starterRunes,bonusVersion:starterBonusVersion},transactionClient);
       }
 
-      const description = `Стартовый пакет: ${settings.starterRunes} ᚢ`;
+      const description = `Стартовый пакет: ${starterRunes} ᚢ`;
       await queryClient(
         transactionClient,
         `INSERT INTO rune_transactions
            (user_id, type, amount, balance_after, description)
          VALUES ($1, 'bonus', $2, $3, $4)`,
-        [userId, settings.starterRunes, flagged[0].rune_balance, description]
+        [userId, starterRunes, flagged[0].rune_balance, description]
       );
 
-    return { granted: settings.starterRunes, balance: flagged[0].rune_balance };
+    return { granted: starterRunes, balance: flagged[0].rune_balance };
   };
 
   // Registration/profile creation can pass its transaction, so a successful

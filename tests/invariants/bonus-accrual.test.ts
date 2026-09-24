@@ -67,7 +67,7 @@ describe.skipIf(!hasTestDb)("bonus transactions (isolated PostgreSQL)",()=>{
     const token=await new SignJWT({purpose:"bonus-email",email,tv:0}).setProtectedHeader({alg:"HS256"}).setAudience("bonus-email").setSubject(account.id).setExpirationTime("1h").sign(createHmac("sha256",process.env.AUTH_SECRET!).update("zovus:bonus-email:v1").digest());
     await expect(verifyBonusEmail(randomUUID(),token)).rejects.toThrow();
     const grants=await Promise.all(Array.from({length:4},()=>verifyBonusEmail(account.id,token)));
-    expect(grants.filter(Boolean)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(100);
+    expect(grants.filter(Boolean)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(40);
   });
   it("computes a real PostgreSQL DATE series and grants all earned numerical achievements, never sensitive keywords",async()=>{
     const user=await createTestUser();

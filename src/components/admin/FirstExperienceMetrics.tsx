@@ -43,6 +43,7 @@ const GUEST_REGISTRATION_STAGES = [
 ] as const;
 
 export function formatBonusVersion(version: string) {
+  if (version === "starter-40-v1") return "Бонус 40 рун";
   if (version === "starter-100-v1") return "Бонус 100 рун";
   if (version === "legacy-no-starter-grant") return "Без стартового бонуса";
   if (version === "legacy") return "Старый сценарий";

@@ -28,16 +28,16 @@ async function fixture(page:Page) {
   return {calls,orders,cancel:()=>{cancelled=true;},confirm:()=>{confirmed=true;cancelled=false;}};
 }
 
-test("public landing and registration show the server-authoritative 100-rune gift",async({page})=>{
+test("public landing and registration show the server-authoritative 40-rune gift",async({page})=>{
   await page.route("**/api/auth/me",route=>route.fulfill({json:{authenticated:false}}));
   await page.route("**/api/auth/oauth/providers",route=>route.fulfill({json:{providers:[]}}));
   await page.route("**/api/platform/features",route=>route.fulfill({json:{firstExperienceEnabled:true,recaptcha:{configured:false,masterEnabled:false,scopes:{}}}}));
-  await page.route("**/api/runes/config",route=>route.fulfill({json:{enabled:true,starterRunes:100,rubPerRune:5,freeQuestions:2,costs:{READING:15,VISION_ANALYSIS:30,NUMEROLOGY_SESSION:100,HD_REPORT:300,NATAL_READING:300}}}));
+  await page.route("**/api/runes/config",route=>route.fulfill({json:{enabled:true,starterRunes:40,rubPerRune:5,freeQuestions:2,costs:{READING:15,VISION_ANALYSIS:30,NUMEROLOGY_SESSION:100,HD_REPORT:300,NATAL_READING:300}}}));
   await page.goto("/");
-  await expect(page.getByText("При первой регистрации — стартовые 100 ᚢ",{exact:false}).first()).toBeVisible();
-  await expect(page.locator(".editorial-starter-gift__amount")).toHaveText("При первой регистрации — 100 ᚢ");
+  await expect(page.getByText("При первой регистрации — стартовые 40 ᚢ",{exact:false}).first()).toBeVisible();
+  await expect(page.locator(".editorial-starter-gift__amount")).toHaveText("При первой регистрации — 40 ᚢ");
   await page.goto("/auth/user/register");
-  await expect(page.getByText("При первой регистрации — стартовые 100 ᚢ",{exact:false}).first()).toBeVisible();
+  await expect(page.getByText("При первой регистрации — стартовые 40 ᚢ",{exact:false}).first()).toBeVisible();
 });
 
 for(const width of [360,390,430])test(`free note and explicit topup return at ${width}px`,async({page},info)=>{

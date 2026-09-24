@@ -486,6 +486,13 @@ fi
 unset -f read_env_var
 
 echo ">>> Activating candidate build (brief downtime)..."
+# Read the still-active policy before stopping the old app. A failed activation
+# may restore that app, so this check is deliberately repeated on the next deploy.
+_previous_starter_runes="$(curl -fsS --max-time 10 http://127.0.0.1:3000/api/runes/config | node -e 'let s="";process.stdin.on("data",x=>s+=x).on("end",()=>{const n=JSON.parse(s).starterRunes;if(!Number.isFinite(n))process.exit(1);process.stdout.write(String(n))})')"
+if [ "$_previous_starter_runes" = "100" ] && [ "${SKIP_MIGRATIONS:-0}" = "1" ]; then
+  echo "ERROR: cannot cut over the starter gift with SKIP_MIGRATIONS=1" >&2
+  exit 1
+fi
 # Rotate while the process is about to die: Caddy previously logged the old value
 # whenever memory-extract hit the public host during a 502. Crons re-read .env.local.
 _new_cron="$(openssl rand -hex 24)"
@@ -500,6 +507,15 @@ echo "Rotated CRON_SECRET for this deploy"
 sudo systemctl stop aura-ai-async-jobs || true
 sudo systemctl stop aura-ai || true
 pkill -f 'next-server|next start' 2>/dev/null || true
+
+# Catch registrations created under the old offer after the first migration pass.
+# Future deployments under the 40-rune policy must not mark their pending users.
+if [ "$_previous_starter_runes" = "100" ]; then
+  echo ">>> Preserve pending starter promises at cutover..."
+  docker exec -i auraai-postgres psql -U auraai -d auraai -v ON_ERROR_STOP=1 \
+    < /opt/aura-ai/scripts/migrations/160_preserve_pending_starter_promise.sql
+fi
+unset _previous_starter_runes
 
 rm -rf .next-previous node_modules-previous
 if [ -d .next ]; then
