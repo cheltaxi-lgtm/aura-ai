@@ -403,7 +403,8 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     await query(
       `UPDATE proactive_contact_log
           SET contact_key = 'daily_cards:prior-day',
-              created_at = NOW() - INTERVAL '25 hours'
+              created_at = ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow')
+                - INTERVAL '1 hour') AT TIME ZONE 'Europe/Moscow')
         WHERE user_id = $1 AND campaign = 'daily_cards'`,
       [profile.id]
     );

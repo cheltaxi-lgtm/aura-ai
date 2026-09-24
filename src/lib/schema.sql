@@ -322,6 +322,9 @@ CREATE TABLE IF NOT EXISTS user_accounts (
   token_version INTEGER NOT NULL DEFAULT 0,
   bonus_email_verification_required BOOLEAN NOT NULL DEFAULT FALSE,
   email_verified_at TIMESTAMPTZ,
+  contact_email TEXT,
+  contact_email_verified_at TIMESTAMPTZ,
+  contact_email_verify_version INTEGER NOT NULL DEFAULT 0,
   terms_accepted_at TIMESTAMPTZ,
   age_confirmed_at TIMESTAMPTZ,
   marketing_consent BOOLEAN NOT NULL DEFAULT FALSE,
@@ -335,6 +338,9 @@ CREATE TABLE IF NOT EXISTS user_accounts (
 
 CREATE INDEX IF NOT EXISTS idx_user_accounts_unlimited ON user_accounts(is_unlimited)
   WHERE is_unlimited = TRUE;
+
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_accounts_contact_email_lower
+  ON user_accounts (lower(contact_email)) WHERE contact_email IS NOT NULL;
 
 ALTER TABLE user_accounts
   ADD COLUMN IF NOT EXISTS daily_cards_reminder BOOLEAN NOT NULL DEFAULT FALSE,

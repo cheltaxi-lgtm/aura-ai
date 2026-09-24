@@ -98,6 +98,8 @@ export async function sendDailyBonusReminderEmails(): Promise<number> {
          u.last_daily_bonus IS NULL
          OR u.last_daily_bonus <= NOW() - INTERVAL '24 hours'
        )
+       AND NOT (ua.daily_cards_reminder=TRUE
+         AND COALESCE((u.notification_prefs->>'dailyEmail')::boolean, false)=TRUE)
        AND COALESCE((u.notification_prefs->>'bonusEmail')::boolean, false) = true`
 
   );

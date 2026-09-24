@@ -76,7 +76,7 @@ import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
-import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
+import DailyReminderCard from "@/components/retention/DailyReminderCard";
 
 interface MasterDisplay {
   name: string;
@@ -1261,7 +1261,7 @@ export default function ChatWindow({
           </div>
         ) : null}
         {retentionOptInSurface === "post_value" ? (
-          <RetentionOptInCard surface="post_value" />
+          <DailyReminderCard />
         ) : null}
         {!readOnly && !hasFullAccess && questionsLeft != null ? (
           <p className="text-xs text-aura-champagne/85" aria-live="polite">

@@ -99,6 +99,13 @@ export function trackProductFunnel(
   const clean = sanitizeProductFunnelParams(params as unknown as Record<string, unknown>);
   if (!clean) return;
   reachGoal(stage, clean);
+  // Aura calls only the unified tracker. Palm emits its legacy goals at call
+  // sites already, so duplicating them here would inflate Metrika conversions.
+  if (clean.product === "aura") {
+    for (const legacyGoal of PRODUCT_FUNNEL_LEGACY_GOALS.aura[stage] ?? []) {
+      if (legacyGoal !== stage) reachGoal(legacyGoal, clean);
+    }
+  }
 }
 
 export type PersonalZovusEvent =

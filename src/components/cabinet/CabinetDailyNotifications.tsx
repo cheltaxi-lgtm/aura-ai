@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Bell, Gift, Mail, Sparkles } from "lucide-react";
 import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
+import DailyReminderCard, { type DailyReminderStatus } from "@/components/retention/DailyReminderCard";
 import { trackRetentionOptIn } from "@/lib/seo/product-funnel";
 
 type Prefs = {
@@ -21,6 +22,15 @@ export default function CabinetDailyNotifications() {
   const [prefs, setPrefs] = useState<Prefs | null>(null);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [contactStatus, setContactStatus] = useState<DailyReminderStatus | null>(null);
+
+  const syncContactStatus = useCallback((status: DailyReminderStatus) => {
+    setContactStatus(status);
+    void fetch("/api/profile/notifications", { credentials: "include", cache: "no-store" })
+      .then(async (res) => res.ok ? await res.json() as { prefs?: Prefs } : null)
+      .then((data) => { if (data?.prefs) setPrefs(data.prefs); })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     trackRetentionOptIn("retention_optin_settings_opened", {
@@ -79,6 +89,8 @@ export default function CabinetDailyNotifications() {
         Вы сами выбираете, какие напоминания получать. Настройки можно изменить в кабинете.
       </p>
 
+      <DailyReminderCard showManage onStatusChange={syncContactStatus} />
+
       <div className="mt-4">
         <RetentionOptInCard
           surface="cabinet"
@@ -93,15 +105,15 @@ export default function CabinetDailyNotifications() {
       <div className="mt-4">
         <p className="text-xs font-medium uppercase tracking-wide text-white/35">Расклад на сутки</p>
         <p className="mt-0.5 text-xs text-white/40">
-          Отдельное согласие на напоминание о раскладе на сутки включается на главной.
-          Здесь только каналы доставки.
+          Включите напоминание о раскладе на сутки в карточке выше.
+          Здесь можно выбрать каналы доставки и время.
         </p>
         <div className="mt-3 space-y-3">
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
-              checked={prefs.dailyInApp}
-              disabled={saving}
+              checked={Boolean(contactStatus?.masterReminder && prefs.dailyInApp)}
+              disabled={saving || !contactStatus?.masterReminder}
               onChange={(e) => void save({ dailyInApp: e.target.checked })}
               className="rounded border-white/20"
             />
@@ -111,19 +123,8 @@ export default function CabinetDailyNotifications() {
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
-              checked={prefs.dailyEmail}
-              disabled={saving}
-              onChange={(e) => void save({ dailyEmail: e.target.checked })}
-              className="rounded border-white/20"
-            />
-            <Mail className="h-4 w-4 text-white/40" />
-            Письмо о раскладе на сутки
-          </label>
-          <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
-            <input
-              type="checkbox"
-              checked={prefs.dailyTelegram ?? true}
-              disabled={saving}
+              checked={Boolean(contactStatus?.masterReminder && prefs.dailyTelegram)}
+              disabled={saving || !contactStatus?.masterReminder}
               onChange={(e) => void save({ dailyTelegram: e.target.checked })}
               className="rounded border-white/20"
             />

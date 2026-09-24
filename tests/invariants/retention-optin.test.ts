@@ -100,7 +100,8 @@ describe("retention-optin (source)", () => {
     const homepage = read("src/components/HomePage.tsx");
     const cabinet = read("src/components/cabinet/CabinetDailyNotifications.tsx");
     expect(home).toMatch(/surface=["']authenticated_home["']/);
-    expect(chat).toMatch(/surface=["']post_value["']/);
+    expect(chat).toMatch(/retentionOptInSurface === ["']post_value["']/);
+    expect(chat).toMatch(/DailyReminderCard/);
     expect(homepage).toMatch(/retentionOptInSurface/);
     expect(homepage).toMatch(/spreadReadingDone \|\| guestResumeChatAssist\.showContinue/);
     expect(cabinet).toMatch(/surface=["']cabinet["']/);

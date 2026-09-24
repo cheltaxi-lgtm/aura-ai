@@ -975,16 +975,6 @@ export async function sendExpiringJointReadingReminders(withinDays = 3): Promise
     const row = mapRow(raw as Record<string, unknown>);
     try {
       const { name, email } = await getProfileContact(row.initiator_user_id);
-      if (email) {
-        const ctaUrl = buildJointReadingUrl(row.token);
-        await sendEmail({
-          to: email,
-          subject: "Zovus — приглашение на совместный расклад скоро истечёт",
-          html: jointReadingExpiringEmailHtml(name, ctaUrl),
-          text: `Приглашение на совместный расклад скоро истечёт. Откройте: ${ctaUrl}`,
-          template: "joint_reading_expiring",
-        });
-      }
       await dispatchNotification({
         userId: row.initiator_user_id,
         type: "joint_reading_expiring",
@@ -995,11 +985,21 @@ export async function sendExpiringJointReadingReminders(withinDays = 3): Promise
         data: { token: row.token },
         idempotencyKey: `joint_reading_expiring:${row.token}`,
       });
+      if (email) {
+        const ctaUrl = buildJointReadingUrl(row.token);
+        const emailSent = await sendEmail({
+          to: email,
+          subject: "Zovus — приглашение на совместный расклад скоро истечёт",
+          html: jointReadingExpiringEmailHtml(name, ctaUrl),
+          text: `Приглашение на совместный расклад скоро истечёт. Откройте: ${ctaUrl}`,
+          template: "joint_reading_expiring",
+        });
+        if (!emailSent) throw new Error("expiry_email_send_failed");
+      }
+      await query(`UPDATE joint_readings SET reminder_sent_at = NOW() WHERE id = $1`, [row.id]);
       sent += 1;
     } catch (err) {
       console.warn("Joint reading expiry reminder failed:", err);
-    } finally {
-      await query(`UPDATE joint_readings SET reminder_sent_at = NOW() WHERE id = $1`, [row.id]);
     }
   }
   return sent;

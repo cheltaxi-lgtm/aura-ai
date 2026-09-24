@@ -3,6 +3,7 @@ import { query, queryClient, withTransaction } from "@/lib/db";
 export const PROACTIVE_CONTACT_MAX_24H = 1;
 export const PROACTIVE_CONTACT_MAX_7D = 2;
 export const PROACTIVE_RESERVATION_TIMEOUT_MINUTES = 30;
+const RECURRING_REQUESTED_CAMPAIGNS = new Set(["daily_cards", "daily_bonus"]);
 
 export type ProactiveReservation = { id: string };
 
@@ -30,18 +31,29 @@ export async function reserveProactiveContact(
       [userId, contactKey]
     );
     if (existing.rows[0] && existing.rows[0].status !== "failed") return null;
-    const counts = await queryClient<{ day_count: number; week_count: number }>(
+    const counts = await queryClient<{ day_count: number; msk_day_count: number; week_count: number }>(
       client,
       `SELECT
          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '24 hours')::int AS day_count,
+         COUNT(*) FILTER (WHERE (created_at AT TIME ZONE 'Europe/Moscow')::date =
+           (NOW() AT TIME ZONE 'Europe/Moscow')::date)::int AS msk_day_count,
          COUNT(*) FILTER (WHERE created_at > NOW() - INTERVAL '7 days')::int AS week_count
        FROM proactive_contact_log
        WHERE user_id=$1 AND status IN ('reserved','delivered')`,
       [userId]
     );
     const row = counts.rows[0];
-    if ((row?.day_count ?? 0) >= PROACTIVE_CONTACT_MAX_24H) return null;
-    if ((row?.week_count ?? 0) >= PROACTIVE_CONTACT_MAX_7D) return null;
+    const recurringRequested = RECURRING_REQUESTED_CAMPAIGNS.has(campaign);
+    // Daily service messages use the product calendar day. A rolling 24-hour
+    // window would skip tomorrow's reminder after even a small cron delay.
+    if (recurringRequested
+      ? (row?.msk_day_count ?? 0) >= PROACTIVE_CONTACT_MAX_24H
+      : (row?.day_count ?? 0) >= PROACTIVE_CONTACT_MAX_24H) return null;
+    // A user who explicitly requested a daily service reminder must not stop
+    // receiving it after the second day. The Moscow-day cap still prevents
+    // two proactive messages on the same day; win-back remains capped weekly.
+    if (!recurringRequested &&
+        (row?.week_count ?? 0) >= PROACTIVE_CONTACT_MAX_7D) return null;
     const inserted = await queryClient<{ id: string }>(
       client,
       `INSERT INTO proactive_contact_log(user_id,campaign,contact_key)

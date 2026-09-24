@@ -79,6 +79,7 @@ import {
 import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import SessionFeedback from "@/components/SessionFeedback";
+import DailyReminderCard from "@/components/retention/DailyReminderCard";
 
 export const PHOTO_READING_RETURN = "/?photo=1";
 const PHOTO_STREAM_URL = "/api/photo-reading/stream";
@@ -1894,6 +1895,8 @@ export default function PhotoReadingFlow({
                       <ShareButton payload={resultSharePayload} variant="pill" label="Поделиться раскладом" />
                     </div>
                   )}
+
+                  {!loading && result && isLoggedIn ? <DailyReminderCard /> : null}
 
                   {!loading && displayAnalysis && onContinueChat ? (
                     <div className="space-y-2">

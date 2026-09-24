@@ -26,6 +26,14 @@ import {
   verifyReminderUnsubscribeToken,
 } from "@/lib/reminder-unsubscribe";
 import { createUserProfileForAccount } from "@/lib/users";
+import {
+  normalizeContactEmail,
+  removeContactEmail,
+  requestContactEmailVerification,
+  verifyContactEmail,
+} from "@/lib/contact-email";
+import { getAccountDeliverableEmail } from "@/lib/reminder-contacts";
+import { getRuneSettings } from "@/lib/rune-settings";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
 
 vi.mock("@/lib/email/send", async (importOriginal) => {
@@ -71,17 +79,24 @@ async function seedProfile(email: string) {
 async function insertOAuthEmail(
   accountId: string,
   provider: "vk" | "yandex" | "mailru",
-  providerEmail: string
+  providerEmail: string,
+  verified = false
 ) {
   await query(
     `INSERT INTO user_oauth_identities
        (user_account_id, provider, provider_user_id, provider_email, provider_email_verified)
-     VALUES ($1, $2, $3, $4, FALSE)`,
-    [accountId, provider, `${provider}-${accountId.slice(0, 8)}`, providerEmail]
+     VALUES ($1, $2, $3, $4, $5)`,
+    [accountId, provider, `${provider}-${accountId.slice(0, 8)}`, providerEmail, verified]
   );
 }
 
 describe("reminder-contacts-unsubscribe (unit)", () => {
+  it("accepts only deliverable contact addresses", () => {
+    expect(normalizeContactEmail("  Person@Example.com  ")).toBe("person@example.com");
+    expect(normalizeContactEmail("tg_1@telegram.zovus.local")).toBeNull();
+    expect(normalizeContactEmail("bad-address")).toBeNull();
+  });
+
   it("skips synthetic mailboxes and keeps the first real one", () => {
     expect(pickDeliverableEmail("vk_1@oauth.zovus.local", "anna@yandex.ru")).toBe(
       "anna@yandex.ru"
@@ -93,6 +108,9 @@ describe("reminder-contacts-unsubscribe (unit)", () => {
 
   it("SQL prefers account email, then Yandex, then VK", () => {
     const src = read("src/lib/reminder-contacts.ts");
+    expect(src).toMatch(/contact_email_verified_at IS NOT NULL/);
+    expect(src).toMatch(/email_verified_at IS NOT NULL OR ua\.bonus_email_verification_required=FALSE/);
+    expect(src).toMatch(/oi\.provider_email_verified = TRUE/);
     expect(src).toMatch(/NOT ILIKE '%@oauth\.zovus\.local'/);
     expect(src).toMatch(/NOT ILIKE '%@telegram\.zovus\.local'/);
     expect(src).toMatch(/WHEN 'yandex' THEN 0 WHEN 'vk' THEN 1/);
@@ -167,7 +185,7 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
     expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(false);
   });
 
-  it("synthetic account email is not mailed; VK provider_email is", async () => {
+  it("unverified VK provider mailbox is not used for private reminders", async () => {
     const { account, profile } = await seedProfile(
       `vk_${Date.now()}@oauth.zovus.local`
     );
@@ -176,12 +194,11 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
 
     const candidates = await getDailyReminderCandidates(9);
     const mine = candidates.find((c) => c.userId === profile.id);
-    expect(mine?.email).toBe(vkEmail.toLowerCase());
+    expect(mine?.email).toBeNull();
 
     const result = await sendDailyRemindersForHour(9);
-    expect(result.email).toBe(1);
-    expect(sendEmailMock).toHaveBeenCalledTimes(1);
-    expect(sendEmailMock.mock.calls[0]?.[0]?.to).toBe(vkEmail.toLowerCase());
+    expect(result.email).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
   it("Yandex provider_email wins over VK when account email is synthetic", async () => {
@@ -190,7 +207,7 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
     );
     await insertOAuthEmail(account.id, "vk", `vk-second-${Date.now()}@mail.ru`);
     const yandexEmail = `ya-real-${Date.now()}@yandex.ru`;
-    await insertOAuthEmail(account.id, "yandex", yandexEmail);
+    await insertOAuthEmail(account.id, "yandex", yandexEmail, true);
 
     const candidates = await getDailyReminderCandidates(9);
     const mine = candidates.find((c) => c.userId === profile.id);
@@ -206,6 +223,97 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
     expect(result.email).toBe(0);
     expect(result.inApp).toBe(1);
     expect(sendEmailMock).not.toHaveBeenCalled();
+  });
+
+  it("verifies a Telegram account contact and enables only its requested daily reminder", async () => {
+    vi.stubEnv("AUTH_SECRET", "test-contact-email-secret-long-enough-for-hmac");
+    try {
+      const account = await createUser(`tg_${Date.now()}@telegram.zovus.local`, "hash", "Контакт");
+      const profile = await createUserProfileForAccount(account.id, {
+        name: "Контакт", gender: "female", birthDate: "1990-01-15", zodiac: "Козерог",
+      });
+      const email = `contact-${Date.now()}@example.com`;
+      expect(await getAccountDeliverableEmail(account.id)).toBeNull();
+      expect(await requestContactEmailVerification({ accountId: account.id, email, dailyReminder: true })).toBe("sent");
+      expect(await getAccountDeliverableEmail(account.id)).toBeNull();
+      const text = sendEmailMock.mock.calls[0]?.[0]?.text ?? "";
+      const token = text.match(/#token=([^\s]+)/)?.[1];
+      expect(token).toBeTruthy();
+      const other = await createUser(`other-${Date.now()}@example.com`, "hash", "Другой");
+      await expect(verifyContactEmail(other.id, decodeURIComponent(token!))).rejects.toThrow();
+      expect(await verifyContactEmail(account.id, decodeURIComponent(token!))).toEqual({ dailyCardsReminder: true });
+      expect(await getAccountDeliverableEmail(account.id)).toBe(email);
+      expect(await getAccountDailyCardsReminder(account.id)).toBe(true);
+      const candidates = await getDailyReminderCandidates(9);
+      expect(candidates.find((candidate) => candidate.userId === profile.id)?.email).toBe(email);
+      await expect(verifyContactEmail(account.id, decodeURIComponent(token!))).rejects.toThrow();
+      await expect(createUser(email, "hash", "Чужой")).rejects.toThrow();
+
+      const replacement = `replacement-${Date.now()}@example.com`;
+      expect(await requestContactEmailVerification({
+        accountId: account.id, email: replacement, dailyReminder: true,
+      })).toBe("sent");
+      const nextText = sendEmailMock.mock.calls[1]?.[0]?.text ?? "";
+      const nextToken = nextText.match(/#token=([^\s]+)/)?.[1];
+      expect(nextToken).toBeTruthy();
+      expect(await verifyContactEmail(account.id, decodeURIComponent(nextToken!))).toEqual({ dailyCardsReminder: true });
+      expect(await getAccountDeliverableEmail(account.id)).toBe(replacement);
+      await removeContactEmail(account.id);
+      expect(await getAccountDeliverableEmail(account.id)).toBeNull();
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  });
+
+  it("the same verified signup mailbox also completes starter email verification", async () => {
+    vi.stubEnv("AUTH_SECRET", "test-contact-email-secret-long-enough-for-hmac");
+    try {
+      const email = `new-signup-${Date.now()}@example.com`;
+      const starterRunes = (await getRuneSettings()).starterRunes;
+      const account = await createUser(email, "hash", "Клиент");
+      await query(
+        "UPDATE user_accounts SET bonus_email_verification_required=TRUE WHERE id=$1",
+        [account.id]
+      );
+      const profile = await createUserProfileForAccount(account.id, {
+        name: "Клиент", gender: "female", birthDate: "1990-01-15", zodiac: "Козерог",
+      });
+      const starterState = async () => query<{
+        rune_balance: number;
+        starter_runes_granted: boolean;
+        starter_count: string;
+      }>(`SELECT u.rune_balance, u.starter_runes_granted,
+          (SELECT COUNT(*)::text FROM rune_transactions rt
+           WHERE rt.user_id=u.id AND rt.description LIKE 'Стартовый пакет%') AS starter_count
+         FROM users u WHERE u.id=$1`, [profile.id]);
+      expect((await starterState()).rows[0]).toMatchObject({
+        rune_balance: 0, starter_runes_granted: false, starter_count: "0",
+      });
+      expect(await getAccountDeliverableEmail(account.id)).toBeNull();
+      expect(await requestContactEmailVerification({
+        accountId: account.id, email, dailyReminder: false,
+      })).toBe("sent");
+      const token = (sendEmailMock.mock.calls[0]?.[0]?.text ?? "")
+        .match(/#token=([^\s]+)/)?.[1];
+      expect(token).toBeTruthy();
+      await verifyContactEmail(account.id, decodeURIComponent(token!));
+      const verified = await query<{
+        bonus_email_verification_required: boolean;
+        email_verified_at: Date | null;
+      }>("SELECT bonus_email_verification_required,email_verified_at FROM user_accounts WHERE id=$1", [account.id]);
+      expect(verified.rows[0]?.bonus_email_verification_required).toBe(false);
+      expect(verified.rows[0]?.email_verified_at).not.toBeNull();
+      expect(await getAccountDeliverableEmail(account.id)).toBe(email);
+      expect((await starterState()).rows[0]).toMatchObject({
+        rune_balance: starterRunes, starter_runes_granted: true, starter_count: "1",
+      });
+      await expect(verifyContactEmail(account.id, decodeURIComponent(token!))).rejects.toThrow();
+      expect((await starterState()).rows[0]).toMatchObject({
+        rune_balance: starterRunes, starter_runes_granted: true, starter_count: "1",
+      });
+    } finally {
+      vi.unstubAllEnvs();
+    }
   });
 
   it("unsubscribe token cannot disable another account", async () => {
