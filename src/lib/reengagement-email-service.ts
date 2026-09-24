@@ -100,8 +100,22 @@ export async function sendDailyBonusReminderEmails(): Promise<number> {
          u.last_daily_bonus IS NULL
          OR u.last_daily_bonus <= NOW() - INTERVAL '24 hours'
        )
-       AND NOT (ua.daily_cards_reminder=TRUE
-         AND COALESCE((u.notification_prefs->>'dailyEmail')::boolean, false)=TRUE)
+       AND NOT EXISTS (
+         SELECT 1 FROM daily_reminder_log drl
+         WHERE drl.user_id=u.id AND drl.channel='email'
+           AND drl.sent_date=(NOW() AT TIME ZONE 'Europe/Moscow')::date
+       )
+       AND NOT (
+         ua.daily_cards_reminder=TRUE
+         AND COALESCE((u.notification_prefs->>'dailyEmail')::boolean, false)=TRUE
+         AND NOT EXISTS (
+           SELECT 1 FROM daily_readings dr
+           WHERE dr.user_id=u.id
+             AND dr.reading_date=(NOW() AT TIME ZONE 'Europe/Moscow')::date
+         )
+         AND COALESCE(u.astro_meta->>'lastDailyReadingDate', '') <>
+           (NOW() AT TIME ZONE 'Europe/Moscow')::date::text
+       )
        AND COALESCE((u.notification_prefs->>'bonusEmail')::boolean, false) = true`
 
   );

@@ -81,7 +81,8 @@ export function passwordChangedEmailHtml(name: string): string {
 export function dailyReminderEmailHtml(
   name: string,
   siteUrl?: string,
-  unsubscribeUrl?: string
+  unsubscribeUrl?: string,
+  bonus?: { amount: number; claimable: boolean; unsubscribeUrl: string }
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
@@ -90,9 +91,14 @@ export function dailyReminderEmailHtml(
     : "";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
-     <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
-     ${cta(`${url}/?daily=1`, "Открыть расклад на сутки")}
-     ${unsub}`,
+       <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
+       ${cta(`${url}/?daily=1`, "Открыть расклад на сутки")}
+       ${bonus ? `<p>${bonus.claimable
+         ? `Ваш ежедневный бонус готов: <strong>${bonus.amount} рун</strong> можно забрать бесплатно в личном кабинете.`
+         : `Ежедневный бонус в размере ${bonus.amount} рун доступен каждые 24 часа. Проверьте время следующего получения в кабинете.`}</p>
+       ${cta(`${url}/cabinet#daily-bonus`, bonus.claimable ? `Забрать ${bonus.amount} рун` : "Проверить бонус")}
+       <p style="font-size:12px;color:#888"><a href="${bonus.unsubscribeUrl}" style="color:#888">Отключить бонусные напоминания</a></p>` : ""}
+       ${unsub}`,
     unsubscribeUrl
       ? "Если письмо пришло по ошибке, отключите напоминание ссылкой выше."
       : "Напоминание можно отключить в профиле Zovus."

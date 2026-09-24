@@ -35,6 +35,8 @@ vi.mock("@/lib/email/send", async (importOriginal) => {
 });
 
 import { sendEmail } from "@/lib/email/send";
+import { dailyReminderEmailHtml } from "@/lib/email/templates";
+import { runReengagementEmailBatch } from "@/lib/reengagement-email-service";
 
 const ROOT = path.resolve(__dirname, "../..");
 const sendEmailMock = vi.mocked(sendEmail);
@@ -44,6 +46,24 @@ function read(rel: string): string {
 }
 
 describe("daily-cards-reminder-delivery (unit)", () => {
+  it("adds a separately removable bonus only when it is requested", () => {
+    const daily = dailyReminderEmailHtml("Анна", "https://zovus.ru", "https://zovus.ru/daily-off");
+    expect(daily).not.toContain("Включите их в кабинете");
+    expect(daily).not.toContain("Отключить бонусные напоминания");
+    const combined = dailyReminderEmailHtml("Анна", "https://zovus.ru",
+      "https://zovus.ru/daily-off", { amount: 3, claimable: true,
+        unsubscribeUrl: "https://zovus.ru/bonus-off" });
+    expect(combined).toContain("/?daily=1");
+    expect(combined).toContain("/cabinet#daily-bonus");
+    expect(combined).toContain("https://zovus.ru/daily-off");
+    expect(combined).toContain("https://zovus.ru/bonus-off");
+    const later = dailyReminderEmailHtml("Анна", "https://zovus.ru",
+      "https://zovus.ru/daily-off", { amount: 3, claimable: false,
+        unsubscribeUrl: "https://zovus.ru/bonus-off" });
+    expect(later).toContain("доступен каждые 24 часа");
+    expect(later).not.toContain("бонус готов");
+  });
+
   it("opt-in false + channel prefs true → no delivery", () => {
     expect(
       resolveDailyCardsReminderDelivery({
@@ -288,6 +308,55 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     );
     expect(notes.rows.length).toBe(1);
     expect(notes.rows[0]?.data?.ctaPath).toBe(DAILY_CARDS_REMINDER_CTA);
+  });
+
+  it("one daily email includes the opted-in claimable bonus and does not send a second bonus email", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true, dailyInApp: true });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    const result = await sendDailyRemindersForHour(9);
+    expect(result.email).toBe(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const mail = sendEmailMock.mock.calls[0]?.[0];
+    expect(mail?.template).toBe("daily_reminder");
+    expect(mail?.html).toContain("/cabinet#daily-bonus");
+    expect(mail?.html).toContain("Отключить бонусные напоминания");
+    expect(mail?.text).toContain("Отключить бонусные напоминания");
+    const bonus = await runReengagementEmailBatch({ dailyBonus: true, inactive: false });
+    expect(bonus.dailyBonus).toBe(0);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("mentions a later bonus without falsely saying it is ready", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true, dailyInApp: false });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    await query("UPDATE users SET last_daily_bonus=NOW() WHERE id=$1", [profile.id]);
+    const result = await sendDailyRemindersForHour(9);
+    expect(result.email).toBe(1);
+    const mail = sendEmailMock.mock.calls[0]?.[0];
+    expect(mail?.html).toContain("доступен каждые 24 часа");
+    expect(mail?.html).not.toContain("бонус готов");
+    expect(mail?.text).toContain("доступен каждые 24 часа");
+  });
+
+  it("bonus cron does not preempt a later daily reminder hour", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true,
+      dailyInApp: false, hourMsk: 21 });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    const bonus = await runReengagementEmailBatch({ dailyBonus: true, inactive: false });
+    expect(bonus.dailyBonus).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    const daily = await sendDailyRemindersForHour(21);
+    expect(daily.email).toBe(1);
+    expect(sendEmailMock.mock.calls[0]?.[0].template).toBe("daily_reminder");
+  });
+
+  it("bonus reminder can send alone after the daily reading was already used", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true, dailyInApp: false });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    await recordDailyReadingAnchor(profile.id, productCalendarDate(), "classic");
+    const bonus = await runReengagementEmailBatch({ dailyBonus: true, inactive: false });
+    expect(bonus.dailyBonus).toBe(1);
+    expect(sendEmailMock.mock.calls[0]?.[0].template).toBe("daily_bonus");
   });
 
   it("channel pref false respected at send time", async () => {

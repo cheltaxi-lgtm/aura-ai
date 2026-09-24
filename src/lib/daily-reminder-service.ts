@@ -8,6 +8,8 @@ import { notifyBotReminder } from "@/lib/telegram/notify-bot-reminder";
 import { isDailyReadingUsedToday } from "@/lib/rate-limit-anchors";
 import { PRODUCT_CALENDAR_TIMEZONE, productCalendarDate } from "@/lib/product-calendar";
 import { finishProactiveContact, reserveProactiveContact } from "@/lib/proactive-contact-policy";
+import { getRuneSettings } from "@/lib/rune-settings";
+import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
 
 /** Canonical daily reading; old ?dailyCards=1 links remain accepted on the home page. */
 export const DAILY_CARDS_REMINDER_CTA = "/?daily=1";
@@ -187,6 +189,7 @@ export async function getDailyReminderCandidates(hourMsk: number, dailyDate = pr
     telegramUserId: number | null;
     prefs: NotificationPrefs;
     dailyCardsReminder: boolean;
+    bonusClaimable: boolean;
   }>
 > {
   const res = await query<{
@@ -197,11 +200,15 @@ export async function getDailyReminderCandidates(hourMsk: number, dailyDate = pr
     telegram_user_id: string | null;
     notification_prefs: unknown;
     daily_cards_reminder: boolean;
+    bonus_claimable: boolean;
   }>(
     `SELECT u.id AS user_id, ua.id AS account_id, u.name,
             (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email,
             ti.telegram_user_id::text,
-            u.notification_prefs, ua.daily_cards_reminder
+            u.notification_prefs, ua.daily_cards_reminder,
+            (ua.bonus_email_verification_required=FALSE AND
+              (u.last_daily_bonus IS NULL OR u.last_daily_bonus <= NOW() - INTERVAL '24 hours'))
+              AS bonus_claimable
      FROM users u
      INNER JOIN user_accounts ua ON ua.profile_user_id = u.id
      LEFT JOIN user_telegram_identities ti ON ti.user_account_id = ua.id
@@ -239,6 +246,7 @@ export async function getDailyReminderCandidates(hourMsk: number, dailyDate = pr
       telegramUserId: Number.isInteger(tg) && tg > 0 ? tg : null,
       prefs: parseNotificationPrefs(row.notification_prefs),
       dailyCardsReminder: Boolean(row.daily_cards_reminder),
+      bonusClaimable: Boolean(row.bonus_claimable),
     };
   });
 }
@@ -284,6 +292,8 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
   const siteUrl = getSiteUrl();
   const dailyDate = productCalendarDate();
   const candidates = await getDailyReminderCandidates(hourMsk, dailyDate);
+  const bonusEnabled = candidates.some((user) => user.prefs.bonusEmail)
+    && (await getRuneSettings()).enabled;
   let inApp = 0;
   let email = 0;
   let telegram = 0;
@@ -330,11 +340,21 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
 
       if (plan.email && user.email && (await claimReminderSlot(user.userId, "email", dailyDate))) {
         const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
+        const includeBonus = bonusEnabled && user.prefs.bonusEmail;
+        const bonusUnsub = includeBonus
+          ? await reminderUnsubscribeUrl(user.accountId, "daily_bonus")
+          : undefined;
         const sent = await sendEmail({
           to: user.email,
           subject: "Zovus — ваш расклад на сегодня",
-          html: dailyReminderEmailHtml(user.name, siteUrl, unsub),
-          text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}\nОтключить: ${unsub}`,
+          html: dailyReminderEmailHtml(user.name, siteUrl, unsub,
+            bonusUnsub ? { amount: DAILY_BONUS_AMOUNT, claimable: user.bonusClaimable,
+              unsubscribeUrl: bonusUnsub } : undefined),
+          text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}`
+            + (bonusUnsub
+              ? `\n${user.bonusClaimable ? "Ваш ежедневный бонус готов" : "Ежедневный бонус доступен каждые 24 часа"}: ${DAILY_BONUS_AMOUNT} рун: ${siteUrl}/cabinet#daily-bonus\nОтключить бонусные напоминания: ${bonusUnsub}`
+              : "")
+            + `\nОтключить напоминание о раскладе: ${unsub}`,
           template: "daily_reminder",
           listUnsubscribeUrl: unsub,
         });
