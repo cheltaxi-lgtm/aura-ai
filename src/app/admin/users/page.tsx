@@ -48,22 +48,26 @@ function AccountStatusBadge({
   profileUserId,
   oauthProvider,
   hasPassword,
+  erasureRequestedAt,
 }: {
   profileUserId: string | null;
   oauthProvider: string | null;
   hasPassword: boolean;
+  erasureRequestedAt: string | null;
 }) {
   const awaitingOnboarding = !profileUserId;
   return (
     <div className="flex flex-col gap-1">
       <span
         className={`inline-flex w-fit rounded-full px-2 py-0.5 text-[10px] font-medium ${
-          awaitingOnboarding
+          erasureRequestedAt
+            ? "bg-red-500/20 text-red-300"
+            : awaitingOnboarding
             ? "bg-amber-500/20 text-amber-300"
             : "bg-emerald-500/20 text-emerald-300"
         }`}
       >
-        {awaitingOnboarding ? "Ожидает onboarding" : "Активен"}
+        {erasureRequestedAt ? "Удаление выполняется" : awaitingOnboarding ? "Ожидает onboarding" : "Активен"}
       </span>
       <span className="text-[11px] text-gray-500">
         Вход: {accountAuthLabel(oauthProvider, hasPassword)}
@@ -78,6 +82,7 @@ export default function AdminUsersPage() {
   const [tab, setTab] = useState<"accounts" | "profiles">("accounts");
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [tripletBusyId, setTripletBusyId] = useState<string | null>(null);
   const [grantModal, setGrantModal] = useState<{
     profileUserId: string;
@@ -87,13 +92,14 @@ export default function AdminUsersPage() {
   const [grantAmount, setGrantAmount] = useState("");
   const [grantReason, setGrantReason] = useState("");
   const [grantBusy, setGrantBusy] = useState(false);
-  const [grantNotice, setGrantNotice] = useState<string | null>(null);
+  const [grantNotice, setGrantNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [memoryPurgeBusyId, setMemoryPurgeBusyId] = useState<string | null>(null);
 
   const load = () => {
     fetch(`/api/admin/users?type=${tab}`)
-      .then((r) => r.json())
-      .then((d) => setItems(d.items ?? []));
+      .then((r) => { if (!r.ok) throw new Error("load_failed"); return r.json(); })
+      .then((d) => { setItems(d.items ?? []); setGrantNotice((current) => current?.error ? null : current); })
+      .catch(() => setGrantNotice({ text: "Не удалось обновить список пользователей. Повторите загрузку страницы.", error: true }));
   };
 
   useEffect(load, [tab]);
@@ -105,15 +111,30 @@ export default function AdminUsersPage() {
     setGrantModal({ profileUserId, label, currentBalance });
   };
 
-  const deleteUser = async (id: string) => {
-    if (!confirm("Удалить аккаунт?")) return;
-    const { adminFetch } = await import("@/lib/admin-fetch");
-    await adminFetch("/api/admin/users", {
-      method: "DELETE",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id }),
-    });
-    load();
+  const deleteUser = async (id: string, email: string) => {
+    if (!confirm(`Удалить аккаунт ${email} и данные Telegram-бота? Это может занять несколько минут.`)) return;
+    setDeleteBusyId(id);
+    try {
+      const { adminFetch } = await import("@/lib/admin-fetch");
+      const response = await adminFetch("/api/admin/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id }),
+      });
+      if (!response.ok) {
+        const data = await response.json().catch(() => ({}));
+        alert(data.error ?? "Не удалось запустить удаление");
+        return;
+      }
+      setGrantNotice({ text: "Удаление принято: аккаунт и данные бота будут очищены вместе.", error: false });
+      setItems((current) => current.map((item) => String(item.id) === id
+        ? { ...item, erasure_requested_at: new Date().toISOString() } : item));
+      load();
+    } catch {
+      setGrantNotice({ text: "Не удалось запросить удаление. Проверьте состояние аккаунта и повторите попытку.", error: true });
+    } finally {
+      setDeleteBusyId(null);
+    }
   };
 
   const toggleUnlimited = async (id: string, next: boolean) => {
@@ -167,7 +188,7 @@ export default function AdminUsersPage() {
           `triplet: ${Number(data.deletedHistory ?? 0)}`,
           `энергия дня: ${Number(data.deletedDailyReadings ?? 0)}`,
         ];
-        setGrantNotice(`Сброс для ${email}: удалено ${parts.join(", ")}.`);
+        setGrantNotice({ text: `Сброс для ${email}: удалено ${parts.join(", ")}.`, error: false });
         load();
       } else {
         alert(data.error ?? "Ошибка сброса");
@@ -191,9 +212,9 @@ export default function AdminUsersPage() {
       const res = await adminFetch(`/api/admin/users/${profileUserId}/memory`, { method: "DELETE" });
       const data = await res.json().catch(() => ({}));
       if (res.ok) {
-        setGrantNotice(
-          `Память очищена для ${email}: удалено ${Number(data.deleted ?? 0).toLocaleString("ru-RU")} записей.`
-        );
+        setGrantNotice({ text:
+          `Память очищена для ${email}: удалено ${Number(data.deleted ?? 0).toLocaleString("ru-RU")} записей.`, error: false
+        });
       } else {
         alert(data.error ?? "Ошибка очистки памяти");
       }
@@ -231,9 +252,9 @@ export default function AdminUsersPage() {
         setGrantModal(null);
         setGrantAmount("");
         setGrantReason("");
-        setGrantNotice(
-          `Начислено ${amount.toLocaleString("ru-RU")} ᚢ. Новый баланс: ${formatRunes(data.newBalance)}`
-        );
+        setGrantNotice({ text:
+          `Начислено ${amount.toLocaleString("ru-RU")} ᚢ. Новый баланс: ${formatRunes(data.newBalance)}`, error: false
+        });
         load();
       } else {
         alert(data.error ?? "Ошибка начисления");
@@ -268,8 +289,8 @@ export default function AdminUsersPage() {
         subtitle="Аккаунты, профили и ручное начисление рун"
       />
       {grantNotice && (
-        <div className="mb-4 rounded-xl border border-aura-emerald/30 bg-aura-emerald/10 px-4 py-3 text-sm text-aura-emerald">
-          {grantNotice}
+        <div role={grantNotice.error ? "alert" : "status"} aria-live="polite" className={`mb-4 rounded-xl border px-4 py-3 text-sm ${grantNotice.error ? "border-red-500/30 bg-red-500/10 text-red-300" : "border-aura-emerald/30 bg-aura-emerald/10 text-aura-emerald"}`}>
+          {grantNotice.text}
         </div>
       )}
       <div className="mb-4 flex gap-2">
@@ -297,6 +318,7 @@ export default function AdminUsersPage() {
             const email = String(u.email);
             const oauthProvider = u.oauth_provider ? String(u.oauth_provider) : null;
             const hasPassword = Boolean(u.has_password);
+            const erasureRequestedAt = u.erasure_requested_at ? String(u.erasure_requested_at) : null;
             return [
               email,
               String(u.name),
@@ -305,6 +327,7 @@ export default function AdminUsersPage() {
                 profileUserId={profileUserId}
                 oauthProvider={oauthProvider}
                 hasPassword={hasPassword}
+                erasureRequestedAt={erasureRequestedAt}
               />,
               profileUserId ? String(u.profile_name ?? "—") : <span className="text-gray-500">не создан</span>,
               String(u.zodiac ?? "—"),
@@ -318,7 +341,7 @@ export default function AdminUsersPage() {
                   </span>
                   <button
                     type="button"
-                    disabled={tripletBusyId === profileUserId}
+                    disabled={Boolean(erasureRequestedAt) || tripletBusyId === profileUserId}
                     onClick={() => void resetTripletCooldown(profileUserId, email)}
                     className="rounded-lg border border-white/10 px-2 py-1 text-[11px] text-gray-400 transition-colors hover:border-aura-gold/40 hover:text-white disabled:opacity-50"
                   >
@@ -331,7 +354,7 @@ export default function AdminUsersPage() {
               <button
                 key="u"
                 type="button"
-                disabled={busyId === id}
+                disabled={Boolean(erasureRequestedAt) || busyId === id}
                 onClick={() => void toggleUnlimited(id, !unlimited)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium transition-colors ${
                   unlimited
@@ -344,27 +367,27 @@ export default function AdminUsersPage() {
               <button
                 key="i"
                 type="button"
-                disabled={busyId === id}
+                disabled={Boolean(erasureRequestedAt) || busyId === id}
                 onClick={() => void toggleInternal(id, !internal)}
                 className={`rounded-lg px-3 py-1.5 text-xs font-medium ${internal ? "bg-sky-400/20 text-sky-300" : "border border-white/10 text-gray-400"} disabled:opacity-50`}
               >
                 {internal ? "Скрыт" : "Клиент"}
               </button>,
-              renderRunesCell(profileUserId, email, u.rune_balance),
+              erasureRequestedAt ? "—" : renderRunesCell(profileUserId, email, u.rune_balance),
               new Date(String(u.created_at)).toLocaleDateString("ru-RU"),
               formatDateTime(u.last_activity_at),
               <div key="actions" className="flex gap-1.5">
                 {profileUserId && (
                   <AdminBtn
                     variant="danger"
-                    disabled={memoryPurgeBusyId === profileUserId}
+                    disabled={Boolean(erasureRequestedAt) || memoryPurgeBusyId === profileUserId}
                     onClick={() => void purgeUserMemory(profileUserId, email)}
                   >
                     {memoryPurgeBusyId === profileUserId ? "…" : "Очистить память"}
                   </AdminBtn>
                 )}
-                <AdminBtn variant="danger" onClick={() => deleteUser(id)}>
-                  Удалить
+                <AdminBtn variant="danger" disabled={Boolean(erasureRequestedAt) || deleteBusyId === id} onClick={() => void deleteUser(id, email)}>
+                  {erasureRequestedAt ? "Удаляется" : deleteBusyId === id ? "Запрос…" : "Удалить"}
                 </AdminBtn>
               </div>,
             ];
@@ -382,7 +405,7 @@ export default function AdminUsersPage() {
               u.gender === "male" ? "М" : u.gender === "female" ? "Ж" : "—",
               String(u.birth_date),
               String(u.zodiac),
-              renderRunesCell(profileUserId, label, u.rune_balance),
+              u.erasure_requested_at ? "—" : renderRunesCell(profileUserId, label, u.rune_balance),
               new Date(String(u.created_at)).toLocaleDateString("ru-RU"),
               formatDateTime(u.last_activity_at),
             ];

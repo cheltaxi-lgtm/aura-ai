@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { queryClient, withTransaction } from "@/lib/db";
-import { listUserAccounts, listOnboardingProfiles, deleteUserAccount, logAdminAction } from "@/lib/admin";
+import { listUserAccounts, listOnboardingProfiles } from "@/lib/admin";
+import { requestAccountErasure } from "@/lib/account-erasure";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -27,11 +28,19 @@ export async function DELETE(request: NextRequest) {
   const auth = stepped.auth;
 
   const { id } = await request.json();
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  if (typeof id !== "string" || !UUID.test(id)) {
+    return NextResponse.json({ error: "valid id required" }, { status: 400 });
+  }
 
-  await deleteUserAccount(id);
-  await logAdminAction(auth.sub, "delete", "user_account", id);
-  return NextResponse.json({ ok: true });
+  try {
+    const result = await requestAccountErasure(id, { adminActorId: auth.sub });
+    return NextResponse.json({ ok: true, ...result }, { status: 202 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "account_not_found") {
+      return NextResponse.json({ error: "account_not_found" }, { status: 404 });
+    }
+    return NextResponse.json({ error: "erasure_unavailable" }, { status: 503 });
+  }
 }
 
 export async function PATCH(request: NextRequest) {

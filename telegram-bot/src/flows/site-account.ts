@@ -1,7 +1,7 @@
 import type { Context } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
-import { setZovusUserId, type BotUser } from "../db/repos.js";
+import { clearFlow, getFlow, setZovusUserId, type BotUser } from "../db/repos.js";
 import {
   siteEnsureAccount,
   siteLinkCode,
@@ -14,9 +14,11 @@ import { beginProfileOnboarding } from "./profile-onboarding.js";
 
 export async function syncSiteAccount(user: BotUser): Promise<SiteResolve> {
   const resolved = await siteResolve(user.telegram_user_id);
-  if (resolved.linked && resolved.profileUserId) {
-    if (user.zovus_user_id !== resolved.profileUserId) {
-      setZovusUserId(user.telegram_user_id, resolved.profileUserId);
+  if (resolved.ok) {
+    const profileId = resolved.linked ? resolved.profileUserId : null;
+    if (user.zovus_user_id !== profileId) setZovusUserId(user.telegram_user_id, profileId);
+    if (profileId && !resolved.needsOnboarding && getFlow(user.telegram_user_id)?.flow === "profile") {
+      clearFlow(user.telegram_user_id);
     }
   }
   return resolved;
@@ -99,14 +101,18 @@ export async function ensureSiteLinked(
     await ctx.reply('Удаление аккаунта ещё выполняется. Новые действия будут доступны после завершения.');
     return null;
   }
-  if (!site.ok && site.error === "site_bridge_disabled") {
+  if (!site.ok) {
     await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
     return null;
   }
 
   if (!site.linked) {
     const ensured = await ensureBotOfferAccount(ctx, user);
-    if (!ensured?.linked) {
+    if (!ensured?.ok) {
+      await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
+      return null;
+    }
+    if (!ensured.linked) {
       const linkUrl = (await issueSiteLinkUrl(ctx, user)) || site.linkUrl;
       await ctx.reply(copy.needSiteAccount, {
         reply_markup: linkAccountKeyboard(linkUrl),
