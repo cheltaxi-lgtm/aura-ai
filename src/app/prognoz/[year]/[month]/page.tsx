@@ -4,15 +4,18 @@ import SeasonalForecastPage from "@/components/seo/SeasonalForecastPage";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import {
   FORECAST_MONTHS,
-  FORECAST_YEARS,
+  getForecastYears,
   getForecastMonthBySlug,
   getMonthForecastMeta,
   getMonthForecastThemes,
+  isPastForecastMonth,
 } from "@/lib/seo/seasonal";
 import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
 
+export const revalidate = 3600;
+
 export function generateStaticParams() {
-  return FORECAST_YEARS.flatMap((year) =>
+  return getForecastYears().flatMap((year) =>
     FORECAST_MONTHS.map((month) => ({ year: String(year), month: month.slug }))
   );
 }
@@ -25,7 +28,7 @@ export async function generateMetadata({
   const { year: yearStr, month: monthSlug } = await params;
   const year = Number(yearStr);
   const month = getForecastMonthBySlug(monthSlug);
-  if (!month || !FORECAST_YEARS.includes(year as (typeof FORECAST_YEARS)[number])) {
+  if (!month || !getForecastYears().includes(year)) {
     return { title: "Прогноз" };
   }
   return buildSeoMetadata(getMonthForecastMeta(year, month));
@@ -39,9 +42,10 @@ export default async function PrognozMonthPage({
   const { year: yearStr, month: monthSlug } = await params;
   const year = Number(yearStr);
   const month = getForecastMonthBySlug(monthSlug);
-  if (!month || !FORECAST_YEARS.includes(year as (typeof FORECAST_YEARS)[number])) notFound();
+  if (!month || !getForecastYears().includes(year)) notFound();
 
   const meta = getMonthForecastMeta(year, month);
+  const isPast = isPastForecastMonth(year, month);
   const breadcrumbs = [
     { name: "Zovus", path: "/" },
     { name: "Прогнозы", path: "/prognoz" },
@@ -52,7 +56,9 @@ export default async function PrognozMonthPage({
   return (
     <SeasonalForecastPage
       h1={meta.h1}
-      intro={`Прогноз по картам на ${month.name} ${year}: основные темы месяца, совет арканов и ссылки на расклады по вашей ситуации.`}
+      intro={isPast
+        ? `${month.name} ${year} уже прошёл. Эту страницу можно использовать для разбора принятого решения; как актуальный прогноз прошедший месяц не показывается в поиске.`
+        : `Чтобы получить прогноз Таро на ${month.name} ${year}, выберите реальный вопрос и сделайте личный расклад. Темы ниже помогают подготовиться, но не являются картами, выпавшими за вас.`}
       breadcrumbs={breadcrumbs}
       path={meta.path}
       metaTitle={meta.title}
@@ -70,7 +76,7 @@ export default async function PrognozMonthPage({
       faq={[
         {
           q: `Какой расклад подходит на ${month.name}?`,
-          a: "Для обзора месяца — «Прогноз на месяц» или три карты. Для любви и работы — тематические вопросы в каталоге.",
+          a: "Для общего вопроса выберите «Прогноз на месяц». Если важны отношения или работа, сформулируйте одну конкретную ситуацию и выберите тематический расклад.",
         },
         {
           q: "Можно ли уточнить прогноз в чате?",
@@ -79,8 +85,12 @@ export default async function PrognozMonthPage({
       ]}
       extraSections={[
         {
-          heading: `Совет карт на ${month.name}`,
-          body: `В ${month.namePrepositional} полезно обратить внимание на ${getMonthForecastThemes(month).join(", ")}. Расклад поможет увидеть, где вы получаете поддержку арканов.`,
+          heading: `Вопросы на ${month.name}`,
+          body: `Выберите одну тему из списка — ${getMonthForecastThemes(month).join(", ")}. Вместо «что случится со мной?» спросите, какое решение стоит подготовить, что может помешать и какой ресурс уже доступен. Затем сравните ответ с конкретными событиями месяца.`,
+        },
+        {
+          heading: "После расклада",
+          body: "Запишите дату, вопрос и один вывод своими словами. Вернитесь к записи в конце периода: что подтвердилось, что вы поняли иначе и какое действие оказалось полезным? Это помогает отличить реальную пользу от слишком общей формулировки.",
         },
       ]}
     />
