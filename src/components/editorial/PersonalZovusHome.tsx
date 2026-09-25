@@ -294,8 +294,6 @@ export default function PersonalZovusHome({
       className="personal-zovus"
       aria-labelledby={showHeroBlocks ? "personal-zovus-title" : "personal-zovus-today"}
     >
-      <RetentionOptInCard surface="authenticated_home" />
-
       {showHeroBlocks ? (
       <header className="personal-zovus__header">
         <p className="personal-zovus__eyebrow">Personal Zovus</p>
@@ -316,6 +314,7 @@ export default function PersonalZovusHome({
           Сегодня
         </h2>
         <div className="personal-zovus__panel">
+          <span className="personal-zovus__free-label">Бесплатно · каждый день</span>
           <p className="personal-zovus__panel-title">{dailyTitle}</p>
           <p className="personal-zovus__panel-text">{dailyHint}</p>
           {dailyCardsState === "available" ? (
@@ -367,6 +366,8 @@ export default function PersonalZovusHome({
           ) : null}
         </div>
       </div>
+
+      <RetentionOptInCard surface="authenticated_home" />
 
       {continueItems.length > 0 ? (
         <div className="personal-zovus__block" aria-labelledby="personal-zovus-continue">

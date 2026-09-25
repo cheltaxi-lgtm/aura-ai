@@ -24,7 +24,7 @@ describe("personal-zovus-home", () => {
     expect(EDITORIAL_PRODUCT_ENTRIES.map((e) => e.id)).toContain("palm");
   });
 
-  it("auth home mounts photo hero without stacking selling CTAs", () => {
+  it("auth home makes the same free daily reading available from hero and Today", () => {
     const home = readFileSync(path.join(ROOT, "src/components/HomePage.tsx"), "utf8");
     expect(home).toMatch(/<LoggedInHomeBanner/);
     expect(home).toMatch(/PersonalZovusHome/);
@@ -47,13 +47,17 @@ describe("personal-zovus-home", () => {
     expect(banner).toMatch(/editorial-hero--logged-in/);
     expect(banner).not.toMatch(/HeroQuestionField/);
     expect(banner).not.toMatch(/chipClass|editorial-hero__chip/);
-    expect(banner).not.toMatch(/onOpenDailyCards/);
+    expect(banner).toMatch(/onOpenDailyCards/);
+    expect(banner).toMatch(/Открыть бесплатно · расклад на сутки/);
     const personal = readFileSync(
       path.join(ROOT, "src/components/editorial/PersonalZovusHome.tsx"),
       "utf8"
     );
     expect(personal).toMatch(/showHeroBlocks \? \([\s\S]*?<header/);
     expect(personal).toMatch(/personal-zovus-today/);
+    expect(personal.indexOf("personal-zovus-today")).toBeLessThan(
+      personal.indexOf("<RetentionOptInCard")
+    );
     const css = readFileSync(
       path.join(ROOT, "src/styles/editorial-landing.css"),
       "utf8"
@@ -78,7 +82,7 @@ describe("personal-zovus-home", () => {
       "utf8"
     );
     const [, afterMobile] = header.split("app-top-header__mobile");
-    expect(afterMobile).toContain('primaryActionMobileLabel ?? "Расклад"');
+    expect(afterMobile).toContain('isLoggedIn ? "На сутки" : "Расклад"');
     expect(afterMobile).not.toMatch(/3 карты дня/);
     expect(header).toContain('isLoggedIn ? "Расклад на сутки" : "Получить расклад"');
   });

@@ -9,9 +9,9 @@ const exactCards = [
 const historyId = "e2e-daily-history-1";
 const sessionId = "e2e-daily-session-1";
 
-async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null }) {
+async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean }) {
   let homeRecapHiddenKey: string | null = opts?.hiddenKey ?? null;
-  let dailyExists = true;
+  let dailyExists = opts?.dailyExists ?? true;
   let cooldownAllowed = false;
 
   await page.route("**/api/**", async (route) => {
@@ -99,13 +99,26 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null 
     if (path === "/api/daily-reading" && request.method() === "GET") {
       return route.fulfill({
         json: {
+          drawn: dailyExists,
+          text: dailyExists ? "Ваш день раскрывается спокойно: утром выберите главное, днём сохраните фокус, вечером подведите итог." : null,
+          cards: dailyExists ? exactCards : [],
+          system: dailyExists ? "tarot-veronika" : null,
+          spreadId: dailyExists ? "triplet" : null,
+          locked: false,
+          purged: false,
+        },
+      });
+    }
+
+    if (path === "/api/daily-reading" && request.method() === "POST") {
+      dailyExists = true;
+      return route.fulfill({
+        json: {
           drawn: true,
           text: "Ваш день раскрывается спокойно: утром выберите главное, днём сохраните фокус, вечером подведите итог.",
           cards: exactCards,
           system: "tarot-veronika",
           spreadId: "triplet",
-          locked: false,
-          purged: false,
         },
       });
     }
@@ -231,6 +244,46 @@ test.describe("daily artifact + landing copy", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Ваш день раскрывается спокойно");
     for (const card of exactCards) await expect(dialog).toContainText(card.name);
+  });
+
+  test("free daily reading starts from the logged-in hero without showing a paid choice first", async ({ page }, testInfo) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text());
+    });
+    await installDailyMocks(page, { dailyExists: false });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/?app=1");
+
+    const hero = page.locator(".editorial-hero--logged-in");
+    await expect(hero.getByRole("button", { name: "Открыть бесплатно · расклад на сутки" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20_000 });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await hero.screenshot({ path: testInfo.outputPath("daily-free-hero-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await hero.screenshot({ path: testInfo.outputPath("daily-free-hero-mobile.png") });
+    await hero.getByRole("button", { name: "Открыть бесплатно · расклад на сутки" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Расклад на сутки" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /Расширить до 7 карт/ })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" }).click();
+    for (let i = 0; i < exactCards.length; i += 1) {
+      await dialog.getByRole("button", { name: "Открыть карту" }).first().click();
+    }
+    await expect(dialog).toContainText("Ваш день раскрывается спокойно");
+    await expect(dialog.getByRole("button", { name: /Расширить до 7 карт/ })).toBeVisible();
+    const freeResult = dialog.getByText("Ваш день раскрывается спокойно", { exact: false });
+    const upgrade = dialog.getByRole("button", { name: /Расширить до 7 карт/ });
+    expect(await freeResult.evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(
+      await upgrade.evaluate((element) => element.getBoundingClientRect().top)
+    );
+    await dialog.screenshot({ path: testInfo.outputPath("daily-free-result-mobile.png") });
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
   });
 
   test("Scenario B: a server-hidden recap stays absent after reload", async ({ page }) => {

@@ -3740,6 +3740,8 @@ export default function HomePage({
               <>
                 <LoggedInHomeBanner
                   userName={effectiveProfile.name || authUser?.name}
+                  dailyCardsState={dailyReadingUiState}
+                  onOpenDailyCards={openDailyReading}
                 />
                 <PersonalZovusHome
                 showHeroBlocks={false}
@@ -4377,14 +4379,14 @@ export default function HomePage({
       ) : null}
 
       <DailyBonusClaimer
-        key={authUser?.profileUserId ?? "guest"}
+        key={`daily-bonus:${authUser?.profileUserId ?? "guest"}`}
         enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}
         suppressVerificationNotice={hasReceivedPersonalValue && (
           memoryPrompt?.profileId !== authUser?.profileUserId || memoryPrompt?.blocking === true
         )}
       />
       <PersonalMemoryChoice
-        key={authUser?.profileUserId ?? "guest"}
+        key={`memory-choice:${authUser?.profileUserId ?? "guest"}`}
         enabled={!authLoading && isLoggedIn && Boolean(authUser?.profileUserId) && hasReceivedPersonalValue}
         onPromptBlockingChange={handleMemoryPromptBlocking}
       />

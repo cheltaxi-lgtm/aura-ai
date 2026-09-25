@@ -24,6 +24,7 @@ import type { RitualType } from "@/lib/ritual-config";
 import AsyncJobProgressNotice from "@/components/AsyncJobProgressNotice";
 import { productCalendarDate } from "@/lib/product-calendar";
 import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
+import { trackDailyCardsCompleted, trackDailyCardsStarted } from "@/lib/seo/metrika";
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const GOLD_GRADIENT = "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)";
@@ -108,6 +109,7 @@ export default function PremiumEnergyBlock({
   const [drawing, setDrawing] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const spreadIdRef = useRef<SpreadId>(initialSpreadId);
+  const newlyDrawnFreeRef = useRef(false);
 
   const spread = useMemo(() => getSpread(spreadId), [spreadId]);
   const positionLabels = useMemo(() => spread.positions.map((p) => p.label), [spread]);
@@ -160,6 +162,7 @@ export default function PremiumEnergyBlock({
     setCards([]);
     setSystem(null);
     setRevealed(0);
+    newlyDrawnFreeRef.current = false;
     onDailyReadingStateChange?.("loading");
     void (async () => {
       try {
@@ -256,6 +259,7 @@ export default function PremiumEnergyBlock({
     }
     setDrawing(true);
     setErrorMessage(null);
+    if (activeSpreadId !== "daily-extended") trackDailyCardsStarted("daily_modal");
     try {
       const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
       const { status: resStatus, data } = await postWithAsyncJob({
@@ -312,6 +316,7 @@ export default function PremiumEnergyBlock({
         setRevealed(0);
         setDrawnToday(true);
         onDailyReadingStateChange?.("opened");
+        newlyDrawnFreeRef.current = activeSpreadId !== "daily-extended";
       } else if (typed.message) {
         setErrorMessage(typed.message);
       } else {
@@ -333,10 +338,15 @@ export default function PremiumEnergyBlock({
 
   const hasDraw = cards.length > 0;
   const allRevealed = hasDraw && revealed >= cards.length;
+  useEffect(() => {
+    if (!allRevealed || !newlyDrawnFreeRef.current) return;
+    newlyDrawnFreeRef.current = false;
+    trackDailyCardsCompleted("daily_modal");
+  }, [allRevealed]);
   const canDraw = !lockedToday && !hasDraw && !drawing;
   const canReveal = hasDraw && revealed < cards.length && !drawing;
   const canUpgradeToExtended =
-    !lockedToday && hasDraw && spreadId !== "daily-extended" && !drawing;
+    !lockedToday && allRevealed && spreadId !== "daily-extended" && !drawing;
   const { body, quote } = useMemo(
     () => (text && allRevealed ? parseDailyEnergyText(text) : { body: "", quote: null }),
     [text, allRevealed]
@@ -443,7 +453,7 @@ export default function PremiumEnergyBlock({
                 <div className="relative flex shrink-0 items-center justify-between gap-3 border-b border-white/6 px-5 py-4">
                 <div>
                   <p className="text-[10px] font-medium uppercase tracking-[0.22em] text-amber-400/80">
-                    Бесплатно · раз в сутки
+                    {spreadId === "daily-extended" ? "Расширенный расклад" : "Бесплатно · раз в сутки"}
                   </p>
                   <h2 className="font-display text-lg font-semibold text-white">
                     {spreadId === "daily-extended" ? spread.label : "Расклад на сутки"}
@@ -471,7 +481,7 @@ export default function PremiumEnergyBlock({
                     </p>
                   </div>
                 ) : null}
-                {!hasDraw && !drawnToday && !lockedToday && (
+                {!hasDraw && !drawnToday && !lockedToday && spreadId === "daily-extended" && (
                   <div className="mb-5">
                     <p className="mb-2 text-[11px] uppercase tracking-wide text-gray-500">Схема</p>
                     <div className="grid grid-cols-2 gap-2">
@@ -514,6 +524,18 @@ export default function PremiumEnergyBlock({
                   </div>
                 )}
 
+                {canDraw ? (
+                  <button
+                    type="button"
+                    onClick={() => void draw(spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID)}
+                    className="mb-5 w-full rounded-2xl border border-amber-400/60 bg-amber-500/15 px-4 py-3 text-sm font-semibold text-amber-100 hover:bg-amber-500/25 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-300"
+                  >
+                    {spreadId === "daily-extended" ? (
+                      <>Открыть расширенный расклад · {isUnlimited ? "без списания" : <RuneCost cost={extendedCost} />}</>
+                    ) : "Начать бесплатный расклад · 0 рун"}
+                  </button>
+                ) : null}
+
                 {/* Master selector — hidden once drawn */}
                 {!hasDraw && pickMasters.length > 1 && (
                   <div className="mb-5">
@@ -550,32 +572,6 @@ export default function PremiumEnergyBlock({
                         {DECK_SYSTEM_DISPLAY[pickSystem] ?? selectedMaster.title}
                       </p>
                     )}
-                  </div>
-                )}
-
-                {canUpgradeToExtended && (
-                  <div className="mb-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
-                    <p className="text-xs text-gray-300">
-                      Классический расклад готов. Можно расширить до 7 сфер дня.
-                    </p>
-                    <button
-                      type="button"
-                      disabled={drawing}
-                      onClick={() => void draw("daily-extended")}
-                      className="mt-2 w-full rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 transition-colors hover:bg-amber-500/15 disabled:opacity-50"
-                    >
-                      Расширить до 7 карт
-                      {isUnlimited ? (
-                        " · без списания"
-                      ) : showExtendedPrice ? (
-                        <>
-                          {" · "}
-                          <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />
-                        </>
-                      ) : (
-                        " · 10 рун"
-                      )}
-                    </button>
                   </div>
                 )}
 
@@ -636,7 +632,7 @@ export default function PremiumEnergyBlock({
                     {drawing
                       ? "Раскрываем карты…"
                       : canDraw
-                        ? "Нажмите на карты, чтобы открыть расклад"
+                        ? "Нажмите кнопку или на любую карту, чтобы начать"
                         : canReveal
                           ? "Открывайте карты, чтобы увидеть энергию дня"
                           : null}
@@ -677,6 +673,32 @@ export default function PremiumEnergyBlock({
                     </motion.div>
                   )}
                 </AnimatePresence>
+
+                {canUpgradeToExtended && (
+                  <div className="mt-5 rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3">
+                    <p className="text-xs text-gray-300">
+                      Хотите подробнее? Расширьте сегодняшний расклад до 7 сфер дня.
+                    </p>
+                    <button
+                      type="button"
+                      disabled={drawing}
+                      onClick={() => void draw("daily-extended")}
+                      className="mt-2 w-full rounded-xl border border-amber-500/40 bg-amber-500/10 px-3 py-2 text-xs font-medium text-amber-100 hover:bg-amber-500/15 disabled:opacity-50"
+                    >
+                      Расширить до 7 карт
+                      {isUnlimited ? (
+                        " · без списания"
+                      ) : showExtendedPrice ? (
+                        <>
+                          {" · "}
+                          <RuneCost cost={extendedCost} enabled className="inline text-[10px]" />
+                        </>
+                      ) : (
+                        " · 10 рун"
+                      )}
+                    </button>
+                  </div>
+                )}
 
                 {allRevealed &&
                 text &&

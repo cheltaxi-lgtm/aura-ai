@@ -86,10 +86,10 @@ export const EDITORIAL_DAILY_CARDS = {
   guestCta: "Первый расклад по вопросу",
   guestCtaHint: "После входа расклад на сутки доступен бесплатно раз в сутки.",
   authAvailableCta: "Открыть расклад на сутки",
-  authAvailableTitle: "Ваш расклад на сутки готов",
+  authAvailableTitle: "Бесплатный расклад на сутки",
   authAvailableSubtitle:
     "Посмотрите, что подскажут карты об утре, дне и вечере.",
-  authAvailableHint: "Бесплатно раз в сутки.",
+  authAvailableHint: "Без списания рун · раз в сутки.",
   authOpenedCta: "Посмотреть расклад",
   /** @deprecated use authOpenedCta — kept for transitional imports */
   authUsedCta: "Посмотреть расклад",

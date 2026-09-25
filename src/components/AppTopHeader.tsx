@@ -159,7 +159,7 @@ export default function AppTopHeader({
             onClick={onStartReading}
             className="app-top-header__pill relative z-[5010] btn-luxe btn-luxe--sm btn-luxe--pill btn-luxe--gold"
           >
-            {primaryActionMobileLabel ?? "Расклад"}
+            {primaryActionMobileLabel ?? (isLoggedIn ? "На сутки" : "Расклад")}
           </button>
           {!isLoggedIn ? (
             <AppTopHeaderAccount

@@ -514,7 +514,13 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showLoggedInHome ? <LoggedInHomeBanner userName={homeUserName} /> : null}
+      {showLoggedInHome ? (
+        <LoggedInHomeBanner
+          userName={homeUserName}
+          dailyCardsState={dailyCardsState}
+          onOpenDailyCards={onOpenDailyCards}
+        />
+      ) : null}
 
       {showQuickQuestionsBlock ? (
         <QuickQuestions
