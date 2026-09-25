@@ -54,6 +54,7 @@ describe("daily-cards-reminder-delivery (unit)", () => {
       "https://zovus.ru/daily-off", { amount: 3, claimable: true,
         unsubscribeUrl: "https://zovus.ru/bonus-off" });
     expect(combined).toContain("/?daily=1");
+    expect(combined).toContain("utm_medium=email&utm_campaign=daily_reading");
     expect(combined).toContain("/cabinet#daily-bonus");
     expect(combined).toContain("https://zovus.ru/daily-off");
     expect(combined).toContain("https://zovus.ru/bonus-off");
@@ -238,7 +239,8 @@ describe("daily-cards-reminder-delivery (source)", () => {
     const tpl = read("src/lib/email/templates.ts");
     const start = tpl.indexOf("export function dailyReminderEmailHtml");
     const fn = tpl.slice(start, start + 700);
-    expect(fn).toMatch(/\?daily=1/);
+    expect(tpl).toMatch(/DAILY_REMINDER_EMAIL_PATH\s*=\s*[\s\S]*?\?daily=1/);
+    expect(fn).toContain("DAILY_REMINDER_EMAIL_PATH");
     expect(fn).not.toMatch(/\?dailyCards=1/);
   });
 });

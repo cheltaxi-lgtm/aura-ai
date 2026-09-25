@@ -60,9 +60,10 @@ export default function PhotoRaskladPage() {
         позиции. После входа получите их общий смысл, полный разбор и продолжение в чате.
       </p>
 
-      <div className="mt-4"><PhotoReadingOffer /></div>
-
-      <div className="mt-8 flex flex-wrap gap-3">
+      <p className="mt-4 text-sm font-medium text-aura-champagne">
+        Проверка распознанных карт — бесплатно, до регистрации и без списания рун.
+      </p>
+      <div className="mt-5 flex flex-wrap gap-3">
         <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click" pendingLabel="Открываем фото-расклад">
           Загрузить фото расклада
         </SeoTrackedCta>
@@ -70,6 +71,8 @@ export default function PhotoRaskladPage() {
           Отметить карты вручную
         </SeoTrackedCta>
       </div>
+
+      <div className="mt-4"><PhotoReadingOffer /></div>
 
       {/* Conversion value, client island: renders only with server-confirmed rune
           config. min-h reserves space so the late paint causes no layout shift. */}

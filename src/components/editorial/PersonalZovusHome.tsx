@@ -24,6 +24,7 @@ import {
 } from "@/lib/seo/product-funnel";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
+import DailyReminderCard from "@/components/retention/DailyReminderCard";
 
 const RETENTION_SESSION_KEY = "zovus_retention_return_emitted";
 
@@ -86,6 +87,7 @@ export default function PersonalZovusHome({
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderReady, setReminderReady] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderRevision, setReminderRevision] = useState(0);
 
   useEffect(() => {
     if (homeViewed.current) return;
@@ -167,6 +169,7 @@ export default function PersonalZovusHome({
       const data = (await res.json()) as { dailyCardsReminder?: boolean };
       const saved = data.dailyCardsReminder === true;
       setReminderEnabled(saved);
+      setReminderRevision((revision) => revision + 1);
       trackReminderOpt(saved);
     } catch {
       setReminderEnabled(prev);
@@ -365,6 +368,13 @@ export default function PersonalZovusHome({
             </label>
           ) : null}
         </div>
+        <DailyReminderCard
+          key={reminderRevision}
+          onStatusChange={(status) => {
+            setReminderEnabled(status.masterReminder);
+            setReminderReady(true);
+          }}
+        />
       </div>
 
       <RetentionOptInCard surface="authenticated_home" />

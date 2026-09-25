@@ -1,6 +1,6 @@
 import { query } from "@/lib/db";
 import { dispatchNotification } from "@/lib/notify";
-import { dailyReminderEmailHtml, sendEmail } from "@/lib/email/send";
+import { DAILY_REMINDER_EMAIL_PATH, dailyReminderEmailHtml, sendEmail } from "@/lib/email/send";
 import { getSiteUrl, pickDeliverableEmail } from "@/lib/email/mail-config";
 import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 import { reminderUnsubscribeUrl } from "@/lib/reminder-unsubscribe";
@@ -350,7 +350,7 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
           html: dailyReminderEmailHtml(user.name, siteUrl, unsub,
             bonusUnsub ? { amount: DAILY_BONUS_AMOUNT, claimable: user.bonusClaimable,
               unsubscribeUrl: bonusUnsub } : undefined),
-          text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_CARDS_REMINDER_CTA}`
+          text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_REMINDER_EMAIL_PATH}`
             + (bonusUnsub
               ? `\n${user.bonusClaimable ? "Ваш ежедневный бонус готов" : "Ежедневный бонус доступен каждые 24 часа"}: ${DAILY_BONUS_AMOUNT} рун: ${siteUrl}/cabinet#daily-bonus\nОтключить бонусные напоминания: ${bonusUnsub}`
               : "")

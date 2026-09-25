@@ -120,13 +120,13 @@ export default function DailyReminderCard({
     <p className="font-semibold text-white">Вернуться к раскладу на сутки</p>
     <p className="mt-1 leading-6">Можем присылать одно письмо о вашем раскладе на сутки. Отключить его можно в кабинете или из письма.</p>
     {status.hasEmail && status.dailyCardsReminder ? <p className="mt-2 text-amber-200">Письмо о раскладе включено.</p> : null}
-    {status.hasEmail && !status.dailyCardsReminder ? <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 px-4" disabled={busy} onClick={() => void enableReminder()}>Включить письмо о раскладе</button> : null}
+    {status.hasEmail && !status.dailyCardsReminder ? <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 px-4" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void enableReminder()}>Включить письмо о раскладе</button> : null}
     {!status.hasEmail || changingEmail ? <div className="mt-3 space-y-3">
       <label className="block">Адрес для уведомлений
         <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-white" placeholder="name@example.com" maxLength={254} />
       </label>
       <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-luxe btn-luxe--gold min-h-11 px-4" disabled={busy || !email.trim()} onClick={() => void requestEmail(status.hasEmail ? status.dailyCardsReminder : true)}>{status.hasEmail ? "Подтвердить новый адрес" : "Подтвердить почту и включить письмо"}</button>
+        <button type="button" className="btn-luxe btn-luxe--gold min-h-11 px-4" style={{ transitionProperty: "transform, opacity" }} disabled={busy || !email.trim()} onClick={() => void requestEmail(status.hasEmail ? status.dailyCardsReminder : true)}>{status.hasEmail ? "Подтвердить новый адрес" : "Подтвердить почту и включить письмо"}</button>
         {!status.hasEmail ? <button type="button" className="min-h-11 px-3 text-amber-200 underline" disabled={busy || !email.trim()} onClick={() => void requestEmail(false)}>Только добавить почту</button> : null}
       </div>
     </div> : null}

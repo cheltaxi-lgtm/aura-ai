@@ -1,6 +1,10 @@
 import { BRAND_NAME } from "@/lib/brand";
 import { getSiteUrl, getSupportEmail } from "@/lib/email/mail-config";
 
+/** Same daily action as the in-app reminder, attributed as an email visit. */
+export const DAILY_REMINDER_EMAIL_PATH =
+  "/?daily=1&utm_source=zovus&utm_medium=email&utm_campaign=daily_reading";
+
 function shell(bodyHtml: string, footerNote?: string): string {
   const note =
     footerNote ??
@@ -92,7 +96,7 @@ export function dailyReminderEmailHtml(
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
        <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
-       ${cta(`${url}/?daily=1`, "Открыть расклад на сутки")}
+         ${cta(`${url}${DAILY_REMINDER_EMAIL_PATH}`, "Открыть расклад на сутки")}
        ${bonus ? `<p>${bonus.claimable
          ? `Ваш ежедневный бонус готов: <strong>${bonus.amount} рун</strong> можно забрать бесплатно в личном кабинете.`
          : `Ежедневный бонус в размере ${bonus.amount} рун доступен каждые 24 часа. Проверьте время следующего получения в кабинете.`}</p>

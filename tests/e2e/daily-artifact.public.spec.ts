@@ -9,10 +9,11 @@ const exactCards = [
 const historyId = "e2e-daily-history-1";
 const sessionId = "e2e-daily-session-1";
 
-async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean }) {
+async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean; hasEmail?: boolean; masterReminder?: boolean }) {
   let homeRecapHiddenKey: string | null = opts?.hiddenKey ?? null;
   let dailyExists = opts?.dailyExists ?? true;
   let cooldownAllowed = false;
+  let masterReminder = opts?.masterReminder ?? true;
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -94,6 +95,23 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
       const body = request.postDataJSON() as { hiddenKey?: string };
       homeRecapHiddenKey = body.hiddenKey?.trim() || null;
       return route.fulfill({ json: { ok: true, homeRecapHiddenKey } });
+    }
+
+    if (path === "/api/profile/contact-email") {
+      if (request.method() === "POST") return route.fulfill({ json: { ok: true } });
+      return route.fulfill({ json: {
+        hasEmail: opts?.hasEmail !== false,
+        hasContactEmail: false,
+        masterReminder,
+        dailyCardsReminder: opts?.hasEmail !== false && masterReminder,
+      } });
+    }
+
+    if (path === "/api/auth/daily-cards-reminder") {
+      if (request.method() === "PATCH") {
+        masterReminder = request.postDataJSON().dailyCardsReminder === true;
+      }
+      return route.fulfill({ json: { dailyCardsReminder: masterReminder } });
     }
 
     if (path === "/api/daily-reading" && request.method() === "GET") {
@@ -244,6 +262,31 @@ test.describe("daily artifact + landing copy", () => {
     await expect(dialog).toBeVisible();
     await expect(dialog).toContainText("Ваш день раскрывается спокойно");
     for (const card of exactCards) await expect(dialog).toContainText(card.name);
+  });
+
+  test("account without a usable mailbox can add one beside the daily reading", async ({ page }) => {
+    await installDailyMocks(page, { hasEmail: false, dailyExists: false });
+    await page.goto("/?app=1");
+    const contact = page.getByRole("complementary", { name: "Письма о раскладе на сутки" });
+    await expect(contact).toBeVisible({ timeout: 20_000 });
+    await contact.getByRole("textbox", { name: "Адрес для уведомлений" }).fill("reader@example.com");
+    const sent = page.waitForRequest((request) => request.url().includes("/api/profile/contact-email") && request.method() === "POST");
+    await contact.getByRole("button", { name: "Подтвердить почту и включить письмо" }).click();
+    expect((await sent).postDataJSON()).toMatchObject({ email: "reader@example.com", dailyReminder: true });
+    await expect(contact).toContainText("письмо с подтверждением отправлено");
+  });
+
+  test("email reminder card and home switch stay in sync", async ({ page }) => {
+    await installDailyMocks(page, { masterReminder: false });
+    await page.goto("/?app=1");
+    const switcher = page.getByRole("checkbox", { name: "Напоминать о раскладе на сутки" });
+    const contact = page.getByRole("complementary", { name: "Письма о раскладе на сутки" });
+    await expect(switcher).not.toBeChecked();
+    await contact.getByRole("button", { name: "Включить письмо о раскладе" }).click();
+    await expect(switcher).toBeChecked();
+    await expect(contact).toHaveCount(0);
+    await switcher.uncheck();
+    await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toBeVisible();
   });
 
   test("free daily reading starts from the logged-in hero without showing a paid choice first", async ({ page }, testInfo) => {

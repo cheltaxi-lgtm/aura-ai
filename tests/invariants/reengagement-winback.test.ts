@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createUser, recordAccountLegalConsent, setAccountMarketingConsent } from "@/lib/accounts";
 import { updateNotificationPrefs } from "@/lib/daily-reminder-service";
 import { query } from "@/lib/db";
-import { inactiveUserEmailHtml, inactiveUserEmailText } from "@/lib/email/templates";
+import { dailyReminderEmailHtml, inactiveUserEmailHtml, inactiveUserEmailText } from "@/lib/email/templates";
 import {
   resolveInactiveWinbackStage,
   runReengagementEmailBatch,
@@ -104,11 +104,9 @@ describe("reengagement-winback (unit)", () => {
   });
 
   it("daily reminder CTA opens the canonical daily reading; scheduler still hourly", () => {
-    const daily = read("src/lib/email/templates.ts");
-    const start = daily.indexOf("export function dailyReminderEmailHtml");
-    const fn = daily.slice(start, start + 700);
-    expect(fn).toMatch(/\?daily=1/);
-    expect(fn).not.toMatch(/\?dailyCards=1/);
+    const html = dailyReminderEmailHtml("Анна", "https://zovus.ru");
+    expect(html).toContain("https://zovus.ru/?daily=1&utm_source=zovus&utm_medium=email&utm_campaign=daily_reading");
+    expect(html).not.toMatch(/\?dailyCards=1/);
     const cron = read("proxmox-setup/install-crons.sh");
     expect(cron).toMatch(/cron-reengagement-emails\.sh/);
     expect(cron).toMatch(/5 \* \* \* \*/);
