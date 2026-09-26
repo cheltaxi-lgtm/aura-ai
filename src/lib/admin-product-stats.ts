@@ -418,12 +418,13 @@ export async function getProductSectionStats(): Promise<{
     }>(`
       WITH accounts AS (
         SELECT ua.profile_user_id AS user_id, ua.created_at AS registered_at
-        FROM user_accounts ua
+        FROM user_accounts ua JOIN users u ON u.id=ua.profile_user_id
         WHERE ua.profile_user_id IS NOT NULL
           AND ua.is_internal=FALSE
           AND ua.is_unlimited=FALSE
-          AND ua.email NOT ILIKE '%@example.%'
-          AND ua.email NOT ILIKE '%+test@%'
+          AND ua.erasure_requested_at IS NULL AND u.erasure_requested_at IS NULL
+          AND NOT COALESCE(ua.email ILIKE '%@example.%',FALSE)
+          AND NOT COALESCE(ua.email ILIKE '%+test@%',FALSE)
       ), activity AS (
         SELECT user_id,created_at FROM spread_metrics
         WHERE source='product_activity' AND user_id IS NOT NULL
@@ -444,12 +445,12 @@ export async function getProductSectionStats(): Promise<{
       )
       SELECT
         COUNT(*) FILTER (WHERE registered_at>=NOW()-INTERVAL '30 days')::text AS "registered30d",
-        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '1 day' AND registered_at>=NOW()-INTERVAL '31 days')::text AS d1_eligible,
-        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '1 day' AND registered_at>=NOW()-INTERVAL '31 days' AND EXISTS(
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '2 days' AND registered_at>=NOW()-INTERVAL '31 days')::text AS d1_eligible,
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '2 days' AND registered_at>=NOW()-INTERVAL '31 days' AND EXISTS(
           SELECT 1 FROM activity a WHERE a.user_id=accounts.user_id AND a.created_at>=registered_at+INTERVAL '1 day' AND a.created_at<registered_at+INTERVAL '2 days'
         ))::text AS d1_returned,
-        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '7 days' AND registered_at>=NOW()-INTERVAL '37 days')::text AS r7_eligible,
-        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '7 days' AND registered_at>=NOW()-INTERVAL '37 days' AND EXISTS(
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '8 days' AND registered_at>=NOW()-INTERVAL '37 days')::text AS r7_eligible,
+        COUNT(*) FILTER (WHERE registered_at<=NOW()-INTERVAL '8 days' AND registered_at>=NOW()-INTERVAL '37 days' AND EXISTS(
           SELECT 1 FROM activity a WHERE a.user_id=accounts.user_id AND a.created_at>=registered_at+INTERVAL '1 day' AND a.created_at<registered_at+INTERVAL '8 days'
         ))::text AS r7_returned
       FROM accounts

@@ -5,6 +5,7 @@ import { useScrollReveal } from "@/hooks/useScrollReveal";
 import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
 import { EDITORIAL_DAILY_CARDS, EDITORIAL_SECTION_IDS } from "@/lib/editorial-landing-content";
 import { trackDailyCardsCtaClick, trackDailyCardsOfferView } from "@/lib/seo/metrika";
+import { buildRegisterHref } from "@/lib/post-auth-return";
 
 function normalizeCooldownPhrase(hint: string): string {
   const trimmed = hint.trim();
@@ -17,7 +18,6 @@ type EditorialDailyCardsSectionProps = {
   isLoggedIn: boolean;
   dailyState?: DailyCardsUiState;
   dailyCooldownHint?: string | null;
-  onGuestCta: () => void;
   onOpenDaily?: () => void;
   onViewToday?: () => void;
   onPickRegular?: () => void;
@@ -27,7 +27,6 @@ export default function EditorialDailyCardsSection({
   isLoggedIn,
   dailyState = "loading",
   dailyCooldownHint,
-  onGuestCta,
   onOpenDaily,
   onViewToday,
   onPickRegular,
@@ -92,7 +91,7 @@ export default function EditorialDailyCardsSection({
             : "landing_auth_cooldown"
     );
     if (!isLoggedIn) {
-      onGuestCta();
+      window.location.assign(buildRegisterHref("/?daily=1"));
       return;
     }
     if (dailyState === "available") onOpenDaily?.();

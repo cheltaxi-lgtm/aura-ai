@@ -42,6 +42,15 @@ const GUEST_REGISTRATION_STAGES = [
   { event: "claim_succeeded", label: "Привязали расклад" },
 ] as const;
 
+const CHECKOUT_ERRORS: Record<string,string> = {
+  captcha_rejected:"Проверка CAPTCHA", payments_not_configured:"Оплата не настроена",
+  database_unavailable:"База данных недоступна", provider_creation_failed:"Ошибка создания в ЮKassa",
+  missing_confirmation_url:"ЮKassa не вернула ссылку", package_not_found:"Пакет не найден",
+  invalid_json:"Некорректный запрос", invalid_body:"Некорректный запрос", invalid_request_id:"Некорректный идентификатор",
+  invalid_amount:"Некорректная сумма", amount_exceeds_limit:"Превышен лимит суммы",
+  amount_below_minimum:"Сумма ниже минимума", insufficient_amount:"Недостаточная сумма", selection_required:"Не выбран пакет",
+};
+
 export function formatBonusVersion(version: string) {
   if (version === "starter-40-v1") return "Бонус 40 рун";
   if (version === "starter-100-v1") return "Бонус 100 рун";
@@ -231,6 +240,21 @@ export default function FirstExperienceMetrics({data}:{data:AnalyticsData|{unava
               </div>
             );
           })}
+        </div>
+      </div>
+
+      <div className="relative mt-8">
+        <h3 className="font-display text-xl font-semibold text-white">Оплата: попытки и ошибки</h3>
+        <p className="mt-1 text-xs leading-relaxed text-white/55">Все реальные аккаунты за {data.checkout.days} дней. Попытка — принятый сервером запрос после входа и ограничения частоты; переход — созданная ссылка ЮKassa; покупка — подтверждённое начисление. Сбор включён с этого релиза.</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-3">
+          {([{event:"payment_attempted",label:"Попытки"},{event:"payment_started",label:"Ссылки ЮKassa"},{event:"payment_confirmed",label:"Покупки"}]).map(stage=>{
+            const row=data.checkout.stages.find(item=>item.event===stage.event);
+            return <div key={stage.event} className="rounded-xl border border-white/10 bg-white/[0.025] p-4"><p className="text-xs text-white/60">{stage.label}</p><p className="mt-2 text-2xl font-semibold text-white">{number.format(row?.requests??0)}</p><p className="mt-1 text-xs text-white/55">{number.format(row?.users??0)} пользователей</p></div>;
+          })}
+        </div>
+        <div className="mt-3 space-y-2 text-xs text-white/65">
+          {data.checkout.stages.filter(row=>row.event==="payment_failed").map(row=><p key={row.code}>{CHECKOUT_ERRORS[row.code]??"Другая ошибка"}: {number.format(row.requests)} попыток · {number.format(row.users)} пользователей</p>)}
+          {!data.checkout.stages.some(row=>row.event==="payment_failed")?<p>Ошибок принятых запросов оплаты за период не зафиксировано.</p>:null}
         </div>
       </div>
 

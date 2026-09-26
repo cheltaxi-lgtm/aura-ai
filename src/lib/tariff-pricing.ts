@@ -1,6 +1,15 @@
 import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
 import type { SpreadId, SpreadCatalogSettings } from "@/lib/spreads/types";
 
+/** Actual price including bonus runes, compared with the live custom top-up rate. */
+export function runePackageValue(pkg: {runes:number;bonus_runes:number;price_rub:number},rubPerRune:number) {
+  const total=Number(pkg.runes)+Number(pkg.bonus_runes);
+  const price=Number(pkg.price_rub);
+  if(![total,price,rubPerRune].every(Number.isFinite)||total<=0||price<=0||rubPerRune<=0)return null;
+  const perRune=price/total;
+  return {perRune,savingPercent:Math.max(0,Math.floor((1-perRune/rubPerRune)*100))};
+}
+
 /** Match the charged INTENTION_SPREAD formula for every currently selectable scheme. */
 export function intentionSpreadPriceRange(
   baseCost: number,

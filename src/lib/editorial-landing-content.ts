@@ -16,7 +16,7 @@ export const EDITORIAL_HERO = {
   secondaryCta: "Как проходит сеанс",
   microcopy: "3 карты без регистрации · без банковской карты · 18+",
   /** Daily benefit lives in EditorialDailyCardsSection — not in the guest hero. */
-  retentionHook: "Каждый день — 3 карты с подсказкой на текущий день",
+  retentionHook: "Бесплатный расклад на сутки — каждый день",
 } as const;
 
 /** Compact multiproduct entries under hero (not full marketing blocks). */
@@ -83,8 +83,8 @@ export const EDITORIAL_DAILY_CARDS = {
     { title: "Вечер", text: "С чем завершить сутки" },
   ] as const,
   /** Anonymous CTA opens first free trial (guest intro), not authenticated daily. */
-  guestCta: "Первый расклад по вопросу",
-  guestCtaHint: "После входа расклад на сутки доступен бесплатно раз в сутки.",
+  guestCta: "Открыть расклад на сутки",
+  guestCtaHint: "Войдите или создайте аккаунт — один бесплатный расклад раз в сутки.",
   authAvailableCta: "Открыть расклад на сутки",
   authAvailableTitle: "Бесплатный расклад на сутки",
   authAvailableSubtitle:

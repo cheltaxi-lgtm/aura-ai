@@ -1,7 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import { trackReminderOpt } from "@/lib/seo/product-funnel";
+import { trackDailyCardsCtaClick } from "@/lib/seo/metrika";
 
 export type DailyReminderStatus = {
   hasEmail: boolean;
@@ -42,7 +44,7 @@ export default function DailyReminderCard({
     return () => { active = false; };
   }, []);
 
-  if (!status || (!showManage && status.hasEmail && status.dailyCardsReminder)) return null;
+  if (!status) return null;
 
   const enableReminder = async () => {
     setBusy(true);
@@ -117,7 +119,16 @@ export default function DailyReminderCard({
   };
 
   return <aside className="my-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-sm text-white/80" aria-label="Письма о раскладе на сутки">
-    <p className="font-semibold text-white">Вернуться к раскладу на сутки</p>
+    <p className="font-semibold text-white">Ваш бесплатный расклад на сутки</p>
+    <p className="mt-1 leading-6">Утро, день и вечер — один расклад бесплатно раз в сутки. Подарочные руны для него не нужны.</p>
+    <Link href="/?daily=1" prefetch={false} className="btn-luxe btn-luxe--gold mt-3 min-h-11" style={{transitionProperty:"transform, opacity"}} onClick={(event) => {
+      trackDailyCardsCtaClick("post_result");
+      if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+      // Home owns one-shot deep-link state; reload to open daily after a result on the same page.
+      event.preventDefault();
+      window.location.assign("/?daily=1");
+    }}>Открыть расклад на сутки · 0 рун</Link>
+    {showManage || !status.hasEmail || !status.dailyCardsReminder ? <>
     <p className="mt-1 leading-6">Можем присылать одно письмо о вашем раскладе на сутки. Отключить его можно в кабинете или из письма.</p>
     {status.hasEmail && status.dailyCardsReminder ? <p className="mt-2 text-amber-200">Письмо о раскладе включено.</p> : null}
     {status.hasEmail && !status.dailyCardsReminder ? <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 px-4" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void enableReminder()}>Включить письмо о раскладе</button> : null}
@@ -135,6 +146,7 @@ export default function DailyReminderCard({
       <button type="button" className="min-h-10 text-amber-200 underline" disabled={busy} onClick={() => setChangingEmail((value) => !value)}>{changingEmail ? "Отменить смену адреса" : "Изменить адрес"}</button>
       {status.hasContactEmail ? <button type="button" className="min-h-10 text-white/65 underline" disabled={busy} onClick={() => void removeEmail()}>Удалить контактный адрес</button> : null}
     </div> : null}
+    </> : null}
     <p className="mt-2 text-xs text-white/60" role="status">{message}</p>
   </aside>;
 }

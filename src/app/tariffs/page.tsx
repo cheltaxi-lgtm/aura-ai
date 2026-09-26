@@ -10,7 +10,7 @@ import { RITUAL_TYPES, RITUAL_TYPE_KEYS } from "@/lib/ritual-config";
 import { RITUAL_PAGE_SLUGS } from "@/lib/ritual-recommendations";
 import { getRitualSettings, isRitualCatalogEnabled, isRitualTypeEnabled, ritualCostFromSettings } from "@/lib/ritual-settings";
 import { mergeSpreadSettingsFromFeatures } from "@/lib/spread-settings";
-import { intentionSpreadPriceRange } from "@/lib/tariff-pricing";
+import { intentionSpreadPriceRange, runePackageValue } from "@/lib/tariff-pricing";
 import { MIN_CUSTOM_RUNE_PURCHASE_RUB, MAX_CUSTOM_RUNE_PURCHASE_RUB } from "@/lib/rune-purchase-constants";
 import {
   isAuraReadingEnabled, isHumanDesignEnabled, isJointReadingEnabled,
@@ -112,9 +112,11 @@ export default async function TariffsPage() {
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">Пополнение</p><h2 className="mt-2 font-display text-3xl">Магазин рун</h2>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60">Покупка пополняет единый баланс. Руны не сгорают. Указана итоговая цена пакета в рублях; бонусные руны уже включены в общий объём.</p>
       {settings.enabled && packages && packages.length > 0 ? <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{packages.map((pkg) => <div key={pkg.id} className={`flex flex-col rounded-2xl border p-5 ${pkg.is_popular ? "border-amber-300/55 bg-amber-300/[0.08]" : "border-white/10 bg-white/[0.035]"}`}>
-        <div className="flex min-h-6 items-center justify-between gap-2"><p className="font-semibold">{pkg.name}</p>{pkg.is_popular ? <span className="rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#21170c]">Популярный</span> : null}</div>
+        <div className="flex min-h-12 flex-col items-start justify-between gap-1"><p className="min-w-0 break-words font-semibold">{pkg.name}</p>{pkg.is_popular ? <span className="shrink-0 rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#21170c]">Популярный</span> : null}</div>
         <p className="mt-5 font-display text-3xl text-amber-100">{RUB.format(pkg.runes + pkg.bonus_runes)} <span className="text-xl">ᚢ</span></p><p className="mt-1 min-h-5 text-xs text-white/50">{pkg.bonus_runes > 0 ? `${RUB.format(pkg.runes)} + ${RUB.format(pkg.bonus_runes)} бонусных` : `${RUB.format(pkg.runes)} рун`}</p>
-        <p className="mt-5 border-t border-white/10 pt-4 text-xl font-semibold">{RUB.format(pkg.price_rub)} ₽</p><ShopAction label="Выбрать пакет" packageId={pkg.id} className="btn-luxe btn-luxe--sm btn-luxe--gold mt-4 inline-flex justify-center" />
+        <p className="mt-5 border-t border-white/10 pt-4 text-xl font-semibold">{RUB.format(pkg.price_rub)} ₽</p>
+        <p className="mt-2 text-xs text-white/65">{runePackageValue(pkg,settings.rubPerRune)?.perRune.toLocaleString("ru-RU",{maximumFractionDigits:2})} ₽ за руну{(runePackageValue(pkg,settings.rubPerRune)?.savingPercent??0)>0?` · выгода ${runePackageValue(pkg,settings.rubPerRune)?.savingPercent}%`:""}</p>
+        <ShopAction label="Выбрать пакет" packageId={pkg.id} className="btn-luxe btn-luxe--sm btn-luxe--gold mt-4 inline-flex justify-center" />
       </div>)}</div> : <p className="mt-6 rounded-xl border border-white/10 bg-white/[0.035] p-5 text-sm text-white/60">Сейчас пакеты недоступны. Попробуйте открыть магазин позже.</p>}
       {settings.enabled && packages && packages.length > 0 ? <div className="mt-5 rounded-2xl border border-amber-300/20 bg-amber-300/[0.05] p-5 sm:flex sm:items-center sm:justify-between sm:gap-6"><div><h3 className="font-display text-lg">Нужна другая сумма?</h3><p className="mt-1 text-sm leading-6 text-white/60">В магазине можно выбрать от {RUB.format(MIN_CUSTOM_RUNE_PURCHASE_RUB)} до {RUB.format(MAX_CUSTOM_RUNE_PURCHASE_RUB)} ₽. Руны рассчитываются по курсу {settings.rubPerRune} ₽/ᚢ с округлением вниз; точное число увидите до оплаты.</p></div><ShopAction className="btn-luxe btn-luxe--md btn-luxe--gold mt-4 inline-flex shrink-0 justify-center sm:mt-0" label="Открыть магазин" /></div> : null}
       <p className="mt-5 text-xs leading-5 text-white/45">Оплата проходит через ЮKassa. В выбранной услуге перед подтверждением показывается итоговое списание рун; доступный баланс учитывается автоматически.</p>

@@ -291,6 +291,7 @@ export default function CabinetPage() {
     setActiveTab("runes");
     openPaywall({
       currentBalance: data.profile?.runeBalance ?? data.runes?.balance ?? 0,
+      highlightPackageId: /^[a-zA-Z0-9_-]{1,64}$/.test(params.get("package") ?? "") ? params.get("package")! : undefined,
       onClose: async () => {
         await fetchCabinet(0, false);
         setBalancePulse(true);
@@ -300,6 +301,7 @@ export default function CabinetPage() {
 
     params.delete("shop");
     params.delete("topup");
+    params.delete("package");
     const qs = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
   }, [loading, authLoading, authUser, data, openPaywall, fetchCabinet]);

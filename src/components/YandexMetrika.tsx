@@ -2,6 +2,7 @@
 
 import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
+import { analyticsPageUrl } from "@/lib/utm/marketing-url";
 import {
   COOKIE_CONSENT_EVENT,
   METRIKA_READY_EVENT,
@@ -52,7 +53,7 @@ function initMetrikaFull(): void {
       accurateTrackBounce: true,
       trackLinks: true,
       referrer: document.referrer,
-      url: location.origin + location.pathname,
+      url: analyticsPageUrl(location.href),
     });
   } catch {
     /* optional */
@@ -93,7 +94,7 @@ export default function YandexMetrika() {
 
   useEffect(() => {
     if (!pathname || !booted.current || !hasCookieConsent() || !window.ym || lastPath.current === pathname) return;
-    window.ym(YANDEX_METRIKA_ID, "hit", window.location.origin + pathname, { title: document.title });
+    window.ym(YANDEX_METRIKA_ID, "hit", analyticsPageUrl(window.location.href), { title: document.title });
     lastPath.current = pathname;
   }, [pathname]);
 

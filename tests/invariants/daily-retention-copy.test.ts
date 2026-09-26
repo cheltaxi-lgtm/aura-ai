@@ -14,7 +14,7 @@ import { TRIPLET_COOLDOWN_MS, tripletCooldownFromLastDraw } from "@/lib/triplet-
 describe("daily retention product copy (honest 24h)", () => {
   it("TEST15: anonymous landing sells consumer benefit without internal jargon", () => {
     expect(EDITORIAL_HERO.primaryCta).toMatch(/3 карты/i);
-    expect(EDITORIAL_HERO.retentionHook).toMatch(/3 карты/i);
+    expect(EDITORIAL_HERO.retentionHook).toMatch(/расклад на сутки/i);
     expect(EDITORIAL_DAILY_CARDS.body).toMatch(/раз в сутки/i);
     expect(EDITORIAL_DAILY_CARDS.body).not.toMatch(/не путать/i);
     expect(EDITORIAL_DAILY_CARDS.kicker).not.toMatch(/После регистрации/i);
@@ -32,7 +32,7 @@ describe("daily retention product copy (honest 24h)", () => {
       undefined,
       "a"
     );
-    expect(offer.heroRetentionHook).toMatch(/3 карты/i);
+    expect(offer.heroRetentionHook).toMatch(/расклад на сутки/i);
     expect(offer.seoFreeParagraph).toMatch(/расклад на сутки/i);
     expect(offer.seoFreeParagraph).toMatch(/один стартовый/i);
   });

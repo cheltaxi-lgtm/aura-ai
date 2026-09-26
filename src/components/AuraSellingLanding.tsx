@@ -418,7 +418,6 @@ export default function AuraSellingLanding({
         <EditorialSessionStepsSection />
         <EditorialDailyCardsSection
           isLoggedIn={false}
-          onGuestCta={() => startGuestSpread()}
         />
         {showMasters ? (
           <MastersShowcase
@@ -560,7 +559,6 @@ export default function AuraSellingLanding({
           isLoggedIn={isLoggedIn}
           dailyState={isLoggedIn ? dailyCardsState : undefined}
           dailyCooldownHint={dailyCooldownHint}
-          onGuestCta={() => startGuestSpread()}
           onOpenDaily={onOpenDailyCards}
           onViewToday={onViewTodayDailyCards}
           onPickRegular={onPickRegularSpread}

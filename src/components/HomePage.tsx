@@ -31,6 +31,7 @@ import { parseInsufficientRunes } from "@/lib/api-errors";
 import { consumeAccountDeletedHomeArrival } from "@/lib/account-deleted";
 import IntentionPicker from "@/components/IntentionPicker";
 import PremiumEnergyBlock from "@/components/PremiumEnergyBlock";
+import { dailyAuthReturn } from "@/lib/daily-auth-return";
 import HomeAuraBanner from "@/components/editorial/HomeAuraBanner";
 import MasterSessionFlow from "@/components/MasterSessionFlow";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread, isDailyOnlySpread, normalizeSpreadId, spreadFlippedState, type SpreadId } from "@/lib/spreads";
@@ -222,6 +223,7 @@ import {
   consumePendingGuestQuestion,
   persistPendingIntent,
   buildRegisterHref,
+  buildLoginHref,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import {
@@ -1102,7 +1104,8 @@ export default function HomePage({
       spreadParam === "daily-extended"
     )) {
       deepLinkSpreadParsedRef.current = true;
-      window.location.replace(buildRegisterHref(dailyParam === "extended" || spreadParam === "daily-extended" ? "/?daily=extended" : "/?daily=1"));
+      const dailyReturn = dailyAuthReturn(window.location.search);
+      window.location.replace(dailyReturn.returning ? buildLoginHref(dailyReturn.returnTo) : buildRegisterHref(dailyReturn.returnTo));
       return;
     }
 

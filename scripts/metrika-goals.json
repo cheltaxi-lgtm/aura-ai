@@ -981,6 +981,16 @@
       "id": "auth_email_view",
       "group": "registration",
       "metrikaGoalId": 608840672
+    },
+    {
+      "id": "rune_purchase_attempted",
+      "group": "commerce",
+      "metrikaGoalId": 664038426
+    },
+    {
+      "id": "rune_purchase_failed",
+      "group": "commerce",
+      "metrikaGoalId": 664038427
     }
   ]
 }

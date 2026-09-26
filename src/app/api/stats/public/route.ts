@@ -20,9 +20,20 @@ async function loadPublicStats(): Promise<PublicStats> {
   statsLoad = (async () => {
     try {
       const { rows } = await query<{ sessions: string; users: string }>(`
+        WITH accounts AS (
+          SELECT ua.profile_user_id
+          FROM user_accounts ua JOIN users u ON u.id=ua.profile_user_id
+          WHERE ua.is_internal=FALSE AND ua.is_unlimited=FALSE
+            AND ua.erasure_requested_at IS NULL AND u.erasure_requested_at IS NULL
+            AND NOT COALESCE(${testAccountEmailSql("ua.email")},FALSE)
+            AND COALESCE(lower(ua.email),'') NOT LIKE '%@example.%'
+            AND COALESCE(lower(ua.email),'') NOT LIKE '%+test@%'
+        )
         SELECT
-          (SELECT COUNT(*) FROM sessions)::text AS sessions,
-          (SELECT COUNT(*) FROM user_accounts ua WHERE NOT ${testAccountEmailSql("ua.email")})::text AS users
+          (SELECT COUNT(*) FROM sessions s WHERE EXISTS (
+            SELECT 1 FROM accounts a WHERE a.profile_user_id=s.user_id
+          ))::text AS sessions,
+          (SELECT COUNT(*) FROM accounts)::text AS users
       `);
       const value = {
         sessions: Math.max(0, parseInt(rows[0]?.sessions ?? "0", 10)),
@@ -31,7 +42,8 @@ async function loadPublicStats(): Promise<PublicStats> {
       statsCache = { value, expiresAt: Date.now() + CACHE_TTL_MS };
       return value;
     } catch {
-      const value = statsCache?.value ?? { sessions: 0, users: 0 };
+      if (!statsCache) throw new Error("Public totals unavailable");
+      const value = statsCache.value;
       statsCache = { value, expiresAt: Date.now() + ERROR_CACHE_TTL_MS };
       return value;
     } finally {
@@ -71,6 +83,6 @@ export async function GET(request: NextRequest) {
       }
     );
   } catch {
-    return NextResponse.json({ sessions: 0, users: 0 });
+    return NextResponse.json({ error: "stats_unavailable" }, { status: 503 });
   }
 }

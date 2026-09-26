@@ -6,13 +6,15 @@ const paymentId="22222222-2222-4222-8222-222222222222";
 async function fixture(page:Page) {
   const token=await new SignJWT({role:"user",tv:0}).setSubject("33333333-3333-4333-8333-333333333333").setProtectedHeader({alg:"HS256"}).setIssuedAt().setExpirationTime("1h").sign(new TextEncoder().encode(process.env.AUTH_SECRET));
   await page.context().addCookies([{name:"aura_auth",value:token,url:"http://127.0.0.1:3417",httpOnly:true,sameSite:"Lax"}]);
-  let saved=false;let confirmed=false;let cancelled=false;const calls:string[]=[];const orders:string[]=[];
+  let saved=false;let confirmed=false;let cancelled=false;const calls:string[]=[];const orders:string[]=[];const purchaseBodies:Record<string,unknown>[]=[];
   await page.route("**/api/**",async route=>{
     const req=route.request(),path=new URL(req.url()).pathname;calls.push(`${req.method()} ${path}`);
     if(path==="/api/auth/me")return route.fulfill({json:{authenticated:true,user:{sub:"fixture-account",role:"user",profileUserId:"fixture-profile",name:"Проверка",ageConfirmed:true}}});
     if(path==="/api/platform/features")return route.fulfill({json:{firstExperienceEnabled:true,recaptcha:{configured:false,masterEnabled:false,scopes:{}}}});
     if(path==="/api/cabinet")return route.fulfill({json:{profile:{id:"fixture-profile",name:"Проверка",email:"fixture@example.invalid",birthDate:"1990-01-01",birthCity:"Москва",runeBalance:20},stats:{totalSessions:1,daysWithUs:2,totalCards:3,favoriteMaster:null},achievements:{earned:[],locked:[]},sessions:[],sessionsTotal:0,sessionsHasMore:false,runes:{enabled:true,balance:20,transactions:[]},legacyAccess:null,photoSpreads:[],auraReadings:[],palmReadings:[],dailyReadings:[]}});
     if(path==="/api/profile")return route.fulfill({json:{profile:{id:"fixture-profile",name:"Проверка",gender:"female",birthDate:"1990-01-01",birthCity:"Москва",tarotCards:[]},needsOnboarding:false}});
+    if(path==="/api/profile/contact-email")return route.fulfill({json:{hasEmail:true,hasContactEmail:false,masterReminder:true,dailyCardsReminder:true}});
+    if(path==="/api/profile/notifications")return route.fulfill({json:{prefs:{dailyEmail:true,dailyInApp:false,dailyTelegram:false,reminderHourMsk:9,bonusEmail:false,marketingEmail:false,weeklyDigestEmail:false,reportReadyEmail:true,reportReadyTelegram:true}}});
     if(path==="/api/diary/journey"){
       if(req.method()==="POST"){const body=req.postDataJSON();if(body.insight!==undefined)saved=true;return route.fulfill({json:{ok:true}});}
       return route.fulfill({json:{channels:["email","telegram"],journey:{reading:{id:readingId,title:"Ваш портрет ауры",kind:"aura",date:"2026-09-08T10:00:00Z",href:`/cabinet/readings/${readingId}/print`},note:saved?{entry_text:"Выделить время для отдыха",weekly_step:"Одна прогулка",reflection:"",reminder_consent_at:null,reminder_channel:null}:null,continuation:{id:"matrix",product:"matrix",title:"Матрица судьбы",href:"/numerology/destiny-matrix",benefit:"Посмотрите на свои сильные стороны.",cost:100,rubPerRune:5}}}});
@@ -20,12 +22,12 @@ async function fixture(page:Page) {
     if(path==="/api/runes/config")return route.fulfill({json:{enabled:true,starterRunes:100,rubPerRune:5,costs:{READING:100,NUMEROLOGY_SESSION:100},packages:[{id:"small",name:"Для выбранного разбора",runes:100,bonus_runes:0,price_rub:500,is_popular:false}]}});
     if(path==="/api/runes/balance")return route.fulfill({json:{balance:confirmed?120:20,pending:false}});
     if(path==="/api/runes/daily/status")return route.fulfill({json:{available:false}});
-    if(path==="/api/runes/purchase"){orders.push(req.postDataJSON().requestId);return route.fulfill({json:{paymentId,paymentUrl:`http://127.0.0.1:3417/runes/success?paymentId=${paymentId}`}});}
+    if(path==="/api/runes/purchase"){const body=req.postDataJSON();orders.push(body.requestId);purchaseBodies.push(body);return route.fulfill({json:{paymentId,paymentUrl:`http://127.0.0.1:3417/runes/success?paymentId=${paymentId}`}});}
     if(path==="/api/runes/confirm")return route.fulfill({json:cancelled?{status:"cancelled",paymentId}:confirmed?{status:"credited",credited:true,balance:120,paymentId,amountRub:500,packageId:"small"}:{status:"pending",balance:120}});
     return route.fulfill({json:{}});
   });
   await page.route(/https:\/\/(?!127\.0\.0\.1|localhost).*/,route=>route.abort());
-  return {calls,orders,cancel:()=>{cancelled=true;},confirm:()=>{confirmed=true;cancelled=false;}};
+  return {calls,orders,purchaseBodies,cancel:()=>{cancelled=true;},confirm:()=>{confirmed=true;cancelled=false;}};
 }
 
 test("public landing and registration show the server-authoritative 40-rune gift",async({page})=>{
@@ -74,7 +76,7 @@ for(const width of [390,1280])test(`saved palm intent and exact package quote at
   await page.goto("/cabinet?shop=1");const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();
   await expect(page).toHaveURL(/\/cabinet$/);
   await expect(dialog.getByText(/Баланс: 20 ᚢ. Не хватает 80/)).toBeVisible();
-  await expect(dialog.getByText(/после выбранного разбора — 20/)).toBeVisible();
+  await expect(dialog.getByText(/Достаточно пополнить на 400 ₽/)).toBeVisible();
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:info.outputPath(`quote-${width}.png`)});
   f.confirm();await dialog.getByRole("button",{name:/Для выбранного разбора/}).click();
@@ -106,4 +108,69 @@ test("Mini App retains pending attempt and permits retry after confirmed cancell
   f.confirm();await expect(buy).toBeEnabled();await buy.click();await expect.poll(()=>f.orders.length).toBe(4);expect(f.orders[3]).not.toBe(f.orders[2]);
   await expect(page).toHaveURL(/cabinet/);
   expect(f.calls.some(c=>c==="POST /api/reading")).toBe(false);
+});
+
+test("email reader lands on login with the daily campaign and destination intact",async({page})=>{
+  await page.route("**/api/**",route=>route.fulfill({json:{authenticated:false,providers:[]}}));
+  await page.goto("/?daily=1&utm_source=zovus&utm_medium=email&utm_campaign=daily_reading");
+  await expect(page).toHaveURL(/auth\/user\/login/);
+  const url=new URL(page.url());
+  expect(url.searchParams.get("utm_campaign")).toBe("daily_reading");
+  expect(url.searchParams.get("returnTo")).toBe("/?daily=1&utm_source=zovus&utm_medium=email&utm_campaign=daily_reading");
+});
+
+test("guest daily CTA opens registration for the daily reading instead of starting a question",async({page})=>{
+  await page.route("**/api/**",route=>route.fulfill({json:{authenticated:false,providers:[]}}));
+  await page.goto("/");
+  await page.locator('#карты-дня').getByRole("button",{name:"Открыть расклад на сутки",exact:true}).click();
+  await expect(page).toHaveURL(/auth\/user\/register/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe("/?daily=1");
+});
+
+for(const width of [390,1280])test(`minimal custom topup and daily CTA for enabled reminders at ${width}px`,async({page},info)=>{
+  await page.setViewportSize({width,height:900});const f=await fixture(page);
+  await page.goto("/cabinet");
+  await expect(page.getByRole("link",{name:"Открыть расклад на сутки · 0 рун"})).toBeVisible();
+  await page.evaluate(()=>sessionStorage.setItem("aura_rune_selected_destination",JSON.stringify({path:"/photo-reading",requiredRunes:30,at:Date.now()})));
+  await page.goto("/cabinet?shop=1&package=small");const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();
+  await expect(page).toHaveURL(/\/cabinet$/);
+  await expect(dialog.getByText(/Баланс: 20 ᚢ. Не хватает 10/)).toBeVisible();
+  const minimum=dialog.getByRole("button",{name:"Пополнить на 100 ₽ · 20 ᚢ",exact:true});await expect(minimum).toBeVisible();
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.screenshot({path:info.outputPath(`minimum-topup-${width}.png`)});
+  await minimum.click();
+  await expect.poll(()=>f.purchaseBodies.length).toBe(1);
+  expect(f.purchaseBodies[0]).toMatchObject({customAmount:100});
+  expect(f.purchaseBodies[0]).not.toHaveProperty("packageId");
+  expect(f.calls.some(call=>call==="POST /api/reading")).toBe(false);
+});
+
+for(const width of [390,1280])test(`public catalog preserves package selection and shows actual two counters at ${width}px`,async({page},info)=>{
+  await page.setViewportSize({width,height:900});
+  await page.emulateMedia({reducedMotion:"reduce"});
+  await page.route("**/api/auth/me",route=>route.fulfill({json:{authenticated:false}}));
+  await page.route("**/api/stats/public",route=>route.fulfill({json:{users:68,sessions:321}}));
+  await page.goto("/tariffs#shop");
+  const cookieChoice=page.getByRole("button",{name:"Только необходимые",exact:true});
+  if(await cookieChoice.isVisible())await cookieChoice.click();
+  await expect(page.getByRole("heading",{name:"Магазин рун",exact:true})).toBeVisible();
+  await expect(page.getByText("Популярный",{exact:true})).toBeVisible();
+  const selection=page.getByRole("link",{name:"Выбрать пакет",exact:true}).first();
+  await expect(selection).toBeVisible();
+  const destination=new URL((await selection.getAttribute("href"))!,"https://zovus.ru").searchParams.get("returnTo");
+  expect(destination).toMatch(/^\/cabinet\?shop=1&package=[a-zA-Z0-9_-]+$/);
+  expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
+  await page.locator("#shop").screenshot({path:info.outputPath(`public-tariffs-${width}.png`)});
+  await selection.click();await expect(page).toHaveURL(/auth\/user\/register/,{timeout:20000});
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe(destination);
+  await page.goto("/");
+  const counters=page.locator(".landing-social-proof--hero");
+  await expect(counters.locator(".landing-social-proof__stat")).toHaveCount(2);
+  await expect(counters).toContainText("68");await expect(counters).toContainText("321");
+  await expect(counters).not.toContainText("онлайн");
+  await counters.scrollIntoViewIfNeeded();
+  await expect(counters).toBeVisible();
+  await expect.poll(()=>counters.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(2);
+  await expect.poll(()=>counters.evaluate(el=>getComputedStyle(el.closest(".editorial-hero__proof")!).opacity)).toBe("1");
+  await counters.screenshot({path:info.outputPath(`public-counters-${width}.png`)});
 });

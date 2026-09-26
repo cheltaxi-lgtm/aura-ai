@@ -88,7 +88,7 @@ export function buildLandingOfferCopy(
   /** Honest: authenticated daily triplet is a rolling 24h window (раз в сутки). */
   const heroMicrocopy = "Без регистрации · без банковской карты · 18+";
   const heroRetentionHook =
-    "Каждый день — 3 карты с подсказкой на текущий день";
+    "Бесплатный расклад на сутки — каждый день";
   const primaryCta = "Открыть 3 карты бесплатно";
   const secondaryCta = "Как проходит сеанс";
 
