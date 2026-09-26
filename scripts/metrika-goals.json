@@ -218,6 +218,11 @@
       "metrikaGoalId": 580953383
     },
     {
+      "id": "rune_checkout_started",
+      "group": "revenue",
+      "metrikaGoalId": 625725241
+    },
+    {
       "id": "paywall_open",
       "group": "revenue",
       "metrikaGoalId": 585784513
@@ -976,6 +981,16 @@
       "id": "auth_email_view",
       "group": "registration",
       "metrikaGoalId": 608840672
+    },
+    {
+      "id": "rune_purchase_attempted",
+      "group": "commerce",
+      "metrikaGoalId": 664038426
+    },
+    {
+      "id": "rune_purchase_failed",
+      "group": "commerce",
+      "metrikaGoalId": 664038427
     }
   ]
 }

@@ -98,12 +98,14 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
     zodiac: string | null;
     sessions_count: string;
     is_unlimited: boolean;
+    is_internal: boolean;
     last_triplet_draw_at: string | null;
     rune_balance: number | null;
     oauth_provider: string | null;
     has_password: boolean;
   }>(
-    `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited,
+    `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited, ua.is_internal,
+            ua.erasure_requested_at,
             ua.profile_user_id,
             (ua.password_hash IS NOT NULL) AS has_password,
             (
@@ -119,6 +121,7 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count,
             GREATEST(
               ua.last_login_at,
+              u.last_product_activity_at,
               (SELECT MAX(oi.last_login_at) FROM user_oauth_identities oi WHERE oi.user_account_id = ua.id),
               (SELECT MAX(ti.last_login_at) FROM user_telegram_identities ti WHERE ti.user_account_id = ua.id),
               (SELECT MAX(s.updated_at) FROM sessions s WHERE s.user_id = ua.profile_user_id)
@@ -151,9 +154,10 @@ export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest
     last_activity_at: Date | null;
     rune_balance: number;
     account_email: string | null;
+    erasure_requested_at: Date | null;
   }>(
     `SELECT u.id, u.name, u.gender, u.birth_date::text, u.zodiac, u.created_at,
-            u.rune_balance,
+            u.rune_balance, u.erasure_requested_at,
             (SELECT ua.email FROM user_accounts ua WHERE ua.profile_user_id = u.id LIMIT 1) AS account_email,
             GREATEST(
               (SELECT MAX(ua.last_login_at) FROM user_accounts ua WHERE ua.profile_user_id = u.id),
@@ -177,22 +181,6 @@ export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest
     [limit, offset]
   );
   return rows;
-}
-
-export async function deleteUserAccount(id: string) {
-  const { rows } = await query<{ profile_user_id: string | null }>(
-    "SELECT profile_user_id FROM user_accounts WHERE id = $1",
-    [id]
-  );
-  const profileUserId = rows[0]?.profile_user_id ?? null;
-
-  if (profileUserId) {
-    const { deleteUserAccountCompletely } = await import("@/lib/user-deletion");
-    await deleteUserAccountCompletely(id, profileUserId);
-    return;
-  }
-
-  await query("DELETE FROM user_accounts WHERE id = $1", [id]);
 }
 
 export async function listExperts(limit = 50, offset = 0) {

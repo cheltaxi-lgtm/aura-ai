@@ -5,6 +5,8 @@ import {
   setAccountDailyCardsReminder,
 } from "@/lib/accounts";
 import { requireUserAuth } from "@/lib/require-auth";
+import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { updateNotificationPrefs } from "@/lib/daily-reminder-service";
 
 export const dynamic = "force-dynamic";
 
@@ -45,6 +47,12 @@ async function writePreference(request: NextRequest) {
     return NextResponse.json({ error: "dailyCardsReminder_required" }, { status: 400 });
   }
   const dailyCardsReminder = await setAccountDailyCardsReminder(auth.sub, enabled);
+  const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (profileUserId) {
+    await updateNotificationPrefs(profileUserId, enabled
+      ? { dailyEmail: true, dailyInApp: true }
+      : { dailyEmail: false, dailyInApp: false, dailyTelegram: false });
+  }
   return NextResponse.json({ dailyCardsReminder });
 }
 

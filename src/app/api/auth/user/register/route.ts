@@ -16,6 +16,7 @@ import {
   type UserRow,
 } from "@/lib/users";
 import { sendWelcomeEmail } from "@/lib/email/send";
+import { sendBonusEmailVerification } from "@/lib/bonus-email-verification";
 import { mergeConsentIntoAstroMeta } from "@/lib/registration-consent";
 import { readSessionClaimCookie } from "@/lib/session-claim";
 import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
@@ -169,9 +170,9 @@ export async function POST(request: NextRequest) {
         `INSERT INTO user_accounts (
            email, password_hash, name,
            terms_accepted_at, age_confirmed_at, marketing_consent, marketing_consent_at,
-           registration_attribution
+           registration_attribution, bonus_email_verification_required
          )
-         VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6, $7::timestamptz, $8::jsonb)
+         VALUES ($1, $2, $3, $4::timestamptz, $5::timestamptz, $6, $7::timestamptz, $8::jsonb, TRUE)
          RETURNING id, email, name`,
         [
           email,
@@ -207,6 +208,15 @@ export async function POST(request: NextRequest) {
         ]
       );
       const createdProfile = profileResult.rows[0]!;
+      if (accountConsent.marketingConsent) {
+        await queryClient(
+          client,
+          `UPDATE users
+           SET notification_prefs = notification_prefs || '{"marketingEmail":true}'::jsonb
+           WHERE id = $1`,
+          [createdProfile.id]
+        );
+      }
       await queryClient(
         client,
         "UPDATE user_accounts SET profile_user_id = $2 WHERE id = $1",
@@ -250,6 +260,7 @@ export async function POST(request: NextRequest) {
     });
 
     const needsBirthProfile = !profile.birth_date;
+    await sendBonusEmailVerification(account.id).catch(() => false);
     void sendWelcomeEmail(account.email, account.name || account.email, {
       needsOnboarding: needsBirthProfile,
     });
@@ -261,6 +272,7 @@ export async function POST(request: NextRequest) {
       sessionLinked,
       // Server-confirmed starter grant (0 when already granted earlier) — analytics hint only.
       starterRunes: starterGranted,
+      emailVerificationRequired: true,
       // Account+profile row exist — registration complete for Tarot.
       needsProfile: false,
       needsBirthProfile,

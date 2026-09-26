@@ -1,6 +1,6 @@
 ---
 name: audit-palm
-description: Full palm-reading audit (snapshot, guest claim, SEO, cabinet)
+description: Execute a requested full audit of palm-reading snapshots, guest claim, SEO and cabinet archive. Use for /audit-palm.
 ---
 
-Read and follow `.cursor/skills/audit-palm/SKILL.md`. Run the palm harness at level full, launch independent reviews, fix failures, retest. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-palm/SKILL.md`.

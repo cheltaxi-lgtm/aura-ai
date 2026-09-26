@@ -32,7 +32,7 @@ test.describe("mobile guest triplet entry points", () => {
     await openFreshLanding(page);
     await page.getByText("Другие возможности Zovus", { exact: true }).click();
     const button = page.locator(".editorial-daily-ritual").getByRole("button", {
-      name: /Открыть первые 3 карты/i,
+      name: "Первый расклад по вопросу",
     });
     await expect(button).toBeVisible();
     await button.scrollIntoViewIfNeeded();

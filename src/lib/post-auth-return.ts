@@ -3,6 +3,7 @@ import { resolveMasterDeckSystem } from "@/lib/decks";
 import { loadGuestTriplet } from "@/lib/guest-triplet";
 import { GUEST_TRIPLET_MASTER_ID } from "@/lib/landing-offer";
 import { sanitizeReturnTo } from "@/lib/safe-redirect";
+import { copyCampaignParams } from "@/lib/utm/marketing-url";
 
 export const POST_AUTH_RETURN_TO_KEY = "aura_post_auth_return_to";
 export const PENDING_INTENT_KEY = "zovus_pending_intent";
@@ -225,6 +226,7 @@ export function buildAuthHref(
   const safe = sanitizeReturnTo(returnTo ?? readPostAuthReturnTo(), fallback);
   if (safe === "/") return path;
   const params = new URLSearchParams({ returnTo: safe });
+  copyCampaignParams(params, new URL(safe, "https://zovus.ru").search);
   return `${path}?${params.toString()}`;
 }
 

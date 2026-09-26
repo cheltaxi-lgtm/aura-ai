@@ -535,7 +535,7 @@ export function requiredCardCount(
   spreadId: SpreadId | string | null | undefined,
   spreadType?: string | null
 ): number {
-  if (spreadType === "daily") return 3;
+  if (spreadType === "daily") return getSpread("triplet").cardCount;
   if (spreadType === "photo") return 1;
   return getSpread(spreadId).cardCount;
 }

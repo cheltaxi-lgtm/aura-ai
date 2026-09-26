@@ -8,6 +8,7 @@ import {
   setFlow,
   setTimezoneOffset,
   setZovusUserId,
+  trackEvent,
 } from "../db/repos.js";
 import {
   siteBotPlaces,
@@ -46,12 +47,15 @@ function withStep(step: ProfileStep, body: string): string {
   return `Шаг ${STEP_N[step]}\n\n${body}`;
 }
 
-function parseBirthDateRu(raw: string): string | null {
-  const m = /^(\d{1,2})[./](\d{1,2})[./](\d{2}|\d{4})$/.exec(raw.trim());
-  if (!m) return null;
-  let dd = Number(m[1]);
-  let mm = Number(m[2]);
-  let yyyy = Number(m[3]);
+export function parseBirthDateRu(raw: string): string | null {
+  const value = raw.trim();
+  const isoParts = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(value);
+  const ruParts = /^(\d{1,2})[.\-/\s](\d{1,2})[.\-/\s](\d{2}|\d{4})$/.exec(value);
+  const compactParts = /^(\d{2})(\d{2})(\d{4})$/.exec(value);
+  if (!isoParts && !ruParts && !compactParts) return null;
+  const dd = Number(isoParts?.[3] ?? ruParts?.[1] ?? compactParts?.[1]);
+  const mm = Number(isoParts?.[2] ?? ruParts?.[2] ?? compactParts?.[2]);
+  let yyyy = Number(isoParts?.[1] ?? ruParts?.[3] ?? compactParts?.[3]);
   if (yyyy < 100) yyyy += yyyy >= 30 ? 1900 : 2000;
   if (mm < 1 || mm > 12 || dd < 1 || dd > 31) return null;
   const iso = `${String(yyyy).padStart(4, "0")}-${String(mm).padStart(2, "0")}-${String(dd).padStart(2, "0")}`;
@@ -63,12 +67,19 @@ function parseBirthDateRu(raw: string): string | null {
   return iso;
 }
 
-function ageFromIso(iso: string): number {
+export function ageFromIso(iso: string, offsetMinutes: number, nowMs = Date.now()): number {
   const birth = new Date(`${iso}T12:00:00Z`);
-  const now = new Date();
-  let age = now.getUTCFullYear() - birth.getUTCFullYear();
-  const m = now.getUTCMonth() - birth.getUTCMonth();
-  if (m < 0 || (m === 0 && now.getUTCDate() < birth.getUTCDate())) age -= 1;
+  let validOffset = offsetMinutes;
+  if (!Number.isInteger(validOffset) || Math.abs(validOffset) > 14 * 60) validOffset = 0;
+  const sign = validOffset < 0 ? "-" : "+";
+  const zone = `${sign}${String(Math.floor(Math.abs(validOffset) / 60)).padStart(2, "0")}:${String(Math.abs(validOffset) % 60).padStart(2, "0")}`;
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: zone, year: "numeric", month: "numeric", day: "numeric",
+  }).formatToParts(new Date(nowMs));
+  const calendar = Object.fromEntries(parts.map((part) => [part.type, Number(part.value)]));
+  let age = calendar.year - birth.getUTCFullYear();
+  const m = calendar.month - (birth.getUTCMonth() + 1);
+  if (m < 0 || (m === 0 && calendar.day < birth.getUTCDate())) age -= 1;
   return age;
 }
 
@@ -88,18 +99,21 @@ export function genderKeyboard(): InlineKeyboard {
 async function askBirthCity(ctx: Context, data: ProfileFlowData = {}): Promise<void> {
   if (!ctx.from) return;
   setFlow(ctx.from.id, "profile", "city", data as Record<string, unknown>);
+  trackEvent("profile_step_prompted", ctx.from.id, { step: "city" });
   await ctx.reply(withStep("city", copy.profileCityAsk), { reply_markup: hideBar });
 }
 
 async function askDob(ctx: Context, data: ProfileFlowData): Promise<void> {
   if (!ctx.from) return;
   setFlow(ctx.from.id, "profile", "dob", data as Record<string, unknown>);
+  trackEvent("profile_step_prompted", ctx.from.id, { step: "dob" });
   await ctx.reply(withStep("dob", copy.profileDobAsk), { reply_markup: hideBar });
 }
 
 async function askMemory(ctx: Context, data: ProfileFlowData): Promise<void> {
   if (!ctx.from) return;
   setFlow(ctx.from.id, "profile", "memory", data as Record<string, unknown>);
+  trackEvent("profile_step_prompted", ctx.from.id, { step: "memory" });
   await ctx.reply(withStep("memory", copy.profileMemoryAsk), {
     reply_markup: memoryChoiceKeyboard(),
   });
@@ -146,6 +160,7 @@ async function finishProfile(
     }
     if (site.profileUserId) setZovusUserId(ctx.from.id, site.profileUserId);
     clearFlow(ctx.from.id);
+    trackEvent("profile_completed", ctx.from.id, {});
     const bal = site.runeBalance ?? 0;
     await ctx.reply(copy.profileReady(bal), { reply_markup: salonKeyboard() });
     await showSalonHome(ctx, { name: ctx.from.first_name || user?.first_name });
@@ -159,8 +174,43 @@ async function finishProfile(
 export async function beginProfileOnboarding(ctx: Context): Promise<void> {
   if (!ctx.from) return;
   const user = getUser(ctx.from.id);
+  const existing = getFlow(ctx.from.id);
+  if (existing?.flow === "profile") {
+    const data = flowData(existing.data);
+    if (existing.step === "timezone") {
+      await ctx.reply(withStep("timezone", copy.timezoneAsk), {
+        reply_markup: timezoneKeyboard(),
+      });
+      return;
+    }
+    if (existing.step === "city_pick" && Array.isArray(data.places) && data.places.length) {
+      await ctx.reply(withStep("city_pick", copy.profileCityPick), {
+        reply_markup: birthCityKeyboard(data.places),
+      });
+      return;
+    }
+    if (existing.step === "dob" && data.birthCity) {
+      await askDob(ctx, data);
+      return;
+    }
+    if (existing.step === "gender" && data.birthCity && data.birthDate) {
+      await ctx.reply(withStep("gender", copy.profileGenderAsk), {
+        reply_markup: genderKeyboard(),
+      });
+      return;
+    }
+    if (existing.step === "memory" && data.birthCity && data.birthDate && data.gender) {
+      await askMemory(ctx, data);
+      return;
+    }
+    if (existing.step === "city" || existing.step === "city_pick") {
+      await askBirthCity(ctx, data);
+      return;
+    }
+  }
   if (user?.timezone_source !== "user") {
     setFlow(ctx.from.id, "profile", "timezone", {});
+    trackEvent("profile_step_prompted", ctx.from.id, { step: "timezone" });
     await ctx.reply(withStep("timezone", copy.timezoneAsk), {
       reply_markup: timezoneKeyboard(),
     });
@@ -245,10 +295,11 @@ export async function handleProfileFlowText(ctx: Context, text: string): Promise
   if (flow.step === "dob") {
     const iso = parseBirthDateRu(text);
     if (!iso) {
+      trackEvent("profile_dob_invalid", ctx.from.id, {});
       await ctx.reply(withStep("dob", copy.profileDobInvalid), { reply_markup: hideBar });
       return true;
     }
-    const age = ageFromIso(iso);
+    const age = ageFromIso(iso, getUser(ctx.from.id)?.timezone_offset_minutes ?? 0);
     if (age < 18) {
       await ctx.reply(copy.profileDobTooYoung, { reply_markup: salonKeyboard() });
       return true;
@@ -271,6 +322,14 @@ export async function handleProfileFlowText(ctx: Context, text: string): Promise
     return true;
   }
 
+  return true;
+}
+
+/** Keep a non-text message from silently leaving the user at a profile step. */
+export async function handleProfileUnexpectedInput(ctx: Context, kind: string): Promise<boolean> {
+  if (!ctx.from || getFlow(ctx.from.id)?.flow !== "profile") return false;
+  trackEvent("profile_unexpected_input", ctx.from.id, { kind });
+  await beginProfileOnboarding(ctx);
   return true;
 }
 

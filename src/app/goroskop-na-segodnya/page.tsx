@@ -33,7 +33,7 @@ const faq = [
   },
   {
     q: "С чего начать, если хочется ориентир на день?",
-    a: "Если нужен тон дня — карта дня или расклад на сегодня. Если нужен портрет характера и периодов — натальная карта. Знак зодиака полезен как вход, но не заменяет расчёт.",
+    a: "Если нужен тон дня — расклад на сутки. Если нужен портрет характера и периодов — натальная карта. Знак зодиака полезен как вход, но не заменяет расчёт.",
   },
 ];
 
@@ -85,9 +85,9 @@ export default function GoroskopNaSegodnyaPage() {
             href="/gadanie/karta-dnya"
             className="rounded-xl border border-white/10 bg-white/5 p-4 transition hover:border-aura-gold/40"
           >
-            <p className="font-medium text-white">Карта дня</p>
+            <p className="font-medium text-white">Расклад на сутки</p>
             <p className="mt-1 text-sm text-white/70">
-              Одна карта или ежедневные три карты после входа — ритуал внимания, не солнечный гороскоп.
+              Утро, день и вечер в одном ежедневном раскладе после входа — ритуал внимания, не солнечный гороскоп.
             </p>
             <p className="mt-2 text-sm text-aura-gold">Разобрать форматы →</p>
           </Link>
@@ -141,7 +141,7 @@ export default function GoroskopNaSegodnyaPage() {
         excludeHrefs={["/prognoz", "/goroskop-na-segodnya"]}
         extraLinks={[
           { href: "/sovmestimost-znakov-zodiaka", label: "Совместимость знаков" },
-          { href: "/gadanie/karta-dnya", label: "Карта дня" },
+          { href: "/gadanie/karta-dnya", label: "Расклад на сутки" },
         ]}
       />
 

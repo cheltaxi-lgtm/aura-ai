@@ -20,6 +20,8 @@ import {
 import { saveAuthenticatedDailyTriplet } from "@/lib/daily-triplet-save";
 import { query } from "@/lib/db";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
+import { recordDailyReadingAnchor } from "@/lib/rate-limit-anchors";
+import { productCalendarDate } from "@/lib/product-calendar";
 import { createHistoryEntry, createUserProfileForAccount, recordTripletDrawAnchor } from "@/lib/users";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
 import { SAMPLE_SYMBOLS } from "./db/fixtures";
@@ -33,6 +35,8 @@ vi.mock("@/lib/email/send", async (importOriginal) => {
 });
 
 import { sendEmail } from "@/lib/email/send";
+import { dailyReminderEmailHtml } from "@/lib/email/templates";
+import { runReengagementEmailBatch } from "@/lib/reengagement-email-service";
 
 const ROOT = path.resolve(__dirname, "../..");
 const sendEmailMock = vi.mocked(sendEmail);
@@ -42,6 +46,25 @@ function read(rel: string): string {
 }
 
 describe("daily-cards-reminder-delivery (unit)", () => {
+  it("adds a separately removable bonus only when it is requested", () => {
+    const daily = dailyReminderEmailHtml("Анна", "https://zovus.ru", "https://zovus.ru/daily-off");
+    expect(daily).not.toContain("Включите их в кабинете");
+    expect(daily).not.toContain("Отключить бонусные напоминания");
+    const combined = dailyReminderEmailHtml("Анна", "https://zovus.ru",
+      "https://zovus.ru/daily-off", { amount: 3, claimable: true,
+        unsubscribeUrl: "https://zovus.ru/bonus-off" });
+    expect(combined).toContain("/?daily=1");
+    expect(combined).toContain("utm_medium=email&utm_campaign=daily_reading");
+    expect(combined).toContain("/cabinet#daily-bonus");
+    expect(combined).toContain("https://zovus.ru/daily-off");
+    expect(combined).toContain("https://zovus.ru/bonus-off");
+    const later = dailyReminderEmailHtml("Анна", "https://zovus.ru",
+      "https://zovus.ru/daily-off", { amount: 3, claimable: false,
+        unsubscribeUrl: "https://zovus.ru/bonus-off" });
+    expect(later).toContain("доступен каждые 24 часа");
+    expect(later).not.toContain("бонус готов");
+  });
+
   it("opt-in false + channel prefs true → no delivery", () => {
     expect(
       resolveDailyCardsReminderDelivery({
@@ -163,11 +186,11 @@ describe("daily-cards-reminder-delivery (unit)", () => {
 });
 
 describe("daily-cards-reminder-delivery (source)", () => {
-  it("candidates require opt-in and reuse P0 cooldown, not daily_readings", () => {
+  it("candidates require opt-in and canonical daily-reading availability", () => {
     const src = read("src/lib/daily-reminder-service.ts");
     expect(src).toMatch(/ua\.daily_cards_reminder = TRUE/);
-    expect(src).toMatch(/checkTripletCooldown/);
-    expect(src).not.toMatch(/daily_readings/);
+    expect(src).toMatch(/isDailyReadingUsedToday/);
+    expect(src).not.toMatch(/checkTripletCooldown/);
     expect(src).toMatch(/DAILY_CARDS_REMINDER_CTA/);
     expect(src).toMatch(/claimReminderSlot/);
     expect(src).toMatch(/ACCOUNT_DELIVERABLE_EMAIL_SQL/);
@@ -177,7 +200,7 @@ describe("daily-cards-reminder-delivery (source)", () => {
     expect(src).not.toMatch(/toLocaleDateString/);
     expect(src).toMatch(/pref\.hour_msk < \$1/);
     expect(src).toMatch(/NOT EXISTS/);
-    expect(DAILY_CARDS_REMINDER_CTA).toBe("/?dailyCards=1");
+    expect(DAILY_CARDS_REMINDER_CTA).toBe("/?daily=1");
     expect(DEFAULT_REMINDER_HOUR_MSK).toBe(9);
   });
 
@@ -186,8 +209,14 @@ describe("daily-cards-reminder-delivery (source)", () => {
     expect(parseNotificationPrefs({ dailyEmail: true }).reminderHourMsk).toBe(9);
     expect(parseNotificationPrefs({ reminderHourUtc: 6 }).reminderHourMsk).toBe(9);
     expect(parseNotificationPrefs({ reminderHourUtc: "6" }).reminderHourMsk).toBe(9);
+    expect(parseNotificationPrefs({ reminderHourUtc: 21 }).reminderHourMsk).toBe(0);
+    expect(parseNotificationPrefs({ reminderHourUtc: 0 }).reminderHourMsk).toBe(3);
     expect(parseNotificationPrefs({ reminderHourMsk: 7 }).reminderHourMsk).toBe(7);
     expect(parseNotificationPrefs({ reminderHourMsk: "11" }).reminderHourMsk).toBe(11);
+    const src = read("src/lib/daily-reminder-service.ts");
+    expect(src).toMatch(/make_interval\(hours =>/);
+    expect(src).toMatch(/AT TIME ZONE 'UTC' AT TIME ZONE 'Europe\/Moscow'/);
+    expect(src).not.toMatch(/mskOffsetHoursUtc|EXTRACT\(EPOCH FROM/);
   });
 
   it("cron auth is unchanged", () => {
@@ -197,26 +226,22 @@ describe("daily-cards-reminder-delivery (source)", () => {
     expect(cron).toMatch(/sendDailyRemindersForHour/);
   });
 
-  it("reminder CTA opens daily 3-cards flow without guest redraw", () => {
+  it("reminder CTA opens the single daily reading and keeps old links working", () => {
     const home = read("src/components/HomePage.tsx");
     expect(home).toMatch(/dailyCardsParam === "1"/);
-    expect(home).toMatch(/setPendingDailyCardsOpen\(true\)/);
-    expect(home).toMatch(/void handleNewReading\(\)/);
-    const consume = home.slice(
-      home.indexOf("Reminder CTA /?dailyCards=1"),
-      home.indexOf("Reminder CTA /?dailyCards=1") + 900
-    );
-    expect(consume).toMatch(/handleNewReading/);
-    expect(consume).not.toMatch(/drawSpread/);
+    expect(home).toMatch(/setPendingDailySpreadId\(DEFAULT_SPREAD_ID\)/);
+    expect(home).toMatch(/if \(isLoggedIn\) \{\s*openDailyReading\(\);/);
+    expect(home).toMatch(/setDailyEnergyAutoOpen\(true\)/);
     expect(home).toMatch(/dailyParam === "1"/);
   });
 
-  it("email template points at dailyCards CTA", () => {
+  it("email template points at the canonical daily CTA", () => {
     const tpl = read("src/lib/email/templates.ts");
     const start = tpl.indexOf("export function dailyReminderEmailHtml");
     const fn = tpl.slice(start, start + 700);
-    expect(fn).toMatch(/\?dailyCards=1/);
-    expect(fn).not.toMatch(/\?daily=1/);
+    expect(tpl).toMatch(/DAILY_REMINDER_EMAIL_PATH\s*=\s*[\s\S]*?\?daily=1/);
+    expect(fn).toContain("DAILY_REMINDER_EMAIL_PATH");
+    expect(fn).not.toMatch(/\?dailyCards=1/);
   });
 });
 
@@ -287,6 +312,55 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     expect(notes.rows[0]?.data?.ctaPath).toBe(DAILY_CARDS_REMINDER_CTA);
   });
 
+  it("one daily email includes the opted-in claimable bonus and does not send a second bonus email", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true, dailyInApp: true });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    const result = await sendDailyRemindersForHour(9);
+    expect(result.email).toBe(1);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+    const mail = sendEmailMock.mock.calls[0]?.[0];
+    expect(mail?.template).toBe("daily_reminder");
+    expect(mail?.html).toContain("/cabinet#daily-bonus");
+    expect(mail?.html).toContain("Отключить бонусные напоминания");
+    expect(mail?.text).toContain("Отключить бонусные напоминания");
+    const bonus = await runReengagementEmailBatch({ dailyBonus: true, inactive: false });
+    expect(bonus.dailyBonus).toBe(0);
+    expect(sendEmailMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("mentions a later bonus without falsely saying it is ready", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true, dailyInApp: false });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    await query("UPDATE users SET last_daily_bonus=NOW() WHERE id=$1", [profile.id]);
+    const result = await sendDailyRemindersForHour(9);
+    expect(result.email).toBe(1);
+    const mail = sendEmailMock.mock.calls[0]?.[0];
+    expect(mail?.html).toContain("доступен каждые 24 часа");
+    expect(mail?.html).not.toContain("бонус готов");
+    expect(mail?.text).toContain("доступен каждые 24 часа");
+  });
+
+  it("bonus cron does not preempt a later daily reminder hour", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true,
+      dailyInApp: false, hourMsk: 21 });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    const bonus = await runReengagementEmailBatch({ dailyBonus: true, inactive: false });
+    expect(bonus.dailyBonus).toBe(0);
+    expect(sendEmailMock).not.toHaveBeenCalled();
+    const daily = await sendDailyRemindersForHour(21);
+    expect(daily.email).toBe(1);
+    expect(sendEmailMock.mock.calls[0]?.[0].template).toBe("daily_reminder");
+  });
+
+  it("bonus reminder can send alone after the daily reading was already used", async () => {
+    const { profile } = await seedReminderUser({ optIn: true, dailyEmail: true, dailyInApp: false });
+    await updateNotificationPrefs(profile.id, { bonusEmail: true });
+    await recordDailyReadingAnchor(profile.id, productCalendarDate(), "classic");
+    const bonus = await runReengagementEmailBatch({ dailyBonus: true, inactive: false });
+    expect(bonus.dailyBonus).toBe(1);
+    expect(sendEmailMock.mock.calls[0]?.[0].template).toBe("daily_bonus");
+  });
+
   it("channel pref false respected at send time", async () => {
     const { profile } = await seedReminderUser({
       optIn: true,
@@ -299,7 +373,28 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     expect(result).toEqual({ inApp: 0, email: 0, telegram: 0 });
   });
 
-  it("daily cooldown → no reminder", async () => {
+  it("canonical daily reading already used → no reminder", async () => {
+    const { profile } = await seedReminderUser({
+      optIn: true,
+      dailyEmail: true,
+      dailyInApp: true,
+    });
+    await recordDailyReadingAnchor(profile.id, productCalendarDate(), "classic");
+    const result = await sendDailyRemindersForHour(9);
+    expect(result).toEqual({ inApp: 0, email: 0, telegram: 0 });
+  });
+
+  it("eligibility and send ledger use the same Moscow calendar date", () => {
+    const service = read("src/lib/daily-reminder-service.ts");
+    expect(service).toMatch(/const dailyDate = productCalendarDate\(\)/);
+    expect(service).toMatch(/getDailyReminderCandidates\(hourMsk, dailyDate\)/);
+    expect(service).toMatch(/isDailyReadingUsedToday\(user\.userId, dailyDate\)/);
+    expect(service).toMatch(/claimReminderSlot\(user\.userId, "email", dailyDate\)/);
+    expect(service).toMatch(/`daily_cards:\$\{dailyDate\}`/);
+    expect(service).not.toMatch(/sent_date = CURRENT_DATE/);
+  });
+
+  it("legacy three-card daily does not block the canonical daily reminder", async () => {
     const { profile } = await seedReminderUser({
       optIn: true,
       dailyEmail: true,
@@ -320,7 +415,8 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
     const cooldown = await checkTripletCooldown(profile.id);
     expect(cooldown.allowed).toBe(false);
     const result = await sendDailyRemindersForHour(9);
-    expect(result).toEqual({ inApp: 0, email: 0, telegram: 0 });
+    expect(result.inApp).toBe(1);
+    expect(result.email).toBe(1);
   });
 
   it("ordinary triplet does not block reminder eligibility", async () => {
@@ -375,6 +471,14 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
         WHERE user_id = $1`,
       [profile.id]
     );
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'daily_cards:prior-day',
+              created_at = ((date_trunc('day', NOW() AT TIME ZONE 'Europe/Moscow')
+                - INTERVAL '1 hour') AT TIME ZONE 'Europe/Moscow')
+        WHERE user_id = $1 AND campaign = 'daily_cards'`,
+      [profile.id]
+    );
 
     const second = await sendDailyRemindersForHour(9);
     expect(second).toEqual({ inApp: 1, email: 1, telegram: 0 });
@@ -401,6 +505,13 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
         WHERE user_id = $1`,
       [profile.id]
     );
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'daily_cards:prior-day',
+              created_at = NOW() - INTERVAL '25 hours'
+        WHERE user_id = $1 AND campaign = 'daily_cards'`,
+      [profile.id]
+    );
 
     const second = await sendDailyRemindersForHour(9);
     expect(second.inApp).toBe(1);
@@ -420,6 +531,13 @@ describe.skipIf(!hasTestDb)("daily-cards-reminder-delivery (db)", () => {
           SET sent_date = CURRENT_DATE - 3,
               created_at = NOW() - interval '3 days'
         WHERE user_id = $1 AND channel = 'in_app'`,
+      [profile.id]
+    );
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'daily_cards:prior-slot',
+              created_at = NOW() - INTERVAL '3 days'
+        WHERE user_id = $1 AND campaign = 'daily_cards'`,
       [profile.id]
     );
     await recordTripletDrawAnchor(

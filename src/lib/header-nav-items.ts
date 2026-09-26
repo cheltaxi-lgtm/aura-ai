@@ -223,7 +223,7 @@ export function buildHeaderNavSections(
       items: [
         {
           id: "tariffs",
-          label: "Тарифы",
+          label: "Тарифы и магазин",
           icon: LayoutGrid,
           onClick: callbacks.onNavTariffs,
         },

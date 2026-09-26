@@ -1,13 +1,7 @@
 ---
 name: audit-production
-description: Audit production health, smoke URLs, worker, and deploy safety. Use for /audit-production or hosting/deploy changes.
+description: Cursor compatibility entry. Execute requested production health, smoke, worker and deploy-safety checks. Use for /audit-production.
 disable-model-invocation: true
 ---
 
-# Audit Production
-
-1. Follow `.cursor/skills/zovus-harness/SKILL.md` and `.cursor/rules/prod-deploy.mdc`.
-2. Run `node scripts/ai-harness.mjs --scope production --level production`.
-3. Review: `harness-production-review`, `harness-security-review`.
-4. Reuse public `https://zovus.ru/api/health` (expect 200) and product smoke URLs. After a real deploy, both `aura-ai` and `aura-ai-async-jobs` must be active.
-5. Never hand-roll `rm -rf /opt/aura-ai`. Secrets stay outside git.
+Read and follow the canonical [audit-production skill](../../../.agents/skills/audit-production/SKILL.md). This entry adds no separate checks or workflow.

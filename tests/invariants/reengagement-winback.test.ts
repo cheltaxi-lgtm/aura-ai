@@ -7,7 +7,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { createUser, recordAccountLegalConsent, setAccountMarketingConsent } from "@/lib/accounts";
 import { updateNotificationPrefs } from "@/lib/daily-reminder-service";
 import { query } from "@/lib/db";
-import { inactiveUserEmailHtml, inactiveUserEmailText } from "@/lib/email/templates";
+import { dailyReminderEmailHtml, inactiveUserEmailHtml, inactiveUserEmailText } from "@/lib/email/templates";
 import {
   resolveInactiveWinbackStage,
   runReengagementEmailBatch,
@@ -103,12 +103,10 @@ describe("reengagement-winback (unit)", () => {
     expect(inactiveUserEmailText("Анна", 14, "https://zovus.ru")).toMatch(/https:\/\/zovus\.ru\/$/);
   });
 
-  it("Daily Cards CTA stays on dailyCards=1; scheduler still hourly", () => {
-    const daily = read("src/lib/email/templates.ts");
-    const start = daily.indexOf("export function dailyReminderEmailHtml");
-    const fn = daily.slice(start, start + 700);
-    expect(fn).toMatch(/\?dailyCards=1/);
-    expect(fn).not.toMatch(/\?daily=1/);
+  it("daily reminder CTA opens the canonical daily reading; scheduler still hourly", () => {
+    const html = dailyReminderEmailHtml("Анна", "https://zovus.ru");
+    expect(html).toContain("https://zovus.ru/?daily=1&utm_source=zovus&utm_medium=email&utm_campaign=daily_reading");
+    expect(html).not.toMatch(/\?dailyCards=1/);
     const cron = read("proxmox-setup/install-crons.sh");
     expect(cron).toMatch(/cron-reengagement-emails\.sh/);
     expect(cron).toMatch(/5 \* \* \* \*/);
@@ -204,6 +202,13 @@ describe.skipIf(!hasTestDb)("reengagement-winback (db)", () => {
       [profile.id]
     );
     expect(backdate.rowCount).toBe(1);
+    await query(
+      `UPDATE proactive_contact_log
+          SET contact_key = 'inactive_7d:prior-episode',
+              created_at = NOW() - INTERVAL '9 days'
+        WHERE user_id = $1 AND campaign = 'inactive_7d'`,
+      [profile.id]
+    );
     const relogin = await query(
       `UPDATE user_accounts SET last_login_at = NOW() - INTERVAL '8 days' WHERE id = $1`,
       [account.id]
@@ -231,10 +236,10 @@ describe.skipIf(!hasTestDb)("reengagement-winback (db)", () => {
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 
-  it("synthetic / undeliverable email is not emailed (in-app still allowed)", async () => {
+  it("synthetic / undeliverable email is excluded from email win-back", async () => {
     await seedWinbackUser({ inactiveDays: 8, email: null });
     const result = await runReengagementEmailBatch({ dailyBonus: false, inactive: true });
-    expect(result.inactive7d).toBe(1);
+    expect(result.inactive7d).toBe(0);
     expect(sendEmailMock).not.toHaveBeenCalled();
   });
 });

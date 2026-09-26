@@ -136,8 +136,9 @@ describe("starter gift on the public homepage", () => {
     expect(src).not.toMatch(/starterRunes\s*=\s*\d{2,}/);
     // No ruble conversion in the gift copy.
     expect(src).not.toContain("₽");
-    // Products costing more than the starter package get partial-coverage framing.
-    expect(src).toContain("вклад в стоимость");
+    // The "what it covers" list excludes products above the starter balance.
+    expect(src).toContain("if (count === 1)");
+    expect(src).toMatch(/if \(count === 1\)[\s\S]*return null;/);
   });
 
   it("gift section is display-only and hidden from authenticated users", () => {

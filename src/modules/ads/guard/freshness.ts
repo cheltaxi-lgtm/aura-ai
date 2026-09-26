@@ -14,15 +14,38 @@ export async function getStaleConfig() {
   };
 }
 
+export function statsFreshnessHours(input: {
+  lastSuccessfulSyncAt?: string | null;
+  latestDataDate?: string | null;
+  nowMs?: number;
+}): number | null {
+  const nowMs = input.nowMs ?? Date.now();
+  const syncMs = input.lastSuccessfulSyncAt
+    ? Date.parse(input.lastSuccessfulSyncAt)
+    : Number.NaN;
+
+  // A successful report request is the authoritative freshness signal. Reports
+  // can legitimately contain zero rows (for example after a campaign pause),
+  // so MAX(daily_stats.date) must not make a healthy sync look stale.
+  if (Number.isFinite(syncMs)) {
+    return Math.max(0, (nowMs - syncMs) / 3600000);
+  }
+
+  if (!input.latestDataDate) return null;
+  const dataEndMs = Date.parse(`${input.latestDataDate}T23:59:59Z`);
+  if (!Number.isFinite(dataEndMs)) return null;
+  return Math.max(0, (nowMs - dataEndMs) / 3600000);
+}
+
 export async function hoursSinceLastDailyStats(): Promise<number | null> {
-  // daily_stats has no synced_at — use MAX(date) end-of-day as freshness proxy
+  const lastSuccessfulSyncAt = await getConfigJson<string>("guard.last_stats_sync_at");
   const { rows } = await adsQuery<{ d: string | null }>(
     `SELECT MAX(date)::text AS d FROM ads.daily_stats`
   );
-  const d = rows[0]?.d;
-  if (!d) return null;
-  const end = new Date(`${d}T23:59:59Z`).getTime();
-  return (Date.now() - end) / 3600000;
+  return statsFreshnessHours({
+    lastSuccessfulSyncAt,
+    latestDataDate: rows[0]?.d ?? null,
+  });
 }
 
 export async function hoursSinceMetrikaHealth(): Promise<number | null> {

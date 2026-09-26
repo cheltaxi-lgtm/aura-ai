@@ -6,9 +6,7 @@ import { verifyRecaptchaForScope, type RecaptchaScope } from "@/lib/recaptcha";
 
 /** Scopes skipped in the native app — WebView gets low reCAPTCHA v3 scores; rate limits still apply. */
 const APP_SHELL_RECAPTCHA_EXEMPT: ReadonlySet<RecaptchaScope> = new Set([
-  "register",
   "login",
-  "expertRegister",
   "expertLogin",
   "support",
   "chat",

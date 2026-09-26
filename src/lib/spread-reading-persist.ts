@@ -168,11 +168,11 @@ export async function ensureSpreadReadingInChatMessages(
         : isNumerologMaster(input.characterId)
           ? "Нумерология"
           : input.spreadType === "daily"
-            ? "Три карты дня"
+            ? "Расклад на сутки"
             : "Сеанс";
 
   // Only feed the extractor real user-authored text. Generic topic labels
-  // ("Любовь и отношения", "Три карты дня", ...) never carry personal facts and
+  // ("Любовь и отношения", "Расклад на сутки", ...) never carry personal facts and
   // would just burn an embedding call on every spread for nothing.
   const userTurnText = input.customQuestion?.trim();
   if (!alreadySaved && userTurnText) {

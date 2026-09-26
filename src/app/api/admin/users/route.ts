@@ -1,8 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { requireAdminStepUp } from "@/lib/admin-stepup";
-import { setUserAccountUnlimited } from "@/lib/accounts";
-import { listUserAccounts, listOnboardingProfiles, deleteUserAccount, logAdminAction } from "@/lib/admin";
+import { queryClient, withTransaction } from "@/lib/db";
+import { listUserAccounts, listOnboardingProfiles } from "@/lib/admin";
+import { requestAccountErasure } from "@/lib/account-erasure";
+
+const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin();
@@ -25,11 +28,19 @@ export async function DELETE(request: NextRequest) {
   const auth = stepped.auth;
 
   const { id } = await request.json();
-  if (!id) return NextResponse.json({ error: "id required" }, { status: 400 });
+  if (typeof id !== "string" || !UUID.test(id)) {
+    return NextResponse.json({ error: "valid id required" }, { status: 400 });
+  }
 
-  await deleteUserAccount(id);
-  await logAdminAction(auth.sub, "delete", "user_account", id);
-  return NextResponse.json({ ok: true });
+  try {
+    const result = await requestAccountErasure(id, { adminActorId: auth.sub });
+    return NextResponse.json({ ok: true, ...result }, { status: 202 });
+  } catch (error) {
+    if (error instanceof Error && error.message === "account_not_found") {
+      return NextResponse.json({ error: "account_not_found" }, { status: 404 });
+    }
+    return NextResponse.json({ error: "erasure_unavailable" }, { status: 503 });
+  }
 }
 
 export async function PATCH(request: NextRequest) {
@@ -40,12 +51,34 @@ export async function PATCH(request: NextRequest) {
   const body = await request.json().catch(() => ({}));
   const id = body.id as string | undefined;
   const isUnlimited = body.isUnlimited as boolean | undefined;
+  const isInternal = body.isInternal as boolean | undefined;
 
-  if (!id || typeof isUnlimited !== "boolean") {
-    return NextResponse.json({ error: "id and isUnlimited required" }, { status: 400 });
+  if (!id || !UUID.test(id) || (typeof isUnlimited !== "boolean" && typeof isInternal !== "boolean")) {
+    return NextResponse.json({ error: "id and preference required" }, { status: 400 });
   }
 
-  await setUserAccountUnlimited(id, isUnlimited);
-  await logAdminAction(auth.sub, isUnlimited ? "grant_unlimited" : "revoke_unlimited", "user_account", id);
-  return NextResponse.json({ ok: true, isUnlimited });
+  await withTransaction(async (client) => {
+    const updated = await queryClient(
+      client,
+      `UPDATE user_accounts SET
+         is_unlimited=COALESCE($2::boolean,is_unlimited),
+         is_internal=COALESCE($3::boolean,is_internal)
+       WHERE id=$1 RETURNING id`,
+      [id, typeof isUnlimited === "boolean" ? isUnlimited : null, typeof isInternal === "boolean" ? isInternal : null]
+    );
+    if (!updated.rowCount) throw new Error("account_not_found");
+    const actions = [
+      typeof isUnlimited === "boolean" ? (isUnlimited ? "grant_unlimited" : "revoke_unlimited") : null,
+      typeof isInternal === "boolean" ? (isInternal ? "mark_internal" : "unmark_internal") : null,
+    ].filter((action): action is string => Boolean(action));
+    for (const action of actions) {
+      await queryClient(
+        client,
+        `INSERT INTO admin_audit_log(admin_id,action,entity_type,entity_id,details)
+         VALUES($1,$2,'user_account',$3,'{}'::jsonb)`,
+        [auth.sub, action, id]
+      );
+    }
+  });
+  return NextResponse.json({ ok: true, isUnlimited, isInternal });
 }

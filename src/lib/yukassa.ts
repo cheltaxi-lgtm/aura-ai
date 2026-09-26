@@ -35,11 +35,12 @@ function authHeader(): string {
 
 export async function createYukassaPayment(params: {
   plan: PaymentPlan;
+  amountRub?: number;
   sessionId: string;
   returnUrl: string;
 }) {
   const prices = await getLegacyPrices();
-  const amountRub = params.plan === "single" ? prices.single : prices.subscription;
+  const amountRub = params.amountRub ?? (params.plan === "single" ? prices.single : prices.subscription);
   const idempotenceKey = `${params.sessionId}-${params.plan}-${Date.now()}`;
 
   const response = await fetch(`${YUKASSA_API}/payments`, {

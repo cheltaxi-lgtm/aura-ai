@@ -1,5 +1,6 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { ensureStarterGrantMarker } from "@/lib/rune-service";
+import { isBonusIdentityReady } from "@/lib/bonus-identity";
 import { getDaysWithUs } from "@/lib/user-lifetime-stats";
 import {
   getUserRitualAchievementStats,
@@ -25,7 +26,7 @@ export const ACHIEVEMENTS = {
   },
   week_streak: {
     label: "Семь дней",
-    description: "7 дней подряд в приложении",
+    description: "Общение с мастером 7 дней подряд (UTC)",
     bonus: 25,
     phrase: {
       ragnar: "Семь рассветов подряд. Норны замечают упорных.",
@@ -156,14 +157,14 @@ export const RITUAL_ACHIEVEMENT_KEYS: AchievementKey[] = [
 
 export const JOINT_ACHIEVEMENT_KEYS: AchievementKey[] = ["joint_first", "joint_loyal"];
 
-const BRAVE_RE =
-  /смерт|болезн|порч|измен|враг|развод|умер|умрёт|сглаз|проклят/i;
+// Kept in the catalog for historical receipts; sensitive topics no longer earn money.
 
 export interface UserStats {
   totalMessages: number;
   sessionsWithMaster: number;
   maxSessionsOneMaster: number;
   currentStreak: number;
+  longestStreak: number;
   daysTotal: number;
   daysWithUs: number;
 }
@@ -199,7 +200,7 @@ export async function getUserStats(
   );
 
   const { rows: dayRows } = await query<{ d: string }>(
-    `SELECT DISTINCT DATE(cm.created_at) AS d FROM chat_messages cm
+    `SELECT DISTINCT (cm.created_at AT TIME ZONE 'UTC')::date::text AS d FROM chat_messages cm
      JOIN sessions s ON s.id = cm.session_id
      WHERE cm.role = 'user' AND (cm.owner_user_id = $1 OR s.user_id = $1)
      ORDER BY d DESC`,
@@ -207,16 +208,7 @@ export async function getUserStats(
   );
 
   const days = dayRows.map((r) => r.d);
-  let streak = 0;
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  for (let i = 0; i < days.length; i++) {
-    const expected = new Date(today);
-    expected.setDate(expected.getDate() - i);
-    const expectedStr = expected.toISOString().slice(0, 10);
-    if (days[i] === expectedStr) streak++;
-    else break;
-  }
+  const { currentStreak, longestStreak } = countAchievementDays(days);
 
   const totalMessages = Number(msgRows[0]?.cnt ?? 0);
   const sessionsWithMaster = Math.floor(Number(masterRows[0]?.cnt ?? 0) / 3);
@@ -227,26 +219,41 @@ export async function getUserStats(
     totalMessages,
     sessionsWithMaster,
     maxSessionsOneMaster,
-    currentStreak: streak,
+    currentStreak,
+    longestStreak,
     daysTotal: days.length,
     daysWithUs,
   };
 }
 
+export function countAchievementDays(days: string[], now = new Date()) {
+  const ordered = [...new Set(days)].sort().reverse();
+  const today = Date.parse(now.toISOString().slice(0, 10));
+  let currentStreak = 0, longestStreak = 0, run = 0, previous: number | null = null;
+  for (const day of ordered) {
+    const at = Date.parse(day);
+    if (!Number.isFinite(at) || at > today) continue;
+    if (at === today - currentStreak * 86_400_000) currentStreak++;
+    run = previous !== null && previous - at === 86_400_000 ? run + 1 : 1;
+    longestStreak = Math.max(longestStreak, run);
+    previous = at;
+  }
+  return { currentStreak, longestStreak };
+}
+
 function checkAchievement(
   key: AchievementKey,
-  stats: UserStats,
-  message: string
+  stats: UserStats
 ): boolean {
   switch (key) {
     case "first_message":
       return stats.totalMessages >= 1;
     case "week_streak":
-      return stats.currentStreak >= 7;
+      return stats.longestStreak >= 7;
     case "loyal_master":
       return stats.maxSessionsOneMaster >= 10;
     case "brave_question":
-      return BRAVE_RE.test(message);
+      return false;
     case "month_in":
       return stats.daysWithUs >= 30;
     default:
@@ -401,6 +408,7 @@ async function grantAchievement(
     return await withTransaction(async (client) => {
       // Serialize per-user grants — parallel chat/cabinet requests used to double-credit.
       await queryClient(client, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+      if (!(await isBonusIdentityReady(userId, client))) return false;
 
       const { rows: existing } = await queryClient<{ id: string }>(
         client,
@@ -453,23 +461,24 @@ async function grantAchievement(
 export async function checkAchievements(
   userId: string,
   characterKey: string,
-  message: string
+  _message: string
 ): Promise<AchievementEarned | null> {
   const stats = await getUserStats(userId, characterKey);
   const charKey = (characterKey in ACHIEVEMENTS.first_message.phrase
     ? characterKey
     : "ragnar") as CharacterKey;
 
+  let firstEarned: AchievementEarned | null = null;
   for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
     if (await hasAchievementBeenGranted(userId, key)) continue;
 
-    if (!checkAchievement(key, stats, message)) continue;
+    if (!checkAchievement(key, stats)) continue;
 
     const ach = ACHIEVEMENTS[key];
     const granted = await grantAchievement(userId, key, ach);
     if (!granted) continue;
 
-    return {
+    firstEarned ??= {
       achievement: key,
       label: ach.label,
       description: ach.description,
@@ -478,7 +487,7 @@ export async function checkAchievements(
     };
   }
 
-  return null;
+  return firstEarned;
 }
 
 /** Check + grant ritual-specific achievements (first obryad, all elements, full moon, loyal). */
@@ -567,7 +576,7 @@ export async function syncRetroactiveAchievements(userId: string): Promise<void>
     )
       continue;
     if (await hasAchievementBeenGranted(userId, key)) continue;
-    if (!checkAchievement(key, stats, "")) continue;
+    if (!checkAchievement(key, stats)) continue;
 
     await grantAchievement(userId, key, ACHIEVEMENTS[key]);
   }

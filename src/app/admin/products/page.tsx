@@ -8,6 +8,7 @@ import type {
   ProductHistoryRow,
   ProductJobRow,
   ProductSectionStats,
+  RetentionStats,
 } from "@/lib/admin-product-stats";
 
 type Period = "7d" | "30d" | "90d" | "all";
@@ -18,6 +19,7 @@ type Payload = {
   daily: ProductDailyPoint[];
   history: ProductHistoryRow[];
   jobs: ProductJobRow[];
+  retention: RetentionStats;
   totals: {
     spend7d: number;
     spend30d: number;
@@ -95,6 +97,7 @@ export default function AdminProductsPage() {
           daily: [],
           history: [],
           jobs: [],
+          retention: { registered30d: 0, d1Eligible: 0, d1Returned: 0, r7Eligible: 0, r7Returned: 0, usefulFeedback30d: 0, notUsefulFeedback30d: 0 },
           totals: {
             spend7d: 0,
             spend30d: 0,
@@ -130,6 +133,8 @@ export default function AdminProductsPage() {
       ),
     [data?.actions, period]
   );
+  const retention = data?.retention;
+  const pct = (returned: number, eligible: number) => eligible > 0 ? `${Math.round(returned / eligible * 100)}%` : "—";
 
   return (
     <AdminShell>
@@ -154,6 +159,10 @@ export default function AdminProductsPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatCard label="Регистраций · 30 дней" value={retention ? retention.registered30d : "—"} />
+        <StatCard label={`D1 возврат · n=${retention?.d1Eligible ?? 0}`} value={retention ? pct(retention.d1Returned, retention.d1Eligible) : "—"} accent="text-aura-gold" />
+        <StatCard label={`R1–7 · n=${retention?.r7Eligible ?? 0}`} value={retention ? pct(retention.r7Returned, retention.r7Eligible) : "—"} accent="text-aura-emerald" />
+        <StatCard label="Полезно / нет · 30 дней" value={retention ? `${retention.usefulFeedback30d} / ${retention.notUsefulFeedback30d}` : "—"} />
         <StatCard label="Списаний за 30 дней" value={data ? spend30 : "—"} />
         <StatCard label="Рун за 30 дней" value={data ? total30 : "—"} accent="text-aura-gold" />
         <StatCard label="Плативших за 30 дней" value={data ? data.totals.users30d : "—"} />

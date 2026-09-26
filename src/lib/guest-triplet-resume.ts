@@ -414,7 +414,7 @@ export const GUEST_RESUME_RETRY_CTA = "Попробовать восстанов
 export const GUEST_RESUME_CAPACITOR_RECOVERY =
   "Не удалось восстановить расклад. Аккаунт создан, но предыдущий расклад не удалось открыть автоматически. Вы можете попробовать снова или открыть новый расклад.";
 export const GUEST_RESUME_ALREADY_USED =
-  "Стартовый бесплатный расклад уже использован. Он доступен один раз для знакомства с Zovus. У Вас есть 3 карты дня бесплатно — раз в сутки.";
-export const GUEST_RESUME_ALREADY_USED_DAILY_CTA = "Открыть 3 карты дня";
+  "Стартовый бесплатный расклад уже использован. Он доступен один раз для знакомства с Zovus. После входа Вам доступен бесплатный расклад на сутки.";
+export const GUEST_RESUME_ALREADY_USED_DAILY_CTA = "Открыть расклад на сутки";
 export const GUEST_RESUME_ALREADY_USED_NEW_CTA = "Выбрать новый расклад";
 export const GUEST_RESUME_ALREADY_USED_CABINET_CTA = "Перейти в кабинет";

@@ -4,20 +4,24 @@ import { buildSeoMetadataWithOverrides } from "@/lib/seo/metadata";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import {
   FORECAST_MONTHS,
-  FORECAST_YEARS,
+  getForecastYears,
   getCurrentForecastMonth,
   getCurrentForecastYear,
+  isPastForecastMonth,
 } from "@/lib/seo/seasonal";
 import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
 import { AdsSeoH1, AdsSeoJsonLd, AdsSeoRelatedTools } from "@/components/seo/AdsSeoEnhancements";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
+import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
+
+export const revalidate = 3600;
 
 export async function generateMetadata(): Promise<Metadata> {
   return buildSeoMetadataWithOverrides("/prognoz", {
     title: "Прогноз Таро — по месяцам и знакам зодиака | Zovus",
     description:
-      "Прогнозы Таро на год и месяц, расклады по знакам зодиака. Актуальные периоды — онлайн на Zovus.",
+      "Как выбрать вопрос для личного прогноза Таро на год и месяц: схемы раскладов, темы знаков зодиака и бесплатный расклад на сутки.",
     path: "/prognoz",
   });
 }
@@ -25,11 +29,11 @@ export async function generateMetadata(): Promise<Metadata> {
 const faq = [
   {
     q: "Чем прогноз Таро отличается от натальной карты?",
-    a: "Прогноз Таро — обзор периода по картам. Натальная карта показывает ваш базовый портрет по дате рождения. Оба подхода можно сочетать: сначала карта, затем прогноз на месяц.",
+    a: "Прогноз Таро строится по лично выпавшим картам и вопросу на выбранный период. Натальная карта строится по данным рождения. Статьи этого раздела помогают подготовить вопрос, но сами по себе не являются личным прогнозом.",
   },
   {
     q: "Можно ли смотреть и матрицу судьбы, и прогноз?",
-    a: "Да. Матрица даёт числовой каркас года и предназначения, прогноз Таро — динамику месяца. Начните с /numerology/destiny-matrix или /natalnaya-karta, затем вернитесь к прогнозу.",
+    a: "Да, но это разные символические методы. Матрица опирается на дату рождения, а расклад Таро — на вопрос и выпавшие карты. Сравнивайте выводы с реальными обстоятельствами, особенно перед важным решением.",
   },
 ];
 
@@ -39,7 +43,7 @@ export default async function PrognozIndexPage() {
   const structuredData = buildForecastStructuredData({
     title: "Прогноз Таро",
     description:
-      "Прогнозы Таро на год и месяц, расклады по знакам зодиака. Актуальные периоды — онлайн на Zovus.",
+      "Как выбрать вопрос для личного прогноза Таро на год и месяц: схемы раскладов, темы знаков зодиака и бесплатный расклад на сутки.",
     path: "/prognoz",
     faq,
   });
@@ -50,13 +54,20 @@ export default async function PrognozIndexPage() {
       <p className="text-sm text-aura-gold/80">Прогнозы</p>
       <AdsSeoH1 path="/prognoz">Прогноз Таро</AdsSeoH1>
       <p className="mt-4 text-white/70">
-        Годовые и месячные обзоры по картам, а также прогнозы для каждого знака зодиака. Если ищете
+        Выберите период и сформулируйте вопрос для личного расклада. Страницы по знакам помогают
+        выбрать тему, но не обещают события без выпавших карт. Если ищете
         «гороскоп на сегодня» —{" "}
         <Link href="/goroskop-na-segodnya" className="text-aura-gold hover:underline">
           разбор шаблона и натальной карты
         </Link>
         .
       </p>
+
+      <div className="mt-6">
+        <SeoTrackedCta href="/?daily=1" trackGoal="gadanie_karta_dnya_cta_click" trackParams={{ target: "daily_reading", source: "forecast_hub" }}>
+          Бесплатный расклад на сутки
+        </SeoTrackedCta>
+      </div>
 
       <SeoSection title="Актуальный период">
         <ul className="space-y-2">
@@ -75,7 +86,7 @@ export default async function PrognozIndexPage() {
 
       <SeoSection title="Годы">
         <ul className="flex flex-wrap gap-2">
-          {FORECAST_YEARS.map((y) => (
+          {getForecastYears().filter((forecastYear) => forecastYear >= year).map((y) => (
             <li key={y}>
               <Link
                 href={`/prognoz/${y}`}
@@ -90,7 +101,7 @@ export default async function PrognozIndexPage() {
 
       <SeoSection title={`Месяцы ${year}`}>
         <ul className="grid gap-2 sm:grid-cols-2">
-          {FORECAST_MONTHS.map((m) => (
+          {FORECAST_MONTHS.filter((m) => !isPastForecastMonth(year, m)).map((m) => (
             <li key={m.slug}>
               <Link
                 href={`/prognoz/${year}/${m.slug}`}

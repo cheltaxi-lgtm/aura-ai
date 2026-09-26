@@ -5,6 +5,7 @@ import { requireAdminStepUp } from "@/lib/admin-stepup";
 import {
   countEmailLogForPurge,
   deleteEmailLog,
+  getDailyReminderDeliveryStatus,
   getEmailLogStats,
   getEmailLogStatsByTemplate,
   getInactiveWinbackAttribution,
@@ -29,7 +30,7 @@ import { runReengagementEmailBatch } from "@/lib/reengagement-email-service";
 const CRON_JOBS = [
   {
     id: "daily-reading-remind",
-    label: "Карты дня",
+    label: "Расклад на сутки",
     schedule: "Каждый час (UTC cron → час МСК в API)",
     endpoint: "/api/cron/daily-reading-remind",
     description: "In-app + email, если расклад на сегодня ещё не открыт.",
@@ -112,7 +113,7 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ count });
   }
 
-  const [stats24h, stats7d, byTemplate, reengagementStats, winbackAttribution, logPage] = await Promise.all([
+  const [stats24h, stats7d, byTemplate, reengagementStats, winbackAttribution, logPage, dailyReminder] = await Promise.all([
     getEmailLogStats(24),
     getEmailLogStats(168),
     getEmailLogStatsByTemplate(168),
@@ -126,6 +127,7 @@ export async function GET(request: NextRequest) {
       limit: Number.isFinite(limit) ? limit : 50,
       offset: Number.isFinite(offset) ? offset : 0,
     }),
+    getDailyReminderDeliveryStatus(),
   ]);
 
   return NextResponse.json({
@@ -148,6 +150,7 @@ export async function GET(request: NextRequest) {
     },
     stats24h,
     stats7d,
+    dailyReminder,
     byTemplate,
     reengagementStats,
     winbackAttribution,

@@ -11,6 +11,7 @@ import { resolveRegistrationSource } from "@/lib/share/registration-attribution"
 import { readUtmAttribution } from "@/lib/utm/attribution";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  account_link_required: "Этот email уже используется. Войдите по email (при необходимости восстановите пароль), затем привяжите соцсеть в кабинете.",
   consent_required: "Подтвердите согласие с условиями и возраст 18+ перед входом через соцсеть.",
   email_exists: "Email уже зарегистрирован. Войдите через email или используйте другой аккаунт.",
   provider_denied: "Вход через соцсеть отменён.",

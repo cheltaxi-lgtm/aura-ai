@@ -576,7 +576,7 @@ html[data-motion-lite="1"] .salon-bg__lines {
 }
 
 .editorial-hero .landing-social-proof--hero {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0.35rem;
   padding: 0.7rem 0.5rem;
   border-color: rgba(232, 199, 126, 0.18);
@@ -590,7 +590,7 @@ html[data-motion-lite="1"] .salon-bg__lines {
 
 @media (max-width: 479px) {
   .editorial-hero .landing-social-proof--hero {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: 0.2rem;
     padding: 0.6rem 0.35rem;
   }
@@ -612,6 +612,26 @@ html[data-motion-lite="1"] .salon-bg__lines {
   margin-bottom: 0;
   padding-bottom: 0.5rem;
 }
+
+.editorial-hero__daily-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 2.85rem;
+  margin-top: 1.1rem;
+  padding: 0.7rem 1.2rem;
+  border: 1px solid rgba(232, 199, 126, 0.75);
+  border-radius: 999px;
+  background: linear-gradient(135deg, #c9993a, #e8c56d);
+  color: #1a0f00;
+  font-size: 0.9rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.editorial-hero__daily-cta:hover { filter: brightness(1.08); }
+.editorial-hero__daily-cta:focus-visible { outline: 2px solid #fff; outline-offset: 3px; }
+.editorial-hero__daily-status { margin-top: 1rem; color: rgba(255, 255, 255, 0.7); }
 
 @media (max-width: 767px) {
   .editorial-hero.editorial-hero--logged-in {
@@ -636,7 +656,7 @@ html[data-motion-lite="1"] .salon-bg__lines {
 
 @media (min-width: 900px) {
   .editorial-hero.editorial-hero--logged-in {
-    min-height: 24rem;
+    min-height: 18rem;
     padding-top: calc(var(--app-header-h, 3.25rem) + 2.15rem);
     padding-bottom: 2.75rem;
   }
@@ -725,6 +745,16 @@ html[data-motion-lite="1"] .salon-bg__lines {
   text-align: left;
 }
 
+.personal-zovus__free-label {
+  display: inline-block;
+  margin-bottom: 0.45rem;
+  color: rgba(232, 199, 126, 0.95);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
 .personal-zovus__panel-title {
   margin: 0;
   font-family: var(--font-mystic-display), Georgia, serif;
@@ -741,10 +771,11 @@ html[data-motion-lite="1"] .salon-bg__lines {
 
 .personal-zovus__cta {
   margin-top: 0.75rem;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-  min-height: 2.5rem;
+  width: 100%;
+  min-height: 2.8rem;
   padding: 0.5rem 1rem;
   border-radius: 999px;
   border: 1px solid rgba(232, 199, 126, 0.45);

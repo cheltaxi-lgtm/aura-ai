@@ -418,7 +418,6 @@ export default function AuraSellingLanding({
         <EditorialSessionStepsSection />
         <EditorialDailyCardsSection
           isLoggedIn={false}
-          onGuestCta={() => startGuestSpread()}
         />
         {showMasters ? (
           <MastersShowcase
@@ -514,7 +513,13 @@ export default function AuraSellingLanding({
         </section>
       ) : null}
 
-      {showLoggedInHome ? <LoggedInHomeBanner userName={homeUserName} /> : null}
+      {showLoggedInHome ? (
+        <LoggedInHomeBanner
+          userName={homeUserName}
+          dailyCardsState={dailyCardsState}
+          onOpenDailyCards={onOpenDailyCards}
+        />
+      ) : null}
 
       {showQuickQuestionsBlock ? (
         <QuickQuestions
@@ -554,7 +559,6 @@ export default function AuraSellingLanding({
           isLoggedIn={isLoggedIn}
           dailyState={isLoggedIn ? dailyCardsState : undefined}
           dailyCooldownHint={dailyCooldownHint}
-          onGuestCta={() => startGuestSpread()}
           onOpenDaily={onOpenDailyCards}
           onViewToday={onViewTodayDailyCards}
           onPickRegular={onPickRegularSpread}

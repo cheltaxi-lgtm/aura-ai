@@ -16,7 +16,7 @@ export const EDITORIAL_HERO = {
   secondaryCta: "Как проходит сеанс",
   microcopy: "3 карты без регистрации · без банковской карты · 18+",
   /** Daily benefit lives in EditorialDailyCardsSection — not in the guest hero. */
-  retentionHook: "Каждый день — 3 карты с подсказкой на текущий день",
+  retentionHook: "Бесплатный расклад на сутки — каждый день",
 } as const;
 
 /** Compact multiproduct entries under hero (not full marketing blocks). */
@@ -73,32 +73,32 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
 
 export const EDITORIAL_DAILY_CARDS = {
   kicker: "Ежедневный ритуал",
-  title: "3 карты дня — каждый день",
+  title: "Расклад на сутки — каждый день",
   subtitle:
-    "Каждый день Zovus открывает три карты, которые помогают увидеть главное: где сегодня Ваш ресурс, чему стоит уделить внимание и где лучше не спешить.",
+    "Каждый день Zovus помогает увидеть ход ближайших суток: утро, день и вечер. Один расклад — один понятный ориентир.",
   body: "Бесплатно раз в сутки — короткий ориентир, прежде чем день наберёт темп.",
   benefits: [
-    { title: "Главное", text: "Что важно увидеть сегодня" },
-    { title: "Ресурс", text: "На что опереться" },
-    { title: "Осторожность", text: "Где не стоит спешить" },
+    { title: "Утро", text: "С чего начать день" },
+    { title: "День", text: "На что обратить внимание" },
+    { title: "Вечер", text: "С чем завершить сутки" },
   ] as const,
   /** Anonymous CTA opens first free trial (guest intro), not authenticated daily. */
-  guestCta: "Открыть первые 3 карты",
-  guestCtaHint: "После регистрации карты дня доступны бесплатно раз в сутки.",
-  authAvailableCta: "Открыть карты дня",
-  authAvailableTitle: "Ваши 3 карты дня готовы",
+  guestCta: "Открыть расклад на сутки",
+  guestCtaHint: "Войдите или создайте аккаунт — один бесплатный расклад раз в сутки.",
+  authAvailableCta: "Открыть расклад на сутки",
+  authAvailableTitle: "Бесплатный расклад на сутки",
   authAvailableSubtitle:
-    "Три карты подскажут, что сегодня важно увидеть прежде, чем день наберёт темп.",
-  authAvailableHint: "Бесплатно раз в сутки.",
-  authOpenedCta: "Посмотреть карты дня",
+    "Посмотрите, что подскажут карты об утре, дне и вечере.",
+  authAvailableHint: "Без списания рун · раз в сутки.",
+  authOpenedCta: "Посмотреть расклад",
   /** @deprecated use authOpenedCta — kept for transitional imports */
-  authUsedCta: "Посмотреть карты дня",
-  authOpenedTitle: "Ваш расклад на сегодня уже ждёт",
-  authOpenedSubtitle: "Вернитесь к трём картам и их подсказкам в любой момент сегодня.",
+  authUsedCta: "Посмотреть расклад",
+  authOpenedTitle: "Ваш расклад на сутки уже ждёт",
+  authOpenedSubtitle: "Вернитесь к сохранённому раскладу в любой момент сегодня.",
   authCooldownCta: "Выбрать расклад",
-  authCooldownTitle: "Следующие карты дня появятся позже",
-  authCooldownSubtitle: "А пока можно задать новый вопрос мастеру или выбрать другой расклад.",
-  authLoadingLabel: "Готовим карты дня…",
+  authCooldownTitle: "Расклад на сутки уже использован",
+  authCooldownSubtitle: "Новый будет доступен завтра. Пока можно задать вопрос мастеру.",
+  authLoadingLabel: "Проверяем расклад на сутки…",
 } as const;
 
 export const EDITORIAL_STARTER_PACK = {
@@ -115,7 +115,7 @@ export const EDITORIAL_STARTER_PACK = {
     "можно продолжить диалог с мастером",
   ] as const,
   secondaryBenefit:
-    "После регистрации Вам также будут доступны 3 карты дня бесплатно раз в сутки.",
+    "После регистрации Вам также будет доступен бесплатный расклад на сутки.",
   spaceBenefit: "Можно вернуться к раскладу позже — он сохранится в Вашем пространстве.",
   runesBenefit: "После регистрации на балансе появятся стартовые руны для первых обращений к мастеру.",
   noCardBenefit: "Без банковской карты.",
@@ -135,8 +135,8 @@ export const EDITORIAL_FREE_VALUE = {
       text: "Три карты и полный разбор вашей ситуации — чтобы познакомиться с Zovus.",
     },
     {
-      title: "3 карты дня",
-      text: "Каждый день — короткий ориентир: ресурс, внимание и то, где лучше не спешить.",
+      title: "Расклад на сутки",
+      text: "Каждый день — короткий ориентир на утро, день и вечер.",
     },
     {
       title: "Ваше пространство",

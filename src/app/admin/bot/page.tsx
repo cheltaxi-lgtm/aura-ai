@@ -63,7 +63,7 @@ type Dashboard = {
 
 const FLAG_LABELS: Record<string, string> = {
   bot_enabled: "Бот включён",
-  day_card_enabled: "Карта дня",
+  day_card_enabled: "Расклад на сутки",
   reminders_enabled: "Напоминания",
   ritual_reveal_enabled: "Ритуал",
   tts_enabled: "Голос (TTS)",

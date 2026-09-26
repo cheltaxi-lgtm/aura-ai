@@ -3,6 +3,8 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { upsertOAuthAccount } from "@/lib/oauth/accounts";
 import { getAccountConsentSnapshot } from "@/lib/accounts";
+import { getNotificationPrefs } from "@/lib/daily-reminder-service";
+import { createUserProfileForAccount } from "@/lib/users";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
 
 describe("registration consent boundaries", () => {
@@ -31,9 +33,24 @@ describe.skipIf(!hasTestDb)("OAuth registration consent persistence", () => {
       expect(snapshot?.marketingConsent).toBe(consentValue);
       if (consentValue) expect(snapshot?.marketingConsentAt).toBeTruthy();
       else expect(snapshot?.marketingConsentAt).toBeNull();
+      const profile = await createUserProfileForAccount(account.accountId, {
+        name: "Тест",
+        gender: "female",
+      });
+      expect((await getNotificationPrefs(profile.id)).marketingEmail).toBe(consentValue);
       // Login without a new opt-in must not invent or revoke historical consent.
       await upsertOAuthAccount({ provider: "yandex", info, consent: { ...consent, marketingConsent: false, marketingConsentAt: null } });
       expect((await getAccountConsentSnapshot(account.accountId))?.marketingConsent).toBe(consentValue);
+      if (!consentValue) {
+        const optedInAt = new Date().toISOString();
+        await upsertOAuthAccount({
+          provider: "yandex",
+          info,
+          consent: { ...consent, marketingConsent: true, marketingConsentAt: optedInAt },
+        });
+        expect((await getAccountConsentSnapshot(account.accountId))?.marketingConsent).toBe(true);
+        expect((await getNotificationPrefs(profile.id)).marketingEmail).toBe(true);
+      }
     });
   }
 });

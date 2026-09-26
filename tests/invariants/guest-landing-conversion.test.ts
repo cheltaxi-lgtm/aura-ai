@@ -156,10 +156,13 @@ describe("guest landing conversion cleanup", () => {
     expect(gift).not.toMatch(/starterRunes\s*=\s*\d{2,}/);
   });
 
-  it("daily guest CTA no longer promises a free daily triplet", () => {
-    expect(EDITORIAL_DAILY_CARDS.guestCta).toBe("Открыть первые 3 карты");
+  it("daily guest CTA opens the actual daily reading after authentication", () => {
+    expect(EDITORIAL_DAILY_CARDS.guestCta).toBe("Открыть расклад на сутки");
     expect(EDITORIAL_DAILY_CARDS.guestCta).not.toMatch(/Попробовать 3 карты бесплатно/i);
     expect(EDITORIAL_DAILY_CARDS.guestCtaHint).toMatch(/раз в сутки/i);
+    const daily=readSrc("src/components/editorial/EditorialDailyCardsSection.tsx");
+    expect(daily).toContain('buildRegisterHref("/?daily=1")');
+    expect(daily).not.toContain("onGuestCta()");
   });
 
   it("final CTA no longer says three cards are free and shows server starter line", () => {

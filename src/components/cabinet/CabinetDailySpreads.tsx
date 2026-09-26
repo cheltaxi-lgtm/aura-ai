@@ -37,7 +37,7 @@ export default function CabinetDailySpreads({ readings }: Props) {
       <div>
         <h2 className="font-display text-xl font-semibold text-white">Расклады на сутки</h2>
         <p className="mt-1 text-sm text-gray-500">
-          Бесплатная энергия дня — утро, день и вечер
+          Ваши сохранённые расклады на сутки
         </p>
       </div>
 
@@ -59,7 +59,7 @@ export default function CabinetDailySpreads({ readings }: Props) {
                 <p className="truncate text-sm font-medium text-white">
                   {formatShortDate(`${item.readingDate}T12:00:00`)} · {master.name}
                 </p>
-                <p className="truncate text-xs text-gray-500">{cardPreview || "Три карты"}</p>
+                <p className="truncate text-xs text-gray-500">{cardPreview || "Расклад"}</p>
               </div>
             </button>
           );

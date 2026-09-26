@@ -78,6 +78,8 @@ import {
 } from "@/lib/post-auth-return";
 import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
+import SessionFeedback from "@/components/SessionFeedback";
+import DailyReminderCard from "@/components/retention/DailyReminderCard";
 
 export const PHOTO_READING_RETURN = "/?photo=1";
 const PHOTO_STREAM_URL = "/api/photo-reading/stream";
@@ -149,14 +151,6 @@ export interface PhotoReadingChatPayload {
   historyId?: string;
 }
 
-/** Fired on Confirm — parent opens chat + timer immediately, then runs interpret. */
-export interface PhotoReadingConfirmPayload {
-  question?: string;
-  detectedCards: string[];
-  redrawSpread: RedrawSpread;
-  idempotencyKey: string;
-}
-
 interface PhotoReadingFlowProps {
   open: boolean;
   onClose: () => void;
@@ -168,8 +162,6 @@ interface PhotoReadingFlowProps {
   onSpreadRitualStart?: (spread: RedrawSpread) => void;
   onSpreadRitualEnd?: () => void;
   onRuneBalanceChange?: (balance: number) => void;
-  /** Immediate handoff: chat with spread + ritual timer; parent runs LLM. */
-  onConfirmSpread?: (masterId: string, payload: PhotoReadingConfirmPayload) => void | Promise<void>;
   onContinueChat?: (masterId: string, payload: PhotoReadingChatPayload) => void | Promise<void>;
   onInsufficientRunes?: (payload: { balance: number; required: number }) => void;
   onSaved?: () => void;
@@ -321,7 +313,6 @@ export default function PhotoReadingFlow({
   onSpreadRitualStart,
   onSpreadRitualEnd,
   onRuneBalanceChange,
-  onConfirmSpread,
   onContinueChat,
   onInsufficientRunes,
   onSaved,
@@ -1236,30 +1227,6 @@ export default function PhotoReadingFlow({
     setError("");
     trackPhotoReadingPhase("interpret_start");
 
-    // Prefer immediate chat handoff (spread + timer). Fall back to legacy in-modal wait.
-    if (onConfirmSpread) {
-      setLoading(true);
-      try {
-        await onConfirmSpread(masterId, {
-          question: questionText,
-          detectedCards,
-          redrawSpread,
-          idempotencyKey,
-        });
-        clearPhotoAuthDraft(window.sessionStorage);
-      } catch (err) {
-        setError(
-          err instanceof Error && err.message
-            ? err.message
-            : "Не удалось открыть чат. Попробуйте ещё раз."
-        );
-        trackPhotoReadingPhase("interpret_fail");
-      } finally {
-        setLoading(false);
-      }
-      return;
-    }
-
     setLoading(true);
     setStreamingAnalysis("");
     setStep("result");
@@ -1404,30 +1371,7 @@ export default function PhotoReadingFlow({
       if (data.saved || data.historyId) onSaved?.();
       trackPhotoReadingPhase("interpret_done", { cached: Boolean(data.cached) });
 
-      if (onContinueChat && analysis && !data.cached) {
-        if (ritualActive) {
-          onSpreadRitualEnd?.();
-          ritualActive = false;
-        }
-        try {
-          await Promise.race([
-            onContinueChat(masterId, {
-              analysis,
-              question: questionText,
-              detectedCards: nextResult.detectedCards,
-              redrawSpread: redrawSpread ?? undefined,
-              sessionId: data.sessionId as string | undefined,
-              historyId: nextResult.historyId,
-            }),
-            new Promise<void>((_, reject) =>
-              window.setTimeout(() => reject(new Error("chat_handoff_timeout")), 20_000)
-            ),
-          ]);
-        } catch {
-          // Analysis already shown/saved — handoff is best-effort.
-        }
-        return;
-      }
+      // Keep the completed result visible. Chat is an explicit user action below.
     } catch (err) {
       const aborted =
         interpretAbort.signal.aborted ||
@@ -1750,8 +1694,8 @@ export default function PhotoReadingFlow({
                           </span>
                         </>
                       ) : null}
-                      . Сначала распознаём карты, вы проверяете позиции, затем получаете
-                      расшифровку мастера.
+                      . ИИ распознаёт карты, вы проверяете позиции, затем получаете
+                      символическую расшифровку виртуального мастера.
                     </p>
                   )}
                 </>
@@ -1936,7 +1880,7 @@ export default function PhotoReadingFlow({
                   {result?.saved && !loading && (
                     <div className="flex flex-wrap items-center gap-2">
                       <p className="text-xs text-aura-emerald">Расклад сохранён в кабинете.</p>
-                      <Link href="/cabinet#мои-расклады" className="btn-luxe btn-luxe--sm btn-luxe--gold">
+                      <Link href={result.historyId ? `/cabinet/readings/${encodeURIComponent(result.historyId)}/print` : "/cabinet"} className="btn-luxe btn-luxe--sm btn-luxe--gold">
                         Открыть
                       </Link>
                     </div>
@@ -1944,11 +1888,15 @@ export default function PhotoReadingFlow({
 
                   {!loading && result?.historyId ? <ReportExportActions journey path={`/cabinet/readings/${encodeURIComponent(result.historyId)}/print`} /> : null}
 
+                  {!loading && result?.historyId ? <SessionFeedback sessionId={result.historyId} targetType="reading" product="photo" visible /> : null}
+
                   {!loading && resultSharePayload && (
                     <div className="flex justify-center">
                       <ShareButton payload={resultSharePayload} variant="pill" label="Поделиться раскладом" />
                     </div>
                   )}
+
+                  {!loading && result && isLoggedIn ? <DailyReminderCard /> : null}
 
                   {!loading && displayAnalysis && onContinueChat ? (
                     <div className="space-y-2">

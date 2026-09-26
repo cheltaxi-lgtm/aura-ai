@@ -176,11 +176,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   }, [role]);
 
   useEffect(() => {
-    if (!featuresLoaded || shouldUseAppShellClient() || (isUserRegister && !showEmailRegister)) return;
+    if (!featuresLoaded || (shouldUseAppShellClient() && mode !== "register") || (isUserRegister && !showEmailRegister)) return;
     if (recaptcha.masterEnabled && recaptcha.scopes[recaptchaScope]) {
       preloadRecaptchaScript();
     }
-  }, [featuresLoaded, recaptcha, recaptchaScope, isUserRegister, showEmailRegister]);
+  }, [featuresLoaded, recaptcha, recaptchaScope, isUserRegister, showEmailRegister, mode]);
 
   const loginHref = buildAuthHref(`/auth/${role}/login`, returnTo, isExpert ? "/expert" : "/");
   const registerHref = buildAuthHref(`/auth/${role}/register`, returnTo, isExpert ? "/expert" : "/");
@@ -566,6 +566,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
   return (
     <form onSubmit={handleSubmit} className={formShellClass}>
+      {isUserRegister && <p className="text-sm text-white/65">Стартовые руны и бонусы за посещение станут доступны после подтверждения почты. Ссылку пришлём после регистрации.</p>}
       {isUserRegister ? (
         <button
           type="button"

@@ -350,3 +350,34 @@ export function trackRunePurchase(amountRub: number, packageId?: string): void {
     /* analytics optional */
   }
 }
+
+export function trackRunePurchaseAttempt(selection: string): void {
+  trackSeoEvent("rune_purchase_attempted", { selection });
+}
+
+export function trackRunePurchaseFailed(stage: "captcha" | "http_401" | "http_429" | "server_rejected" | "missing_url" | "network"): void {
+  trackSeoEvent("rune_purchase_failed", { stage });
+}
+
+/** A qualified checkout: YooKassa returned a payment URL, not merely a paywall view. */
+export async function trackRuneCheckoutStarted(paymentId: string, amountRub: number): Promise<void> {
+  if (typeof window === "undefined" || !window.ym || !paymentId || !Number.isFinite(amountRub) || amountRub <= 0) return;
+  const key = `aura_rune_checkout_goal_fired_${paymentId}`;
+  try {
+    if (localStorage.getItem(key) === "1") return;
+  } catch {
+    // Private browsing can disable storage; sending the goal is still useful.
+  }
+  await new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 500);
+    try {
+      window.ym!(YANDEX_METRIKA_ID, "reachGoal", "rune_checkout_started", {
+        ...utmParamsForMetrika(),
+      }, () => { window.clearTimeout(timeout); resolve(); });
+      try { localStorage.setItem(key, "1"); } catch { /* storage optional */ }
+    } catch {
+      window.clearTimeout(timeout);
+      resolve();
+    }
+  });
+}

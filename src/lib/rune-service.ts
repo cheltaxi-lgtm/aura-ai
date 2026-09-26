@@ -1,4 +1,5 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
+import { isBonusIdentityReady } from "@/lib/bonus-identity";
 import { RUNE_ACTION_LABELS, type RuneActionType } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { runesFromRubAmount } from "@/lib/rune-purchase-constants";
@@ -349,6 +350,7 @@ export async function creditRunesToUser(
   if (paymentId && type === "bonus") {
     try {
       return await withTransaction(async (client) => {
+        await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR UPDATE", [userId]);
         const { rows: claimed } = await queryClient<{ id: string }>(
           client,
           `INSERT INTO rune_transactions
@@ -384,11 +386,7 @@ export async function creditRunesToUser(
     } catch (err) {
       // Never fall back to non-idempotent addRunes — that can double-credit.
       console.error("creditRunesToUser bonus claim failed:", err);
-      const { rows: bal } = await query<{ rune_balance: number }>(
-        `SELECT rune_balance FROM users WHERE id = $1`,
-        [userId]
-      );
-      return bal[0]?.rune_balance ?? 0;
+      throw err;
     }
   }
   return addRunes(userId, amount, type, description, paymentId);
@@ -449,11 +447,21 @@ export async function adminGrantRunes(
   userId: string,
   amount: number,
   reason: string,
-  adminId: string
+  adminId: string,
+  operationId: string
 ): Promise<number> {
-  if (amount <= 0) throw new Error("amount_must_be_positive");
+  if (!Number.isSafeInteger(amount) || amount <= 0) throw new Error("amount_must_be_positive");
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)) throw new Error("operation_id_required");
 
   return withTransaction(async (client) => {
+    await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    const idempotencyKey = `admin-grant:${adminId}:${operationId}`;
+    const { rows: prior } = await queryClient<{amount:number;description:string;balance_after:number}>(client,
+      "SELECT amount,description,balance_after FROM rune_transactions WHERE user_id=$1 AND idempotency_key=$2",[userId,idempotencyKey]);
+    if (prior[0]) {
+      if (prior[0].amount !== amount || prior[0].description !== `Admin: ${reason}`) throw new Error("grant_operation_conflict");
+      return prior[0].balance_after;
+    }
     const { rows: updated } = await queryClient<{ rune_balance: number }>(
       client,
       `UPDATE users
@@ -468,16 +476,16 @@ export async function adminGrantRunes(
     await queryClient(
       client,
       `INSERT INTO rune_transactions
-         (user_id, type, amount, balance_after, description)
-       VALUES ($1, 'bonus', $2, $3, $4)`,
-      [userId, amount, updated[0].rune_balance, description]
+         (user_id, type, amount, balance_after, description, idempotency_key)
+       VALUES ($1, 'bonus', $2, $3, $4, $5)`,
+      [userId, amount, updated[0].rune_balance, description, idempotencyKey]
     );
 
     await queryClient(
       client,
       `INSERT INTO admin_audit_log (admin_id, action, entity_type, entity_id, details)
        VALUES ($1, 'grant_runes', 'user', $2, $3)`,
-      [adminId, userId, JSON.stringify({ amount, reason })]
+      [adminId, userId, JSON.stringify({ amount, reason, operationId })]
     );
 
     return updated[0].rune_balance;
@@ -675,10 +683,22 @@ export async function grantStarterRunesIfNeeded(
   client?: PoolClient
 ): Promise<{ granted: number; balance: number } | null> {
   const settings = await getRuneSettings();
-  if (settings.starterRunes <= 0) return null;
+  if (!settings.enabled) return null;
 
   const grant = async (transactionClient: PoolClient) => {
-    await queryClient(transactionClient, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
+    const { rows: lockedUsers } = await queryClient<{ starter_bonus_version: string | null }>(
+      transactionClient,
+      `SELECT starter_bonus_version FROM users WHERE id = $1 FOR UPDATE`,
+      [userId]
+    );
+    if (!lockedUsers[0]) return null;
+    if (!(await isBonusIdentityReady(userId, transactionClient))) return null;
+
+    // Preserve the old promise for registrations awaiting verification at release.
+    const promisedOldBonus = lockedUsers[0].starter_bonus_version === "starter-100-v1";
+    const starterRunes = promisedOldBonus ? 100 : settings.starterRunes;
+    const starterBonusVersion = promisedOldBonus ? "starter-100-v1" : STARTER_BONUS_VERSION;
+    if (starterRunes <= 0) return null;
 
       const { rows: priorStarter } = await queryClient<{ id: string }>(
         transactionClient,
@@ -705,25 +725,25 @@ export async function grantStarterRunesIfNeeded(
            rune_balance = rune_balance + $2
          WHERE id = $1 AND starter_runes_granted = FALSE
          RETURNING rune_balance`,
-        [userId, settings.starterRunes]
+        [userId, starterRunes]
       );
       if (!flagged[0]) return null;
 
       if (isFirstExperienceEnabled()) {
-        await queryClient(transactionClient,"UPDATE users SET starter_bonus_version=$2 WHERE id=$1",[userId,STARTER_BONUS_VERSION]);
-        await recordJourneyEvent(userId,"bonus_granted","starter",{runes:settings.starterRunes,bonusVersion:STARTER_BONUS_VERSION},transactionClient);
+        await queryClient(transactionClient,"UPDATE users SET starter_bonus_version=$2 WHERE id=$1",[userId,starterBonusVersion]);
+        await recordJourneyEvent(userId,"bonus_granted","starter",{runes:starterRunes,bonusVersion:starterBonusVersion},transactionClient);
       }
 
-      const description = `Стартовый пакет: ${settings.starterRunes} ᚢ`;
+      const description = `Стартовый пакет: ${starterRunes} ᚢ`;
       await queryClient(
         transactionClient,
         `INSERT INTO rune_transactions
            (user_id, type, amount, balance_after, description)
          VALUES ($1, 'bonus', $2, $3, $4)`,
-        [userId, settings.starterRunes, flagged[0].rune_balance, description]
+        [userId, starterRunes, flagged[0].rune_balance, description]
       );
 
-    return { granted: settings.starterRunes, balance: flagged[0].rune_balance };
+    return { granted: starterRunes, balance: flagged[0].rune_balance };
   };
 
   // Registration/profile creation can pass its transaction, so a successful

@@ -118,7 +118,7 @@ async function main(): Promise<void> {
       const bot = new Bot(botConfig.token);
       await bot.api.setMyCommands([
         { command: "spread", description: "Расклад на три карты" },
-        { command: "day", description: "Карта дня" },
+        { command: "day", description: "Расклад на сутки" },
         { command: "hd", description: "Дизайн Человека" },
         { command: "history", description: "История раскладов" },
         { command: "profile", description: "Профиль" },

@@ -1,6 +1,6 @@
 ---
 name: audit-tarot
-description: Full tarot / guest-triplet audit (spreads, resume, mobile E2E)
+description: Execute a requested full audit of tarot spreads, guest triplets, resume and reading quality. Use for /audit-tarot.
 ---
 
-Read and follow `.cursor/skills/audit-tarot/SKILL.md`. Run the tarot harness at level full, launch independent reviews, fix failures, retest. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-tarot/SKILL.md`.

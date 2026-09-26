@@ -34,7 +34,7 @@ No live Zovus campaigns. No moderation status for active Zovus creatives (none r
 | Counter ID | `110138367` |
 | Name | Zovus |
 | Site | `zovus.ru` (status ok) |
-| Goals (Management API) | 74 active (incl. newly created `guest_claim` = `589870003`) |
+| Goals (Management API) | 194 active; manifest synchronized 19.09.2026 |
 | Offline conversions uploadings API | HTTP 200 (list empty) — upload permission present |
 | Stats API | HTTP 200 (visits last 7 days readable) |
 
@@ -47,10 +47,11 @@ No live Zovus campaigns. No moderation status for active Zovus creatives (none r
 | primary | ADS_GOAL_REGISTRATION | registration_completed | 581800617 |
 | primary | ADS_GOAL_FIRST_RUNE_SPEND | rune_purchase | 580953383 |
 | primary | ADS_GOAL_FIRST_PAYMENT | rune_purchase | 580953383 |
+| diagnostic | — | rune_checkout_started | 625725241 |
 | diagnostic | ADS_GOAL_GUEST_SPREAD_START | guest_spread_started | 581800511 |
 | diagnostic | ADS_GOAL_CLAIM | guest_claim | 589870003 |
 
-Note: first payment currently aliases `rune_purchase` (only paid conversion goal present). Separate first-payment goal can be added later if product emits a distinct event.
+Note: first payment remains tied to confirmed `rune_purchase`. `rune_checkout_started` is a qualified checkout diagnostic after the provider returns a payment URL; it is not a purchase or bidding target.
 
 ## Яндекс Вебмастер
 

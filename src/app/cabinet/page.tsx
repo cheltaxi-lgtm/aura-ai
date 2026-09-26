@@ -1,5 +1,7 @@
 "use client";
 import ReadingJourney from "@/components/ReadingJourney";
+import DailyBonusCard from "@/components/DailyBonusCard";
+import { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import PendingReadingResume from "@/components/cabinet/PendingReadingResume";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -289,6 +291,7 @@ export default function CabinetPage() {
     setActiveTab("runes");
     openPaywall({
       currentBalance: data.profile?.runeBalance ?? data.runes?.balance ?? 0,
+      highlightPackageId: /^[a-zA-Z0-9_-]{1,64}$/.test(params.get("package") ?? "") ? params.get("package")! : undefined,
       onClose: async () => {
         await fetchCabinet(0, false);
         setBalancePulse(true);
@@ -298,6 +301,7 @@ export default function CabinetPage() {
 
     params.delete("shop");
     params.delete("topup");
+    params.delete("package");
     const qs = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
   }, [loading, authLoading, authUser, data, openPaywall, fetchCabinet]);
@@ -657,6 +661,16 @@ export default function CabinetPage() {
     setShowRitualFlow(true);
   };
 
+  useEffect(() => {
+    const update = (event: Event) => {
+      const balance = (event as CustomEvent<number>).detail;
+      if (!Number.isFinite(balance)) return;
+      setData(current => current ? {...current,profile:{...current.profile,runeBalance:balance},runes:{...current.runes,balance}} : current);
+    };
+    window.addEventListener(RUNE_BALANCE_EVENT,update);
+    return () => window.removeEventListener(RUNE_BALANCE_EVENT,update);
+  },[]);
+
   const handleTopUp = () => {
     openPaywall({
       currentBalance: profile?.runeBalance ?? runes?.balance ?? 0,
@@ -757,7 +771,7 @@ export default function CabinetPage() {
                     ["photo", "По фото", photoSpreads.length],
                     ["aura", "Аура", auraReadings.length],
                     ["palm", "Ладонь", palmReadings.length],
-                    ["daily", "Карта дня", dailyReadings.length],
+                    ["daily", "Расклад на сутки", dailyReadings.length],
                     ["joint", "Совместные", null],
                   ] as const
                 ).map(([key, label, count]) => (
@@ -921,6 +935,7 @@ export default function CabinetPage() {
       </div>
 
       <main className="mx-auto max-w-3xl px-4 py-6">
+        <DailyBonusCard key={authUser?.profileUserId??"guest"} enabled={!authLoading&&Boolean(authUser?.profileUserId)&&runesEnabled} />
         {error && (
           <div className="mb-6 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">
             {error}

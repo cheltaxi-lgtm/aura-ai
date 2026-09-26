@@ -10,7 +10,9 @@ import { getAllSpreadHubSlugs } from "@/lib/seo/hubs";
 import { isSearchIndexableIntentSlug } from "@/lib/seo/indexability";
 import {
   FORECAST_MONTHS,
-  FORECAST_YEARS,
+  getCurrentForecastYear,
+  getForecastYears,
+  isPastForecastMonth,
 } from "@/lib/seo/seasonal";
 import { getAllSeoZodiacSlugs } from "@/lib/seo/zodiac-signs";
 import { getAllSuitHubSlugs } from "@/lib/seo/suit-hubs";
@@ -46,6 +48,8 @@ import {
 } from "@/lib/settings";
 import { getRitualSettings, isRitualCatalogEnabled } from "@/lib/ritual-settings";
 import { isProModuleEnabled } from "@/modules/pro/config";
+
+export const revalidate = 3600;
 
 const ABOUT_PATHS = [
   "/about",
@@ -235,15 +239,16 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
     priority: 0.65,
   }));
 
-  const yearPages: MetadataRoute.Sitemap = FORECAST_YEARS.map((year) => ({
+  const visibleForecastYears = getForecastYears(now).filter((year) => year >= getCurrentForecastYear(now));
+  const yearPages: MetadataRoute.Sitemap = visibleForecastYears.map((year) => ({
     url: `${base}/prognoz/${year}`,
     lastModified: now,
     changeFrequency: "weekly" as const,
     priority: 0.85,
   }));
 
-  const monthPages: MetadataRoute.Sitemap = FORECAST_YEARS.flatMap((year) =>
-    FORECAST_MONTHS.map((month) => ({
+  const monthPages: MetadataRoute.Sitemap = visibleForecastYears.flatMap((year) =>
+    FORECAST_MONTHS.filter((month) => !isPastForecastMonth(year, month, now)).map((month) => ({
       url: `${base}/prognoz/${year}/${month.slug}`,
       lastModified: now,
       changeFrequency: "weekly" as const,
@@ -264,6 +269,7 @@ export default async function sitemap(): Promise<MetadataRoute.Sitemap> {
 
   const landingPages: MetadataRoute.Sitemap = [
     staticPage("/taro", 0.95),
+    staticPage("/tariffs", 0.8, "daily"),
     staticPage("/prognoz", 0.85),
     staticPage("/rasklady", 0.85),
     staticPage("/rasklad", 0.7),

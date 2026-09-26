@@ -615,14 +615,15 @@ export async function getCabinetSessions(
       rawTopic.length >= 8 &&
       rawTopic !== "Свой вопрос" &&
       rawTopic !== topicFromIntention &&
-      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня"].includes(rawTopic);
+      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня", "Расклад на сутки"].includes(rawTopic);
     const resolvedQuestion =
       customQuestion ||
       (r.intention === "custom" && topicLooksLikeQuestion ? rawTopic : null) ||
       (topicLooksLikeQuestion ? rawTopic : null);
+    const displayTopic = rawTopic === "Три карты дня" ? "Расклад на сутки" : rawTopic;
     const topicSummary =
       resolvedQuestion ||
-      (rawTopic && rawTopic !== "Свой вопрос" ? rawTopic : "") ||
+      (displayTopic && displayTopic !== "Свой вопрос" ? displayTopic : "") ||
       topicFromIntention;
 
     const matrixBirth =
@@ -711,6 +712,7 @@ export async function getCabinetAchievements(
   const locked: CabinetAchievementLocked[] = [];
 
   for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
+    if (key === "brave_question") continue;
     if (earnedKeys.has(key)) continue;
     const ach = ACHIEVEMENTS[key];
     let progress = 0;
@@ -732,11 +734,6 @@ export async function getCabinetAchievements(
         progress = maxMasterSessions;
         progressMax = 10;
         progressLabel = `${Math.min(maxMasterSessions, 10)}/10 сеансов`;
-        break;
-      case "brave_question":
-        progress = 0;
-        progressMax = 1;
-        progressLabel = "Спроси о сложном";
         break;
       case "month_in":
         progress = daysWithUs;

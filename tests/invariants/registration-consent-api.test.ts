@@ -44,5 +44,10 @@ describe("email registration consent API", () => {
     expect(insert![2]![5]).toBe(marketingConsent === true);
     if (marketingConsent === true) expect(insert![2]![6]).toEqual(expect.any(String));
     else expect(insert![2]![6]).toBeNull();
+    const channelUpdate = vi.mocked(queryClient).mock.calls.find((call) =>
+      String(call[1]).includes("SET notification_prefs") &&
+      String(call[1]).includes("marketingEmail")
+    );
+    expect(Boolean(channelUpdate)).toBe(marketingConsent === true);
   });
 });

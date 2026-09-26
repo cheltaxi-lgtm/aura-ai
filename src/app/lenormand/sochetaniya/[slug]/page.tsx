@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, permanentRedirect } from "next/navigation";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import {
   getAllLenormandCombinationSlugs,
   getLenormandCombinationBySlug,
+  LEGACY_LENORMAND_COMBINATION_REDIRECTS,
 } from "@/lib/seo/lenormand-combinations";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { buildSpreadStartUrl } from "@/lib/spread-intents/router";
@@ -14,7 +15,8 @@ import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 
 export function generateStaticParams() {
-  return getAllLenormandCombinationSlugs().map((slug) => ({ slug }));
+  return [...getAllLenormandCombinationSlugs(), ...Object.keys(LEGACY_LENORMAND_COMBINATION_REDIRECTS)]
+    .map((slug) => ({ slug }));
 }
 
 export async function generateMetadata({
@@ -23,6 +25,10 @@ export async function generateMetadata({
   params: Promise<{ slug: string }>;
 }): Promise<Metadata> {
   const { slug } = await params;
+  const legacyDestination = LEGACY_LENORMAND_COMBINATION_REDIRECTS[slug];
+  if (legacyDestination !== undefined) {
+    return { title: "Сочетания карт Ленорман", robots: { index: false, follow: true } };
+  }
   const combo = getLenormandCombinationBySlug(slug);
   if (!combo) return { title: "Сочетание Ленорман" };
   return buildSeoMetadata({
@@ -38,6 +44,12 @@ export default async function LenormandCombinationPage({
   params: Promise<{ slug: string }>;
 }) {
   const { slug } = await params;
+  const legacyDestination = LEGACY_LENORMAND_COMBINATION_REDIRECTS[slug];
+  if (legacyDestination !== undefined) {
+    permanentRedirect(legacyDestination
+      ? `/lenormand/sochetaniya/${legacyDestination}`
+      : "/lenormand/sochetaniya");
+  }
   const combo = getLenormandCombinationBySlug(slug);
   if (!combo) notFound();
 

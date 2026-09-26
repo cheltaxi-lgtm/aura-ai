@@ -1,56 +1,57 @@
 "use client";
-
-import { useEffect, useRef, useState } from "react";
-
+import { useCallback, useEffect, useRef, useState } from "react";
 export type DailyBonusResult = {
-  claimed: boolean;
-  bonusAmount?: number;
-  newBalance?: number;
-  nextBonusIn?: string;
-  alreadyClaimed?: boolean;
-  currentBalance?: number;
+  claimed: boolean; bonusAmount?: number; newBalance?: number; nextBonusIn?: string;
+  alreadyClaimed?: boolean; currentBalance?: number; nextEligibleAt?: string; serverNow?: string;
 };
-
+export function isForegroundVisit(event: Pick<Event, "isTrusted">, visibility: string): boolean {
+  return event.isTrusted && visibility === "visible";
+}
 export function useDailyBonus(enabled: boolean) {
   const [bonusResult, setBonusResult] = useState<DailyBonusResult | null>(null);
   const [loading, setLoading] = useState(false);
-  const attemptedRef = useRef(false);
-
-  useEffect(() => {
-    if (!enabled || attemptedRef.current) return;
-    attemptedRef.current = true;
-
-    const claimBonus = async () => {
-      setLoading(true);
-      try {
-        const res = await fetch("/api/runes/daily", { method: "POST" });
-        if (!res.ok) return;
-        const data = (await res.json()) as DailyBonusResult;
-        setBonusResult(data);
-      } catch {
-        /* non-critical */
-      } finally {
-        setLoading(false);
-      }
-    };
-
-    void claimBonus();
-  }, [enabled]);
-
-  const claimManually = async (): Promise<DailyBonusResult | null> => {
-    setLoading(true);
+  const [error, setError] = useState<string | null>(null);
+  const busy = useRef(false);
+  const retryAt = useRef(0);
+  const generation = useRef(0);
+  const claimManually = useCallback(async (event: Pick<Event, "isTrusted">): Promise<DailyBonusResult | null> => {
+    if (!enabled || busy.current || !isForegroundVisit(event, document.visibilityState) || Date.now() < retryAt.current) return null;
+    const currentGeneration = generation.current;
+    busy.current = true; setLoading(true); setError(null);
     try {
       const res = await fetch("/api/runes/daily", { method: "POST" });
-      if (!res.ok) return null;
-      const data = (await res.json()) as DailyBonusResult;
+      const data = await res.json();
+      if (!res.ok) throw new Error(res.status === 429 ? "Повторите через минуту." : data.error || "Не удалось получить бонус. Попробуйте снова.");
+      if (currentGeneration !== generation.current) return null;
+      retryAt.current = Date.now() + Math.max(60_000, Date.parse(data.nextEligibleAt) - Date.parse(data.serverNow) || 60_000);
       setBonusResult(data);
       return data;
-    } catch {
+    } catch (cause) {
+      if (currentGeneration === generation.current) {
+        retryAt.current = Date.now() + 60_000;
+        setError(cause instanceof Error ? cause.message : "Ошибка соединения");
+      }
       return null;
     } finally {
-      setLoading(false);
+      if (currentGeneration === generation.current) { busy.current = false; setLoading(false); }
     }
-  };
-
-  return { bonusResult, loading, claimManually };
+  }, [enabled]);
+  useEffect(() => {
+    generation.current++; busy.current = false; retryAt.current = 0;
+    const activeGeneration = generation.current;
+    setBonusResult(null); setLoading(false); setError(null);
+    if (!enabled) return;
+    // Background tabs, polling, timers and visibility changes alone never grant runes.
+    const visit = (event: Event) => {
+      if (isForegroundVisit(event, document.visibilityState) && Date.now() >= retryAt.current) void claimManually(event);
+    };
+    window.addEventListener("pointerdown", visit, { passive: true });
+    window.addEventListener("keydown", visit);
+    return () => {
+      generation.current = activeGeneration + 1;
+      window.removeEventListener("pointerdown", visit);
+      window.removeEventListener("keydown", visit);
+    };
+  }, [enabled, claimManually]);
+  return { bonusResult, loading, error, claimManually };
 }

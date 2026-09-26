@@ -145,6 +145,7 @@ export default function SiteFooter({
         <div className="editorial-footer__columns">
           <nav className="editorial-footer__col" aria-label="Разделы">
             <p className="editorial-footer__col-title">Разделы</p>
+            <Link href="/tariffs" className="editorial-footer__link">Тарифы и магазин</Link>
             {EDITORIAL_NAV.filter((item) => "hash" in item || item.href === "/cabinet").map(
               (item) => {
                 if ("hash" in item) {

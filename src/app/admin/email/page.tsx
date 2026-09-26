@@ -46,6 +46,13 @@ type EmailStatus = {
   mailboxes: Record<string, string>;
   stats24h: { sent: number; failed: number; skipped: number };
   stats7d: { sent: number; failed: number; skipped: number };
+  dailyReminder: {
+    accounts: number;
+    remindersOn: number;
+    reachableEmail: number;
+    missingEmail: number;
+    days: Array<{ date: string; sent: number; failed: number }>;
+  };
   byTemplate: TemplateStat[];
   reengagementStats: Array<{ template: string; count: number }>;
   log: { rows: EmailLogRow[]; total: number };
@@ -266,6 +273,31 @@ export default function AdminEmailPage() {
                 <p className={`mt-1 text-2xl font-semibold ${card.color}`}>{card.value}</p>
               </div>
             ))}
+          </section>
+
+          <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+            <h2 className="text-sm font-semibold text-white">Письма о раскладе на сутки</h2>
+            <p className="mt-2 text-xs text-gray-400">
+              «Отправлено» означает, что SMTP принял письмо. Попадание во «Входящие» этим журналом не подтверждается.
+            </p>
+            <dl className="mt-4 grid gap-3 text-sm sm:grid-cols-4">
+              <div><dt className="text-gray-500">Аккаунты</dt><dd className="text-xl text-white">{data.dailyReminder.accounts}</dd></div>
+              <div><dt className="text-gray-500">Напоминание включено</dt><dd className="text-xl text-white">{data.dailyReminder.remindersOn}</dd></div>
+              <div><dt className="text-gray-500">Письмо возможно</dt><dd className="text-xl text-green-400">{data.dailyReminder.reachableEmail}</dd></div>
+              <div><dt className="text-gray-500">Нет адреса для письма</dt><dd className="text-xl text-amber-300">{data.dailyReminder.missingEmail}</dd></div>
+            </dl>
+            <div className="mt-4 overflow-x-auto">
+              <table className="w-full min-w-[360px] text-left text-xs">
+                <thead className="text-gray-500"><tr><th className="pb-2">Дата, МСК</th><th className="pb-2">SMTP принял</th><th className="pb-2">Ошибка</th></tr></thead>
+                <tbody>{data.dailyReminder.days.map((day) => (
+                  <tr key={day.date} className="border-t border-white/5 text-gray-300">
+                    <td className="py-2">{day.date}</td>
+                    <td className="py-2 text-green-400">{day.sent}</td>
+                    <td className="py-2 text-red-400">{day.failed}</td>
+                  </tr>
+                ))}</tbody>
+              </table>
+            </div>
           </section>
 
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">

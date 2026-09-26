@@ -11,6 +11,7 @@ const SUPPORT_REPLY = () => getSupportEmail();
 export type { SendEmailParams } from "@/lib/email/types";
 
 export {
+  DAILY_REMINDER_EMAIL_PATH,
   dailyReminderEmailHtml,
   dailyBonusReminderEmailHtml,
   inactiveUserEmailHtml,

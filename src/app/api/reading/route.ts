@@ -47,7 +47,7 @@ import { getClaimedGuestMatrixFreeze } from "@/lib/services/matrix-guest-service
 import { resolveSessionForUser } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
-import { resolveIsDailyFreeReading } from "@/lib/daily-spread-billing";
+import { resolveDailyFreeReading } from "@/lib/daily-spread-billing";
 import { resolveGuestResumeFreeReading } from "@/lib/guest-resume-billing";
 import { setGuestResumeReadingId } from "@/lib/guest-triplet-receipt-db";
 import { buildTeaserContinuityPromptBlock } from "@/lib/guest-triplet-teaser-service";
@@ -608,28 +608,6 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  if (asyncRequested && isAsyncJobWorkerConfigured()) {
-    const longNumerology =
-      isNumerologMaster(characterId) &&
-      (requestNumerologToolId === "destiny_matrix" ||
-        requestNumerologToolId === "matrix_compatibility" ||
-        requestNumerologToolId === "child_matrix" ||
-        requestNumerologToolId === "matrix_year_forecast");
-    const isoBirthForJob =
-      toIsoBirthDateShared(birthDate) ??
-      toIsoBirthDateShared(String(birthDate ?? "").slice(0, 10));
-    return enqueuePaidAsyncJob({
-      userId: authed.profileUserId,
-      kind: longNumerology ? "numerology_reading" : "reading",
-      payload: {
-        ...rawBody,
-        async: false,
-        ...(isoBirthForJob ? { birthDate: isoBirthForJob } : {}),
-        ...(resolvedMatrixSubject ? { matrixSubjectId: resolvedMatrixSubject.id } : {}),
-      },
-      bypassDeliveryGate: true,
-    });
-  }
 
   let spentRunes = 0;
   let billingCharge: BillingChargeResult | null = null;
@@ -685,6 +663,64 @@ export async function POST(request: NextRequest) {
           reversed: symbol.reversed,
         }));
     }
+    const dailyReading = !isGuestResumeFree
+      ? await resolveDailyFreeReading({
+          profileUserId: authed.profileUserId,
+          characterId,
+          spreadType,
+          intention,
+          customQuestion,
+          tarotCards,
+        })
+      : null;
+    const isDailySpread = Boolean(dailyReading);
+    if (spreadType === "daily" && !isGuestResumeFree && !dailyReading) {
+      return NextResponse.json(
+        {
+          code: "DAILY_READING_UNAVAILABLE",
+          error: "Не удалось подтвердить расклад на сутки. Откройте его с главной страницы или получите новый, когда он станет доступен. Руны не списаны.",
+        },
+        { status: 409 }
+      );
+    }
+    if (dailyReading) {
+      tarotCards = dailyReading.cards;
+      spreadType = "daily";
+      isPaid = true;
+      // Reopening the same free daily reuses the existing result, including forced client retries.
+      forceRegenerate = false;
+      spreadIdRaw = "triplet";
+      readingScope = "today";
+    }
+    if (isGuestResumeFree) {
+      isPaid = true;
+      spreadType = "guest_resume";
+    }
+
+    if (asyncRequested && isAsyncJobWorkerConfigured()) {
+      const longNumerology =
+        isNumerologMaster(characterId) &&
+        (requestNumerologToolId === "destiny_matrix" ||
+          requestNumerologToolId === "matrix_compatibility" ||
+          requestNumerologToolId === "child_matrix" ||
+          requestNumerologToolId === "matrix_year_forecast");
+      const isoBirthForJob =
+        toIsoBirthDateShared(birthDate) ??
+        toIsoBirthDateShared(String(birthDate ?? "").slice(0, 10));
+      return enqueuePaidAsyncJob({
+        userId: authed.profileUserId,
+        kind: longNumerology ? "numerology_reading" : "reading",
+        payload: {
+          ...rawBody,
+          async: false,
+          ...(dailyReading ? { tarotCards, spreadType: "daily", spreadId: "triplet", readingScope: "today", forceRegenerate: false } : {}),
+          ...(isoBirthForJob ? { birthDate: isoBirthForJob } : {}),
+          ...(resolvedMatrixSubject ? { matrixSubjectId: resolvedMatrixSubject.id } : {}),
+        },
+        bypassDeliveryGate: true,
+      });
+    }
+
     // Free-form guest/custom question uses the existing "custom" intention slot —
     // do not invent a catalog topic when the user left the question empty.
     const readingIntention =
@@ -824,24 +860,6 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    const isDailySpread =
-      !isGuestResumeFree &&
-      (await resolveIsDailyFreeReading({
-        profileUserId: authed.profileUserId,
-        spreadType,
-        intention,
-        sessionId,
-        tarotCards,
-        session: resolvedSession,
-      }));
-    if (isDailySpread) {
-      spreadType = "daily";
-      isPaid = true;
-    }
-    if (isGuestResumeFree) {
-      isPaid = true;
-      spreadType = "guest_resume";
-    }
     let historyId: string | undefined;
     let reading: string;
 

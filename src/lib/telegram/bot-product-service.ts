@@ -893,7 +893,7 @@ export async function botDailyEnergy(input: {
     return {
       ok: false,
       error: "needs_link",
-      message: "Привяжите аккаунт Zovus, чтобы карта дня совпадала с сайтом.",
+      message: "Привяжите аккаунт Zovus, чтобы расклад на сутки совпадал с сайтом.",
       linkUrl: resolved.linkUrl,
     };
   }
@@ -933,6 +933,6 @@ export async function botDailyEnergy(input: {
       };
     }
     console.error("[bot-product] daily", err);
-    return { ok: false, error: "internal", message: "Не удалось открыть карту дня." };
+    return { ok: false, error: "internal", message: "Не удалось открыть расклад на сутки." };
   }
 }

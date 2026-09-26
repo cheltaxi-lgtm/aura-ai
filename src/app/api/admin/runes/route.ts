@@ -6,6 +6,7 @@ import { ensureDb } from "@/lib/db";
 import { logAdminAction } from "@/lib/admin";
 import { getRuneSettings, setRuneSettings } from "@/lib/rune-settings";
 import { setSetting } from "@/lib/settings";
+import { isFirstExperienceEnabled } from "@/lib/first-experience-policy";
 
 export async function GET() {
   const auth = await requireAdmin();
@@ -20,7 +21,7 @@ export async function GET() {
     "SELECT * FROM rune_packages ORDER BY sort_order ASC"
   );
 
-  return NextResponse.json({ settings, packages });
+  return NextResponse.json({ settings, packages, starterBonusPolicyLocked: isFirstExperienceEnabled() });
 }
 
 export async function PATCH(request: NextRequest) {

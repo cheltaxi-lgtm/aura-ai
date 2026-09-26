@@ -452,6 +452,10 @@ body,
     outline-offset: 2px;
   }
 
+  .tariffs-page .btn-luxe {
+    transition-property: transform, opacity;
+  }
+
   .neon-text {
     background: var(--aura-gold-gradient);
     -webkit-background-clip: text;

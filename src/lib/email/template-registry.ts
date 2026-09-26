@@ -88,7 +88,7 @@ export const EMAIL_TEMPLATE_REGISTRY: EmailTemplateDef[] = [
   },
   {
     id: "daily_reminder",
-    label: "Карты дня (cron)",
+    label: "Расклад на сутки (cron)",
     category: "reminder",
     description: "Ежедневное напоминание открыть бесплатный суточный расклад.",
     previewHtml: () => dailyReminderEmailHtml("Анна"),

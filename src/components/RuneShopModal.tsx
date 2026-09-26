@@ -1,5 +1,6 @@
 "use client";
 import RuneOrderSummary from "@/components/RuneOrderSummary";
+import { runePackageValue } from "@/lib/tariff-pricing";
 
 import { useEffect, useState, useCallback, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
@@ -11,7 +12,7 @@ import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase, prepareRunePurchaseAttempt, readSelectedRuneCost } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
-import { trackPaywallOpen } from "@/lib/seo/metrika";
+import { trackPaywallOpen, trackRuneCheckoutStarted, trackRunePurchaseAttempt, trackRunePurchaseFailed } from "@/lib/seo/metrika";
 import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
@@ -88,7 +89,8 @@ export default function RuneShopModal({
       .finally(() => setPackagesLoading(false));
   }, [isOpen, loadBonusStatus]);
 
-  const claimBonus = async () => {
+  const claimBonus = async (event: { isTrusted: boolean }) => {
+    if (!event.isTrusted || document.visibilityState !== "visible" || claimingBonus) return;
     setClaimingBonus(true);
     setError(null);
     try {
@@ -116,11 +118,13 @@ export default function RuneShopModal({
     if(purchaseLock.current)return;purchaseLock.current=true;
     setPurchasingId(packageId);
     setError(null);
+    trackRunePurchaseAttempt(packageId);
     try {
       const features = await fetchPlatformFeatures();
       const payload: Record<string, unknown> = { packageId, requestId: await prepareRunePurchaseAttempt(packageId) };
       const captchaErr = await attachRecaptchaToken(payload, "payments", features);
       if (captchaErr) {
+        trackRunePurchaseFailed("captcha");
         setError(captchaErr);
         setPurchasingId(null);purchaseLock.current=false;
         return;
@@ -133,6 +137,7 @@ export default function RuneShopModal({
       });
       const data = await res.json();
       if (!res.ok || !data.paymentUrl) {
+        trackRunePurchaseFailed(res.status === 401 ? "http_401" : res.status === 429 ? "http_429" : !res.ok ? "server_rejected" : "missing_url");
         setError(data.error ?? "Ошибка оплаты");
         setPurchasingId(null);purchaseLock.current=false;
         return;
@@ -142,10 +147,14 @@ export default function RuneShopModal({
       if (pkg) {
         pushEcommerceAdd({ id: pkg.id, name: pkg.name, price: pkg.price_rub, category: "runes" });
       }
+      if (typeof data.paymentId === "string" && pkg) {
+        await trackRuneCheckoutStarted(data.paymentId, pkg.price_rub);
+      }
       openTelegramExternalUrl(data.paymentUrl);
       // Checkout may open outside the mounted Mini App or return via BFCache.
       setPurchasingId(null);purchaseLock.current=false;
     } catch {
+      trackRunePurchaseFailed("network");
       setError("Ошибка соединения");
       setPurchasingId(null);purchaseLock.current=false;
     }
@@ -155,11 +164,13 @@ export default function RuneShopModal({
     if(purchaseLock.current)return;purchaseLock.current=true;
     setPurchasingId("custom");
     setError(null);
+    trackRunePurchaseAttempt("custom");
     try {
       const features = await fetchPlatformFeatures();
       const payload: Record<string, unknown> = { customAmount: amountRub, requestId: await prepareRunePurchaseAttempt(`custom:${amountRub}`) };
       const captchaErr = await attachRecaptchaToken(payload, "payments", features);
       if (captchaErr) {
+        trackRunePurchaseFailed("captcha");
         setError(captchaErr);
         setPurchasingId(null);purchaseLock.current=false;
         return;
@@ -172,16 +183,21 @@ export default function RuneShopModal({
       });
       const data = await res.json();
       if (!res.ok || !data.paymentUrl) {
+        trackRunePurchaseFailed(res.status === 401 ? "http_401" : res.status === 429 ? "http_429" : !res.ok ? "server_rejected" : "missing_url");
         setError(data.error ?? "Ошибка оплаты");
         setPurchasingId(null);purchaseLock.current=false;
         return;
       }
       storePendingRunePurchase(typeof data.paymentId === "string" ? data.paymentId : "", currentBalance);
       pushEcommerceAdd({ id: "custom", name: "Произвольная сумма", price: amountRub, category: "runes" });
+      if (typeof data.paymentId === "string") {
+        await trackRuneCheckoutStarted(data.paymentId, amountRub);
+      }
       openTelegramExternalUrl(data.paymentUrl);
       // Checkout may open outside the mounted Mini App or return via BFCache.
       setPurchasingId(null);purchaseLock.current=false;
     } catch {
+      trackRunePurchaseFailed("network");
       setError("Ошибка соединения");
       setPurchasingId(null);purchaseLock.current=false;
     }
@@ -233,7 +249,7 @@ export default function RuneShopModal({
               )}
             </div>
 
-            <RuneOrderSummary cost={requiredRunes??0} balance={currentBalance} rubPerRune={rubPerRune} packages={packages} />
+            <RuneOrderSummary cost={requiredRunes??0} balance={currentBalance} rubPerRune={rubPerRune} packages={packages} onCustomPurchase={(amount) => void handleCustomPurchase(amount)} purchasing={!!purchasingId} />
             {bonusStatus && (
               <div className="mb-4 rounded-2xl border border-amber-500/30 bg-amber-500/10 p-4">
                 <div className="flex items-center justify-between gap-3">
@@ -249,7 +265,7 @@ export default function RuneShopModal({
                   {bonusStatus.available ? (
                     <button
                       type="button"
-                      onClick={() => void claimBonus()}
+                      onClick={(event) => void claimBonus(event)}
                       disabled={claimingBonus}
                             className="btn-luxe btn-luxe--sm btn-luxe--gold disabled:opacity-60"
                     >
@@ -292,7 +308,7 @@ export default function RuneShopModal({
                         <span className="text-sm font-semibold text-white">{pkg.name}</span>
                         {pkg.is_popular && (
                           <span className="rounded-full bg-amber-500 px-2 py-0.5 text-[10px] font-bold text-black">
-                            хит
+                            Популярный
                           </span>
                         )}
                         {pkg.bonus_runes > 0 && (
@@ -302,14 +318,9 @@ export default function RuneShopModal({
                         )}
                       </div>
                       <p className="mt-0.5 text-xs text-gray-400">
-                        ᚢ {total} рун · ~{(pkg.price_rub / total).toFixed(1)} ₽/руна
-                        {rubPerRune > 0 && (
-                          <span className="text-gray-600">
-                            {" "}
-                            (курс {rubPerRune} ₽/ᚢ)
-                          </span>
-                        )}
+                        ᚢ {total} рун · {runePackageValue(pkg,rubPerRune)?.perRune.toLocaleString("ru-RU",{maximumFractionDigits:2})} ₽/руна
                       </p>
+                      {(runePackageValue(pkg,rubPerRune)?.savingPercent??0)>0?<p className="mt-1 text-xs text-amber-200/80">Выгода {runePackageValue(pkg,rubPerRune)?.savingPercent}% относительно базового курса</p>:null}
                     </div>
                     {purchasingId === pkg.id ? (
                       <div className="h-5 w-5 animate-spin rounded-full border-2 border-amber-400 border-t-transparent" />

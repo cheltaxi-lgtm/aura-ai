@@ -9,10 +9,11 @@ const exactCards = [
 const historyId = "e2e-daily-history-1";
 const sessionId = "e2e-daily-session-1";
 
-async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null }) {
+async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean; hasEmail?: boolean; masterReminder?: boolean }) {
   let homeRecapHiddenKey: string | null = opts?.hiddenKey ?? null;
-  let dailyExists = true;
+  let dailyExists = opts?.dailyExists ?? true;
   let cooldownAllowed = false;
+  let masterReminder = opts?.masterReminder ?? true;
 
   await page.route("**/api/**", async (route) => {
     const request = route.request();
@@ -96,6 +97,50 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null 
       return route.fulfill({ json: { ok: true, homeRecapHiddenKey } });
     }
 
+    if (path === "/api/profile/contact-email") {
+      if (request.method() === "POST") return route.fulfill({ json: { ok: true } });
+      return route.fulfill({ json: {
+        hasEmail: opts?.hasEmail !== false,
+        hasContactEmail: false,
+        masterReminder,
+        dailyCardsReminder: opts?.hasEmail !== false && masterReminder,
+      } });
+    }
+
+    if (path === "/api/auth/daily-cards-reminder") {
+      if (request.method() === "PATCH") {
+        masterReminder = request.postDataJSON().dailyCardsReminder === true;
+      }
+      return route.fulfill({ json: { dailyCardsReminder: masterReminder } });
+    }
+
+    if (path === "/api/daily-reading" && request.method() === "GET") {
+      return route.fulfill({
+        json: {
+          drawn: dailyExists,
+          text: dailyExists ? "Ваш день раскрывается спокойно: утром выберите главное, днём сохраните фокус, вечером подведите итог." : null,
+          cards: dailyExists ? exactCards : [],
+          system: dailyExists ? "tarot-veronika" : null,
+          spreadId: dailyExists ? "triplet" : null,
+          locked: false,
+          purged: false,
+        },
+      });
+    }
+
+    if (path === "/api/daily-reading" && request.method() === "POST") {
+      dailyExists = true;
+      return route.fulfill({
+        json: {
+          drawn: true,
+          text: "Ваш день раскрывается спокойно: утром выберите главное, днём сохраните фокус, вечером подведите итог.",
+          cards: exactCards,
+          system: "tarot-veronika",
+          spreadId: "triplet",
+        },
+      });
+    }
+
     if (path === "/api/tarot/daily" && request.method() === "POST") {
       const body = request.postDataJSON() as { cards?: typeof exactCards };
       const cards = body.cards ?? exactCards;
@@ -159,9 +204,10 @@ test.describe("daily artifact + landing copy", () => {
     await page.goto("/?app=1");
     await expect(page.getByText(/не путать со стартовым раскладом/i)).toHaveCount(0);
     await expect(page.getByText(/^После входа$/i)).toHaveCount(0);
-    await expect(page.getByRole("heading", { name: /3 карты дня/i })).toBeVisible();
+    await expect(page.getByRole("heading", { name: /Расклад на сутки — каждый день/i })).toBeVisible();
+    await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20_000 });
     await expect(
-      page.getByRole("button", { name: /Открыть первые 3 карты/i }).first()
+      page.getByRole("button", { name: /Первый расклад по вопросу/i }).first()
     ).toBeVisible();
     // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).
     const starter = page.locator(".editorial-starter-gift");
@@ -171,14 +217,19 @@ test.describe("daily artifact + landing copy", () => {
     await expect(starter.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
 
     await page.setViewportSize({ width: 1440, height: 900 });
-    await page.locator("#карты-дня").screenshot({
+    const dailySection = page.locator("#карты-дня");
+    await dailySection.scrollIntoViewIfNeeded();
+    await expect(dailySection).toHaveClass(/salon-reveal--in/);
+    await expect(dailySection).toHaveCSS("opacity", "1");
+    await expect(dailySection.locator("h2")).toHaveCSS("opacity", "1");
+    await dailySection.screenshot({
       path: testInfo.outputPath("daily-guest-desktop.png"),
     });
     await starter.screenshot({
       path: testInfo.outputPath("starter-guest-desktop.png"),
     });
     await page.setViewportSize({ width: 390, height: 844 });
-    await page.locator("#карты-дня").screenshot({
+    await dailySection.screenshot({
       path: testInfo.outputPath("daily-guest-mobile.png"),
     });
     await starter.screenshot({
@@ -188,7 +239,7 @@ test.describe("daily artifact + landing copy", () => {
 
   test("Scenario daily guest: before-cards CTA opens guest picker", async ({ page }) => {
     await page.goto("/?app=1");
-    const starterCta = page.locator(".editorial-daily-ritual").getByRole("button", { name: "Открыть первые 3 карты" });
+    const starterCta = page.locator(".editorial-daily-ritual").getByRole("button", { name: "Первый расклад по вопросу" });
     await expect(starterCta).toBeVisible();
     await starterCta.scrollIntoViewIfNeeded();
     await starterCta.click();
@@ -204,31 +255,78 @@ test.describe("daily artifact + landing copy", () => {
     });
     await expect(page.getByRole("button", { name: "Расклад Таро Продолжить с Вероника" })).toBeVisible();
 
-    const viewBtn = page.getByRole("banner").getByRole("button", { name: "Карты дня", exact: true });
+    const viewBtn = page.getByRole("banner").getByRole("button", { name: "Расклад на сутки", exact: true });
     await expect(viewBtn).toBeVisible();
-    const exactHistoryRequest = page.waitForRequest((request) => {
-      const url = new URL(request.url());
-      return url.pathname === "/api/chat/history" && url.searchParams.get("archiveSessionId") === sessionId;
-    });
     await viewBtn.click();
-    // Only the target artifact after the click counts; boot-time session requests do not.
-    await exactHistoryRequest;
+    const dialog = page.getByRole("dialog", { name: "Расклад на сутки" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog).toContainText("Ваш день раскрывается спокойно");
+    for (const card of exactCards) await expect(dialog).toContainText(card.name);
+  });
 
-    const stored = await page.evaluate(() => {
-      const raw = localStorage.getItem("aura_profile");
-      try {
-        return raw
-          ? (JSON.parse(raw) as { tarotCards?: Array<{ name: string; reversed?: boolean }> })
-          : null;
-      } catch {
-        return null;
-      }
+  test("account without a usable mailbox can add one beside the daily reading", async ({ page }) => {
+    await installDailyMocks(page, { hasEmail: false, dailyExists: false });
+    await page.goto("/?app=1");
+    const contact = page.getByRole("complementary", { name: "Письма о раскладе на сутки" });
+    await expect(contact).toBeVisible({ timeout: 20_000 });
+    await contact.getByRole("textbox", { name: "Адрес для уведомлений" }).fill("reader@example.com");
+    const sent = page.waitForRequest((request) => request.url().includes("/api/profile/contact-email") && request.method() === "POST");
+    await contact.getByRole("button", { name: "Подтвердить почту и включить письмо" }).click();
+    expect((await sent).postDataJSON()).toMatchObject({ email: "reader@example.com", dailyReminder: true });
+    await expect(contact).toContainText("письмо с подтверждением отправлено");
+  });
+
+  test("email reminder card and home switch stay in sync", async ({ page }) => {
+    await installDailyMocks(page, { masterReminder: false });
+    await page.goto("/?app=1");
+    const switcher = page.getByRole("checkbox", { name: "Напоминать о раскладе на сутки" });
+    const contact = page.getByRole("complementary", { name: "Письма о раскладе на сутки" });
+    await expect(switcher).not.toBeChecked();
+    await contact.getByRole("button", { name: "Включить письмо о раскладе" }).click();
+    await expect(switcher).toBeChecked();
+    await expect(contact).toHaveCount(0);
+    await switcher.uncheck();
+    await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toBeVisible();
+  });
+
+  test("free daily reading starts from the logged-in hero without showing a paid choice first", async ({ page }, testInfo) => {
+    const pageErrors: string[] = [];
+    const consoleErrors: string[] = [];
+    page.on("pageerror", (error) => pageErrors.push(error.message));
+    page.on("console", (message) => {
+      if (message.type() === "error") consoleErrors.push(message.text());
     });
-    expect(stored?.tarotCards?.length).toBe(3);
-    expect(stored?.tarotCards?.map((c) => c.name)).toEqual(exactCards.map((c) => c.name));
-    expect(stored?.tarotCards?.map((c) => Boolean(c.reversed))).toEqual(
-      exactCards.map((c) => c.reversed)
+    await installDailyMocks(page, { dailyExists: false });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await page.goto("/?app=1");
+
+    const hero = page.locator(".editorial-hero--logged-in");
+    await expect(hero.getByRole("button", { name: "Открыть бесплатно · расклад на сутки" })).toBeVisible({ timeout: 20_000 });
+    await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20_000 });
+    await page.setViewportSize({ width: 1280, height: 800 });
+    await hero.screenshot({ path: testInfo.outputPath("daily-free-hero-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await hero.screenshot({ path: testInfo.outputPath("daily-free-hero-mobile.png") });
+    await hero.getByRole("button", { name: "Открыть бесплатно · расклад на сутки" }).click();
+
+    const dialog = page.getByRole("dialog", { name: "Расклад на сутки" });
+    await expect(dialog).toBeVisible();
+    await expect(dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" })).toBeVisible();
+    await expect(dialog.getByRole("button", { name: /Расширить до 7 карт/ })).toHaveCount(0);
+    await dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" }).click();
+    for (let i = 0; i < exactCards.length; i += 1) {
+      await dialog.getByRole("button", { name: "Открыть карту" }).first().click();
+    }
+    await expect(dialog).toContainText("Ваш день раскрывается спокойно");
+    await expect(dialog.getByRole("button", { name: /Расширить до 7 карт/ })).toBeVisible();
+    const freeResult = dialog.getByText("Ваш день раскрывается спокойно", { exact: false });
+    const upgrade = dialog.getByRole("button", { name: /Расширить до 7 карт/ });
+    expect(await freeResult.evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(
+      await upgrade.evaluate((element) => element.getBoundingClientRect().top)
     );
+    await dialog.screenshot({ path: testInfo.outputPath("daily-free-result-mobile.png") });
+    expect(pageErrors).toEqual([]);
+    expect(consoleErrors).toEqual([]);
   });
 
   test("Scenario B: a server-hidden recap stays absent after reload", async ({ page }) => {

@@ -4,13 +4,17 @@ import SeasonalForecastPage, { buildMonthLinks } from "@/components/seo/Seasonal
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import {
   FORECAST_MONTHS,
-  FORECAST_YEARS,
+  getCurrentForecastYear,
+  getForecastYears,
   getYearForecastMeta,
+  isPastForecastMonth,
 } from "@/lib/seo/seasonal";
 import { SEO_ZODIAC_SIGNS } from "@/lib/seo/zodiac-signs";
 
+export const revalidate = 3600;
+
 export function generateStaticParams() {
-  return FORECAST_YEARS.map((year) => ({ year: String(year) }));
+  return getForecastYears().map((year) => ({ year: String(year) }));
 }
 
 export async function generateMetadata({
@@ -20,7 +24,7 @@ export async function generateMetadata({
 }): Promise<Metadata> {
   const { year: yearStr } = await params;
   const year = Number(yearStr);
-  if (!FORECAST_YEARS.includes(year as (typeof FORECAST_YEARS)[number])) return { title: "Прогноз" };
+  if (!getForecastYears().includes(year)) return { title: "Прогноз" };
   const meta = getYearForecastMeta(year);
   return buildSeoMetadata(meta);
 }
@@ -32,7 +36,7 @@ export default async function PrognozYearPage({
 }) {
   const { year: yearStr } = await params;
   const year = Number(yearStr);
-  if (!FORECAST_YEARS.includes(year as (typeof FORECAST_YEARS)[number])) notFound();
+  if (!getForecastYears().includes(year)) notFound();
 
   const meta = getYearForecastMeta(year);
   const breadcrumbs = [
@@ -44,17 +48,19 @@ export default async function PrognozYearPage({
   return (
     <SeasonalForecastPage
       h1={meta.h1}
-      intro={`Годовой обзор по картам Таро: ${year} — время для планирования, осознанных решений и регулярной практики раскладов.`}
+      intro={`Готового прогноза на ${year} год по одной дате или знаку нет. Выберите период и задайте картам вопрос о конкретном решении: так ответ можно сопоставить с вашим планом и событиями, а не принимать за обещание будущего.`}
       breadcrumbs={breadcrumbs}
       path={meta.path}
       metaTitle={meta.title}
       metaDescription={meta.description}
-      themes={["любовь и отношения", "карьера и финансы", "личный рост", "ключевые повороты года"]}
-      monthLinks={buildMonthLinks(year, FORECAST_MONTHS)}
-      zodiacLinks={SEO_ZODIAC_SIGNS.map((s) => ({
-        label: `${s.name} ${s.emoji}`,
-        href: `/prognoz/znak/${s.slug}`,
-      }))}
+      themes={["какое решение предстоит принять", "какие ресурсы уже есть", "что зависит от других людей", "по какому признаку проверить результат"]}
+      monthLinks={buildMonthLinks(year, FORECAST_MONTHS.filter((month) => !isPastForecastMonth(year, month)))}
+      zodiacLinks={year === getCurrentForecastYear()
+        ? SEO_ZODIAC_SIGNS.map((s) => ({
+            label: `${s.name} ${s.emoji}`,
+            href: `/prognoz/znak/${s.slug}`,
+          }))
+        : []}
       intentLinks={[
         { label: "Год вперёд — расклад по месяцам", href: "/rasklady/god-vpered" },
         { label: "Ближайшее будущее", href: "/rasklady/blizhayshee-budushchee" },
@@ -63,7 +69,7 @@ export default async function PrognozYearPage({
       faq={[
         {
           q: `Как читать прогноз Таро на ${year} год?`,
-          a: "Годовой обзор задаёт темы периода. Для персонального ответа сделайте расклад «Год вперёд» или выберите месяц.",
+          a: "Разделите год на периоды и запишите один вопрос для каждого решения. В раскладе «Год вперёд» читайте карты по их позициям; общие темы на этой странице не являются выпавшими картами.",
         },
         {
           q: "Это точное предсказание?",
@@ -74,8 +80,12 @@ export default async function PrognozYearPage({
       ctaLabel="Расклад «Год вперёд»"
       extraSections={[
         {
-          heading: "Расклад Таро по месяцам",
-          body: `Каждый месяц ${year} года несёт свою энергию. Выберите месяц ниже — или пройдите полный расклад с мастером.`,
+          heading: "Как составить вопрос на месяц",
+          body: `Назовите событие или выбор с реальным сроком, например: «Что поможет мне подготовиться к смене работы до конца месяца?» После расклада запишите один шаг, который можете сделать сами, и дату, когда вернётесь к ответу. Прошедшие месяцы ${year} года не предлагаются как актуальный прогноз.`,
+        },
+        {
+          heading: "Как проверить трактовку",
+          body: "Не подгоняйте любое событие под символ карты. Сначала сохраните своё понимание, затем сравните его с наблюдаемыми фактами и отметьте, что осталось неопределённым. Вопрос о здоровье, деньгах или другом важном решении проверяйте у профильного специалиста.",
         },
       ]}
     />

@@ -100,13 +100,14 @@ describe("retention-optin (source)", () => {
     const homepage = read("src/components/HomePage.tsx");
     const cabinet = read("src/components/cabinet/CabinetDailyNotifications.tsx");
     expect(home).toMatch(/surface=["']authenticated_home["']/);
-    expect(chat).toMatch(/surface=["']post_value["']/);
+    expect(chat).toMatch(/retentionOptInSurface === ["']post_value["']/);
+    expect(chat).toMatch(/DailyReminderCard/);
     expect(homepage).toMatch(/retentionOptInSurface/);
-    expect(homepage).toMatch(/spreadReadingDone \|\| guestResumeChatAssist\.showContinue/);
+    expect(homepage).toMatch(/spreadReadingDone && sessionSpreadMetaRef\.current\?\.spreadType !== ["']guest_resume["']/);
     expect(cabinet).toMatch(/surface=["']cabinet["']/);
     expect(cabinet).toMatch(/Персональные напоминания Zovus/);
     expect(cabinet).toMatch(/Еженедельный обзор/);
-    expect(cabinet).toMatch(/Карты дня/);
+    expect(cabinet).toMatch(/Расклад на сутки/);
     expect(cabinet).toMatch(/weeklyDigestEmail === true/);
     expect(cabinet).toMatch(/dailyInApp/);
     expect(cabinet).toMatch(/dailyEmail/);
@@ -164,9 +165,9 @@ describe("retention-optin (source)", () => {
     expect(homepage).toMatch(/spreadType === ["']guest_resume["']/);
   });
 
-  it("prefs defaults: marketingEmail missing=true, weeklyDigest missing=false", () => {
+  it("prefs defaults: promotional email missing=false, weeklyDigest missing=false", () => {
     const parsed = parseNotificationPrefs({});
-    expect(parsed.marketingEmail).toBe(true);
+    expect(parsed.marketingEmail).toBe(false);
     expect(parsed.weeklyDigestEmail).toBe(false);
     expect(parsed.reminderHourMsk).toBe(9);
     expect(parsed.retentionOptInQuietUntil).toBeNull();
@@ -180,7 +181,7 @@ describe.skipIf(!hasTestDb)("retention-optin (db)", () => {
 
   it("1. shown/decline/prefs do not re-enable consent after unsubscribe", async () => {
     const { account, profile } = await seedAccount("no-implicit");
-    expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(true);
+    expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(false);
     await setAccountMarketingConsent(account.id, false);
     await createHistoryEntry({
       userId: profile.id,
@@ -334,16 +335,37 @@ describe.skipIf(!hasTestDb)("retention-optin (db)", () => {
     expect((await getRetentionOptInSnapshot(account.id, profile.id)).eligible).toBe(false);
   });
 
-  it("default ON hides the P2A prompt without unsubscribe", async () => {
-    const { account, profile } = await seedAccount("default-on");
+  it("marketing consent stays OFF and offers P2A with the daily reminder ON", async () => {
+    const { account, profile } = await seedAccount("default-marketing-off");
     await createHistoryEntry({
       userId: profile.id,
       characterName: "veronika",
       contextData: { type: "spread" },
     });
     const snap = await getRetentionOptInSnapshot(account.id, profile.id);
-    expect(snap.marketingConsent).toBe(true);
+    expect(snap.marketingConsent).toBe(false);
     expect(snap.dailyCardsReminder).toBe(true);
-    expect(snap.eligible).toBe(false);
+    expect(snap.eligible).toBe(true);
+  });
+
+  it("a disabled email channel stays off until the user explicitly accepts again", async () => {
+    const { account, profile } = await seedAccount("channel-off");
+    await createHistoryEntry({
+      userId: profile.id,
+      characterName: "veronika",
+      contextData: { type: "spread" },
+    });
+    await recordAccountLegalConsent(account.id, { marketingConsent: true });
+    await updateNotificationPrefs(profile.id, { marketingEmail: false });
+    const before = await getRetentionOptInSnapshot(account.id, profile.id);
+    expect(before.marketingConsent).toBe(true);
+    expect(before.marketingEmail).toBe(false);
+    expect(before.eligible).toBe(false);
+    await applyRetentionOptInAction({
+      accountId: account.id,
+      profileUserId: profile.id,
+      action: "accept",
+    });
+    expect((await getNotificationPrefs(profile.id)).marketingEmail).toBe(true);
   });
 });
