@@ -335,8 +335,8 @@ describe.skipIf(!hasTestDb)("retention-optin (db)", () => {
     expect((await getRetentionOptInSnapshot(account.id, profile.id)).eligible).toBe(false);
   });
 
-  it("default OFF offers the P2A prompt after the first value", async () => {
-    const { account, profile } = await seedAccount("default-off");
+  it("marketing consent stays OFF and offers P2A with the daily reminder ON", async () => {
+    const { account, profile } = await seedAccount("default-marketing-off");
     await createHistoryEntry({
       userId: profile.id,
       characterName: "veronika",
@@ -344,7 +344,7 @@ describe.skipIf(!hasTestDb)("retention-optin (db)", () => {
     });
     const snap = await getRetentionOptInSnapshot(account.id, profile.id);
     expect(snap.marketingConsent).toBe(false);
-    expect(snap.dailyCardsReminder).toBe(false);
+    expect(snap.dailyCardsReminder).toBe(true);
     expect(snap.eligible).toBe(true);
   });
 

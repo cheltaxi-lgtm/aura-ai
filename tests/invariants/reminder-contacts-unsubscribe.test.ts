@@ -175,13 +175,13 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
     sendEmailMock.mockResolvedValue(true);
   });
 
-  it("createUser defaults daily reminder and marketing consent OFF", async () => {
+  it("createUser defaults daily reminder ON and marketing consent OFF", async () => {
     const account = await createUser(
-      `def-off-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`,
+      `def-daily-${Date.now()}-${Math.random().toString(16).slice(2)}@example.com`,
       "hash",
       "Контакт"
     );
-    expect(await getAccountDailyCardsReminder(account.id)).toBe(false);
+    expect(await getAccountDailyCardsReminder(account.id)).toBe(true);
     expect((await getAccountConsentSnapshot(account.id))?.marketingConsent).toBe(false);
   });
 
