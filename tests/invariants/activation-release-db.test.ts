@@ -62,6 +62,23 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
     expect((await listUserAccounts()).find(r=>r.id===daily.accountId)?.activation_stage).toBe("result_ready");
   });
 
+  it("does not treat a welcome or another owner's chat answer as a saved useful result",async()=>{
+    const a=await ensureBotOfferAccount(input());const b=await ensureBotOfferAccount(input());
+    const session=await query<{id:string}>("INSERT INTO sessions(user_id,character_key) VALUES($1,'tarolog') RETURNING id",[a.profileUserId]);
+    const sessionId=session.rows[0].id;
+    await query("INSERT INTO chat_messages(session_id,owner_user_id,character_id,role,content,created_at) VALUES($1,$2,'tarolog','assistant','Welcome fixture',NOW()-INTERVAL '2 minutes')",[sessionId,a.profileUserId]);
+    expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+    await query("INSERT INTO chat_messages(session_id,owner_user_id,character_id,role,content,created_at) VALUES($1,$2,'tarolog','user','Question fixture',NOW()-INTERVAL '1 minute')",[sessionId,a.profileUserId]);
+    // An older welcome cannot become a result when a question arrives later.
+    expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+    await query("INSERT INTO chat_messages(session_id,owner_user_id,character_id,role,content) VALUES($1,$2,'tarolog','assistant','Other owner fixture')",[sessionId,b.profileUserId]);
+    expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+    await query("INSERT INTO chat_messages(session_id,character_id,role,content) VALUES($1,'tarolog','assistant','Saved answer fixture')",[sessionId]);
+    // Legacy NULL message ownership remains valid inside the owned session.
+    expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("result_ready");
+    expect((await listUserAccounts()).find(r=>r.id===a.accountId)?.activation_stage).toBe("result_ready");
+  });
+
   it("fills the same legacy profile when birthday completion races with consumer repair",async()=>{
     const params=input();
     const account=await query<{id:string}>("INSERT INTO user_accounts(email,name,age_confirmed_at,terms_accepted_at) VALUES($1,'Activation fixture',NOW(),NOW()) RETURNING id",[`${randomUUID()}@telegram.zovus.local`]);

@@ -14,7 +14,12 @@ export function savedProductResultSql(profileId: string): string {
         OR length(btrim(COALESCE(h.context_data->>'interpretation',''))) > 0))
     OR EXISTS(SELECT 1 FROM daily_readings r WHERE r.user_id=${profileId} AND length(btrim(r.reading_text))>0)
     OR EXISTS(SELECT 1 FROM sessions s JOIN chat_messages c ON c.session_id=s.id
-      WHERE s.user_id=${profileId} AND c.role='assistant' AND length(btrim(c.content))>0)
+      WHERE s.user_id=${profileId} AND (c.owner_user_id=${profileId} OR c.owner_user_id IS NULL)
+        AND c.role='assistant' AND length(btrim(c.content))>0
+        AND EXISTS(SELECT 1 FROM chat_messages question WHERE question.session_id=s.id
+          AND question.role='user' AND length(btrim(question.content))>0
+          AND (question.owner_user_id=${profileId} OR question.owner_user_id IS NULL)
+          AND question.created_at<=c.created_at))
     OR EXISTS(SELECT 1 FROM natal_report_history r WHERE r.user_id=${profileId} AND length(btrim(r.content))>0)
     OR EXISTS(SELECT 1 FROM numerology_report_history r WHERE r.user_id=${profileId} AND length(btrim(r.content))>0)
     OR EXISTS(SELECT 1 FROM hd_reports r WHERE r.user_id=${profileId} AND r.status='done' AND length(btrim(r.report_text))>0)
