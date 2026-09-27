@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn } from "@/components/admin/AdminShell";
 import { TRIPLET_COOLDOWN_MS, formatTripletCooldownRu } from "@/lib/triplet-limit";
+import { activationLabel } from "@/lib/activation-status";
 
 const GRANT_PRESETS = [50, 100, 250, 500, 1000];
 
@@ -67,7 +68,7 @@ function AccountStatusBadge({
             : "bg-emerald-500/20 text-emerald-300"
         }`}
       >
-        {erasureRequestedAt ? "Удаление выполняется" : awaitingOnboarding ? "Ожидает onboarding" : "Активен"}
+        {erasureRequestedAt ? "Удаление выполняется" : awaitingOnboarding ? "Профиль не создан" : "Профиль создан"}
       </span>
       <span className="text-[11px] text-gray-500">
         Вход: {accountAuthLabel(oauthProvider, hasPassword)}
@@ -81,6 +82,7 @@ export default function AdminUsersPage() {
   const grantInFlight = useRef(false);
   const [tab, setTab] = useState<"accounts" | "profiles">("accounts");
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
+  const [activation, setActivation] = useState<{stages:Array<{stage:string;accounts:number}>;events:Array<{product:string;event:string;code:string;requests:number;accounts:number}>}|null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
   const [tripletBusyId, setTripletBusyId] = useState<string | null>(null);
@@ -98,7 +100,7 @@ export default function AdminUsersPage() {
   const load = () => {
     fetch(`/api/admin/users?type=${tab}`)
       .then((r) => { if (!r.ok) throw new Error("load_failed"); return r.json(); })
-      .then((d) => { setItems(d.items ?? []); setGrantNotice((current) => current?.error ? null : current); })
+      .then((d) => { setItems(d.items ?? []); setActivation(d.activation ?? null); setGrantNotice((current) => current?.error ? null : current); })
       .catch(() => setGrantNotice({ text: "Не удалось обновить список пользователей. Повторите загрузку страницы.", error: true }));
   };
 
@@ -305,9 +307,21 @@ export default function AdminUsersPage() {
         ))}
       </div>
 
+      {tab === "accounts" && activation ? (
+        <section className="mb-6 space-y-3 rounded-xl border border-white/10 p-4" aria-label="Первое использование продуктов">
+          <h2 className="text-sm font-medium">Первое использование продуктов</h2>
+          <p className="text-xs text-gray-400">Все клиентские аккаунты. Готовность результата и его просмотр — разные события. Ноль чат-сеансов не означает отсутствие результатов.</p>
+          <div className="flex flex-wrap gap-3">{activation.stages.map(row=><span key={row.stage} className="rounded-lg bg-white/5 px-3 py-2 text-xs">{activationLabel(row.stage)}: <strong>{row.accounts}</strong></span>)}</div>
+          <details className="text-xs">
+            <summary className="cursor-pointer">Показы предложений, попытки и отказы за 30 дней</summary>
+            <p className="my-2 text-gray-400">Новые события учитываются с этого релиза. Принятый запрос ещё не означает готовый или просмотренный результат.</p>
+            {activation.events.length ? <ul className="space-y-1">{activation.events.map(row=><li key={`${row.product}:${row.event}:${row.code}`}>{row.product} · {row.event}{row.code ? ` · ${row.code}` : ""}: {row.requests} событий, {row.accounts} аккаунтов</li>)}</ul> : <p>Новых событий пока нет.</p>}
+          </details>
+        </section>
+      ) : null}
       {tab === "accounts" ? (
         <AdminTable
-          headers={["Email", "Имя", "Статус", "Профиль", "Знак", "Сессий", "3 карты", "Безлимит", "Внутренний", "Руны", "Создан", "Последняя активность", ""]}
+          headers={["Email", "Имя", "Статус аккаунта", "Профиль", "Знак", "Чат-сеансов", "Первое использование", "Расклад на сутки", "Безлимит", "Внутренний", "Руны", "Создан", "Последняя активность", ""]}
           rows={items.map((u) => {
             const id = String(u.id);
             const profileUserId = u.profile_user_id ? String(u.profile_user_id) : null;
@@ -332,6 +346,7 @@ export default function AdminUsersPage() {
               profileUserId ? String(u.profile_name ?? "—") : <span className="text-gray-500">не создан</span>,
               String(u.zodiac ?? "—"),
               String(u.sessions_count ?? "0"),
+              <span key="activation" className="text-xs" title="Готовый результат не означает, что пользователь его просмотрел. Чат-сеансы не включают все продукты.">{activationLabel(u.activation_stage)}</span>,
               profileUserId ? (
                 <div key="t" className="flex flex-col gap-1">
                   <span

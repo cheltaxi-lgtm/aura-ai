@@ -77,6 +77,11 @@ try {
   await syncSiteAccount(getUser(id)!);
   assert.equal(getUser(id)?.zovus_user_id, "profile", "partial profile ID must remain for receipt idempotency");
   assert.equal(getFlow(id)?.step, "dob", "unfinished site onboarding should preserve bot input handler");
+  const consumer=await ensureSiteLinked(ctx);
+  assert.equal(consumer?.site.profileUserId,"profile","Tarot can use the consumer profile without birth onboarding");
+  const birthProduct=await ensureSiteLinked(ctx,{requireBirthProfile:true});
+  assert.equal(birthProduct,null,"birth-dependent products still require the completed profile");
+  assert.equal(getFlow(id)?.step,"dob","matrix should resume the existing birth step");
   resolveResponse = { ok: true, linked: false, accountId: "account", profileUserId: null, needsOnboarding: true };
   await syncSiteAccount(getUser(id)!);
   assert.equal(getUser(id)?.zovus_user_id, null, "unlinked site account should clear stale bot marker");

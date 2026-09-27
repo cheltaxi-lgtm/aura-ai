@@ -29,6 +29,7 @@ import { buildLoginHref, buildRegisterHref } from "@/lib/post-auth-return";
 import { parseInsufficientRunes } from "@/lib/api-errors";
 import { confirmAgeGateOnServer, fetchServerAgeGateConfirmed } from "@/lib/age-gate";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
+import { trackActivation } from "@/lib/activation-client";
 import {
   AURA_VERDICT_LABELS,
   type AuraSnapshot,
@@ -834,6 +835,7 @@ export default function AuraReadingFlow() {
     setStep("paying");
     setPhraseIdx(0);
     trackProductFunnel("paid_cta", { product: "aura", source: "aura_flow" });
+    trackActivation("aura","offer_clicked");
     try {
       const res = await fetch("/api/aura/report", {
         method: "POST",
@@ -903,6 +905,7 @@ export default function AuraReadingFlow() {
       setError("Неожиданный ответ сервера. Попробуйте ещё раз.");
       setStep("claimed");
     } catch {
+      trackActivation("aura","network_failed");
       setError("Ошибка сети. Попробуйте ещё раз.");
       setStep("claimed");
     }
@@ -913,6 +916,13 @@ export default function AuraReadingFlow() {
     config.enabled &&
     runeBalance !== null &&
     !canAffordRunes({ enabled: config.enabled, unlimited: pricing?.unlimited, balance: runeBalance, cost: auraCost });
+
+  const trackedOffers = useRef(new Set<string>());
+  useEffect(()=>{
+    if (!isLoggedIn || step!=="claimed" || !snapshotId || !pricing || pricing.todayPaid || trackedOffers.current.has(snapshotId)) return;
+    trackedOffers.current.add(snapshotId);
+    trackActivation("aura","offer_shown");
+  },[isLoggedIn,step,snapshotId,pricing]);
 
   if (
     requestedReadingId &&

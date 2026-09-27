@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { activationStageSql } from "./activation-store";
 import { getSupportAdminStats } from "./support-service";
 import { testAccountEmailSql, testProfileNameSql } from "./test-accounts";
 
@@ -97,6 +98,7 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
     profile_user_id: string | null;
     zodiac: string | null;
     sessions_count: string;
+    activation_stage: string;
     is_unlimited: boolean;
     is_internal: boolean;
     last_triplet_draw_at: string | null;
@@ -119,6 +121,7 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
             u.rune_balance,
             u.astro_meta->>'lastTripletDrawAt' AS last_triplet_draw_at,
             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count,
+            ${activationStageSql("u.id")} AS activation_stage,
             GREATEST(
               ua.last_login_at,
               u.last_product_activity_at,

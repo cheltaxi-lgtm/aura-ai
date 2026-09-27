@@ -24,6 +24,7 @@ import { parseInsufficientRunes } from "@/lib/api-errors";
 import { confirmAgeGateOnServer, fetchServerAgeGateConfirmed } from "@/lib/age-gate";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
+import { trackActivation } from "@/lib/activation-client";
 import { parseAcceptedAsyncReport } from "@/lib/client/wait-for-async-job";
 import { isPalmMoscowToday } from "@/lib/palm-cadence";
 import {
@@ -686,6 +687,7 @@ export default function PalmReadingFlow() {
     setStep("paying");
     setPhraseIdx(0);
     trackProductFunnel("paid_cta", { product: "palm", source: "palm_flow" });
+    trackActivation("palm","offer_clicked");
     trackSeoEvent("palm_paid_cta");
     try {
       const res = await fetch("/api/palm/report", {
@@ -750,6 +752,7 @@ export default function PalmReadingFlow() {
       setError("Неожиданный ответ сервера. Попробуйте ещё раз.");
       setStep("claimed");
     } catch {
+      trackActivation("palm","network_failed");
       setError("Ошибка сети. Попробуйте ещё раз.");
       setStep("claimed");
     }
@@ -760,6 +763,13 @@ export default function PalmReadingFlow() {
     config.enabled &&
     runeBalance !== null &&
     !canAffordRunes({ enabled: config.enabled, unlimited: pricing?.unlimited, balance: runeBalance, cost: palmCost });
+
+  const trackedOffers = useRef(new Set<string>());
+  useEffect(()=>{
+    if (!isLoggedIn || step!=="claimed" || !snapshotId || !pricing || pricing.todayPaid || trackedOffers.current.has(snapshotId)) return;
+    trackedOffers.current.add(snapshotId);
+    trackActivation("palm","offer_shown");
+  },[isLoggedIn,step,snapshotId,pricing]);
 
   const selectedHandTakenToday = (pastReadings ?? []).some(
     (item) => item.whichHand === whichHand && isPalmMoscowToday(item.createdAt)

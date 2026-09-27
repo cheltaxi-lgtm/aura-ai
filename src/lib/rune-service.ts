@@ -682,7 +682,7 @@ export async function grantStarterRunesIfNeeded(
   userId: string,
   client?: PoolClient
 ): Promise<{ granted: number; balance: number } | null> {
-  const settings = await getRuneSettings();
+  const settings = await getRuneSettings(client);
   if (!settings.enabled) return null;
 
   const grant = async (transactionClient: PoolClient) => {

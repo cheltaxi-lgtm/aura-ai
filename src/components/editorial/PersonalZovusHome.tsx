@@ -25,6 +25,7 @@ import {
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
 import DailyReminderCard from "@/components/retention/DailyReminderCard";
+import { trackActivation } from "@/lib/activation-client";
 
 const RETENTION_SESSION_KEY = "zovus_retention_return_emitted";
 
@@ -88,6 +89,14 @@ export default function PersonalZovusHome({
   const [reminderReady, setReminderReady] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
   const [reminderRevision, setReminderRevision] = useState(0);
+  const [previewContinuation, setPreviewContinuation] = useState<{product:"aura"|"palm";href:string;label:string}|null>(null);
+
+  useEffect(()=>{
+    let cancelled=false;
+    void fetch("/api/auth/activation",{credentials:"include",cache:"no-store"})
+      .then(r=>r.ok?r.json():null).then(data=>{if(!cancelled)setPreviewContinuation(data?.continuation ?? null);}).catch(()=>undefined);
+    return ()=>{cancelled=true;};
+  },[]);
 
   useEffect(() => {
     if (homeViewed.current) return;
@@ -102,7 +111,7 @@ export default function PersonalZovusHome({
     if (viewed.current) return;
     if (!dailyCardsState || dailyCardsState === "loading") return;
     viewed.current = true;
-    if (dailyCardsState === "available") trackDailyCardsOfferView("personal_zovus");
+    if (dailyCardsState === "available") { trackDailyCardsOfferView("personal_zovus"); trackActivation("daily","offer_shown"); }
     else trackDailyCardsReturnView("personal_zovus");
   }, [dailyCardsState]);
 
@@ -312,6 +321,13 @@ export default function PersonalZovusHome({
       </header>
       ) : null}
 
+      {previewContinuation ? <section className="personal-zovus__block" aria-label="Продолжить начатый разбор">
+        <div className="personal-zovus__panel">
+          <p className="personal-zovus__panel-title">Вы уже начали разбор</p>
+          <p className="personal-zovus__panel-text">Предварительный результат сохранён. Откройте его и выберите полный разбор — стоимость будет показана перед запуском.</p>
+          <Link href={previewContinuation.href} className="personal-zovus__cta" onClick={()=>trackActivation(previewContinuation.product,"offer_clicked")}>{previewContinuation.label}</Link>
+        </div>
+      </section> : null}
       <div className="personal-zovus__block" aria-labelledby="personal-zovus-today">
         <h2 id="personal-zovus-today" className="personal-zovus__kicker">
           Сегодня
@@ -326,6 +342,7 @@ export default function PersonalZovusHome({
               className="personal-zovus__cta"
               onClick={() => {
                 trackDailyCardsCtaClick("personal_zovus_available");
+                trackActivation("daily","offer_clicked");
                 onOpenDailyCards();
               }}
             >

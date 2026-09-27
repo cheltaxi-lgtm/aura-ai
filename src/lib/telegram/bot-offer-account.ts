@@ -1,6 +1,6 @@
 import { normalizeAuthEmail } from "@/lib/auth";
-import { findUserById, getProfileUserIdForAccount, saveRegistrationAttributionIfEmpty } from "@/lib/accounts";
-import { query, queryClient, withTransaction } from "@/lib/db";
+import { findUserById, saveRegistrationAttributionIfEmpty } from "@/lib/accounts";
+import { queryClient, withTransaction } from "@/lib/db";
 import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import {
@@ -9,7 +9,7 @@ import {
   type BinaryGender,
 } from "@/lib/russian-name-gender";
 import { buildAstroMeta, type LifeFocus } from "@/lib/astro-profile";
-import { createUserProfileForAccount, getUserById, updateUserProfile } from "@/lib/users";
+import { createUserProfileForAccount, ensureMinimalConsumerProfile, getUserById, updateUserProfile } from "@/lib/users";
 import { getZodiacFromDate } from "@/utils/zodiac";
 import { findTelegramIdentity } from "@/lib/telegram/accounts";
 import { resolveBotUser, type BotResolveResult } from "@/lib/telegram/bot-resolve";
@@ -17,6 +17,24 @@ import { recordInitialMemoryChoice } from "@/lib/memory/preferences";
 
 function syntheticBotEmail(telegramUserId: number): string {
   return normalizeAuthEmail(`tg_${telegramUserId}@telegram.zovus.local`);
+}
+
+/** Same consumer profile as web registration; birth data is optional for Tarot. */
+async function ensureConsumerAccess(telegramUserId: number): Promise<BotResolveResult> {
+  const resolved = await resolveBotUser(telegramUserId);
+  if (!resolved.linked || !resolved.accountId || resolved.deletionPending) return resolved;
+  await withTransaction(async (client) => {
+    // Serialize concurrent /start and product taps before creating a profile.
+    await queryClient(client, "SELECT pg_advisory_xact_lock(hashtext($1))", [`bot-consumer:${resolved.accountId}`]);
+    const { rows } = await queryClient<{ name: string; profile_user_id: string | null; erasure_requested_at: Date | null; age_confirmed_at: Date | null; terms_accepted_at: Date | null }>(client,
+      "SELECT name, profile_user_id, erasure_requested_at, age_confirmed_at, terms_accepted_at FROM user_accounts WHERE id=$1 FOR UPDATE", [resolved.accountId]);
+    const account = rows[0];
+    if (!account || account.erasure_requested_at) return;
+    if (!account.profile_user_id && (!account.age_confirmed_at || !account.terms_accepted_at)) return;
+    const profile = await ensureMinimalConsumerProfile({ accountId: resolved.accountId!, name: account.name || "Гость" },client);
+    await grantStarterRunesIfNeeded(profile.id,client);
+  });
+  return resolveBotUser(telegramUserId);
 }
 
 export type BotOfferEnsureInput = {
@@ -41,7 +59,7 @@ export async function ensureBotOfferAccount(
   const telegramUserId = input.telegramUserId;
   const existing = await findTelegramIdentity(telegramUserId);
   if (existing) {
-    const resolved = await resolveBotUser(telegramUserId);
+    const resolved = await ensureConsumerAccess(telegramUserId);
     return { ...resolved, created: false };
   }
 
@@ -66,6 +84,10 @@ export async function ensureBotOfferAccount(
     await queryClient(client, "SELECT pg_advisory_xact_lock(hashtext($1))", [
       `telegram:${telegramUserId}`,
     ]);
+
+    const erasure = await queryClient(client,
+      "SELECT id FROM account_erasure_jobs WHERE stage <> 'completed' AND telegram_user_ids @> ARRAY[$1::bigint] LIMIT 1", [telegramUserId]);
+    if (erasure.rows[0]) throw new Error("ACCOUNT_ERASURE_PENDING");
 
     const again = await queryClient<{ user_account_id: string }>(
       client,
@@ -111,7 +133,7 @@ export async function ensureBotOfferAccount(
     );
   });
 
-  const resolved = await resolveBotUser(telegramUserId);
+  const resolved = await ensureConsumerAccess(telegramUserId);
   if (resolved.accountId) {
     await saveRegistrationAttributionIfEmpty(resolved.accountId, attribution).catch(() => undefined);
   }
@@ -154,6 +176,12 @@ export async function upsertBotOfferProfile(
   if (m < 0 || (m === 0 && now.getUTCDate() < birth.getUTCDate())) age -= 1;
   if (age < 18 || age > 120) throw new Error("AGE_GATE");
 
+  // A legacy shell can complete birth onboarding while /start repairs its
+  // consumer profile. Resolve that repair first, then fill the same owned row.
+  const resolved = await ensureConsumerAccess(input.telegramUserId);
+  if (resolved.deletionPending) throw new Error("ACCOUNT_ERASURE_PENDING");
+  if (!resolved.linked) throw new Error("NOT_LINKED");
+
   const birthCity =
     typeof input.birthCity === "string" && input.birthCity.trim()
       ? input.birthCity.trim().slice(0, 160)
@@ -169,7 +197,13 @@ export async function upsertBotOfferProfile(
   const zodiac = getZodiacFromDate(birthDate).name;
   const astroMeta = buildAstroMeta(birthDate) || undefined;
 
-  let profileUserId = await getProfileUserIdForAccount(identity.user_account_id);
+  const profileUserId = await withTransaction(async (client) => {
+  const locked = await queryClient<{profile_user_id: string | null; erasure_requested_at: Date | null}>(client,
+    "SELECT profile_user_id, erasure_requested_at FROM user_accounts WHERE id=$1 FOR UPDATE", [identity.user_account_id]);
+  const owner = locked.rows[0];
+  if (!owner) throw new Error("NOT_LINKED");
+  if (owner.erasure_requested_at) throw new Error("ACCOUNT_ERASURE_PENDING");
+  let profileUserId = owner.profile_user_id;
   if (!profileUserId) {
     const created = await createUserProfileForAccount(identity.user_account_id, {
       name,
@@ -178,10 +212,10 @@ export async function upsertBotOfferProfile(
       zodiac,
       birthCity: birthCity ?? undefined,
       astroMeta,
-    });
+    },client);
     profileUserId = created.id;
   } else {
-    const current = await getUserById(profileUserId);
+    const current = await getUserById(profileUserId,client);
     if (!current?.birth_date) {
       await updateUserProfile(profileUserId, {
         name,
@@ -193,7 +227,7 @@ export async function upsertBotOfferProfile(
         lifeFocus: (current?.life_focus as LifeFocus) || "general",
         mainQuestion: current?.main_question ?? undefined,
         astroMeta,
-      });
+      },client);
     } else {
       const currentGender = normalizeUserGender(current.gender) as BinaryGender | null;
       const nextGender = (gender || currentGender) as BinaryGender;
@@ -203,7 +237,7 @@ export async function upsertBotOfferProfile(
       const genderChanged = Boolean(gender && gender !== currentGender);
 
       if (nameChanged) {
-        await query(`UPDATE user_accounts SET name = $2 WHERE id = $1`, [
+        await queryClient(client,`UPDATE user_accounts SET name = $2 WHERE id = $1`, [
           identity.user_account_id,
           name,
         ]);
@@ -218,14 +252,16 @@ export async function upsertBotOfferProfile(
           birthCity: nextCity,
           lifeFocus: (current.life_focus as LifeFocus) || "general",
           mainQuestion: current.main_question ?? undefined,
-        });
+        },client);
       }
     }
   }
 
   // Retry on every successful profile entry. The grant is ledger-idempotent,
   // so this heals a prior transient failure without issuing a second bonus.
-  await grantStarterRunesIfNeeded(profileUserId);
+  await grantStarterRunesIfNeeded(profileUserId,client);
+  return profileUserId;
+  });
 
   if (
     profileUserId &&

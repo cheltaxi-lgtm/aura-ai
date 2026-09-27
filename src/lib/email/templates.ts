@@ -86,7 +86,8 @@ export function dailyReminderEmailHtml(
   name: string,
   siteUrl?: string,
   unsubscribeUrl?: string,
-  bonus?: { amount: number; claimable: boolean; unsubscribeUrl: string }
+  bonus?: { amount: number; claimable: boolean; unsubscribeUrl: string },
+  nextStep?: {path:string;label:string;firstUse:boolean;preview:boolean}
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
@@ -95,8 +96,11 @@ export function dailyReminderEmailHtml(
     : "";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
-       <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
-         ${cta(`${url}${DAILY_REMINDER_EMAIL_PATH}`, "Открыть расклад на сутки")}
+       <p>${nextStep?.preview
+         ? "Ваш предварительный результат сохранён. Продолжите разбор — перед запуском вы увидите стоимость в рунах."
+         : nextStep?.firstUse ? "Начните с <strong>бесплатного расклада на сутки</strong>: он поможет познакомиться с Zovus. Стартовые руны останутся для других разборов."
+         : "Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день."}</p>
+         ${cta(`${url}${nextStep?.path ?? DAILY_REMINDER_EMAIL_PATH}`, nextStep?.label ?? "Открыть расклад на сутки")}
        ${bonus ? `<p>${bonus.claimable
          ? `Ваш ежедневный бонус готов: <strong>${bonus.amount} рун</strong> можно забрать бесплатно в личном кабинете.`
          : `Ежедневный бонус в размере ${bonus.amount} рун доступен каждые 24 часа. Проверьте время следующего получения в кабинете.`}</p>

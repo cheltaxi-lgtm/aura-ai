@@ -1,5 +1,6 @@
 ﻿import { query, queryClient, withTransaction } from "./db";
 import { deleteUserChatForCharacter } from "./accounts";
+import type { PoolClient } from "./db";
 import { grantStarterRunesIfNeeded } from "./rune-service";
 import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 import { isFirstExperienceEnabled } from "@/lib/first-experience-policy";
@@ -84,10 +85,12 @@ export function profileGenderForPersonalization(
 }
 
 async function loadAccountConsentForStub(
-  accountId: string
+  accountId: string,
+  client?: PoolClient
 ): Promise<AccountConsentSnapshot | null> {
   // Inline query avoids accounts↔users import cycle.
-  const { rows } = await query<{
+  const run=<T extends import("pg").QueryResultRow>(sql:string,params:unknown[]) => client ? queryClient<T>(client,sql,params) : query<T>(sql,params);
+  const { rows } = await run<{
     terms_accepted_at: Date | null;
     age_confirmed_at: Date | null;
     marketing_consent: boolean;
@@ -113,13 +116,24 @@ const USER_COLUMNS = `id, name, gender, birth_date::text, zodiac,
 /** Create profile row and link account in one transaction. */
 export async function createUserProfileForAccount(
   accountId: string,
-  data: CreateUserProfileInput
+  data: CreateUserProfileInput,
+  client?: PoolClient
 ): Promise<UserRow> {
   const birthDate =
     typeof data.birthDate === "string" && /^\d{4}-\d{2}-\d{2}/.test(data.birthDate.trim())
       ? data.birthDate.trim().slice(0, 10)
       : null;
-  return withTransaction(async (client) => {
+  const create=async (client: PoolClient) => {
+    const accountResult = await queryClient<{
+      id: string;
+      profile_user_id: string | null;
+      marketing_consent: boolean;
+      erasure_requested_at: Date | null;
+    }>(client, "SELECT id, profile_user_id, marketing_consent, erasure_requested_at FROM user_accounts WHERE id = $1 FOR UPDATE", [accountId]);
+    const account = accountResult.rows[0];
+    if (!account) throw new Error("Account not found");
+    if (account.erasure_requested_at) throw new Error("ACCOUNT_ERASURE_PENDING");
+    if (account.profile_user_id) throw new Error("PROFILE_OWNERSHIP_CONFLICT");
     const profileResult = await queryClient<UserRow>(
       client,
       `INSERT INTO users (
@@ -143,18 +157,6 @@ export async function createUserProfileForAccount(
     const created = profileResult.rows[0];
     if (!created) throw new Error("Failed to create profile");
 
-    const accountResult = await queryClient<{
-      id: string;
-      profile_user_id: string | null;
-      marketing_consent: boolean;
-    }>(client, "SELECT id, profile_user_id, marketing_consent FROM user_accounts WHERE id = $1 FOR UPDATE", [
-      accountId,
-    ]);
-    const account = accountResult.rows[0];
-    if (!account) throw new Error("Account not found");
-    if (account.profile_user_id && account.profile_user_id !== created.id) {
-      throw new Error("PROFILE_OWNERSHIP_CONFLICT");
-    }
     if (account.marketing_consent) {
       await queryClient(
         client,
@@ -182,7 +184,8 @@ export async function createUserProfileForAccount(
     );
     await grantStarterRunesIfNeeded(created.id, client);
     return created;
-  });
+  };
+  return client ? create(client) : withTransaction(create);
 }
 
 export async function createUserProfile(data: CreateUserProfileInput): Promise<UserRow> {
@@ -228,18 +231,19 @@ export async function ensureMinimalConsumerProfile(opts: {
   gender?: "male" | "female";
   /** True only when gender comes from a reliable user/OAuth source (not name heuristic). */
   genderKnown?: boolean;
-}): Promise<UserRow> {
-  const existingId = await query<{ profile_user_id: string | null }>(
+}, client?: PoolClient): Promise<UserRow> {
+  const run=<T extends import("pg").QueryResultRow>(sql:string,params:unknown[]) => client ? queryClient<T>(client,sql,params) : query<T>(sql,params);
+  const existingId = await run<{ profile_user_id: string | null }>(
     `SELECT profile_user_id FROM user_accounts WHERE id = $1`,
     [opts.accountId]
   );
   const linked = existingId.rows[0]?.profile_user_id;
   if (linked) {
-    const row = await getUserById(linked);
+    const row = client ? (await queryClient<UserRow>(client, `SELECT ${USER_COLUMNS} FROM users WHERE id=$1`,[linked])).rows[0] : await getUserById(linked);
     if (row) return row;
   }
 
-  const consent = await loadAccountConsentForStub(opts.accountId);
+  const consent = await loadAccountConsentForStub(opts.accountId,client);
   if (!consent) {
     throw new Error("ACCOUNT_MISSING");
   }
@@ -260,11 +264,12 @@ export async function ensureMinimalConsumerProfile(opts: {
     zodiac: "",
     lifeFocus: "general",
     astroMeta: mergeConsentIntoAstroMeta(baseMeta, consent),
-  });
+  },client);
 }
 
-export async function getUserById(id: string): Promise<UserRow | null> {
-  const { rows } = await query<UserRow>(
+export async function getUserById(id: string, client?: PoolClient): Promise<UserRow | null> {
+  const run = <T extends import("pg").QueryResultRow>(sql: string, params: unknown[]) => client ? queryClient<T>(client,sql,params) : query<T>(sql,params);
+  const { rows } = await run<UserRow>(
     `SELECT ${USER_COLUMNS} FROM users WHERE id = $1`,
     [id]
   );
@@ -273,9 +278,11 @@ export async function getUserById(id: string): Promise<UserRow | null> {
 
 export async function updateUserProfile(
   id: string,
-  data: CreateUserProfileInput
+  data: CreateUserProfileInput,
+  client?: PoolClient
 ): Promise<UserRow | null> {
-  const current = await getUserById(id);
+  const run = <T extends import("pg").QueryResultRow>(sql: string, params: unknown[]) => client ? queryClient<T>(client,sql,params) : query<T>(sql,params);
+  const current = await getUserById(id,client);
   if (!current) return null;
 
   const birthDate =
@@ -289,7 +296,7 @@ export async function updateUserProfile(
     (birthDate ? buildAstroMeta(birthDate) : null) ??
     current.astro_meta;
 
-  const { rows } = await query<UserRow>(
+  const { rows } = await run<UserRow>(
     `UPDATE users SET
       name = $2,
       gender = $3,
@@ -317,7 +324,7 @@ export async function updateUserProfile(
   );
   const updated = rows[0] ?? null;
   if (updated?.birth_date) {
-    await query(
+    await run(
       `UPDATE matrix_subjects
        SET birth_date = $2::date, matrix_snapshot = NULL, as_of_date = NULL,
            calculation_version = NULL, updated_at = NOW()

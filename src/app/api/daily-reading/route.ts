@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { observeProductRequest } from "@/lib/activation-telemetry";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
@@ -91,7 +92,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(EMPTY);
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   const workerUserId = getAsyncJobWorkerUserId(request);
   let accountId: string;
   let userId: string;
@@ -281,4 +282,8 @@ export async function POST(request: NextRequest) {
     }
     throw err;
   }
+}
+
+export async function POST(request: NextRequest) {
+  return observeProductRequest(request, "daily", () => handlePost(request));
 }

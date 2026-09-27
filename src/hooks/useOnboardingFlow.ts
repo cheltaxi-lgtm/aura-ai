@@ -850,7 +850,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     if (!isLoggedIn) return;
 
     fetch("/api/profile")
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        // A failed load is not evidence that the account lacks a profile.
+        // Keep the current product flow; only a successful null profile can
+        // request onboarding.
+        if (!r.ok) throw new Error("PROFILE_LOAD_FAILED");
+        return r.json();
+      })
       .then((data) => {
         if (!data?.profile) {
           const local = readStoredProfile();

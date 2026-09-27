@@ -444,7 +444,8 @@ export async function middleware(request: NextRequest) {
     const proPath =
       pathname === "/pro" ||
       pathname.startsWith("/pro/") ||
-      pathname.startsWith("/api/pro") ||
+      pathname === "/api/pro" ||
+      pathname.startsWith("/api/pro/") ||
       pathname.startsWith("/r/") ||
       pathname.startsWith("/p/") ||
       pathname === "/admin/pro" ||

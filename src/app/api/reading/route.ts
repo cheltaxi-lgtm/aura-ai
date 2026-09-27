@@ -1,3 +1,4 @@
+import { observeProductRequest } from "@/lib/activation-telemetry";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { matrixCompatibility } from "@/lib/numerology/matrix-compatibility";
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
@@ -263,7 +264,7 @@ function matrixRuneAction(
   return "NUMEROLOGY_SESSION";
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   let characterId = "ragnar";
   let userName = "друг";
   let gender = "";
@@ -1872,4 +1873,8 @@ export async function POST(request: NextRequest) {
       { status: 502 }
     );
   }
+}
+
+export async function POST(request: NextRequest) {
+  return observeProductRequest(request, "reading", () => handlePost(request));
 }

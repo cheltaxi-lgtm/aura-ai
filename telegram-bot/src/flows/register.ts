@@ -1,5 +1,5 @@
 import type { Bot, Context } from "grammy";
-import { InputFile } from "grammy";
+import { InlineKeyboard, InputFile } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import {
@@ -181,8 +181,12 @@ export function registerFlows(bot: Bot): void {
       await ctx.reply(copy.consentAsk(botConfig.siteUrl), { reply_markup: consentKeyboard() });
       return;
     }
-    if (!(await ensureSiteLinked(ctx))) return;
+    const linked=await ensureSiteLinked(ctx);
+    if (!linked) return;
     await showSalonHome(ctx, { name: fresh.first_name });
+    if (linked.site.needsOnboarding) await ctx.reply("Начните с бесплатного расклада на сутки. Данные рождения можно заполнить позже для матрицы, натальной карты и Human Design.", {
+      reply_markup:new InlineKeyboard().text("Бесплатный расклад на сутки",CB.homeDay),
+    });
   });
 
   bot.callbackQuery(CB.ageYes, async (ctx) => {
@@ -210,6 +214,9 @@ export function registerFlows(bot: Bot): void {
     if (!(await ensureSiteLinked(ctx))) return;
     await ctx.reply(copy.accountOpened, { reply_markup: salonKeyboard() });
     await showSalonHome(ctx, { name: user.first_name });
+    await ctx.reply("Начните с бесплатного расклада на сутки. Стартовые руны останутся для других разборов.", {
+      reply_markup:new InlineKeyboard().text("Бесплатный расклад на сутки",CB.homeDay),
+    });
   });
 
   bot.callbackQuery(/^tz:(.+)$/, async (ctx) => {

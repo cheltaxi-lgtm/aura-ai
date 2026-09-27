@@ -224,7 +224,7 @@ export async function showPalm(ctx: Context): Promise<void> {
 }
 
 export async function showHd(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   try {
     const { data } = await siteHumanDesign(linked.user.telegram_user_id);
@@ -264,7 +264,7 @@ export async function showHd(ctx: Context): Promise<void> {
 }
 
 export async function showNatal(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   try {
     const { data } = await siteNatal(linked.user.telegram_user_id);
@@ -385,7 +385,7 @@ export async function showMatrixTeaser(ctx: Context): Promise<void> {
   if (uid) {
     await announceWorking(ctx, copy.matrixPreparing(uid, cabinetCopyCounter++));
   }
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
@@ -412,7 +412,7 @@ export async function showMatrix(ctx: Context): Promise<void> {
   if (uid) {
     await announceWorking(ctx, copy.matrixPreparing(uid, cabinetCopyCounter++));
   }
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "summary");
@@ -457,7 +457,7 @@ function formatMatrixListPage(item: MatrixListItem, page: number, total: number)
 }
 
 export async function showMatrixReports(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "list");
@@ -496,7 +496,7 @@ export async function showMatrixReports(ctx: Context): Promise<void> {
 
 /** Order / regenerate full matrix. Always replaces any prior saved report. */
 export async function runMatrixFull(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   const tid = linked.user.telegram_user_id;
   const activeFlow = getFlow(tid);
@@ -595,7 +595,7 @@ export async function openMatrixReport(
   reportId: string,
   opts?: { siteUrl?: string | null; showActions?: boolean; subjectId?: string | null }
 ): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   try {
     const { data } = await siteNumerology(linked.user.telegram_user_id, "get", reportId, {
@@ -629,7 +629,7 @@ export async function openMatrixReport(
 }
 
 export async function deleteMatrixReport(ctx: Context): Promise<void> {
-  const linked = await ensureSiteLinked(ctx);
+  const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
   if (!linked) return;
   try {
     const current = getFlow(linked.user.telegram_user_id);
@@ -694,7 +694,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
 
   if (data === CB.mxSubjects) {
     await ctx.answerCallbackQuery().catch(() => undefined);
-    const linked = await ensureSiteLinked(ctx);
+    const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
     if (!linked) return true;
     try {
       const { data: subjects } = await siteNumerology(linked.user.telegram_user_id, "subjects");
@@ -720,7 +720,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
   if (data.startsWith(CB.mxSubjectSelectPrefix)) {
     await ctx.answerCallbackQuery().catch(() => undefined);
     const subjectId = data.slice(CB.mxSubjectSelectPrefix.length);
-    const linked = await ensureSiteLinked(ctx);
+    const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
     if (!linked || !subjectId) return true;
     try {
       setFlow(linked.user.telegram_user_id, "matrix_subject", "active", { subjectId });
@@ -739,7 +739,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
 
   if (data === CB.mxSubjectNew) {
     await ctx.answerCallbackQuery().catch(() => undefined);
-    const linked = await ensureSiteLinked(ctx);
+    const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
     if (!linked) return true;
     const kb = new InlineKeyboard()
       .text("🧸 Ребёнок", `${CB.mxSubjectKindPrefix}child`)
@@ -755,7 +755,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     await ctx.answerCallbackQuery().catch(() => undefined);
     const kind = data.slice(CB.mxSubjectKindPrefix.length);
     if (kind !== "child" && kind !== "partner" && kind !== "other") return true;
-    const linked = await ensureSiteLinked(ctx);
+    const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
     if (!linked) return true;
     setFlow(linked.user.telegram_user_id, "matrix_subject", "dob", { kind });
     await ctx.reply(
@@ -803,7 +803,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
 
   if (data === CB.mxPeriod) {
     await ctx.answerCallbackQuery({ text: "Узел периода…" }).catch(() => undefined);
-    const linked = await ensureSiteLinked(ctx);
+    const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
     if (!linked) return true;
     try {
       const selected = viewId ? getFlow(tid) : null;
@@ -867,7 +867,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
     }
 
     await ctx.answerCallbackQuery({ text: "Зоны…" }).catch(() => undefined);
-    const linked = await ensureSiteLinked(ctx);
+    const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
     if (!linked) return true;
     try {
       const selected = viewId ? getFlow(tid) : null;
@@ -928,7 +928,7 @@ export async function handleMatrixCallback(ctx: Context, data: string): Promise<
 
   if (data === CB.mxShare) {
     await ctx.answerCallbackQuery({ text: "Карточка…" }).catch(() => undefined);
-    const linked = await ensureSiteLinked(ctx);
+    const linked = await ensureSiteLinked(ctx, { requireBirthProfile: true });
     if (!linked) return true;
     try {
       const selected = viewId ? getFlow(tid) : null;

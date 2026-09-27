@@ -10,6 +10,7 @@ import { PRODUCT_CALENDAR_TIMEZONE, productCalendarDate } from "@/lib/product-ca
 import { finishProactiveContact, reserveProactiveContact } from "@/lib/proactive-contact-policy";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
+import { getUserActivationContext } from "@/lib/activation-store";
 
 /** Canonical daily reading; old ?dailyCards=1 links remain accepted on the home page. */
 export const DAILY_CARDS_REMINDER_CTA = "/?daily=1";
@@ -338,7 +339,14 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
         delivered = true;
       }
 
+      // Resolve before claiming the delivery slot: a diagnostic read failure must
+      // not suppress the scheduled reminder or lock it as already sent.
+      const activation=plan.email ? await getUserActivationContext(user.userId).catch(()=>null) : null;
       if (plan.email && user.email && (await claimReminderSlot(user.userId, "email", dailyDate))) {
+        const preview=activation?.stage!=="result_ready" ? activation?.continuation : null;
+        const nextStep={firstUse:activation?.stage==="not_started",preview:Boolean(preview),
+          path:preview ? `${preview.href}&utm_source=zovus&utm_medium=email&utm_campaign=first_reading` : DAILY_REMINDER_EMAIL_PATH,
+          label:preview?.label ?? "Открыть расклад на сутки"};
         const unsub = await reminderUnsubscribeUrl(user.accountId, "daily_cards");
         const includeBonus = bonusEnabled && user.prefs.bonusEmail;
         const bonusUnsub = includeBonus
@@ -346,11 +354,11 @@ export async function sendDailyRemindersForHour(hourMsk: number): Promise<{
           : undefined;
         const sent = await sendEmail({
           to: user.email,
-          subject: "Zovus — ваш расклад на сегодня",
+          subject: preview ? "Zovus — продолжите сохранённый разбор" : nextStep.firstUse ? "Zovus — начните с бесплатного расклада на сутки" : "Zovus — ваш расклад на сегодня",
           html: dailyReminderEmailHtml(user.name, siteUrl, unsub,
             bonusUnsub ? { amount: DAILY_BONUS_AMOUNT, claimable: user.bonusClaimable,
-              unsubscribeUrl: bonusUnsub } : undefined),
-          text: `${user.name}, откройте расклад на сутки: ${siteUrl}${DAILY_REMINDER_EMAIL_PATH}`
+              unsubscribeUrl: bonusUnsub } : undefined, nextStep),
+          text: `${user.name}, ${nextStep.label}: ${siteUrl}${nextStep.path}`
             + (bonusUnsub
               ? `\n${user.bonusClaimable ? "Ваш ежедневный бонус готов" : "Ежедневный бонус доступен каждые 24 часа"}: ${DAILY_BONUS_AMOUNT} рун: ${siteUrl}/cabinet#daily-bonus\nОтключить бонусные напоминания: ${bonusUnsub}`
               : "")

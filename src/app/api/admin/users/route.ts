@@ -4,6 +4,7 @@ import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { queryClient, withTransaction } from "@/lib/db";
 import { listUserAccounts, listOnboardingProfiles } from "@/lib/admin";
 import { requestAccountErasure } from "@/lib/account-erasure";
+import { getActivationDiagnostics } from "@/lib/activation-store";
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
@@ -19,7 +20,8 @@ export async function GET(request: NextRequest) {
   if (type === "profiles") {
     return NextResponse.json({ items: await listOnboardingProfiles(limit, offset, includeTest) });
   }
-  return NextResponse.json({ items: await listUserAccounts(limit, offset, includeTest) });
+  const [items, activation]=await Promise.all([listUserAccounts(limit, offset, includeTest),getActivationDiagnostics()]);
+  return NextResponse.json({ items, activation }, {headers:{"Cache-Control":"private, no-store"}});
 }
 
 export async function DELETE(request: NextRequest) {

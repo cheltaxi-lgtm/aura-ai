@@ -79,7 +79,8 @@ export async function issueSiteLinkUrl(
 
 /** Require Zovus account for product actions — auto-create via bot offer when needed. */
 export async function ensureSiteLinked(
-  ctx: Context
+  ctx: Context,
+  options: { requireBirthProfile?: boolean } = {}
 ): Promise<{ user: BotUser; site: SiteResolve } | null> {
   const user = await ensureOnboarded(ctx);
   if (!user) return null;
@@ -106,7 +107,7 @@ export async function ensureSiteLinked(
     return null;
   }
 
-  if (!site.linked) {
+  if (!site.linked || !site.profileUserId) {
     const ensured = await ensureBotOfferAccount(ctx, user);
     if (!ensured?.ok) {
       await ctx.reply(copy.siteBridgeDown, { reply_markup: salonKeyboard() });
@@ -122,7 +123,7 @@ export async function ensureSiteLinked(
     site = ensured;
   }
 
-  if (site.needsOnboarding) {
+  if (!site.profileUserId || (options.requireBirthProfile && site.needsOnboarding)) {
     await beginProfileOnboarding(ctx);
     return null;
   }
