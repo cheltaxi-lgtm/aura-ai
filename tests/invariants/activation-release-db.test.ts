@@ -2,6 +2,8 @@ import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { randomUUID } from "node:crypto";
 import { query } from "@/lib/db";
 import { ensureBotOfferAccount, upsertBotOfferProfile } from "@/lib/telegram/bot-offer-account";
+import * as telegramAccounts from "@/lib/telegram/accounts";
+import * as botResolve from "@/lib/telegram/bot-resolve";
 import { getUserById, createHistoryEntry, createUserProfileForAccount } from "@/lib/users";
 import { listUserAccounts } from "@/lib/admin";
 import { getUserActivationContext, getActivationDiagnostics } from "@/lib/activation-store";
@@ -15,6 +17,7 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
   const erasureFixtureAccounts:string[]=[];
   beforeEach(()=>{vi.stubEnv("FIRST_EXPERIENCE_ENABLED","true");vi.stubEnv("AURA_MODULE_ENABLED","true");vi.stubEnv("PALM_MODULE_ENABLED","false");});
   afterEach(async()=>{
+    vi.restoreAllMocks();
     vi.unstubAllEnvs();
     // The durable outbox intentionally has no account FK: CASCADE fixture
     // cleanup cannot remove it. Never leak pending jobs into worker suites.
@@ -67,6 +70,43 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
     expect(consumer.profileUserId).toBe(full.profileUserId);
     expect(await getUserById(full.profileUserId!)).toMatchObject({birth_date:"1990-01-15",birth_city:"Москва"});
     expect((await query("SELECT COUNT(*)::int AS n FROM rune_transactions WHERE user_id=$1 AND type='bonus'",[full.profileUserId])).rows[0].n).toBe(1);
+  });
+
+  it("rejects birthday completion after Telegram moves to another account, without changing either profile",async()=>{
+    const params=input();const a=await ensureBotOfferAccount(params);const b=await ensureBotOfferAccount(input());
+    await telegramAccounts.unlinkTelegramFromAccount(b.accountId!);
+    const original=telegramAccounts.findTelegramIdentity;
+    vi.spyOn(telegramAccounts,"findTelegramIdentity").mockImplementationOnce(async(id)=>{
+      const captured=await original(id);
+      await telegramAccounts.unlinkTelegramFromAccount(a.accountId!);
+      expect(await telegramAccounts.linkTelegramToAccount({accountId:b.accountId!,data:{id,first_name:"Other fixture",auth_date:1,hash:"fixture"}})).toMatchObject({ok:true});
+      return captured;
+    });
+    await expect(upsertBotOfferProfile({telegramUserId:params.telegramUserId,birthDate:"1990-01-15",birthCity:"Москва",gender:"female"})).rejects.toThrow("NOT_LINKED");
+    for(const profileId of [a.profileUserId!,b.profileUserId!]){
+      expect(await getUserById(profileId)).toMatchObject({birth_date:null,birth_city:null});
+      expect((await query("SELECT COUNT(*)::int AS n FROM rune_transactions WHERE user_id=$1 AND type='bonus'",[profileId])).rows[0].n).toBe(1);
+    }
+    expect((await original(params.telegramUserId))?.user_account_id).toBe(b.accountId);
+  });
+
+  it("rejects a stale consumer resolution before creating a profile or bonus for an unlinked shell",async()=>{
+    const params=input();
+    const account=await query<{id:string}>("INSERT INTO user_accounts(email,name,age_confirmed_at,terms_accepted_at) VALUES($1,'Activation fixture',NOW(),NOW()) RETURNING id",[`${randomUUID()}@telegram.zovus.local`]);
+    const accountId=account.rows[0].id;
+    await query("INSERT INTO user_telegram_identities(user_account_id,telegram_user_id) VALUES($1,$2)",[accountId,params.telegramUserId]);
+    const b=await ensureBotOfferAccount(input());await telegramAccounts.unlinkTelegramFromAccount(b.accountId!);
+    const original=botResolve.resolveBotUser;
+    vi.spyOn(botResolve,"resolveBotUser").mockImplementationOnce(async(id)=>{
+      const captured=await original(id);
+      await telegramAccounts.unlinkTelegramFromAccount(accountId);
+      expect(await telegramAccounts.linkTelegramToAccount({accountId:b.accountId!,data:{id,first_name:"Other fixture",auth_date:1,hash:"fixture"}})).toMatchObject({ok:true});
+      return captured;
+    });
+    await expect(ensureBotOfferAccount(params)).rejects.toThrow("NOT_LINKED");
+    expect((await query("SELECT profile_user_id FROM user_accounts WHERE id=$1",[accountId])).rows[0].profile_user_id).toBeNull();
+    expect((await query("SELECT COUNT(*)::int AS n FROM users")).rows[0].n).toBe(1);
+    expect((await query("SELECT COUNT(*)::int AS n FROM rune_transactions WHERE type='bonus'")).rows[0].n).toBe(1);
   });
 
   it("never creates or fills a profile or recreates a Telegram account during erasure",async()=>{

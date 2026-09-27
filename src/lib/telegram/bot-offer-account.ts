@@ -14,9 +14,17 @@ import { getZodiacFromDate } from "@/utils/zodiac";
 import { findTelegramIdentity } from "@/lib/telegram/accounts";
 import { resolveBotUser, type BotResolveResult } from "@/lib/telegram/bot-resolve";
 import { recordInitialMemoryChoice } from "@/lib/memory/preferences";
+import type { PoolClient } from "pg";
 
 function syntheticBotEmail(telegramUserId: number): string {
   return normalizeAuthEmail(`tg_${telegramUserId}@telegram.zovus.local`);
+}
+
+/** Call after locking the account; unlink/link use the same lock order. */
+async function assertTelegramBinding(client: PoolClient, telegramUserId: number, accountId: string): Promise<void> {
+  const { rows } = await queryClient<{ user_account_id: string }>(client,
+    "SELECT user_account_id FROM user_telegram_identities WHERE telegram_user_id=$1 FOR UPDATE", [telegramUserId]);
+  if (rows[0]?.user_account_id !== accountId) throw new Error("NOT_LINKED");
 }
 
 /** Same consumer profile as web registration; birth data is optional for Tarot. */
@@ -30,6 +38,7 @@ async function ensureConsumerAccess(telegramUserId: number): Promise<BotResolveR
       "SELECT name, profile_user_id, erasure_requested_at, age_confirmed_at, terms_accepted_at FROM user_accounts WHERE id=$1 FOR UPDATE", [resolved.accountId]);
     const account = rows[0];
     if (!account || account.erasure_requested_at) return;
+    await assertTelegramBinding(client, telegramUserId, resolved.accountId!);
     if (!account.profile_user_id && (!account.age_confirmed_at || !account.terms_accepted_at)) return;
     const profile = await ensureMinimalConsumerProfile({ accountId: resolved.accountId!, name: account.name || "Гость" },client);
     await grantStarterRunesIfNeeded(profile.id,client);
@@ -203,6 +212,7 @@ export async function upsertBotOfferProfile(
   const owner = locked.rows[0];
   if (!owner) throw new Error("NOT_LINKED");
   if (owner.erasure_requested_at) throw new Error("ACCOUNT_ERASURE_PENDING");
+  await assertTelegramBinding(client, input.telegramUserId, identity.user_account_id);
   let profileUserId = owner.profile_user_id;
   if (!profileUserId) {
     const created = await createUserProfileForAccount(identity.user_account_id, {
