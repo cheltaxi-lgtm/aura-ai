@@ -79,6 +79,46 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
     expect((await listUserAccounts()).find(r=>r.id===a.accountId)?.activation_stage).toBe("result_ready");
   });
 
+  it.each(["photo","natal_compatibility","hd_composite","hd_center","ritual","joint"])("recognizes owned saved %s results without chat and excludes unfinished/foreign artifacts",async(kind)=>{
+    const a=await ensureBotOfferAccount(input());const foreign=await ensureBotOfferAccount(input());
+    if(kind==="photo"){
+      await createHistoryEntry({userId:a.profileUserId!,characterName:"veronika",contextData:{type:"photo_reading",analysis:" "}});
+      expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+      await createHistoryEntry({userId:a.profileUserId!,characterName:"veronika",contextData:{type:"photo_reading",analysis:"Saved photo fixture"}});
+    }else if(kind==="natal_compatibility"){
+      const participant=await ensureBotOfferAccount(input());
+      const row=await query<{id:string}>("INSERT INTO natal_compatibility_reports(owner_user_id,participant_user_id,mode,status,owner_label,partner_label,owner_fingerprint,partner_fingerprint,pair_fingerprint,synastry_snapshot,expires_at) VALUES($1,$2,'manual','ready','A','B',$3,$3,$3,'{}',NOW()+INTERVAL '1 day') RETURNING id",[a.profileUserId,participant.profileUserId,"a".repeat(64)]);
+      expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+      await query("UPDATE natal_compatibility_reports SET status='completed',report_data=$2::jsonb,evidence_refs='[]',completed_at=NOW() WHERE id=$1",[row.rows[0].id,JSON.stringify({sections:[{title:"Fixture",claims:[{text:"Saved fixture"}]}],disclaimer:"Fixture"})]);
+      expect((await getUserActivationContext(participant.profileUserId!))?.stage).toBe("result_ready");
+    }else if(kind==="hd_composite"||kind==="hd_center"){
+      const chart=await query<{id:string}>("INSERT INTO hd_charts(user_id,birth_date,timezone,place_name,lat,lon,fingerprint,chart,engine_version) VALUES($1,'1990-01-15','UTC','Fixture',0,0,$2,'{}','fixture') RETURNING id",[a.profileUserId,randomUUID()]);
+      if(kind==="hd_composite"){
+        const row=await query<{id:string}>("INSERT INTO hd_composite_reports(user_id,base_chart_id,partner_chart_id,status,report_text) VALUES($1,$2,$2,'pending','Saved composite fixture') RETURNING id",[a.profileUserId,chart.rows[0].id]);
+        expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+        await query("UPDATE hd_composite_reports SET status='done' WHERE id=$1",[row.rows[0].id]);
+      }else{
+        expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+        await query("INSERT INTO hd_center_insights(user_id,chart_id,center,insight_text) VALUES($1,$2,'head','Saved insight fixture')",[a.profileUserId,chart.rows[0].id]);
+      }
+    }else if(kind==="ritual"){
+      const row=await query<{id:string}>("INSERT INTO rituals(user_id,character_key,ritual_type,status,ritual_words) VALUES($1,'tarolog','luck','generating','Saved ritual fixture') RETURNING id",[a.profileUserId]);
+      expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+      await query("UPDATE rituals SET status='completed',ritual_words=' ' WHERE id=$1",[row.rows[0].id]);
+      expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+      await query("UPDATE rituals SET ritual_word_of_power='Saved ritual fixture' WHERE id=$1",[row.rows[0].id]);
+    }else{
+      const participant=await ensureBotOfferAccount(input());
+      const row=await query<{id:string}>("INSERT INTO joint_readings(token,initiator_user_id,partner_user_id,partner_reading,expires_at) VALUES($1,$2,$3,'Partner fixture',NOW()+INTERVAL '1 day') RETURNING id",[randomUUID(),a.profileUserId,participant.profileUserId]);
+      expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("not_started");
+      expect((await getUserActivationContext(participant.profileUserId!))?.stage).toBe("result_ready");
+      await query("UPDATE joint_readings SET status='completed',combined_reading='Saved combined fixture' WHERE id=$1",[row.rows[0].id]);
+    }
+    expect((await listUserAccounts()).find(r=>r.id===a.accountId)).toMatchObject({sessions_count:"0",activation_stage:"result_ready"});
+    expect((await getUserActivationContext(a.profileUserId!))?.stage).toBe("result_ready");
+    expect((await getUserActivationContext(foreign.profileUserId!))?.stage).toBe("not_started");
+  });
+
   it("fills the same legacy profile when birthday completion races with consumer repair",async()=>{
     const params=input();
     const account=await query<{id:string}>("INSERT INTO user_accounts(email,name,age_confirmed_at,terms_accepted_at) VALUES($1,'Activation fixture',NOW(),NOW()) RETURNING id",[`${randomUUID()}@telegram.zovus.local`]);

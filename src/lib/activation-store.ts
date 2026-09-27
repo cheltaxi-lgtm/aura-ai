@@ -11,7 +11,8 @@ export function savedProductResultSql(profileId: string): string {
     EXISTS(SELECT 1 FROM history h WHERE h.user_id=${profileId}
       AND (length(btrim(COALESCE(h.context_data->>'reading',''))) > 0
         OR length(btrim(COALESCE(h.context_data->>'report',''))) > 0
-        OR length(btrim(COALESCE(h.context_data->>'interpretation',''))) > 0))
+        OR length(btrim(COALESCE(h.context_data->>'interpretation',''))) > 0
+        OR length(btrim(COALESCE(h.context_data->>'analysis',''))) > 0))
     OR EXISTS(SELECT 1 FROM daily_readings r WHERE r.user_id=${profileId} AND length(btrim(r.reading_text))>0)
     OR EXISTS(SELECT 1 FROM sessions s JOIN chat_messages c ON c.session_id=s.id
       WHERE s.user_id=${profileId} AND (c.owner_user_id=${profileId} OR c.owner_user_id IS NULL)
@@ -23,6 +24,20 @@ export function savedProductResultSql(profileId: string): string {
     OR EXISTS(SELECT 1 FROM natal_report_history r WHERE r.user_id=${profileId} AND length(btrim(r.content))>0)
     OR EXISTS(SELECT 1 FROM numerology_report_history r WHERE r.user_id=${profileId} AND length(btrim(r.content))>0)
     OR EXISTS(SELECT 1 FROM hd_reports r WHERE r.user_id=${profileId} AND r.status='done' AND length(btrim(r.report_text))>0)
+    OR EXISTS(SELECT 1 FROM hd_composite_reports r WHERE r.user_id=${profileId} AND r.status='done' AND length(btrim(r.report_text))>0)
+    OR EXISTS(SELECT 1 FROM hd_center_insights r WHERE r.user_id=${profileId} AND length(btrim(r.insight_text))>0)
+    OR EXISTS(SELECT 1 FROM natal_compatibility_reports r WHERE (r.owner_user_id=${profileId} OR r.participant_user_id=${profileId})
+      AND r.status='completed' AND r.report_data IS NOT NULL)
+    OR EXISTS(SELECT 1 FROM rituals r WHERE r.user_id=${profileId} AND r.status IN ('completed','reviewed')
+      AND (COALESCE(NULLIF(btrim(r.ritual_words),''),NULLIF(btrim(r.ritual_word_of_power),''),
+          NULLIF(btrim(r.outcome_text),''),NULLIF(btrim(r.ritual_time),''),NULLIF(btrim(r.ritual_place),''),'')<>''
+        OR COALESCE(r.ritual_steps,'[]'::jsonb)<>'[]'::jsonb OR COALESCE(r.ritual_items,'[]'::jsonb)<>'[]'::jsonb
+        OR COALESCE(r.ritual_forbids,'[]'::jsonb)<>'[]'::jsonb OR COALESCE(r.ritual_signs,'[]'::jsonb)<>'[]'::jsonb))
+    OR EXISTS(SELECT 1 FROM joint_readings r WHERE
+      (r.initiator_user_id=${profileId} AND length(btrim(COALESCE(r.initiator_reading,'')))>0)
+      OR (r.partner_user_id=${profileId} AND length(btrim(COALESCE(r.partner_reading,'')))>0)
+      OR (r.status='completed' AND (r.initiator_user_id=${profileId} OR r.partner_user_id=${profileId})
+        AND length(btrim(COALESCE(r.combined_reading,'')))>0))
   )`;
 }
 
