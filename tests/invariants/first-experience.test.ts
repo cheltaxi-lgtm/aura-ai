@@ -182,7 +182,7 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
     expect(registration).toContain("grantStarterRunesIfNeeded(createdProfile.id, client)");
     expect(users).toContain("grantStarterRunesIfNeeded(created.id, client)");
     expect(runes).not.toContain("grantStarterRunesIfNeeded failed:");
-    expect(telegram).toMatch(/await grantStarterRunesIfNeeded\(profileUserId\);[\s\S]*input\.memoryChoice/);
+    expect(telegram).toMatch(/await grantStarterRunesIfNeeded\(profileUserId,\s*client\);[\s\S]*input\.memoryChoice/);
   });
   it("serializes bonus spend and refunds only the original amount once",async()=>{
     const user=await createTestUser();await grantStarterRunesIfNeeded(user.id);

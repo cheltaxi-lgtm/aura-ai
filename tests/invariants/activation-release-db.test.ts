@@ -12,8 +12,15 @@ import { hasTestDb, installDbLifecycle } from "./db/setup";
 
 describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",()=>{
   installDbLifecycle();
+  const erasureFixtureAccounts:string[]=[];
   beforeEach(()=>{vi.stubEnv("FIRST_EXPERIENCE_ENABLED","true");vi.stubEnv("AURA_MODULE_ENABLED","true");vi.stubEnv("PALM_MODULE_ENABLED","false");});
-  afterEach(()=>vi.unstubAllEnvs());
+  afterEach(async()=>{
+    vi.unstubAllEnvs();
+    // The durable outbox intentionally has no account FK: CASCADE fixture
+    // cleanup cannot remove it. Never leak pending jobs into worker suites.
+    if(erasureFixtureAccounts.length)await query("DELETE FROM account_erasure_jobs WHERE account_id=ANY($1::uuid[])",[erasureFixtureAccounts]);
+    erasureFixtureAccounts.length=0;
+  });
   const input=()=>({telegramUserId:7000000000+Math.floor(Math.random()*100000000),firstName:"Activation fixture",termsAcceptedAt:new Date().toISOString(),ageConfirmedAt:new Date().toISOString()});
 
   it("creates one adult consumer profile and one 40-rune grant under concurrent bot entry, with no invented birth data",async()=>{
@@ -66,6 +73,7 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
     const params=input();
     const account=await query<{id:string}>("INSERT INTO user_accounts(email,name,age_confirmed_at,terms_accepted_at,erasure_requested_at) VALUES($1,'Deletion fixture',NOW(),NOW(),NOW()) RETURNING id",[`${randomUUID()}@telegram.zovus.local`]);
     const accountId=account.rows[0].id;
+    erasureFixtureAccounts.push(accountId);
     await query("INSERT INTO account_erasure_jobs(account_id,telegram_user_ids) VALUES($1,ARRAY[$2::bigint])",[accountId,params.telegramUserId]);
     // Identity was purged already; the durable erasure barrier remains.
     await expect(ensureBotOfferAccount(params)).rejects.toThrow("ACCOUNT_ERASURE_PENDING");
@@ -74,6 +82,7 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
     expect((await query("SELECT COUNT(*)::int AS n FROM user_accounts")).rows[0].n).toBe(1);
     // Linked profile completion must also stop once deletion is requested.
     const live=input();const linked=await ensureBotOfferAccount(live);
+    erasureFixtureAccounts.push(linked.accountId!);
     await query("UPDATE user_accounts SET erasure_requested_at=NOW() WHERE id=$1",[linked.accountId]);
     await query("INSERT INTO account_erasure_jobs(account_id,profile_user_id,telegram_user_ids) VALUES($1,$2,ARRAY[$3::bigint])",[linked.accountId,linked.profileUserId,live.telegramUserId]);
     await expect(upsertBotOfferProfile({telegramUserId:live.telegramUserId,birthDate:"1990-01-15",gender:"female"})).rejects.toThrow("ACCOUNT_ERASURE_PENDING");

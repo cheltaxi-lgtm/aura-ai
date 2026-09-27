@@ -238,7 +238,8 @@ describe("daily-cards-reminder-delivery (source)", () => {
   it("email template points at the canonical daily CTA", () => {
     const tpl = read("src/lib/email/templates.ts");
     const start = tpl.indexOf("export function dailyReminderEmailHtml");
-    const fn = tpl.slice(start, start + 700);
+    const nextFunction = tpl.indexOf("\nexport function ", start + 1);
+    const fn = tpl.slice(start, nextFunction < 0 ? undefined : nextFunction);
     expect(tpl).toMatch(/DAILY_REMINDER_EMAIL_PATH\s*=\s*[\s\S]*?\?daily=1/);
     expect(fn).toContain("DAILY_REMINDER_EMAIL_PATH");
     expect(fn).not.toMatch(/\?dailyCards=1/);
