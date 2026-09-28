@@ -1,5 +1,4 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
-import { isBonusIdentityReady } from "@/lib/bonus-identity";
 import { RUNE_ACTION_LABELS, type RuneActionType } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { runesFromRubAmount } from "@/lib/rune-purchase-constants";
@@ -692,9 +691,7 @@ export async function grantStarterRunesIfNeeded(
       [userId]
     );
     if (!lockedUsers[0]) return null;
-    if (!(await isBonusIdentityReady(userId, transactionClient))) return null;
-
-    // Preserve the old promise for registrations awaiting verification at release.
+    // Preserve the older 100-rune promise for accounts that were left pending.
     const promisedOldBonus = lockedUsers[0].starter_bonus_version === "starter-100-v1";
     const starterRunes = promisedOldBonus ? 100 : settings.starterRunes;
     const starterBonusVersion = promisedOldBonus ? "starter-100-v1" : STARTER_BONUS_VERSION;

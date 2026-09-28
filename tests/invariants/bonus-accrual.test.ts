@@ -57,20 +57,28 @@ describe.skipIf(!hasTestDb)("bonus transactions (isolated PostgreSQL)",()=>{
     finally {await query("ALTER TABLE rune_transactions DROP CONSTRAINT bonus_audit_reject");}
     expect(await claimDailyBonus(user.id)).toMatchObject({claimed:true,newBalance:5});
   });
-  it("does not award starter/daily/achievement credits before email proof; proof is owner-bound and idempotent",async()=>{
+  it("awards starter and daily runes before email proof; proof stays owner-bound and cannot grant twice",async()=>{
     const user=await createTestUser();const account=await accountFor(user.id,true);
-    expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();
-    expect(await getDailyBonusStatus(user.id)).toMatchObject({available:false,verificationRequired:true});
-    await expect(claimDailyBonus(user.id)).rejects.toThrow("bonus_email_verification_required");
+    expect((await grantStarterRunesIfNeeded(user.id))?.granted).toBe(40);
+    expect(await getDailyBonusStatus(user.id)).toMatchObject({available:true,verificationRequired:false});
+    expect(await claimDailyBonus(user.id)).toMatchObject({claimed:true,bonusAmount:5});
+    expect(await getRuneBalance(user.id)).toBe(45);
     vi.stubEnv("AUTH_SECRET","bonus-test-signing-secret-for-local-tests-only");
     const email=(await query<{email:string}>("SELECT email FROM user_accounts WHERE id=$1",[account.id])).rows[0].email;
     const token=await new SignJWT({purpose:"bonus-email",email,tv:0}).setProtectedHeader({alg:"HS256"}).setAudience("bonus-email").setSubject(account.id).setExpirationTime("1h").sign(createHmac("sha256",process.env.AUTH_SECRET!).update("zovus:bonus-email:v1").digest());
     await expect(verifyBonusEmail(randomUUID(),token)).rejects.toThrow();
-    const grants=await Promise.all(Array.from({length:4},()=>verifyBonusEmail(account.id,token)));
-    expect(grants.filter(Boolean)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(40);
+    await Promise.all(Array.from({length:4},()=>verifyBonusEmail(account.id,token)));
+    const verified=await query<{bonus_email_verification_required:boolean;email_verified_at:Date|null}>(
+      "SELECT bonus_email_verification_required,email_verified_at FROM user_accounts WHERE id=$1",[account.id]);
+    expect(verified.rows[0]).toMatchObject({bonus_email_verification_required:false});
+    expect(verified.rows[0].email_verified_at).not.toBeNull();
+    expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();
+    expect(await getRuneBalance(user.id)).toBe(45);
+    expect((await query("SELECT id FROM rune_transactions WHERE user_id=$1 AND description LIKE 'Стартовый пакет%'",[user.id])).rows).toHaveLength(1);
   });
   it("computes a real PostgreSQL DATE series and grants all earned numerical achievements, never sensitive keywords",async()=>{
     const user=await createTestUser();
+    await accountFor(user.id,true);
     const session=(await query<{id:string}>("INSERT INTO sessions(user_id) VALUES($1) RETURNING id",[user.id])).rows[0];
     await query(`INSERT INTO chat_messages(session_id,character_id,role,content,owner_user_id,created_at)
       SELECT $1,'veronika','user','смерть болезнь',$2,(NOW() AT TIME ZONE 'UTC')::date::timestamp AT TIME ZONE 'UTC' - n*INTERVAL '1 day'
@@ -79,6 +87,7 @@ describe.skipIf(!hasTestDb)("bonus transactions (isolated PostgreSQL)",()=>{
     await checkAchievements(user.id,"veronika","смерть болезнь");
     const keys=(await query<{achievement:string}>("SELECT achievement FROM user_achievements WHERE user_id=$1",[user.id])).rows.map(x=>x.achievement);
     expect(keys).toEqual(expect.arrayContaining(["first_message","week_streak"]));expect(keys).not.toContain("brave_question");
+    expect(await getRuneBalance(user.id)).toBe(35);
   });
   it("keeps payment pending on failed bonus and retries atomically from its frozen amount",async()=>{
     const user=await createTestUser();const session=(await query<{id:string}>("INSERT INTO sessions(user_id) VALUES($1) RETURNING id",[user.id])).rows[0];

@@ -270,7 +270,7 @@ export async function POST(request: NextRequest) {
       user: { id: account.id, email: account.email, name: account.name },
       profile: serializeUserProfile(profile),
       sessionLinked,
-      // Server-confirmed starter grant (0 when already granted earlier) — analytics hint only.
+      // Server-confirmed starter grant, independent of email proof.
       starterRunes: starterGranted,
       emailVerificationRequired: true,
       // Account+profile row exist — registration complete for Tarot.

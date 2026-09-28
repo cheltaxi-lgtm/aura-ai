@@ -1,6 +1,6 @@
 -- Pending email registrations were shown the old gift before the policy change.
--- This marker does not credit a balance: verification and the idempotent grant
--- remain mandatory. Registration dates before the 100-rune rollout are excluded.
+-- This marker does not credit a balance; the idempotent grant applies the old
+-- 100-rune promise separately. Registration dates before that rollout are excluded.
 UPDATE users u
 SET starter_bonus_version = 'starter-100-v1'
 FROM user_accounts ua

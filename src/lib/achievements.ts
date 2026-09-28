@@ -1,6 +1,5 @@
 import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { ensureStarterGrantMarker } from "@/lib/rune-service";
-import { isBonusIdentityReady } from "@/lib/bonus-identity";
 import { getDaysWithUs } from "@/lib/user-lifetime-stats";
 import {
   getUserRitualAchievementStats,
@@ -408,8 +407,6 @@ async function grantAchievement(
     return await withTransaction(async (client) => {
       // Serialize per-user grants — parallel chat/cabinet requests used to double-credit.
       await queryClient(client, `SELECT id FROM users WHERE id = $1 FOR UPDATE`, [userId]);
-      if (!(await isBonusIdentityReady(userId, client))) return false;
-
       const { rows: existing } = await queryClient<{ id: string }>(
         client,
         `SELECT id FROM user_achievements WHERE user_id = $1 AND achievement = $2`,

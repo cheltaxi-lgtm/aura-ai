@@ -8,31 +8,10 @@ import { useDailyBonus } from "@/hooks/useDailyBonus";
 
 interface DailyBonusClaimerProps {
   enabled: boolean;
-  suppressVerificationNotice?: boolean;
 }
 
-export default function DailyBonusClaimer({ enabled, suppressVerificationNotice = false }: DailyBonusClaimerProps) {
-  const [verificationRequired, setVerificationRequired] = useState<boolean | null>(null);
-  useEffect(() => {
-    if (!enabled) {
-      setVerificationRequired(null);
-      return;
-    }
-    let alive = true;
-    fetch("/api/runes/daily/status", { cache: "no-store" }).then(r=>r.ok?r.json():null)
-      .then(data=>{
-        if (!alive) return;
-        const required = data ? data.verificationRequired === true : null;
-        setVerificationRequired(required);
-      })
-      .catch(()=>{
-        if (alive) {
-          setVerificationRequired(null);
-        }
-      });
-    return()=>{alive=false;};
-  },[enabled]);
-  const { bonusResult } = useDailyBonus(enabled && verificationRequired === false);
+export default function DailyBonusClaimer({ enabled }: DailyBonusClaimerProps) {
+  const { bonusResult } = useDailyBonus(enabled);
   const [showBonus, setShowBonus] = useState(false);
 
   useEffect(() => {
@@ -49,9 +28,6 @@ export default function DailyBonusClaimer({ enabled, suppressVerificationNotice 
 
   return (
     <AnimatePresence>
-      {enabled && verificationRequired && !suppressVerificationNotice && <aside role="status" className="fixed bottom-24 left-4 right-4 z-40 mx-auto max-w-sm rounded-xl border border-amber-300/30 bg-slate-950 p-4 text-sm text-white">
-        Подтвердите почту, чтобы получить стартовые руны. <a href="/cabinet#daily-bonus" className="text-amber-200 underline">Открыть кабинет</a>
-      </aside>}
       {showBonus && bonusResult?.claimed && bonusResult.bonusAmount != null && (
         <DailyBonusToast amount={bonusResult.bonusAmount} />
       )}

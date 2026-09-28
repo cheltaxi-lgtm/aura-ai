@@ -117,11 +117,12 @@ export async function verifyRecaptchaForScope(
     return { ok: true };
   }
 
-  return verifyRecaptcha(token, remoteIp, minScoreForScope(scope));
+  return verifyRecaptcha(token, scope, remoteIp, minScoreForScope(scope));
 }
 
 export async function verifyRecaptcha(
   token: string | undefined,
+  scope: RecaptchaScope,
   remoteIp?: string | null,
   minScore = DEFAULT_MIN_SCORE
 ): Promise<RecaptchaResult> {
@@ -163,6 +164,8 @@ export async function verifyRecaptcha(
   const data = (await res.json()) as {
     success: boolean;
     score?: number;
+    action?: string;
+    hostname?: string;
     "error-codes"?: string[];
   };
 
@@ -189,6 +192,18 @@ export async function verifyRecaptcha(
       };
     }
     return { ok: false, error: "Проверка reCAPTCHA не пройдена" };
+  }
+
+  const siteHostname = (() => {
+    try { return new URL(process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").hostname.toLowerCase(); }
+    catch { return "zovus.ru"; }
+  })();
+  const allowedHostnames = process.env.NODE_ENV === "production"
+    ? new Set([siteHostname])
+    : new Set([siteHostname, "localhost", "127.0.0.1"]);
+  if (data.action !== scope || !data.hostname || !allowedHostnames.has(data.hostname.toLowerCase())) {
+    console.warn("reCAPTCHA action or hostname mismatch", { scope, action: data.action, hostname: data.hostname });
+    return { ok: false, error: "Проверка безопасности не пройдена. Обновите страницу и попробуйте снова." };
   }
 
   if (data.score !== undefined && data.score < minScore) {

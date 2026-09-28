@@ -207,8 +207,7 @@ export async function getDailyReminderCandidates(hourMsk: number, dailyDate = pr
             (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) AS deliverable_email,
             ti.telegram_user_id::text,
             u.notification_prefs, ua.daily_cards_reminder,
-            (ua.bonus_email_verification_required=FALSE AND
-              (u.last_daily_bonus IS NULL OR u.last_daily_bonus <= NOW() - INTERVAL '24 hours'))
+            (u.last_daily_bonus IS NULL OR u.last_daily_bonus <= NOW() - INTERVAL '24 hours')
               AS bonus_claimable
      FROM users u
      INNER JOIN user_accounts ua ON ua.profile_user_id = u.id

@@ -18,11 +18,11 @@ export async function POST(request:NextRequest) {
   if (!rate.allowed) return NextResponse.json({error:"Слишком много попыток. Попробуйте позже."},{status:429});
   try {
     if (token) {
-      const grant=await verifyBonusEmail(auth.sub,token);
-      return NextResponse.json({ok:true,granted:grant?.granted??0,newBalance:grant?.balance});
+      await verifyBonusEmail(auth.sub,token);
+      return NextResponse.json({ok:true});
     }
     const sent=await sendBonusEmailVerification(auth.sub);
-    return NextResponse.json(sent?{ok:true}:{error:"Не удалось отправить письмо. Попробуйте позже."},{status:sent?200:503});
+    return NextResponse.json(sent ? {ok:true,alreadyVerified:sent==="already_verified"} : {error:"Не удалось отправить письмо. Попробуйте позже."},{status:sent?200:503});
   } catch (error) {
     if (token && error instanceof Error && (error.message==="invalid_verification" || "code" in error && String(error.code).startsWith("ERR_J"))) {
       return NextResponse.json({error:"Ссылка недействительна или истекла. Запросите новую в кабинете."},{status:400});

@@ -4387,9 +4387,6 @@ export default function HomePage({
       <DailyBonusClaimer
         key={`daily-bonus:${authUser?.profileUserId ?? "guest"}`}
         enabled={isLoggedIn && Boolean(authUser?.profileUserId) && runeConfig.enabled}
-        suppressVerificationNotice={hasReceivedPersonalValue && (
-          memoryPrompt?.profileId !== authUser?.profileUserId || memoryPrompt?.blocking === true
-        )}
       />
       <PersonalMemoryChoice
         key={`memory-choice:${authUser?.profileUserId ?? "guest"}`}

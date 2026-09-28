@@ -545,7 +545,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       {isUserRegister ? (
         <>
           <p className="text-sm text-white/65">
-            По email стартовые руны появятся после подтверждения почты. Ссылку пришлём сразу.
+            Стартовые руны начислим сразу после регистрации. Почту можно подтвердить позже — для писем и напоминаний.
           </p>
           <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
           {legalConsentFields}

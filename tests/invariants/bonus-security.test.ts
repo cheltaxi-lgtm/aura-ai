@@ -2,7 +2,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const mocks=vi.hoisted(()=>({query:vi.fn(),queryClient:vi.fn(),grant:vi.fn(),send:vi.fn(),captcha:vi.fn()}));
 vi.mock("@/lib/db",()=>({query:mocks.query,queryClient:mocks.queryClient,withTransaction:async(fn:(client:object)=>unknown)=>fn({})}));
-vi.mock("@/lib/rune-service",()=>({grantStarterRunesIfNeeded:mocks.grant}));
 vi.mock("@/lib/email/send",()=>({sendEmail:mocks.send}));
 vi.mock("@/lib/api-guards",()=>({clientIp:()=>"127.0.0.1"}));
 vi.mock("@/lib/recaptcha",()=>({verifyRecaptchaForScope:mocks.captcha}));
@@ -20,8 +19,8 @@ async function emailedToken(){await sendBonusEmailVerification("owner");return d
 describe("bonus email token and native registration boundaries",()=>{
   it("cannot use a verification token as an authenticated session",async()=>{
     const token=await emailedToken();expect(await verifyToken(token)).toBeNull();
-    await expect(verifyBonusEmail("owner",token)).resolves.toEqual({granted:100,balance:100});
-    expect(mocks.grant).toHaveBeenCalledWith("profile",expect.any(Object));
+    await expect(verifyBonusEmail("owner",token)).resolves.toBeUndefined();
+    expect(mocks.grant).not.toHaveBeenCalled();
   });
   it("cannot use a session JWT as email proof",async()=>{
     const token=await signToken({sub:"owner",email:account.email,name:"Owner",role:"user",tv:4});

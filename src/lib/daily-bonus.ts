@@ -1,7 +1,6 @@
 import { query, withTransaction, queryClient } from "@/lib/db";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { DAILY_BONUS_AMOUNT } from "@/lib/rune-daily-constants";
-import { isBonusIdentityReady } from "@/lib/bonus-identity";
 export { DAILY_BONUS_AMOUNT };
 const MS_PER_DAY = 86_400_000;
 export function formatNextBonusIn(msLeft: number): string {
@@ -25,8 +24,7 @@ export async function getDailyBonusStatus(profileUserId: string) {
   );
   if (!rows[0]) throw new Error("bonus_user_not_found");
   const state = dailyBonusState(rows[0]);
-  const identityReady = await isBonusIdentityReady(profileUserId);
-  return { ...state, available: settings.enabled && identityReady && state.available, enabled: settings.enabled, verificationRequired: !identityReady };
+  return { ...state, available: settings.enabled && state.available, enabled: settings.enabled, verificationRequired: false };
 }
 export type DailyBonusClaimResult = Awaited<ReturnType<typeof getDailyBonusStatus>> & {
   claimed: boolean; alreadyClaimed: boolean; bonusAmount?: number; newBalance?: number; grantId?: string;
@@ -34,7 +32,6 @@ export type DailyBonusClaimResult = Awaited<ReturnType<typeof getDailyBonusStatu
 /** Called only by the authenticated foreground visit/claim POST; never by cron or status reads. */
 export async function claimDailyBonus(profileUserId: string): Promise<DailyBonusClaimResult> {
   if (!(await getRuneSettings()).enabled) throw new Error("runes_disabled");
-  if (!(await isBonusIdentityReady(profileUserId))) throw new Error("bonus_email_verification_required");
   return withTransaction(async (client) => {
     const { rows: updated } = await queryClient<BonusRow>(client,
       `UPDATE users SET rune_balance = rune_balance + $2, last_daily_bonus = NOW()

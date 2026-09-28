@@ -148,20 +148,19 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
     await query("UPDATE users SET rune_balance=287,starter_runes_granted=FALSE WHERE id=$1",[user.id]);
     expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();expect(await getRuneBalance(user.id)).toBe(287);
   });
-  it("honors the old bonus promised to a registration pending verification",async()=>{
+  it("honors the old promised bonus without waiting for email proof",async()=>{
     const user=await createTestUser();
     const account=await query<{id:string}>(
       "INSERT INTO user_accounts(email,name,profile_user_id,bonus_email_verification_required) VALUES($1,$2,$3,TRUE) RETURNING id",
       [`pending-${user.id}@example.invalid`,"Pending Test",user.id]
     );
-    expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();
     const migration=fs.readFileSync(path.join(PROJECT_ROOT,"scripts/migrations/160_preserve_pending_starter_promise.sql"),"utf8");
     await query(migration);
     expect((await query<{starter_bonus_version:string}>("SELECT starter_bonus_version FROM users WHERE id=$1",[user.id])).rows[0].starter_bonus_version).toBe("starter-100-v1");
-    await query("UPDATE user_accounts SET bonus_email_verification_required=FALSE,email_verified_at=NOW() WHERE id=$1",[account.rows[0].id]);
     const grant=await grantStarterRunesIfNeeded(user.id);
     expect(grant?.granted).toBe(100);
     expect(await getRuneBalance(user.id)).toBe(100);
+    expect((await query<{bonus_email_verification_required:boolean}>("SELECT bonus_email_verification_required FROM user_accounts WHERE id=$1",[account.rows[0].id])).rows[0].bonus_email_verification_required).toBe(true);
     expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();
     expect((await query<{starter_bonus_version:string}>("SELECT starter_bonus_version FROM users WHERE id=$1",[user.id])).rows[0].starter_bonus_version).toBe("starter-100-v1");
     const newcomer=await createTestUser();
@@ -169,10 +168,9 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
       "INSERT INTO user_accounts(email,name,profile_user_id,bonus_email_verification_required) VALUES($1,$2,$3,TRUE) RETURNING id",
       [`new-${newcomer.id}@example.invalid`,"New Test",newcomer.id]
     );
-    expect(await grantStarterRunesIfNeeded(newcomer.id)).toBeNull();
     expect((await query<{starter_bonus_version:string|null}>("SELECT starter_bonus_version FROM users WHERE id=$1",[newcomer.id])).rows[0].starter_bonus_version).toBeNull();
-    await query("UPDATE user_accounts SET bonus_email_verification_required=FALSE,email_verified_at=NOW() WHERE id=$1",[newAccount.rows[0].id]);
     expect((await grantStarterRunesIfNeeded(newcomer.id))?.granted).toBe(40);
+    expect((await query<{bonus_email_verification_required:boolean}>("SELECT bonus_email_verification_required FROM user_accounts WHERE id=$1",[newAccount.rows[0].id])).rows[0].bonus_email_verification_required).toBe(true);
   });
   it("keeps account/profile creation and starter credit in one transaction",()=>{
     const registration=fs.readFileSync(path.join(PROJECT_ROOT,"src/app/api/auth/user/register/route.ts"),"utf8");

@@ -165,10 +165,10 @@ async function checkVerifyRecaptchaMocked() {
   try {
     global.fetch = (async () =>
       ({
-        json: async () => ({ success: true, score: 0.9 }),
+        json: async () => ({ success: true, score: 0.9, action: "register", hostname: "zovus.ru" }),
       }) as Response);
 
-    const pass = await verifyRecaptcha("valid-token", "203.0.113.7");
+    const pass = await verifyRecaptcha("valid-token", "register", "203.0.113.7");
     ok(pass.ok, "accepts valid Google response with score 0.9");
 
     global.fetch = (async () =>
@@ -176,18 +176,18 @@ async function checkVerifyRecaptchaMocked() {
         json: async () => ({ success: false, "error-codes": ["invalid-input-response"] }),
       }) as Response);
 
-    const fail = await verifyRecaptcha("bad-token", "203.0.113.7");
+    const fail = await verifyRecaptcha("bad-token", "register", "203.0.113.7");
     ok(!fail.ok && fail.error === "Проверка reCAPTCHA не пройдена", "rejects Google success:false");
 
     global.fetch = (async () =>
       ({
-        json: async () => ({ success: true, score: 0.1 }),
+        json: async () => ({ success: true, score: 0.1, action: "register", hostname: "zovus.ru" }),
       }) as Response);
 
-    const low = await verifyRecaptcha("low-score", "203.0.113.7");
+    const low = await verifyRecaptcha("low-score", "register", "203.0.113.7");
     ok(!low.ok, "rejects score below MIN_SCORE");
 
-    const missing = await verifyRecaptcha(undefined, "203.0.113.7");
+    const missing = await verifyRecaptcha(undefined, "register", "203.0.113.7");
     ok(!missing.ok && missing.error === "Пройдите проверку reCAPTCHA", "requires token when enabled");
   } finally {
     global.fetch = originalFetch;

@@ -23,6 +23,7 @@ export default function CabinetDailyNotifications() {
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [contactStatus, setContactStatus] = useState<DailyReminderStatus | null>(null);
+  const [emailProofRequired, setEmailProofRequired] = useState(false);
 
   const syncContactStatus = useCallback((status: DailyReminderStatus) => {
     setContactStatus(status);
@@ -39,9 +40,10 @@ export default function CabinetDailyNotifications() {
     });
     void (async () => {
       try {
-        const [res, consentRes] = await Promise.all([
+        const [res, consentRes, emailProofRes] = await Promise.all([
           fetch("/api/profile/notifications", { credentials: "include" }),
           fetch("/api/profile/retention-optin", { credentials: "include" }).catch(() => null),
+          fetch("/api/auth/user/verify-email", { credentials: "include", cache: "no-store" }).catch(() => null),
         ]);
         if (!res.ok) return;
         const data = (await res.json()) as { prefs?: Prefs };
@@ -49,6 +51,10 @@ export default function CabinetDailyNotifications() {
         if (consentRes?.ok) {
           const consent = (await consentRes.json()) as { marketingConsent?: boolean };
           setMarketingConsent(consent.marketingConsent === true);
+        }
+        if (emailProofRes?.ok) {
+          const emailProof = await emailProofRes.json() as { required?: boolean };
+          setEmailProofRequired(emailProof.required === true);
         }
       } catch {
         /* ignore */
@@ -97,6 +103,9 @@ export default function CabinetDailyNotifications() {
       <p className="mt-1 text-xs text-white/45">
         Вы сами выбираете, какие напоминания получать. Настройки можно изменить в кабинете.
       </p>
+      {emailProofRequired ? <p className="mt-2 text-xs text-amber-200/80">
+        Чтобы получать письма, <a className="underline" href="/auth/user/verify-email">подтвердите адрес почты</a>. На руны и бесплатные расклады это не влияет.
+      </p> : null}
 
       <DailyReminderCard source="cabinet" showManage onStatusChange={syncContactStatus} />
 

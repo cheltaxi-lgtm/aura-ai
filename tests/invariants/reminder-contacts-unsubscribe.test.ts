@@ -265,7 +265,7 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
     }
   });
 
-  it("the same verified signup mailbox also completes starter email verification", async () => {
+  it("contact verification enables email delivery without changing the already granted starter gift", async () => {
     vi.stubEnv("AUTH_SECRET", "test-contact-email-secret-long-enough-for-hmac");
     try {
       const email = `new-signup-${Date.now()}@example.com`;
@@ -287,7 +287,7 @@ describe.skipIf(!hasTestDb)("reminder-contacts-unsubscribe (db)", () => {
            WHERE rt.user_id=u.id AND rt.description LIKE 'Стартовый пакет%') AS starter_count
          FROM users u WHERE u.id=$1`, [profile.id]);
       expect((await starterState()).rows[0]).toMatchObject({
-        rune_balance: 0, starter_runes_granted: false, starter_count: "0",
+        rune_balance: starterRunes, starter_runes_granted: true, starter_count: "1",
       });
       expect(await getAccountDeliverableEmail(account.id)).toBeNull();
       expect(await requestContactEmailVerification({

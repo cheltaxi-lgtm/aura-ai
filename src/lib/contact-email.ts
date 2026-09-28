@@ -6,7 +6,6 @@ import { sendEmail } from "@/lib/email/send";
 import { getAccountDeliverableEmail } from "@/lib/reminder-contacts";
 import { getAccountDailyCardsReminder, getProfileUserIdForAccount } from "@/lib/accounts";
 import { getNotificationPrefs } from "@/lib/daily-reminder-service";
-import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 
 function signingKey(): Uint8Array {
   if (!process.env.AUTH_SECRET) throw new Error("AUTH_SECRET_required");
@@ -121,9 +120,8 @@ export async function verifyContactEmail(accountId: string, token: string): Prom
       contact_email_verify_version: number;
       profile_user_id: string | null;
       email: string;
-      bonus_email_verification_required: boolean;
     }>(client, `SELECT ua.token_version, ua.contact_email_verify_version,
-       ua.profile_user_id, ua.email, ua.bonus_email_verification_required
+       ua.profile_user_id, ua.email
        FROM user_accounts ua
        WHERE ua.id=$1 AND ua.erasure_requested_at IS NULL FOR UPDATE`, [accountId]);
     const account = rows[0];
@@ -149,10 +147,6 @@ export async function verifyContactEmail(accountId: string, token: string): Prom
            THEN FALSE ELSE bonus_email_verification_required END,
          daily_cards_reminder=CASE WHEN $3 THEN TRUE ELSE daily_cards_reminder END
        WHERE id=$1`, [accountId, email, payload.dailyReminder === true]);
-    if (account.bonus_email_verification_required &&
-        account.email.toLowerCase() === email && account.profile_user_id) {
-      await grantStarterRunesIfNeeded(account.profile_user_id, client);
-    }
     if (payload.dailyReminder === true && account.profile_user_id) {
       await queryClient(client,
         `UPDATE users SET notification_prefs=COALESCE(notification_prefs,'{}'::jsonb)
