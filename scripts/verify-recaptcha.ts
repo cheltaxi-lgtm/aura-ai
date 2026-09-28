@@ -157,6 +157,9 @@ async function checkVerifyRecaptchaMocked() {
 
   const prevSecret = process.env.RECAPTCHA_SECRET_KEY;
   const prevSite = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+  const mockHostname = new URL(
+    process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru"
+  ).hostname;
   process.env.RECAPTCHA_SECRET_KEY = "test-secret";
   process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY = "test-site";
 
@@ -165,7 +168,7 @@ async function checkVerifyRecaptchaMocked() {
   try {
     global.fetch = (async () =>
       ({
-        json: async () => ({ success: true, score: 0.9, action: "register", hostname: "zovus.ru" }),
+        json: async () => ({ success: true, score: 0.9, action: "register", hostname: mockHostname }),
       }) as Response);
 
     const pass = await verifyRecaptcha("valid-token", "register", "203.0.113.7");
@@ -181,7 +184,7 @@ async function checkVerifyRecaptchaMocked() {
 
     global.fetch = (async () =>
       ({
-        json: async () => ({ success: true, score: 0.1, action: "register", hostname: "zovus.ru" }),
+        json: async () => ({ success: true, score: 0.1, action: "register", hostname: mockHostname }),
       }) as Response);
 
     const low = await verifyRecaptcha("low-score", "register", "203.0.113.7");

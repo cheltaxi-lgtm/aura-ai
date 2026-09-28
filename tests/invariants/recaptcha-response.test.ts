@@ -10,6 +10,7 @@ describe("reCAPTCHA response binding", () => {
   async function verify(action: string, hostname: string) {
     vi.stubEnv("RECAPTCHA_SECRET_KEY", "test-secret");
     vi.stubEnv("NEXT_PUBLIC_RECAPTCHA_SITE_KEY", "test-site-key");
+    vi.stubEnv("NEXT_PUBLIC_APP_URL", "https://zovus.ru");
     vi.stubEnv("NEXT_PUBLIC_SITE_URL", "https://zovus.ru");
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
       json: async () => ({ success: true, score: 0.9, action, hostname }),
