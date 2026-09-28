@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { requireAdmin } from "@/lib/admin-auth";
 import { requireAdminStepUp } from "@/lib/admin-stepup";
 import { queryClient, withTransaction } from "@/lib/db";
-import { listUserAccounts, listOnboardingProfiles } from "@/lib/admin";
+import { countUserAccounts, countOnboardingProfiles, listUserAccounts, listOnboardingProfiles } from "@/lib/admin";
 import { requestAccountErasure } from "@/lib/account-erasure";
 import { getActivationDiagnostics } from "@/lib/activation-store";
 
@@ -13,15 +13,31 @@ export async function GET(request: NextRequest) {
   if (!auth) return NextResponse.json({ error: "Forbidden" }, { status: 403 });
 
   const type = request.nextUrl.searchParams.get("type") ?? "accounts";
-  const limit = parseInt(request.nextUrl.searchParams.get("limit") ?? "50", 10);
-  const offset = parseInt(request.nextUrl.searchParams.get("offset") ?? "0", 10);
+  const limit = Number(request.nextUrl.searchParams.get("limit") ?? "50");
+  const offset = Number(request.nextUrl.searchParams.get("offset") ?? "0");
   const includeTest = request.nextUrl.searchParams.get("includeTest") === "1";
 
-  if (type === "profiles") {
-    return NextResponse.json({ items: await listOnboardingProfiles(limit, offset, includeTest) });
+  if (type !== "accounts" && type !== "profiles") {
+    return NextResponse.json({ error: "invalid_type" }, { status: 400 });
   }
-  const [items, activation]=await Promise.all([listUserAccounts(limit, offset, includeTest),getActivationDiagnostics()]);
-  return NextResponse.json({ items, activation }, {headers:{"Cache-Control":"private, no-store"}});
+  if (!Number.isSafeInteger(limit) || limit < 1 || limit > 100 ||
+      !Number.isSafeInteger(offset) || offset < 0 || offset > 1_000_000) {
+    return NextResponse.json({ error: "invalid_pagination" }, { status: 400 });
+  }
+
+  if (type === "profiles") {
+    const [items, total] = await Promise.all([
+      listOnboardingProfiles(limit, offset, includeTest),
+      countOnboardingProfiles(includeTest),
+    ]);
+    return NextResponse.json({ items, total, limit, offset }, { headers: { "Cache-Control": "private, no-store" } });
+  }
+  const [items, total, activation] = await Promise.all([
+    listUserAccounts(limit, offset, includeTest),
+    countUserAccounts(includeTest),
+    getActivationDiagnostics(),
+  ]);
+  return NextResponse.json({ items, total, limit, offset, activation }, { headers: { "Cache-Control": "private, no-store" } });
 }
 
 export async function DELETE(request: NextRequest) {

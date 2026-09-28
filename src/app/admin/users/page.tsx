@@ -1,11 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import AdminShell, { AdminTitle, AdminTable, AdminBtn } from "@/components/admin/AdminShell";
 import { TRIPLET_COOLDOWN_MS, formatTripletCooldownRu } from "@/lib/triplet-limit";
 import { activationLabel } from "@/lib/activation-status";
 
 const GRANT_PRESETS = [50, 100, 250, 500, 1000];
+const PAGE_SIZE = 50;
 
 function tripletCooldownLabel(lastDrawAt: string | null | undefined): string {
   if (!lastDrawAt) return "доступен";
@@ -80,8 +81,14 @@ function AccountStatusBadge({
 export default function AdminUsersPage() {
   const grantOperation = useRef<{payload:string;id:string}|null>(null);
   const grantInFlight = useRef(false);
+  const loadRequest = useRef(0);
   const [tab, setTab] = useState<"accounts" | "profiles">("accounts");
+  const [page, setPage] = useState(0);
+  const [includeTest, setIncludeTest] = useState(false);
   const [items, setItems] = useState<Record<string, unknown>[]>([]);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(true);
+  const [refreshNonce, setRefreshNonce] = useState(0);
   const [activation, setActivation] = useState<{stages:Array<{stage:string;accounts:number}>;events:Array<{product:string;event:string;code:string;requests:number;accounts:number}>}|null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [deleteBusyId, setDeleteBusyId] = useState<string | null>(null);
@@ -97,14 +104,47 @@ export default function AdminUsersPage() {
   const [grantNotice, setGrantNotice] = useState<{ text: string; error: boolean } | null>(null);
   const [memoryPurgeBusyId, setMemoryPurgeBusyId] = useState<string | null>(null);
 
-  const load = () => {
-    fetch(`/api/admin/users?type=${tab}`)
+  const load = useCallback(() => {
+    const requestId = ++loadRequest.current;
+    const params = new URLSearchParams({
+      type: tab,
+      limit: String(PAGE_SIZE),
+      offset: String(page * PAGE_SIZE),
+      includeTest: includeTest ? "1" : "0",
+    });
+    setLoading(true);
+    fetch(`/api/admin/users?${params}`, { cache: "no-store" })
       .then((r) => { if (!r.ok) throw new Error("load_failed"); return r.json(); })
-      .then((d) => { setItems(d.items ?? []); setActivation(d.activation ?? null); setGrantNotice((current) => current?.error ? null : current); })
-      .catch(() => setGrantNotice({ text: "Не удалось обновить список пользователей. Повторите загрузку страницы.", error: true }));
-  };
+      .then((d) => {
+        if (requestId !== loadRequest.current) return;
+        const nextTotal = Number(d.total);
+        if (!Number.isSafeInteger(nextTotal) || nextTotal < 0 || !Array.isArray(d.items)) {
+          throw new Error("invalid_response");
+        }
+        if (page > 0 && page * PAGE_SIZE >= nextTotal) {
+          setPage(Math.max(0, Math.ceil(nextTotal / PAGE_SIZE) - 1));
+          return;
+        }
+        setItems(d.items);
+        setTotal(nextTotal);
+        setActivation(d.activation ?? null);
+        setGrantNotice((current) => current?.error ? null : current);
+      })
+      .catch(() => {
+        if (requestId !== loadRequest.current) return;
+        setItems([]);
+        setTotal(0);
+        setGrantNotice({ text: "Не удалось обновить список пользователей. Повторите загрузку страницы.", error: true });
+      })
+      .finally(() => {
+        if (requestId === loadRequest.current) setLoading(false);
+      });
+  }, [tab, page, includeTest]);
 
-  useEffect(load, [tab]);
+  useEffect(() => {
+    load();
+    return () => { loadRequest.current += 1; };
+  }, [load, refreshNonce]);
 
   const openGrantModal = (profileUserId: string, label: string, currentBalance: number) => {
     setGrantNotice(null);
@@ -131,7 +171,7 @@ export default function AdminUsersPage() {
       setGrantNotice({ text: "Удаление принято: аккаунт и данные бота будут очищены вместе.", error: false });
       setItems((current) => current.map((item) => String(item.id) === id
         ? { ...item, erasure_requested_at: new Date().toISOString() } : item));
-      load();
+      setRefreshNonce((current) => current + 1);
     } catch {
       setGrantNotice({ text: "Не удалось запросить удаление. Проверьте состояние аккаунта и повторите попытку.", error: true });
     } finally {
@@ -148,7 +188,7 @@ export default function AdminUsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, isUnlimited: next }),
       });
-      load();
+      setRefreshNonce((current) => current + 1);
     } finally {
       setBusyId(null);
     }
@@ -163,7 +203,7 @@ export default function AdminUsersPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ id, isInternal: next }),
       });
-      load();
+      setRefreshNonce((current) => current + 1);
     } finally {
       setBusyId(null);
     }
@@ -191,7 +231,7 @@ export default function AdminUsersPage() {
           `энергия дня: ${Number(data.deletedDailyReadings ?? 0)}`,
         ];
         setGrantNotice({ text: `Сброс для ${email}: удалено ${parts.join(", ")}.`, error: false });
-        load();
+        setRefreshNonce((current) => current + 1);
       } else {
         alert(data.error ?? "Ошибка сброса");
       }
@@ -257,7 +297,7 @@ export default function AdminUsersPage() {
         setGrantNotice({ text:
           `Начислено ${amount.toLocaleString("ru-RU")} ᚢ. Новый баланс: ${formatRunes(data.newBalance)}`, error: false
         });
-        load();
+        setRefreshNonce((current) => current + 1);
       } else {
         alert(data.error ?? "Ошибка начисления");
       }
@@ -284,6 +324,10 @@ export default function AdminUsersPage() {
     );
   };
 
+  const firstShown = total === 0 ? 0 : page * PAGE_SIZE + 1;
+  const lastShown = Math.min(total, page * PAGE_SIZE + items.length);
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+
   return (
     <AdminShell>
       <AdminTitle
@@ -299,12 +343,34 @@ export default function AdminUsersPage() {
         {(["accounts", "profiles"] as const).map((t) => (
           <button
             key={t}
-            onClick={() => setTab(t)}
+            onClick={() => { setTab(t); setPage(0); setLoading(true); }}
             className={`rounded-lg px-4 py-2 text-sm ${tab === t ? "bg-aura-gold/20 text-aura-champagne" : "text-gray-500 hover:text-white"}`}
           >
             {t === "accounts" ? "Аккаунты" : "Профили"}
           </button>
         ))}
+      </div>
+
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-xs text-gray-300">
+        <div className="flex flex-wrap items-center gap-4">
+          <p role="status" aria-live="polite">
+            {loading ? "Загрузка списка…" : `Показано ${firstShown}–${lastShown} из ${total} ${tab === "accounts" ? "аккаунтов" : "профилей"}`}
+          </p>
+          <label className="flex min-h-11 cursor-pointer items-center gap-2">
+            <input
+              type="checkbox"
+              checked={includeTest}
+              onChange={(event) => { setIncludeTest(event.target.checked); setPage(0); setLoading(true); }}
+              className="h-4 w-4 accent-amber-400"
+            />
+            Включая тестовые записи
+          </label>
+        </div>
+        <div className="flex items-center gap-2">
+          <button type="button" disabled={loading || page === 0} onClick={() => { setPage(page - 1); setLoading(true); }} className="min-h-11 rounded-lg border border-white/15 px-3 py-1.5 disabled:opacity-40">Назад</button>
+          <span>Страница {page + 1} из {totalPages}</span>
+          <button type="button" disabled={loading || page + 1 >= totalPages} onClick={() => { setPage(page + 1); setLoading(true); }} className="min-h-11 rounded-lg border border-white/15 px-3 py-1.5 disabled:opacity-40">Далее</button>
+        </div>
       </div>
 
       {tab === "accounts" && activation ? (
@@ -319,7 +385,9 @@ export default function AdminUsersPage() {
           </details>
         </section>
       ) : null}
-      {tab === "accounts" ? (
+      {loading ? (
+        <div className="glass-panel p-6 text-sm text-gray-400">Загрузка списка пользователей…</div>
+      ) : tab === "accounts" ? (
         <AdminTable
           headers={["Email", "Имя", "Статус аккаунта", "Профиль", "Знак", "Чат-сеансов", "Первое использование", "Расклад на сутки", "Безлимит", "Внутренний", "Руны", "Создан", "Последняя активность", ""]}
           rows={items.map((u) => {

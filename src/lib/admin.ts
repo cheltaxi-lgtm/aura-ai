@@ -86,8 +86,30 @@ export async function getDashboardStats() {
   };
 }
 
+function accountListFilter(includeTest: boolean): string {
+  return includeTest ? "" : `WHERE NOT ${testAccountEmailSql("ua.email")}`;
+}
+
+function profileListFilter(includeTest: boolean): string {
+  return includeTest
+    ? ""
+    : `WHERE NOT ${testProfileNameSql("u.name")}
+         AND NOT EXISTS (
+           SELECT 1 FROM user_accounts ua
+           WHERE ua.profile_user_id = u.id
+             AND ${testAccountEmailSql("ua.email")}
+         )`;
+}
+
+export async function countUserAccounts(includeTest = false): Promise<number> {
+  const { rows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM user_accounts ua ${accountListFilter(includeTest)}`
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function listUserAccounts(limit = 50, offset = 0, includeTest = false) {
-  const testFilter = includeTest ? "" : `WHERE NOT ${testAccountEmailSql("ua.email")}`;
+  const testFilter = accountListFilter(includeTest);
   const { rows } = await query<{
     id: string;
     email: string;
@@ -132,21 +154,21 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
      FROM user_accounts ua
      LEFT JOIN users u ON u.id = ua.profile_user_id
      ${testFilter}
-     ORDER BY ua.created_at DESC LIMIT $1 OFFSET $2`,
+     ORDER BY ua.created_at DESC, ua.id DESC LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
   return rows;
 }
 
+export async function countOnboardingProfiles(includeTest = false): Promise<number> {
+  const { rows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM users u ${profileListFilter(includeTest)}`
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest = false) {
-  const testFilter = includeTest
-    ? ""
-    : `WHERE NOT ${testProfileNameSql("u.name")}
-         AND NOT EXISTS (
-           SELECT 1 FROM user_accounts ua
-           WHERE ua.profile_user_id = u.id
-             AND ${testAccountEmailSql("ua.email")}
-         )`;
+  const testFilter = profileListFilter(includeTest);
   const { rows } = await query<{
     id: string;
     name: string;
@@ -180,7 +202,7 @@ export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest
             ) AS last_activity_at
      FROM users u
      ${testFilter}
-     ORDER BY u.created_at DESC LIMIT $1 OFFSET $2`,
+     ORDER BY u.created_at DESC, u.id DESC LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
   return rows;
