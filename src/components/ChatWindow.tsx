@@ -241,6 +241,14 @@ export default function ChatWindow({
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
   const [memoryFresh, setMemoryFresh] = useState(false);
   const [memoryModeBusy, setMemoryModeBusy] = useState(false);
+  const [journeyReady, setJourneyReady] = useState<{ sessionId: string; messageCount: number } | null>(null);
+  const hasReading = messages.some(message => message.role === "assistant" && message.content.trim().length > 80);
+  useEffect(() => {
+    if (sessionId && !storageBlocked && !isLoading && !spreadReadingLoading && hasReading) {
+      setJourneyReady(current => current?.sessionId === sessionId && current.messageCount === messages.length
+        ? current : { sessionId, messageCount: messages.length });
+    }
+  }, [sessionId, storageBlocked, isLoading, spreadReadingLoading, hasReading, messages.length]);
   const memoryAnchorQuery = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messages[index]?.role === "user") return messages[index].content;
@@ -1094,7 +1102,7 @@ export default function ChatWindow({
           )}
 
           {retentionOptInSurface === "post_value" ? <DailyReminderCard source="post_result" /> : null}
-          {sessionId && !storageBlocked && !isLoading && !spreadReadingLoading && messages.some(message=>message.role === "assistant" && message.content.trim().length>80) && <ReadingJourney key={`${sessionId}:${messages.length}`} readingId={sessionId} />}
+          {sessionId && !storageBlocked && journeyReady?.sessionId === sessionId && <ReadingJourney key={sessionId} readingId={sessionId} refreshToken={journeyReady.messageCount} />}
           {showTypingIndicator && (
             <motion.div
               initial={{ opacity: 0 }}

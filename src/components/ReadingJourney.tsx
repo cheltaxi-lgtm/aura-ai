@@ -7,26 +7,32 @@ import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import type { getReadingJourney } from "@/lib/reading-journey";
 
 type Journey = NonNullable<Awaited<ReturnType<typeof getReadingJourney>>>;
-export default function ReadingJourney({readingId,context,showDailyReminder=true}:{readingId?:string;context?:string;showDailyReminder?:boolean}) {
+export default function ReadingJourney({readingId,context,showDailyReminder=true,refreshToken=0}:{readingId?:string;context?:string;showDailyReminder?:boolean;refreshToken?:number}) {
   const {firstExperienceEnabled}=usePlatformFeatures();
   const [loadError,setLoadError]=useState(false); const [retry,setRetry]=useState(0);
   const [journey,setJourney]=useState<Journey|null>(null);
   const [insight,setInsight]=useState(""); const [step,setStep]=useState(""); const [reflection,setReflection]=useState("");
   const [reminder,setReminder]=useState(false); const [channels,setChannels]=useState<string[]>([]); const [channel,setChannel]=useState("email");
   const [busy,setBusy]=useState(false); const [message,setMessage]=useState(""); const inFlight=useRef(false); const id=useId();
+  const loadedReadingId=useRef<string|null>(null); const requestedReadingId=useRef<string|undefined>(undefined);
   const continuationRef=useRef<HTMLDivElement>(null); const continuationTracked=useRef<string|null>(null);
   useEffect(()=>{
     if(!firstExperienceEnabled) return;
-    const controller=new AbortController();setLoadError(false);setJourney(null);
+    const controller=new AbortController();setLoadError(false);
     const selectedId=readingId ?? new URLSearchParams(window.location.search).get("readingId") ?? undefined;
+    if(requestedReadingId.current!==selectedId){requestedReadingId.current=selectedId;loadedReadingId.current=null;setJourney(null);}
     void fetch(`/api/diary/journey${selectedId?`?readingId=${encodeURIComponent(selectedId)}`:""}`,{signal:controller.signal}).then(async response=>{
       if(!response.ok){if(response.status!==401 && response.status!==404)throw new Error();return;}
       const data=await response.json(); const next=data.journey as Journey|null;
       if(controller.signal.aborted || !next || (context && next.reading.kind!==context)) return;
-      setJourney(next);setInsight(next.note?.entry_text??"");setStep(next.note?.weekly_step??"");setReflection(next.note?.reflection??"");setReminder(Boolean(next.note?.reminder_consent_at));setChannels(data.channels??[]);setChannel(next.note?.reminder_channel??data.channels?.[0]??"email");
+      if(loadedReadingId.current!==next.reading.id){
+        loadedReadingId.current=next.reading.id;
+        setInsight(next.note?.entry_text??"");setStep(next.note?.weekly_step??"");setReflection(next.note?.reflection??"");setReminder(Boolean(next.note?.reminder_consent_at));setChannel(next.note?.reminder_channel??data.channels?.[0]??"email");
+      }
+      setJourney(next);setChannels(data.channels??[]);
     }).catch(()=>{if(!controller.signal.aborted)setLoadError(true);});
     return ()=>controller.abort();
-  },[firstExperienceEnabled,readingId,context,retry]);
+  },[firstExperienceEnabled,readingId,context,retry,refreshToken]);
   useEffect(()=>{
     const node=continuationRef.current; const continuation=journey?.continuation;
     if(!node || !continuation) return;

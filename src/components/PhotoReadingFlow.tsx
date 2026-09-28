@@ -1857,6 +1857,8 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
+                  {!loading && result && isLoggedIn ? <DailyReminderCard source="post_result" compact /> : null}
+
                   <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
                     {displayAnalysis ? (
                       <>
@@ -1885,8 +1887,6 @@ export default function PhotoReadingFlow({
                       </Link>
                     </div>
                   )}
-
-                  {!loading && result && isLoggedIn ? <DailyReminderCard source="post_result" /> : null}
 
                   {!loading && result?.historyId ? <ReportExportActions journey path={`/cabinet/readings/${encodeURIComponent(result.historyId)}/print`} /> : null}
 

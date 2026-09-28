@@ -156,7 +156,7 @@ export default function TarotTriplet({
             <p className="text-sm leading-relaxed text-aura-ivory/75">
               Выпало:{" "}
               <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
-              Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
+              У каждой карты своя позиция и значение. Как они связаны с вашим вопросом, расскажет наставник.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
               <button

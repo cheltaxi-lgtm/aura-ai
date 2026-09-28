@@ -153,9 +153,10 @@ test("manual entry lets a guest choose cards before authentication and resumes a
   await expect(page.getByRole("button", { name: /Назад/, exact: true })).toBeVisible();
 });
 
-test("a new saved photo result stays visible and opens the exact history record", async ({ page }) => {
+test("a new saved photo result stays visible and opens the exact history record", async ({ page }, info) => {
   const f = await fixture(page);
   f.login();
+  await page.setViewportSize({ width: 390, height: 844 });
   const historyId = "22222222-2222-4222-8222-222222222222";
   await page.route("**/api/photo-reading/stream", route => route.fulfill({ json: {
     analysis: "**Шут** — перед тобой новый путь.\n\n## Простыми словами\n\nСделай первый небольшой шаг.",
@@ -172,12 +173,24 @@ test("a new saved photo result stays visible and opens the exact history record"
   await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
 
   await expect(dialog.getByText("Сделай первый небольшой шаг.")).toBeVisible();
+  const dailyAction = dialog.getByRole("link", { name: "Открыть расклад на сутки · 0 рун" });
+  await expect(dailyAction).toBeVisible();
+  await expect(dialog.getByText("Адрес для уведомлений")).toBeHidden();
+  const resultText = dialog.getByText("Сделай первый небольшой шаг.");
+  expect(await dailyAction.evaluate((link, text) =>
+    Boolean(link.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_FOLLOWING),
+    await resultText.elementHandle()
+  )).toBe(true);
   await expect(dialog.getByText("Этот разбор был полезен?")).toBeVisible();
   await expect(dialog.getByRole("link", { name: "Открыть", exact: true })).toHaveAttribute(
     "href",
     `/cabinet/readings/${historyId}/print`
   );
   await expect(dialog.getByRole("button", { name: "Перейти в чат", exact: true })).toBeVisible();
+  await dailyAction.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("photo-daily-return-mobile.png") });
+  await dialog.getByText("Настроить напоминания").click();
+  await expect(dialog.getByText("Адрес для уведомлений")).toBeVisible();
   expect(f.calls.some((call) => call.includes("/api/photo-reading/sync-session"))).toBe(false);
 });
 

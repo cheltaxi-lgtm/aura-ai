@@ -17,10 +17,12 @@ export type DailyReminderStatus = {
 
 export default function DailyReminderCard({
   showManage = false,
+  compact = false,
   onStatusChange,
   source = "post_result",
 }: {
   showManage?: boolean;
+  compact?: boolean;
   onStatusChange?: (status: DailyReminderStatus) => void;
   source?: "post_result" | "personal_home" | "cabinet";
 }) {
@@ -180,6 +182,8 @@ export default function DailyReminderCard({
       event.preventDefault();
       window.location.assign("/?daily=1");
     }}>Открыть расклад на сутки · 0 рун</Link>
+    <details className="mt-3" open={compact ? undefined : true}>
+    <summary className={compact ? "min-h-11 cursor-pointer py-2 text-amber-200 underline" : "hidden"}>Настроить напоминания</summary>
     {status.hasTelegram ? <div className="mt-3 border-t border-white/10 pt-3">
       <p className="leading-6">Одно напоминание в Telegram о новом бесплатном раскладе. Отключить можно здесь или в кабинете.</p>
       {status.dailyTelegramReminder
@@ -215,5 +219,6 @@ export default function DailyReminderCard({
     </div> : null}
     </> : null}
     {message ? <p className="mt-2 text-xs text-white/60" role="status">{message}</p> : null}
+    </details>
   </aside>;
 }
