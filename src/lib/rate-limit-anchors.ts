@@ -142,6 +142,27 @@ export async function profileHasGuestIntroLifetimeFlag(
   return typeof usedAt === "string" && Boolean(usedAt.trim());
 }
 
+/** The first full registered reading is not regenerated after its history is erased. */
+export async function profileHasIntroReadingConsumed(userId: string): Promise<boolean> {
+  const { rows } = await query<{ consumed_at: string | null }>(
+    `SELECT astro_meta->>'introReadingConsumedAt' AS consumed_at FROM users WHERE id = $1`,
+    [userId]
+  );
+  return Boolean(rows[0]?.consumed_at?.trim());
+}
+
+export async function recordIntroReadingConsumed(userId: string, client: PoolClient): Promise<void> {
+  await client.query(
+    `UPDATE users
+     SET astro_meta = CASE
+       WHEN COALESCE(astro_meta->>'introReadingConsumedAt', '') <> '' THEN astro_meta
+       ELSE jsonb_set(COALESCE(astro_meta, '{}'::jsonb), '{introReadingConsumedAt}', to_jsonb(NOW()::text), true)
+     END
+     WHERE id = $1`,
+    [userId]
+  );
+}
+
 /** Admin reset: drop persisted daily-reading cooldown after content is wiped. */
 export async function clearDailyReadingAnchors(userId: string): Promise<boolean> {
   const { rows } = await query<{ astro_meta: Record<string, unknown> | null }>(

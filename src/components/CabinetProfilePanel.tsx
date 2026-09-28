@@ -69,6 +69,13 @@ function Field({ label, value }: { label: string; value: string | null | undefin
   );
 }
 
+function clearProfileEditQuery() {
+  const url = new URL(window.location.href);
+  if (!url.searchParams.has("edit")) return;
+  url.searchParams.delete("edit");
+  window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
 export default function CabinetProfilePanel({
   email,
   accountName,
@@ -84,10 +91,13 @@ export default function CabinetProfilePanel({
   const [success, setSuccess] = useState("");
 
   useEffect(() => {
+    if (new URLSearchParams(window.location.search).get("edit") === "1") {
+      setEditing(true);
+    }
     if (!profile) return;
     setName(profile.name ?? accountName);
     setAstro(profileToForm(profile, accountName).astro);
-    if (profile.birthDate) {
+    if (profile.birthDate && new URLSearchParams(window.location.search).get("edit") !== "1") {
       setEditing(false);
     }
   }, [profile, accountName]);
@@ -116,6 +126,7 @@ export default function CabinetProfilePanel({
     setName(form.name);
     setAstro(form.astro);
     setEditing(false);
+    clearProfileEditQuery();
     setError("");
   };
 
@@ -143,11 +154,17 @@ export default function CabinetProfilePanel({
       }
 
       if (data.profile) {
+        clearProfileEditQuery();
         onSaved(data.profile as CabinetProfile);
         clearNeedsServerProfile();
+        const oldProfile = (() => {
+          try { return JSON.parse(localStorage.getItem("aura_profile") || "{}"); }
+          catch { return {}; }
+        })();
         localStorage.setItem(
           "aura_profile",
           JSON.stringify({
+            ...oldProfile,
             name: data.profile.name,
             gender: data.profile.gender,
             birthDate: data.profile.birthDate,
@@ -157,7 +174,6 @@ export default function CabinetProfilePanel({
             lifeFocus: data.profile.lifeFocus ?? undefined,
             mainQuestion: data.profile.mainQuestion ?? undefined,
             astroMeta: data.profile.astroMeta ?? undefined,
-            tarotCards: [],
           })
         );
       }
@@ -172,7 +188,7 @@ export default function CabinetProfilePanel({
   };
 
   return (
-    <section className="mb-8">
+    <section id="profile-editor" className="mb-8 scroll-mt-24">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
         <h2 className="font-display flex items-center gap-2 text-xl text-gray-300">
           <UserRound className="h-5 w-5" /> Мой профиль

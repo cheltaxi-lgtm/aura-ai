@@ -455,7 +455,6 @@ export async function claimGuestNatalChart(opts: {
       const birthTime = guest.time_known ? guest.birth_time : null;
       const zodiac = getZodiacFromDate(birthDate).name || user.zodiac || "";
       const nextMeta = {
-        ...(typeof user.astro_meta === "object" && user.astro_meta ? user.astro_meta : {}),
         ...buildAstroMeta(birthDate),
         stubProfile: false,
       };
@@ -466,7 +465,7 @@ export async function claimGuestNatalChart(opts: {
            birth_time = $3,
            birth_city = $4,
            zodiac = $5,
-           astro_meta = $6::jsonb
+           astro_meta = COALESCE(astro_meta, '{}'::jsonb) || $6::jsonb
          WHERE id = $1`,
         [opts.profileUserId, birthDate, birthTime, guest.place_label, zodiac, JSON.stringify(nextMeta)]
       );

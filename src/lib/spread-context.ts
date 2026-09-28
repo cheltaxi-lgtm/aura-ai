@@ -228,6 +228,7 @@ export function masterHasReadingForSpread(
   if (!cardsKey) return false;
   return readings.some((row) => {
     if (row.characterName !== masterId) return false;
+    if ((row.contextData as { spreadType?: string } | undefined)?.spreadType === "intro") return false;
     const type = row.contextData?.type;
     if (!type || !SPREAD_READING_TYPES.has(type)) return false;
     return spreadReadingCardsKey(row.contextData) === cardsKey;
@@ -266,6 +267,7 @@ export function anyMasterReadingForSpread(
   return readings.some((row) => {
     if (excludeMasterId && row.characterName === excludeMasterId) return false;
     if (row.characterName === "triplet") return false;
+    if ((row.contextData as { spreadType?: string } | undefined)?.spreadType === "intro") return false;
     const type = row.contextData?.type;
     if (!type || !SPREAD_READING_TYPES.has(type)) return false;
     return spreadReadingCardsKey(row.contextData) === cardsKey;
@@ -275,11 +277,14 @@ export function anyMasterReadingForSpread(
 export function findSavedSpreadReading(
   readings: SpreadReadingRow[],
   masterId: string,
-  cardsKey: string
+  cardsKey: string,
+  requiredSpreadType?: "intro"
 ): SpreadReadingRow | undefined {
   if (!cardsKey) return undefined;
   return readings.find((row) => {
     if (row.characterName !== masterId) return false;
+    const rowSpreadType = (row.contextData as { spreadType?: string } | undefined)?.spreadType;
+    if (requiredSpreadType ? rowSpreadType !== requiredSpreadType : rowSpreadType === "intro") return false;
     const type = row.contextData?.type;
     if (!type || !SPREAD_READING_TYPES.has(type)) return false;
     if (spreadReadingCardsKey(row.contextData) !== cardsKey) return false;

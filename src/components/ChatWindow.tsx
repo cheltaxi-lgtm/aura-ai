@@ -148,6 +148,7 @@ interface ChatWindowProps {
   startingNewSession?: boolean;
   /** User birth date — for numerolog Pythagoras grid fallback in chat. */
   userBirthDate?: string;
+  userBirthCity?: string;
   /** Active consultation session id (share / persistence hooks). */
   sessionId?: string;
   /** Guest-resume follow-ups: static chips after full reading (click → send). */
@@ -158,6 +159,8 @@ interface ChatWindowProps {
   onSuggestedReplySend?: (message: string) => void;
   /** After a completed Tarot / guest-resume reading — never over paywall. */
   retentionOptInSurface?: "post_value";
+  /** Whether the first registered spread is the current reading. */
+  introductorySpread?: boolean;
 }
 
 export default function ChatWindow({
@@ -217,12 +220,14 @@ export default function ChatWindow({
   archivingSession = false,
   startingNewSession = false,
   userBirthDate,
+  userBirthCity,
   sessionId,
   suggestedReplies,
   showContinueInChat = false,
   onContinueInChat,
   onSuggestedReplySend,
   retentionOptInSurface,
+  introductorySpread = false,
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
@@ -1101,6 +1106,13 @@ export default function ChatWindow({
           </AnimatePresence>
           )}
 
+          {retentionOptInSurface === "post_value" && introductorySpread ? (
+            <div className="my-4 rounded-2xl border border-white/15 bg-white/[0.04] p-4 text-sm text-white/80">
+              <p className="font-semibold text-white">Первый расклад готов</p>
+              <p className="mt-1">Прошлое, настоящее и возможное будущее сохранены в истории. Далее можно открыть отдельный расклад на сутки или задать уточняющий вопрос мастеру.</p>
+              {!userBirthDate || !userBirthCity ? <a className="mt-3 inline-block text-amber-200 underline" href="/cabinet?tab=profile&edit=1#profile-editor">{userBirthDate ? "Добавить город рождения в профиль" : "Добавить дату рождения для персональных расчётов"}</a> : null}
+            </div>
+          ) : null}
           {retentionOptInSurface === "post_value" ? <DailyReminderCard source="post_result" /> : null}
           {sessionId && !storageBlocked && journeyReady?.sessionId === sessionId && <ReadingJourney key={sessionId} readingId={sessionId} refreshToken={journeyReady.messageCount} />}
           {showTypingIndicator && (

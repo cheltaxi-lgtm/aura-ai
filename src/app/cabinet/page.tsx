@@ -289,6 +289,15 @@ export default function CabinetPage() {
     return () => cancelAnimationFrame(frame);
   }, [loading, data, activeTab]);
 
+  /** Profile editor mounts only after the separate profile request finishes. */
+  useEffect(() => {
+    if (loading || profileLoading || activeTab !== "profile" || window.location.hash !== "#profile-editor") return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("profile-editor")?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loading, profileLoading, activeTab]);
+
   /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
   useEffect(() => {
     if (loading || authLoading || !authUser || !data) return;
@@ -955,8 +964,9 @@ export default function CabinetPage() {
           <div className="mb-6 rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-4 text-sm text-aura-champagne">
             <p className="font-medium text-white">Сделать Zovus ещё точнее?</p>
             <p className="mt-1 text-white/70">
-              Добавьте дату рождения — откроются персональные расчёты, Матрица судьбы и
-              астрологические возможности. Таро уже доступно без этого шага.
+              {data?.profile?.birthDate
+                ? "Дата рождения сохранена. Добавьте город рождения, чтобы завершить профиль для персональных астрологических расчётов. Таро уже доступно."
+                : "Добавьте дату рождения — откроются персональные расчёты, Матрица судьбы и астрологические возможности. Таро уже доступно без этого шага."}
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <button

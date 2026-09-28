@@ -78,7 +78,7 @@ const DECK_SHUFFLE_MIN_MS = 3600;
 export interface SessionStartParams {
   characterKey: string;
   intention: SessionTopicId | null;
-  spreadType: "daily" | "new";
+  spreadType: "daily" | "intro" | "new";
   spreadId?: SpreadId;
   cards: string[];
   /** Свой вопрос клиента — когда intention === "custom". */

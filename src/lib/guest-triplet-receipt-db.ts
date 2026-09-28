@@ -325,11 +325,7 @@ export async function claimGuestResumeSession(input: {
     }
 
     // Lifetime acquisition marker — independent of daily triplet cooldown.
-    try {
-      await recordGuestIntroUsed(input.profileUserId, new Date(), client);
-    } catch {
-      /* non-fatal: session row still gates until purge */
-    }
+    await recordGuestIntroUsed(input.profileUserId, new Date(), client);
 
     return {
       ok: true,

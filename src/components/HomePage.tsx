@@ -3686,11 +3686,10 @@ export default function HomePage({
             startingNewSession={startingNewSession}
             userBirthDate={
               selectedCharacter === "numerolog"
-                ? matrixSessionBirthDate ||
-                  getActiveProfile()?.birthDate ||
-                  profile?.birthDate
-                : undefined
+                ? matrixSessionBirthDate || getActiveProfile()?.birthDate || profile?.birthDate
+                : getActiveProfile()?.birthDate || profile?.birthDate
             }
+            userBirthCity={getActiveProfile()?.birthCity || profile?.birthCity}
             sessionId={consultationSessionId ?? session?.sessionId ?? undefined}
             suggestedReplies={guestResumeChatAssist.replies}
             showContinueInChat={guestResumeChatAssist.showContinue}
@@ -3699,6 +3698,7 @@ export default function HomePage({
                 ? "post_value"
                 : undefined
             }
+            introductorySpread={sessionSpreadMetaRef.current?.spreadType === "intro"}
             onContinueInChat={() => trackGuestChatContinue("prompt")}
             onSuggestedReplySend={() => trackGuestChatContinue("suggested_reply")}
           />
@@ -3791,6 +3791,9 @@ export default function HomePage({
               <section className="mb-12">
                 <OnboardingForm
                   initialName={authUser?.name ?? profile?.name}
+                  initialBirthDate={profile?.birthDate}
+                  initialBirthTime={profile?.birthTime}
+                  initialBirthCity={profile?.birthCity}
                   initialGender={
                     authUser?.oauthGender === "male" || authUser?.oauthGender === "female"
                       ? authUser.oauthGender

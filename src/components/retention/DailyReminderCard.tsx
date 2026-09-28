@@ -172,8 +172,8 @@ export default function DailyReminderCard({
   };
 
   return <aside ref={cardRef} className="my-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-sm text-white/80" aria-label="Напоминания о раскладе на сутки">
-    <p className="font-semibold text-white">Ваш бесплатный расклад на сутки</p>
-    <p className="mt-1 leading-6">Утро, день и вечер — один расклад бесплатно раз в сутки. Подарочные руны для него не нужны.</p>
+    <p className="font-semibold text-white">{source === "post_result" ? "Дальше — отдельный расклад на сутки" : "Ваш бесплатный расклад на сутки"}</p>
+    <p className="mt-1 leading-6">{source === "post_result" ? "Это отдельный формат: утро, день и вечер. Он доступен бесплатно раз в сутки, без рун." : "Утро, день и вечер — один расклад бесплатно раз в сутки. Подарочные руны для него не нужны."}</p>
     <Link href="/?daily=1" prefetch={false} className="btn-luxe btn-luxe--gold mt-3 min-h-11" style={{transitionProperty:"transform, opacity"}} onClick={(event) => {
       trackDailyCardsCtaClick(source);
       trackActivation("daily", "offer_clicked", eventKey(), source);

@@ -3,7 +3,7 @@ import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { matrixCompatibility } from "@/lib/numerology/matrix-compatibility";
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDb, query } from "@/lib/db";
+import { ensureDb, query, withTransaction } from "@/lib/db";
 import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading } from "@/lib/chat-prompts";
 import { isAiMasterId } from "@/lib/showcase-masters";
@@ -49,6 +49,8 @@ import { resolveSessionForUser } from "@/lib/session-access";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { resolveDailyFreeReading } from "@/lib/daily-spread-billing";
+import { resolveIntroFreeReading } from "@/lib/intro-triplet";
+import { profileHasIntroReadingConsumed, recordIntroReadingConsumed } from "@/lib/rate-limit-anchors";
 import { resolveGuestResumeFreeReading } from "@/lib/guest-resume-billing";
 import { setGuestResumeReadingId } from "@/lib/guest-triplet-receipt-db";
 import { buildTeaserContinuityPromptBlock } from "@/lib/guest-triplet-teaser-service";
@@ -152,7 +154,7 @@ async function persistReadingToSession(input: {
   reading: string;
   tarotCards: { name: string }[];
   intention?: string;
-  spreadType?: "daily" | "new" | "guest_resume";
+  spreadType?: "daily" | "intro" | "new" | "guest_resume";
   spreadId?: string;
   customQuestion?: string;
 }): Promise<string | null> {
@@ -164,7 +166,7 @@ async function persistReadingToSession(input: {
     reading: input.reading,
     tarotCards: input.tarotCards,
     intention: input.intention,
-    spreadType: input.spreadType === "guest_resume" ? null : input.spreadType,
+    spreadType: input.spreadType === "guest_resume" || input.spreadType === "intro" ? null : input.spreadType,
     spreadId: input.spreadId,
     customQuestion: input.customQuestion,
   });
@@ -178,7 +180,7 @@ async function respondWithExistingSpreadReading(input: {
   tarotCards: { name: string; meaning: string }[];
   sessionId?: string;
   intention?: string;
-  spreadType?: "daily" | "new" | "guest_resume";
+  spreadType?: "daily" | "intro" | "new" | "guest_resume";
   spreadId?: string;
   customQuestion?: string;
   userName: string;
@@ -675,6 +677,28 @@ async function handlePost(request: NextRequest) {
         })
       : null;
     const isDailySpread = Boolean(dailyReading);
+    const introReading = !isGuestResumeFree && !isDailySpread
+      ? await resolveIntroFreeReading({
+          userId: authed.profileUserId,
+          characterId,
+          spreadType,
+          intention,
+          customQuestion,
+          tarotCards,
+        })
+      : null;
+    const isIntroSpread = Boolean(introReading);
+    if (spreadType === "intro" && !introReading) {
+      return NextResponse.json({ code: "INTRO_READING_UNAVAILABLE", error: "Первый расклад не найден. Вернитесь к картам и попробуйте ещё раз. Руны не списаны." }, { status: 409 });
+    }
+    if (introReading) {
+      tarotCards = introReading.cards;
+      spreadType = "intro";
+      isPaid = true;
+      forceRegenerate = false;
+      spreadIdRaw = "triplet";
+      readingScope = "";
+    }
     if (spreadType === "daily" && !isGuestResumeFree && !dailyReading) {
       return NextResponse.json(
         {
@@ -698,6 +722,13 @@ async function handlePost(request: NextRequest) {
       spreadType = "guest_resume";
     }
 
+    if (introReading && await profileHasIntroReadingConsumed(authed.profileUserId)) {
+      const priorReading = await findSpreadReadingEntry(authed.profileUserId, characterId, introReading.cardsKey);
+      if (!priorReading || !isAiCacheReusable(priorReading.context_data)) {
+        return NextResponse.json({ code: "INTRO_ALREADY_READ", error: "Первый разбор уже был получен. Повторное создание недоступно; сохранённые расклады откройте в истории." }, { status: 409 });
+      }
+    }
+
     if (asyncRequested && isAsyncJobWorkerConfigured()) {
       const longNumerology =
         isNumerologMaster(characterId) &&
@@ -715,6 +746,7 @@ async function handlePost(request: NextRequest) {
           ...rawBody,
           async: false,
           ...(dailyReading ? { tarotCards, spreadType: "daily", spreadId: "triplet", readingScope: "today", forceRegenerate: false } : {}),
+          ...(introReading ? { tarotCards, spreadType: "intro", spreadId: "triplet", readingScope: "", forceRegenerate: false } : {}),
           ...(isoBirthForJob ? { birthDate: isoBirthForJob } : {}),
           ...(resolvedMatrixSubject ? { matrixSubjectId: resolvedMatrixSubject.id } : {}),
         },
@@ -802,12 +834,15 @@ async function handlePost(request: NextRequest) {
         customQuestion: customQuestion || null,
       });
     }
+    if (isIntroSpread) {
+      systemPrompt += `\nПЕРВЫЙ РАСКЛАД ПОСЛЕ РЕГИСТРАЦИИ. Это НЕ карты дня и НЕ прогноз на сегодня. Ровно три позиции: 1) Прошлое — что привело человека к нынешней ситуации; 2) Настоящее — что действует сейчас; 3) Будущее — возможное развитие. Объясни каждую выпавшую карту в своей позиции, затем свяжи позиции в одну понятную историю и предложи один полезный следующий шаг. Не называй позиции утром, днём или вечером. Не утверждай неизбежность будущего.`;
+    }
 
     if (guestResume?.teaserText) {
       systemPrompt += buildTeaserContinuityPromptBlock(guestResume.teaserText);
     }
 
-    const cardsKey = guestResume?.fingerprint ??
+    const cardsKey = introReading?.cardsKey ?? guestResume?.fingerprint ??
       (isNumerologMaster(characterId) && requestNumerologToolId
         ? numerologReadingCacheKey({
             characterId,
@@ -883,7 +918,7 @@ async function handlePost(request: NextRequest) {
           tarotCards,
           sessionId,
           intention: intention || undefined,
-          spreadType: isGuestResumeFree
+          spreadType: isIntroSpread ? "intro" : isGuestResumeFree
             ? "guest_resume"
             : isDailySpread
               ? "daily"
@@ -892,7 +927,7 @@ async function handlePost(request: NextRequest) {
           customQuestion: customQuestion || guestResume?.question || undefined,
           userName,
           birthDate,
-          isPaid: isGuestResumeFree ? true : isPaid,
+          isPaid: isIntroSpread || isGuestResumeFree ? true : isPaid,
         });
       }
     }
@@ -907,6 +942,10 @@ async function handlePost(request: NextRequest) {
         if (existing && isAiCacheReusable(existing.context_data)) {
           return { kind: "existing" as const, existing };
         }
+      }
+
+      if (isIntroSpread && await profileHasIntroReadingConsumed(authed.profileUserId)) {
+        return { kind: "intro_consumed" as const };
       }
 
       if (isNumerologMaster(characterId)) {
@@ -1543,6 +1582,7 @@ async function handlePost(request: NextRequest) {
       const runeSettings = await getRuneSettings();
       const useRuneBilling =
         !isDailySpread &&
+        !isIntroSpread &&
         !isGuestResumeFree &&
         isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
       let runeBalance: number | undefined;
@@ -1684,7 +1724,7 @@ async function handlePost(request: NextRequest) {
             ]),
             content: reading,
           });
-        const entry = await createHistoryEntry({
+        const historyInput = {
           userId: authed.profileUserId,
           characterName: characterId,
           contextData: {
@@ -1704,6 +1744,7 @@ async function handlePost(request: NextRequest) {
               : {}),
             ...(readingIntention ? { intention: readingIntention } : {}),
             ...(isDailySpread ? { spreadType: "daily" } : {}),
+            ...(isIntroSpread ? { spreadType: "intro", spreadId: "triplet" } : {}),
             ...(isGuestResumeFree
               ? {
                   spreadType: "guest_resume",
@@ -1712,7 +1753,14 @@ async function handlePost(request: NextRequest) {
               : {}),
           },
           isPaid,
-        });
+        };
+        const entry = isIntroSpread
+          ? await withTransaction(async (client) => {
+              const saved = await createHistoryEntry(historyInput, client);
+              await recordIntroReadingConsumed(authed.profileUserId, client);
+              return saved;
+            })
+          : await createHistoryEntry(historyInput);
         historyId = entry.id;
 
         if (isGuestResumeFree && sessionId && historyId) {
@@ -1734,7 +1782,7 @@ async function handlePost(request: NextRequest) {
             reading,
             tarotCards,
             intention: intention || undefined,
-            spreadType: isGuestResumeFree
+            spreadType: isIntroSpread ? "intro" : isGuestResumeFree
               ? "guest_resume"
               : isDailySpread
                 ? "daily"
@@ -1774,7 +1822,7 @@ async function handlePost(request: NextRequest) {
         tarotCards,
         sessionId,
         intention: intention || undefined,
-        spreadType: isGuestResumeFree
+        spreadType: isIntroSpread ? "intro" : isGuestResumeFree
           ? "guest_resume"
           : isDailySpread
             ? "daily"
@@ -1783,12 +1831,16 @@ async function handlePost(request: NextRequest) {
         customQuestion: customQuestion || guestResume?.question || undefined,
         userName,
         birthDate,
-        isPaid: isGuestResumeFree ? true : isPaid,
+        isPaid: isIntroSpread || isGuestResumeFree ? true : isPaid,
       });
     }
 
     if (lockedResult.kind === "insufficient") {
       return insufficientRunesResponse(lockedResult.balance, lockedResult.cost);
+    }
+
+    if (lockedResult.kind === "intro_consumed") {
+      return NextResponse.json({ code: "INTRO_ALREADY_READ", error: "Первый разбор уже получен. Откройте его в истории." }, { status: 409 });
     }
 
     if (lockedResult.kind === "failed") {

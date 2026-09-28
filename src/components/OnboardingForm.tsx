@@ -29,12 +29,18 @@ export interface OnboardingData {
 interface OnboardingFormProps {
   initialName?: string;
   initialGender?: "male" | "female";
+  initialBirthDate?: string;
+  initialBirthTime?: string | null;
+  initialBirthCity?: string | null;
   onComplete: (data: OnboardingData) => Promise<void>;
 }
 
 export default function OnboardingForm({
   initialName = "",
   initialGender = "female",
+  initialBirthDate = "",
+  initialBirthTime = "",
+  initialBirthCity = "",
   onComplete,
 }: OnboardingFormProps) {
   const accountName = initialName.trim();
@@ -45,13 +51,23 @@ export default function OnboardingForm({
   const [showWelcome, setShowWelcome] = useState(false);
   const [astro, setAstro] = useState<ProfileAstroValues>({
     gender: initialGender,
-    birthDate: "",
-    birthTime: "",
-    birthTimeUnknown: false,
-    birthCity: "",
+    birthDate: initialBirthDate,
+    birthTime: initialBirthTime ?? "",
+    birthTimeUnknown: Boolean(initialBirthDate && !initialBirthTime),
+    birthCity: initialBirthCity ?? "",
     lifeFocus: "general",
     mainQuestion: "",
   });
+  useEffect(() => {
+    if (!initialBirthDate) return;
+    setAstro(prev => prev.birthDate ? prev : {
+      ...prev,
+      birthDate: initialBirthDate,
+      birthTime: initialBirthTime ?? "",
+      birthTimeUnknown: !initialBirthTime,
+      birthCity: initialBirthCity ?? "",
+    });
+  }, [initialBirthDate, initialBirthTime, initialBirthCity]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -108,8 +124,9 @@ export default function OnboardingForm({
       ) : null}
 
       <p className="text-center text-sm text-gray-400">
-        Укажите дату рождения — откроются персональные расчёты, Матрица судьбы и астрологические
-        возможности. Таро уже доступно.
+        {astro.birthDate
+          ? "Дата рождения уже сохранена. При желании добавьте время и город для более точной астрологии."
+          : "Добавьте дату рождения для персональных расчётов и астрологии. Таро уже доступно."}
       </p>
 
       {nameLocked ? (

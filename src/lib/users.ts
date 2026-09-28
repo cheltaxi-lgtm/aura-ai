@@ -291,10 +291,14 @@ export async function updateUserProfile(
       : data.birthDate === null
         ? null
         : current.birth_date;
-  const astroMeta =
+  const proposedAstroMeta =
     data.astroMeta ??
     (birthDate ? buildAstroMeta(birthDate) : null) ??
     current.astro_meta;
+  const currentMeta = (current.astro_meta ?? {}) as Record<string, unknown>;
+  const protectedAnchorKeys = ["guestIntroUsedAt", "introReadingConsumedAt", "lastDailyTripletDrawAt", "lastTripletDrawAt", "lastDailyReadingDate", "lastDailyReadingSpreadId"];
+  const astroMeta = { ...currentMeta, ...(proposedAstroMeta ?? {}) } as Record<string, unknown>;
+  for (const key of protectedAnchorKeys) delete astroMeta[key];
 
   const { rows } = await run<UserRow>(
     `UPDATE users SET
@@ -306,7 +310,10 @@ export async function updateUserProfile(
       birth_city = $7,
       life_focus = $8,
       main_question = $9,
-      astro_meta = $10
+      astro_meta = $10::jsonb || COALESCE(
+        (SELECT jsonb_object_agg(key, value)
+         FROM jsonb_each(COALESCE(users.astro_meta, '{}'::jsonb))
+         WHERE key = ANY($11::text[])), '{}'::jsonb)
      WHERE id = $1
      RETURNING ${USER_COLUMNS}`,
     [
@@ -320,6 +327,7 @@ export async function updateUserProfile(
       data.lifeFocus ?? "general",
       normalizeProfileMainQuestion(data.mainQuestion),
       JSON.stringify(astroMeta),
+      protectedAnchorKeys,
     ]
   );
   const updated = rows[0] ?? null;

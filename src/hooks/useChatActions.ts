@@ -279,7 +279,7 @@ export interface UseChatActionsOptions {
   pendingNewChatThreadRef: MutableRefObject<boolean>;
   pendingReadingMasterRef: MutableRefObject<string | null>;
   sessionSpreadMetaRef: MutableRefObject<{
-    spreadType?: "daily" | "new" | "photo" | "guest_resume";
+    spreadType?: "daily" | "intro" | "new" | "photo" | "guest_resume";
     spreadId?: string;
     cardNames?: string[];
     periodSpreadScope?: PeriodSpreadScope;
@@ -566,12 +566,6 @@ export function useChatActions(options: UseChatActionsOptions) {
               matrixSubjectId: sessionSpreadMetaRef.current?.matrixSubjectId,
             })
           : spreadKey(cardsForMaster) || spreadCardsKey;
-        const loadAttemptKey = `${characterId}:${cardsKey}`;
-        if (!loadOptions?.force) {
-          if (loadReadingInFlightKeyRef.current === loadAttemptKey) return;
-          if (loadReadingAttemptKeyRef.current === loadAttemptKey) return;
-        }
-        loadReadingInFlightKeyRef.current = loadAttemptKey;
         const masterCtx = resolveMasterSpread(activeProfile, characterId, masters);
         const effectiveSpreadType =
           inferDailySpreadType({
@@ -581,6 +575,12 @@ export function useChatActions(options: UseChatActionsOptions) {
             cards: cardsForMaster,
             profile: activeProfile,
           }) ?? sessionSpreadMetaRef.current?.spreadType;
+        const loadAttemptKey = `${characterId}:${effectiveSpreadType ?? "new"}:${cardsKey}`;
+        if (!loadOptions?.force) {
+          if (loadReadingInFlightKeyRef.current === loadAttemptKey) return;
+          if (loadReadingAttemptKeyRef.current === loadAttemptKey) return;
+        }
+        loadReadingInFlightKeyRef.current = loadAttemptKey;
 
         let apiCallStarted = false;
         try {
@@ -603,7 +603,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         const cachedReading =
           loadOptions?.force || skipClientReadingCache
             ? undefined
-            : findSavedSpreadReading(savedReadings, characterId, cardsKey);
+            : findSavedSpreadReading(savedReadings, characterId, cardsKey, effectiveSpreadType === "intro" ? "intro" : undefined);
 
         if (cachedReading?.contextData) {
           const ctx = cachedReading.contextData as {
@@ -1273,8 +1273,8 @@ export function useChatActions(options: UseChatActionsOptions) {
               : [],
         profile,
       });
-      const spreadType: "daily" | "new" =
-        inferredSpreadType ??
+      const spreadType: "daily" | "intro" | "new" =
+        data.spreadType === "intro" ? "intro" : inferredSpreadType ??
         ((data.spreadType as "daily" | "new" | undefined) ?? "new");
 
       if (cardNames.length) {

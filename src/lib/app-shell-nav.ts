@@ -149,21 +149,9 @@ function shellNavigate(url: string): void {
 
 /** Birth-date onboarding after minimal registration (no server profile yet). */
 export function navigateToBirthProfileOnboarding(): void {
-  try {
-    primeHomeFlowStep();
-  } catch {
-    /* private mode */
-  }
-  const target = onboardingRedirectUrl();
-  // Leaving /cabinet/* via bare location.assign drops aura_auth in WebView;
-  // re-stamp the cookie through the session bridge first.
-  if (shouldUseSessionBridge()) {
-    void navigateViaSessionBridge(target).then((bridged) => {
-      if (!bridged) shellNavigate(target);
-    });
-    return;
-  }
-  shellNavigate(target);
+  // Profile completion belongs in the cabinet form, including when birth date
+  // already exists and only time/city are missing.
+  shellNavigate(resolveAppAwarePath("/cabinet?tab=profile&edit=1#profile-editor"));
 }
 
 /** Переход к секции главной с любой страницы. */
