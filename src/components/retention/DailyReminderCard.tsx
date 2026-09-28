@@ -18,11 +18,13 @@ export type DailyReminderStatus = {
 export default function DailyReminderCard({
   showManage = false,
   compact = false,
+  embedded = false,
   onStatusChange,
   source = "post_result",
 }: {
   showManage?: boolean;
   compact?: boolean;
+  embedded?: boolean;
   onStatusChange?: (status: DailyReminderStatus) => void;
   source?: "post_result" | "personal_home" | "cabinet";
 }) {
@@ -171,24 +173,28 @@ export default function DailyReminderCard({
     }
   };
 
-  return <aside ref={cardRef} className="my-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-sm text-white/80" aria-label="Напоминания о раскладе на сутки">
+  return <aside ref={cardRef} className={embedded
+    ? "mt-3 min-w-0 border-t border-white/10 pt-2 text-sm text-white/80"
+    : "my-4 min-w-0 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-sm text-white/80"} aria-label="Напоминания о раскладе на сутки">
+    {!embedded ? <>
     <p className="font-semibold text-white">{source === "post_result" ? "Дальше — отдельный расклад на сутки" : "Ваш бесплатный расклад на сутки"}</p>
     <p className="mt-1 leading-6">{source === "post_result" ? "Это отдельный формат: утро, день и вечер. Он доступен бесплатно раз в сутки, без рун." : "Утро, день и вечер — один расклад бесплатно раз в сутки. Подарочные руны для него не нужны."}</p>
-    <Link href="/?daily=1" prefetch={false} className="btn-luxe btn-luxe--gold mt-3 min-h-11" style={{transitionProperty:"transform, opacity"}} onClick={(event) => {
+    <Link href="/?daily=1" prefetch={false} className="btn-luxe btn-luxe--gold mt-3 min-h-11 max-w-full min-w-0 whitespace-normal px-4 py-2 text-center leading-snug" style={{transitionProperty:"transform, opacity"}} onClick={(event) => {
       trackDailyCardsCtaClick(source);
       trackActivation("daily", "offer_clicked", eventKey(), source);
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       // Home owns one-shot deep-link state; reload to open daily after a result on the same page.
       event.preventDefault();
       window.location.assign("/?daily=1");
-    }}>Открыть расклад на сутки · 0 рун</Link>
-    <details className="mt-3" open={compact ? undefined : true}>
-    <summary className={compact ? "min-h-11 cursor-pointer py-2 text-amber-200 underline" : "hidden"}>Настроить напоминания</summary>
+    }}>Открыть расклад на сутки</Link>
+    </> : null}
+    <details className={embedded ? "min-w-0" : "mt-3 min-w-0"} open={compact || embedded ? undefined : true}>
+    <summary className={compact || embedded ? "min-h-11 cursor-pointer py-2 text-amber-200 underline" : "hidden"}>{embedded ? "Настроить письма и Telegram" : "Настроить напоминания"}</summary>
     {status.hasTelegram ? <div className="mt-3 border-t border-white/10 pt-3">
       <p className="leading-6">Одно напоминание в Telegram о новом бесплатном раскладе. Отключить можно здесь или в кабинете.</p>
       {status.dailyTelegramReminder
         ? <button type="button" className="mt-2 min-h-10 text-amber-200 underline" disabled={busy} onClick={() => void setTelegramReminder(false)}>Отключить напоминание в Telegram</button>
-        : <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 px-4" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void setTelegramReminder(true)}>Напоминать в Telegram</button>}
+        : <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 max-w-full min-w-0 whitespace-normal px-4 py-2 text-center leading-snug" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void setTelegramReminder(true)}>Напоминать в Telegram</button>}
     </div> : <p className="mt-3 text-xs leading-5 text-white/60">
       Удобнее получать сообщение в Telegram? <Link href="/cabinet#cabinet-telegram-link" className="text-amber-200 underline" onClick={(event) => {
         if (window.location.pathname !== "/cabinet") return;
@@ -202,14 +208,14 @@ export default function DailyReminderCard({
     {showManage || !status.hasEmail || !status.dailyCardsReminder ? <>
     <p className="mt-1 leading-6">Можем присылать одно письмо о вашем раскладе на сутки. Отключить его можно в кабинете или из письма.</p>
     {status.hasEmail && status.dailyCardsReminder ? <p className="mt-2 text-amber-200">Письмо о раскладе включено.</p> : null}
-    {status.hasEmail && !status.dailyCardsReminder ? <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 px-4" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void enableReminder()}>Включить письмо о раскладе</button> : null}
+    {status.hasEmail && !status.dailyCardsReminder ? <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 max-w-full min-w-0 whitespace-normal px-4 py-2 text-center leading-snug" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void enableReminder()}>Включить письмо о раскладе</button> : null}
     {!status.hasEmail || changingEmail ? <div className="mt-3 space-y-3">
       <label className="block">Адрес для уведомлений
         <input type="email" autoComplete="email" value={email} onChange={(event) => setEmail(event.target.value)} className="mt-1 block min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 text-white" placeholder="name@example.com" maxLength={254} />
       </label>
-      <div className="flex flex-wrap gap-2">
-        <button type="button" className="btn-luxe btn-luxe--gold min-h-11 px-4" style={{ transitionProperty: "transform, opacity" }} disabled={busy || !email.trim()} onClick={() => void requestEmail(status.hasEmail ? status.dailyCardsReminder : true)}>{status.hasEmail ? "Подтвердить новый адрес" : "Подтвердить почту и включить письмо"}</button>
-        {!status.hasEmail ? <button type="button" className="min-h-11 px-3 text-amber-200 underline" disabled={busy || !email.trim()} onClick={() => void requestEmail(false)}>Только добавить почту</button> : null}
+      <div className="flex min-w-0 flex-wrap gap-2">
+        <button type="button" className="btn-luxe btn-luxe--gold min-h-11 min-w-0 max-w-full w-full whitespace-normal break-words px-4 py-2 text-center leading-snug sm:w-auto" style={{ transitionProperty: "transform, opacity" }} disabled={busy || !email.trim()} onClick={() => void requestEmail(status.hasEmail ? status.dailyCardsReminder : true)}>{status.hasEmail ? "Подтвердить новый адрес" : "Подтвердить почту и включить письмо"}</button>
+        {!status.hasEmail ? <button type="button" className="min-h-11 min-w-0 w-full whitespace-normal px-3 text-center text-amber-200 underline sm:w-auto" disabled={busy || !email.trim()} onClick={() => void requestEmail(false)}>Только добавить почту</button> : null}
       </div>
     </div> : null}
     {showManage && status.hasEmail ? <div className="mt-3 flex flex-wrap gap-3 text-xs">

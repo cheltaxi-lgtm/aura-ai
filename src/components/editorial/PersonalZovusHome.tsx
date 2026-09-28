@@ -384,15 +384,17 @@ export default function PersonalZovusHome({
               Напоминать о раскладе на сутки
             </label>
           ) : null}
+          <DailyReminderCard
+            source="personal_home"
+            embedded
+            showManage
+            key={reminderRevision}
+            onStatusChange={(status) => {
+              setReminderEnabled(status.masterReminder);
+              setReminderReady(true);
+            }}
+          />
         </div>
-        <DailyReminderCard
-          source="personal_home"
-          key={reminderRevision}
-          onStatusChange={(status) => {
-            setReminderEnabled(status.masterReminder);
-            setReminderReady(true);
-          }}
-        />
       </div>
 
       <RetentionOptInCard surface="authenticated_home" />
