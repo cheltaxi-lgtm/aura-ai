@@ -18,6 +18,13 @@ const INTRO_TRIPLET_CARD_LINE_RE =
   /^[ \t]*\*\*[ \t]*([^*\n—–-]{2,64}?)[ \t]*(?:\*\*)?[ \t]*[—–-][ \t]*(прошлое|настоящее|будущее)[ \t]*[.:]?[ \t]*(?:\*\*)?[ \t]*[.:]?[ \t]*/gimu;
 const INTRO_TRIPLET_POSITION_LINE_RE =
   /^[ \t]*(прошлое|настоящее|будущее)[ \t]*[—–-][ \t]*([^*\n:—–-]{2,64})[ \t]*$/gimu;
+const INTRO_TRIPLET_CARD_PROSE_RE =
+  /^[ \t]*\*\*[ \t]*([^*\n]{2,64}?)[ \t]*\*\*[ \t]*в[ \t]+(прошлом|настоящем|будущем)[ \t]*[—–-][ \t]*/gimu;
+const PROSE_POSITION_TO_BASE: Record<string, string> = {
+  прошлом: "прошлое",
+  настоящем: "настоящее",
+  будущем: "будущее",
+};
 
 export function formatIntroTripletCardSections(text: string): string {
   const knownCard = (value: string) => Boolean(findTarotCardByName(value.trim().replace(/^\*\*|\*\*$/g, "").replace(/[.:]$/, "")));
@@ -25,12 +32,17 @@ export function formatIntroTripletCardSections(text: string): string {
     const parts = line.trim().split(/[—–-]/u);
     return parts.length === 2 && (knownCard(parts[0] ?? "") || knownCard(parts[1] ?? ""));
   });
+  const proseHeadings = [...text.matchAll(INTRO_TRIPLET_CARD_PROSE_RE)];
   // A larger spread (notably Celtic Cross) can contain these three positions
   // among other cards. Never give only part of that report the triplet layout.
-  if (cardHeadingLines.length !== 3) return text;
+  if (cardHeadingLines.length + proseHeadings.length !== 3) return text;
   const headings = [
     ...[...text.matchAll(INTRO_TRIPLET_CARD_LINE_RE)].map((match) => ({ card: match[1], position: match[2] })),
     ...[...text.matchAll(INTRO_TRIPLET_POSITION_LINE_RE)].map((match) => ({ card: match[2], position: match[1] })),
+    ...proseHeadings.map((match) => ({
+      card: match[1],
+      position: PROSE_POSITION_TO_BASE[match[2]?.toLowerCase() ?? ""],
+    })),
   ];
   const knownPositions = new Set(headings
     .filter(({ card }) => knownCard(card ?? ""))
@@ -47,6 +59,9 @@ export function formatIntroTripletCardSections(text: string): string {
     )
     .replace(INTRO_TRIPLET_POSITION_LINE_RE, (_match, position: string, card: string) =>
       knownCard(card) ? `\n\n### ${labels[position.toLowerCase()]} · ${card.trim().replace(/[.:]$/, "")}\n\n` : _match
+    )
+    .replace(INTRO_TRIPLET_CARD_PROSE_RE, (_match, card: string, position: string) =>
+      knownCard(card) ? `\n\n### ${labels[PROSE_POSITION_TO_BASE[position.toLowerCase()]]} · ${card.trim()}\n\n` : _match
     );
 }
 

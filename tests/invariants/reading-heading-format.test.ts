@@ -39,6 +39,26 @@ describe("reading emphasis boundaries", () => {
       expect(html).toContain(`>${card}</h3>`);
     }
   });
+  it("restores card-first prose from an existing saved introductory reading", () => {
+    const content = [
+      "Общий смысл расклада — выбор нового направления.",
+      "**Королева Жезлов** в прошлом — уверенность и личная сила.",
+      "**Влюблённые** в настоящем — честный выбор и союз.",
+      "**Паж Кубков** в будущем — возможность мягкого нового начала.",
+      "Простыми словами: сделай один шаг к тому, что тебе важно.",
+    ].join("\n\n");
+    for (const Component of [ChatMessageRenderer, ReportRichText]) {
+      const html = renderToStaticMarkup(React.createElement(Component, { content }));
+      expect(html.match(/<h3[ >]/g)).toHaveLength(3);
+      expect(html).not.toContain("**");
+      expect(html).toContain("уверенность и личная сила");
+      expect(html).toContain("честный выбор и союз");
+      expect(html).toContain("мягкого нового начала");
+      for (const card of ["Королева Жезлов", "Влюблённые", "Паж Кубков"]) {
+        expect(html).toContain(card);
+      }
+    }
+  });
   it("does not reinterpret ordinary report sections or incomplete spreads as tarot cards", () => {
     const report = "Прошлое — влияние семьи\n\nНастоящее — выбор работы\n\nБудущее — пространство для роста";
     expect(formatPremiumReadingForDisplay(report)).not.toContain("### Прошлое ·");
