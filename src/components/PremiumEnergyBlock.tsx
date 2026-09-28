@@ -179,6 +179,11 @@ export default function PremiumEnergyBlock({
           credentials: "include",
         });
         if (cancelled) return;
+        const currentDate = productCalendarDate();
+        if (currentDate !== calendarDate) {
+          setCalendarDate(currentDate);
+          return;
+        }
         if (res.ok) {
           const data = (await res.json()) as {
             text?: string;
@@ -189,6 +194,12 @@ export default function PremiumEnergyBlock({
             locked?: boolean;
             purged?: boolean;
           };
+          if (cancelled) return;
+          const parsedDate = productCalendarDate();
+          if (parsedDate !== calendarDate) {
+            setCalendarDate(parsedDate);
+            return;
+          }
           if (data.drawn && data.locked && !data.text) {
             setLockedToday(true);
             setDrawnToday(true);
@@ -234,7 +245,13 @@ export default function PremiumEnergyBlock({
           storageKey: "aura:daily-reading-active-job",
           kind: "daily_reading,daily_extended",
         });
-        if (cancelled || data?.localDate !== calendarDate || !data.text || !Array.isArray(data.cards) || !data.cards.length) {
+        if (cancelled) return;
+        const currentDate = productCalendarDate();
+        if (currentDate !== calendarDate) {
+          setCalendarDate(currentDate);
+          return;
+        }
+        if (data?.localDate !== calendarDate || !data.text || !Array.isArray(data.cards) || !data.cards.length) {
           return;
         }
         resultForDateRef.current = calendarDate;
@@ -280,17 +297,19 @@ export default function PremiumEnergyBlock({
     setErrorMessage(null);
     if (activeSpreadId !== "daily-extended") trackDailyCardsStarted("daily_modal");
     try {
+      const requestDate = productCalendarDate();
       const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
       const { status: resStatus, data } = await postWithAsyncJob({
         url: "/api/daily-reading",
         body: {
           characterKey: master,
-          localDate: productCalendarDate(),
+          localDate: requestDate,
           spreadId: activeSpreadId,
         },
         storageKey: "aura:daily-reading-active-job",
       });
       const typed = data as {
+        localDate?: string;
         text?: string;
         cards?: DailyCard[];
         system?: DeckSystem | null;
@@ -302,6 +321,17 @@ export default function PremiumEnergyBlock({
         required?: number;
         code?: string;
       };
+      const currentDate = productCalendarDate();
+      if ((typed.localDate ?? requestDate) !== currentDate) {
+        setOpen(false);
+        setCalendarDate(currentDate);
+        return;
+      }
+      const hasResult = Boolean(typed.drawn && typed.text && Array.isArray(typed.cards) && typed.cards.length);
+      if (calendarDate !== currentDate) {
+        if (hasResult) loadedForDateRef.current = currentDate;
+        setCalendarDate(currentDate);
+      }
       if (resStatus === 402 && typed.error === "insufficient_runes") {
         if (
           onInsufficientRunes &&
@@ -328,7 +358,7 @@ export default function PremiumEnergyBlock({
         return;
       }
       if (typed.drawn && typed.text && Array.isArray(typed.cards) && typed.cards.length) {
-        resultForDateRef.current = calendarDate;
+        resultForDateRef.current = currentDate;
         setText(typed.text);
         setCards(typed.cards);
         setSystem(typed.system ?? pickSystem);

@@ -330,6 +330,24 @@ test.describe("daily artifact + landing copy", () => {
     await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
   });
 
+  test("a completed reading from the previous product day cannot replace today's reading", async ({ page }) => {
+    await installDailyMocks(page, { dailyExists: false });
+    const yesterday = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date(Date.now() - 86_400_000));
+    await page.route("**/api/daily-reading", (route) => route.fulfill({ json: {
+      localDate: yesterday, drawn: true, text: "Вчерашний расклад",
+      cards: dailyCards, system: "tarot-veronika", spreadId: "triplet",
+    } }));
+    await page.goto("/?app=1");
+    await page.locator(".editorial-hero--logged-in").getByRole("button", { name: "Открыть бесплатно · расклад на сутки" }).click();
+    const dialog = page.getByRole("dialog", { name: "Расклад на сутки" });
+    await dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" }).click();
+    await expect(dialog).toHaveCount(0);
+    await expect(page.getByText("Вчерашний расклад")).toHaveCount(0);
+    await expect(page.locator(".ritual-cta-banner").getByRole("button", { name: "Разложить" })).toBeVisible();
+  });
+
   test("email reminder card and home switch stay in sync", async ({ page }) => {
     await installDailyMocks(page, { masterReminder: false });
     await page.goto("/?app=1");
