@@ -19,6 +19,31 @@
   justify-content: flex-start;
 }
 
+.auth-salon-page--register .auth-salon-card {
+  padding-top: 1.25rem;
+}
+
+.auth-salon-page--register .auth-salon-header {
+  margin-bottom: 0.85rem;
+}
+
+.auth-salon-page--register .auth-salon-oauth {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.auth-salon-page--register .auth-salon-oauth-btn {
+  min-width: 0;
+  padding-inline: 0.65rem;
+  font-size: 0.8125rem;
+}
+
+.auth-salon-page--register .auth-salon-oauth-icon {
+  height: 1.75rem;
+  width: 1.75rem;
+}
+
 .auth-salon-vignette {
   pointer-events: none;
   position: absolute;

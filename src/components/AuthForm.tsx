@@ -534,8 +534,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     ? "auth-salon-label"
     : "mb-1 block text-xs text-gray-500";
   const formShellClass =
-    isUserLogin || isUserRegister
-      ? "auth-form space-y-3 sm:space-y-5"
+    isUserRegister
+      ? "auth-form space-y-3"
+      : isUserLogin
+        ? "auth-form space-y-3 sm:space-y-5"
       : "auth-form glass-panel mx-auto max-w-lg space-y-5 p-8";
 
   return (
@@ -543,7 +545,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       {isUserRegister ? (
         <>
           <p className="text-sm text-white/65">
-            При регистрации по email стартовые руны и бонусы за посещение появятся после подтверждения почты. Ссылку пришлём после регистрации.
+            По email стартовые руны появятся после подтверждения почты. Ссылку пришлём сразу.
           </p>
           <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
           {legalConsentFields}
@@ -556,6 +558,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             marketingConsent={marketingConsent}
             disabled={loading}
             consentScrollTargetId="oauth-consent-block"
+            showConsentHint={false}
             showEmailDivider
             emailDividerLabel="или по email"
           />

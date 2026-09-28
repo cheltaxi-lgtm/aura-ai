@@ -63,6 +63,7 @@ interface SocialAuthButtonsProps {
   /** Providers already attached — buttons stay visible but inactive. */
   linkedProviders?: OAuthProvider[];
   consentScrollTargetId?: string;
+  showConsentHint?: boolean;
   showEmailDivider?: boolean;
   emailDividerLabel?: string;
 }
@@ -90,6 +91,7 @@ export default function SocialAuthButtons({
   disabled = false,
   linkedProviders = [],
   consentScrollTargetId,
+  showConsentHint = true,
   showEmailDivider = true,
   emailDividerLabel = "или по email",
 }: SocialAuthButtonsProps) {
@@ -268,7 +270,7 @@ export default function SocialAuthButtons({
         </div>
       ) : null}
 
-      {consentBlocked ? (
+      {consentBlocked && showConsentHint ? (
         <p className="auth-salon-hint text-center">
           {ageConfirmed
             ? "Подтвердите согласие с условиями, чтобы продолжить"
