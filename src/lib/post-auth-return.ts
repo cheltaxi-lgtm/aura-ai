@@ -236,7 +236,12 @@ export function buildRegisterHref(
   opts?: { method?: "email" }
 ): string {
   const destination = returnTo ?? readPostAuthReturnTo() ?? fallback;
-  const href = buildAuthHref("/auth/user/register", withAppShellIfNeeded(destination), fallback);
+  let href = buildAuthHref("/auth/user/register", withAppShellIfNeeded(destination), fallback);
+  // An explicit home destination must override a stale saved returnTo on the
+  // registration page, even though buildAuthHref normally omits the root query.
+  if (returnTo === "/" && !href.includes("returnTo=")) {
+    href += `${href.includes("?") ? "&" : "?"}returnTo=%2F`;
+  }
   if (opts?.method !== "email") return href;
   const join = href.includes("?") ? "&" : "?";
   return `${href}${join}method=email`;

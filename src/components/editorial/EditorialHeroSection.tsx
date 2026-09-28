@@ -1,13 +1,15 @@
 "use client";
 
 import EditorialImage from "@/components/editorial/EditorialImage";
+import Link from "next/link";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { BRAND_NAME } from "@/lib/brand";
 import { EDITORIAL_HERO } from "@/lib/editorial-landing-content";
 import { GUEST_HERO_PAIN_CHIPS } from "@/lib/landing-offer";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
-import { trackQuickQuestionClick } from "@/lib/seo/metrika";
+import { trackQuickQuestionClick, trackRegistrationCtaClick } from "@/lib/seo/metrika";
+import { buildRegisterHref } from "@/lib/post-auth-return";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import LandingSocialProofStats from "@/components/seo/LandingSocialProofStats";
 
@@ -106,6 +108,14 @@ export default function EditorialHeroSection({
         {guestConversion ? (
           <div className="editorial-hero__gift">
             <StarterRunesValue variant="line" generic product="home_hero" />
+            <Link
+              href={buildRegisterHref("/")}
+              prefetch={false}
+              onClick={() => trackRegistrationCtaClick("home_hero_direct")}
+              className="mt-2 inline-block text-sm text-aura-champagne underline underline-offset-4 hover:text-white"
+            >
+              Или сначала создать аккаунт
+            </Link>
           </div>
         ) : null}
         {guestConversion ? (

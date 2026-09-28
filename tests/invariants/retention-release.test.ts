@@ -32,6 +32,9 @@ describe("return from reminders and affordable checkout",()=>{
     expect(new URL(buildRegisterHref(destination),"https://zovus.ru").searchParams.get("returnTo")).toBe(destination);
     expect(runeShopDestination("adept&paymentUrl=https://evil.example")).toBe("/cabinet?shop=1");
   });
+  it("keeps an explicit home registration return instead of an older saved destination",()=>{
+    expect(new URL(buildRegisterHref("/"),"https://zovus.ru").searchParams.get("returnTo")).toBe("/");
+  });
   it("offers the minimum 100-ruble top-up for 20 missing runes, without launching an order",()=>{
     expect(runeOrderQuote(30,10,5,packages)?.customTopup).toEqual({amountRub:100,runes:20,afterTopup:30,afterOrder:0});
     expect(runeOrderQuote(30,20,5,packages)?.customTopup).toMatchObject({amountRub:100,runes:20,afterOrder:10});

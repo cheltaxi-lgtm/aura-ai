@@ -217,7 +217,7 @@ test("a realistic phone photo survives the complete email registration route", a
   expect(savedBeforeRegister).not.toBeNull();
   expect(savedBeforeRegister!.length).toBeGreaterThan(100_000);
 
-  await page.getByRole("button", { name: "Продолжить по email" }).click();
+  await expect(page.getByLabel("Email *")).toBeVisible();
   await page.getByLabel(/Я согласен/).check();
   await page.getByLabel("Имя *").fill("Проверка");
   await page.getByLabel("Email *").fill("photo@example.test");
