@@ -95,6 +95,8 @@ export default function PremiumEnergyBlock({
   const extendedCost = isUnlimited ? 0 : runeCost("DAILY_EXTENDED");
   const showExtendedPrice = runeConfig.enabled && !isUnlimited;
   const [loaded, setLoaded] = useState(false);
+  const [loadError, setLoadError] = useState(false);
+  const [loadRetry, setLoadRetry] = useState(0);
   const [calendarDate, setCalendarDate] = useState(() => productCalendarDate());
   const [drawnToday, setDrawnToday] = useState(false);
   const [lockedToday, setLockedToday] = useState(false);
@@ -110,6 +112,8 @@ export default function PremiumEnergyBlock({
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const spreadIdRef = useRef<SpreadId>(initialSpreadId);
   const newlyDrawnFreeRef = useRef(false);
+  const loadedForDateRef = useRef<string | null>(null);
+  const resultForDateRef = useRef<string | null>(null);
 
   const spread = useMemo(() => getSpread(spreadId), [spreadId]);
   const positionLabels = useMemo(() => spread.positions.map((p) => p.label), [spread]);
@@ -156,13 +160,18 @@ export default function PremiumEnergyBlock({
   useEffect(() => {
     let cancelled = false;
     setLoaded(false);
-    setDrawnToday(false);
-    setLockedToday(false);
-    setText(null);
-    setCards([]);
-    setSystem(null);
-    setRevealed(0);
-    newlyDrawnFreeRef.current = false;
+    setLoadError(false);
+    if (loadedForDateRef.current !== calendarDate) {
+      loadedForDateRef.current = calendarDate;
+      resultForDateRef.current = null;
+      setDrawnToday(false);
+      setLockedToday(false);
+      setText(null);
+      setCards([]);
+      setSystem(null);
+      setRevealed(0);
+      newlyDrawnFreeRef.current = false;
+    }
     onDailyReadingStateChange?.("loading");
     void (async () => {
       try {
@@ -188,6 +197,7 @@ export default function PremiumEnergyBlock({
               data.spreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID
             );
           } else if (data.drawn && data.text) {
+            resultForDateRef.current = calendarDate;
             setText(data.text);
             setCards(Array.isArray(data.cards) ? data.cards : []);
             setSystem(data.system ?? null);
@@ -196,15 +206,22 @@ export default function PremiumEnergyBlock({
             setDrawnToday(true);
             onDailyReadingStateChange?.("opened");
           } else {
-            onDailyReadingStateChange?.("available");
+            onDailyReadingStateChange?.(resultForDateRef.current === calendarDate ? "opened" : "available");
           }
+        } else {
+          throw new Error("daily_status_unavailable");
+        }
+      } catch {
+        if (!cancelled && resultForDateRef.current !== calendarDate) {
+          setLoadError(true);
+          setOpen(false);
         }
       } finally {
         if (!cancelled) setLoaded(true);
       }
     })();
     return () => { cancelled = true; };
-  }, [calendarDate, onDailyReadingStateChange]);
+  }, [calendarDate, onDailyReadingStateChange, loadRetry]);
 
   useEffect(() => {
     let cancelled = false;
@@ -217,9 +234,11 @@ export default function PremiumEnergyBlock({
           storageKey: "aura:daily-reading-active-job",
           kind: "daily_reading,daily_extended",
         });
-        if (cancelled || !data?.text || !Array.isArray(data.cards) || !data.cards.length) {
+        if (cancelled || data?.localDate !== calendarDate || !data.text || !Array.isArray(data.cards) || !data.cards.length) {
           return;
         }
+        resultForDateRef.current = calendarDate;
+        setLoadError(false);
         setText(String(data.text));
         setCards(data.cards as DailyCard[]);
         setSystem((data.system as DeckSystem | null) ?? null);
@@ -234,10 +253,10 @@ export default function PremiumEnergyBlock({
     return () => {
       cancelled = true;
     };
-  }, [onDailyReadingStateChange]);
+  }, [calendarDate, onDailyReadingStateChange]);
 
   useEffect(() => {
-    if (!open) return;
+    if (!open || !loaded || (loadError && cards.length === 0)) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape" && !drawing) setOpen(false);
     };
@@ -248,7 +267,7 @@ export default function PremiumEnergyBlock({
       document.body.style.overflow = prev;
       window.removeEventListener("keydown", onKey);
     };
-  }, [open, drawing]);
+  }, [open, drawing, loaded, loadError, cards.length]);
 
   const draw = async (overrideSpreadId?: SpreadId) => {
     if (drawing || lockedToday) return;
@@ -304,11 +323,12 @@ export default function PremiumEnergyBlock({
       }
       if (resStatus >= 500 || typed.code === "generation_failed") {
         setErrorMessage(
-          typed.error ?? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+          typed.message ?? (typed.error === "temporarily_unavailable" ? undefined : typed.error) ?? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
         );
         return;
       }
       if (typed.drawn && typed.text && Array.isArray(typed.cards) && typed.cards.length) {
+        resultForDateRef.current = calendarDate;
         setText(typed.text);
         setCards(typed.cards);
         setSystem(typed.system ?? pickSystem);
@@ -361,9 +381,9 @@ export default function PremiumEnergyBlock({
   );
 
   // ─────────────────────────── TRIGGER CARD ───────────────────────────
-  if (!loaded) {
+  if ((!loaded || loadError) && !hasDraw) {
     return (
-      <section className="ritual-cta-banner" aria-hidden>
+      <section className="ritual-cta-banner" aria-hidden={!loadError}>
         <div className="ritual-cta-banner__inner">
           <span className="ritual-cta-banner__icon">
             <Moon className="h-6 w-6 text-amber-200" aria-hidden />
@@ -373,8 +393,9 @@ export default function PremiumEnergyBlock({
               Бесплатно · раз в сутки
             </p>
             <h3 className="ritual-cta-banner__title">Расклад на сутки</h3>
-            <p className="ritual-cta-banner__text">Загружаем статус…</p>
+            <p className="ritual-cta-banner__text">{loadError ? "Не удалось проверить расклад." : "Загружаем статус…"}</p>
           </div>
+          {loadError && <button type="button" className="btn-luxe btn-luxe--md btn-luxe--gold ritual-cta-banner__btn" onClick={() => setLoadRetry((value) => value + 1)}>Повторить</button>}
         </div>
       </section>
     );
@@ -734,6 +755,8 @@ export default function PremiumEnergyBlock({
               {/* Footer — only after reveal */}
               {allRevealed && (
                 <div className="shrink-0 space-y-2 border-t border-white/6 bg-[#0d0a1a]/95 px-4 py-3 sm:px-5 sm:py-4">
+                  <p className="text-center text-xs leading-relaxed text-white/65">Расклад сохранён в истории. Новый бесплатный расклад будет доступен завтра.</p>
+                  <Link href="/cabinet?tab=history" onClick={() => setOpen(false)} className="block min-h-10 py-2 text-center text-sm text-amber-200 underline underline-offset-4">Открыть в истории</Link>
                   <button
                     type="button"
                     onClick={() => setOpen(false)}
@@ -744,7 +767,7 @@ export default function PremiumEnergyBlock({
                       boxShadow: "0 4px 20px rgba(212,175,55,0.3)",
                     }}
                   >
-                    На главную
+                    Закрыть расклад
                   </button>
                 </div>
               )}

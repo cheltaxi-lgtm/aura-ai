@@ -82,7 +82,7 @@ export const EDITORIAL_DAILY_CARDS = {
     { title: "День", text: "На что обратить внимание" },
     { title: "Вечер", text: "С чем завершить сутки" },
   ] as const,
-  /** Anonymous CTA opens first free trial (guest intro), not authenticated daily. */
+  /** Anonymous CTA registers the visitor, then returns to the daily reading. */
   guestCta: "Открыть расклад на сутки",
   guestCtaHint: "Войдите или создайте аккаунт — один бесплатный расклад раз в сутки.",
   authAvailableCta: "Открыть расклад на сутки",

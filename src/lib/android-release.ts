@@ -238,7 +238,8 @@ export function readAndroidReleaseConfig(): AndroidReleaseConfig {
       : "auto";
   const releaseCertSha256 =
     process.env.ANDROID_ASSETLINKS_SHA256?.trim().replace(/:/g, "") || undefined;
-  const reinstallBelowVersionCode = parseIntEnv("ANDROID_REINSTALL_BELOW_CODE", 13);
+  // A currently published build must never ask its own users to reinstall it.
+  const reinstallBelowVersionCode = Math.min(parseIntEnv("ANDROID_REINSTALL_BELOW_CODE", 13), versionCode);
 
   // Forced min must never exceed what we can actually download.
   const safeMin = Math.min(minVersionCode, versionCode);

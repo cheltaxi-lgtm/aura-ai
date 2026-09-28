@@ -34,7 +34,6 @@ export async function getReadingJourney(userId: string, requestedId?: string) {
   if (!source) return null;
   const doc = await getSavedReadingDocument(userId,source.id);
   if (!doc?.body.trim()) return null;
-  await recordProductActivity(userId,"result_viewed",source.id,{product:source.kind});
   const first=sources.rows[sources.rows.length-1];
   await query(`INSERT INTO spread_metrics(user_id,event,spread_id,source,idempotency_key,metadata,created_at)
     VALUES($1,'first_result','journey','first_experience','first',jsonb_build_object('product',$2::text),$3)

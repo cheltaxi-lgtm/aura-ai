@@ -5,6 +5,10 @@ const exactCards = [
   { id: 1, name: "Маг", position: 1, reversed: false },
   { id: 2, name: "Жрица", position: 2, reversed: true },
 ];
+const dailyCards = exactCards.map((card, index) => ({
+  ...card,
+  position: ["Утро", "День", "Вечер"][index],
+}));
 
 const historyId = "e2e-daily-history-1";
 const sessionId = "e2e-daily-session-1";
@@ -119,7 +123,7 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
         json: {
           drawn: dailyExists,
           text: dailyExists ? "Ваш день раскрывается спокойно: утром выберите главное, днём сохраните фокус, вечером подведите итог." : null,
-          cards: dailyExists ? exactCards : [],
+          cards: dailyExists ? dailyCards : [],
           system: dailyExists ? "tarot-veronika" : null,
           spreadId: dailyExists ? "triplet" : null,
           locked: false,
@@ -134,7 +138,7 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
         json: {
           drawn: true,
           text: "Ваш день раскрывается спокойно: утром выберите главное, днём сохраните фокус, вечером подведите итог.",
-          cards: exactCards,
+          cards: dailyCards,
           system: "tarot-veronika",
           spreadId: "triplet",
         },
@@ -207,7 +211,7 @@ test.describe("daily artifact + landing copy", () => {
     await expect(page.getByRole("heading", { name: /Расклад на сутки — каждый день/i })).toBeVisible();
     await expect(page.locator(".app-shell-splash")).toHaveCount(0, { timeout: 20_000 });
     await expect(
-      page.getByRole("button", { name: /Первый расклад по вопросу/i }).first()
+      page.getByRole("button", { name: "Открыть 3 карты бесплатно" }).first()
     ).toBeVisible();
     // Before cards: starter must NOT promise full reading (that CTA is post-teaser only).
     const starter = page.locator(".editorial-starter-gift");
@@ -237,13 +241,13 @@ test.describe("daily artifact + landing copy", () => {
     });
   });
 
-  test("Scenario daily guest: before-cards CTA opens guest picker", async ({ page }) => {
+  test("Scenario daily guest: daily CTA opens registration with a daily return", async ({ page }) => {
     await page.goto("/?app=1");
-    const starterCta = page.locator(".editorial-daily-ritual").getByRole("button", { name: "Первый расклад по вопросу" });
-    await expect(starterCta).toBeVisible();
-    await starterCta.scrollIntoViewIfNeeded();
-    await starterCta.click();
-    await expect(page.locator("#guest-spread-picker")).toBeVisible({ timeout: 15_000 });
+    const dailyCta = page.locator(".editorial-daily-ritual").getByRole("button", { name: "Открыть расклад на сутки" });
+    await expect(dailyCta).toBeVisible();
+    await dailyCta.click();
+    await expect(page).toHaveURL(/\/auth\/user\/register\?returnTo=/);
+    expect(new URL(new URL(page.url()).searchParams.get("returnTo")!, "https://zovus.ru").searchParams.get("daily")).toBe("1");
     await expect(page.getByRole("button", { name: /Получить полный разбор/i })).toHaveCount(0);
   });
 
@@ -267,7 +271,7 @@ test.describe("daily artifact + landing copy", () => {
   test("account without a usable mailbox can add one beside the daily reading", async ({ page }) => {
     await installDailyMocks(page, { hasEmail: false, dailyExists: false });
     await page.goto("/?app=1");
-    const contact = page.getByRole("complementary", { name: "Письма о раскладе на сутки" });
+    const contact = page.getByRole("complementary", { name: "Напоминания о раскладе на сутки" });
     await expect(contact).toBeVisible({ timeout: 20_000 });
     await contact.getByRole("textbox", { name: "Адрес для уведомлений" }).fill("reader@example.com");
     const sent = page.waitForRequest((request) => request.url().includes("/api/profile/contact-email") && request.method() === "POST");
@@ -276,15 +280,65 @@ test.describe("daily artifact + landing copy", () => {
     await expect(contact).toContainText("письмо с подтверждением отправлено");
   });
 
+  test("daily status failure offers a retry and restores the existing reading", async ({ page }) => {
+    await installDailyMocks(page);
+    let statusReads = 0;
+    let statusRecovered = false;
+    await page.route("**/api/daily-reading?*", async (route) => {
+      if (route.request().method() !== "GET") return route.fallback();
+      statusReads += 1;
+      if (!statusRecovered) return route.fulfill({ status: 503, json: { error: "unavailable" } });
+      return route.fallback();
+    });
+    await page.goto("/?app=1");
+    const daily = page.locator(".ritual-cta-banner");
+    await expect(daily.getByText("Не удалось проверить расклад.")).toBeVisible();
+    statusRecovered = true;
+    await daily.getByRole("button", { name: "Повторить" }).click();
+    await expect(daily.getByRole("button", { name: "Смотреть" })).toBeVisible();
+    expect(statusReads).toBeGreaterThanOrEqual(2);
+  });
+
+  test("a completed background reading stays visible when the status lookup fails", async ({ page }) => {
+    await installDailyMocks(page, { dailyExists: false });
+    const localDate = new Intl.DateTimeFormat("en-CA", {
+      timeZone: "Europe/Moscow", year: "numeric", month: "2-digit", day: "2-digit",
+    }).format(new Date());
+    await page.addInitScript(() => {
+      localStorage.setItem("aura:daily-reading-active-job", "e2e-daily-job");
+      localStorage.setItem("aura:daily-reading-active-job-started", String(Date.now()));
+    });
+    await page.route("**/api/daily-reading?*", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
+    await page.route("**/api/jobs/e2e-daily-job", (route) => route.fulfill({ json: {
+      status: "completed",
+      result: { localDate, drawn: true, text: "Восстановленный расклад на сутки", cards: dailyCards,
+        system: "tarot-veronika", spreadId: "triplet" },
+    } }));
+    await page.goto("/?app=1");
+    const daily = page.locator(".ritual-cta-banner");
+    await expect(daily.getByRole("button", { name: "Смотреть" })).toBeVisible();
+    await daily.getByRole("button", { name: "Смотреть" }).click();
+    await expect(page.getByRole("dialog", { name: "Расклад на сутки" })).toContainText("Восстановленный расклад на сутки");
+  });
+
+  test("a failing daily deep link leaves the page scrollable", async ({ page }) => {
+    await installDailyMocks(page, { dailyExists: false });
+    await page.route("**/api/daily-reading?*", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
+    await page.goto("/?daily=1&app=1");
+    await expect(page.locator(".ritual-cta-banner").getByRole("button", { name: "Повторить" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Расклад на сутки" })).toHaveCount(0);
+    await expect(page.locator("body")).not.toHaveCSS("overflow", "hidden");
+  });
+
   test("email reminder card and home switch stay in sync", async ({ page }) => {
     await installDailyMocks(page, { masterReminder: false });
     await page.goto("/?app=1");
     const switcher = page.getByRole("checkbox", { name: "Напоминать о раскладе на сутки" });
-    const contact = page.getByRole("complementary", { name: "Письма о раскладе на сутки" });
+    const contact = page.getByRole("complementary", { name: "Напоминания о раскладе на сутки" });
     await expect(switcher).not.toBeChecked();
     await contact.getByRole("button", { name: "Включить письмо о раскладе" }).click();
     await expect(switcher).toBeChecked();
-    await expect(contact).toHaveCount(0);
+    await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toHaveCount(0);
     await switcher.uncheck();
     await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toBeVisible();
   });
@@ -319,6 +373,8 @@ test.describe("daily artifact + landing copy", () => {
     }
     await expect(dialog).toContainText("Ваш день раскрывается спокойно");
     await expect(dialog.getByRole("button", { name: /Расширить до 7 карт/ })).toBeVisible();
+    await expect(dialog.getByRole("link", { name: "Открыть в истории" })).toHaveAttribute("href", "/cabinet?tab=history");
+    await expect(dialog).toContainText("Новый бесплатный расклад будет доступен завтра.");
     const freeResult = dialog.getByText("Ваш день раскрывается спокойно", { exact: false });
     const upgrade = dialog.getByRole("button", { name: /Расширить до 7 карт/ });
     expect(await freeResult.evaluate((element) => element.getBoundingClientRect().top)).toBeLessThan(

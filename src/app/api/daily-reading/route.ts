@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!(await ensureDb())) {
-    return NextResponse.json(EMPTY);
+    return NextResponse.json({ error: "temporarily_unavailable", message: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   await ensureSpreadCatalogSettingsLoaded();
@@ -96,25 +96,30 @@ async function handlePost(request: NextRequest) {
   const workerUserId = getAsyncJobWorkerUserId(request);
   let accountId: string;
   let userId: string;
+  let authenticatedAccountId: string | null = null;
+
+  if (!workerUserId) {
+    const auth = await requireUserAuth();
+    if (!auth) {
+      return NextResponse.json({ error: "auth_required" }, { status: 401 });
+    }
+    authenticatedAccountId = auth.sub;
+  }
+
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "temporarily_unavailable", message: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
 
   if (workerUserId) {
     accountId = workerUserId;
     userId = workerUserId;
   } else {
-    const auth = await requireUserAuth();
-    if (!auth) {
-      return NextResponse.json({ error: "auth_required" }, { status: 401 });
-    }
-    accountId = auth.sub;
-    const profileId = await getProfileUserIdForAccount(auth.sub);
+    accountId = authenticatedAccountId!;
+    const profileId = await getProfileUserIdForAccount(accountId);
     if (!profileId) {
       return NextResponse.json(EMPTY);
     }
     userId = profileId;
-  }
-
-  if (!(await ensureDb())) {
-    return NextResponse.json(EMPTY);
   }
 
   await ensureSpreadCatalogSettingsLoaded();
@@ -154,6 +159,7 @@ async function handlePost(request: NextRequest) {
       existingSpreadId === "daily-extended"
     ) {
       const payload = {
+        localDate,
         text: existing.text,
         cards: existing.cards,
         system: existing.system,
@@ -229,6 +235,7 @@ async function handlePost(request: NextRequest) {
     });
 
     const payload = {
+      localDate,
       text: result.text,
       cards: result.cards,
       system: result.system,
