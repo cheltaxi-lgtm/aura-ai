@@ -119,6 +119,19 @@ test.describe("guest conversion live smoke", () => {
 test.describe("mobile cache recovery with API fixtures", () => {
   test.use({ viewport: { width: 390, height: 844 }, reducedMotion: "reduce" });
   test.setTimeout(90_000);
+  test("selected-card tray stays above the cookie banner", async ({ page }) => {
+    await page.route("**/api/age-gate/confirm", (route) => route.fulfill({ json: { ok: true, confirmed: true } }));
+    await startGuestQuestion(page, "/", "Как принять решение о работе?", true);
+    const tray = page.locator(".deck-pick__tray");
+    const banner = page.getByRole("dialog", { name: "Уведомление о cookie" });
+    await expect(tray).toBeVisible();
+    await expect(banner).toBeVisible();
+    await expect.poll(async () => {
+      const trayBox = await tray.boundingBox();
+      const bannerBox = await banner.boundingBox();
+      return trayBox && bannerBox ? trayBox.y + trayBox.height <= bannerBox.y + 1 : false;
+    }).toBe(true);
+  });
   for (const failCacheWrite of [false, true]) {
     test(`result and reload continuation, cache write failure=${failCacheWrite}`, async ({ page }) => {
       let confirmed = false;

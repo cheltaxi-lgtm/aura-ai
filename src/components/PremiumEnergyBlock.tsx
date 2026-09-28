@@ -528,7 +528,7 @@ export default function PremiumEnergyBlock({
                     </p>
                     <p className="mt-2 text-xs leading-relaxed text-gray-500">
                       После очистки данных текст не сохраняется, но лимит «раз в сутки» остаётся до
-                      полуночи по вашему времени.
+                      полуночи по московскому времени.
                     </p>
                   </div>
                 ) : null}

@@ -8,7 +8,7 @@ import {
   isProseLikelyTruncated,
   trimIncompleteTrailingSentence,
 } from "@/lib/prose-completion";
-import { MASTER_PERSONA, isCharacterKey } from "@/lib/prompts";
+import { isCharacterKey } from "@/lib/prompts";
 import type { CharacterKey } from "@/lib/prompts/types";
 import { drawSpread, resolveMasterDeckSystem, type DeckSystem } from "@/lib/decks";
 import { buildSpreadSeed, createSeededRng } from "@/lib/spread-seed";
@@ -16,7 +16,7 @@ import { DEFAULT_SPREAD_ID, getSpread, isSpreadEnabled, normalizeSpreadId, type 
 import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
 import { isDailyReadingUsedToday, recordDailyReadingAnchor } from "@/lib/rate-limit-anchors";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
-import { buildPaidSpreadReadingExtras, paidSpreadMaxTokens } from "@/lib/prompts/premium-reading";
+import { paidSpreadMaxTokens } from "@/lib/prompts/premium-reading";
 import {
   appendMemoryContextToPrompt,
   buildMemoryContext,
@@ -61,8 +61,17 @@ export interface DailyReadingResult {
   spreadId: SpreadId;
 }
 
-/** Positions framed as a forecast across the next 24 hours. */
+/** Positions within the current Moscow calendar day. */
 const DAILY_POSITIONS = ["Утро", "День", "Вечер"] as const;
+
+/** The full master personas contain paid-spread examples and past/present/future positions. */
+const DAILY_MASTER_VOICE: Record<CharacterKey, string> = {
+  veronika: "Ты Вероника Лунная, таролог Zovus. Говори тепло и прямо, на «ты». Образы света, воды и зеркала используй только там, где они помогают понять выпавшую карту.",
+  ragnar: "Ты Рагнар, мастер рун Zovus. Говори на «ты», коротко и весомо. Не добавляй судьбоносных угроз, которых нет в выпавших рунах.",
+  agafya: "Ты Агафья, мастер славянских символов Zovus. Говори на «ты», мудро и просто, без театра и страшилок. Держись значений выпавших символов.",
+  "shri-raj": "Ты Шри Радж, мастер астрологических символов Zovus. Говори спокойно и ясно, на «ты». Не выдумывай положения планет и домов, которых нет в раскладе.",
+  numerolog: "Ты Эвелина, нумеролог Zovus. Говори на «ты», тепло и точно. Используй только числа из расклада и переданного профиля.",
+};
 
 export const DAILY_READING_GENERIC_FALLBACK =
   "Сегодня — день тихой силы. Прислушайтесь к знакам вокруг.";
@@ -94,7 +103,6 @@ async function resolveDailyReadingText(
     spreadId: SpreadId;
     gender?: string;
     lifeFocus?: string;
-    mainQuestion?: string;
     userId?: string;
   }
 ): Promise<string> {
@@ -172,37 +180,34 @@ function drawDailyCards(
   }));
 }
 
-function buildDailySystem(charKey: CharacterKey, spreadId: SpreadId = DEFAULT_SPREAD_ID): string {
-  const persona = MASTER_PERSONA[charKey];
+export function buildDailySystem(charKey: CharacterKey, spreadId: SpreadId = DEFAULT_SPREAD_ID): string {
+  const persona = DAILY_MASTER_VOICE[charKey];
   const spread = getSpread(spreadId);
   const n = spread.cardCount;
-  const taskHint =
-    spreadId === DEFAULT_SPREAD_ID
-      ? "премиальный прогноз «Энергия дня» на ближайшие 24 часа по трём выпавшим символам — Утро, День, Вечер — с учётом профиля и памяти клиента."
-      : `премиальный прогноз «${spread.label}» на ближайшие 24 часа по ${n} выпавшим символам (каждая позиция расклада отдельно) с учётом профиля и памяти клиента.`;
-  const formatHint =
-    spreadId === DEFAULT_SPREAD_ID
-      ? "- Свяжи каждую часть суток (утро, день, вечер) с её символом из расклада; используй именно слова «утро», «день», «вечер»."
-      : `- Пройди по всем ${n} позициям расклада; назови каждую позицию и её символ.`;
+  const formatHint = spreadId === DEFAULT_SPREAD_ID
+    ? `Это короткий бесплатный расклад, к которому удобно возвращаться каждый день. Дай 100–170 слов.
+Первый абзац — главный ориентир дня в одном предложении.
+Следующие три коротких абзаца начни словами «Утро —», «День —», «Вечер —». В каждом назови соответствующий символ точно как в списке и объясни его смысл для этой части дня в 1–2 предложениях.
+Последний абзац начни словами «Сегодня —» и дай одно небольшое конкретное действие. Не пересказывай все карты заново.`
+    : `Это расширенный расклад «${spread.label}» из ${n} символов. Дай 240–360 слов.
+Сначала один короткий общий ориентир. Затем пройди по каждой позиции из списка по порядку: начни абзац названием позиции, назови её символ точно как в списке и объясни его смысл в 1–2 предложениях.
+В конце свяжи позиции в один вывод и предложи одно действие, если его действительно поддерживают символы. Не повторяй трактовки дословно.`;
 
   return `${persona}
 
-ЗАДАЧА: ${taskHint}
-
-${buildPaidSpreadReadingExtras({ cardCount: n, masterId: charKey, includeDepthBlocks: true })}
+ЗАДАЧА: расклад на сегодняшнюю календарную дату по Москве, а не на следующие 24 часа. Уже прошедшую часть дня описывай как повод осмыслить произошедшее, а не как будущий прогноз. Используй профиль и уместную память клиента, но не возвращайся автоматически к вопросу, заданному при регистрации.
 
 СТРОГИЕ ПРАВИЛА ФОРМАТА:
-- Цельный связный текст от первого лица, голосом мастера. Полная глубина по всем символам — не краткий тизер.
+- Пиши живым голосом мастера, простыми предложениями и короткими абзацами.
 ${formatHint}
 - Опирайся ТОЛЬКО на выпавшие символы, профиль и служебную память клиента — не выдумывай другие карты.
-- Если символы показывают тень — называй прямо, без смягчения.
-- В конце — одно конкретное действие на сегодня.
+- Если символы показывают тень — называй её прямо, без ложных обещаний и запугивания.
 - Заверши текст полным последним предложением с точкой — не обрывай на полуслове.
-- БЕЗ markdown (никаких #, *, -, нумерованных списков), без заголовков, без подзаголовков, без ремарок в скобках, без описания голоса и жестов.
+- БЕЗ markdown (никаких #, *, нумерованных списков), без служебных заголовков вроде «Простыми словами», без ремарок в скобках, без описания голоса и жестов.
 - Не повторяй задание и не перечисляй названия символов списком.`;
 }
 
-function buildDailyPrompt(params: {
+export function buildDailyPrompt(params: {
   name: string;
   zodiac: string;
   birthDate: string;
@@ -211,7 +216,6 @@ function buildDailyPrompt(params: {
   spreadId?: SpreadId;
   gender?: string;
   lifeFocus?: string;
-  mainQuestion?: string;
 }): string {
   const cardLines = params.cards
     .map(
@@ -222,7 +226,7 @@ function buildDailyPrompt(params: {
 
   const spread = getSpread(params.spreadId ?? DEFAULT_SPREAD_ID);
   const title =
-    params.spreadId === DEFAULT_SPREAD_ID
+    (params.spreadId ?? DEFAULT_SPREAD_ID) === DEFAULT_SPREAD_ID
       ? "прогноз «Энергия дня»"
       : `прогноз «${spread.label}»`;
 
@@ -232,7 +236,6 @@ function buildDailyPrompt(params: {
     params.zodiac,
     params.birthDate ? `дата рождения: ${params.birthDate}` : "",
     params.lifeFocus ? `фокус: ${params.lifeFocus}` : "",
-    params.mainQuestion ? `вопрос: «${params.mainQuestion}»` : "",
   ]
     .filter(Boolean)
     .join(", ");
@@ -243,7 +246,7 @@ function buildDailyPrompt(params: {
 Расклад из ${params.cards.length} карт:
 ${cardLines}
 
-Дай полный ${title} на ближайшие 24 часа.`;
+Дай ${title} на сегодняшнюю календарную дату по Москве.`;
 }
 
 async function loadDailyMemoryPrompt(
@@ -260,7 +263,6 @@ async function loadDailyMemoryPrompt(
       depth: "compact",
       profile,
       lastUserMessage: "энергия дня прогноз на сегодня",
-      mainQuestion: profile.mainQuestion,
     });
     return appendMemoryContextToPrompt(baseSystem, memoryCtx);
   } catch (err) {
@@ -280,7 +282,6 @@ async function generateDailyReadingText(
     spreadId?: SpreadId;
     gender?: string;
     lifeFocus?: string;
-    mainQuestion?: string;
     userId?: string;
   }
 ): Promise<string | null> {
@@ -304,7 +305,6 @@ ${buildClientGenderInstruction({
         zodiac: promptParams.zodiac,
         birthDate: promptParams.birthDate,
         lifeFocus: promptParams.lifeFocus,
-        mainQuestion: promptParams.mainQuestion,
       },
       system
     );
@@ -433,7 +433,6 @@ export async function getExistingDailyReading(
           return g === "male" ? "Мужской" : g === "female" ? "Женский" : undefined;
         })(),
         lifeFocus: user.life_focus ?? undefined,
-        mainQuestion: user.main_question ?? undefined,
         userId,
       });
       // Keep existing placeholder in DB until AI succeeds; do not invent template text.
@@ -541,7 +540,6 @@ export async function getOrCreateDailyReading(params: {
       return g === "male" ? "Мужской" : g === "female" ? "Женский" : undefined;
     })(),
     lifeFocus: dbUser?.life_focus ?? undefined,
-    mainQuestion: dbUser?.main_question ?? undefined,
     userId: params.userId,
   };
 

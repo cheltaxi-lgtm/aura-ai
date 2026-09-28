@@ -16,7 +16,8 @@
 .deck-pick.deck-pick--under-site-header {
   z-index: 40;
   top: var(--app-header-h, 3.25rem);
-  bottom: 0;
+  /* Keep the selected-card tray above the analytics consent banner on mobile. */
+  bottom: var(--cookie-banner-offset, 0px);
   left: 0;
   right: 0;
   height: auto;
