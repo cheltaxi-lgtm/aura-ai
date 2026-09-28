@@ -6,6 +6,7 @@ const eslintConfig = [
       ".next/**",
       ".next-e2e/**",
       ".next-e2e-full/**",
+      ".next-visual-review/**",
       ".cursor/**",
       "tmp/**",
       "node_modules/**",
