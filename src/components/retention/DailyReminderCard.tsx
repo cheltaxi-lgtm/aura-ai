@@ -147,6 +147,6 @@ export default function DailyReminderCard({
       {status.hasContactEmail ? <button type="button" className="min-h-10 text-white/65 underline" disabled={busy} onClick={() => void removeEmail()}>Удалить контактный адрес</button> : null}
     </div> : null}
     </> : null}
-    <p className="mt-2 text-xs text-white/60" role="status">{message}</p>
+    {message ? <p className="mt-2 text-xs text-white/60" role="status">{message}</p> : null}
   </aside>;
 }

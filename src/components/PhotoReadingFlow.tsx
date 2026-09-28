@@ -1886,6 +1886,8 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
+                  {!loading && result && isLoggedIn ? <DailyReminderCard /> : null}
+
                   {!loading && result?.historyId ? <ReportExportActions journey path={`/cabinet/readings/${encodeURIComponent(result.historyId)}/print`} /> : null}
 
                   {!loading && result?.historyId ? <SessionFeedback sessionId={result.historyId} targetType="reading" product="photo" visible /> : null}
@@ -1895,8 +1897,6 @@ export default function PhotoReadingFlow({
                       <ShareButton payload={resultSharePayload} variant="pill" label="Поделиться раскладом" />
                     </div>
                   )}
-
-                  {!loading && result && isLoggedIn ? <DailyReminderCard /> : null}
 
                   {!loading && displayAnalysis && onContinueChat ? (
                     <div className="space-y-2">

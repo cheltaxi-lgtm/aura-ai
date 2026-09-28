@@ -1,6 +1,8 @@
 "use client";
 import { useEffect, useId, useRef, useState } from "react";
 import Link from "next/link";
+import DailyReminderCard from "@/components/retention/DailyReminderCard";
+import SessionFeedback from "@/components/SessionFeedback";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import type { getReadingJourney } from "@/lib/reading-journey";
 
@@ -54,6 +56,10 @@ export default function ReadingJourney({readingId,context}:{readingId?:string;co
     <h2 id={`${id}-title`} className="mt-2 font-display text-2xl text-white">Что хочется взять с собой?</h2>
     <Link className="mt-2 inline-block py-2 text-sm text-aura-gold underline underline-offset-4" href={journey.reading.href}>Разбор: {journey.reading.title}</Link>
     <p className="mt-1 text-sm leading-relaxed text-white/65">Сохраните важное и вернитесь к своим наблюдениям. Дневник и история бесплатны.</p>
+    {journey.reading.kind !== "photo" && journey.reading.kind !== "tarot" && <DailyReminderCard />}
+    {(journey.reading.kind === "aura" || journey.reading.kind === "palm") && (
+      <SessionFeedback sessionId={journey.reading.id} targetType="reading" product={journey.reading.kind} visible />
+    )}
     {journey.note?.entry_text && <p className="mt-3 whitespace-pre-wrap break-words text-sm text-white/75">{journey.note.entry_text}</p>}
     {journey.note?.weekly_step && <p className="mt-2 whitespace-pre-wrap break-words text-sm text-white/65">Шаг на неделю: {journey.note.weekly_step}</p>}
     <label className="mt-4 block text-sm text-white/85" htmlFor={`${id}-insight`}>Мой главный вывод<textarea id={`${id}-insight`} className={field} value={insight} onChange={e=>setInsight(e.target.value)} maxLength={2000} placeholder="Что оказалось полезным для меня?" /></label>
