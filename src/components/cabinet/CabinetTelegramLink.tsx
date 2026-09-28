@@ -79,7 +79,7 @@ export default function CabinetTelegramLink() {
   return (
     <section
       id="cabinet-telegram-link"
-      className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3"
+      className="scroll-mt-24 rounded-2xl border border-white/10 bg-white/[0.03] p-5 space-y-3"
     >
       <div>
         <h2 className="text-base font-semibold text-white">Telegram</h2>

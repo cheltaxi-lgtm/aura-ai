@@ -7,7 +7,7 @@ import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import type { getReadingJourney } from "@/lib/reading-journey";
 
 type Journey = NonNullable<Awaited<ReturnType<typeof getReadingJourney>>>;
-export default function ReadingJourney({readingId,context}:{readingId?:string;context?:string}) {
+export default function ReadingJourney({readingId,context,showDailyReminder=true}:{readingId?:string;context?:string;showDailyReminder?:boolean}) {
   const {firstExperienceEnabled}=usePlatformFeatures();
   const [loadError,setLoadError]=useState(false); const [retry,setRetry]=useState(0);
   const [journey,setJourney]=useState<Journey|null>(null);
@@ -56,7 +56,7 @@ export default function ReadingJourney({readingId,context}:{readingId?:string;co
     <h2 id={`${id}-title`} className="mt-2 font-display text-2xl text-white">Что хочется взять с собой?</h2>
     <Link className="mt-2 inline-block py-2 text-sm text-aura-gold underline underline-offset-4" href={journey.reading.href}>Разбор: {journey.reading.title}</Link>
     <p className="mt-1 text-sm leading-relaxed text-white/65">Сохраните важное и вернитесь к своим наблюдениям. Дневник и история бесплатны.</p>
-    {journey.reading.kind !== "photo" && journey.reading.kind !== "tarot" && <DailyReminderCard />}
+    {showDailyReminder && journey.reading.kind !== "photo" && journey.reading.kind !== "tarot" && <DailyReminderCard source="post_result" />}
     {(journey.reading.kind === "aura" || journey.reading.kind === "palm") && (
       <SessionFeedback sessionId={journey.reading.id} targetType="reading" product={journey.reading.kind} visible />
     )}

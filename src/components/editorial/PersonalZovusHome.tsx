@@ -386,6 +386,7 @@ export default function PersonalZovusHome({
           ) : null}
         </div>
         <DailyReminderCard
+          source="personal_home"
           key={reminderRevision}
           onStatusChange={(status) => {
             setReminderEnabled(status.masterReminder);

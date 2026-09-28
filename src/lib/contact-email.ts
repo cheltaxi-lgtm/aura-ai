@@ -25,25 +25,30 @@ export function normalizeContactEmail(raw: unknown): string | null {
 export async function getContactEmailStatus(accountId: string): Promise<{
   hasEmail: boolean;
   hasContactEmail: boolean;
+  hasTelegram: boolean;
   masterReminder: boolean;
   dailyCardsReminder: boolean;
+  dailyTelegramReminder: boolean;
 }> {
   const [email, dailyCardsReminder, profileUserId, contact] = await Promise.all([
     getAccountDeliverableEmail(accountId),
     getAccountDailyCardsReminder(accountId),
     getProfileUserIdForAccount(accountId),
-    query<{ has_contact_email: boolean }>(
+    query<{ has_contact_email: boolean; has_telegram: boolean }>(
       `SELECT contact_email IS NOT NULL AND contact_email_verified_at IS NOT NULL
-         AS has_contact_email FROM user_accounts WHERE id=$1`, [accountId]),
+         AS has_contact_email,
+         EXISTS(SELECT 1 FROM user_telegram_identities ti WHERE ti.user_account_id=ua.id) AS has_telegram
+         FROM user_accounts ua WHERE ua.id=$1`, [accountId]),
   ]);
-  const dailyEmail = profileUserId
-    ? (await getNotificationPrefs(profileUserId)).dailyEmail
-    : false;
+  const prefs = profileUserId ? await getNotificationPrefs(profileUserId) : null;
+  const hasTelegram = contact.rows[0]?.has_telegram === true;
   return {
     hasEmail: Boolean(email),
     hasContactEmail: contact.rows[0]?.has_contact_email === true,
+    hasTelegram,
     masterReminder: dailyCardsReminder,
-    dailyCardsReminder: Boolean(email) && dailyCardsReminder && dailyEmail,
+    dailyCardsReminder: Boolean(email) && dailyCardsReminder && prefs?.dailyEmail === true,
+    dailyTelegramReminder: hasTelegram && dailyCardsReminder && prefs?.dailyTelegram === true,
   };
 }
 

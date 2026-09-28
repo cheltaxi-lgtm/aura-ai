@@ -71,7 +71,16 @@ export default function CabinetDailyNotifications() {
       if (res.ok) {
         const data = (await res.json()) as { prefs?: Prefs };
         if (data.prefs) setPrefs(data.prefs);
+      } else {
+        setPrefs(prefs);
+        if (res.status === 409 && patch.dailyTelegram === true) {
+          setContactStatus((current) => current ? {
+            ...current, hasTelegram: false, dailyTelegramReminder: false,
+          } : current);
+        }
       }
+    } catch {
+      setPrefs(prefs);
     } finally {
       setSaving(false);
     }
@@ -89,7 +98,7 @@ export default function CabinetDailyNotifications() {
         Вы сами выбираете, какие напоминания получать. Настройки можно изменить в кабинете.
       </p>
 
-      <DailyReminderCard showManage onStatusChange={syncContactStatus} />
+      <DailyReminderCard source="cabinet" showManage onStatusChange={syncContactStatus} />
 
       <div className="mt-4">
         <RetentionOptInCard
@@ -123,14 +132,25 @@ export default function CabinetDailyNotifications() {
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
-              checked={Boolean(contactStatus?.masterReminder && prefs.dailyTelegram)}
-              disabled={saving || !contactStatus?.masterReminder}
+              checked={Boolean(contactStatus?.hasTelegram && contactStatus.masterReminder && prefs.dailyTelegram)}
+              disabled={saving || !contactStatus?.masterReminder || !contactStatus?.hasTelegram}
               onChange={(e) => void save({ dailyTelegram: e.target.checked })}
               className="rounded border-white/20"
             />
             <Bell className="h-4 w-4 text-white/40" />
             Сообщение в Telegram о раскладе на сутки
           </label>
+          {contactStatus && !contactStatus.hasTelegram ? (
+            <p className="text-xs text-white/45">
+              Для напоминания сначала <a href="#cabinet-telegram-link" className="text-amber-200 underline" onClick={(event) => {
+                const target = document.getElementById("cabinet-telegram-link");
+                if (!target) return;
+                event.preventDefault();
+                window.history.replaceState(window.history.state, "", "/cabinet#cabinet-telegram-link");
+                target.scrollIntoView({ behavior: "smooth", block: "start" });
+              }}>привяжите Telegram</a> к аккаунту.
+            </p>
+          ) : null}
           <label className="block text-xs text-white/45">
             Час напоминания (МСК)
             <select

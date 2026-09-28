@@ -1093,7 +1093,7 @@ export default function ChatWindow({
           </AnimatePresence>
           )}
 
-          {retentionOptInSurface === "post_value" ? <DailyReminderCard /> : null}
+          {retentionOptInSurface === "post_value" ? <DailyReminderCard source="post_result" /> : null}
           {sessionId && !storageBlocked && !isLoading && !spreadReadingLoading && messages.some(message=>message.role === "assistant" && message.content.trim().length>80) && <ReadingJourney key={`${sessionId}:${messages.length}`} readingId={sessionId} />}
           {showTypingIndicator && (
             <motion.div

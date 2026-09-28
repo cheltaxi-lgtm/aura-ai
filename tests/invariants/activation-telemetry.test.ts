@@ -56,6 +56,14 @@ describe("activation observations preserve product authority",()=>{
     expect(response.headers.get("cache-control")).toBe("private, no-store");
     mocks.context.mockResolvedValue(null);expect((await GET()).status).toBe(403);
   });
+  it("records only an allowlisted post-result surface without accepting arbitrary text",async()=>{
+    const request=(surface:string)=>new NextRequest("https://zovus.ru/api/auth/activation",{method:"POST",headers:{origin:"https://zovus.ru","Content-Type":"application/json"},body:JSON.stringify({product:"daily",event:"offer_clicked",key:crypto.randomUUID(),surface})});
+    expect((await POST(request("post_result"))).status).toBe(200);
+    expect(mocks.query.mock.calls[0][1][4]).toBe('{"surface":"post_result"}');
+    vi.clearAllMocks();mocks.limit.mockResolvedValue(null);
+    expect((await POST(request("private-user-text"))).status).toBe(400);
+    expect(mocks.query).not.toHaveBeenCalled();
+  });
   it("uses the trusted public origin behind a proxy rather than the internal Next hostname",async()=>{
     vi.stubEnv("NODE_ENV","production");
     try {

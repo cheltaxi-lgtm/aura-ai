@@ -2,22 +2,27 @@
 
 import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
+import { createActivationEventKey, trackActivation, type ActivationEventKey } from "@/lib/activation-client";
 import { trackReminderOpt } from "@/lib/seo/product-funnel";
 import { trackDailyCardsCtaClick } from "@/lib/seo/metrika";
 
 export type DailyReminderStatus = {
   hasEmail: boolean;
   hasContactEmail: boolean;
+  hasTelegram: boolean;
   masterReminder: boolean;
   dailyCardsReminder: boolean;
+  dailyTelegramReminder: boolean;
 };
 
 export default function DailyReminderCard({
   showManage = false,
   onStatusChange,
+  source = "post_result",
 }: {
   showManage?: boolean;
   onStatusChange?: (status: DailyReminderStatus) => void;
+  source?: "post_result" | "personal_home" | "cabinet";
 }) {
   const [status, setStatus] = useState<DailyReminderStatus | null>(null);
   const [email, setEmail] = useState("");
@@ -25,6 +30,13 @@ export default function DailyReminderCard({
   const [message, setMessage] = useState("");
   const [changingEmail, setChangingEmail] = useState(false);
   const onStatusChangeRef = useRef(onStatusChange);
+  const cardRef = useRef<HTMLElement>(null);
+  const shownRef = useRef(false);
+  const eventKeyRef = useRef<ActivationEventKey | null>(null);
+  const eventKey = () => {
+    eventKeyRef.current ??= createActivationEventKey() ?? null;
+    return eventKeyRef.current ?? undefined;
+  };
   onStatusChangeRef.current = onStatusChange;
 
   const updateStatus = (next: DailyReminderStatus) => {
@@ -43,6 +55,25 @@ export default function DailyReminderCard({
       .catch(() => undefined);
     return () => { active = false; };
   }, []);
+
+  useEffect(() => {
+    if (source !== "post_result" || !status || shownRef.current || !cardRef.current) return;
+    const card = cardRef.current;
+    const shown = () => {
+      if (shownRef.current) return;
+      shownRef.current = true;
+      trackActivation("daily", "offer_shown", eventKey(), source);
+    };
+    if (typeof IntersectionObserver === "undefined") { shown(); return; }
+    const observer = new IntersectionObserver((entries) => {
+      if (entries.some((entry) => entry.isIntersecting && entry.intersectionRatio >= 0.5)) {
+        shown();
+        observer.disconnect();
+      }
+    }, { threshold: [0.5] });
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [source, status]);
 
   if (!status) return null;
 
@@ -83,6 +114,26 @@ export default function DailyReminderCard({
     } finally { setBusy(false); }
   };
 
+  const setTelegramReminder = async (enabled: boolean) => {
+    setBusy(true);
+    setMessage("");
+    try {
+      const res = await fetch("/api/auth/daily-cards-reminder", {
+        method: "PATCH",
+        credentials: "include",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dailyCardsReminder: enabled, channel: "telegram" }),
+      });
+      if (!res.ok) throw new Error();
+      updateStatus({ ...status, masterReminder: enabled ? true : status.masterReminder, dailyTelegramReminder: enabled });
+      setMessage(enabled ? "Напоминание в Telegram включено." : "Напоминание в Telegram отключено.");
+    } catch {
+      setMessage("Не удалось изменить напоминание в Telegram. Попробуйте позже.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
   const removeEmail = async () => {
     setBusy(true);
     setMessage("");
@@ -118,16 +169,32 @@ export default function DailyReminderCard({
     }
   };
 
-  return <aside className="my-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-sm text-white/80" aria-label="Письма о раскладе на сутки">
+  return <aside ref={cardRef} className="my-4 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-sm text-white/80" aria-label="Напоминания о раскладе на сутки">
     <p className="font-semibold text-white">Ваш бесплатный расклад на сутки</p>
     <p className="mt-1 leading-6">Утро, день и вечер — один расклад бесплатно раз в сутки. Подарочные руны для него не нужны.</p>
     <Link href="/?daily=1" prefetch={false} className="btn-luxe btn-luxe--gold mt-3 min-h-11" style={{transitionProperty:"transform, opacity"}} onClick={(event) => {
-      trackDailyCardsCtaClick("post_result");
+      trackDailyCardsCtaClick(source);
+      trackActivation("daily", "offer_clicked", eventKey(), source);
       if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
       // Home owns one-shot deep-link state; reload to open daily after a result on the same page.
       event.preventDefault();
       window.location.assign("/?daily=1");
     }}>Открыть расклад на сутки · 0 рун</Link>
+    {status.hasTelegram ? <div className="mt-3 border-t border-white/10 pt-3">
+      <p className="leading-6">Одно напоминание в Telegram о новом бесплатном раскладе. Отключить можно здесь или в кабинете.</p>
+      {status.dailyTelegramReminder
+        ? <button type="button" className="mt-2 min-h-10 text-amber-200 underline" disabled={busy} onClick={() => void setTelegramReminder(false)}>Отключить напоминание в Telegram</button>
+        : <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 px-4" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void setTelegramReminder(true)}>Напоминать в Telegram</button>}
+    </div> : <p className="mt-3 text-xs leading-5 text-white/60">
+      Удобнее получать сообщение в Telegram? <Link href="/cabinet#cabinet-telegram-link" className="text-amber-200 underline" onClick={(event) => {
+        if (window.location.pathname !== "/cabinet") return;
+        const target = document.getElementById("cabinet-telegram-link");
+        if (!target) return;
+        event.preventDefault();
+        window.history.replaceState(window.history.state, "", "/cabinet#cabinet-telegram-link");
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }}>Привяжите его к аккаунту</Link>, затем включите напоминание здесь.
+    </p>}
     {showManage || !status.hasEmail || !status.dailyCardsReminder ? <>
     <p className="mt-1 leading-6">Можем присылать одно письмо о вашем раскладе на сутки. Отключить его можно в кабинете или из письма.</p>
     {status.hasEmail && status.dailyCardsReminder ? <p className="mt-2 text-amber-200">Письмо о раскладе включено.</p> : null}

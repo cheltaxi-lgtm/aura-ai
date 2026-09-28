@@ -1886,7 +1886,7 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
-                  {!loading && result && isLoggedIn ? <DailyReminderCard /> : null}
+                  {!loading && result && isLoggedIn ? <DailyReminderCard source="post_result" /> : null}
 
                   {!loading && result?.historyId ? <ReportExportActions journey path={`/cabinet/readings/${encodeURIComponent(result.historyId)}/print`} /> : null}
 

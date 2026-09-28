@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDb } from "@/lib/db";
+import { ensureDb, queryClient, withTransaction } from "@/lib/db";
 import {
   getAccountDailyCardsReminder,
   setAccountDailyCardsReminder,
@@ -45,6 +45,48 @@ async function writePreference(request: NextRequest) {
   const enabled = parseEnabled(body);
   if (enabled == null) {
     return NextResponse.json({ error: "dailyCardsReminder_required" }, { status: 400 });
+  }
+  const channel = (body as { channel?: unknown }).channel;
+  if (channel !== undefined && channel !== "telegram") {
+    return NextResponse.json({ error: "invalid_channel" }, { status: 400 });
+  }
+  if (channel === "telegram") {
+    const result = await withTransaction(async (client) => {
+      const { rows } = await queryClient<{
+        profile_user_id: string | null;
+        daily_cards_reminder: boolean;
+      }>(client, `SELECT ua.profile_user_id, ua.daily_cards_reminder
+        FROM user_accounts ua
+        WHERE ua.id=$1 AND ua.erasure_requested_at IS NULL FOR UPDATE`, [auth.sub]);
+      const account = rows[0];
+      if (!account?.profile_user_id) return { error: "profile_required", status: 403 } as const;
+      if (enabled) {
+        // Check after the account lock: a concurrent unlink may have completed
+        // while this transaction waited for that lock.
+        const linked = await queryClient(client,
+          `SELECT 1 FROM user_telegram_identities WHERE user_account_id=$1 LIMIT 1`, [auth.sub]);
+        if (!linked.rows.length) return { error: "telegram_not_linked", status: 409 } as const;
+      }
+
+      // A prior email unsubscribe can leave an old dailyEmail preference behind
+      // while the shared gate is off. Do not reopen that channel on Telegram opt-in.
+      const patch = enabled && !account.daily_cards_reminder
+        ? { dailyTelegram: true, dailyEmail: false, dailyInApp: false }
+        : { dailyTelegram: enabled };
+      await queryClient(client, `UPDATE users
+        SET notification_prefs=COALESCE(notification_prefs, '{}'::jsonb) || $2::jsonb
+        WHERE id=$1`, [account.profile_user_id, JSON.stringify(patch)]);
+      if (enabled) {
+        await queryClient(client,
+          `UPDATE user_accounts SET daily_cards_reminder=TRUE WHERE id=$1`, [auth.sub]);
+      }
+      return {
+        status: 200,
+        dailyCardsReminder: enabled || account.daily_cards_reminder,
+        dailyTelegramReminder: enabled,
+      } as const;
+    });
+    return NextResponse.json(result, { status: result.status });
   }
   const dailyCardsReminder = await setAccountDailyCardsReminder(auth.sub, enabled);
   const profileUserId = await getProfileUserIdForAccount(auth.sub);

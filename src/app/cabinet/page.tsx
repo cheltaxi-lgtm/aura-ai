@@ -280,6 +280,15 @@ export default function CabinetPage() {
     }
   }, []);
 
+  /** Scroll to Telegram binding after async cabinet content mounts. */
+  useEffect(() => {
+    if (loading || !data || activeTab !== "profile" || window.location.hash !== "#cabinet-telegram-link") return;
+    const frame = requestAnimationFrame(() => {
+      document.getElementById("cabinet-telegram-link")?.scrollIntoView({ block: "start" });
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [loading, data, activeTab]);
+
   /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
   useEffect(() => {
     if (loading || authLoading || !authUser || !data) return;
@@ -961,7 +970,7 @@ export default function CabinetPage() {
           </div>
         ) : null}
 
-        {!loading && activeTab === "profile" && <ReadingJourney />}
+        {!loading && activeTab === "profile" && <ReadingJourney showDailyReminder={false} />}
         {!loading && activeTab === "profile" && <PendingReadingResume />}
         {loading ? (
           <div className="space-y-6">{renderTabSkeleton()}</div>
