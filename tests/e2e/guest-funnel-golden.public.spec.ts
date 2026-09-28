@@ -48,14 +48,13 @@ test.describe("guest funnel golden path (public)", () => {
     );
   });
 
-  test("landing sells daily retention hook without guest-auth demand", async ({ page }) => {
+  test("landing separates guest question cards from the account daily reading", async ({ page }) => {
     await page.goto("/?app=1");
     await page.getByText("Другие возможности Zovus", { exact: true }).click();
     await expect(page.getByRole("heading", { name: /Расклад на сутки — каждый день/i })).toBeVisible();
     await expect(page.getByText(/раз в сутки/i).first()).toBeVisible();
-    await expect(
-      page.getByRole("button", { name: /Первый расклад по вопросу/i }).first()
-    ).toBeVisible();
+    await expect(page.locator(".editorial-hero").getByRole("button", { name: /Открыть 3 карты/i })).toBeVisible();
+    await expect(page.locator(".editorial-daily-ritual").getByRole("button", { name: "Открыть расклад на сутки" })).toBeVisible();
     await expect(page.getByText(/не путать со стартовым раскладом/i)).toHaveCount(0);
     await expect(page.getByText(/^После входа$/i)).toHaveCount(0);
   });

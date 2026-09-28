@@ -28,16 +28,19 @@ test.describe("mobile guest triplet entry points", () => {
     await expectPickerOpened(page);
   });
 
-  test("daily guest CTA opens and focuses the actual picker", async ({ page }) => {
+  test("daily guest CTA opens registration and returns to the daily reading", async ({ page }) => {
     await openFreshLanding(page);
     await page.getByText("Другие возможности Zovus", { exact: true }).click();
     const button = page.locator(".editorial-daily-ritual").getByRole("button", {
-      name: "Первый расклад по вопросу",
+      name: "Открыть расклад на сутки",
     });
     await expect(button).toBeVisible();
     await button.scrollIntoViewIfNeeded();
     await button.click();
-    await expectPickerOpened(page);
+    await expect(page).toHaveURL(/\/auth\/user\/register\?returnTo=/);
+    const returnTo = new URL(page.url()).searchParams.get("returnTo");
+    expect(returnTo).not.toBeNull();
+    expect(new URL(returnTo!, "https://zovus.ru").searchParams.get("daily")).toBe("1");
   });
 
 });
