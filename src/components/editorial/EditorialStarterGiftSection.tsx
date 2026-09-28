@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { useAuth } from "@/lib/useAuth";
@@ -50,6 +50,9 @@ export default function EditorialStarterGiftSection() {
   const { isLoggedIn, loading: authLoading } = useAuth();
   const { ref, className } = useScrollReveal<HTMLElement>();
   const trackedRef = useRef(false);
+  const [registerHref, setRegisterHref] = useState("/auth/user/register?returnTo=%2F");
+
+  useEffect(() => setRegisterHref(buildRegisterHref("/")), []);
 
   const shown = fromServer && config.starterRunes > 0 && !authLoading && !isLoggedIn;
 
@@ -108,7 +111,7 @@ export default function EditorialStarterGiftSection() {
             </ul>
             <div className="editorial-starter-pack__actions">
               <Link
-                href={buildRegisterHref("/")}
+                href={registerHref}
                 prefetch={false}
                 className="editorial-btn editorial-btn--gold"
                 onClick={() => trackSeoEvent("starter_gift_cta_click", { placement: "home" })}

@@ -77,6 +77,10 @@ export default function GlobalAppTopHeader() {
   const productAction = resolveProductHeaderAction(pathname);
   const handlePrimaryAction = () => {
     if (!productAction) {
+      if (isLoggedIn && pathname !== "/") {
+        window.location.assign(resolveAppAwarePath("/?daily=1"));
+        return;
+      }
       navigateToStartReading();
       return;
     }

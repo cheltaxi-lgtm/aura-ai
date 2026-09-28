@@ -2,6 +2,7 @@
 
 import EditorialImage from "@/components/editorial/EditorialImage";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import HeroQuestionField from "@/components/seo/HeroQuestionField";
 import { useScrollReveal } from "@/hooks/useScrollReveal";
 import { BRAND_NAME } from "@/lib/brand";
@@ -37,6 +38,8 @@ export default function EditorialHeroSection({
   expectationSubtitle,
 }: EditorialHeroSectionProps) {
   const { ref, className } = useScrollReveal<HTMLElement>({ immediate: true });
+  const [registerHref, setRegisterHref] = useState("/auth/user/register?returnTo=%2F");
+  useEffect(() => setRegisterHref(buildRegisterHref("/")), []);
   const guestConversion = conversionHero && !isLoggedIn;
 
   return (
@@ -109,7 +112,7 @@ export default function EditorialHeroSection({
           <div className="editorial-hero__gift">
             <StarterRunesValue variant="line" generic product="home_hero" />
             <Link
-              href={buildRegisterHref("/")}
+              href={registerHref}
               prefetch={false}
               onClick={() => trackRegistrationCtaClick("home_hero_direct")}
               className="mt-2 inline-block text-sm text-aura-champagne underline underline-offset-4 hover:text-white"

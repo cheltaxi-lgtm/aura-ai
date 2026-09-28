@@ -724,7 +724,7 @@ export default function CabinetPage() {
   };
 
   const renderTabContent = () => {
-    if (!data) return null;
+    if (!data) return activeTab === "profile" ? <ReadingJourney showDailyReminder={false} /> : null;
 
     switch (activeTab) {
       case "profile":
@@ -738,7 +738,6 @@ export default function CabinetPage() {
                 balancePulse={balancePulse}
               />
             ) : null}
-            <CabinetActiveReports />
             {authUser?.email && !profileLoading ? (
               <CabinetProfilePanel
                 email={authUser.email}
@@ -750,6 +749,8 @@ export default function CabinetPage() {
             ) : authUser?.email && profileLoading ? (
               <CabinetProfileHeaderSkeleton />
             ) : null}
+            <CabinetActiveReports />
+            <ReadingJourney showDailyReminder={false} />
             <CabinetLoginMethods />
             <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
@@ -980,7 +981,6 @@ export default function CabinetPage() {
           </div>
         ) : null}
 
-        {!loading && activeTab === "profile" && <ReadingJourney showDailyReminder={false} />}
         {!loading && activeTab === "profile" && <PendingReadingResume />}
         {loading ? (
           <div className="space-y-6">{renderTabSkeleton()}</div>

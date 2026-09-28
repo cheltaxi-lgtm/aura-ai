@@ -268,6 +268,14 @@ test.describe("daily artifact + landing copy", () => {
     for (const card of exactCards) await expect(dialog).toContainText(card.name);
   });
 
+  test("logged-in header opens the daily reading directly from another page", async ({ page }) => {
+    await installDailyMocks(page, { dailyExists: false });
+    await page.goto("/about");
+    await page.getByRole("banner").getByRole("button", { name: "Расклад на сутки", exact: true }).click();
+    await expect(page).toHaveURL(/\?daily=1/);
+    await expect(page.getByRole("dialog", { name: "Расклад на сутки" })).toBeVisible();
+  });
+
   test("account without a usable mailbox can add one beside the daily reading", async ({ page }) => {
     await installDailyMocks(page, { hasEmail: false, dailyExists: false });
     await page.goto("/?app=1");
@@ -384,6 +392,12 @@ test.describe("daily artifact + landing copy", () => {
     const dialog = page.getByRole("dialog", { name: "Расклад на сутки" });
     await expect(dialog).toBeVisible();
     await expect(dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" })).toBeVisible();
+    for (const position of ["Утро", "День", "Вечер"]) {
+      await expect(dialog.getByText(position, { exact: true })).toHaveCount(1);
+    }
+    await expect(dialog.getByText("Прошлое", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText("Настоящее", { exact: true })).toHaveCount(0);
+    await expect(dialog.getByText("Будущее", { exact: true })).toHaveCount(0);
     await expect(dialog.getByRole("button", { name: /Расширить до 7 карт/ })).toHaveCount(0);
     await dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" }).click();
     for (let i = 0; i < exactCards.length; i += 1) {

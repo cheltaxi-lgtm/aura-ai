@@ -16,8 +16,10 @@ const MAJOR_BARE_HEADERS =
   /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?(Простыми словами|Шаги(?:\s+на\s+\d+\s+дней)?|Что делать|Итог(?![\u0400-\u04FF])|Вывод(?![\u0400-\u04FF])|Совет\s+карт(?:ы)?|Практика(?:\s+на\s+(?:неделю|месяц|30\s+дней))?|Общий вывод|Ключевые выводы|Краткое резюме|Личность|Отношения|Карьера|Ресурсы|Напряжения|Текущий период|Рекомендации|Методология|Важно)\s*:?\s*(?=\S)/giu;
 
 /** Daily / position micro-headers → ### (День ≠ Деньги). */
+const DAILY_BARE_HEADERS =
+  /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?(Утро|День(?!ги)|Вечер)\s*[:—–-]\s*(?=\S)/giu;
 const MINOR_BARE_HEADERS =
-  /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?(Утро|День(?!ги)|Вечер|Карта\s+\d+|Позиция\s+\d+|Число пути|Энергия периода|Совет чисел)\s*:?\s+(?=\S)/giu;
+  /(?:^|\n)\s*(?:#{1,3}\s*)?(?:✦\s*)?(Карта\s+\d+|Позиция\s+\d+|Число пути|Энергия периода|Совет чисел)\s*:?\s+(?=\S)/giu;
 
 /** Glued section starts after a sentence end. Avoid JS `\b` on Cyrillic. */
 const GLUED_SECTION_RE =
@@ -26,6 +28,7 @@ const GLUED_SECTION_RE =
 function promoteBareHeaders(text: string): string {
   return text
     .replace(MAJOR_BARE_HEADERS, "\n\n## $1\n\n")
+    .replace(DAILY_BARE_HEADERS, "\n\n### $1\n\n")
     .replace(MINOR_BARE_HEADERS, "\n\n### $1\n\n");
 }
 

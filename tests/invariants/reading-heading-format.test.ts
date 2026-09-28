@@ -4,9 +4,19 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ChatMessageRenderer from "@/components/ChatMessageRenderer";
 import ReportRichText from "@/components/reports/ReportRichText";
 import { polishSpreadReadingText, repairLegacyReadingHeadings } from "@/lib/reading-text-polish";
+import { formatPremiumReadingForDisplay } from "@/lib/format-premium-reading";
 
 
 describe("reading emphasis boundaries", () => {
+  it("keeps daily position headings without turning a later sentence into another heading", () => {
+    const formatted = formatPremiumReadingForDisplay(
+      "Утро — действуй спокойно.\nДень — выбери цель.\nВечер — проверь слова.\nВечер может показать новую мысль."
+    );
+    expect(formatted).toContain("### Утро");
+    expect(formatted).toContain("### День");
+    expect(formatted.match(/### Вечер/g)).toHaveLength(1);
+    expect(formatted).toContain("Вечер может показать новую мысль.");
+  });
   it("preserves adjacent card title and bold opening without inserting another card", () => {
     const text = "**8 Пентаклей**\n\n**8 Пентаклей в позиции «Итог»** — усердие, оттачивание мастерства и кропотливый труд.";
     expect(polishSpreadReadingText(text, ["8 Пентаклей"])).toBe(text);

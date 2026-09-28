@@ -28,6 +28,7 @@ import { trackDailyCardsCompleted, trackDailyCardsStarted } from "@/lib/seo/metr
 
 const QUOTE_RE = /(Помни:\s*даже камень[^.!?]*[.!?])/i;
 const GOLD_GRADIENT = "linear-gradient(135deg, #c9993a 0%, #e8c56d 50%, #c9993a 100%)";
+const FREE_DAILY_POSITIONS = ["Утро", "День", "Вечер"];
 
 function cardsLabelRu(count: number): string {
   const mod10 = count % 10;
@@ -116,7 +117,10 @@ export default function PremiumEnergyBlock({
   const resultForDateRef = useRef<string | null>(null);
 
   const spread = useMemo(() => getSpread(spreadId), [spreadId]);
-  const positionLabels = useMemo(() => spread.positions.map((p) => p.label), [spread]);
+  const positionLabels = useMemo(
+    () => spreadId === "daily-extended" ? spread.positions.map((p) => p.label) : FREE_DAILY_POSITIONS,
+    [spread, spreadId]
+  );
   const cardGridClass =
     spread.cardCount <= 3
       ? "grid-cols-3"
