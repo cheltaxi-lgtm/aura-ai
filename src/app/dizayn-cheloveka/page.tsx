@@ -100,7 +100,7 @@ export default function HumanDesignHubPage() {
       <div className="hd-hub">
         <section className="hd-hub-hero" aria-labelledby="hd-hub-title">
           <div className="hd-hub-hero__copy">
-            <p className="hd-hub-eyebrow">Дизайн Человека · Ваш бодиграф</p>
+            <p className="hd-hub-eyebrow">Дизайн Человека: что это и как работает</p>
             <h1 id="hd-hub-title">Познакомьтесь со своей <em>внутренней механикой</em></h1>
             <p className="hd-hub-hero__lead">
               Рассчитайте карту по данным рождения и узнайте свой тип, стратегию решений и профиль.
