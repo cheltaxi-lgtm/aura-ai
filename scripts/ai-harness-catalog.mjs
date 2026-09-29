@@ -48,7 +48,8 @@ export const CHECKS = {
 
   "hd-verify": { title: "human-design", npm: "verify:human-design" },
   "hd-connection": { title: "hd-connection", npm: "verify:hd-connection" },
-  "hd-unit": { title: "hd-unit", vitest: ["tests/invariants/hd-*.test.ts"] },
+  // Vitest treats a shell-style glob as a literal filter on Windows.
+  "hd-unit": { title: "hd-unit", vitest: ["tests/invariants/hd-"] },
 
   "tarot-spreads": { title: "spreads", npm: "test:spreads" },
   "tarot-share": { title: "share", npm: "test:share" },

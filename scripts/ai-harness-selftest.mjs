@@ -32,6 +32,13 @@ function runNode(rel, args) {
 
 const catalog = await validateCatalog();
 check("catalog-valid", catalog.status === 0, catalog.stdout.split("\n")[0]);
+const hdUnitFiles = fs.readdirSync(path.join(ROOT, "tests/invariants"))
+  .filter((name) => name.startsWith("hd-") && name.endsWith(".test.ts"))
+  .map((name) => `tests/invariants/${name}`);
+check("hd-unit filters resolve to real Vitest files",
+  hdUnitFiles.length > 0 &&
+  CHECKS["hd-unit"].vitest.every((filter) =>
+    !filter.includes("*") && hdUnitFiles.some((file) => file.includes(filter))));
 
 for (const scope of Object.keys(SCOPES)) {
   const dry = runNode("scripts/ai-harness.mjs", ["--scope", scope, "--level", "fast", "--dry-run", "--json"]);
