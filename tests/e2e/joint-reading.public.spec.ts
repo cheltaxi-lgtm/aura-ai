@@ -288,6 +288,8 @@ test("failed personal generation stays on the invite with accurate retry guidanc
   await page.goto("/joint-reading/retry-token?jointError=Не%20удалось%20подтвердить%20сохранение&jointErrorCode=joint_attach_unknown");
   await expect(page.getByText(/Статус сохранения пока не подтверждён/)).toBeVisible();
   await expect(page.getByText(/Личный расклад не завершён/)).toHaveCount(0);
+  await expect(page.getByRole("button", { name: "Пройти мой расклад" })).toHaveCount(0);
+  await expect(page.getByRole("link", { name: "Написать в поддержку" })).toHaveAttribute("href", "/cabinet/support");
 });
 
 test("guest can see the archive sign-in path without creating an invitation", async ({ page }) => {

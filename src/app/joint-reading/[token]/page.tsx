@@ -286,6 +286,11 @@ export default function JointReadingTokenPage() {
               ? "Личный расклад сохранён в кабинете. Можно попробовать привязать его без повторного прохождения."
               : "Личный расклад не завершён. Попробуйте пройти его по этой ссылке ещё раз."}
           </p>
+          {jointFailureCode === "joint_attach_unknown" ? (
+            <Link href="/cabinet/support" className="mt-3 inline-block text-aura-gold underline underline-offset-2">
+              Написать в поддержку
+            </Link>
+          ) : null}
           {jointRetrySessionId ? (
             <button
               type="button"
@@ -482,13 +487,13 @@ export default function JointReadingTokenPage() {
         </div>
       ) : (
         <div className="joint-result__next space-y-4">
-          {data.canStartAsInitiator ? (
+          {data.canStartAsInitiator && jointFailureCode !== "joint_attach_unknown" ? (
             <p className="text-sm text-white/60">
               Нажмите «Пройти мой расклад» — откроется схема «{spreadLabel}». После интерпретации
               вы вернётесь сюда.
             </p>
           ) : null}
-          {data.canStartAsPartner ? (
+          {data.canStartAsPartner && jointFailureCode !== "joint_attach_unknown" ? (
             <p className="text-sm text-white/60">
               Вы проходите расклад как партнёр ({labelB}). Имя инициатора ({labelA}) подставится в
               форму автоматически. Войдите под своим аккаунтом — имя в профиле может отличаться от
@@ -510,7 +515,7 @@ export default function JointReadingTokenPage() {
           ) : null}
 
           <div className="flex flex-wrap gap-3">
-            {data.canStartAsInitiator ? (
+            {data.canStartAsInitiator && jointFailureCode !== "joint_attach_unknown" ? (
               <button
                 type="button"
                 onClick={() => startReading("initiator")}
@@ -519,7 +524,7 @@ export default function JointReadingTokenPage() {
                 Пройти мой расклад
               </button>
             ) : null}
-            {data.canStartAsPartner ? (
+            {data.canStartAsPartner && jointFailureCode !== "joint_attach_unknown" ? (
               <button
                 type="button"
                 onClick={() => startReading("partner")}
