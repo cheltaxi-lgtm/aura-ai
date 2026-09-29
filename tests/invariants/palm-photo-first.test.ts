@@ -66,7 +66,7 @@ describe("palm-photo-first", () => {
     expect(flow).toContain("captureActions");
     expect(flow).toContain("palm-result-hero");
     expect(flow).toContain("К ладоням");
-    expect(flow).toContain("Ваши ладони");
+    expect(flow).toContain("История ладоней");
     expect(flow).toContain("PalmInsightCards");
     expect(stage).toContain("palm-photo-stage");
     expect(read("src/styles/palm-flow.css")).toContain("object-fit: contain");

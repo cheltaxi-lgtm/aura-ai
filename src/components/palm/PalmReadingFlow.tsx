@@ -3,7 +3,7 @@ import ReadingJourney from "@/components/ReadingJourney";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AnimatePresence, motion, useReducedMotion } from "framer-motion";
-import { Camera, ImagePlus, Loader2, Trash2 } from "lucide-react";
+import { Camera, Hand, ImagePlus, Loader2, Trash2 } from "lucide-react";
 import Link from "next/link";
 
 import { rememberRunePurchaseDestination } from "@/lib/rune-purchase-client";
@@ -131,6 +131,8 @@ export default function PalmReadingFlow() {
   const [whichHand, setWhichHand] = useState<PalmHand>("right");
   const [acceptedEta, setAcceptedEta] = useState<string | null>(null);
   const [pastReadings, setPastReadings] = useState<PalmPastItem[] | null>(null);
+  const [pastError, setPastError] = useState(false);
+  const [archiveRefresh, setArchiveRefresh] = useState(0);
   const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
   const [confirmPastDeleteId, setConfirmPastDeleteId] = useState<string | null>(null);
   const [openingPast, setOpeningPast] = useState(false);
@@ -288,19 +290,31 @@ export default function PalmReadingFlow() {
   }, []);
 
   useEffect(() => {
-    if (!isLoggedIn) return;
+    if (authLoading) return;
+    if (!isLoggedIn) {
+      setPastReadings(null);
+      setPastError(false);
+      return;
+    }
     let cancelled = false;
+    setPastError(false);
     void fetch("/api/palm/readings", { credentials: "include", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (!r.ok) throw new Error("archive unavailable");
+        return r.json();
+      })
       .then((data) => {
-        if (cancelled || !data || !Array.isArray(data.readings)) return;
+        if (cancelled) return;
+        if (!Array.isArray(data?.readings)) throw new Error("invalid archive");
         setPastReadings(data.readings as PalmPastItem[]);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setPastError(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [isLoggedIn, step]);
+  }, [authLoading, isLoggedIn, step, archiveRefresh]);
 
   useEffect(() => {
     if (!confirmPastDeleteId) return;
@@ -335,6 +349,9 @@ export default function PalmReadingFlow() {
         setPhotoUrl(null);
         setSnapshot(entry.snapshot as FlowSnapshot);
         setSnapshotId(typeof entry.snapshotId === "string" ? entry.snapshotId : id);
+        if (entry.snapshot.whichHand === "left" || entry.snapshot.whichHand === "right") {
+          setWhichHand(entry.snapshot.whichHand);
+        }
         if (entry.paid && typeof entry.report === "string" && entry.report.trim()) {
           setReport(entry.report); setExportHistoryId(entry.historyId ?? null);
           setStep("report");
@@ -342,6 +359,12 @@ export default function PalmReadingFlow() {
           setReport(null); setExportHistoryId(null);
           setStep("claimed");
         }
+        window.requestAnimationFrame(() => {
+          document.getElementById("palm-new")?.scrollIntoView({
+            behavior: reduceMotion ? "auto" : "smooth",
+            block: "start",
+          });
+        });
       } catch {
         const message = "Не удалось открыть готовый разбор. Проверьте интернет и повторите.";
         setError(message);
@@ -350,7 +373,7 @@ export default function PalmReadingFlow() {
         setOpeningPast(false);
       }
     },
-    [photoUrl, requestedReadingId]
+    [photoUrl, requestedReadingId, reduceMotion]
   );
 
   const openPast = useCallback(
@@ -389,6 +412,7 @@ export default function PalmReadingFlow() {
         setPastReadings((prev) =>
           (prev ?? []).filter((p) => pastItemId(p) !== id)
         );
+        setArchiveRefresh((value) => value + 1);
         if (
           (item.snapshotId && item.snapshotId === snapshotId) ||
           (item.historyId && item.historyId === snapshotId)
@@ -775,90 +799,76 @@ export default function PalmReadingFlow() {
     (item) => item.whichHand === whichHand && isPalmMoscowToday(item.createdAt)
   );
 
-  const pastArchive =
-    isLoggedIn && pastReadings && pastReadings.length > 0 ? (
-      <details className="aura-past group">
-        <summary className="aura-past__title cursor-pointer">
-          <span>Ваши ладони · {pastReadings.length}</span>
-          <span aria-hidden className="text-aura-gold transition-transform group-open:rotate-180">⌄</span>
-        </summary>
-        <ul className="aura-past__list">
-          {pastReadings.map((item) => {
-            const itemId = pastItemId(item);
-            const deleting = deletingPastId === itemId;
-            const confirming = confirmPastDeleteId === itemId;
-            return (
-              <li key={itemId} className="aura-past__item">
-                <button
-                  type="button"
-                  disabled={openingPast}
-                  onClick={() => void openPast(item)}
-                  className="aura-past__open"
-                >
-                  <span className="aura-past__meta">
-                    <span className="aura-past__name">
-                      {PALM_HAND_LABELS[item.whichHand]}
-                      {item.handShape ? ` · ${PALM_HAND_SHAPE_LABELS[item.handShape]}` : ""}
-                    </span>
-                    <span className="aura-past__date">
-                      {formatPastDate(item.createdAt)}
-                      {item.verdict ? ` · ${PALM_VERDICT_LABELS[item.verdict]}` : ""}
-                    </span>
-                  </span>
-                  <span
-                    className={`aura-past__badge ${item.paid ? "" : "aura-past__badge--pending"}`}
-                  >
-                    {item.paid ? "Разбор" : "Снимок"}
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  disabled={deleting}
-                  onClick={() => {
-                    if (confirming) void deletePast(item);
-                    else setConfirmPastDeleteId(itemId);
-                  }}
-                  className={`aura-past__delete ${confirming ? "aura-past__delete--confirm" : ""}`}
-                  aria-label={confirming ? "Подтвердить удаление" : "Удалить снимок ладони"}
-                  title={confirming ? "Нажмите ещё раз" : "Удалить"}
-                >
-                  {deleting ? "…" : confirming ? "Точно?" : <Trash2 className="h-3.5 w-3.5" />}
-                </button>
-              </li>
-            );
-          })}
-        </ul>
-      </details>
-    ) : null;
+  const renderArchiveRow = (item: PalmPastItem) => {
+    const itemId = pastItemId(item);
+    const deleting = deletingPastId === itemId;
+    const confirming = confirmPastDeleteId === itemId;
+    return (
+      <li key={itemId} className="palm-archive__item">
+        <button type="button" disabled={openingPast} onClick={() => void openPast(item)} className="palm-archive__open">
+          <span className="palm-archive__icon" aria-hidden="true"><Hand size={20} strokeWidth={1.6} /></span>
+          <span className="palm-archive__meta">
+            <span className="palm-archive__name">
+              {PALM_HAND_LABELS[item.whichHand]}
+              {item.handShape ? ` · ${PALM_HAND_SHAPE_LABELS[item.handShape]}` : ""}
+            </span>
+            <span className="palm-archive__date">
+              {formatPastDate(item.createdAt)}
+              {item.verdict ? ` · ${PALM_VERDICT_LABELS[item.verdict]}` : ""}
+            </span>
+            <span className={`palm-archive__badge ${item.paid ? "" : "palm-archive__badge--pending"}`}>
+              {item.paid ? "Полный разбор" : "Снимок"}
+            </span>
+          </span>
+          <span className="palm-archive__arrow" aria-hidden="true">↗</span>
+        </button>
+        <button
+          type="button"
+          disabled={deleting}
+          onClick={() => confirming ? void deletePast(item) : setConfirmPastDeleteId(itemId)}
+          className={`palm-archive__delete ${confirming ? "palm-archive__delete--confirm" : ""}`}
+          aria-label={confirming ? "Подтвердить удаление" : "Удалить снимок ладони"}
+          title={confirming ? "Нажмите ещё раз" : "Удалить"}
+        >
+          {deleting ? "…" : confirming ? "Точно?" : <Trash2 className="h-4 w-4" />}
+        </button>
+      </li>
+    );
+  };
 
   const captureActions =
     ageReady === true ? (
       <div className="palm-capture-surface">
         <p className="palm-capture-surface__hint">
-          Раскройте ладонь пальцами вверх. Снимок не сохраняется — только линии и тип руки.
+          Раскройте ладонь пальцами вверх. Выберите камеру или готовое фото.
         </p>
-        <div className="palm-capture-actions">
-          <button
-            type="button"
-            onClick={() => void startCamera()}
-            className="btn-luxe btn-luxe--md btn-luxe--gold order-1 sm:order-2"
-          >
-            <Camera className="mr-2 h-4 w-4" />
-            Сфотографировать ладонь
-          </button>
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            className="btn-luxe btn-luxe--md btn-luxe--ghost order-2 sm:order-1"
-          >
-            <ImagePlus className="mr-2 h-4 w-4" />
-            Загрузить фото
-          </button>
+        <div className="palm-capture-surface__frame">
+          <div className="palm-capture-surface__frame-guide" aria-hidden="true" />
+          <Hand className="palm-capture-surface__frame-icon" size={32} strokeWidth={1.3} aria-hidden="true" />
+          <span className="palm-capture-surface__frame-label">Поместите ладонь в центр кадра</span>
+          <div className="palm-capture-actions">
+            <button
+              type="button"
+              onClick={() => void startCamera()}
+              className="btn-luxe btn-luxe--md btn-luxe--gold"
+            >
+              <Camera className="mr-2 h-4 w-4" />
+              Сфотографировать ладонь
+            </button>
+            <button
+              type="button"
+              onClick={() => fileInputRef.current?.click()}
+              className="btn-luxe btn-luxe--md btn-luxe--ghost"
+            >
+              <ImagePlus className="mr-2 h-4 w-4" />
+              Загрузить фото
+            </button>
+          </div>
         </div>
         <ul className="palm-guide">
-          <li>Ладонь целиком, пальцы расправлены</li>
-          <li>Ровный свет, без сильных теней</li>
-          <li>Одна ладонь на снимке</li>
+          <li><strong>Свет</strong><span>Ровный, без резких теней</span></li>
+          <li><strong>Положение</strong><span>Ладонь целиком, пальцы расправлены</span></li>
+          <li><strong>Приватность</strong><span>Фото не сохраняется на сервере</span></li>
         </ul>
         {selectedHandTakenToday ? (
           <p className="text-center text-sm text-white/50">
@@ -905,7 +915,7 @@ export default function PalmReadingFlow() {
   }
 
   return (
-    <div id="palm-calculator" className="mx-auto w-full max-w-xl scroll-mt-24">
+    <div id="palm-calculator" className={`palm-flow palm-flow-layout mx-auto w-full scroll-mt-24 ${step === "report" ? "palm-flow-layout--report" : ""}`}>
       <input
         ref={fileInputRef}
         type="file"
@@ -930,6 +940,55 @@ export default function PalmReadingFlow() {
         }}
       />
 
+      <section id="palm-history" className="palm-archive scroll-mt-24" aria-labelledby="palm-history-title">
+        <div className="palm-archive__heading">
+          <div>
+            <span className="palm-archive__eyebrow">Ваше пространство</span>
+            <h2 id="palm-history-title">История ладоней</h2>
+            <p>Ваши снимки и полные разборы в одном месте.</p>
+          </div>
+          {pastReadings?.length ? <span className="palm-archive__count">{pastReadings.length}</span> : null}
+        </div>
+        {authLoading ? (
+          <p className="palm-archive__loading" role="status">Проверяем ваши сохранённые снимки…</p>
+        ) : !isLoggedIn ? (
+          <div className="palm-archive__empty">
+            <p>Войдите в аккаунт, чтобы открыть сохранённые результаты.</p>
+            <Link href={buildLoginHref("/gadanie-po-ladoni#palm-history")} className="palm-archive__link">Войти и посмотреть <span aria-hidden="true">↗</span></Link>
+          </div>
+        ) : pastError && pastReadings === null ? (
+          <div className="palm-archive__empty" role="alert">
+            <p>История сейчас не загрузилась.</p>
+            <button type="button" className="palm-archive__link" onClick={() => setArchiveRefresh((value) => value + 1)}>Повторить загрузку ↗</button>
+          </div>
+        ) : pastReadings === null ? (
+          <p className="palm-archive__loading" role="status">Загружаем историю…</p>
+        ) : (
+          <>
+            {pastError && (
+              <div className="palm-archive__warning" role="alert">
+                <span>Не удалось обновить историю.</span>
+                <button type="button" onClick={() => setArchiveRefresh((value) => value + 1)}>Повторить</button>
+              </div>
+            )}
+            {pastReadings.length === 0 ? (
+              <p className="palm-archive__empty">Здесь появится ваш первый снимок. Начните с новой ладони — краткий результат бесплатный.</p>
+            ) : <ul className="palm-archive__list">{pastReadings.slice(0, 3).map(renderArchiveRow)}</ul>}
+            {pastReadings.length > 3 && (
+              <details className="palm-archive__more">
+                <summary>Показать все снимки · {pastReadings.length}</summary>
+                <ul className="palm-archive__list">{pastReadings.slice(3).map(renderArchiveRow)}</ul>
+              </details>
+            )}
+          </>
+        )}
+      </section>
+
+      <div id="palm-new" className="palm-flow-layout__main">
+      <div className="palm-flow-layout__intro">
+        <span className="palm-archive__eyebrow">{step === "capture" ? "Новый снимок" : "Ваш результат"}</span>
+        <h2>{step === "capture" ? "Откройте линии своей ладони" : "Чтение ладони"}</h2>
+      </div>
       <AnimatePresence mode="wait">
         {step === "capture" && (
           <motion.div
@@ -986,17 +1045,14 @@ export default function PalmReadingFlow() {
               </div>
             ) : (
               <>
-                <div className="flex justify-center gap-2">
+                <div className="palm-hand-tabs" role="group" aria-label="Выберите ладонь">
                   {(["right", "left"] as const).map((hand) => (
                     <button
                       key={hand}
                       type="button"
                       onClick={() => setWhichHand(hand)}
-                      className={`min-h-11 rounded-full px-4 py-2 text-sm ${
-                        whichHand === hand
-                          ? "bg-aura-gold/20 text-aura-gold"
-                          : "bg-white/5 text-white/60"
-                      }`}
+                      aria-pressed={whichHand === hand}
+                      className={`palm-hand-tabs__tab ${whichHand === hand ? "palm-hand-tabs__tab--selected" : ""}`}
                     >
                       {PALM_HAND_LABELS[hand]}
                     </button>
@@ -1024,7 +1080,6 @@ export default function PalmReadingFlow() {
               </>
             )}
             {error && <p role="alert" className="text-center text-sm text-rose-300/90">{error}</p>}
-            {pastArchive}
           </motion.div>
         )}
 
@@ -1190,7 +1245,6 @@ export default function PalmReadingFlow() {
             <button type="button" onClick={goHome} className="btn-luxe btn-luxe--md btn-luxe--ghost mx-auto block">
               К ладоням
             </button>
-            {pastArchive}
           </motion.div>
         )}
 
@@ -1241,7 +1295,6 @@ export default function PalmReadingFlow() {
             <button type="button" onClick={goHome} className="btn-luxe btn-luxe--md btn-luxe--ghost mx-auto block">
               К ладоням
             </button>
-            {pastArchive}
             <CrossProductNextSteps context="palm" readingId={exportHistoryId ?? undefined} />
             <Link href="/cabinet" className="btn-luxe btn-luxe--md mx-auto block">
               В кабинет
@@ -1249,6 +1302,7 @@ export default function PalmReadingFlow() {
           </motion.div>
         )}
       </AnimatePresence>
+      </div>
     </div>
   );
 }
