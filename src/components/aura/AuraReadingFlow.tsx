@@ -76,7 +76,7 @@ type AuraPastItem = {
 function formatPastDate(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return "";
-  return d.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return d.toLocaleDateString("ru-RU", { day: "2-digit", month: "2-digit", year: "numeric" });
 }
 
 const PROCESSING_PHRASES = [
@@ -110,6 +110,8 @@ export default function AuraReadingFlow() {
   const [cameraActive, setCameraActive] = useState(false);
   const [phraseIdx, setPhraseIdx] = useState(0);
   const [pastReadings, setPastReadings] = useState<AuraPastItem[] | null>(null);
+  const [pastError, setPastError] = useState(false);
+  const [archiveRefresh, setArchiveRefresh] = useState(0);
   const [openingPast, setOpeningPast] = useState(false);
   const [requestedReadingError, setRequestedReadingError] = useState<string | null>(null);
   const [deletingPastId, setDeletingPastId] = useState<string | null>(null);
@@ -356,22 +358,30 @@ export default function AuraReadingFlow() {
     void claimGuestSnapshot();
   }, [authLoading, isLoggedIn, requestedReadingId, claimGuestSnapshot]);
 
-  // Past auras archive — loaded whenever the capture step is shown to a
-  // logged-in user (covers initial visit and post-reading reset).
+  // The archive belongs to the whole page, including a guest teaser restored
+  // from /today. Only completed claim/report transitions need a refresh.
+  const archiveStage = step === "claimed" || step === "report" ? step : "initial";
   useEffect(() => {
-    if (authLoading || !isLoggedIn || step !== "capture") return;
+    if (authLoading || !isLoggedIn) return;
     let cancelled = false;
+    setPastError(false);
     void fetch("/api/aura/readings", { credentials: "include", cache: "no-store" })
-      .then((r) => (r.ok ? r.json() : null))
+      .then((r) => {
+        if (!r.ok) throw new Error("archive unavailable");
+        return r.json();
+      })
       .then((data) => {
-        if (cancelled || !data || !Array.isArray(data.readings)) return;
+        if (cancelled) return;
+        if (!data || !Array.isArray(data.readings)) throw new Error("invalid archive");
         setPastReadings(data.readings as AuraPastItem[]);
       })
-      .catch(() => undefined);
+      .catch(() => {
+        if (!cancelled) setPastError(true);
+      });
     return () => {
       cancelled = true;
     };
-  }, [authLoading, isLoggedIn, step]);
+  }, [authLoading, isLoggedIn, archiveStage, archiveRefresh]);
 
   // Auto-clear the two-tap delete confirm.
   useEffect(() => {
@@ -487,6 +497,10 @@ export default function AuraReadingFlow() {
       if (photoUrl) URL.revokeObjectURL(photoUrl);
       setPhotoUrl(null);
       setStep(entry.report ? "report" : "claimed");
+      window.requestAnimationFrame(() => {
+        const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+        document.querySelector(".aura-flow-layout__main")?.scrollIntoView({ behavior: reducedMotion ? "auto" : "smooth", block: "start" });
+      });
     } catch {
       const message = "Не удалось открыть готовый разбор. Проверьте интернет и повторите.";
       setError(message);
@@ -959,8 +973,53 @@ export default function AuraReadingFlow() {
     );
   }
 
+  const renderArchiveRow = (item: AuraPastItem) => {
+    const itemId = item.snapshotId ?? item.historyId ?? "";
+    const deleting = deletingPastId === itemId;
+    const confirming = confirmPastDeleteId === itemId;
+    const title = item.subjectKind === "other" && item.subjectName
+      ? item.dominantColor
+        ? `${item.subjectName}: ${item.dominantColor.name}`
+        : `Аура ${item.subjectName}`
+      : item.dominantColor
+        ? `Аура: ${item.dominantColor.name}`
+        : "Снимок ауры";
+    return (
+      <li key={itemId} className="aura-past__item">
+        <button type="button" disabled={openingPast} onClick={() => void openPast(item)} className="aura-past__open">
+          <span
+            className="aura-past__orb"
+            style={item.dominantColor ? { "--aura-archive-color": item.dominantColor.hex } as React.CSSProperties : undefined}
+            aria-hidden="true"
+          />
+          <span className="aura-past__meta">
+            <span className="aura-past__name">{title}</span>
+            <span className="aura-past__date">
+              {formatPastDate(item.createdAt)}
+              {item.verdict ? ` · ${AURA_VERDICT_LABELS[item.verdict]}` : ""}
+            </span>
+            <span className={`aura-past__badge ${item.paid ? "" : "aura-past__badge--pending"}`}>
+              {item.paid ? "Полный разбор" : "Снимок"}
+            </span>
+          </span>
+          <span className="aura-past__arrow" aria-hidden="true">↗</span>
+        </button>
+        <button
+          type="button"
+          disabled={deleting}
+          onClick={() => confirming ? void deletePast(item) : setConfirmPastDeleteId(itemId)}
+          className={`aura-past__delete ${confirming ? "aura-past__delete--confirm" : ""}`}
+          aria-label={confirming ? "Подтвердить удаление" : "Удалить ауру"}
+          title={confirming ? "Нажмите ещё раз" : "Удалить"}
+        >
+          {deleting ? "…" : confirming ? "Точно?" : <Trash2 className="h-4 w-4" />}
+        </button>
+      </li>
+    );
+  };
+
   return (
-    <div id="aura-calculator" className="aura-flow mx-auto w-full max-w-xl scroll-mt-24">
+    <div id="aura-calculator" className={`aura-flow aura-flow-layout mx-auto w-full scroll-mt-24 ${step === "report" ? "aura-flow-layout--report" : ""}`}>
       <input
         ref={fileInputRef}
         type="file"
@@ -973,6 +1032,55 @@ export default function AuraReadingFlow() {
         }}
       />
 
+      <section id="aura-history" className="aura-archive scroll-mt-24" aria-labelledby="aura-history-title">
+          <div className="aura-archive__heading">
+            <div>
+              <span className="aura-archive__eyebrow">Ваше пространство</span>
+              <h2 id="aura-history-title">История ауры</h2>
+              <p>Ваши снимки и полные разборы в одном месте.</p>
+            </div>
+            {pastReadings?.length ? <span className="aura-archive__count">{pastReadings.length}</span> : null}
+          </div>
+          {authLoading ? (
+            <p className="aura-archive__loading" role="status">Проверяем ваши сохранённые снимки…</p>
+          ) : !isLoggedIn ? (
+            <div className="aura-archive__empty">
+              <p>Войдите в аккаунт, чтобы открыть сохранённые результаты.</p>
+              <Link href={buildLoginHref("/aura#aura-history")} className="aura-archive__link">Войти и посмотреть <span aria-hidden="true">↗</span></Link>
+            </div>
+          ) : pastError && pastReadings === null ? (
+            <div className="aura-archive__empty" role="alert">
+              <p>История сейчас не загрузилась.</p>
+              <button type="button" className="aura-archive__link" onClick={() => setArchiveRefresh((value) => value + 1)}>Повторить загрузку ↗</button>
+            </div>
+          ) : pastReadings === null ? (
+            <p className="aura-archive__loading" role="status">Загружаем историю…</p>
+          ) : (
+            <>
+              {pastError && (
+                <div className="aura-archive__warning" role="alert">
+                  <span>Не удалось обновить историю.</span>
+                  <button type="button" onClick={() => setArchiveRefresh((value) => value + 1)}>Повторить</button>
+                </div>
+              )}
+              {pastReadings.length === 0 ? (
+                <p className="aura-archive__empty">Здесь появится ваш первый снимок. Начните с нового снимка — он бесплатный.</p>
+              ) : <ul className="aura-past__list">{pastReadings.slice(0, 3).map(renderArchiveRow)}</ul>}
+              {pastReadings.length > 3 && (
+                <details className="aura-archive__more">
+                  <summary>Показать все снимки · {pastReadings.length}</summary>
+                  <ul className="aura-past__list">{pastReadings.slice(3).map(renderArchiveRow)}</ul>
+                </details>
+              )}
+            </>
+          )}
+      </section>
+
+      <div id="aura-new" className="aura-flow-layout__main">
+      <div className="aura-flow-layout__intro">
+        <span className="aura-archive__eyebrow">{step === "capture" ? "Новый снимок" : "Ваш результат"}</span>
+        <h2>{step === "capture" ? "Откройте цвет своего поля" : "Чтение ауры"}</h2>
+      </div>
       <AnimatePresence mode="wait">
         {step === "capture" && (
           <motion.div
@@ -1116,86 +1224,11 @@ export default function AuraReadingFlow() {
                   </p>
                 ) : null}
 
-                <div className="aura-stage mx-auto" aria-hidden>
-                  <div className="aura-stage__halo aura-stage__halo--dim" />
-                  <div className="aura-stage__plate" />
-                </div>
                 <p className="text-center text-sm text-white/60">
                   Портрет крупным планом, при ровном свете. Фото не сохраняется — только
                   цвета и состояния поля.
                 </p>
 
-                {isLoggedIn && pastReadings && pastReadings.length > 0 && (
-                  <details className="aura-past group">
-                    <summary className="aura-past__title cursor-pointer">
-                      <span>Прошлые снимки · {pastReadings.length}</span>
-                      <span aria-hidden className="text-aura-gold transition-transform group-open:rotate-180">⌄</span>
-                    </summary>
-                    <ul className="aura-past__list">
-                      {pastReadings.map((item) => {
-                        const itemId = item.snapshotId ?? item.historyId ?? "";
-                        const deleting = deletingPastId != null && deletingPastId === itemId;
-                        const confirming = confirmPastDeleteId === itemId;
-                        return (
-                          <li key={itemId} className="aura-past__item">
-                            <button
-                              type="button"
-                              disabled={openingPast}
-                              onClick={() => void openPast(item)}
-                              className="aura-past__open"
-                            >
-                              {item.dominantColor && (
-                                <span
-                                  className="aura-chakra-dot h-3 w-3"
-                                  style={{
-                                    backgroundColor: item.dominantColor.hex,
-                                    color: item.dominantColor.hex,
-                                  }}
-                                />
-                              )}
-                              <span className="aura-past__meta">
-                                <span className="aura-past__name">
-                                  {item.subjectKind === "other" && item.subjectName
-                                    ? item.dominantColor
-                                      ? `${item.subjectName}: ${item.dominantColor.name}`
-                                      : `Аура ${item.subjectName}`
-                                    : item.dominantColor
-                                      ? `Аура: ${item.dominantColor.name}`
-                                      : "Снимок ауры"}
-                                </span>
-                                <span className="aura-past__date">
-                                  {formatPastDate(item.createdAt)}
-                                  {item.verdict ? ` · ${AURA_VERDICT_LABELS[item.verdict]}` : ""}
-                                </span>
-                              </span>
-                              <span
-                                className={`aura-past__badge ${item.paid ? "" : "aura-past__badge--pending"}`}
-                              >
-                                {item.paid ? "Разбор" : "Снимок"}
-                              </span>
-                            </button>
-                            <button
-                              type="button"
-                              disabled={deleting}
-                              onClick={() => {
-                                if (confirming) {
-                                  void deletePast(item);
-                                } else {
-                                  setConfirmPastDeleteId(itemId);
-                                }
-                              }}
-                              className={`aura-past__delete ${confirming ? "aura-past__delete--confirm" : ""}`}
-                              aria-label={confirming ? "Подтвердить удаление" : "Удалить ауру"}
-                              title={confirming ? "Нажмите ещё раз" : "Удалить"}
-                            >
-                              {deleting ? "…" : confirming ? "Точно?" : <Trash2 className="h-3.5 w-3.5" />}
-                            </button>
-                          </li>
-                        );
-                      })}
-                    </ul>
-                  </details>
-                )}
               </>
             )}
           </motion.div>
@@ -1446,6 +1479,7 @@ export default function AuraReadingFlow() {
           {error}
         </p>
       )}
+      </div>
     </div>
   );
 }

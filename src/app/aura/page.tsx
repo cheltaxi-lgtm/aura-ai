@@ -49,108 +49,96 @@ export default function AuraLandingPage() {
   const label = RUNE_ACTION_LABELS.AURA_READING;
 
   return (
-    <SeoPageShell breadcrumbs={AURA_SEO_CRUMBS}>
+    <SeoPageShell breadcrumbs={AURA_SEO_CRUMBS} wide>
       <SeoPageTracker goal="aura_landing_view" funnelProduct="aura" />
-      <p className="text-sm text-aura-gold/80">Аура и энергетика</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">
-        Аура по фото онлайн
-      </h1>
-      <p className="mt-4 text-white/70">
-        Каждый человек несёт цветовое поле — в теософской традиции его называют аурой.
-        Снимите себя с камеры или загрузите портрет. Сначала бесплатно увидите цвет
-        и краткий снимок поля; полный разбор семи слоёв, чакр и практики откроете
-        только по своему выбору. Это символическое чтение по портрету, без «приборов»
-        и медицинских обещаний.
-      </p>
+      <section className="aura-reading-hero" aria-labelledby="aura-title">
+        <div className="aura-reading-hero__copy">
+          <p className="aura-reading-hero__eyebrow">Портрет · цвет · состояние</p>
+          <h1 id="aura-title" className="aura-reading-hero__title">Аура по фото онлайн</h1>
+          <p className="aura-reading-hero__lead">
+            Один портрет — ясный снимок вашего цветового поля. Узнайте ведущий цвет
+            бесплатно и возвращайтесь к сохранённым результатам в любое время.
+          </p>
+          <div className="aura-reading-hero__facts" aria-label="Условия разбора">
+            <span>Снимок бесплатно раз в сутки</span>
+            <span>{label} · {cost} ᚢ</span>
+            <span>Первый полный разбор −50%</span>
+          </div>
+          <div className="aura-reading-hero__actions">
+            <a href="#aura-new" className="btn-luxe btn-luxe--md btn-luxe--gold">Сделать снимок</a>
+            <a href="#aura-history" className="btn-luxe btn-luxe--md btn-luxe--ghost">Моя история</a>
+          </div>
+          <p className="aura-reading-hero__note">
+            Символическое чтение по портрету, не приборное или медицинское измерение.
+          </p>
+        </div>
+        <div className="aura-reading-hero__art" aria-hidden="true">
+          <div className="aura-reading-hero__ring aura-reading-hero__ring--outer" />
+          <div className="aura-reading-hero__ring aura-reading-hero__ring--inner" />
+          <div className="aura-reading-hero__glow" />
+          <span className="aura-reading-hero__art-label">ЦВЕТ · СЛОИ · ЧАКРЫ</span>
+        </div>
+      </section>
 
-      <div className="mt-4 rounded-xl border border-aura-gold/25 bg-aura-gold/[0.06] px-4 py-3 text-sm">
-        <p className="font-medium text-aura-champagne">Бесплатный снимок ауры · раз в сутки</p>
-        <p className="mt-1 text-white/65">{label} · {cost} ᚢ · первый полный разбор −50%</p>
-      </div>
-
-      <section className="aura-flow-host mt-8 sm:mt-10">
+      <section className="aura-flow-host mt-8 sm:mt-10" aria-label="Снимок и история ауры">
         <AuraReadingFlow />
       </section>
 
-      <SeoSection title="Карта поля: цвета, слои, чакры" id="karta-polya">
-        <ul className="mt-3 space-y-2 text-white/70">
-          <li>
-            <Link href="/aura/cveta" className="text-aura-gold hover:underline">
-              Значение цветов ауры
-            </Link>
-            {" — "}золотой, синий, красный, дымчатый и остальные тона ядра.
-          </li>
-          <li>
-            <Link href="/aura/sloi" className="text-aura-gold hover:underline">
-              Семь слоёв по Бреннан
-            </Link>
-            {" — "}от эфирного до каузального.
-          </li>
-          <li>
-            <Link href="/aura/chakry" className="text-aura-gold hover:underline">
-              Семь чакр
-            </Link>
-            {" — "}состояние откроется в полном разборе.
-          </li>
-          <li>
-            <Link href="/aura/besplatno" className="text-aura-gold hover:underline">
-              Что входит в бесплатный снимок
-            </Link>
-            {" · "}
-            <Link href="/aura/kak-uznat-cvet" className="text-aura-gold hover:underline">
-              Как узнать цвет ауры
-            </Link>
-            {" · "}
-            <Link href="/aura/chtenie-ili-kirlian" className="text-aura-gold hover:underline">
-              чтение или Кирлиан
-            </Link>
-            {" · "}
-            <Link href="/aura/smeshannoe-pole" className="text-aura-gold hover:underline">
-              смешанное поле
-            </Link>
-            {" · "}
-            <Link href="/aura/foto-i-chakry" className="text-aura-gold hover:underline">
-              фото и чакры
-            </Link>
-          </li>
-        </ul>
-      </SeoSection>
-
-      <SeoSection title="Что вы получите" id="chto-vhodit">
-        <ul className="mt-3 list-disc space-y-2 pl-5 text-white/70">
-          <li>Доминирующий и дополнительные цвета вашего поля — с трактовкой по теософской школе цвета.</li>
-          <li>Семь слоёв поля по Барбаре Бреннан: от эфирного до каузального — где ресурс, где провал.</li>
-          <li>Состояние семи чакр: что открыто, что в балансе, где блок и что с ним делать.</li>
-          <li>Практика на ближайшие дни — конкретные шаги под состояние вашего поля.</li>
-        </ul>
-      </SeoSection>
-
-      <SeoSection title="Как снять ауру правильно" id="kak-snyat">
-        <ul className="mt-3 list-disc space-y-2 pl-5 text-white/70">
-          <li>Лицо крупным планом, по плечи — как для фото на документы, только расслабленным.</li>
-          <li>Ровный дневной свет или мягкая лампа — без жёстких теней и подсветки сзади.</li>
-          <li>Без солнцезащитных очков и сильных фильтров — они закрывают поле.</li>
-          <li>Спокойное состояние: пара медленных вдохов перед снимком делает поле яснее.</li>
-        </ul>
-      </SeoSection>
+      <section className="aura-landing-more" aria-label="Подробнее о чтении ауры">
+        <div className="aura-landing-more__grid" id="chto-vhodit">
+          <div className="aura-landing-more__card">
+            <span className="aura-landing-more__number">01</span>
+            <h2>Бесплатный снимок</h2>
+            <p>Ведущий цвет и краткое состояние поля. Повтор сегодня откроет тот же результат.</p>
+          </div>
+          <div className="aura-landing-more__card">
+            <span className="aura-landing-more__number">02</span>
+            <h2>Полный разбор</h2>
+            <p>Семь слоёв, чакры и практика на ближайшие дни — по вашему выбору.</p>
+          </div>
+          <div className="aura-landing-more__card">
+            <span className="aura-landing-more__number">03</span>
+            <h2>Личная история</h2>
+            <p>Готовые снимки и разборы доступны здесь же, без повторной оплаты.</p>
+          </div>
+        </div>
+        <div className="aura-landing-more__details">
+          <details id="kak-snyat">
+            <summary>Как подготовить портрет</summary>
+            <p>Лицо крупным планом, мягкий ровный свет, без очков и сильных фильтров. Файл фото на сервере не хранится.</p>
+          </details>
+          <details id="karta-polya">
+            <summary>Как читать цвета, слои и чакры</summary>
+            <p>
+              <Link href="/aura/cveta">Значение цветов</Link> · <Link href="/aura/sloi">Семь слоёв</Link> · <Link href="/aura/chakry">Семь чакр</Link>
+            </p>
+            <p>
+              <Link href="/aura/besplatno">Бесплатный снимок</Link> · <Link href="/aura/kak-uznat-cvet">Как узнать цвет</Link> · <Link href="/aura/chtenie-ili-kirlian">Чтение или Кирлиан</Link> · <Link href="/aura/smeshannoe-pole">Смешанное поле</Link> · <Link href="/aura/foto-i-chakry">Фото и чакры</Link>
+            </p>
+          </details>
+        </div>
+      </section>
 
       <SeoSection title="Вопросы об ауре по фото" id="faq">
-        <div className="mt-3 space-y-4">
+        <div className="aura-landing-faq mt-3">
           {FAQ.map((item) => (
             <details
               key={item.q}
-              className="rounded-xl border border-white/10 bg-white/[0.02] px-4 py-3"
+              className="aura-landing-faq__item"
             >
-              <summary className="cursor-pointer text-sm font-medium text-white/85">
+              <summary>
                 {item.q}
               </summary>
-              <p className="mt-2 text-sm text-white/60">{item.a}</p>
+              <p>{item.a}</p>
             </details>
           ))}
         </div>
       </SeoSection>
 
-      <SeoRelatedTools excludeHrefs={["/aura"]} />
+      <details className="aura-landing-related">
+        <summary>Другие сервисы Zovus</summary>
+        <SeoRelatedTools excludeHrefs={["/aura"]} />
+      </details>
 
       <script
         type="application/ld+json"
