@@ -1,5 +1,4 @@
 "use client";
-import ReadingJourney from "@/components/ReadingJourney";
 import DailyBonusCard from "@/components/DailyBonusCard";
 import { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import PendingReadingResume from "@/components/cabinet/PendingReadingResume";
@@ -31,6 +30,7 @@ import CabinetAchievementsRow, {
 import CabinetSessionHistory, {
   CabinetSessionHistorySkeleton,
 } from "@/components/cabinet/CabinetSessionHistory";
+import ReadingJourney from "@/components/ReadingJourney";
 import CabinetActiveReports from "@/components/cabinet/CabinetActiveReports";
 import CabinetBottomNav, { type CabinetTab } from "@/components/cabinet/CabinetBottomNav";
 import CabinetTabHero from "@/components/cabinet/CabinetTabHero";
@@ -162,6 +162,7 @@ export default function CabinetPage() {
   const [sessionsHasMore, setSessionsHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<CabinetTab>("profile");
+  const [noteReadingId, setNoteReadingId] = useState<string | null>(null);
   const [balancePulse, setBalancePulse] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deletingPhotoSpreadId, setDeletingPhotoSpreadId] = useState<string | null>(null);
@@ -197,7 +198,7 @@ export default function CabinetPage() {
     );
     if (res.status === 401) {
       if (redirectHomeAfterAccountDeletion()) return null;
-      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath("/cabinet")));
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath(`/cabinet${window.location.search}${window.location.hash}`)));
       return null;
     }
     if (res.status === 403) {
@@ -232,7 +233,7 @@ export default function CabinetPage() {
     if (!authUser) {
       // After account deletion, go to guest homepage — never the login wall.
       if (redirectHomeAfterAccountDeletion()) return;
-      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath("/cabinet")));
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath(`/cabinet${window.location.search}${window.location.hash}`)));
       setLoading(false);
       return;
     }
@@ -286,6 +287,13 @@ export default function CabinetPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
+    setNoteReadingId(params.get("readingId"));
+    if (params.has("readingId") && !tab) {
+      setActiveTab("history");
+      params.set("tab", "history");
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+      return;
+    }
     if (
       tab === "profile" ||
       tab === "history" ||
@@ -295,7 +303,7 @@ export default function CabinetPage() {
       tab === "settings"
     ) {
       setActiveTab(tab);
-      params.delete("tab");
+      if (!params.has("readingId")) params.delete("tab");
       const qs = params.toString();
       window.history.replaceState(
         {},
@@ -603,6 +611,13 @@ export default function CabinetPage() {
   };
 
   const scrollToSection = (tab: CabinetTab) => {
+    if (noteReadingId && tab !== "history") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("readingId");
+      url.searchParams.delete("tab");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      setNoteReadingId(null);
+    }
     setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
@@ -753,7 +768,7 @@ export default function CabinetPage() {
   };
 
   const renderTabContent = () => {
-    if (!data) return activeTab === "profile" ? <ReadingJourney showDailyReminder={false} /> : null;
+    if (!data) return null;
 
     switch (activeTab) {
       case "profile":
@@ -779,7 +794,6 @@ export default function CabinetPage() {
               <CabinetProfileHeaderSkeleton />
             ) : null}
             <CabinetActiveReports />
-            <ReadingJourney showDailyReminder={false} />
             <CabinetLoginMethods />
             <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
@@ -826,6 +840,8 @@ export default function CabinetPage() {
               title="История"
               subtitle="Все расклады, карты и расшифровки — в одном месте."
             />
+
+            {noteReadingId && <ReadingJourney readingId={noteReadingId} showDailyReminder={false} />}
 
             <div className="space-y-3">
               <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">

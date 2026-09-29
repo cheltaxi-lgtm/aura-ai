@@ -164,7 +164,7 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                 </div>
               )}
 
-              <ReportExportActions path={`/cabinet/readings/${active.id}/print`} />
+              <ReportExportActions noteLink path={`/cabinet/readings/${active.id}/print`} />
               {active.contextData.question ? (
                 <p className="mb-3 text-sm text-gray-400">
                   Вопрос: {active.contextData.question}

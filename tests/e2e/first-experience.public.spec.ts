@@ -45,12 +45,14 @@ test("public landing and registration show the server-authoritative 40-rune gift
 for(const width of [360,390,430])test(`free note and explicit topup return at ${width}px`,async({page},info)=>{
   test.setTimeout(120_000);await page.setViewportSize({width,height:844});const f=await fixture(page);
   await page.goto("/cabinet");
-  const journey=page.getByRole("region",{name:"Что хочется взять с собой?"});await expect(journey).toBeVisible();
+  await expect(page.getByRole("region",{name:"Заметка к этому разбору"})).toHaveCount(0);
+  await page.goto(`/cabinet?tab=history&readingId=${readingId}`);
+  const journey=page.getByRole("region",{name:"Заметка к этому разбору"});await expect(journey).toBeVisible();
   await journey.locator("summary").click();
-  await journey.getByLabel("Мой главный вывод").fill("Выделить время для отдыха");
+  await journey.getByLabel("Что было полезно?").fill("Выделить время для отдыха");
   await journey.getByLabel("Небольшой шаг на неделю").fill("Одна прогулка");
   await expect(journey.getByRole("checkbox")).not.toBeChecked();
-  await journey.getByRole("button",{name:"Сохранить бесплатно"}).click();await expect(journey.getByRole("status")).toHaveText("Сохранено в вашем дневнике.");
+  await journey.getByRole("button",{name:"Сохранить заметку и настройки"}).click();await expect(journey.getByRole("status")).toHaveText("Заметка сохранена для этого разбора.");
   expect(f.calls.filter(c=>c.includes("/api/reading") || c.includes("/api/runes/purchase"))).toHaveLength(0);
   await page.screenshot({path:info.outputPath(`journey-${width}.png`),fullPage:true});
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
@@ -66,7 +68,8 @@ for(const width of [360,390,430])test(`free note and explicit topup return at ${
   expect(f.calls.some(c=>c==="POST /api/reading")).toBe(false);
   await page.screenshot({path:info.outputPath(`confirmed-${width}.png`)});
   await page.getByRole("link",{name:"Вернуться к выбору разбора"}).click();await expect(page).toHaveURL(/cabinet/);
-  await expect(page.getByRole("paragraph").filter({hasText:"Выделить время для отдыха"})).toBeVisible();
+  await page.goto(`/cabinet?tab=history&readingId=${readingId}`);
+  await expect(page.getByRole("textbox",{name:"Что было полезно?"})).toHaveValue("Выделить время для отдыха");
 });
 
 for(const width of [390,1280])test(`saved palm intent and exact package quote at ${width}px`,async({page},info)=>{
@@ -117,6 +120,14 @@ test("email reader lands on login with the daily campaign and destination intact
   const url=new URL(page.url());
   expect(url.searchParams.get("utm_campaign")).toBe("daily_reading");
   expect(url.searchParams.get("returnTo")).toBe("/?daily=1&utm_source=zovus&utm_medium=email&utm_campaign=daily_reading");
+});
+
+test("reading reminder keeps the selected note through login",async({page})=>{
+  await page.route("**/api/auth/me",route=>route.fulfill({json:{authenticated:false}}));
+  await page.route("**/api/auth/oauth/providers",route=>route.fulfill({json:{providers:[]}}));
+  await page.goto(`/cabinet?tab=history&readingId=${readingId}`);
+  await expect(page).toHaveURL(/auth\/user\/login/);
+  expect(new URL(page.url()).searchParams.get("returnTo")).toBe(`/cabinet?tab=history&readingId=${readingId}`);
 });
 
 test("guest daily CTA opens registration for the daily reading instead of starting a question",async({page})=>{

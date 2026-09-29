@@ -113,7 +113,7 @@ export default function CabinetDailySpreads({ readings }: Props) {
                 </div>
 
                 <div className="lux-scroll flex-1 overflow-y-auto px-5 py-5">
-                  <ReportExportActions path={`/cabinet/readings/${active.id}/print`} />
+                  <ReportExportActions noteLink path={`/cabinet/readings/${active.id}/print`} />
                   {active.cards.length >= 3 ? (
                     <DeckCardsRow
                       cards={active.cards.map((c) => ({
