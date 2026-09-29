@@ -97,8 +97,11 @@ describe("starter 300ᚢ conversion pass — product placements", () => {
     const src = readSrc("src/app/dizayn-cheloveka/rasschitat/page.tsx");
     expect(src).toContain("Карта и основные параметры — бесплатно, без регистрации.");
     expect(src).not.toContain("бесплатно и без регистрации — разбор с Эвелиной после входа.");
-    // Price hint comes from code defaults, not a magic number.
-    expect(src).toContain("DEFAULT_RUNE_COSTS.HD_REPORT");
+    // The paid report uses live rune configuration; the landing must not show
+    // a possibly stale default price before that configuration is loaded.
+    expect(src).not.toContain("DEFAULT_RUNE_COSTS.HD_REPORT");
+    const report = readSrc("src/components/human-design/HdReportPanel.tsx");
+    expect(report).toContain('cost("HD_REPORT")');
     // SEO: URL and H1 intent unchanged.
     expect(src).toContain('path: "/dizayn-cheloveka/rasschitat"');
     expect(src).toContain("Рассчитать карту Дизайна Человека");

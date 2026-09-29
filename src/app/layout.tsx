@@ -33,6 +33,7 @@ import "../styles/share.css";
 import "../styles/deck-pick.css";
 import "../styles/numerolog.css";
 import "../styles/human-design.css";
+import "../styles/human-design-premium.css";
 import "../styles/print.css";
 import "./app-shell.css";
 import "../styles/editorial-landing.css";

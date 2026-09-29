@@ -1,10 +1,11 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { ArrowUpRight } from "lucide-react";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
-import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import { HD_PROFILE_SEO, HD_TYPE_SEO } from "@/lib/human-design/seo-content";
 import {
   ALL_CHANNEL_SLUGS,
@@ -16,6 +17,7 @@ import {
 import { GATE_NAMES_RU } from "@/lib/human-design";
 import HdTransitToday from "@/components/human-design/HdTransitToday";
 import HdTransitWeek from "@/components/human-design/HdTransitWeek";
+import HdHubHistory from "@/components/human-design/HdHubHistory";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: "Дизайн Человека — что это: типы, ворота, каналы, расчёт карты",
@@ -47,6 +49,41 @@ const HUB_FAQ = [
   },
 ] as const;
 
+const PREVIEW = [
+  { number: "01", title: "Тип и стратегия", text: "Как вы взаимодействуете с миром и куда направлять свою энергию." },
+  { number: "02", title: "Внутренний авторитет", text: "На что опираться, когда принимаете решение." },
+  { number: "03", title: "Профиль и бодиграф", text: "Какие темы, центры и каналы проявлены в вашей карте." },
+] as const;
+
+function BodygraphArtwork() {
+  return (
+    <div className="hd-hub-art" aria-hidden="true">
+      <div className="hd-hub-art__halo" />
+      <svg viewBox="0 0 360 470" role="presentation" focusable="false">
+        <g className="hd-hub-art__channels">
+          <path d="M180 55 L180 112 L180 168 L180 239 L180 294 L180 357 L180 420" />
+          <path d="M180 112 L104 174 L180 239 L256 174 L180 112" />
+          <path d="M104 174 L84 296 L180 357 L276 296 L256 174" />
+          <path d="M180 239 L84 296 M180 239 L276 296 M104 174 L256 174" />
+        </g>
+        <g className="hd-hub-art__centers">
+          <path d="M180 34 L202 70 L158 70 Z" />
+          <path d="M180 91 L203 118 L180 145 L157 118 Z" />
+          <path d="M180 150 L204 174 L180 198 L156 174 Z" />
+          <path d="M104 151 L128 174 L104 197 L80 174 Z" />
+          <path d="M256 151 L280 174 L256 197 L232 174 Z" />
+          <path d="M180 211 L206 238 L180 265 L154 238 Z" />
+          <path d="M84 269 L110 296 L84 323 L58 296 Z" />
+          <path d="M276 269 L302 296 L276 323 L250 296 Z" />
+          <path d="M180 329 L207 357 L180 385 L153 357 Z" />
+          <path d="M180 396 L204 424 L156 424 Z" />
+        </g>
+      </svg>
+      <span className="hd-hub-art__label">ВАША КАРТА · ВАШ РИТМ</span>
+    </div>
+  );
+}
+
 export default function HumanDesignHubPage() {
   const structuredData = buildForecastStructuredData({
     title: "Дизайн Человека — что это и как работает",
@@ -57,302 +94,148 @@ export default function HumanDesignHubPage() {
   });
 
   return (
-    <SeoPageShell
-      breadcrumbs={[
-        { name: "Zovus", path: "/" },
-        { name: "Дизайн Человека", path: "/dizayn-cheloveka" },
-      ]}
-    >
-      <script
-        type="application/ld+json"
-        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
-      />
+    <SeoPageShell wide breadcrumbs={[{ name: "Zovus", path: "/" }, { name: "Дизайн Человека", path: "/dizayn-cheloveka" }]}>
+      <script type="application/ld+json" dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }} />
       <SeoPageTracker goal="hd_hub_view" params={{}} />
-
-      <p className="text-sm text-aura-gold/80">Дизайн Человека</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">
-        Дизайн Человека: что это и как работает
-      </h1>
-      <p className="mt-4 text-white/70">
-        Бодиграф — карта вашей механики: тип энергии, стратегия движения по жизни, внутренний
-        авторитет для решений, профиль роли и инкарнационный крест. Расчёт занимает секунды
-        и не требует регистрации.
-      </p>
-      <ul className="mt-4 space-y-1.5 text-sm text-white/55">
-        <li>точные эфемериды, сверенные с данными NASA JPL;</li>
-        <li>истинный лунный узел и ровно 88° солярной дуги для момента Дизайна;</li>
-        <li>интерактивный бодиграф с пояснениями к воротам, каналам и центрам;</li>
-        <li>режим «не знаю время» с проверкой стабильности результата.</li>
-      </ul>
-
-      <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta
-          href="/dizayn-cheloveka/rasschitat"
-          trackGoal="hd_calc_start"
-          trackParams={{ from: "hub" }}
-        >
-          Рассчитать бодиграф бесплатно
-        </SeoTrackedCta>
-      </div>
-
-      <div className="mt-8 space-y-4">
-        <HdTransitToday />
-        <HdTransitWeek />
-      </div>
-
-      <SeoSection title="Совместимость пары">
-        <p>
-          Наложите две карты друг на друга: композитный бодиграф покажет
-          электромагнетические каналы притяжения и то, как вы влияете друг на друга.
-          Разборы динамики для всех 15 пар типов — в разделе{" "}
-          <Link
-            href="/dizayn-cheloveka/sovmestimost"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            Совместимость
-          </Link>
-          . Калькулятор пары —{" "}
-          <Link
-            href="/dizayn-cheloveka/sovmestimost/rasschitat"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            рассчитать совместимость
-          </Link>
-          .
-        </p>
-        <p className="mt-3">
-          Частый запрос:{" "}
-          <Link
-            href="/dizayn-cheloveka/sovmestimost/manifestor-i-proektor"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            Проектор и Манифестор
-          </Link>
-          {" — "}
-          инициатор и проводник, стратегии информирования и приглашения.
-        </p>
-      </SeoSection>
-
-      <SeoSection title="Пять типов энергии">
-        <p>
-          Тип — фундамент Дизайна Человека: как ваша аура взаимодействует с миром и какая
-          стратегия снимает сопротивление.{" "}
-          <Link
-            href="/dizayn-cheloveka/tipy"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            Все типы
-          </Link>
-          :
-        </p>
-        <ul className="mt-3 space-y-2">
-          {HD_TYPE_SEO.map((t) => (
-            <li key={t.slug}>
-              <Link
-                href={`/dizayn-cheloveka/tipy/${t.slug}`}
-                className="text-aura-gold underline-offset-4 transition hover:underline"
-              >
-                {t.title}
-              </Link>
-              <span className="text-white/50"> — {t.intro.split(".")[0].toLowerCase()}.</span>
-            </li>
-          ))}
-        </ul>
-      </SeoSection>
-
-      <SeoSection title="Двенадцать профилей">
-        <p>
-          Профиль — ваша роль и стиль жизни: две линии из шести, сознательная и
-          бессознательная.{" "}
-          <Link
-            href="/dizayn-cheloveka/profili"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            Все профили
-          </Link>
-          :
-        </p>
-        <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
-          {HD_PROFILE_SEO.map((p) => (
-            <li key={p.slug}>
-              <Link
-                href={`/dizayn-cheloveka/profili/${p.slug}`}
-                className="text-aura-gold underline-offset-4 transition hover:underline"
-              >
-                {p.profile}
-              </Link>
-            </li>
-          ))}
-        </ul>
-      </SeoSection>
-
-      <SeoSection title="Девять центров">
-        <p>
-          Центры — девять энергетических узлов бодиграфа. Определённый центр — ваша
-          стабильная сила, открытый — место гибкости и мудрости.{" "}
-          <Link
-            href="/dizayn-cheloveka/centry"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            Все центры
-          </Link>
-          :
-        </p>
-        <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
-          {CENTER_SEO_SLUGS.map((slug) => {
-            const seo = centerSeo(slug);
-            if (!seo) return null;
-            return (
-              <li key={slug}>
-                <Link
-                  href={`/dizayn-cheloveka/centry/${slug}`}
-                  className="text-aura-gold underline-offset-4 transition hover:underline"
-                >
-                  {seo.name}
-                </Link>
-              </li>
-            );
-          })}
-        </ul>
-      </SeoSection>
-
-      <SeoSection title="Шестьдесят четыре ворот и тридцать шесть каналов">
-        <p>
-          Ворота — 64 темы человеческого опыта, каналы — устойчивые потоки между
-          центрами.{" "}
-          <Link
-            href="/dizayn-cheloveka/vorota"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            Все ворота
-          </Link>
-          {" · "}
-          <Link
-            href="/dizayn-cheloveka/kanaly"
-            className="text-amber-200 underline-offset-4 hover:underline"
-          >
-            Все каналы
-          </Link>
-          .
-        </p>
-        <details className="mt-3">
-          <summary className="cursor-pointer text-sm text-aura-gold underline-offset-4 hover:underline">
-            Все 64 ворота
-          </summary>
-          <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-4">
-            {ALL_GATE_SLUGS.map((gate) => (
-              <li key={gate}>
-                <Link
-                  href={`/dizayn-cheloveka/vorota/${gate}`}
-                  className="text-white/70 underline-offset-4 transition hover:text-amber-200 hover:underline"
-                >
-                  {gate} · {GATE_NAMES_RU[Number(gate)]}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        </details>
-        <details className="mt-3">
-          <summary className="cursor-pointer text-sm text-aura-gold underline-offset-4 hover:underline">
-            Все 36 каналов
-          </summary>
-          <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-sm sm:grid-cols-3">
-            {ALL_CHANNEL_SLUGS.map((key) => {
-              const seo = channelSeo(key);
-              if (!seo) return null;
-              return (
-                <li key={key}>
-                  <Link
-                    href={`/dizayn-cheloveka/kanaly/${key}`}
-                    className="text-white/70 underline-offset-4 transition hover:text-amber-200 hover:underline"
-                  >
-                    {key} · {seo.name}
-                  </Link>
-                </li>
-              );
-            })}
-          </ul>
-        </details>
-      </SeoSection>
-
-      <SeoSection title="Как читать свою карту">
-        <ol className="list-decimal space-y-2 pl-5 text-white/75">
-          <li>Начните с типа и стратегии — это 70% практической пользы системы.</li>
-          <li>Добавьте авторитет: куда именно внутри вас приходит верное решение.</li>
-          <li>Посмотрите профиль — он описывает вашу роль и жизненные этапы.</li>
-          <li>
-            Изучите определённые центры и каналы на бодиграфе — это ваши стабильные силы;
-            открытые центры — места гибкости и чужого влияния.
-          </li>
-        </ol>
-      </SeoSection>
-
-      <SeoSection title="Частые вопросы">
-        <dl className="space-y-4">
-          {HUB_FAQ.map((item) => (
-            <div key={item.q}>
-              <dt className="font-semibold text-white/90">{item.q}</dt>
-              <dd className="mt-1 text-white/70">{item.a}</dd>
+      <div className="hd-hub">
+        <section className="hd-hub-hero" aria-labelledby="hd-hub-title">
+          <div className="hd-hub-hero__copy">
+            <p className="hd-hub-eyebrow">Дизайн Человека · Ваш бодиграф</p>
+            <h1 id="hd-hub-title">Познакомьтесь со своей <em>внутренней механикой</em></h1>
+            <p className="hd-hub-hero__lead">
+              Рассчитайте карту по данным рождения и узнайте свой тип, стратегию решений и профиль.
+              Начните с главного, а детали изучайте в своём темпе.
+            </p>
+            <div className="hd-hub-hero__actions">
+              <SeoTrackedCta href="/dizayn-cheloveka/rasschitat" trackGoal="hd_calc_start" trackParams={{ from: "hub" }}>
+                Рассчитать карту бесплатно <ArrowUpRight size={17} aria-hidden="true" />
+              </SeoTrackedCta>
+              <a href="#hd-my-charts" className="hd-hub-hero__secondary">Мои карты ↓</a>
             </div>
-          ))}
-        </dl>
-      </SeoSection>
+            <p className="hd-hub-hero__fine">Дата, время и место рождения · Можно без точного времени · Регистрация не нужна</p>
+          </div>
+          <BodygraphArtwork />
+        </section>
 
-      <SeoSection title="Другие инструменты Zovus">
-        <ul className="space-y-2 text-sm">
-          <li>
-            <Link
-              href="/dizayn-cheloveka/rasschitat"
-              className="text-amber-200 underline-offset-4 hover:underline"
-            >
-              Рассчитать бодиграф
-            </Link>
-            {" — "}
-            тип, стратегия и авторитет по дате рождения.
-          </li>
-          <li>
-            <Link
-              href="/natal-ili-matrica"
-              className="text-amber-200 underline-offset-4 hover:underline"
-            >
-              Натальная карта или матрица судьбы
-            </Link>
-            {" — "}
-            чем системы отличаются и с чего начать.
-          </li>
-          <li>
-            <Link
-              href="/natalnaya-karta"
-              className="text-amber-200 underline-offset-4 hover:underline"
-            >
-              Натальная карта
-            </Link>
-            {" · "}
-            <Link
-              href="/numerology/destiny-matrix"
-              className="text-amber-200 underline-offset-4 hover:underline"
-            >
-              Матрица судьбы
-            </Link>
-            {" · "}
-            <Link
-              href="/photo-rasklad"
-              className="text-amber-200 underline-offset-4 hover:underline"
-            >
-              Таро по фото
-            </Link>
-          </li>
-        </ul>
-      </SeoSection>
+        <HdHubHistory />
 
-      <div className="mt-10">
-        <SeoTrackedCta
-          href="/dizayn-cheloveka/rasschitat"
-          trackGoal="hd_calc_start"
-          trackParams={{ from: "hub_bottom" }}
-        >
-          Рассчитать свою карту
-        </SeoTrackedCta>
+        <section className="hd-hub-preview" aria-labelledby="hd-preview-title">
+          <div className="hd-hub-heading">
+            <div>
+              <p className="hd-hub-eyebrow">Сначала главное</p>
+              <h2 id="hd-preview-title">Что вы узнаете</h2>
+              <p>Основная карта и интерактивный бодиграф доступны бесплатно.</p>
+            </div>
+          </div>
+          <div className="hd-hub-preview__grid">
+            {PREVIEW.map((item) => (
+              <article key={item.number}>
+                <span>{item.number}</span>
+                <h3>{item.title}</h3>
+                <p>{item.text}</p>
+              </article>
+            ))}
+          </div>
+          <p className="hd-hub-preview__note">Полный письменный разбор и диалог по карте доступны отдельно после входа. Цена показывается до заказа.</p>
+        </section>
+
+        <section className="hd-hub-transits" aria-labelledby="hd-transits-title">
+          <div className="hd-hub-heading">
+            <div>
+              <p className="hd-hub-eyebrow">Небесная механика</p>
+              <h2 id="hd-transits-title">Транзиты сейчас</h2>
+              <p>Текущие активации и неделя впереди — контекст к вашей личной карте.</p>
+            </div>
+          </div>
+          <div className="hd-hub-transits__grid"><HdTransitToday /><HdTransitWeek /></div>
+        </section>
+
+        <section className="hd-hub-compat" aria-labelledby="hd-compat-title">
+          <div>
+            <p className="hd-hub-eyebrow">Два бодиграфа</p>
+            <h2 id="hd-compat-title">Как вы влияете друг на друга</h2>
+            <p>Сопоставьте карты и увидьте каналы взаимодействия. Изучите <Link href="/dizayn-cheloveka/sovmestimost">совместимость</Link> типов или <Link href="/dizayn-cheloveka/sovmestimost/manifestor-i-proektor">пример Проектора и Манифестора</Link>.</p>
+          </div>
+          <Link href="/dizayn-cheloveka/sovmestimost/rasschitat" className="hd-hub-compat__link">Рассчитать совместимость <ArrowUpRight size={17} aria-hidden="true" /></Link>
+        </section>
+
+        <section className="hd-hub-library" aria-labelledby="hd-library-title">
+          <div className="hd-hub-heading">
+            <div>
+              <p className="hd-hub-eyebrow">После расчёта</p>
+              <h2 id="hd-library-title">Библиотека вашей карты</h2>
+              <p>Когда увидите свои параметры, здесь можно спокойно разобраться в каждом из них.</p>
+            </div>
+          </div>
+          <div className="hd-hub-library__grid">
+            <section aria-labelledby="hd-types-title" className="hd-hub-library__card">
+              <span className="hd-hub-library__index">01 / ТИП</span>
+              <h3 id="hd-types-title">Пять типов энергии</h3>
+              <p>Тип описывает взаимодействие вашей ауры с миром и связанную с ним стратегию.</p>
+              <ul>{HD_TYPE_SEO.map((item) => <li key={item.slug}><Link href={`/dizayn-cheloveka/tipy/${item.slug}`}>{item.title} <ArrowUpRight size={14} aria-hidden="true" /></Link></li>)}</ul>
+              <Link className="hd-hub-library__all" href="/dizayn-cheloveka/tipy">Все типы →</Link>
+            </section>
+            <section aria-labelledby="hd-profiles-title" className="hd-hub-library__card">
+              <span className="hd-hub-library__index">02 / ПРОФИЛЬ</span>
+              <h3 id="hd-profiles-title">Двенадцать профилей</h3>
+              <p>Профиль сочетает сознательную и бессознательную линии вашего опыта.</p>
+              <ul className="hd-hub-library__compact">{HD_PROFILE_SEO.map((item) => <li key={item.slug}><Link href={`/dizayn-cheloveka/profili/${item.slug}`}>{item.profile}</Link></li>)}</ul>
+              <Link className="hd-hub-library__all" href="/dizayn-cheloveka/profili">Все профили →</Link>
+            </section>
+            <section aria-labelledby="hd-centers-title" className="hd-hub-library__card">
+              <span className="hd-hub-library__index">03 / ЦЕНТРЫ</span>
+              <h3 id="hd-centers-title">Девять центров</h3>
+              <p>Определённые и открытые центры показывают устойчивые и восприимчивые области.</p>
+              <ul className="hd-hub-library__compact">{CENTER_SEO_SLUGS.map((slug) => {
+                const item = centerSeo(slug);
+                return item ? <li key={slug}><Link href={`/dizayn-cheloveka/centry/${slug}`}>{item.name}</Link></li> : null;
+              })}</ul>
+              <Link className="hd-hub-library__all" href="/dizayn-cheloveka/centry">Все центры →</Link>
+            </section>
+          </div>
+          <div className="hd-hub-library__indexes">
+            <details>
+              <summary>64 ворот <span>Темы человеческого опыта <ArrowUpRight size={15} aria-hidden="true" /></span></summary>
+              <p><Link href="/dizayn-cheloveka/vorota">Открыть справочник ворот</Link></p>
+              <ul>{ALL_GATE_SLUGS.map((gate) => <li key={gate}><Link href={`/dizayn-cheloveka/vorota/${gate}`}>{gate} · {GATE_NAMES_RU[Number(gate)]}</Link></li>)}</ul>
+            </details>
+            <details>
+              <summary>36 каналов <span>Связи между центрами <ArrowUpRight size={15} aria-hidden="true" /></span></summary>
+              <p><Link href="/dizayn-cheloveka/kanaly">Открыть справочник каналов</Link></p>
+              <ul>{ALL_CHANNEL_SLUGS.map((key) => {
+                const item = channelSeo(key);
+                return item ? <li key={key}><Link href={`/dizayn-cheloveka/kanaly/${key}`}>{key} · {item.name}</Link></li> : null;
+              })}</ul>
+            </details>
+          </div>
+        </section>
+
+        <div className="hd-hub-bottom">
+          <section aria-labelledby="hd-read-title">
+            <p className="hd-hub-eyebrow">Ваш маршрут</p>
+            <h2 id="hd-read-title">Как читать свою карту</h2>
+            <ol>
+              <li><span>01</span> Начните с типа и стратегии — как двигаться с меньшим сопротивлением.</li>
+              <li><span>02</span> Посмотрите авторитет — на что опираться в решениях.</li>
+              <li><span>03</span> Изучите профиль, затем определённые и открытые центры.</li>
+              <li><span>04</span> Вернитесь к бодиграфу позже: не нужно разбирать всё за один раз.</li>
+            </ol>
+          </section>
+          <section aria-labelledby="hd-faq-title">
+            <p className="hd-hub-eyebrow">Перед началом</p>
+            <h2 id="hd-faq-title">Частые вопросы</h2>
+            {HUB_FAQ.map((item) => <details key={item.q}><summary>{item.q}</summary><p>{item.a}</p></details>)}
+          </section>
+        </div>
+
+        <nav className="hd-hub-related" aria-label="Другие инструменты Zovus">
+          <span>Ещё исследовать</span>
+          <Link href="/natal-ili-matrica">Натальная карта или матрица судьбы</Link>
+          <Link href="/natalnaya-karta">Натальная карта</Link>
+          <Link href="/numerology/destiny-matrix">Матрица судьбы</Link>
+          <Link href="/photo-rasklad">Таро по фото</Link>
+        </nav>
+        <div className="hd-hub-final"><SeoTrackedCta href="/dizayn-cheloveka/rasschitat" trackGoal="hd_calc_start" trackParams={{ from: "hub_bottom" }}>Рассчитать свою карту <ArrowUpRight size={17} aria-hidden="true" /></SeoTrackedCta></div>
       </div>
     </SeoPageShell>
   );
