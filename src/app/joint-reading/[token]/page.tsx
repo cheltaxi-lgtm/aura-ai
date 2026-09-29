@@ -277,11 +277,11 @@ export default function JointReadingTokenPage() {
       </ol>
 
       {jointFailure ? (
-        <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
+        <div role="alert" className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
           <p>{jointFailure}</p>
           <p className="mt-1 text-xs text-red-200/70">
             {jointFailureCode === "joint_attach_unknown"
-              ? "Статус сохранения пока не подтверждён. Проверьте, появился ли личный расклад выше. Если нет — обратитесь в поддержку перед повторной оплатой."
+              ? "Статус сохранения пока не подтверждён. Проверьте, появился ли ваш личный расклад на этой странице. Если нет — обратитесь в поддержку перед повторной оплатой."
               : jointRetrySessionId
               ? "Личный расклад сохранён в кабинете. Можно попробовать привязать его без повторного прохождения."
               : "Личный расклад не завершён. Попробуйте пройти его по этой ссылке ещё раз."}
