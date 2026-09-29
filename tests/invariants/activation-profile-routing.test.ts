@@ -17,8 +17,13 @@ describe("consumer profile is independent of the Pro kill switch",()=>{
     expect((await middleware(new NextRequest("https://zovus.ru/api/profile"))).status).toBe(401);
   });
   it("keeps actual Pro API and pages disabled",async()=>{
-    for(const path of ["/api/pro","/api/pro/profile","/pro","/pro/settings","/admin/pro"]){
+    for(const path of ["/api/pro","/api/pro/profile","/pro","/pro/settings","/admin/pro","/zovus-pro","/r/shared-token","/p/practitioner"]){
       expect((await middleware(new NextRequest(`https://zovus.ru${path}`))).status).toBe(404);
     }
+    expect((await middleware(new NextRequest("https://zovus.ru/prognoz"))).headers.get("x-middleware-next")).toBe("1");
+  });
+  it("restores the public Pro landing when the module is enabled",async()=>{
+    vi.stubEnv("PRO_MODULE_ENABLED","true");
+    expect((await middleware(new NextRequest("https://zovus.ru/zovus-pro"))).headers.get("x-middleware-next")).toBe("1");
   });
 });

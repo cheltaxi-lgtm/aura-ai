@@ -442,6 +442,7 @@ export async function middleware(request: NextRequest) {
   // Dynamic env key avoids Next build-time inlining so flag flips work after restart.
   {
     const proPath =
+      pathname === "/zovus-pro" ||
       pathname === "/pro" ||
       pathname.startsWith("/pro/") ||
       pathname === "/api/pro" ||

@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import {
   LayoutDashboard,
   Users,
@@ -61,16 +62,18 @@ function AdminNavLinks({
   pathname,
   onNavigate,
   showAds,
+  showPro,
   className = "space-y-1",
 }: {
   pathname: string;
   onNavigate?: () => void;
   showAds: boolean;
+  showPro: boolean;
   className?: string;
 }) {
-  const nav = showAds
+  const nav = (showAds
     ? [...NAV_BASE.slice(0, 16), ADS_NAV, ...NAV_BASE.slice(16)]
-    : [...NAV_BASE];
+    : [...NAV_BASE]).filter((item) => showPro || item.href !== "/admin/pro");
   return (
     <nav className={className}>
       {nav.map(({ href, label, icon: Icon }) => {
@@ -97,6 +100,7 @@ function AdminNavLinks({
 }
 
 export default function AdminShell({ children }: { children: React.ReactNode }) {
+  const { proModuleEnabled } = usePlatformFeatures();
   const pathname = usePathname();
   const router = useRouter();
   const [admin, setAdmin] = useState<{ email: string; name: string } | null>(null);
@@ -181,6 +185,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             pathname={pathname}
             onNavigate={closeMobileNav}
             showAds={showAdsNav}
+            showPro={proModuleEnabled === true}
           />
         </div>
         <button
@@ -201,7 +206,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
             <p className="font-display text-lg font-bold text-aura-champagne">Zovus Admin</p>
             <p className="truncate text-xs text-gray-600">{admin.email}</p>
           </div>
-          <AdminNavLinks pathname={pathname} showAds={showAdsNav} />
+          <AdminNavLinks pathname={pathname} showAds={showAdsNav} showPro={proModuleEnabled === true} />
           <button
             onClick={logout}
             className="mt-8 flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-sm text-gray-500 hover:bg-white/5 hover:text-red-400"

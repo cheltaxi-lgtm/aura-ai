@@ -22,20 +22,20 @@ import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 
 export type SiteFooterVariant = "minimal" | "marketing";
 
-function LegalDocsNav() {
+function LegalDocsNav({ proModuleEnabled }: { proModuleEnabled: boolean }) {
   return (
     <nav className="site-legal-footer__docs" aria-label="Юридические документы">
       <LegalDocLink href="/privacy">ПДн</LegalDocLink>
       <LegalDocLink href="/terms">Соглашение</LegalDocLink>
       <LegalDocLink href="/offer">Оферта</LegalDocLink>
-      <LegalDocLink href="/offer-pro">Оферта Pro</LegalDocLink>
+      {proModuleEnabled ? <LegalDocLink href="/offer-pro">Оферта Pro</LegalDocLink> : null}
       <LegalDocLink href="/disclaimer">Отказ</LegalDocLink>
       <LegalDocLink href="/app">Приложение</LegalDocLink>
     </nav>
   );
 }
 
-function LegalMeta({ year }: { year: number }) {
+function LegalMeta({ year, proModuleEnabled }: { year: number; proModuleEnabled: boolean }) {
   return (
     <div className="site-legal-footer__meta">
       <div className="site-legal-footer__identity">
@@ -49,7 +49,7 @@ function LegalMeta({ year }: { year: number }) {
           {LEGAL_OPERATOR.contactEmail}
         </LegalDocLink>
       </div>
-      <LegalDocsNav />
+      <LegalDocsNav proModuleEnabled={proModuleEnabled} />
     </div>
   );
 }
@@ -69,7 +69,7 @@ export default function SiteFooter({
   if (variant === "minimal") {
     return (
       <footer className="site-legal-footer site-legal-footer--minimal relative mt-auto">
-        <LegalMeta year={year} />
+        <LegalMeta year={year} proModuleEnabled={proModuleEnabled === true} />
       </footer>
     );
   }
@@ -196,9 +196,11 @@ export default function SiteFooter({
             <LegalDocLink href="/offer" className="editorial-footer__link">
               Оферта
             </LegalDocLink>
-            <LegalDocLink href="/offer-pro" className="editorial-footer__link">
-              Оферта Pro
-            </LegalDocLink>
+            {proModuleEnabled ? (
+              <LegalDocLink href="/offer-pro" className="editorial-footer__link">
+                Оферта Pro
+              </LegalDocLink>
+            ) : null}
             <LegalDocLink href="/privacy" className="editorial-footer__link">
               Конфиденциальность
             </LegalDocLink>
