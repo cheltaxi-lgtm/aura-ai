@@ -234,6 +234,62 @@ test("completed result leads with the shared interpretation and keeps personal r
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
 
+test("pending personal reading shows structured cards and the partner handoff", async ({ page }) => {
+  const cardNames = ["Колесница", "Маг", "Король Жезлов", "Королева Пентаклей", "Императрица", "Рыцарь Жезлов", "4 Кубков"];
+  const positions = ["Вы", "Партнёр", "Связь между вами", "Сила пары", "Слабое место", "Совет", "Итог"];
+  const personal = [
+    "Здесь виден ваш взгляд на направление отношений.",
+    ...cardNames.map((name, index) => `**${name} — позиция «${positions[index]}».** Смысл этой карты в позиции ${index + 1}.`),
+    "## Простыми словами",
+    "Общий вывод появится после второй части.",
+  ].join("\n\n");
+  await page.route("**/api/joint-reading/pending-result", (route) => route.fulfill({ json: {
+    token: "pending-result",
+    status: "pending_partner",
+    spreadId: "love-7",
+    intentSlug: "sovmestimost-pary",
+    initiatorName: "Анна",
+    partnerName: "Максим",
+    expiresAt: "2026-10-10T00:00:00Z",
+    hasInitiatorReading: true,
+    hasPartnerReading: false,
+    combinedReading: null,
+    initiatorReading: personal,
+    initiatorCards: cardNames.map((name, index) => ({ name, position: positions[index] })),
+    partnerReading: null,
+    partnerCards: [],
+    viewerRole: "initiator",
+    canStartAsInitiator: false,
+    canStartAsPartner: false,
+    isLoggedIn: true,
+    synastry: null,
+  } }));
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto("/joint-reading/pending-result");
+  await expect(page.getByText("Теперь ход партнёра")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Копировать приглашение" })).toBeVisible();
+  await page.locator(".joint-result__personal summary").click();
+  await expect(page.locator(".joint-personal-reading__card")).toHaveCount(7);
+  await expect(page.locator(".joint-result__personal")).not.toContainText("**");
+  await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
+});
+
+test("failed personal generation stays on the invite with accurate retry guidance", async ({ page }) => {
+  await page.route("**/api/joint-reading/retry-token", (route) => route.fulfill({ json: {
+    token: "retry-token", status: "pending_partner", spreadId: "love-7", intentSlug: "sovmestimost-pary",
+    initiatorName: "Анна", partnerName: "Максим", expiresAt: "2026-10-10T00:00:00Z",
+    hasInitiatorReading: false, hasPartnerReading: false, combinedReading: null,
+    initiatorReading: null, partnerReading: null, viewerRole: "initiator",
+    canStartAsInitiator: true, canStartAsPartner: false, isLoggedIn: true, synastry: null,
+  } }));
+  await page.goto("/joint-reading/retry-token?jointError=Руны%20возвращены&jointErrorCode=generation_failed");
+  await expect(page.getByText("Личный расклад не завершён. Попробуйте пройти его по этой ссылке ещё раз.")).toBeVisible();
+  await expect(page.getByRole("button", { name: "Пройти мой расклад" })).toBeVisible();
+  await page.goto("/joint-reading/retry-token?jointError=Не%20удалось%20подтвердить%20сохранение&jointErrorCode=joint_attach_unknown");
+  await expect(page.getByText(/Статус сохранения пока не подтверждён/)).toBeVisible();
+  await expect(page.getByText(/Личный расклад не завершён/)).toHaveCount(0);
+});
+
 test("guest can see the archive sign-in path without creating an invitation", async ({ page }) => {
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: { authenticated: false, user: null } }));
   await page.goto("/joint-reading");

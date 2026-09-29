@@ -1,6 +1,7 @@
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { ensureOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
 import { NextRequest, NextResponse } from "next/server";
+import { randomUUID } from "node:crypto";
 import { ensureDb } from "@/lib/db";
 import {
   profileAuthFailureResponse,
@@ -9,6 +10,7 @@ import {
 } from "@/lib/require-auth";
 import {
   getAsyncJobWorkerUserId,
+  getAsyncJobIdFromRequest,
   isAsyncJobWorkerConfigured,
 } from "@/lib/async-job-worker-auth";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
@@ -99,7 +101,8 @@ import {
   type SpreadId,
 } from "@/lib/spreads";
 import { resolveSpreadCost } from "@/lib/spreads/spread-pricing";
-import { attachSpreadToJointReading, getJointReadingByToken } from "@/lib/joint-reading-service";
+import { attachSpreadToJointReading, getJointReadingByToken, jointSideAvailability } from "@/lib/joint-reading-service";
+import { buildJointPersonalPrompt, jointPersonalQualityIssue } from "@/lib/joint-reading-quality";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import type { SessionTopicId } from "@/lib/session-topics";
 
@@ -532,6 +535,7 @@ export async function POST(request: NextRequest) {
   let cardNames: string[] | undefined;
   let spreadId: SpreadId = "triplet";
   let jointToken: string | undefined;
+  let jointInvite: Awaited<ReturnType<typeof getJointReadingByToken>> = null;
   let asyncRequested = false;
   let rawBody: Record<string, unknown> = {};
 
@@ -564,18 +568,15 @@ export async function POST(request: NextRequest) {
   }
 
   // Resolve invite *before* slicing cards so invite depth wins over a wrong client spreadId.
-  if (jointToken && (await ensureDb())) {
+  if (jointToken && !(await ensureDb())) {
+    return NextResponse.json({ error: "Совместный расклад временно недоступен." }, { status: 503 });
+  }
+  if (jointToken) {
     const joint = await getJointReadingByToken(jointToken);
     if (!joint || joint.status === "expired") {
-      // Do not fail the personal spread: the client still has the full token and
-      // can attach via /complete after generation. A hard 404 here used to abort
-      // every joint reading when the token was truncated or briefly unavailable.
-      console.warn(
-        "[intention-spread] joint invite missing/expired — continuing without attach",
-        jointToken.slice(0, 8)
-      );
-      jointToken = undefined;
+      return NextResponse.json({ error: "Совместное приглашение не найдено или истекло.", code: "joint_unavailable" }, { status: 410 });
     } else {
+      jointInvite = joint;
       spreadId = normalizeSpreadId(joint.spread_id);
       // `intent_slug` is a spread-intents *registry* slug (e.g. "sovmestimost-pary"),
       // not a `SessionTopicId` — assigning it to `intention` directly used to fail
@@ -649,6 +650,16 @@ export async function POST(request: NextRequest) {
       auth: profileCtx.auth,
       profileUserId: profileCtx.profileUserId,
     };
+  }
+
+  if (jointToken) {
+    // Also runs inside the worker. Re-read after authentication: the browser may
+    // have queued this job before the other participant occupied the slot.
+    jointInvite = await getJointReadingByToken(jointToken);
+    const unavailable = jointSideAvailability(jointInvite, authed.profileUserId);
+    if (unavailable) {
+      return NextResponse.json({ error: unavailable, code: "joint_unavailable" }, { status: 409 });
+    }
   }
 
   if (!workerUserId) {
@@ -778,6 +789,12 @@ export async function POST(request: NextRequest) {
           });
           jointSaved = jointResult.ok;
           if (!jointResult.ok) jointError = jointResult.error;
+          if (!jointResult.ok || jointResult.alreadySaved) {
+            return NextResponse.json({
+              error: jointResult.ok ? "Личный расклад уже сохранён." : jointResult.error,
+              code: "joint_unavailable",
+            }, { status: 409 });
+          }
         }
 
         const reusedPayload = {
@@ -810,15 +827,23 @@ export async function POST(request: NextRequest) {
 
   if (useRuneBilling) {
     try {
+      if (jointToken) {
+        jointInvite = await getJointReadingByToken(jointToken);
+        const unavailable = jointSideAvailability(jointInvite, authed.profileUserId);
+        if (unavailable) {
+          return NextResponse.json({ error: unavailable, code: "joint_unavailable" }, { status: 409 });
+        }
+      }
       const spreadCost = resolveSpreadCost(spreadId, runeSettings);
       const charge = await BillingService.chargeForSession({
         userId: authed.profileUserId,
         cost: spreadCost,
         actionType: "INTENTION_SPREAD",
         sessionId,
-        idempotencyKey:
-          readRequestChargeIdempotencyKey(request, rawBody) ??
-          (sessionId ? `intention-spread:${sessionId}:${spreadId}` : undefined),
+        idempotencyKey: jointToken
+          ? `joint-personal:${jointToken}:${getAsyncJobIdFromRequest(request) ?? randomUUID()}`
+          : readRequestChargeIdempotencyKey(request, rawBody) ??
+            (sessionId ? `intention-spread:${sessionId}:${spreadId}` : undefined),
       });
       billingCharge = charge;
       runeBalance = charge.newBalance;
@@ -979,11 +1004,13 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  systemPrompt += intentionSpreadPromptBlock(intention, customQuestion, {
-    spreadId,
-    cardCount: drawn.length,
-    positionLabels,
-  });
+  if (!jointInvite) {
+    systemPrompt += intentionSpreadPromptBlock(intention, customQuestion, {
+      spreadId,
+      cardCount: drawn.length,
+      positionLabels,
+    });
+  }
 
   const captureGeneration = await captureMemoryGenerationForRequest(request, authed.profileUserId);
   const memoryCtx = await buildMemoryContext({
@@ -1005,6 +1032,14 @@ export async function POST(request: NextRequest) {
     mainQuestion,
   });
   systemPrompt = appendMemoryContextToPrompt(systemPrompt, memoryCtx);
+  if (jointInvite) {
+    const isInitiator = jointInvite.initiator_user_id === authed.profileUserId;
+    systemPrompt += buildJointPersonalPrompt({
+      intentSlug: jointInvite.intent_slug,
+      otherDone: Boolean(isInitiator ? jointInvite.partner_reading : jointInvite.initiator_reading),
+      positions: positionLabels,
+    });
+  }
 
   let reading = "";
   let readingProvenance: import("@/lib/ai-generation-contract").AiProvenance | undefined;
@@ -1028,40 +1063,51 @@ export async function POST(request: NextRequest) {
           : resolveIntentionLabel(intention),
     });
 
-    const generated = await generateReading(systemPrompt, {
-      userName,
-      tarotCards,
-      isPaid: true,
-      characterId,
-      intention,
-      spreadId,
-      positionLabels,
-      userMessage,
-    });
-    readingProvenance = generated.provenance;
-    reading =
-      sanitizeReadingForClient(generated.text.trim(), drawn.map((c) => c.name)) || "";
     const cardNamesForCheck = drawn.map((c) => c.name);
-    const readingOk =
-      generated.fromLlm &&
-      Boolean(reading.trim()) &&
-      isPaidSpreadTextComplete(reading, cardNamesForCheck);
-    if (!readingOk) {
-      throw new Error("intention_spread_ai_failed");
+    const attempts = jointInvite ? 2 : 1;
+    for (let attempt = 0; attempt < attempts; attempt++) {
+      const prompt = attempt === 0
+        ? systemPrompt
+        : `${systemPrompt}\nПовтори ответ заново: личная часть не может содержать вердикт о совместимости до расклада второго участника. Проверь согласование местоимений и глаголов.`;
+      const generated = await generateReading(prompt, {
+        userName,
+        tarotCards,
+        isPaid: true,
+        characterId,
+        intention,
+        spreadId,
+        positionLabels,
+        userMessage,
+        jointReadingMode: jointInvite ? "personal" : undefined,
+      });
+      readingProvenance = generated.provenance;
+      reading = sanitizeReadingForClient(generated.text.trim(), cardNamesForCheck) || "";
+      const readingOk =
+        generated.fromLlm &&
+        Boolean(reading.trim()) &&
+        isPaidSpreadTextComplete(reading, cardNamesForCheck);
+      if (!readingOk) {
+        if (attempt < attempts - 1) continue;
+        throw new Error("intention_spread_ai_failed");
+      }
+      const issue = jointInvite ? jointPersonalQualityIssue(reading, cardNamesForCheck.length) : null;
+      if (!issue) break;
+      if (attempt === attempts - 1) throw new Error(`joint_personal_quality_${issue}`);
     }
   } catch (err) {
     console.error("Intention spread generation failed:", err);
     let refunded = false;
     if (billingCharge) {
       try {
-        runeBalance = await BillingService.rollbackCharge({
+        const rollback = await BillingService.rollbackChargeEx({
           userId: authed.profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: billingCharge.wasFreeQuestion,
           actionType: "INTENTION_SPREAD",
           transactionId: billingCharge.transactionId,
         });
-        refunded = true;
+        runeBalance = rollback.balance;
+        refunded = rollback.refunded;
       } catch (refundErr) {
         console.error("Intention spread refund failed:", refundErr);
       }
@@ -1073,7 +1119,9 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(
       {
-        error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+        error: refunded
+          ? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз."
+          : "Не удалось получить трактовку. Обратитесь в поддержку для проверки списания.",
         code: "generation_failed",
         refunded,
       },
@@ -1081,10 +1129,110 @@ export async function POST(request: NextRequest) {
     );
   }
 
-  const ownedSessionId = await persistToOwnedSession(
-    sessionId,
-    authed.profileUserId,
-    async (resolvedSessionId) => {
+  // Reserve the worker's right to save before exposing any generated text.
+  if ((await ensureDb()) && !(await beginWorkerJobSave(request))) {
+    let refunded = !billingCharge;
+    if (billingCharge) {
+      try {
+        const rollback = await BillingService.rollbackChargeEx({
+          userId: authed.profileUserId,
+          cost: billingCharge.spentRunes,
+          wasFreeQuestion: billingCharge.wasFreeQuestion,
+          actionType: "INTENTION_SPREAD",
+          transactionId: billingCharge.transactionId,
+        });
+        refunded = rollback.refunded;
+        runeBalance = rollback.balance;
+      } catch (refundErr) {
+        console.error("Intention spread refund failed:", refundErr);
+      }
+    }
+    await trackWorkerJobFailed(request, "Intention spread save race", { refunded, errorCode: "generation_failed" });
+    return NextResponse.json({
+      error: refunded ? "Не удалось сохранить трактовку. Руны возвращены. Попробуйте ещё раз." : "Не удалось сохранить трактовку. Обратитесь в поддержку для проверки списания.",
+      code: "generation_failed", refunded,
+    }, { status: 502 });
+  }
+
+  // Attach the joint side atomically before writing any text to chat/history.
+  // A losing parallel request is refunded without yielding an extra reading.
+  let reservedSessionId: string | null = null;
+  if (jointToken) {
+    try {
+      reservedSessionId = await persistToOwnedSession(sessionId, authed.profileUserId, async () => {});
+    } catch (sessionErr) {
+      console.warn("Joint reading session reservation failed:", sessionErr);
+    }
+  }
+  const storedSessionId = reservedSessionId ?? sessionId;
+  let jointSaved = false;
+  let jointError: string | undefined;
+  if (jointToken && reading.trim()) {
+    try {
+      const jointResult = await attachSpreadToJointReading({
+        jointToken,
+        userId: authed.profileUserId,
+        profileName: userName,
+        spreadId,
+        reading: reading.trim(),
+        cards: drawn.map((c, i) => ({ name: c.name, position: positionLabels[i] ?? c.name })),
+        sessionId: storedSessionId ?? undefined,
+        characterKey: characterId,
+      });
+      jointSaved = jointResult.ok && !jointResult.alreadySaved;
+      if (!jointSaved) jointError = jointResult.ok ? "Личный расклад уже сохранён." : jointResult.error;
+    } catch (attachError) {
+      console.error("Joint reading attach raised:", attachError);
+      // The UPDATE may already have committed before a secondary step failed.
+      // Confirm ownership and exact saved text before deciding on a refund.
+      let latest: Awaited<ReturnType<typeof getJointReadingByToken>>;
+      try {
+        latest = await getJointReadingByToken(jointToken);
+      } catch (lookupError) {
+        console.error("Joint reading attach outcome could not be verified:", lookupError);
+        await trackWorkerJobFailed(request, "Не удалось подтвердить сохранение совместного расклада. Проверьте страницу приглашения или обратитесь в поддержку перед повторной оплатой.", { refunded: false, errorCode: "joint_attach_unknown" });
+        return NextResponse.json({
+          error: "Не удалось подтвердить сохранение расклада. Проверьте страницу совместного расклада или обратитесь в поддержку.",
+          code: "joint_attach_unknown", refunded: false,
+        }, { status: 503 });
+      }
+      const ownText = latest?.initiator_user_id === authed.profileUserId
+        ? latest.initiator_reading
+        : latest?.partner_user_id === authed.profileUserId ? latest.partner_reading : null;
+      jointSaved = ownText === reading.trim();
+      if (!jointSaved) jointError = "Не удалось сохранить личную часть совместного расклада.";
+    }
+    if (!jointSaved) {
+      let refunded = !billingCharge;
+      if (billingCharge) {
+        try {
+          const rollback = await BillingService.rollbackChargeEx({
+            userId: authed.profileUserId,
+            cost: billingCharge.spentRunes,
+            wasFreeQuestion: billingCharge.wasFreeQuestion,
+            actionType: "INTENTION_SPREAD",
+            transactionId: billingCharge.transactionId,
+          });
+          refunded = rollback.refunded;
+          runeBalance = rollback.balance;
+        } catch (refundErr) {
+          console.error("Joint reading refund failed:", refundErr);
+        }
+      }
+      await trackWorkerJobFailed(request, jointError ?? "Joint reading attach failed", { refunded, errorCode: "joint_unavailable" });
+      return NextResponse.json({
+        error: refunded ? jointError : "Не удалось привязать расклад. Обратитесь в поддержку для проверки списания.",
+        code: "joint_unavailable", refunded,
+      }, { status: 409 });
+    }
+  }
+
+  let ownedSessionId: string | null = null;
+  try {
+    ownedSessionId = await persistToOwnedSession(
+      storedSessionId,
+      authed.profileUserId,
+      async (resolvedSessionId) => {
       if (reading.trim()) {
         await ensureSpreadReadingInChatMessages({
           captureGeneration,
@@ -1115,39 +1263,17 @@ export async function POST(request: NextRequest) {
           prediction: "Сеанс в процессе",
         });
       }
-    }
-  );
-  const storedSessionId = ownedSessionId ?? sessionId;
+      }
+    );
+  } catch (sessionErr) {
+    // The paid joint side was already committed. Keep the deliverable available
+    // through the joint page even if the secondary chat copy fails.
+    console.warn("Intention spread chat save failed:", sessionErr);
+  }
+  const finalSessionId = ownedSessionId ?? storedSessionId;
 
   if (await ensureDb()) {
     try {
-      if (!(await beginWorkerJobSave(request))) {
-        if (billingCharge) {
-          try {
-            await BillingService.rollbackCharge({
-              userId: authed.profileUserId,
-              cost: billingCharge.spentRunes,
-              wasFreeQuestion: billingCharge.wasFreeQuestion,
-              actionType: "INTENTION_SPREAD",
-              transactionId: billingCharge.transactionId,
-            });
-          } catch (refundErr) {
-            console.error("Intention spread refund failed:", refundErr);
-          }
-        }
-        await trackWorkerJobFailed(request, "Intention spread save race", {
-          refunded: Boolean(billingCharge),
-          errorCode: "generation_failed",
-        });
-        return NextResponse.json(
-          {
-            error: "Не удалось сохранить трактовку. Руны возвращены. Попробуйте ещё раз.",
-            code: "generation_failed",
-            refunded: Boolean(billingCharge),
-          },
-          { status: 502 }
-        );
-      }
       const aiSettings = await getSetting("ai");
       const provenance =
         readingProvenance ??
@@ -1176,7 +1302,7 @@ export async function POST(request: NextRequest) {
           tarotCards,
           deckSystem: system,
           system,
-          sessionId: storedSessionId,
+          sessionId: finalSessionId,
           source: "ai",
           provenance,
         },
@@ -1186,41 +1312,10 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  logSpreadMetric(
-    "spread_completed",
-    {
-      spreadId,
-      intention,
-      characterId,
-      cardCount,
-      cost: billingCharge?.spentRunes,
-      source: "intention_spread",
-    }
-  );
-
-  let jointSaved = false;
-  let jointError: string | undefined;
-
-  if (jointToken && reading?.trim()) {
-    const jointResult = await attachSpreadToJointReading({
-      jointToken,
-      userId: authed.profileUserId,
-      profileName: userName,
-      spreadId,
-      reading: reading.trim(),
-      cards: drawn.map((c, i) => ({
-        name: c.name,
-        position: positionLabels[i] ?? c.name,
-      })),
-      sessionId: storedSessionId ?? undefined,
-      characterKey: characterId,
-    });
-    jointSaved = jointResult.ok;
-    if (!jointResult.ok) {
-      jointError = jointResult.error;
-      console.warn("Joint reading attach failed:", jointResult.error);
-    }
-  }
+  logSpreadMetric("spread_completed", {
+    spreadId, intention, characterId, cardCount,
+    cost: billingCharge?.spentRunes, source: "intention_spread",
+  });
 
   await recordSpreadMetric(
     "spread_completed",
@@ -1241,7 +1336,7 @@ export async function POST(request: NextRequest) {
     system,
     intention,
     spreadId,
-    sessionId: storedSessionId,
+    sessionId: finalSessionId,
     runeBalance,
     isPaid: true,
     jointSaved,

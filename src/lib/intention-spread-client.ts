@@ -22,6 +22,8 @@ export const INTENTION_SPREAD_LATE_RECOVERY_POLL_MAX_ATTEMPTS = 24;
 
 export function isTerminalIntentionSpreadError(err: unknown): boolean {
   const msg = err instanceof Error ? err.message : String(err ?? "");
+  const code = err instanceof Error && "code" in err ? err.code : undefined;
+  if (code === "joint_attach_unknown" || code === "joint_unavailable" || code === "generation_failed") return true;
   return /не удалось завершить трактовку|generation_failed|intention_spread_ai_failed|intention_spread_failed|трактовк|приглашение не найдено|истекло/i.test(
     msg
   );
@@ -48,10 +50,11 @@ export function isInsufficientRunesIntentionError(err: unknown): boolean {
 }
 
 export async function intentionSpreadResponseError(response: Response): Promise<Error> {
-  const data = (await response.json().catch(() => ({}))) as { error?: unknown };
+  const data = (await response.json().catch(() => ({}))) as { error?: unknown; code?: unknown };
   const apiError = typeof data.error === "string" ? data.error.trim() : "";
-  if (apiError) return new Error(apiError);
-  return new Error("intention_spread_failed");
+  const error = new Error(apiError || "intention_spread_failed") as Error & { code?: string };
+  if (typeof data.code === "string") error.code = data.code;
+  return error;
 }
 
 export function isIntentionSpreadWaitAborted(err: unknown): boolean {

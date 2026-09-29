@@ -1139,6 +1139,10 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
       job.status === "failed" || job.status === "needs_regeneration"
         ? job.error_message
         : undefined,
+    errorCode:
+      job.status === "failed" || job.status === "needs_regeneration"
+        ? job.error_code
+        : undefined,
     billingState: job.billing_state,
     refunded,
     createdAt: job.created_at.toISOString(),

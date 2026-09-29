@@ -12,6 +12,7 @@ import {
 import { buildJointSpreadStartPath } from "@/lib/joint-reading-nav";
 import { withAppShellIfNeeded } from "@/lib/post-auth-return";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
+import JointPersonalReading from "@/components/joint/JointPersonalReading";
 import { getSpread } from "@/lib/spreads";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import ShareButton from "@/components/share/ShareButton";
@@ -42,7 +43,9 @@ type JointPayload = {
   combinedPending?: boolean;
   combinedJobId?: string | null;
   initiatorReading: string | null;
+  initiatorCards?: { name: string; position?: string }[];
   partnerReading: string | null;
+  partnerCards?: { name: string; position?: string }[];
   viewerRole: "initiator" | "partner" | "guest" | null;
   canStartAsInitiator: boolean;
   canStartAsPartner: boolean;
@@ -73,6 +76,7 @@ export default function JointReadingTokenPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [jointFailure, setJointFailure] = useState<string | null>(null);
+  const [jointFailureCode, setJointFailureCode] = useState<string | null>(null);
   const [jointRetrySessionId, setJointRetrySessionId] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
   const [deleting, setDeleting] = useState(false);
@@ -82,12 +86,15 @@ export default function JointReadingTokenPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const failure = params.get("jointError");
+    const failureCode = params.get("jointErrorCode");
     const retrySessionId = params.get("jointSessionId");
     if (failure) {
       setJointFailure(failure);
+      setJointFailureCode(failureCode);
       setJointRetrySessionId(retrySessionId || null);
       const url = new URL(window.location.href);
       url.searchParams.delete("jointError");
+      url.searchParams.delete("jointErrorCode");
       url.searchParams.delete("jointSessionId");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
@@ -256,7 +263,11 @@ export default function JointReadingTokenPage() {
         </p>
       </header>
       <p className="joint-result__cost">
-        Каждый оплачивает свой расклад отдельно. Точная стоимость показывается перед подтверждением.
+        {bothDone
+          ? "Оба личных расклада сохранены. Общая интерпретация собирается из двух результатов."
+          : data.hasInitiatorReading || data.hasPartnerReading
+            ? "Готовая личная часть сохранена. Второй участник увидит стоимость своего расклада до подтверждения."
+            : "Приглашение и личные расклады оплачиваются отдельно; точная стоимость каждого шага показана до подтверждения."}
       </p>
 
       <ol className="joint-result__stages" aria-label="Этапы совместного расклада">
@@ -269,10 +280,11 @@ export default function JointReadingTokenPage() {
         <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
           <p>{jointFailure}</p>
           <p className="mt-1 text-xs text-red-200/70">
-            Ваш личный расклад сохранён в кабинете, но в совместный расклад он не попал.
-            {jointRetrySessionId
-              ? " Можно попробовать привязать уже готовый расклад без повторного прохождения."
-              : " Попробуйте пройти расклад по этой ссылке ещё раз."}
+            {jointFailureCode === "joint_attach_unknown"
+              ? "Статус сохранения пока не подтверждён. Проверьте, появился ли личный расклад выше. Если нет — обратитесь в поддержку перед повторной оплатой."
+              : jointRetrySessionId
+              ? "Личный расклад сохранён в кабинете. Можно попробовать привязать его без повторного прохождения."
+              : "Личный расклад не завершён. Попробуйте пройти его по этой ссылке ещё раз."}
           </p>
           {jointRetrySessionId ? (
             <button
@@ -321,6 +333,18 @@ export default function JointReadingTokenPage() {
           <span>{data.hasPartnerReading ? "✓ Расклад готов" : "Ожидает расклад"}</span>
         </div>
       </div>
+
+      {data.viewerRole === "initiator" && data.hasInitiatorReading && !data.hasPartnerReading && !isExpired ? (
+        <div className="joint-result__handoff">
+          <div>
+            <span className="joint-eyebrow">Теперь ход партнёра</span>
+            <p>Ваш личный расклад сохранён. Отправьте ссылку второму участнику: общий вывод появится после его расклада.</p>
+          </div>
+          <button type="button" onClick={() => void copyLink()} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+            <Copy className="h-4 w-4" /> {copied ? "Скопировано" : "Копировать приглашение"}
+          </button>
+        </div>
+      ) : null}
 
       {!data.combinedReading &&
       data.hasInitiatorReading &&
@@ -421,21 +445,21 @@ export default function JointReadingTokenPage() {
         </p>
       ) : null}
 
-      {(data.initiatorReading && (data.viewerRole === "initiator" || data.status === "completed")) ||
-      (data.partnerReading && (data.viewerRole === "partner" || data.status === "completed")) ? (
+      {(data.initiatorReading && data.viewerRole === "initiator") ||
+      (data.partnerReading && data.viewerRole === "partner") ? (
         <section className="joint-result__personal" aria-labelledby="joint-personal-title">
-          <span className="joint-eyebrow">Отдельные взгляды</span>
-          <h2 id="joint-personal-title">Личные расклады</h2>
-          {data.initiatorReading && (data.viewerRole === "initiator" || data.status === "completed") ? (
+          <span className="joint-eyebrow">Личная часть</span>
+          <h2 id="joint-personal-title">Ваш личный расклад</h2>
+          {data.initiatorReading && data.viewerRole === "initiator" ? (
             <details>
               <summary>Расклад — {labelA} <span>{getSpread(data.spreadId).cardCount} карт</span></summary>
-              <div><PremiumReadingBody content={data.initiatorReading} /></div>
+              <JointPersonalReading content={data.initiatorReading} cards={data.initiatorCards ?? []} complete={bothDone} />
             </details>
           ) : null}
-          {data.partnerReading && (data.viewerRole === "partner" || data.status === "completed") ? (
+          {data.partnerReading && data.viewerRole === "partner" ? (
             <details>
               <summary>Расклад — {labelB} <span>{getSpread(data.spreadId).cardCount} карт</span></summary>
-              <div><PremiumReadingBody content={data.partnerReading} /></div>
+              <JointPersonalReading content={data.partnerReading} cards={data.partnerCards ?? []} complete={bothDone} />
             </details>
           ) : null}
         </section>
@@ -476,10 +500,7 @@ export default function JointReadingTokenPage() {
           !data.hasPartnerReading &&
           !data.canStartAsInitiator &&
           !isExpired ? (
-            <p className="text-sm text-amber-200/80">
-              Это ваша ссылка как инициатора. Отправьте её партнёру ({labelB}) — со своего аккаунта
-              пройти расклад партнёра нельзя.
-            </p>
+            <p className="text-sm text-amber-200/80">Второй участник проходит расклад со своего аккаунта.</p>
           ) : null}
           {data.viewerRole === "guest" && !data.canStartAsPartner && !bothDone && !isExpired ? (
             <p className="text-sm text-amber-200/80">
@@ -506,24 +527,6 @@ export default function JointReadingTokenPage() {
               >
                 Пройти расклад партнёра
               </button>
-            ) : null}
-            {data.viewerRole === "initiator" &&
-            data.hasInitiatorReading &&
-            !data.hasPartnerReading &&
-            !isExpired ? (
-              <>
-                <p className="w-full text-sm text-white/50">
-                  Ждём партнёра — отправьте ему ссылку на эту страницу.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void copyLink()}
-                  className="btn-luxe btn-luxe--sm border-aura-gold/30 bg-aura-gold/10 text-aura-gold"
-                >
-                  <Copy className="h-4 w-4" />
-                  {copied ? "Скопировано" : "Копировать ссылку"}
-                </button>
-              </>
             ) : null}
           </div>
         </div>

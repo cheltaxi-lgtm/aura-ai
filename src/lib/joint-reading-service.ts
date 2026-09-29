@@ -5,8 +5,6 @@ import { generateReading } from "@/lib/chat-prompts";
 import { dispatchNotification } from "@/lib/notify";
 import { normalizeSpreadId, type SpreadId } from "@/lib/spreads";
 import { resolveDeckCard, resolveDeckSystem } from "@/lib/deck-card-utils";
-import { buildPaidSpreadReadingExtras } from "@/lib/prompts/premium-reading";
-import { isTarotRuneMasterId } from "@/lib/prompts/tarot-rune-format";
 import { isPaidSpreadTextComplete } from "@/lib/spread-reading-complete";
 import { sanitizeReadingForClient } from "@/lib/chat-reply-sanitize";
 import {
@@ -175,6 +173,18 @@ export function resolveJointParticipantRole(
   if (userId === row.initiator_user_id) return "initiator";
   if (row.partner_user_id && userId === row.partner_user_id) return "partner";
   if (!row.partner_user_id && userId !== row.initiator_user_id) return "partner";
+  return null;
+}
+
+/** A stale invitation must be rejected before a personal spread is billed. */
+export function jointSideAvailability(row: JointReadingRow | null, userId: string): string | null {
+  if (!row || row.status === "expired" || new Date(row.expires_at) <= new Date()) {
+    return "Совместное приглашение не найдено или истекло.";
+  }
+  const role = resolveJointParticipantRole(row, userId);
+  if (!role) return "Слот партнёра уже занят другим аккаунтом.";
+  if (role === "initiator" && row.initiator_reading?.trim()) return "Ваш личный расклад уже сохранён.";
+  if (role === "partner" && row.partner_reading?.trim()) return "Личный расклад партнёра уже сохранён.";
   return null;
 }
 
@@ -580,13 +590,15 @@ export async function submitJointReadingSide(params: {
          initiator_session_id = $4,
          initiator_character = $5,
          status = CASE WHEN partner_reading IS NOT NULL THEN 'completed' ELSE 'pending_partner' END
-       WHERE token = $1 AND initiator_reading IS NULL`,
+       WHERE token = $1 AND initiator_user_id = $6 AND initiator_reading IS NULL
+         AND status <> 'expired' AND expires_at > NOW()`,
       [
         params.token,
         params.reading,
         JSON.stringify(params.cards),
         params.sessionId ?? null,
         params.characterKey,
+        params.userId,
       ]
     );
     if (!initiatorUpdate.rowCount) {
@@ -594,7 +606,8 @@ export async function submitJointReadingSide(params: {
       // reading was already saved a moment ago, so report success without
       // pretending we just wrote this attempt's data.
       const latest = await getJointReadingByToken(params.token);
-      return { ok: true, row: latest ?? existing, alreadySaved: true };
+      if (latest?.initiator_reading?.trim()) return { ok: true, row: latest, alreadySaved: true };
+      return { ok: false, error: "Приглашение истекло до сохранения расклада.", row: latest ?? existing };
     }
   } else {
     const partnerUpdate = await query(
@@ -609,7 +622,9 @@ export async function submitJointReadingSide(params: {
          partner_session_id = $5,
          partner_character = $6,
          status = CASE WHEN initiator_reading IS NOT NULL THEN 'completed' ELSE 'partner_done' END
-       WHERE token = $1 AND partner_reading IS NULL`,
+        WHERE token = $1 AND partner_reading IS NULL
+          AND (partner_user_id IS NULL OR partner_user_id = $2)
+          AND status <> 'expired' AND expires_at > NOW()`,
       [
         params.token,
         params.userId,
@@ -632,11 +647,15 @@ export async function submitJointReadingSide(params: {
     }
 
     if (existing.initiator_reading === null) {
-      await notifyJointReadingEvent({
-        userId: existing.initiator_user_id,
-        type: "joint_reading_partner_done",
-        token: params.token,
-      });
+      try {
+        await notifyJointReadingEvent({
+          userId: existing.initiator_user_id,
+          type: "joint_reading_partner_done",
+          token: params.token,
+        });
+      } catch (notificationError) {
+        console.warn("Joint reading partner notification failed:", notificationError);
+      }
     }
   }
 
@@ -645,14 +664,18 @@ export async function submitJointReadingSide(params: {
 
   // Capture names when a side submits (invite may have been created without them).
   if (updated.initiator_name?.trim() || updated.partner_name?.trim()) {
-    await captureJointInviteMemory({
-      captureGeneration,
-      userId: isInitiator ? updated.initiator_user_id : params.userId,
-      jointId: updated.id,
-      initiatorName: isInitiator ? updated.initiator_name : updated.partner_name,
-      partnerName: isInitiator ? updated.partner_name : updated.initiator_name,
-      intentSlug: updated.intent_slug,
-    });
+    try {
+      await captureJointInviteMemory({
+        captureGeneration,
+        userId: isInitiator ? updated.initiator_user_id : params.userId,
+        jointId: updated.id,
+        initiatorName: isInitiator ? updated.initiator_name : updated.partner_name,
+        partnerName: isInitiator ? updated.partner_name : updated.initiator_name,
+        intentSlug: updated.intent_slug,
+      });
+    } catch (memoryError) {
+      console.warn("Joint reading memory capture failed:", memoryError);
+    }
   }
 
   if (
@@ -661,12 +684,17 @@ export async function submitJointReadingSide(params: {
     !updated.combined_reading
   ) {
     const { schedulePaidAsyncJob } = await import("@/lib/async-job-enqueue");
-    const jobId = await schedulePaidAsyncJob({
-      userId: updated.initiator_user_id,
-      kind: "joint_combined",
-      payload: { token: updated.token, async: false },
-      bypassDeliveryGate: true,
-    });
+    let jobId: string | null = null;
+    try {
+      jobId = await schedulePaidAsyncJob({
+        userId: updated.initiator_user_id,
+        kind: "joint_combined",
+        payload: { token: updated.token, async: false },
+        bypassDeliveryGate: true,
+      });
+    } catch (scheduleError) {
+      console.warn("Joint reading synthesis schedule failed:", scheduleError);
+    }
     if (!jobId) {
       // Worker unavailable: keep fail-closed sync path as last resort.
       try {
@@ -806,6 +834,13 @@ function polishCombinedReading(text: string, keepMarkdown = false): string {
   return stripEnglishLeakageFromRussianText(unique.join("\n\n"));
 }
 
+/** The model sees every drawn card, but the finished synthesis needs only the
+ * decisive evidence from each side rather than a second 14-card transcript. */
+function jointSynthesisEvidenceCards(cards: { name: string; meaning: string; position?: string }[]) {
+  if (cards.length <= 3) return cards;
+  return [...new Set([0, Math.floor(cards.length / 2), cards.length - 1])].map((i) => cards[i]!);
+}
+
 export async function resolveJointSynastry(row: JointReadingRow) {
   if (!(await isNatalChartEnabled())) return null;
   if (!row.partner_user_id) return null;
@@ -840,35 +875,26 @@ async function generateCombinedReading(
     const masterId = row.initiator_character ?? "veronika";
     const initiatorCards = jointCardsToTarotCards(row.initiator_cards, masterId);
     const partnerCards = jointCardsToTarotCards(row.partner_cards, masterId);
-    const allCards = [...initiatorCards, ...partnerCards];
-    const cardCount = Math.max(3, allCards.length || 3);
-
-    const tarotRune = isTarotRuneMasterId(masterId);
-    const formatRules = tarotRune
-      ? `- Markdown: названия карт **жирным**; в конце обязателен блок «## Простыми словами» (5–7 предложений, первая фраза — вердикт).
-- Первая фраза всего ответа — вердикт по союзу (жёстко / в плюс / смешанно).`
-      : `- Чистый текст без markdown и без заголовков.
-- В конце — финальный блок выводов сплошным текстом (вердикт + синтез + действия при рычаге).`;
+    const evidenceCards = [
+      ...jointSynthesisEvidenceCards(initiatorCards),
+      ...jointSynthesisEvidenceCards(partnerCards),
+    ];
 
     const systemPrompt = `Ты — мастер Zovus. Составь единую интерпретацию СОВМЕСТНОГО расклада для двух людей (${relation}) на основе двух готовых текстов и карт обоих.${synastryBlock ? " Учти блок синастрии, если он есть." : ""}
 
-${buildPaidSpreadReadingExtras({
-      cardCount,
-      masterId,
-      includeFinalConclusion: !tarotRune,
-      includeDepthBlocks: true,
-    })}
-
 Правила синтеза:
-- Пиши по-русски, тепло, связной прозой — премиальная глубина, не краткий пересказ.
-${formatRules}
+- Это первый вывод о связи, который можно сделать по ДВУМ личным раскладам. Покажи, что подтверждается обеими сторонами, а где их картины расходятся. Если второй расклад не подтверждает вывод первого, не выдавай его за факт.
+- Первая фраза — ясный вывод о союзе на основании карт. Не своди разные позиции к общему комплименту вроде «вы оба сильные личности».
+- Структура: «## Суть связи», «## Что поддерживает», «## Что мешает», «## Что делать дальше». В каждом разделе 2–4 содержательных предложения, весь ответ 1800–2600 знаков. Заголовки на отдельных строках, без звёздочек и списков.
+- Укажи 2–3 конкретные карты каждого участника в тех выводах, которые они действительно поддерживают. Не перечисляй все карты и не копируй семь абзацев каждой личной части заново.
+- Отделяй символическую интерпретацию от достоверных фактов о людях. Синастрия, если есть, — дополнительный расчётный ракурс, а не доказательство чувств или неизбежного будущего.
+- Совет должен содержать наблюдаемое действие и способ проверить его вдвоём; не предписывай сохранять или прекращать отношения.
+- Пиши по-русски, тепло и грамотно. Обращайся к обоим на «вы», не перемешивай «ты» и «вы» и не меняй число глаголов.
 - Не оставляй пустых скобок, обрывков вроде «твои .» или «()» — каждое предложение должно быть законченным.
 - Не повторяй один и тот же абзац или мысль дважды.
 - Не цитируй тексты дословно — синтезируй смысл обоих раскладов через карты.
 - Не используй романтические формулировки, если это не пара — перед тобой ${relation}.
-- Если символы показывают тень в союзе — называй прямо, без смягчения.
-- Обязательно раскрой: суть связи, сильные стороны союза, зоны напряжения, практичный совет, перспектива, финальный вывод.
-- Назови по имени карты обоих сторон, которые реально вошли в синтез.`;
+- Если символы показывают тень в союзе — называй прямо, без смягчения. Не выдумывай подробности о прошлом или намерениях людей.`;
 
     const userMessage = [
       `${initiatorLabel} (инициатор), карты: ${formatJointCardsForPrompt(row.initiator_cards, masterId)}`,
@@ -883,12 +909,13 @@ ${formatRules}
       .filter(Boolean)
       .join("\n");
 
-    const cardNames = allCards.map((c) => c.name).filter(Boolean);
+    const cardNames = evidenceCards.map((c) => c.name).filter(Boolean);
     const generated = await generateReading(systemPrompt, {
       userName: initiatorLabel,
-      tarotCards: allCards.length ? allCards : [{ name: "Союз", meaning: "связь двух раскладов" }],
+      tarotCards: evidenceCards.length ? evidenceCards : [{ name: "Союз", meaning: "связь двух раскладов" }],
       isPaid: true,
       characterId: masterId,
+      jointReadingMode: "combined",
       userMessage,
       intention: "love",
     });
@@ -900,7 +927,7 @@ ${formatRules}
         (!cardNames.length || isPaidSpreadTextComplete(cleaned, cardNames))
           ? cleaned
           : raw;
-      if (deliverable.trim()) return polishCombinedReading(deliverable, tarotRune);
+      if (deliverable.trim()) return polishCombinedReading(deliverable, true);
     }
     throw new Error("joint_combined_ai_failed");
   } catch (err) {

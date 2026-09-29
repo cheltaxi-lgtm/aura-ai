@@ -2566,8 +2566,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             window.location.assign(jointRedirect);
             return;
           }
-          if (jointTokenAfterError && !readingDelivered) {
+          if (jointTokenAfterError && !readingDelivered && !isInsufficientRunesIntentionError(spreadErr)) {
+            const message = resolveIntentionSpreadFailureMessage(spreadErr);
+            const errorCode = spreadErr instanceof Error && "code" in spreadErr && typeof spreadErr.code === "string" ? spreadErr.code : "";
             clearJointReadingToken();
+            skipRitualFinally = true;
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            readingInFlightRef.current = false;
+            deps.skipNextReadingRef.current = false;
+            window.location.assign(`/joint-reading/${encodeURIComponent(jointTokenAfterError)}?jointError=${encodeURIComponent(message)}&jointErrorCode=${encodeURIComponent(errorCode)}`);
+            return;
           }
 
           if (!readingDelivered) {
@@ -4118,8 +4127,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             window.location.assign(jointRedirect);
             return;
           }
-          if (jointTokenAfterError && !readingDelivered) {
+          if (jointTokenAfterError && !readingDelivered && !isInsufficientRunesIntentionError(err)) {
+            const message = resolveIntentionSpreadFailureMessage(err);
+            const errorCode = err instanceof Error && "code" in err && typeof err.code === "string" ? err.code : "";
             clearJointReadingToken();
+            skipRitualFinally = true;
+            closeSpreadReadingRitual();
+            setIntentionSpreadLoading(false);
+            readingInFlightRef.current = false;
+            deps.skipNextReadingRef.current = false;
+            window.location.assign(`/joint-reading/${encodeURIComponent(jointTokenAfterError)}?jointError=${encodeURIComponent(message)}&jointErrorCode=${encodeURIComponent(errorCode)}`);
+            return;
           }
           if (!readingDelivered) {
             if (isInsufficientRunesIntentionError(err)) {

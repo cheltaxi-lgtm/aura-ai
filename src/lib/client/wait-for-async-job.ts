@@ -33,6 +33,7 @@ export type AsyncJobPollResult = {
   status: string;
   result?: Record<string, unknown>;
   error?: string;
+  errorCode?: string | null;
   refunded?: boolean;
   billingState?: string;
   outputEntityId?: string | null;
@@ -225,7 +226,9 @@ export async function waitForAsyncJob(
         const fallback = job.refunded
           ? "Не удалось завершить разбор. Руны уже возвращены на ваш баланс."
           : "Разбор столкнулся с технической сложностью. Если он не перезапустится автоматически, руны будут возвращены.";
-        throw new Error(errText || fallback);
+        const error = new Error(errText || fallback) as Error & { code?: string };
+        if (typeof job.errorCode === "string") error.code = job.errorCode;
+        throw error;
       }
       options.onUpdate?.({
         status: job.status,
