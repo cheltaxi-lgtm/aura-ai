@@ -127,6 +127,30 @@ async function fetchWithRetry(
   throw lastError instanceof Error ? lastError : new Error("Network error");
 }
 
+function scrollToAnchorWhenMounted(id: string): () => void {
+  let observer: MutationObserver | null = null;
+  let timeout: number | undefined;
+  const scroll = () => {
+    const target = document.getElementById(id);
+    if (!target) return false;
+    target.scrollIntoView({ block: "start" });
+    observer?.disconnect();
+    if (timeout !== undefined) window.clearTimeout(timeout);
+    return true;
+  };
+  const frame = requestAnimationFrame(() => {
+    if (scroll()) return;
+    observer = new MutationObserver(() => { scroll(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    timeout = window.setTimeout(() => observer?.disconnect(), 5000);
+  });
+  return () => {
+    cancelAnimationFrame(frame);
+    observer?.disconnect();
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  };
+}
+
 export default function CabinetPage() {
   const router = useRouter();
   const { openPaywall } = usePaywall();
@@ -267,7 +291,8 @@ export default function CabinetPage() {
       tab === "history" ||
       tab === "rituals" ||
       tab === "memory" ||
-      tab === "runes"
+      tab === "runes" ||
+      tab === "settings"
     ) {
       setActiveTab(tab);
       params.delete("tab");
@@ -283,19 +308,13 @@ export default function CabinetPage() {
   /** Scroll to Telegram binding after async cabinet content mounts. */
   useEffect(() => {
     if (loading || !data || activeTab !== "profile" || window.location.hash !== "#cabinet-telegram-link") return;
-    const frame = requestAnimationFrame(() => {
-      document.getElementById("cabinet-telegram-link")?.scrollIntoView({ block: "start" });
-    });
-    return () => cancelAnimationFrame(frame);
+    return scrollToAnchorWhenMounted("cabinet-telegram-link");
   }, [loading, data, activeTab]);
 
   /** Profile editor mounts only after the separate profile request finishes. */
   useEffect(() => {
     if (loading || profileLoading || activeTab !== "profile" || window.location.hash !== "#profile-editor") return;
-    const frame = requestAnimationFrame(() => {
-      document.getElementById("profile-editor")?.scrollIntoView({ block: "start" });
-    });
-    return () => cancelAnimationFrame(frame);
+    return scrollToAnchorWhenMounted("profile-editor");
   }, [loading, profileLoading, activeTab]);
 
   /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
@@ -588,6 +607,14 @@ export default function CabinetPage() {
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
+  const openTelegramProfile = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tab");
+    url.hash = "cabinet-telegram-link";
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    setActiveTab("profile");
+  };
+
   const profile = data?.profile;
   const stats = data?.stats;
   const achievements = data?.achievements;
@@ -718,6 +745,8 @@ export default function CabinetPage() {
         return <div className="h-64 animate-pulse rounded-2xl bg-white/5" />;
       case "runes":
         return <CabinetRunesPanelSkeleton />;
+      case "settings":
+        return <div className="h-64 animate-pulse rounded-2xl bg-white/5" />;
       default:
         return null;
     }
@@ -765,10 +794,21 @@ export default function CabinetPage() {
             <CabinetSupportLink />
             {authUser?.role === "user" ? <CabinetReviewForm /> : null}
             <CabinetJointReadings variant="compact" />
-            <CabinetDailyNotifications />
             <CabinetAppVersion />
             <CabinetDangerZone onPurged={handlePurgeAll} />
             <CabinetDeleteAccount />
+          </div>
+        );
+
+      case "settings":
+        return (
+          <div>
+            <CabinetTabHero
+              kicker="Ваш выбор"
+              title="Настройки"
+              subtitle="Управляйте письмами и напоминаниями о раскладе, отчётах и бонусах."
+            />
+            <CabinetDailyNotifications onShowTelegram={openTelegramProfile} />
           </div>
         );
 

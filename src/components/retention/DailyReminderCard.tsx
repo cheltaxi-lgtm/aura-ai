@@ -19,13 +19,17 @@ export default function DailyReminderCard({
   showManage = false,
   compact = false,
   embedded = false,
+  showDailyReadingCta = true,
   onStatusChange,
+  onShowTelegram,
   source = "post_result",
 }: {
   showManage?: boolean;
   compact?: boolean;
   embedded?: boolean;
+  showDailyReadingCta?: boolean;
   onStatusChange?: (status: DailyReminderStatus) => void;
+  onShowTelegram?: () => void;
   source?: "post_result" | "personal_home" | "cabinet";
 }) {
   const [status, setStatus] = useState<DailyReminderStatus | null>(null);
@@ -176,7 +180,7 @@ export default function DailyReminderCard({
   return <aside ref={cardRef} className={embedded
     ? "mt-3 min-w-0 border-t border-white/10 pt-2 text-sm text-white/80"
     : "my-4 min-w-0 rounded-2xl border border-amber-300/25 bg-amber-300/[0.06] p-4 text-sm text-white/80"} aria-label="Напоминания о раскладе на сутки">
-    {!embedded ? <>
+    {!embedded && showDailyReadingCta ? <>
     <p className="font-semibold text-white">{source === "post_result" ? "Дальше — отдельный расклад на сутки" : "Ваш бесплатный расклад на сутки"}</p>
     <p className="mt-1 leading-6">{source === "post_result" ? "Это отдельный формат: утро, день и вечер. Он доступен бесплатно раз в сутки, без рун." : "Утро, день и вечер — один расклад бесплатно раз в сутки. Подарочные руны для него не нужны."}</p>
     <Link href="/?daily=1" prefetch={false} className="btn-luxe btn-luxe--gold mt-3 min-h-11 max-w-full min-w-0 whitespace-normal px-4 py-2 text-center leading-snug" style={{transitionProperty:"transform, opacity"}} onClick={(event) => {
@@ -196,7 +200,12 @@ export default function DailyReminderCard({
         ? <button type="button" className="mt-2 min-h-10 text-amber-200 underline" disabled={busy} onClick={() => void setTelegramReminder(false)}>Отключить напоминание в Telegram</button>
         : <button type="button" className="btn-luxe btn-luxe--gold mt-3 min-h-11 max-w-full min-w-0 whitespace-normal px-4 py-2 text-center leading-snug" style={{ transitionProperty: "transform, opacity" }} disabled={busy} onClick={() => void setTelegramReminder(true)}>Напоминать в Telegram</button>}
     </div> : <p className="mt-3 text-xs leading-5 text-white/60">
-      Удобнее получать сообщение в Telegram? <Link href="/cabinet#cabinet-telegram-link" className="text-amber-200 underline" onClick={(event) => {
+      Удобнее получать сообщение в Telegram? <Link href={onShowTelegram ? "/cabinet?tab=profile#cabinet-telegram-link" : "/cabinet#cabinet-telegram-link"} className="text-amber-200 underline" onClick={(event) => {
+        if (onShowTelegram) {
+          event.preventDefault();
+          onShowTelegram();
+          return;
+        }
         if (window.location.pathname !== "/cabinet") return;
         const target = document.getElementById("cabinet-telegram-link");
         if (!target) return;

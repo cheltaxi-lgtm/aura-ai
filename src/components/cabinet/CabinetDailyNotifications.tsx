@@ -18,8 +18,9 @@ type Prefs = {
   reportReadyTelegram: boolean;
 };
 
-export default function CabinetDailyNotifications() {
+export default function CabinetDailyNotifications({ onShowTelegram }: { onShowTelegram: () => void }) {
   const [prefs, setPrefs] = useState<Prefs | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
   const [marketingConsent, setMarketingConsent] = useState(false);
   const [saving, setSaving] = useState(false);
   const [contactStatus, setContactStatus] = useState<DailyReminderStatus | null>(null);
@@ -45,9 +46,13 @@ export default function CabinetDailyNotifications() {
           fetch("/api/profile/retention-optin", { credentials: "include" }).catch(() => null),
           fetch("/api/auth/user/verify-email", { credentials: "include", cache: "no-store" }).catch(() => null),
         ]);
-        if (!res.ok) return;
+        if (!res.ok) {
+          setLoadFailed(true);
+          return;
+        }
         const data = (await res.json()) as { prefs?: Prefs };
         if (data.prefs) setPrefs(data.prefs);
+        else setLoadFailed(true);
         if (consentRes?.ok) {
           const consent = (await consentRes.json()) as { marketingConsent?: boolean };
           setMarketingConsent(consent.marketingConsent === true);
@@ -57,7 +62,7 @@ export default function CabinetDailyNotifications() {
           setEmailProofRequired(emailProof.required === true);
         }
       } catch {
-        /* ignore */
+        setLoadFailed(true);
       }
     })();
   }, []);
@@ -92,7 +97,9 @@ export default function CabinetDailyNotifications() {
     }
   }, [prefs]);
 
-  if (!prefs) return null;
+  if (!prefs) return <p className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60" role="status">
+    {loadFailed ? "Не удалось загрузить настройки уведомлений. Обновите страницу и попробуйте снова." : "Загружаем настройки уведомлений…"}
+  </p>;
 
   return (
     <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -101,13 +108,19 @@ export default function CabinetDailyNotifications() {
         <h2 className="text-sm font-medium text-white">Напоминания и письма</h2>
       </div>
       <p className="mt-1 text-xs text-white/45">
-        Вы сами выбираете, какие напоминания получать. Настройки можно изменить в кабинете.
+        Вы сами выбираете, какие напоминания получать и куда их доставлять.
       </p>
       {emailProofRequired ? <p className="mt-2 text-xs text-amber-200/80">
         Чтобы получать письма, <a className="underline" href="/auth/user/verify-email">подтвердите адрес почты</a>. На руны и бесплатные расклады это не влияет.
       </p> : null}
 
-      <DailyReminderCard source="cabinet" showManage onStatusChange={syncContactStatus} />
+      <DailyReminderCard
+        source="cabinet"
+        showManage
+        showDailyReadingCta={false}
+        onStatusChange={syncContactStatus}
+        onShowTelegram={onShowTelegram}
+      />
 
       <div className="mt-4">
         <RetentionOptInCard
@@ -151,12 +164,9 @@ export default function CabinetDailyNotifications() {
           </label>
           {contactStatus && !contactStatus.hasTelegram ? (
             <p className="text-xs text-white/45">
-              Для напоминания сначала <a href="#cabinet-telegram-link" className="text-amber-200 underline" onClick={(event) => {
-                const target = document.getElementById("cabinet-telegram-link");
-                if (!target) return;
+              Для напоминания сначала <a href="/cabinet?tab=profile#cabinet-telegram-link" className="text-amber-200 underline" onClick={(event) => {
                 event.preventDefault();
-                window.history.replaceState(window.history.state, "", "/cabinet#cabinet-telegram-link");
-                target.scrollIntoView({ behavior: "smooth", block: "start" });
+                onShowTelegram();
               }}>привяжите Telegram</a> к аккаунту.
             </p>
           ) : null}
