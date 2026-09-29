@@ -20,6 +20,7 @@ import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { isJointReadingEnabled } from "@/lib/settings";
 import {
   BillingService,
+  ConfirmedCostExceededError,
   InsufficientFundsError,
   insufficientFundsResponse,
   type BillingChargeResult,
@@ -80,6 +81,7 @@ export async function POST(request: NextRequest) {
   let asyncRequested = false;
   let rawBody: Record<string, unknown> = {};
   let idempotencyKey: string | undefined;
+  let confirmedCost: number | undefined;
 
   try {
     const body = await request.json();
@@ -92,6 +94,12 @@ export async function POST(request: NextRequest) {
     forceNew = body.forceNew === true;
     idempotencyKey =
       typeof body.idempotencyKey === "string" ? body.idempotencyKey.trim().slice(0, 80) : undefined;
+    if (body.confirmedCost !== undefined) {
+      if (typeof body.confirmedCost !== "number" || !Number.isSafeInteger(body.confirmedCost) || body.confirmedCost < 0 || body.confirmedCost > 1_000_000) {
+        return NextResponse.json({ error: "Invalid confirmed cost" }, { status: 400 });
+      }
+      confirmedCost = body.confirmedCost;
+    }
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -161,10 +169,14 @@ export async function POST(request: NextRequest) {
         userId: authed.profileUserId,
         action: "JOINT_READING",
         hasFullAccess: false,
+        maxCost: confirmedCost,
       });
       await trackWorkerJobCharged(request, charge.transactionId);
     }
   } catch (err) {
+    if (err instanceof ConfirmedCostExceededError) {
+      return NextResponse.json({ error: "Стоимость изменилась. Проверьте цену и повторите попытку.", actualCost: err.actual }, { status: 409 });
+    }
     if (err instanceof InsufficientFundsError) {
       return insufficientFundsResponse(err);
     }

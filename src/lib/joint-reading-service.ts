@@ -408,13 +408,13 @@ export async function listRecentJointReadingsForAdmin(
   }));
 }
 
-export async function listJointReadingsForUser(userId: string, limit = 20): Promise<JointReadingRow[]> {
+export async function listJointReadingsForUser(userId: string, limit = 20, offset = 0): Promise<JointReadingRow[]> {
   const res = await query(
     `SELECT * FROM joint_readings
      WHERE initiator_user_id = $1 OR partner_user_id = $1
-     ORDER BY created_at DESC
-     LIMIT $2`,
-    [userId, limit]
+     ORDER BY created_at DESC, id DESC
+     LIMIT $2 OFFSET $3`,
+    [userId, limit, offset]
   );
   return res.rows.map((row) => mapRow(row as Record<string, unknown>));
 }

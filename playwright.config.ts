@@ -30,7 +30,7 @@ export default defineConfig({
     { name: "pdf-chromium", testMatch: /pdf\.public\.spec\.ts/, use: { ...devices["Desktop Chrome"] } },
     {
       name: "public-chromium",
-      testMatch: /(admin-users|aura-archive|palm-archive|natal|natal-guest|personal-memory|launch-readiness|photo-conversion)\.public\.spec\.ts/,
+      testMatch: /(admin-users|aura-archive|palm-archive|joint-reading|natal|natal-guest|personal-memory|launch-readiness|photo-conversion)\.public\.spec\.ts/,
       use: { ...devices["Desktop Chrome"] },
     },
     {

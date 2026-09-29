@@ -21,6 +21,7 @@ import "./globals.css";
 import "../styles/photo-flow.css";
 import "../styles/aura-flow.css";
 import "../styles/palm-flow.css";
+import "../styles/joint-reading.css";
 import "../styles/home-spreads.css";
 import "../styles/landing.css";
 import "../styles/app-chrome.css";

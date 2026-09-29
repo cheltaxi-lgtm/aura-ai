@@ -13,11 +13,12 @@ export default async function RelationshipPrintPage({ params }: { params: Promis
   const auth = await requireProfileUserId();
   if (!auth) redirect(buildAuthHref("/auth/user/login", `/joint-reading/${encodeURIComponent(token)}/print`));
   const row = await getJointReadingByToken(token);
-  if (!row || !resolveJointParticipantRole(row, auth.profileUserId) || row.status !== "completed") notFound();
+  const role = row ? resolveJointParticipantRole(row, auth.profileUserId) : null;
+  if (!row || !role || row.status !== "completed") notFound();
   const synastry = sanitizeSynastryForClient(row.synastry_data);
   const sections = [
-    ...(row.initiator_reading?.trim() ? [{ key: "initiator", title: row.initiator_name || "Первый участник", claims: [{ text: row.initiator_reading }] }] : []),
-    ...(row.partner_reading?.trim() ? [{ key: "partner", title: row.partner_name || "Второй участник", claims: [{ text: row.partner_reading }] }] : []),
+    ...(role === "initiator" && row.initiator_reading?.trim() ? [{ key: "initiator", title: row.initiator_name || "Первый участник", claims: [{ text: row.initiator_reading }] }] : []),
+    ...(role === "partner" && row.partner_reading?.trim() ? [{ key: "partner", title: row.partner_name || "Второй участник", claims: [{ text: row.partner_reading }] }] : []),
     { key: "summary", title: "Общая интерпретация", claims: [{ text: row.combined_reading ?? "Текст интерпретации отсутствует." }] },
     ...(synastry ? [{
       key: "dimensions", title: "Измерения связи", claims: synastry.dimensions.map((dimension) => ({

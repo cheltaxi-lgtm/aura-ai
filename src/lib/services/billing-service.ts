@@ -581,6 +581,7 @@ export async function chargeRuneAction(params: {
   reserveFreeSlot?: boolean;
   client?: PoolClient;
   idempotencyKey?: string;
+  maxCost?: number;
 }): Promise<BillingChargeResult> {
   const settings = await getRuneSettings();
   const cost = runeCostFromSettings(settings, params.action);
@@ -595,6 +596,7 @@ export async function chargeRuneAction(params: {
     reserveFreeSlot: params.reserveFreeSlot,
     client: params.client,
     idempotencyKey: params.idempotencyKey,
+    maxCost: params.maxCost,
   });
 }
 
