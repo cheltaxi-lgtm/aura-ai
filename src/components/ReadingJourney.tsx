@@ -7,7 +7,7 @@ import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import type { getReadingJourney } from "@/lib/reading-journey";
 
 type Journey = NonNullable<Awaited<ReturnType<typeof getReadingJourney>>>;
-export default function ReadingJourney({readingId,context,showDailyReminder=true,refreshToken=0}:{readingId?:string;context?:string;showDailyReminder?:boolean;refreshToken?:number}) {
+export default function ReadingJourney({readingId,context,showDailyReminder=true,showContinuation=true,refreshToken=0}:{readingId?:string;context?:string;showDailyReminder?:boolean;showContinuation?:boolean;refreshToken?:number}) {
   const {firstExperienceEnabled}=usePlatformFeatures();
   const [loadError,setLoadError]=useState(false); const [retry,setRetry]=useState(0);
   const [journey,setJourney]=useState<Journey|null>(null);
@@ -35,7 +35,7 @@ export default function ReadingJourney({readingId,context,showDailyReminder=true
   },[firstExperienceEnabled,readingId,context,retry,refreshToken]);
   useEffect(()=>{
     const node=continuationRef.current; const continuation=journey?.continuation;
-    if(!node || !continuation) return;
+    if(!showContinuation || !node || !continuation) return;
     const key=`${journey.reading.id}:${continuation.id}`;
     const observer=new IntersectionObserver(entries=>{
       if(!entries.some(entry=>entry.isIntersecting && entry.intersectionRatio>=0.5) || continuationTracked.current===key) return;
@@ -44,7 +44,7 @@ export default function ReadingJourney({readingId,context,showDailyReminder=true
       observer.disconnect();
     },{threshold:[0.5]});
     observer.observe(node); return ()=>observer.disconnect();
-  },[journey]);
+  },[journey,showContinuation]);
   if(!firstExperienceEnabled)return null;
   if(loadError)return <div className="my-4 rounded-xl border border-white/15 p-4 text-sm text-white/65" role="status">Заметка временно не загрузилась. <button className="min-h-11 text-aura-gold underline" onClick={()=>setRetry(n=>n+1)}>Попробовать снова</button></div>;
   if(!journey)return null;
@@ -76,6 +76,6 @@ export default function ReadingJourney({readingId,context,showDailyReminder=true
       {channels.length>0 && <label className="flex min-h-11 items-start gap-3 text-sm leading-relaxed text-white/70"><input className="mt-1 size-5 shrink-0 accent-amber-400" type="checkbox" checked={reminder} onChange={e=>setReminder(e.target.checked)} /><span>Напомнить {channel==="telegram"?"в Telegram":"по email"} через 2 дня после разбора о выводе и через 7 дней об изменениях. Только если я ещё их не записал. Отключить можно здесь или по ссылке в напоминании.</span></label>}
       <button type="button" className="btn-luxe btn-luxe--gold min-h-11 w-full sm:w-auto" onClick={()=>void save()} disabled={busy}>{busy?"Сохраняем…":"Сохранить заметку и настройки"}</button>
     </div></details>
-    {journey.continuation && <div ref={continuationRef} className="mt-5 border-t border-aura-gold/20 pt-5"><p className="text-sm text-aura-gold">Если захотите продолжить</p><h3 className="mt-2 text-lg text-white">{journey.continuation.title}</h3><p className="mt-2 text-sm leading-relaxed text-white/65">{journey.continuation.benefit}</p><p className="my-3 text-sm text-white">{journey.continuation.cost} ᚢ · эквивалент {Math.round(journey.continuation.cost*journey.continuation.rubPerRune)} ₽ по базовому тарифу</p><Link className="btn-luxe btn-luxe--outline min-h-11 w-full sm:w-auto" href={journey.continuation.href} onClick={()=>{void fetch("/api/diary/journey",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({event:"continuation_selected",readingId:journey.reading.id,continuationId:journey.continuation?.id})}).catch(()=>undefined);}}>{journey.reading.kind==="photo"?"Начать новый ФотоТаро":"Посмотреть, что входит"}</Link><p className="mt-2 text-xs text-white/50">Новый разбор начнётся только после вашего подтверждения.</p></div>}
+    {showContinuation && journey.continuation && <div ref={continuationRef} className="mt-5 border-t border-aura-gold/20 pt-5"><p className="text-sm text-aura-gold">Если захотите продолжить</p><h3 className="mt-2 text-lg text-white">{journey.continuation.title}</h3><p className="mt-2 text-sm leading-relaxed text-white/65">{journey.continuation.benefit}</p><p className="my-3 text-sm text-white">{journey.continuation.cost} ᚢ · эквивалент {Math.round(journey.continuation.cost*journey.continuation.rubPerRune)} ₽ по базовому тарифу</p><Link className="btn-luxe btn-luxe--outline min-h-11 w-full sm:w-auto" href={journey.continuation.href} onClick={()=>{void fetch("/api/diary/journey",{method:"POST",headers:{"Content-Type":"application/json"},keepalive:true,body:JSON.stringify({event:"continuation_selected",readingId:journey.reading.id,continuationId:journey.continuation?.id})}).catch(()=>undefined);}}>{journey.reading.kind==="photo"?"Начать новый ФотоТаро":"Посмотреть, что входит"}</Link><p className="mt-2 text-xs text-white/50">Новый разбор начнётся только после вашего подтверждения.</p></div>}
   </section>;
 }

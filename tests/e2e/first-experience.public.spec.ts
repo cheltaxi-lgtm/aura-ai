@@ -48,6 +48,7 @@ for(const width of [360,390,430])test(`free note and explicit topup return at ${
   await expect(page.getByRole("region",{name:"Заметка к этому разбору"})).toHaveCount(0);
   await page.goto(`/cabinet?tab=history&readingId=${readingId}`);
   const journey=page.getByRole("region",{name:"Заметка к этому разбору"});await expect(journey).toBeVisible();
+  await expect(journey.getByText("Если захотите продолжить")).toHaveCount(0);
   await journey.locator("summary").click();
   await journey.getByLabel("Что было полезно?").fill("Выделить время для отдыха");
   await journey.getByLabel("Небольшой шаг на неделю").fill("Одна прогулка");

@@ -841,7 +841,7 @@ export default function CabinetPage() {
               subtitle="Все расклады, карты и расшифровки — в одном месте."
             />
 
-            {noteReadingId && <ReadingJourney readingId={noteReadingId} showDailyReminder={false} />}
+            {noteReadingId && <ReadingJourney readingId={noteReadingId} showDailyReminder={false} showContinuation={false} />}
 
             <div className="space-y-3">
               <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
