@@ -142,6 +142,7 @@ function resolveSecretKey(): Uint8Array | null {
 }
 
 function isPublicApiRoute(pathname: string, method = "GET"): boolean {
+  if (pathname === "/api/rasklady/prices") return method === "GET" || method === "HEAD";
   if (PUBLIC_API_EXACT.has(pathname)) return true;
   if (isPublicJointReadingRoute(pathname, method)) return true;
   return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));

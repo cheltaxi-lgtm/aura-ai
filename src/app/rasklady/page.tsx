@@ -17,66 +17,27 @@ export const metadata: Metadata = buildSeoMetadata({
 export default function RaskladyCatalogPage() {
   return (
     <SeoPageShell
+      wide
       breadcrumbs={[
         { name: "Zovus", path: "/" },
         { name: "Каталог раскладов", path: "/rasklady" },
       ]}
     >
       <SeoPageTracker goal="rasklady_hub_view" />
-      <p className="text-sm text-aura-gold/80">Каталог раскладов</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">Каталог раскладов Таро онлайн</h1>
-      <p className="mt-4 text-white/70">
-        Найдите свой вопрос или выберите тему — откроем подходящую схему. Уже разложили карты дома —{" "}
-        <Link href="/photo-rasklad" className="text-aura-gold hover:underline">
-          расшифруйте фото расклада
-        </Link>
-        .
-      </p>
-
       <RaskladyCatalog />
-
-      <section className="mt-12 flex flex-wrap gap-3">
-        <Link href="/rasklady/lyubov" className="text-sm text-aura-gold hover:underline">
-          Любовь и отношения
-        </Link>
-        <Link href="/rasklady/vernost-i-doverie" className="text-sm text-aura-gold hover:underline">
-          Верность
-        </Link>
-        <Link href="/rasklady/chuvstva-i-myisli" className="text-sm text-aura-gold hover:underline">
-          Чувства и мысли
-        </Link>
-        <Link href="/lenormand" className="text-sm text-aura-gold hover:underline">
-          Ленорман
-        </Link>
-        <Link href="/photo-rasklad" className="text-sm text-aura-gold hover:underline">
-          Фото-расклад
-        </Link>
-        <Link href="/obryady" className="text-sm text-aura-gold hover:underline">
-          Обряды
-        </Link>
-        <Link href="/numerology" className="text-sm text-aura-gold hover:underline">
-          Нумерология
-        </Link>
-        <Link href="/natalnaya-karta" className="text-sm text-aura-gold hover:underline">
-          Натальная карта
-        </Link>
-        <Link href="/numerology/destiny-matrix" className="text-sm text-aura-gold hover:underline">
-          Матрица судьбы
-        </Link>
-        <Link href="/cards" className="text-sm text-aura-gold hover:underline">
-          Значения карт
-        </Link>
-        <Link href="/rasklad" className="text-sm text-aura-gold hover:underline">
-          Схемы раскладов
-        </Link>
-        <Link href="/prognoz" className="text-sm text-aura-gold hover:underline">
-          Прогнозы
-        </Link>
-      </section>
-
-      <div className="mt-10">
+      <details className="rasklady-related">
+        <summary>Тематические разделы и другие практики</summary>
+        <nav aria-label="Тематические разделы раскладов">
+          <Link href="/rasklady/lyubov">Любовь</Link>
+          <Link href="/rasklady/vernost-i-doverie">Верность и доверие</Link>
+          <Link href="/rasklady/chuvstva-i-myisli">Чувства и мысли</Link>
+          <Link href="/rasklady/kariera">Карьера</Link>
+          <Link href="/rasklady/budushchee">Будущее</Link>
+          <Link href="/rasklad">Все схемы</Link>
+          <Link href="/cards">Значения карт</Link>
+        </nav>
         <SeoRelatedTools excludeHrefs={["/rasklady"]} />
-      </div>
+      </details>
     </SeoPageShell>
   );
 }

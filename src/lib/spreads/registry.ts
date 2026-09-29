@@ -403,14 +403,7 @@ export function normalizeSpreadId(raw?: string | null): SpreadId {
 let catalogSettings: SpreadCatalogSettings = { ...DEFAULT_SPREAD_CATALOG_SETTINGS };
 
 export function setSpreadCatalogSettings(settings: Partial<SpreadCatalogSettings>): void {
-  catalogSettings = {
-    spreadsCatalogEnabled:
-      settings.spreadsCatalogEnabled ?? catalogSettings.spreadsCatalogEnabled,
-    spreadOverrides: {
-      ...catalogSettings.spreadOverrides,
-      ...settings.spreadOverrides,
-    },
-  };
+  catalogSettings = mergeSpreadCatalogSettings(settings);
 }
 
 export function getSpreadCatalogSettings(): SpreadCatalogSettings {
