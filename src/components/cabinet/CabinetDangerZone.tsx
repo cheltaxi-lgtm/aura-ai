@@ -114,7 +114,7 @@ export default function CabinetDangerZone({ onPurged }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="app-modal-overlay fixed inset-0 z-[4990] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm pointer-events-auto"
+              className="app-modal-overlay fixed inset-0 z-[6500] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm pointer-events-auto"
               onClick={closeModal}
             >
             <motion.div

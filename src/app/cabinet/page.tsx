@@ -795,8 +795,6 @@ export default function CabinetPage() {
             {authUser?.role === "user" ? <CabinetReviewForm /> : null}
             <CabinetJointReadings variant="compact" />
             <CabinetAppVersion />
-            <CabinetDangerZone onPurged={handlePurgeAll} />
-            <CabinetDeleteAccount />
           </div>
         );
 
@@ -806,9 +804,17 @@ export default function CabinetPage() {
             <CabinetTabHero
               kicker="Ваш выбор"
               title="Настройки"
-              subtitle="Управляйте письмами и напоминаниями о раскладе, отчётах и бонусах."
+              subtitle="Управляйте уведомлениями, данными и аккаунтом."
             />
             <CabinetDailyNotifications onShowTelegram={openTelegramProfile} />
+            <section className="mt-8 space-y-3" aria-labelledby="cabinet-data-settings-title">
+              <div>
+                <h3 id="cabinet-data-settings-title" className="text-sm font-medium text-white/80">Данные и аккаунт</h3>
+                <p className="mt-1 text-xs text-white/45">Очистка истории и полное удаление аккаунта — разные действия.</p>
+              </div>
+              <CabinetDangerZone onPurged={handlePurgeAll} />
+              <CabinetDeleteAccount />
+            </section>
           </div>
         );
 
