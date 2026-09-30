@@ -1156,7 +1156,7 @@ export default function PhotoReadingFlow({
       const overflowCards = Array.isArray(data.overflowCards) ? (data.overflowCards as string[]) : [];
       const truncatedNotice = data.truncated
         ? `Мы распознали ${data.totalDetected} карт, но расклад поддерживает не больше ${MAX_PHOTO_CARDS_LIMIT}. Показаны первые ${MAX_PHOTO_CARDS_LIMIT}${
-            overflowCards.length ? `; ещё ${overflowCards.length} оставьте для отдельного расклада` : ""
+            overflowCards.length ? "; остальные карты можно разобрать отдельным раскладом" : ""
           }.`
         : undefined;
 
