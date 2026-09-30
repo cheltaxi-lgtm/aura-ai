@@ -11,6 +11,7 @@ import {
   resolveBirthUtcOffsetHours,
 } from "@/lib/natal/time";
 import { destinyMatrix, type DestinyMatrixResult } from "@/lib/numerology/destiny-matrix";
+import { formatAgePeriodRange } from "@/lib/numerology/matrix-labels";
 import { calculateHdChart } from "@/lib/human-design/calculate";
 import { formatHdEvidence } from "@/lib/human-design/prompt";
 
@@ -305,7 +306,7 @@ export function computeMatrixFacts(
     ...channelLines.map((l) => `- ${l}`),
     "",
     matrix.ageModel
-      ? `Возраст и текущий период: ${matrix.ageModel.chronological} лет · период ${matrix.ageModel.periodStart}–${matrix.ageModel.periodEnd} · ${pointLabel(matrix.ageCurrent)}`
+      ? `Возраст и текущий период: ${matrix.ageModel.chronological} лет · период ${formatAgePeriodRange(matrix.ageModel.periodStart, matrix.ageModel.periodEnd)} · ${pointLabel(matrix.ageCurrent)}`
       : `Возраст и текущий период: период ${matrix.ageCurrent.age} · ${pointLabel(matrix.ageCurrent)}`,
   ].join("\n");
 

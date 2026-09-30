@@ -86,7 +86,7 @@ describe("matrix calendar Europe/Moscow", () => {
     expect(guest).toContain("matrixCalendarDate");
     expect(guest).not.toMatch(/todayUtcIsoDate|getUTCFullYear/);
     const internal = readFileSync(
-      path.join(ROOT, "src/lib/numerology/destiny-matrix-internal.ts"),
+      path.join(ROOT, "src/lib/numerology/matrix-calendar-options.ts"),
       "utf8"
     );
     expect(internal).toContain("matrixCalendarYmd");

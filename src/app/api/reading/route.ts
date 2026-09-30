@@ -1,4 +1,6 @@
 import { observeProductRequest } from "@/lib/activation-telemetry";
+import { refundReadingCharge } from "@/lib/services/reading-refund-service";
+import { matrixReportDisplayMetadata } from "@/lib/numerology/matrix-report-display";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { matrixCompatibility } from "@/lib/numerology/matrix-compatibility";
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
@@ -577,6 +579,7 @@ async function handlePost(request: NextRequest) {
             numerologToolId: requestNumerologToolId,
             matrixOwned: true,
             reportId: owned.id,
+            ...matrixReportDisplayMetadata(owned),
             ...(resolvedMatrixSubject
               ? {
                   matrixSubjectId: resolvedMatrixSubject.id,
@@ -597,6 +600,7 @@ async function handlePost(request: NextRequest) {
         isPaid: true,
         historyId,
         reportId: owned.id,
+        ...matrixReportDisplayMetadata(owned),
         reused: true,
         matrixOwned: true,
         createdAt: owned.createdAt || new Date().toISOString(),
@@ -612,6 +616,13 @@ async function handlePost(request: NextRequest) {
   }
 
 
+  let refundConfirmed = false;
+  let deliveredMatrixMetadata: Record<string, unknown> = {};
+  async function rollbackReadingCharge(params: Parameters<typeof BillingService.rollbackCharge>[0]): Promise<number> {
+    const outcome = await refundReadingCharge(params, () => trackWorkerJobRefunded(request));
+    refundConfirmed = refundConfirmed || outcome.refunded;
+    return outcome.balance;
+  }
   let spentRunes = 0;
   let billingCharge: BillingChargeResult | null = null;
   let resolvedSession: Awaited<ReturnType<typeof resolveSessionForUser>>["session"] = null;
@@ -1025,6 +1036,7 @@ async function handlePost(request: NextRequest) {
                   numerologToolId: toolId,
                   matrixOwned: true,
                   reportId: owned.id,
+                  ...matrixReportDisplayMetadata(owned),
                   ...(resolvedMatrixSubject
                     ? {
                         matrixSubjectId: resolvedMatrixSubject.id,
@@ -1045,6 +1057,7 @@ async function handlePost(request: NextRequest) {
               reading,
               historyId: reopenHistoryId,
               reportId: owned.id,
+              ...matrixReportDisplayMetadata(owned),
               isPaid: true,
               runeBalance: undefined,
               numerologyUi,
@@ -1141,6 +1154,7 @@ async function handlePost(request: NextRequest) {
                       numerologToolId: toolId,
                       matrixOwned: true,
                       reportId: owned.id,
+                      ...matrixReportDisplayMetadata(owned),
                       ...(sessionId ? { sessionId } : {}),
                     },
                     isPaid: true,
@@ -1154,6 +1168,7 @@ async function handlePost(request: NextRequest) {
                   reading,
                   historyId: reopenHistoryId,
                   reportId: owned.id,
+                  ...matrixReportDisplayMetadata(owned),
                   isPaid: true,
                   runeBalance: undefined,
                   numerologyUi,
@@ -1255,25 +1270,24 @@ async function handlePost(request: NextRequest) {
           numerologyUi = sessionResult.numerologyUi;
           matrixDocumentForSave = sessionResult.matrixDocument;
           if (isMatrixBuyOnceTool && matrixDocumentForSave) {
-            const { MATRIX_AI_ZONES_CANARY_MIN } = await import(
+            const { matrixAiZonesCanaryMin } = await import(
               "@/lib/numerology/matrix-sectioned-reading"
             );
             const aiZones = matrixDocumentForSave.meta?.aiZones;
-            if (typeof aiZones === "number" && aiZones < MATRIX_AI_ZONES_CANARY_MIN) {
+            if (typeof aiZones === "number" && aiZones < matrixAiZonesCanaryMin(toolId, matrixDocumentForSave.meta.totalZones)) {
               throw new Error(`matrix_ai_canary: aiZones=${aiZones}`);
             }
           }
         } catch (genErr) {
           console.error("Numerolog session reading failed:", genErr);
           if (billingCharge) {
-            await BillingService.rollbackCharge({
+            await rollbackReadingCharge({
               userId: authed.profileUserId,
               cost: billingCharge.spentRunes,
               wasFreeQuestion: false,
               actionType: billingCharge.actionType,
               transactionId: billingCharge.transactionId,
             });
-            await trackWorkerJobRefunded(request);
             billingCharge = null;
             spentRunes = 0;
           }
@@ -1284,14 +1298,13 @@ async function handlePost(request: NextRequest) {
           try {
             if (!(await beginWorkerJobSave(request))) {
               if (billingCharge) {
-                await BillingService.rollbackCharge({
+                await rollbackReadingCharge({
                   userId: authed.profileUserId,
                   cost: billingCharge.spentRunes,
                   wasFreeQuestion: false,
                   actionType: billingCharge.actionType,
                   transactionId: billingCharge.transactionId,
                 });
-                await trackWorkerJobRefunded(request);
                 billingCharge = null;
                 spentRunes = 0;
               }
@@ -1312,7 +1325,7 @@ async function handlePost(request: NextRequest) {
               "@/lib/numerology/matrix-reading-document"
             );
             let matrixContent = sanitizeReadingForClient(reading) || reading;
-            if (matrix && !isUsableMatrixReading(matrixContent, toolId)) {
+            if (matrix && !isUsableMatrixReading(matrixContent, toolId, matrix?.calculationVersion)) {
               const { forceFillMissingSections } = await import(
                 "@/lib/numerology/matrix-sectioned-reading"
               );
@@ -1336,13 +1349,13 @@ async function handlePost(request: NextRequest) {
               );
               matrixContent = sanitizeReadingForClient(matrixContent) || matrixContent;
             }
-            if (!isUsableMatrixReading(matrixContent, toolId)) {
+            if (!isUsableMatrixReading(matrixContent, toolId, matrix?.calculationVersion)) {
               const { matrixMissingSections } = await import(
                 "@/lib/numerology/matrix-completeness"
               );
               console.error("[matrix-save] incomplete after fill", {
                 toolId,
-                missing: matrixMissingSections(matrixContent, toolId),
+                missing: matrixMissingSections(matrixContent, toolId, matrix?.calculationVersion),
                 len: matrixContent.length,
               });
               throw new Error("matrix_incomplete_after_fill");
@@ -1413,17 +1426,17 @@ async function handlePost(request: NextRequest) {
                   : {}),
               },
             });
+            deliveredMatrixMetadata = { ...matrixReportDisplayMetadata(saved.report), reportId: saved.report.id };
             if (saved.status === "already_saved") {
               reading = saved.report.content;
               if (billingCharge) {
-                await BillingService.rollbackCharge({
+                await rollbackReadingCharge({
                   userId: authed.profileUserId,
                   cost: billingCharge.spentRunes,
                   wasFreeQuestion: false,
                   actionType: billingCharge.actionType,
                   transactionId: billingCharge.transactionId,
                 });
-                await trackWorkerJobRefunded(request);
                 runeBalance = undefined;
                 spentRunes = 0;
                 billingCharge = null;
@@ -1438,14 +1451,13 @@ async function handlePost(request: NextRequest) {
               await releaseAsyncJobSaveClaim(jobIdForRelease).catch(() => undefined);
             }
             if (billingCharge) {
-              await BillingService.rollbackCharge({
+              await rollbackReadingCharge({
                 userId: authed.profileUserId,
                 cost: billingCharge.spentRunes,
                 wasFreeQuestion: false,
                 actionType: billingCharge.actionType,
                 transactionId: billingCharge.transactionId,
               });
-              await trackWorkerJobRefunded(request);
               billingCharge = null;
               spentRunes = 0;
             }
@@ -1482,8 +1494,7 @@ async function handlePost(request: NextRequest) {
               if (savedPair.status === "already_saved") {
                 reading = savedPair.report.content;
                 if (billingCharge) {
-                  await BillingService.rollbackCharge({ userId: authed.profileUserId, cost: billingCharge.spentRunes, wasFreeQuestion: false, actionType: billingCharge.actionType, transactionId: billingCharge.transactionId });
-                  await trackWorkerJobRefunded(request);
+                  await rollbackReadingCharge({ userId: authed.profileUserId, cost: billingCharge.spentRunes, wasFreeQuestion: false, actionType: billingCharge.actionType, transactionId: billingCharge.transactionId });
                   billingCharge = null;
                   spentRunes = 0;
                   runeBalance = undefined;
@@ -1501,8 +1512,7 @@ async function handlePost(request: NextRequest) {
               await releaseAsyncJobSaveClaim(jobId).catch(() => undefined);
             }
             if (billingCharge) {
-              await BillingService.rollbackCharge({ userId: authed.profileUserId, cost: billingCharge.spentRunes, wasFreeQuestion: false, actionType: billingCharge.actionType, transactionId: billingCharge.transactionId });
-              await trackWorkerJobRefunded(request);
+              await rollbackReadingCharge({ userId: authed.profileUserId, cost: billingCharge.spentRunes, wasFreeQuestion: false, actionType: billingCharge.actionType, transactionId: billingCharge.transactionId });
               billingCharge = null;
               spentRunes = 0;
             }
@@ -1681,7 +1691,7 @@ async function handlePost(request: NextRequest) {
 
       if (!readingOk) {
         if (billingCharge) {
-          runeBalance = await BillingService.rollbackCharge({
+          runeBalance = await rollbackReadingCharge({
             userId: authed.profileUserId,
             cost: billingCharge.spentRunes,
             wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -1697,7 +1707,7 @@ async function handlePost(request: NextRequest) {
       if (await ensureDb()) {
         if (!(await beginWorkerJobSave(request))) {
           if (billingCharge) {
-            runeBalance = await BillingService.rollbackCharge({
+            runeBalance = await rollbackReadingCharge({
               userId: authed.profileUserId,
               cost: billingCharge.spentRunes,
               wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -1847,20 +1857,27 @@ async function handlePost(request: NextRequest) {
       // spentRunes may already be 0 after in-handler rollback — still mark refunded
       // when the async job ledger was rolled back (billing_state=refunded).
       await trackWorkerJobFailed(request, "Reading generation failed", {
-        refunded: true,
+        refunded: refundConfirmed,
         errorCode: "generation_failed",
       });
       return NextResponse.json(
         {
-          error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+          error: refundConfirmed ? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз." : "Не удалось получить трактовку. Если руны были списаны, проверьте баланс; возврат пока не подтверждён.",
           code: "generation_failed",
-          refunded: true,
+          refunded: refundConfirmed,
         },
         { status: 502 }
       );
     }
 
     const successPayload = {
+      ...deliveredMatrixMetadata,
+      ...("matrixBirthDate" in lockedResult ? {
+        matrixBirthDate: lockedResult.matrixBirthDate,
+        matrixCalculationVersion: ("matrixCalculationVersion" in lockedResult ? lockedResult.matrixCalculationVersion : null),
+        matrixStructuredData: ("matrixStructuredData" in lockedResult ? lockedResult.matrixStructuredData : null),
+        matrixAsOf: ("matrixAsOf" in lockedResult ? lockedResult.matrixAsOf : null),
+      } : {}),
       reading: lockedResult.reading,
       isPaid: lockedResult.isPaid,
       historyId: lockedResult.historyId,
@@ -1895,7 +1912,7 @@ async function handlePost(request: NextRequest) {
     const chargeToRefund = billingCharge as BillingChargeResult | null;
     if (spentRunes > 0 || chargeToRefund) {
       try {
-        await BillingService.rollbackCharge({
+        await rollbackReadingCharge({
           userId: authed.profileUserId,
           cost: chargeToRefund?.spentRunes ?? spentRunes,
           wasFreeQuestion: chargeToRefund?.wasFreeQuestion ?? false,
@@ -1904,7 +1921,6 @@ async function handlePost(request: NextRequest) {
             (isNumerologMaster(characterId) ? "NUMEROLOGY_SESSION" : "READING"),
           transactionId: chargeToRefund?.transactionId,
         });
-        await trackWorkerJobRefunded(request);
       } catch (refundErr) {
         console.error("Reading refund failed:", refundErr);
         reportError(refundErr, { route: "reading", stage: "refund" });
@@ -1912,15 +1928,15 @@ async function handlePost(request: NextRequest) {
     }
     const errorCode = classifyReadingFailureCode(error);
     await trackWorkerJobFailed(request, "Reading generation failed", {
-      refunded: spentRunes > 0,
+      refunded: refundConfirmed,
       errorCode,
     });
     // Fail-closed: never return template prose as a successful reading.
     return NextResponse.json(
       {
-        error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+        error: refundConfirmed ? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз." : "Не удалось получить трактовку. Если руны были списаны, проверьте баланс; возврат пока не подтверждён.",
         code: errorCode,
-        refunded: spentRunes > 0,
+        refunded: refundConfirmed,
       },
       { status: 502 }
     );

@@ -17,6 +17,7 @@ type MatrixOwnershipState = {
   birthDate: string | null;
   subjectId: string | null;
   reportId: string | null;
+  calculationVersion: string | null;
   refetch: () => void;
 };
 
@@ -39,6 +40,7 @@ export function useMatrixOwnership(options?: {
   const [owned, setOwned] = useState(false);
   const [birthDate, setBirthDate] = useState<string | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
+  const [calculationVersion, setCalculationVersion] = useState<string | null>(null);
 
   const refetch = useCallback(() => setTick((n) => n + 1), []);
 
@@ -47,6 +49,7 @@ export function useMatrixOwnership(options?: {
       setOwned(false);
       setBirthDate(null);
       setReportId(null);
+      setCalculationVersion(null);
       setLoading(false);
       return;
     }
@@ -56,9 +59,11 @@ export function useMatrixOwnership(options?: {
       setLoading(true);
       setOwned(false);
       setReportId(null);
-      let birth = toIsoBirthDateClient(birthOverride) ?? toIsoBirthDateClient(readStoredProfile()?.birthDate);
+      setCalculationVersion(null);
+      setBirthDate(null);
+      let birth = subjectId ? toIsoBirthDateClient(birthOverride) : toIsoBirthDateClient(birthOverride) ?? toIsoBirthDateClient(readStoredProfile()?.birthDate);
 
-      if (!birthOverride) {
+      if (!birthOverride && !subjectId) {
         try {
           const profileRes = await fetch("/api/profile", { credentials: "include", signal: AbortSignal.timeout(20_000) });
           if (profileRes.ok) {
@@ -86,12 +91,14 @@ export function useMatrixOwnership(options?: {
           if (res.ok) {
             const data = (await res.json()) as {
               owned?: boolean;
-              report?: { id?: string; hasContent?: boolean } | null;
+              report?: { id?: string; hasContent?: boolean; birthDate?: string; calculationVersion?: string } | null;
             };
             if (!cancelled) {
               const isOwned = Boolean(data.owned && data.report?.hasContent !== false);
               setOwned(isOwned);
               setReportId(isOwned ? data.report?.id ?? null : null);
+              setBirthDate(toIsoBirthDateClient(data.report?.birthDate) ?? birth);
+              setCalculationVersion(isOwned ? data.report?.calculationVersion ?? null : null);
               setLoading(false);
               return;
             }
@@ -117,6 +124,7 @@ export function useMatrixOwnership(options?: {
             hasContent?: boolean;
             legacyVersion?: boolean;
             content?: string;
+            calculationVersion?: string;
           }>;
         };
         const birthKey = birth?.slice(0, 10) ?? null;
@@ -126,12 +134,13 @@ export function useMatrixOwnership(options?: {
           if (!has) return false;
           // Legacy rows stay owned and openable; a new engine version does not hide them.
           if (subjectId) return false;
-          if (!birthKey) return true;
+          if (!birthKey) return false;
           return r.birthDate === birthKey || r.birthDate === birth;
         });
         if (!cancelled) {
           setOwned(Boolean(match));
           setReportId(match?.id ?? null);
+          setCalculationVersion(match?.calculationVersion ?? null);
         }
       } catch {
         if (!cancelled) {
@@ -148,5 +157,5 @@ export function useMatrixOwnership(options?: {
     };
   }, [enabled, birthOverride, subjectId, tick]);
 
-  return { loading, owned, birthDate, subjectId, reportId, refetch };
+  return { loading, owned, birthDate, subjectId, reportId, calculationVersion, refetch };
 }

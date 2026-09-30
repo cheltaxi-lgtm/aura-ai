@@ -52,32 +52,15 @@ export function isDestinyMatrixSession(session: {
   return tool === "destiny_matrix" || tool === "child_matrix";
 }
 
-/** Delete leftover matrix chat sessions after report wipe. */
+/** Delete only sessions explicitly associated with the requested wipe. */
 export async function purgeMatrixConsultationSessions(
   profileUserId: string,
   sessionIds: string[] = []
 ): Promise<number> {
   const wanted = new Set(sessionIds.filter((id) => Boolean(id?.trim())));
 
-  // Orphan = matrix chat not linked to any remaining owned report for this user.
-  // Scoped by session_id so wiping birth date A does not keep stale chats when
-  // the user still owns a report for birth date B.
-  const { rows: orphans } = await query<{ id: string }>(
-    `SELECT s.id
-     FROM sessions s
-     WHERE s.user_id = $1
-       AND ${sqlIsDestinyMatrixSession("s")}
-       AND NOT EXISTS (
-         SELECT 1
-         FROM numerology_report_history n
-         WHERE n.user_id = s.user_id
-           AND n.tool_id = ANY($2::text[])
-           AND length(trim(n.content)) > 0
-           AND n.session_id = s.id
-       )`,
-    [profileUserId, [...MATRIX_OWNED_TOOL_IDS]]
-  );
-  for (const row of orphans) wanted.add(row.id);
+  // A reopened or in-flight report may legitimately lack a report.session_id
+  // link. Absence of that link is never permission to purge another person's chat.
 
   let removed = 0;
   await Promise.all(
@@ -101,7 +84,7 @@ export type WipeMatrixResult = {
 };
 
 /**
- * Full user-initiated matrix wipe: report history + linked/orphan sessions.
+ * Full user-initiated matrix wipe: report history + explicitly linked sessions.
  * Prefer subjectId or reportId. birthDate alone only touches the self subject.
  */
 export async function wipeUserMatrixReports(input: {

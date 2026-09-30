@@ -215,10 +215,10 @@ const CHILD_MATRIX_ZONE_DEFS: MatrixZoneDef[] = [
   },
   {
     id: "parent_role",
-    label: "Какой я родитель",
+    label: "Как поддержать ребёнка как родитель",
     role: "body",
     required: true,
-    titleCore: String.raw`Какой\s+я\s+родитель`,
+    titleCore: String.raw`(?:Как\s+поддержать\s+реб[её]нка\s+как\s+родитель|Какой\s+я\s+родитель)`,
   },
   {
     id: "child_learning",

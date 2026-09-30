@@ -1,10 +1,5 @@
-import { parseBirthDate } from "./constants";
 import { MATRIX_LABELS } from "./matrix-labels";
-import {
-  matrixCalendarDateObject,
-  matrixCalendarYmd,
-} from "./matrix-calendar";
-import type { DestinyMatrixAgePoint, DestinyMatrixOptions, DestinyMatrixPoint } from "./matrix-result";
+import type { DestinyMatrixAgePoint, DestinyMatrixPoint } from "./matrix-result";
 
 export const AGE_BELT_END = 80;
 
@@ -26,33 +21,7 @@ export function yearsBetween(
   return Math.max(0, age);
 }
 
-export function resolveAsOf(options?: DestinyMatrixOptions): {
-  year: number;
-  month: number;
-  date: Date;
-} {
-  const today = matrixCalendarYmd();
-  let year = today.year;
-  let month = today.month;
-  let date = matrixCalendarDateObject();
-  if (typeof options?.asOfYear === "number" && Number.isFinite(options.asOfYear)) {
-    year = Math.trunc(options.asOfYear);
-  }
-  if (typeof options?.asOfMonth === "number" && Number.isFinite(options.asOfMonth)) {
-    month = Math.min(12, Math.max(1, Math.trunc(options.asOfMonth)));
-  }
-  if (options?.asOfDate) {
-    const parsed = parseBirthDate(options.asOfDate);
-    if (parsed) {
-      date = new Date(parsed.year, parsed.month - 1, parsed.day);
-      year = parsed.year;
-      month = parsed.month;
-    }
-  } else if (options?.asOfYear != null || options?.asOfMonth != null) {
-    date = new Date(year, month - 1, Math.min(28, today.day));
-  }
-  return { year, month, date };
-}
+export { resolveAsOf, parseMatrixCalendarDay } from "./matrix-calendar-options";
 
 export function agePoint(
   age: number,

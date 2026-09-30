@@ -274,7 +274,7 @@ export async function lookupOwnedMatrixReport(
   const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
   return classifyOwnedReport(
     report,
-    isUsableMatrixReading(report.content, options?.toolId ?? report.toolId)
+    isUsableMatrixReading(report.content, options?.toolId ?? report.toolId, report.calculationVersion)
   );
 }
 
@@ -290,7 +290,7 @@ export async function lookupOwnedMatrixReportBySubject(
   const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
   return classifyOwnedReport(
     report,
-    isUsableMatrixReading(report.content, options?.toolId ?? report.toolId)
+    isUsableMatrixReading(report.content, options?.toolId ?? report.toolId, report.calculationVersion)
   );
 }
 
@@ -429,7 +429,7 @@ export async function saveMatrixReport(params: {
   const partnerRaw = data?.partnerDate || data?.dateB || toolParams?.partnerDate;
   const scope = toolId === "matrix_compatibility" ? toIsoBirthDate(typeof partnerRaw === "string" ? partnerRaw : null) : "";
   if (scope === null) throw new Error("matrix_partner_date_required");
-  const structuredData = toolId === "matrix_compatibility" ? { ...data, partnerDate: scope } : data;
+  const structuredData = data ? { ...data, birthDate, ...(toolId === "matrix_compatibility" ? { partnerDate: scope } : {}) } : data;
   let subjectId = params.subjectId?.trim() || null;
   if (subjectId && !UUID_RE.test(subjectId)) {
     throw new Error("matrix_subject_required");
@@ -655,6 +655,17 @@ export async function getUserMatrixReportById(
   return rows[0] ? mapRow(rows[0]) : findArchivedMatrixPairReport(userId,{id});
 }
 
+async function matrixReportSessionIds(userId: string, reports: Array<{ id: string; session_id: string | null }>): Promise<string[]> {
+  if (!reports.length) return [];
+  const linked = await query<{ session_id: string | null }>(
+    `SELECT DISTINCT h.context_data->>'sessionId' AS session_id
+     FROM history h
+     WHERE h.user_id = $1 AND h.context_data->>'reportId' = ANY($2::text[])`,
+    [userId, reports.map(r => r.id)]
+  );
+  return [...new Set([...reports, ...linked.rows].map(r => r.session_id).filter((id): id is string => Boolean(id?.trim())))];
+}
+
 /** Delete one owned matrix report (buy-once unlock reset for that birth date/version row). */
 export async function deleteUserMatrixReport(
   userId: string,
@@ -663,8 +674,8 @@ export async function deleteUserMatrixReport(
   const id = reportId.trim();
   if (!id || !UUID_RE.test(id)) return { deleted: false, sessionIds: [] };
 
-  const before = await query<{ session_id: string | null }>(
-    `SELECT session_id
+  const before = await query<{ id: string; session_id: string | null }>(
+    `SELECT id, session_id
      FROM numerology_report_history
      WHERE user_id = $1
        AND id = $2::uuid
@@ -673,6 +684,7 @@ export async function deleteUserMatrixReport(
   );
   if (!before.rows[0]) return { deleted: false, sessionIds: [] };
 
+  const sessionIds = await matrixReportSessionIds(userId, before.rows);
   const { rowCount } = await query(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1
@@ -680,9 +692,6 @@ export async function deleteUserMatrixReport(
        AND tool_id = ANY($3::text[])`,
     [userId, id, [...MATRIX_OWNED_TOOL_IDS]]
   );
-  const sessionIds = before.rows
-    .map((r) => r.session_id)
-    .filter((s): s is string => Boolean(s?.trim()));
   return { deleted: (rowCount ?? 0) > 0, sessionIds };
 }
 
@@ -709,8 +718,8 @@ export async function deleteOwnedMatrixReportsForBirth(
   }
 
   const version = options?.calculationVersion?.trim() || null;
-  const before = await query<{ session_id: string | null }>(
-    `SELECT n.session_id
+  const before = await query<{ id: string; session_id: string | null }>(
+    `SELECT n.id, n.session_id
      FROM numerology_report_history n
      LEFT JOIN matrix_subjects ms ON ms.id = n.subject_id
      WHERE n.user_id = $1
@@ -720,13 +729,7 @@ export async function deleteOwnedMatrixReportsForBirth(
        AND ($4::text IS NULL OR n.calculation_version = $4)`,
     [userId, toolId, birthDate, version]
   );
-  const sessionIds = [
-    ...new Set(
-      before.rows
-        .map((r) => r.session_id)
-        .filter((s): s is string => Boolean(s?.trim()))
-    ),
-  ];
+  const sessionIds = await matrixReportSessionIds(userId, before.rows);
 
   const { rowCount } = await query(
     `DELETE FROM numerology_report_history n
@@ -763,13 +766,14 @@ export async function deleteOwnedMatrixReportsForSubject(
   const toolIds = options?.toolId ? [options.toolId] : [...MATRIX_OWNED_TOOL_IDS];
   if (!UUID_RE.test(subjectId.trim())) return { deleted: 0, sessionIds: [] };
   const version = options?.calculationVersion?.trim() || null;
-  const before = await query<{ session_id: string | null }>(
-    `SELECT session_id
+  const before = await query<{ id: string; session_id: string | null }>(
+    `SELECT id, session_id
      FROM numerology_report_history
      WHERE user_id = $1 AND tool_id = ANY($2::text[]) AND subject_id = $3::uuid
        AND ($4::text IS NULL OR calculation_version = $4)`,
     [userId, toolIds, subjectId.trim(), version]
   );
+  const sessionIds = await matrixReportSessionIds(userId, before.rows);
   const { rowCount } = await query(
     `DELETE FROM numerology_report_history
      WHERE user_id = $1 AND tool_id = ANY($2::text[]) AND subject_id = $3::uuid
@@ -778,12 +782,6 @@ export async function deleteOwnedMatrixReportsForSubject(
   );
   return {
     deleted: rowCount ?? 0,
-    sessionIds: [
-      ...new Set(
-        before.rows
-          .map((row) => row.session_id)
-          .filter((id): id is string => Boolean(id?.trim()))
-      ),
-    ],
+    sessionIds,
   };
 }

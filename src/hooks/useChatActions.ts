@@ -10,6 +10,7 @@ import {
   type SetStateAction,
 } from "react";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
+import { matrixSessionIdentity } from "@/lib/numerology/matrix-session-identity";
 import { parseInsufficientRunes, getRateLimitPayload } from "@/lib/api-errors";
 import {
   parseAcceptedAsyncReport,
@@ -290,6 +291,9 @@ export interface UseChatActionsOptions {
     subjectName?: string | null;
   } | null>;
   setMatrixSessionBirthDate?: Dispatch<SetStateAction<string | null>>;
+  setMatrixSessionAsOf?: Dispatch<SetStateAction<string | null>>;
+  setMatrixSessionCalculationVersion?: Dispatch<SetStateAction<string | null>>;
+  setMatrixSessionStructuredData?: Dispatch<SetStateAction<Record<string, unknown> | null>>;
   setMatrixSessionSubjectName?: Dispatch<SetStateAction<string | null>>;
   sendingRef: MutableRefObject<boolean>;
   archiveSessionIdRef: MutableRefObject<string | null>;
@@ -414,6 +418,9 @@ export function useChatActions(options: UseChatActionsOptions) {
     pendingReadingMasterRef,
     sessionSpreadMetaRef,
     setMatrixSessionBirthDate,
+    setMatrixSessionAsOf,
+    setMatrixSessionCalculationVersion,
+    setMatrixSessionStructuredData,
     setMatrixSessionSubjectName,
     sendingRef,
     archiveSessionIdRef,
@@ -433,6 +440,7 @@ export function useChatActions(options: UseChatActionsOptions) {
 
   const loadReadingAttemptKeyRef = useRef<string | null>(null);
   const loadReadingInFlightKeyRef = useRef<string | null>(null);
+  const loadReadingRequestRef = useRef<symbol | null>(null);
   /** «Отчёт принят» overlay for heavy background reports (matrix etc.). */
   const [acceptedReport, setAcceptedReport] = useState<AcceptedAsyncReport | null>(null);
 
@@ -467,6 +475,11 @@ export function useChatActions(options: UseChatActionsOptions) {
         spreadCardsOverride?: SpreadSymbol[];
       }
     ) => {
+      let requestToken: symbol | null = null;
+      const targetConsultationId = consultationSessionIdRef.current;
+      const targetArchiveId = archiveSessionIdRef.current;
+      const targetMatrixSubjectId = sessionSpreadMetaRef.current?.matrixSubjectId;
+      const isCurrentRequest = () => requestToken !== null && loadReadingRequestRef.current === requestToken && characterId === selectedCharacterRef.current && !exitingToSessionListRef.current && consultationSessionIdRef.current === targetConsultationId && archiveSessionIdRef.current === targetArchiveId && sessionSpreadMetaRef.current?.matrixSubjectId === targetMatrixSubjectId;
       const isPeriodReadingRequest = Boolean(loadOptions?.readingScope);
       const shouldDiscardStaleDailyReading = () =>
         !isPeriodReadingRequest &&
@@ -580,6 +593,8 @@ export function useChatActions(options: UseChatActionsOptions) {
           if (loadReadingInFlightKeyRef.current === loadAttemptKey) return;
           if (loadReadingAttemptKeyRef.current === loadAttemptKey) return;
         }
+        requestToken = Symbol("reading-attempt");
+        loadReadingRequestRef.current = requestToken;
         loadReadingInFlightKeyRef.current = loadAttemptKey;
 
         let apiCallStarted = false;
@@ -765,6 +780,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             matrixLegacyRebuild = false;
           }
         }
+        if (!isCurrentRequest() || loadReadingInFlightKeyRef.current !== loadAttemptKey) return;
         const matrixCostsNothing = matrixAlreadyOwned || matrixLegacyRebuild;
         const affordGate = gateSpreadReadingRunes({
           billingActive: billingActive && !matrixCostsNothing,
@@ -829,6 +845,7 @@ export function useChatActions(options: UseChatActionsOptions) {
             }),
           });
           let data = (await res.json().catch(() => ({}))) as Record<string, unknown>;
+          if (!isCurrentRequest() || loadReadingInFlightKeyRef.current !== loadAttemptKey) return;
           let status = res.status;
           if (status === 202 && typeof data.jobId === "string") {
             // Background delivery: overlay «Отчёт принят» on top of the ritual;
@@ -854,6 +871,7 @@ export function useChatActions(options: UseChatActionsOptions) {
                 code: "generation_failed",
               };
             }
+            if (!isCurrentRequest() || loadReadingInFlightKeyRef.current !== loadAttemptKey) return;
             if (accepted) setAcceptedReport(null);
           }
           if (status === 401) {
@@ -970,7 +988,17 @@ export function useChatActions(options: UseChatActionsOptions) {
           }
           const readingText =
             typeof data.reading === "string" ? data.reading : "";
+          // A different person may have been opened while this job was running.
+          // Its result remains stored on the server; do not paint it into the new chat.
+          if (!isCurrentRequest() || loadReadingInFlightKeyRef.current !== loadAttemptKey) return;
           if (status >= 200 && status < 300 && readingText.trim()) {
+            if (metaNumerologToolId === "destiny_matrix" || metaNumerologToolId === "child_matrix" || metaNumerologToolId === "matrix_year_forecast") {
+              const identity = matrixSessionIdentity(data);
+              setMatrixSessionBirthDate?.(identity.birthDate);
+              setMatrixSessionAsOf?.(identity.asOf);
+              setMatrixSessionCalculationVersion?.(identity.calculationVersion);
+              setMatrixSessionStructuredData?.(identity.structuredData);
+            }
             clearPendingReading();
             pendingReadingMasterRef.current = null;
             const readingMsgId = generateId();
@@ -1029,19 +1057,24 @@ export function useChatActions(options: UseChatActionsOptions) {
         } finally {
           clearTimeout(timeout);
           await ensureMinSpreadRitualDisplay(ritualStartedAt);
+          if (isCurrentRequest()) {
           closeSpreadReadingRitual();
           setIsLoading(false);
           setIsLoadingHistory(false);
-          loadReadingAttemptKeyRef.current = loadAttemptKey;
-          loadReadingInFlightKeyRef.current = null;
+          if (loadReadingInFlightKeyRef.current === loadAttemptKey) {
+            loadReadingAttemptKeyRef.current = loadAttemptKey;
+            loadReadingInFlightKeyRef.current = null;
+          }
           setIntentionSpreadLoading(false);
+          }
         }
         } finally {
-          if (!apiCallStarted && loadReadingInFlightKeyRef.current === loadAttemptKey) {
+          if (isCurrentRequest() && !apiCallStarted && loadReadingInFlightKeyRef.current === loadAttemptKey) {
             loadReadingInFlightKeyRef.current = null;
           }
         }
       } catch (err) {
+        if (requestToken !== null && !isCurrentRequest()) return;
         console.error("loadReading failed:", err);
         closeSpreadReadingRitual();
         loadReadingInFlightKeyRef.current = null;
@@ -1111,6 +1144,10 @@ export function useChatActions(options: UseChatActionsOptions) {
       chatSessionSpread,
       chatDisplaySpread,
       selectedCharacterRef,
+      setMatrixSessionBirthDate,
+      setMatrixSessionAsOf,
+      setMatrixSessionCalculationVersion,
+      setMatrixSessionStructuredData,
     ]
   );
 
@@ -1201,6 +1238,10 @@ export function useChatActions(options: UseChatActionsOptions) {
         numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
         matrixSubjectId?: string | null;
         matrixBirthDate?: string | null;
+        matrixAsOf?: string | null;
+        sessionCreatedAt?: string | null;
+        matrixCalculationVersion?: string | null;
+        matrixStructuredData?: Record<string, unknown> | null;
         subjectName?: string | null;
         spread?:
           | {
@@ -1227,10 +1268,13 @@ export function useChatActions(options: UseChatActionsOptions) {
         data.matrixSubjectId?.trim() ||
         data.numerologToolParams?.matrixSubjectId?.trim() ||
         null;
-      if (matrixBirthDate || matrixSubjectId || subjectName) {
-        if (matrixBirthDate) setMatrixSessionBirthDate?.(matrixBirthDate);
-        setMatrixSessionSubjectName?.(subjectName);
-      }
+      const identity = matrixSessionIdentity({ ...data, matrixBirthDate,
+        matrixCalculationVersion: data.matrixCalculationVersion ?? data.numerologToolParams?.calculationVersion });
+      setMatrixSessionBirthDate?.(identity.birthDate);
+      setMatrixSessionSubjectName?.(subjectName);
+      setMatrixSessionAsOf?.(identity.asOf);
+      setMatrixSessionCalculationVersion?.(identity.calculationVersion);
+      setMatrixSessionStructuredData?.(identity.structuredData);
 
       const intention = normalizeSessionIntention(
         data.intention ?? data.spread?.intention ?? null
@@ -1384,6 +1428,9 @@ export function useChatActions(options: UseChatActionsOptions) {
       setSessionIntention,
       sessionSpreadMetaRef,
       setMatrixSessionBirthDate,
+      setMatrixSessionAsOf,
+      setMatrixSessionCalculationVersion,
+      setMatrixSessionStructuredData,
       setMatrixSessionSubjectName,
       setIntentionSpread,
       setChatSessionSpread,

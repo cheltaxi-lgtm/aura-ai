@@ -11,6 +11,7 @@ import { getOrComputeNatalChart } from "@/lib/services/natal-chart-service";
 import { buildMatrixPlainFinale } from "@/lib/numerology/matrix-point-prompt";
 import {
   generateFullMatrixSectionedReading,
+  buildMatrixAuthoritativeFacts,
   isMatrixQualityCanaryError,
 } from "@/lib/numerology/matrix-sectioned-reading";
 import type { MatrixReadingDocument } from "@/lib/numerology/matrix-reading-document";
@@ -225,6 +226,11 @@ export async function generateNumerologStreamReply(
   // Matrix: allow narrow memory (filtered) + optional natal bridge. Never raw Pythagorean LP.
   let engineFacts = engineFactsRaw;
   if (engineResult.primaryTopic === "destiny_matrix") {
+    const resolved = params.birthDate ? resolveMatrixForEngine({ birthDate: params.birthDate, snapshot: params.matrixSnapshot, asOfDate: params.asOfDate }) : null;
+    // Do not mix live recomputed numbers with the frozen report's authoritative result.
+    if (resolved && shouldRebuildPaidMatrixReading(params.toolId)) {
+      engineFacts = `${buildMatrixAuthoritativeFacts(resolved, params.toolId)}\nФокус запроса заказчика: ${params.lastUserMessage || params.intention || "общий разбор"}`;
+    }
     const safeMem = params.memoryBlock?.trim()
       ? filterMatrixSafeMemory(params.memoryBlock)
       : "";
@@ -292,17 +298,18 @@ export async function generateNumerologStreamReply(
       const sanitized = sanitizeReadingForClient(sectioned.reading);
       const rawComplete = isCompleteMatrixReading(
         sectioned.reading,
-        params.toolId
+        params.toolId,
+        sectioned.matrix.calculationVersion
       );
       const sanitizedComplete =
         Boolean(sanitized) &&
-        isCompleteMatrixReading(sanitized, params.toolId);
+        isCompleteMatrixReading(sanitized, params.toolId, sectioned.matrix.calculationVersion);
       const safe = sanitizedComplete
         ? sanitized
         : rawComplete
           ? sectioned.reading
           : sanitized || sectioned.reading;
-      if (!isCompleteMatrixReading(safe, params.toolId) && !allowEngineFallback) {
+      if (!isCompleteMatrixReading(safe, params.toolId, sectioned.matrix.calculationVersion) && !allowEngineFallback) {
         // Sectioned path force-fills; if still unusable, fail paid path.
         const { matrixMissingSections } = await import(
           "@/lib/numerology/matrix-completeness"

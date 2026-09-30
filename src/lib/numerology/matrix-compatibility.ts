@@ -6,6 +6,7 @@ import {
   destinyMatrix,
   MATRIX_CALCULATION_VERSION,
   reduceToArcanaNumber,
+  reduceToArcanaSubtract22,
   type DestinyMatrixResult,
   type DestinyMatrixOptions,
 } from "./destiny-matrix";
@@ -193,8 +194,9 @@ export function matrixCompatibility(
         "Выберите один общий фокус на квартал и один личный фокус у каждого — без конкуренции.",
     },
   ];
-  const pairComfort = reduceToArcanaNumber(matrixA.comfort.number + matrixB.comfort.number);
-  const pairYear = reduceToArcanaNumber(matrixA.yearArcana.number + matrixB.yearArcana.number);
+  const pairReduce = matrixA.calculationVersion.split("@")[0] === "matrix-v3" ? reduceToArcanaSubtract22 : reduceToArcanaNumber;
+  const pairComfort = pairReduce(matrixA.comfort.number + matrixB.comfort.number);
+  const pairYear = pairReduce(matrixA.yearArcana.number + matrixB.yearArcana.number);
   keys.push({
     id: "pairYear",
     label: "Аркан пары на год",

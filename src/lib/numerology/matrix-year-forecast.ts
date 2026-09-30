@@ -32,7 +32,7 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
   cautionMonths: number[];
 } | null {
   const start = matrixCalendarYmd(fromDate);
-  const initial = destinyMatrix(birthDate, asOfFor(start.year, start.month));
+  const initial = destinyMatrix(birthDate, asOfFor(start.year, start.month, start.day));
   if (!initial) return null;
 
   const months = Array.from({ length: 12 }, (_, index) => {

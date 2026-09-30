@@ -7,11 +7,13 @@ import {
 import { matrixCalendarDate } from "@/lib/numerology/matrix-calendar";
 import {
   isMatrixSubjectKind,
+  getMatrixSubject,
   validateSubjectBirthDate,
   type MatrixSubjectKind,
 } from "@/lib/services/matrix-subject-service";
 import { PRICING } from "@/lib/config/pricing";
-import { hydrateDestinyMatrixFromSnapshot } from "@/lib/numerology/matrix-snapshot";
+import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
+import { matrixBaseVersion } from "@/lib/numerology/matrix-result";
 
 export type PersistedMatrixSnapshot = {
   subjectId: string;
@@ -58,6 +60,25 @@ async function existingFrozenSnapshot(
   const existingDob = String(row.birth_date).slice(0, 10);
   if (existingDob !== birthDate) throw persistError("matrix_subject_date_mismatch");
   if (!row.matrix_snapshot || !row.as_of_date) return null;
+  if (!resolveMatrixForEngine({ birthDate: existingDob, snapshot: row.matrix_snapshot })) {
+    // A legacy identity race could attach another person's numbers to this
+    // subject. Recover only this invalid cache from the locked, owned DOB;
+    // purchased report rows and valid frozen snapshots stay authoritative.
+    const version = matrixBaseVersion(row.calculation_version || MATRIX_CALCULATION_VERSION);
+    const asOfDate = String(row.as_of_date).slice(0, 10);
+    const repaired = destinyMatrix(existingDob, { asOfDate, calculationVersion: version });
+    if (!repaired) throw persistError("invalid_matrix_snapshot");
+    const snapshot = matrixToStructuredData(repaired, existingDob);
+    const updated = await queryClient(
+      client,
+      `UPDATE matrix_subjects SET matrix_snapshot = $3::jsonb,
+         calculation_version = $4, updated_at = NOW()
+       WHERE user_id = $1 AND id = $2::uuid AND matrix_snapshot = $5::jsonb`,
+      [userId, subjectId, JSON.stringify(snapshot), repaired.calculationVersion, JSON.stringify(row.matrix_snapshot)]
+    );
+    if (updated.rowCount !== 1) throw persistError("matrix_snapshot_recovery_conflict");
+    return { subjectId: row.id, birthDate: existingDob, asOfDate, calculationVersion: repaired.calculationVersion, snapshot, reused: true };
+  }
   return {
     subjectId: row.id,
     birthDate: existingDob,
@@ -109,28 +130,27 @@ export async function persistOwnedMatrixSnapshot(input: {
     input.subjectKind && isMatrixSubjectKind(input.subjectKind) ? input.subjectKind : "self";
   const displayName = input.displayName?.trim().slice(0, 80) || null;
 
-  let snapshot =
-    input.snapshot &&
-    typeof input.snapshot === "object" &&
-    hydrateDestinyMatrixFromSnapshot(input.snapshot)
-      ? input.snapshot
-      : null;
+  const suppliedMatrix = input.snapshot ? resolveMatrixForEngine({ birthDate, snapshot: input.snapshot }) : null;
+  if (input.snapshot && !suppliedMatrix) throw persistError("invalid_matrix_snapshot");
+  let snapshot = suppliedMatrix ? { ...input.snapshot, ...matrixToStructuredData(suppliedMatrix, birthDate) } : null;
   let asOfDate =
     typeof input.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.asOfDate)
       ? input.asOfDate
       : asOfFromSnapshot(snapshot);
-  let calculationVersion = input.calculationVersion?.trim() || null;
+  if (suppliedMatrix) asOfDate = suppliedMatrix.asOf.date;
+  let calculationVersion = suppliedMatrix?.calculationVersion ?? input.calculationVersion?.trim() ?? null;
 
   if (!snapshot) {
     asOfDate = asOfDate || matrixCalendarDate();
     const matrix = destinyMatrix(birthDate, { asOfDate });
     if (!matrix) throw persistError("invalid_birth_date");
-    snapshot = matrixToStructuredData(matrix);
+    snapshot = matrixToStructuredData(matrix, birthDate);
     calculationVersion = matrix.calculationVersion;
   } else if (!asOfDate) {
     asOfDate = matrixCalendarDate();
   }
   if (!snapshot || !asOfDate) throw persistError("invalid_birth_date");
+  snapshot = { ...snapshot, birthDate };
   calculationVersion = calculationVersion || MATRIX_CALCULATION_VERSION;
 
   return withTransaction(async (client) => {
@@ -335,10 +355,20 @@ export async function ensureOwnedMatrixSnapshot(input: {
 }): Promise<PersistedMatrixSnapshot> {
   if (input.subjectId) {
     const existing = await getOwnedMatrixSnapshot(input.userId, input.subjectId);
-    if (existing && existing.birthDate === input.birthDate) return { ...existing, reused: true };
+    if (existing && existing.birthDate === input.birthDate) {
+      if (resolveMatrixForEngine({ birthDate: existing.birthDate, snapshot: existing.snapshot })) return { ...existing, reused: true };
+      const subject = await getMatrixSubject(input.userId, existing.subjectId);
+      if (!subject) throw persistError("matrix_subject_forbidden");
+      return persistOwnedMatrixSnapshot({ ...input, subjectId: existing.subjectId, subjectKind: subject.kind, birthDate: existing.birthDate });
+    }
   } else if (!input.subjectKind || input.subjectKind === "self") {
     const existing = await getOwnedSelfMatrixSnapshot(input.userId);
-    if (existing && existing.birthDate === input.birthDate) return existing;
+    if (existing && existing.birthDate === input.birthDate) {
+      if (resolveMatrixForEngine({ birthDate: existing.birthDate, snapshot: existing.snapshot })) return existing;
+      const subject = await getMatrixSubject(input.userId, existing.subjectId);
+      if (!subject) throw persistError("matrix_subject_forbidden");
+      return persistOwnedMatrixSnapshot({ ...input, subjectId: existing.subjectId, subjectKind: subject.kind, birthDate: existing.birthDate });
+    }
   }
   return persistOwnedMatrixSnapshot(input);
 }

@@ -13,6 +13,7 @@ import {
 } from "./destiny-matrix-legacy-helpers";
 import { arcanaForNumber } from "./matrix-arcana-map";
 import { matrixCalendarDate } from "./matrix-calendar";
+import { resolveAsOf } from "./matrix-calendar-options";
 import { MATRIX_CHANNEL_DEFINITIONS } from "./matrix-channels";
 import { reduceToArcanaDigitSum } from "./matrix-reducers";
 import {
@@ -31,8 +32,9 @@ export function computeDestinyMatrixV4(
 ): DestinyMatrixResult | null {
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
+  if (!resolveAsOf(options)) return null;
   const asOf =
-    legacyResolveAsOf(options) ?? legacyResolveAsOf({ asOfDate: matrixCalendarDate() });
+    legacyResolveAsOf(options) ?? resolveAsOf(options ?? { asOfDate: matrixCalendarDate() });
   if (!asOf) return null;
   const reduce = reduceToArcanaDigitSum;
   const point = (n: number) => arcanaForNumber(n, MATRIX_V4_CALCULATION_VERSION);

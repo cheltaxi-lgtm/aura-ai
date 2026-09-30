@@ -29,6 +29,7 @@ export function computeDestinyMatrixV5(
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
   const asOf = resolveAsOf(options);
+  if (!asOf) return null;
   const reduce = reduceToArcanaDigitSum;
   const point = (n: number) => arcanaForNumber(n, MATRIX_CALCULATION_VERSION);
 
@@ -184,7 +185,7 @@ export function computeDestinyMatrixV5(
     ageModel: {
       chronological: chronologicalAge,
       periodStart: ageCurrent.age,
-      periodEnd: ageNext?.age ?? ageCurrent.age + 5,
+      periodEnd: ageNext?.age ?? ageCurrent.age,
       energy: ageCurrent,
       nextPeriod: ageNext,
     },

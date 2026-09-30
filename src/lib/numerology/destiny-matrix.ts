@@ -1,3 +1,4 @@
+import { formatAgePeriodRange } from "./matrix-labels";
 import { computeDestinyMatrixV3 } from "./destiny-matrix-v3";
 import { computeDestinyMatrixV4 } from "./destiny-matrix-v4";
 import { computeDestinyMatrixV5 } from "./destiny-matrix-v5";
@@ -127,7 +128,7 @@ export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {
     `${MATRIX_LABELS.money}: ${m.money.number} — ${m.money.arcanaName}`,
     `${MATRIX_LABELS.paternal}: ${m.paternal.number} — ${m.paternal.arcanaName}`,
     `${MATRIX_LABELS.maternal}: ${m.maternal.number} — ${m.maternal.arcanaName}`,
-    `${MATRIX_LABELS.ageAndPeriod}: ${m.chronologicalAge} лет · период ${m.ageCurrent.age}–${periodEnd} · ${m.ageCurrent.number} — ${m.ageCurrent.arcanaName}`,
+    `${MATRIX_LABELS.ageAndPeriod}: ${m.chronologicalAge} лет · период ${formatAgePeriodRange(m.ageCurrent.age, periodEnd)} · ${m.ageCurrent.number} — ${m.ageCurrent.arcanaName}`,
     `${MATRIX_LABELS.yearArcana}: ${m.yearArcana.number} — ${m.yearArcana.arcanaName}`,
     `${MATRIX_LABELS.monthArcana}: ${m.monthArcana.number} — ${m.monthArcana.arcanaName}`,
     `${m.focusLabel}`,
@@ -144,13 +145,14 @@ export function formatDestinyMatrixAscii(m: DestinyMatrixResult): string {
   return lines.join("\n");
 }
 
-export function matrixToStructuredData(m: DestinyMatrixResult): Record<string, unknown> {
+export function matrixToStructuredData(m: DestinyMatrixResult, birthDate?: string): Record<string, unknown> {
   const point = (p: DestinyMatrixPoint) => ({
     number: p.number,
     arcanaName: p.arcanaName,
     arcanaMeaning: p.arcanaMeaning,
   });
   return {
+    ...(birthDate ? { birthDate } : {}),
     methodologyId: m.methodologyId,
     version: m.calculationVersion,
     calculationVersion: m.calculationVersion,
