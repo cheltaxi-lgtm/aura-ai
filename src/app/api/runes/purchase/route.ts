@@ -14,8 +14,37 @@ import {
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { randomUUID } from "node:crypto";
 import { recordRuneCheckoutEvent } from "@/lib/rune-checkout-telemetry";
+import { reportError } from "@/lib/error-report";
 
 const CUSTOM_PACKAGE_ID = "custom";
+
+function logRunePurchaseFailure(
+  error: unknown,
+  kind: "custom" | "package",
+  orderId: string | undefined
+): void {
+  try {
+    const exceptionType =
+      error instanceof TypeError ? "TypeError" : error instanceof Error ? "Error" : "unknown";
+    const code =
+      error instanceof Error && error.message.startsWith("YooKassa error:")
+        ? "provider_rejected"
+        : error instanceof TypeError
+          ? "network_error"
+          : "payment_creation_error";
+    const context = {
+      route: "runes/purchase",
+      kind,
+      exceptionType,
+      code,
+      orderId: orderId ?? null,
+    };
+    console.error("Rune purchase error:", context);
+    reportError(new Error(code), context);
+  } catch {
+    // Diagnostics must never change the payment response.
+  }
+}
 
 function parseStrictCustomAmount(raw: unknown): number | null {
   const str = String(raw ?? "").trim();
@@ -121,9 +150,7 @@ export async function POST(request: NextRequest) {
         returnUrl: buildRunePurchaseReturnUrl(appUrl, payment.id),
       });
     } catch (error) {
-      console.error("Rune custom purchase error:", error);
-      const { reportError } = await import("@/lib/error-report");
-      reportError(error, { route: "runes/purchase", kind: "custom" });
+      logRunePurchaseFailure(error, "custom", body.requestId);
       return rejected("Payment creation failed",502,"provider_creation_failed");
     }
   }
@@ -173,9 +200,7 @@ export async function POST(request: NextRequest) {
       returnUrl: buildRunePurchaseReturnUrl(appUrl, payment.id),
     });
   } catch (error) {
-    console.error("Rune purchase error:", error);
-    const { reportError } = await import("@/lib/error-report");
-    reportError(error, { route: "runes/purchase", kind: "package" });
+    logRunePurchaseFailure(error, "package", body.requestId);
     return rejected("Payment creation failed",502,"provider_creation_failed");
   }
 }
