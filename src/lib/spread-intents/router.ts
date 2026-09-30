@@ -2,13 +2,14 @@ import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { getSpreadCostMultiplier, isDailyOnlySpread } from "@/lib/spreads/registry";
 import type { SessionTopicId } from "@/lib/session-topics";
 import type { SpreadId } from "@/lib/spreads";
+import { MAX_INTENTION_SPREAD_RUNES } from "@/lib/spreads/price-limits";
 import type { SpreadIntentDefinition } from "./types";
 import { resolveIntentMasterId } from "./resolve-master";
 /** Estimated rune cost for an intent spread (display only; billing stays in existing flows). */
 export function estimateIntentRuneCost(spreadId: SpreadId): number {
   const base = DEFAULT_RUNE_COSTS.INTENTION_SPREAD;
   const multiplier = getSpreadCostMultiplier(spreadId);
-  return Math.max(1, Math.round(base * multiplier));
+  return Math.min(MAX_INTENTION_SPREAD_RUNES, Math.max(1, Math.round(base * multiplier)));
 }
 
 export function buildSpreadStartUrl(

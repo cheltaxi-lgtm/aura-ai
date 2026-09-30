@@ -1717,7 +1717,7 @@ export default function PhotoReadingFlow({
                         <>
                           {" "}
                           <span className="text-aura-gold/80">
-                            (первая расшифровка −50%, далее {formatRunes(photoBaseCost)})
+                            (цена первого разбора: {formatRunes(photoCost)}, далее {formatRunes(photoBaseCost)})
                           </span>
                         </>
                       ) : null}

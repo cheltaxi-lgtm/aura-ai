@@ -7,7 +7,7 @@ vi.mock("@/lib/settings", () => ({
   getSetting: async () => ({ spreadOverrides: { "year-ahead": { costMultiplier: settings.multiplier } } }),
 }));
 vi.mock("@/lib/rune-settings", () => ({
-  getRuneSettings: async () => ({ costs: { INTENTION_SPREAD: 30 } }),
+  getRuneSettings: async () => ({ costs: { INTENTION_SPREAD: 16 } }),
   runeCostFromSettings: (value: { costs: Record<string, number> }, action: string) => value.costs[action],
 }));
 
@@ -18,12 +18,12 @@ it("publishes the server charge with current admin multiplier and refreshes it",
   const clock = vi.spyOn(Date, "now").mockReturnValue(now);
   const first = await GET();
   expect(first.status).toBe(200);
-  expect((await first.json()).prices["year-ahead"]).toBe(120);
+  expect((await first.json()).prices["year-ahead"]).toBe(50);
   expect(first.headers.get("Cache-Control")).toBe("private, no-store");
 
   settings.multiplier = 2;
   clock.mockReturnValue(now + 6_000);
   const updated = await GET();
-  expect((await updated.json()).prices["year-ahead"]).toBe(60);
+  expect((await updated.json()).prices["year-ahead"]).toBe(32);
   clock.mockRestore();
 });

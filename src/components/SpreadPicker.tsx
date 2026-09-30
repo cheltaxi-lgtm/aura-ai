@@ -14,6 +14,7 @@ import { resolveMasterDeckSystem } from "@/lib/decks";
 import type { SessionTopicId } from "@/lib/session-topics";
 import RuneCost from "@/components/RuneCost";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { MAX_INTENTION_SPREAD_RUNES } from "@/lib/spreads/price-limits";
 
 interface SpreadPickerProps {
   selectedId: SpreadId;
@@ -50,10 +51,10 @@ export default function SpreadPicker({
     <div className="grid gap-3 sm:grid-cols-2">
       {spreads.map((spread) => {
         const active = spread.id === selectedId;
-        const spreadCost = Math.max(
+        const spreadCost = Math.min(MAX_INTENTION_SPREAD_RUNES, Math.max(
           1,
           Math.round(runeCost("INTENTION_SPREAD") * spread.costMultiplier)
-        );
+        ));
         const title = spread.tierLabel ?? spread.label;
 
         return (

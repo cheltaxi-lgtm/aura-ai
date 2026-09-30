@@ -55,7 +55,7 @@ async function fixture(page: Page) {
       } });
     }
     if (path === "/api/platform/features") return route.fulfill({ json: { recaptcha: { configured: false, masterEnabled: false, scopes: {} } } });
-    if (path === "/api/runes/config") return route.fulfill({ json: { enabled: true, starterRunes: 100, rubPerRune: 5, costs: { VISION_ANALYSIS: 30 } } });
+    if (path === "/api/runes/config") return route.fulfill({ json: { enabled: true, starterRunes: 25, rubPerRune: 5, costs: { VISION_ANALYSIS: 15 } } });
     if (path === "/api/runes/balance") return route.fulfill({ json: { balance: 300 } });
     if (path === "/api/photo-reading/recognize" && route.request().method() === "POST") return route.fulfill({ json: {
       guest: !loggedIn,
@@ -75,7 +75,7 @@ async function fixture(page: Page) {
         }],
       },
     } });
-    if (path === "/api/photo-reading/pricing") return route.fulfill({ json: { baseCost: 30, effectiveCost: 15, firstPhotoDiscount: true } });
+    if (path === "/api/photo-reading/pricing") return route.fulfill({ json: { baseCost: 15, effectiveCost: 15, firstPhotoDiscount: false } });
     if (path === "/api/age-gate/confirm") return route.fulfill({ json: { confirmed: true } });
     if (path === "/api/masters") return route.fulfill({ json: { masters: [{ id: "veronika", name: "Вероника", kind: "ai", title: "Таро" }] } });
     if (path === "/api/auth/oauth/providers") return route.fulfill({ json: { providers: [] } });
@@ -96,11 +96,11 @@ test("returning customer sees their current photo price on the landing", async (
   const f = await fixture(page);
   f.login();
   await page.route("**/api/photo-reading/pricing", route => route.fulfill({ json: {
-    baseCost: 30, effectiveCost: 30, firstPhotoDiscount: false,
+    baseCost: 15, effectiveCost: 15, firstPhotoDiscount: false,
   } }));
   await page.goto("/photo-rasklad");
   const offer = page.getByTestId("photo-reading-offer");
-  await expect(offer).toContainText("Ваш полный разбор — 30 ᚢ");
+  await expect(offer).toContainText("Ваш полный разбор — 15 ᚢ");
   await expect(offer).not.toContainText("Первый полный разбор");
 });
 

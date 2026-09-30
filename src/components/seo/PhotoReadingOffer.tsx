@@ -38,11 +38,9 @@ export default function PhotoReadingOffer() {
     <div className="space-y-2 text-sm" data-testid="photo-reading-offer">
       {starterCovers && <p className="font-medium text-aura-champagne">Стартовых рун хватит на первый разбор без пополнения.</p>}
       {actualPrice ? <p className="text-white/65">
-        Ваш полный разбор — {actualPrice.effectiveCost} ᚢ ({Math.round(actualPrice.effectiveCost * config.rubPerRune)} ₽)
-        {actualPrice.firstPhotoDiscount ? " со скидкой 50%." : "."}
+        Ваш полный разбор — {actualPrice.effectiveCost} ᚢ ({Math.round(actualPrice.effectiveCost * config.rubPerRune)} ₽).
       </p> : <p className="text-white/65">
-        Первый полный разбор — {firstCost} ᚢ ({Math.round(firstCost * config.rubPerRune)} ₽) со скидкой 50%.
-        {" "}Следующие — {cost} ᚢ ({Math.round(cost * config.rubPerRune)} ₽).
+        Полный разбор — {firstCost} ᚢ ({Math.round(firstCost * config.rubPerRune)} ₽).
       </p>}
       <p className="text-xs text-white/50">{actualPrice
         ? "Распознавание и проверка карт бесплатны. Списание только после подтверждения."

@@ -2,12 +2,12 @@ import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 
 /** Single source of truth for fixed session prices (runes). */
 export const PRICING = {
-  /** Полная расшифровка матрицы судьбы у Эвелины (~500 ₽). */
+  /** Полная расшифровка матрицы судьбы у Эвелины (≈300 ₽). */
   NUMEROLOGY_SESSION: DEFAULT_RUNE_COSTS.NUMEROLOGY_SESSION,
   MATRIX_SUBJECT_REPORT: DEFAULT_RUNE_COSTS.MATRIX_SUBJECT_REPORT,
-  CHILD_MATRIX_REPORT: 25,
-  MATRIX_PAIR_REPORT: 30,
-  MATRIX_YEAR_FORECAST: 20,
+  CHILD_MATRIX_REPORT: DEFAULT_RUNE_COSTS.CHILD_MATRIX_REPORT,
+  MATRIX_PAIR_REPORT: DEFAULT_RUNE_COSTS.MATRIX_PAIR_REPORT,
+  MATRIX_YEAR_FORECAST: DEFAULT_RUNE_COSTS.MATRIX_YEAR_FORECAST,
   MATRIX_SUBJECT_LIMIT: 10,
   /**
    * Вопросы в чате, включённые в разовую покупку Full Matrix.

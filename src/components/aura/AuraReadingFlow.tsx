@@ -20,6 +20,7 @@ import PremiumReadingBody from "@/components/PremiumReadingBody";
 import { useAuth } from "@/lib/useAuth";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { auraSubjectNameKey } from "@/lib/aura-subject-name";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { compressImageForUpload } from "@/lib/compress-image-client";
@@ -149,8 +150,8 @@ export default function AuraReadingFlow() {
     return search.get("reading")?.trim() ?? "";
   }, []);
 
-  const auraCost = pricing?.effectiveCost ?? config.costs.AURA_READING ?? 50;
-  const auraBaseCost = pricing?.baseCost ?? config.costs.AURA_READING ?? 50;
+  const auraCost = pricing?.effectiveCost ?? config.costs.AURA_READING ?? DEFAULT_RUNE_COSTS.AURA_READING;
+  const auraBaseCost = pricing?.baseCost ?? config.costs.AURA_READING ?? DEFAULT_RUNE_COSTS.AURA_READING;
 
   // Rotate processing phrases.
   useEffect(() => {
@@ -1362,7 +1363,7 @@ export default function AuraReadingFlow() {
                   <>
                     {pricing?.firstAuraDiscount && (
                       <p className="text-sm text-aura-gold/90">
-                        Первый разбор со скидкой 50% — {formatRunes(auraCost)} вместо{" "}
+                        Первый разбор — {formatRunes(auraCost)} вместо{" "}
                         {formatRunes(auraBaseCost)}
                       </p>
                     )}

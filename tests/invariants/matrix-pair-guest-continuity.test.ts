@@ -267,7 +267,7 @@ describe.skipIf(!hasTestDb)("matrix-pair-guest-continuity (db)", () => {
   });
 
   it("contracts: paid MATRIX_PAIR_REPORT untouched; middleware guest-only; no birth in CTA URL", () => {
-    expect(PRICING.MATRIX_PAIR_REPORT).toBe(30);
+    expect(PRICING.MATRIX_PAIR_REPORT).toBe(20);
 
     const claimRoute = readFileSync(
       path.join(ROOT, "src/app/api/numerology/matrix-pair-claim/route.ts"),

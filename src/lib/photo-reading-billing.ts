@@ -3,7 +3,7 @@ import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { countUserPhotoReadings } from "@/lib/photo-reading-idempotency";
 import { FIRST_PHOTO_DISCOUNT_RATIO } from "@/lib/photo-reading-constants";
 
-/** 50% off the first completed photo reading for a user. */
+/** All completed photo readings have the same rune price. */
 export { FIRST_PHOTO_DISCOUNT_RATIO } from "@/lib/photo-reading-constants";
 
 export type PhotoReadingPricing = {
@@ -17,7 +17,7 @@ export async function resolvePhotoReadingPricing(userId: string): Promise<PhotoR
   const settings = await getRuneSettings();
   const baseCost = runeCostFromSettings(settings, "VISION_ANALYSIS");
   const photoReadingsCount = await countUserPhotoReadings(userId);
-  const firstPhotoDiscount = photoReadingsCount === 0;
+  const firstPhotoDiscount = photoReadingsCount === 0 && FIRST_PHOTO_DISCOUNT_RATIO < 1;
   const effectiveCost = firstPhotoDiscount
     ? Math.max(1, Math.round(baseCost * FIRST_PHOTO_DISCOUNT_RATIO))
     : baseCost;
@@ -37,7 +37,7 @@ export function photoReadingPricingFromSettings(
   const baseCost = settings?.costs
     ? runeCostFromSettings(settings, "VISION_ANALYSIS")
     : DEFAULT_RUNE_COSTS.VISION_ANALYSIS;
-  const firstPhotoDiscount = photoReadingsCount === 0;
+  const firstPhotoDiscount = photoReadingsCount === 0 && FIRST_PHOTO_DISCOUNT_RATIO < 1;
   return {
     baseCost,
     effectiveCost: firstPhotoDiscount

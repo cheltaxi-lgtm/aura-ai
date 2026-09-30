@@ -524,7 +524,7 @@ INSERT INTO platform_settings (key, value) VALUES
   ('prompts', '{"globalPrefix":"РўС‹ вЂ” РјР°СЃС‚РµСЂ СЌР·РѕС‚РµСЂРёС‡РµСЃРєРѕР№ РїР»Р°С‚С„РѕСЂРјС‹ Zovus. РћС‚РІРµС‡Р°Р№ РЅР° СЂСѓСЃСЃРєРѕРј."}'),
   ('tts', '{"enabled":false,"model":"google/gemini-3.1-flash-tts-preview","fallbackModel":"hexgrad/kokoro-82m","fallbackEnabled":true,"chunkChars":4000}'),
   ('visual', '{"enabled":true,"model":"bytedance-seed/seedream-4.5","fallbackModel":"google/gemini-3.1-flash-image-preview","fallbackEnabled":true,"defaultQuality":"standard","stylePrefix":"Zovus mystical esoteric platform, cinematic lighting, rich colors, highly detailed digital art, no watermark, no UI elements","scenes":{"zodiac_avatar":true,"tarot_atmosphere":false,"destiny_card":false,"scene_illustration":false,"final_report":false}}'),
-  ('runes', '{"enabled":true,"rubPerRune":5,"starterRunes":30,"freeQuestions":2,"costs":{"QUESTION":10,"VISION_ANALYSIS":30,"READING":15,"INTENTION_SPREAD":20,"DESTINY_CARD":20,"JOINT_READING":25,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":300,"FORECAST_REPORT":20,"SYNASTRY_REPORT":30,"NUMEROLOGY_SESSION":100,"MATRIX_SUBJECT_REPORT":100,"HD_REPORT":300,"HD_COMPOSITE_REPORT":300}}')
+  ('runes', '{"enabled":true,"rubPerRune":5,"starterRunes":25,"freeQuestions":2,"costs":{"QUESTION":3,"VISION_ANALYSIS":15,"READING":10,"INTENTION_SPREAD":16,"DESTINY_CARD":20,"JOINT_READING":20,"DAILY_AMULET":5,"DAILY_EXTENDED":10,"FINAL_REPORT":30,"NATAL_READING":100,"FORECAST_REPORT":15,"SYNASTRY_REPORT":20,"NUMEROLOGY_SESSION":60,"MATRIX_SUBJECT_REPORT":60,"CHILD_MATRIX_REPORT":20,"MATRIX_PAIR_REPORT":20,"MATRIX_YEAR_FORECAST":15,"HD_REPORT":100,"HD_COMPOSITE_REPORT":120,"AURA_READING":40,"PALM_READING":40}}')
 ON CONFLICT (key) DO NOTHING;
 
 -- === Runes (internal currency) ===
@@ -599,10 +599,12 @@ CREATE TABLE IF NOT EXISTS rune_packages (
 
 INSERT INTO rune_packages (id, name, runes, price_rub, bonus_runes, is_popular, sort_order)
 VALUES
-  ('starter',  'РСЃРєР°С‚РµР»СЊ',    50,   99,    0,   false, 1),
-  ('adept',    'РџРѕСЃРІСЏС‰С‘РЅРЅС‹Р№', 150,  249,   15,  true,  2),
-  ('keeper',   'РҐСЂР°РЅРёС‚РµР»СЊ',   500,  699,   75,  false, 3),
-  ('chosen',   'РР·Р±СЂР°РЅРЅС‹Р№',   1500, 1690,  300, false, 4)
+  ('starter',  'Искатель',       55,  250,    0, false, 1),
+  ('seeker-500', 'Практик',     100,  500,   10, false, 2),
+  ('adept',    'Посвящённый',   150,  750,   18, true,  3),
+  ('guide-1000', 'Проводник',   200, 1000,   25, false, 4),
+  ('keeper',   'Хранитель',     500, 2500,  100, false, 5),
+  ('chosen',   'Избранный',    1500, 7500,  300, false, 6)
 ON CONFLICT (id) DO NOTHING;
 
 -- Rate limiting (shared across app instances)

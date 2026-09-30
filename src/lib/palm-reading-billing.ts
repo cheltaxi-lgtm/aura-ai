@@ -5,8 +5,8 @@ import { PALM_DAY_TIMEZONE } from "@/lib/services/palm-guest-service";
 
 const PALM_TODAY_SQL = `(created_at AT TIME ZONE '${PALM_DAY_TIMEZONE}')::date = (NOW() AT TIME ZONE '${PALM_DAY_TIMEZONE}')::date`;
 
-/** 50% off the first completed palm reading for a user. */
-export const FIRST_PALM_DISCOUNT_RATIO = 0.5;
+/** First completed palm reading costs 25 of the 40-rune repeat price. */
+export const FIRST_PALM_DISCOUNT_RATIO = 0.625;
 
 export type PalmReadingPricing = {
   baseCost: number;

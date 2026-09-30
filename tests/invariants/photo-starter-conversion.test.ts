@@ -15,8 +15,8 @@ function readSrc(rel: string): string {
 }
 
 describe("photo-rasklad conversion pass — starter package authority", () => {
-  it("photo reading price stays 30 ᚢ in code defaults", () => {
-    expect(DEFAULT_RUNE_COSTS.VISION_ANALYSIS).toBe(30);
+  it("photo reading price is 15 ᚢ in code defaults", () => {
+    expect(DEFAULT_RUNE_COSTS.VISION_ANALYSIS).toBe(15);
   });
 
   it("starter grant is server-side, row-locked and duplicate-protected", () => {

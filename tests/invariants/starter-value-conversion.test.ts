@@ -10,14 +10,14 @@ function readSrc(rel: string): string {
 }
 
 describe("starter 300ᚢ conversion pass — shared layer", () => {
-  it("product prices stay unchanged in code defaults", () => {
-    expect(DEFAULT_RUNE_COSTS.VISION_ANALYSIS).toBe(30);
-    expect(DEFAULT_RUNE_COSTS.HD_REPORT).toBe(300);
-    expect(DEFAULT_RUNE_COSTS.HD_COMPOSITE_REPORT).toBe(300);
-    expect(DEFAULT_RUNE_COSTS.NATAL_READING).toBe(300);
-    expect(DEFAULT_RUNE_COSTS.NUMEROLOGY_SESSION).toBe(100);
-    expect(DEFAULT_RUNE_COSTS.MATRIX_PAIR_REPORT).toBe(30);
-    expect(DEFAULT_RUNE_COSTS.READING).toBe(15);
+  it("product prices match the published tariff defaults", () => {
+    expect(DEFAULT_RUNE_COSTS.VISION_ANALYSIS).toBe(15);
+    expect(DEFAULT_RUNE_COSTS.HD_REPORT).toBe(100);
+    expect(DEFAULT_RUNE_COSTS.HD_COMPOSITE_REPORT).toBe(120);
+    expect(DEFAULT_RUNE_COSTS.NATAL_READING).toBe(100);
+    expect(DEFAULT_RUNE_COSTS.NUMEROLOGY_SESSION).toBe(60);
+    expect(DEFAULT_RUNE_COSTS.MATRIX_PAIR_REPORT).toBe(20);
+    expect(DEFAULT_RUNE_COSTS.READING).toBe(10);
   });
 
   it("StarterRunesValue is display-only and never grants entitlement", () => {

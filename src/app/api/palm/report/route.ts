@@ -231,7 +231,7 @@ async function handlePost(request: NextRequest) {
           cost: pricing.effectiveCost,
           actionType: "PALM_READING",
           description: pricing.firstPalmDiscount
-            ? "Гадание по ладони (первая скидка 50%)"
+            ? "Гадание по ладони (первый разбор)"
             : undefined,
           idempotencyKey,
         });
@@ -278,7 +278,7 @@ async function handlePost(request: NextRequest) {
               cost: pricing.effectiveCost,
               actionType: "PALM_READING",
               description: pricing.firstPalmDiscount
-                ? "Гадание по ладони (первая скидка 50%)"
+                ? "Гадание по ладони (первый разбор)"
                 : undefined,
               idempotencyKey: `${palmSpendKeyForSnapshot(snapshotId)}:${randomUUID()}`,
             });

@@ -2,7 +2,7 @@
 export const MAX_PHOTO_CARDS = 12;
 export const MAX_PHOTO_CARD_NAME_LENGTH = 80;
 export const MAX_PHOTO_POSITION_LENGTH = 120;
-export const FIRST_PHOTO_DISCOUNT_RATIO = 0.5;
+export const FIRST_PHOTO_DISCOUNT_RATIO = 1;
 
 export type PhotoRecognitionConfidence = "high" | "medium" | "low" | "unknown";
 

@@ -7,7 +7,10 @@ import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import { buildForecastStructuredData } from "@/lib/seo/structured-data";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { BRAND_NAME } from "@/lib/brand";
-import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
+import { getRuneSettings } from "@/lib/rune-settings";
+import { FIRST_AURA_DISCOUNT_RATIO } from "@/lib/aura-reading-billing";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Что входит в бесплатный снимок ауры | ${BRAND_NAME}`,
@@ -25,7 +28,7 @@ const breadcrumbs = [
 const faq = [
   {
     q: "Что бесплатно в чтении ауры?",
-    a: "Один бесплатный снимок в сутки для каждого человека и краткий результат с основным цветом поля. Полный разбор семи слоёв и чакр — по тарифу, первый разбор аккаунта со скидкой 50%.",
+    a: "Один бесплатный снимок в сутки для каждого человека и краткий результат с основным цветом поля. Полный ИИ-разбор семи слоёв и чакр оплачивается отдельно; точную цену показываем до подтверждения.",
   },
   {
     q: "Это измерение приборами?",
@@ -37,8 +40,10 @@ const faq = [
   },
 ];
 
-export default function AuraBesplatnoPage() {
-  const cost = DEFAULT_RUNE_COSTS.AURA_READING;
+export default async function AuraBesplatnoPage() {
+  const settings = await getRuneSettings();
+  const cost = settings.costs.AURA_READING;
+  const firstCost = Math.max(1, Math.round(cost * FIRST_AURA_DISCOUNT_RATIO));
   const structuredData = buildForecastStructuredData({
     title: "Что входит в бесплатный снимок ауры",
     description: "Бесплатный краткий результат ауры по фото и его отличие от полного разбора.",
@@ -71,7 +76,7 @@ export default function AuraBesplatnoPage() {
       <SeoSection title="Что платно">
         <p>
           Полный разбор — {cost} ᚢ: семь слоёв по Бреннан, чакры и практика на ближайшие дни.
-          Первый разбор аккаунта со скидкой 50%. Повтор сегодня откроет тот же текст и не спишет
+          Первый разбор аккаунта — {firstCost} ᚢ, следующие — {cost} ᚢ. Повтор сегодня откроет тот же текст и не спишет
           руны снова.
         </p>
       </SeoSection>
