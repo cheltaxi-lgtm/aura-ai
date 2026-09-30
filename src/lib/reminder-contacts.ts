@@ -1,11 +1,13 @@
 import { query } from "@/lib/db";
 import { pickDeliverableEmail } from "@/lib/email/mail-config";
 
-/** Account mailbox, else Yandex / VK / other OAuth provider_email. */
+/** Verified contact/account mailbox, else a provider-confirmed OAuth address. */
 export const ACCOUNT_DELIVERABLE_EMAIL_SQL = `
 COALESCE(
+  CASE WHEN ua.contact_email_verified_at IS NOT NULL THEN ua.contact_email END,
   CASE
     WHEN ua.email IS NOT NULL
+     AND (ua.email_verified_at IS NOT NULL OR ua.bonus_email_verification_required=FALSE)
      AND ua.email NOT ILIKE '%@oauth.zovus.local'
      AND ua.email NOT ILIKE '%@telegram.zovus.local'
     THEN ua.email
@@ -15,6 +17,7 @@ COALESCE(
     FROM user_oauth_identities oi
     WHERE oi.user_account_id = ua.id
       AND oi.provider_email IS NOT NULL
+      AND oi.provider_email_verified = TRUE
       AND oi.provider_email NOT ILIKE '%@oauth.zovus.local'
       AND oi.provider_email NOT ILIKE '%@telegram.zovus.local'
       AND position('@' in oi.provider_email) > 1

@@ -533,7 +533,7 @@ export default function NatalCompatibility() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 ym-hide-content ym-disable-keys">
       {acceptedReport ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
           <ReportAcceptedScreen
@@ -623,12 +623,12 @@ export default function NatalCompatibility() {
                   placeholder="Например, Алексей" />
               </Field>
               <Field label="Дата рождения">
-                <input type="date" className="ui-input w-full" value={manual.birthDate}
+                <input type="date" className="ui-input w-full ym-hide-content ym-disable-keys" value={manual.birthDate}
                   max={new Date().toISOString().slice(0, 10)}
                   onChange={(event) => setManual((value) => ({ ...value, birthDate: event.target.value }))} />
               </Field>
               <Field label="Время рождения">
-                <input type="time" className="ui-input w-full" value={manual.birthTime}
+                <input type="time" className="ui-input w-full ym-hide-content ym-disable-keys" value={manual.birthTime}
                   disabled={!manual.timeKnown}
                   onChange={(event) => setManual((value) => ({ ...value, birthTime: event.target.value }))} />
                 <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/45">

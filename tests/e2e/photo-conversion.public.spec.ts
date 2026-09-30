@@ -19,9 +19,11 @@ for (const width of [360, 390, 430]) {
     await page.goto("/?photo=1");
     const dialog = page.getByRole("dialog", { name: /фото-расклад/ });
     await dialog.locator('input[type="file"]').last().setInputFiles("public/decks/tarot-veronika/the-fool.webp");
-    await dialog.getByRole("button", { name: /Начать фото-расклад/ }).click();
-    await dialog.getByRole("button", { name: "Подтвердить", exact: true }).click();
-    const reading = page.getByRole("log", { name: "Расклад и сообщения чата" });
+    await dialog.getByRole("button", { name: /Распознать карты бесплатно/ }).click();
+    await dialog.getByRole("button", { name: /Получить полный разбор/ }).click();
+    const reading = dialog;
+    await expect(reading.getByText("Суть вопроса", { exact: true })).toBeVisible();
+    await expect(reading.getByText("Прошлое", { exact: true })).toHaveCount(0);
     await expect(reading.getByRole("heading", { name: "Ваши ресурсы", exact: true })).toBeVisible();
     await expect(reading.getByRole("heading", { name: "Солнце в Овне", exact: true })).toBeVisible();
     await expect(reading.locator("p").filter({ hasText: "8 Пентаклей" })).toHaveCount(2);
@@ -90,6 +92,18 @@ async function realisticPhonePhoto() {
     .toBuffer();
 }
 
+test("returning customer sees their current photo price on the landing", async ({ page }) => {
+  const f = await fixture(page);
+  f.login();
+  await page.route("**/api/photo-reading/pricing", route => route.fulfill({ json: {
+    baseCost: 30, effectiveCost: 30, firstPhotoDiscount: false,
+  } }));
+  await page.goto("/photo-rasklad");
+  const offer = page.getByTestId("photo-reading-offer");
+  await expect(offer).toContainText("Ваш полный разбор — 30 ᚢ");
+  await expect(offer).not.toContainText("Первый полный разбор");
+});
+
 test("the guest sees recognized cards before registration and resumes them without an automatic charge", async ({ page }, info) => {
   const f = await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
@@ -108,6 +122,8 @@ test("the guest sees recognized cards before registration and resumes them witho
   await expect(dialog.getByLabel("Результат распознавания: проверьте расклад")).toBeFocused();
   await expect(dialog.getByAltText("Распознанная карта: Шут")).toBeInViewport();
   await expect(dialog.getByRole("button", { name: "Создать аккаунт и продолжить" })).toBeInViewport();
+  await dialog.getByRole("textbox", { name: "Позиция карты 1" }).fill("Главный риск");
+  await expect(dialog.getByText("Главный риск", { exact: true })).toBeVisible();
   await page.screenshot({ path: info.outputPath("photo-guest-teaser-mobile.png") });
   await expect(page).not.toHaveURL(/auth\/user\/(login|register)/);
   expect(f.calls.filter((c) => c === "POST /api/photo-reading/recognize")).toHaveLength(1);
@@ -120,6 +136,7 @@ test("the guest sees recognized cards before registration and resumes them witho
   expect(saved.question).toBe("Как подготовиться к разговору?");
   expect(saved.image.base64.length).toBeGreaterThan(100);
   expect(saved.recognized.detectedCards).toEqual(["Шут"]);
+  expect(saved.recognized.positions).toEqual(["Главный риск"]);
   f.login();
   try {
     await page.goto("/?photo=1", { waitUntil: "domcontentloaded" });
@@ -127,11 +144,32 @@ test("the guest sees recognized cards before registration and resumes them witho
     if (!(error instanceof Error) || !error.message.includes("ERR_ABORTED")) throw error;
   }
   await expect(dialog.getByText("Карты уже распознаны — проверьте расклад и откройте полную расшифровку.")).toBeVisible({ timeout: 30_000 });
-  await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeVisible();
+  await expect(dialog.getByRole("textbox", { name: "Позиция карты 1" })).toHaveValue("Главный риск");
+  await expect(dialog.getByRole("button", { name: /Получить полный разбор/ })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).not.toBeNull();
   expect(f.calls.filter((c) => c === "POST /api/photo-reading/recognize")).toHaveLength(1);
   expect(f.calls.some((c) => /POST .*photo-reading\/(interpret|stream)/.test(c))).toBe(false);
   await page.screenshot({ path: info.outputPath("photo-restored-mobile.png") });
+});
+
+test("adding a second photo starts with an empty upload and can be cancelled", async ({ page }) => {
+  const f = await fixture(page);
+  await page.goto("/?photo=1");
+  const dialog = page.getByRole("dialog", { name: /фото-расклад/ });
+  await dialog.locator('input[type="file"]').last().setInputFiles("public/decks/tarot-veronika/the-fool.webp");
+  await dialog.getByRole("button", { name: "Распознать карты бесплатно" }).click();
+  await expect(dialog.getByRole("button", { name: "Создать аккаунт и продолжить" })).toBeVisible();
+  await dialog.getByRole("button", { name: /Добавить карты с другого фото/ }).click();
+  await expect(dialog.getByAltText("Ваш расклад")).toHaveCount(0);
+  await expect(dialog.getByRole("button", { name: "Распознать карты бесплатно" })).toBeDisabled();
+  await dialog.getByRole("button", { name: "Вернуться к подтверждённым картам" }).click();
+  await expect(dialog.getByRole("button", { name: "Создать аккаунт и продолжить" })).toBeVisible();
+  await expect(dialog.getByText("Суть вопроса", { exact: true })).toBeVisible();
+  await dialog.getByRole("button", { name: /Добавить карты с другого фото/ }).click();
+  await dialog.locator('input[type="file"]').last().setInputFiles("public/decks/tarot-veronika/the-fool.webp");
+  await dialog.getByRole("button", { name: "Распознать карты бесплатно" }).click();
+  await expect(dialog.locator(".photo-spread-preview__item")).toHaveCount(2);
+  expect(f.calls.filter((call) => call === "POST /api/photo-reading/recognize")).toHaveLength(2);
 });
 
 test("manual entry lets a guest choose cards before authentication and resumes after it", async ({ page }) => {
@@ -151,6 +189,47 @@ test("manual entry lets a guest choose cards before authentication and resumes a
   await expect(page.getByRole("dialog", { name: /фото-расклад/ })).toBeVisible();
   await expect(page.getByRole("button", { name: "Собрать расклад вручную" })).toHaveCount(0);
   await expect(page.getByRole("button", { name: /Назад/, exact: true })).toBeVisible();
+});
+
+test("a new saved photo result stays visible and opens the exact history record", async ({ page }, info) => {
+  const f = await fixture(page);
+  f.login();
+  await page.setViewportSize({ width: 390, height: 844 });
+  const historyId = "22222222-2222-4222-8222-222222222222";
+  await page.route("**/api/photo-reading/stream", route => route.fulfill({ json: {
+    analysis: "**Шут** — перед тобой новый путь.\n\n## Простыми словами\n\nСделай первый небольшой шаг.",
+    cached: false,
+    saved: true,
+    historyId,
+    detectedCards: ["Шут"],
+    runeBalance: 270,
+  } }));
+  await page.goto("/?photo=1");
+  const dialog = page.getByRole("dialog", { name: /фото-расклад/ });
+  await dialog.locator('input[type="file"]').last().setInputFiles("public/decks/tarot-veronika/the-fool.webp");
+  await dialog.getByRole("button", { name: /Распознать карты бесплатно/ }).click();
+  await dialog.getByRole("button", { name: /Получить полный разбор/ }).click();
+
+  await expect(dialog.getByText("Сделай первый небольшой шаг.")).toBeVisible();
+  const dailyAction = dialog.getByRole("link", { name: "Открыть расклад на сутки" });
+  await expect(dailyAction).toBeVisible();
+  await expect(dialog.getByText("Адрес для уведомлений")).toBeHidden();
+  const resultText = dialog.getByText("Сделай первый небольшой шаг.");
+  expect(await dailyAction.evaluate((link, text) =>
+    Boolean(link.compareDocumentPosition(text) & Node.DOCUMENT_POSITION_PRECEDING),
+    await resultText.elementHandle()
+  )).toBe(true);
+  await expect(dialog.getByText("Этот разбор был полезен?")).toBeVisible();
+  await expect(dialog.getByRole("link", { name: "Открыть", exact: true })).toHaveAttribute(
+    "href",
+    `/cabinet/readings/${historyId}/print`
+  );
+  await expect(dialog.getByRole("button", { name: "Перейти в чат", exact: true })).toBeVisible();
+  await dailyAction.scrollIntoViewIfNeeded();
+  await page.screenshot({ path: info.outputPath("photo-daily-return-mobile.png") });
+  await dialog.getByText("Настроить напоминания").click();
+  await expect(dialog.getByText("Адрес для уведомлений")).toBeVisible();
+  expect(f.calls.some((call) => call.includes("/api/photo-reading/sync-session"))).toBe(false);
 });
 
 test("a realistic phone photo survives the complete email registration route", async ({ page }) => {
@@ -176,7 +255,7 @@ test("a realistic phone photo survives the complete email registration route", a
   expect(savedBeforeRegister).not.toBeNull();
   expect(savedBeforeRegister!.length).toBeGreaterThan(100_000);
 
-  await page.getByRole("button", { name: "Продолжить по email" }).click();
+  await expect(page.getByLabel("Email *")).toBeVisible();
   await page.getByLabel(/Я согласен/).check();
   await page.getByLabel("Имя *").fill("Проверка");
   await page.getByLabel("Email *").fill("photo@example.test");
@@ -185,7 +264,7 @@ test("a realistic phone photo survives the complete email registration route", a
 
   await expect(dialog).toBeVisible({ timeout: 30_000 });
   await expect(dialog.getByText("Карты уже распознаны — проверьте расклад и откройте полную расшифровку.")).toBeVisible();
-  await expect(dialog.getByRole("button", { name: "Подтвердить" })).toBeVisible();
+  await expect(dialog.getByRole("button", { name: /Получить полный разбор/ })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).not.toBeNull();
 });
 
@@ -272,7 +351,7 @@ test("photo landing shows the live tariff and a consistent starter offer", async
   await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/photo-rasklad");
-  await expect(page.getByTestId("photo-reading-offer")).toContainText("30 ᚢ (150 ₽)");
+  await expect(page.getByTestId("photo-reading-offer")).toContainText("15 ᚢ (75 ₽)");
   await expect(page.getByTestId("photo-reading-offer")).toContainText("без пополнения");
   await expect(page.getByText(/платный цикл|демо-контур/)).toHaveCount(0);
   await expect(page.getByRole("link", { name: "Загрузить фото расклада", exact: true })).toBeInViewport();

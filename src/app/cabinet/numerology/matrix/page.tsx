@@ -19,7 +19,7 @@ export default async function MatrixArchive({ searchParams }: { searchParams: Pr
      WHERE n.user_id=$1 AND n.tool_id IN ('destiny_matrix','child_matrix','matrix_compatibility','matrix_year_forecast') AND length(trim(n.content))>0
      ORDER BY n.created_at DESC,n.id DESC LIMIT 21 OFFSET $2`, [auth.profileUserId, (page-1)*20]);
   const labels: Record<string,string> = { destiny_matrix:"Матрица судьбы",child_matrix:"Матрица ребёнка",matrix_compatibility:"Матрица совместимости",matrix_year_forecast:"Прогноз на год" };
-  return <main className="mx-auto max-w-5xl px-5 pt-24 pb-12 text-white">
+  return <main className="mx-auto max-w-5xl px-5 pt-24 pb-12 text-white ym-hide-content ym-disable-keys">
     <Link href="/cabinet" className="text-sm text-aura-gold">← Личный кабинет</Link>
     <p className="mt-8 text-xs uppercase tracking-[0.2em] text-aura-gold">Ваша личная библиотека</p>
     <h1 className="mt-3 font-display text-4xl">Матрицы и печатные отчёты</h1>
@@ -31,7 +31,7 @@ export default async function MatrixArchive({ searchParams }: { searchParams: Pr
         <h2 className="mt-3 font-display text-2xl">{labels[row.tool_id]}</h2>
         {row.subject_name ? <p className="mt-2 text-white/80">{row.subject_name}</p> : null}
         <p className="mt-2 text-sm text-white/60">{row.birth_date}{partner ? ` · ${partner}` : ""}{row.tool_id==="matrix_year_forecast" ? ` · ${row.calculation_version.split("@")[1] || row.created_at.toLocaleDateString("en-CA", {year:"numeric",timeZone:"Europe/Moscow"})}` : ""}</p>
-        <ReportExportActions path={`/cabinet/numerology/matrix/${row.id}/print`} />
+        <ReportExportActions noteLink path={`/cabinet/numerology/matrix/${row.id}/print`} />
       </article>;
     })}</div>
     {!rows.length ? <p className="mt-8 text-white/60">На этой странице пока нет сохранённых разборов. <Link className="text-aura-gold underline" href="/numerology/destiny-matrix">Рассчитать матрицу</Link></p> : null}

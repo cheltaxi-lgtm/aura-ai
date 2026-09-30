@@ -1,6 +1,6 @@
 ---
 name: audit-hd
-description: Full Human Design audit (engine, goldens, connection, reviews)
+description: Execute a requested full audit of Human Design engines, golden fixtures, connection charts and reports. Use for /audit-hd.
 ---
 
-Read and follow `.cursor/skills/audit-hd/SKILL.md`. Run the HD harness at level full, launch independent reviews, fix failures, retest. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-hd/SKILL.md`.

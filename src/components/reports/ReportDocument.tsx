@@ -6,7 +6,7 @@ export default function ReportDocument({ title, subtitle, meta = [], children, r
   title: string; subtitle?: string; meta?: Array<{ label: string; value: string }>; children: ReactNode;
   returnHref?: string; brand?: string; ready?: boolean;
 }) {
-  return <main className="report-document" data-print-report="static" data-pdf-ready={ready ? "true" : undefined}>
+  return <main className="report-document ym-hide-content ym-disable-keys" data-print-report="static" data-pdf-ready={ready ? "true" : undefined}>
     <div className="report-document__toolbar" data-pdf-toolbar>
       <Link href={returnHref ?? "/cabinet"}>← Вернуться к отчёту</Link><PrintButton />
     </div>

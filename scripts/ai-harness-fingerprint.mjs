@@ -6,6 +6,24 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const generated = /^(?:\.cursor\/harness-state\.json|docs\/yandex-audit\/|test-results\/|playwright-report\/|tmp\/)/;
+// Computation helpers and input normalization affect chart results even when
+// their filenames do not contain "engine" or "calculate".
+const calculationPaths = [
+  /(?:engine|golden|calculat|ephemeris)/i,
+  /^src\/lib\/numerology\/(?:destiny-matrix(?:-[^/]+)?|matrix-(?:reducers|compatibility|calendar|channels|arcana-map|period|year-forecast|natal-bridge|zones)|constants|compatibility|forecast|favorable-dates|profile|pythagoras-square|index)\./i,
+  /^src\/lib\/natal\/(?:aspects|chart-angle|composite|compute|houses|math|midpoints|patterns|sky|synastry|time|timing|transits|vedic|western|geocode|geonames|cities-fallback|celestine\/adapter|types|index)\./i,
+  /^src\/lib\/human-design\/(?:connection|constants|chart-extras|transits-week|fingerprint|types|index)\./i,
+];
+
+/** Documentation and generated artifacts do not select product checks or reviews. */
+export function requiresVerification(file) {
+  const name = String(file).replace(/\\/g, "/");
+  if (generated.test(name) || /^(?:\.pnpm-store|node_modules|output)\//.test(name)) return false;
+  if (/\.(?:md|mdc|rst)$/i.test(name)) return false;
+  if (/^docs\/.*\.txt$|(?:^|\/)(?:README|LICENSE|CHANGELOG|CONTRIBUTING)\.txt$/i.test(name)) return false;
+  if (/^(?:\.agents|\.cursor)\/skills\/[^/]+\/agents\/openai\.ya?ml$|^\.codex\/agents\/[^/]+\.toml$/i.test(name)) return false;
+  return Boolean(name);
+}
 
 /** Bind evidence to HEAD and every changed source/config/document, including untracked files. */
 export function workspaceFingerprint(root = ROOT) {
@@ -36,11 +54,11 @@ export function workspaceFingerprint(root = ROOT) {
 }
 
 export function requiredReviewIds(files = [], productionRequired = false) {
-  const ids = new Set(["code"]);
-  const names = files.map(file => String(file).replace(/\\/g, "/"));
+  const names = files.filter(requiresVerification).map(file => String(file).replace(/\\/g, "/"));
+  const ids = new Set(names.length ? ["code"] : []);
   if (names.some(f => /^(telegram-bot\/|src\/app\/api\/)|auth|billing|receipt|payment|storage|delete-account|user-deletion/i.test(f))) ids.add("security");
   if (names.some(f => /\.(tsx|css|scss)$|telegram-bot\/src\/(render|copy|keyboards)\//.test(f))) ids.add("visual");
-  if (names.some(f => /(?:engine|golden|calculat|calculator|ephemeris)/i.test(f))) ids.add("calc");
-  if (productionRequired || names.some(f => /^(hosting\/|scripts\/deploy)/.test(f))) ids.add("production");
+  if (names.some(file => calculationPaths.some(pattern => pattern.test(file)))) ids.add("calc");
+  if (productionRequired) ids.add("production");
   return [...ids];
 }

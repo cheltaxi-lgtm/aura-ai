@@ -114,7 +114,7 @@ export default function CabinetDangerZone({ onPurged }: Props) {
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
               exit={{ opacity: 0 }}
-              className="app-modal-overlay fixed inset-0 z-[4990] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm pointer-events-auto"
+              className="app-modal-overlay fixed inset-0 z-[6500] flex items-center justify-center bg-black/75 p-4 backdrop-blur-sm pointer-events-auto"
               onClick={closeModal}
             >
             <motion.div
@@ -193,7 +193,7 @@ export default function CabinetDangerZone({ onPurged }: Props) {
                     autoComplete="off"
                     spellCheck={false}
                     placeholder={CONFIRM_PHRASE}
-                    className="w-full rounded-xl border border-red-500/30 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-red-200/30 focus:border-red-400/60 focus:outline-none focus:ring-2 focus:ring-red-500/30"
+                    className="w-full rounded-xl border border-red-500/30 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-red-200/30 focus:border-red-400/60 focus:outline-none focus:ring-2 focus:ring-red-500/30 ym-hide-content ym-disable-keys"
                   />
                 </div>
 

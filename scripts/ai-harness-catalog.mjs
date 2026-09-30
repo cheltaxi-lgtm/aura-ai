@@ -48,7 +48,8 @@ export const CHECKS = {
 
   "hd-verify": { title: "human-design", npm: "verify:human-design" },
   "hd-connection": { title: "hd-connection", npm: "verify:hd-connection" },
-  "hd-unit": { title: "hd-unit", vitest: ["tests/invariants/hd-*.test.ts"] },
+  // Vitest treats a shell-style glob as a literal filter on Windows.
+  "hd-unit": { title: "hd-unit", vitest: ["tests/invariants/hd-"] },
 
   "tarot-spreads": { title: "spreads", npm: "test:spreads" },
   "tarot-share": { title: "share", npm: "test:share" },
@@ -86,7 +87,6 @@ export const CHECKS = {
       "tests/invariants/multiproduct-seo-discoverability.test.ts",
       "tests/invariants/spread-intent-match-question.test.ts",
       "tests/invariants/ads-seo-overrides.test.ts",
-      "tests/invariants/landing-social-proof.test.ts",
       "tests/invariants/landing-reviews.test.ts",
       "tests/invariants/guest-landing-conversion.test.ts",
       "tests/invariants/aura-seo-landings.test.ts",
@@ -260,13 +260,13 @@ export const SCOPES = {
       "https://zovus.ru/photo-rasklad",
     ],
     reviews: ["production", "security"],
-    fast: ["typecheck", "guards", "prod-health"],
-    full: [...CORE_FULL, "prod-health", "prod-smoke"],
+    fast: [...CORE_FAST],
+    full: [...CORE_FULL],
     production: ["prod-health", "prod-smoke"],
   },
   harness: {
     title: "AI harness",
-    paths: /ai-harness|\.cursor\/(rules|skills|commands|agents|hooks)/i,
+    paths: /ai-harness|\.(?:cursor|codex)\/(rules|skills|commands|agents|hooks)/i,
     smokeUrls: [],
     reviews: ["code"],
     fast: ["harness-validate"],

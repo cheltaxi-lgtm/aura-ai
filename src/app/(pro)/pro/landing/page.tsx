@@ -225,7 +225,7 @@ export default function ProLandingEditorPage() {
         </Field>
         <Field label="Подзаголовок">
           <textarea
-            className="pro-field"
+            className="pro-field ym-hide-content ym-disable-keys"
             rows={2}
             value={state.subheadline}
             onChange={(e) => setState((p) => ({ ...p, subheadline: e.target.value }))}
@@ -293,7 +293,7 @@ export default function ProLandingEditorPage() {
 
         <Field label="Кто я">
           <textarea
-            className="pro-field"
+            className="pro-field ym-hide-content ym-disable-keys"
             rows={8}
             value={state.sections.who}
             onChange={(e) => setSection("who", e.target.value)}
@@ -301,7 +301,7 @@ export default function ProLandingEditorPage() {
         </Field>
         <Field label="Что вы получите">
           <textarea
-            className="pro-field"
+            className="pro-field ym-hide-content ym-disable-keys"
             rows={8}
             value={state.sections.what_you_get}
             onChange={(e) => setSection("what_you_get", e.target.value)}
@@ -330,7 +330,7 @@ export default function ProLandingEditorPage() {
               }
             />
             <textarea
-              className="pro-field"
+              className="pro-field ym-hide-content ym-disable-keys"
               rows={3}
               value={state.sections.includes[key].body}
               onChange={(e) =>
@@ -351,7 +351,7 @@ export default function ProLandingEditorPage() {
 
         <Field label="Почему расчёт точный">
           <textarea
-            className="pro-field"
+            className="pro-field ym-hide-content ym-disable-keys"
             rows={5}
             value={state.sections.accuracy}
             onChange={(e) => setSection("accuracy", e.target.value)}
@@ -359,7 +359,7 @@ export default function ProLandingEditorPage() {
         </Field>
         <Field label="Как это работает">
           <textarea
-            className="pro-field"
+            className="pro-field ym-hide-content ym-disable-keys"
             rows={5}
             value={state.sections.how_it_works}
             onChange={(e) => setSection("how_it_works", e.target.value)}
@@ -367,7 +367,7 @@ export default function ProLandingEditorPage() {
         </Field>
         <Field label="Чего не будет">
           <textarea
-            className="pro-field"
+            className="pro-field ym-hide-content ym-disable-keys"
             rows={5}
             value={state.sections.wont_do}
             onChange={(e) => setSection("wont_do", e.target.value)}

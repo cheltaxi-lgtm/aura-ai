@@ -1,6 +1,6 @@
 ---
 name: audit-natal
-description: Full natal audit (chart, jobs, guest, E2E, reviews)
+description: Execute a requested full audit of natal charts, async jobs, guest continuity and reports. Use for /audit-natal.
 ---
 
-Read and follow `.cursor/skills/audit-natal/SKILL.md`. Run the natal harness at level full, launch independent reviews, fix failures, retest. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-natal/SKILL.md`.

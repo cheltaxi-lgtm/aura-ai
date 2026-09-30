@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { observeProductRequest } from "@/lib/activation-telemetry";
 import { ensureDb } from "@/lib/db";
 import { requireUserAuth } from "@/lib/require-auth";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
@@ -19,6 +20,7 @@ import {
   getOrCreateDailyReading,
 } from "@/lib/daily-energy";
 import { isDailyReadingUsedToday } from "@/lib/rate-limit-anchors";
+import { productCalendarDate, resolveDailyReadingRequestDate } from "@/lib/product-calendar";
 import { isCharacterKey } from "@/lib/prompts";
 import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
 import { DEFAULT_SPREAD_ID, isSpreadEnabled, normalizeSpreadId } from "@/lib/spreads";
@@ -42,7 +44,7 @@ const EMPTY = {
 
 function resolveLocalDate(raw: string | null | undefined): string {
   if (typeof raw === "string" && /^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
-  return new Date().toISOString().slice(0, 10);
+  return productCalendarDate();
 }
 
 export async function GET(request: NextRequest) {
@@ -52,7 +54,7 @@ export async function GET(request: NextRequest) {
   }
 
   if (!(await ensureDb())) {
-    return NextResponse.json(EMPTY);
+    return NextResponse.json({ error: "temporarily_unavailable", message: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
 
   await ensureSpreadCatalogSettingsLoaded();
@@ -90,29 +92,34 @@ export async function GET(request: NextRequest) {
   return NextResponse.json(EMPTY);
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   const workerUserId = getAsyncJobWorkerUserId(request);
   let accountId: string;
   let userId: string;
+  let authenticatedAccountId: string | null = null;
+
+  if (!workerUserId) {
+    const auth = await requireUserAuth();
+    if (!auth) {
+      return NextResponse.json({ error: "auth_required" }, { status: 401 });
+    }
+    authenticatedAccountId = auth.sub;
+  }
+
+  if (!(await ensureDb())) {
+    return NextResponse.json({ error: "temporarily_unavailable", message: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+  }
 
   if (workerUserId) {
     accountId = workerUserId;
     userId = workerUserId;
   } else {
-    const auth = await requireUserAuth();
-    if (!auth) {
-      return NextResponse.json({ error: "auth_required" }, { status: 401 });
-    }
-    accountId = auth.sub;
-    const profileId = await getProfileUserIdForAccount(auth.sub);
+    accountId = authenticatedAccountId!;
+    const profileId = await getProfileUserIdForAccount(accountId);
     if (!profileId) {
       return NextResponse.json(EMPTY);
     }
     userId = profileId;
-  }
-
-  if (!(await ensureDb())) {
-    return NextResponse.json(EMPTY);
   }
 
   await ensureSpreadCatalogSettingsLoaded();
@@ -122,7 +129,7 @@ export async function POST(request: NextRequest) {
   const asyncRequested = rawBody.async === true;
   const requested = typeof body.characterKey === "string" ? body.characterKey : "veronika";
   const charKey = isCharacterKey(requested) ? requested : "veronika";
-  const localDate = resolveLocalDate(typeof body.localDate === "string" ? body.localDate : null);
+  const localDate = resolveDailyReadingRequestDate(body.localDate, Boolean(workerUserId));
   const requestedSpreadId =
     typeof body.spreadId === "string" ? normalizeSpreadId(body.spreadId) : DEFAULT_SPREAD_ID;
   let spreadId: typeof requestedSpreadId =
@@ -152,6 +159,7 @@ export async function POST(request: NextRequest) {
       existingSpreadId === "daily-extended"
     ) {
       const payload = {
+        localDate,
         text: existing.text,
         cards: existing.cards,
         system: existing.system,
@@ -227,6 +235,7 @@ export async function POST(request: NextRequest) {
     });
 
     const payload = {
+      localDate,
       text: result.text,
       cards: result.cards,
       system: result.system,
@@ -280,4 +289,8 @@ export async function POST(request: NextRequest) {
     }
     throw err;
   }
+}
+
+export async function POST(request: NextRequest) {
+  return observeProductRequest(request, "daily", () => handlePost(request));
 }

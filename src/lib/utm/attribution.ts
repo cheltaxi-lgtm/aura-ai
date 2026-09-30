@@ -19,6 +19,23 @@ export type UtmAttribution = Partial<Record<(typeof UTM_KEYS)[number], string>> 
   capturedAt?: string;
 };
 
+// Store only known public entry sections. Dynamic/share URLs may contain bearer tokens.
+const PUBLIC_LANDING_SECTIONS = new Set([
+  "about", "astrology", "aura", "cards", "dizayn-cheloveka", "faq", "gadanie",
+  "gadanie-po-ladoni", "goroskop-na-segodnya", "lenormand", "matrix-destiny",
+  "master", "natal-ili-matrica", "natalnaya-karta", "numerology", "obryady",
+  "partners", "photo-rasklad", "prognoz", "rasklad", "rasklady", "runes", "runy", "sovmestimost-znakov-zodiaka",
+  "statyi", "tariffs", "taro", "voskhodyashchiy-znak", "zovus-pro",
+]);
+
+export function safeLandingPath(path: string | null | undefined): string | null {
+  if (path === "/") return "/";
+  if (!path) return null;
+  const match = /^\/([a-z0-9-]+)(?:\/|$)/i.exec(path);
+  const section = match?.[1]?.toLowerCase();
+  return section && PUBLIC_LANDING_SECTIONS.has(section) ? `/${section}` : null;
+}
+
 function isBrowser(): boolean {
   return typeof window !== "undefined";
 }
@@ -30,6 +47,9 @@ export function readUtmAttribution(): UtmAttribution | null {
     if (!raw) return null;
     const parsed = JSON.parse(raw) as UtmAttribution;
     if (!parsed || typeof parsed !== "object") return null;
+    const landingPath = safeLandingPath(parsed.landingPath);
+    if (landingPath) parsed.landingPath = landingPath;
+    else delete parsed.landingPath;
     return parsed;
   } catch {
     return null;
@@ -45,26 +65,27 @@ export function clearUtmAttribution(): void {
   }
 }
 
-/** Capture first-touch UTMs from the current URL. Does not overwrite an existing first touch. */
+/** Capture the first landing path and any campaign tags without overwriting first touch. */
 export function captureUtmFromLocation(search?: string, pathname?: string): UtmAttribution | null {
   if (!isBrowser()) return null;
 
   const existing = readUtmAttribution();
-  if (existing && Object.keys(existing).some((k) => k.startsWith("utm_") || k.endsWith("clid"))) {
-    return existing;
-  }
+  const hasCampaign = (value: UtmAttribution | null) =>
+    Boolean(value && Object.keys(value).some((key) => key.startsWith("utm_") || key.endsWith("clid")));
+  if (hasCampaign(existing) && existing?.landingPath) return existing;
 
   const params = new URLSearchParams(search ?? window.location.search);
-  const next: UtmAttribution = {};
+  const next: UtmAttribution = { ...(existing ?? {}) };
   for (const key of UTM_KEYS) {
     const value = params.get(key)?.trim();
-    if (value) next[key] = value.slice(0, 200);
+    if (value && !hasCampaign(existing)) next[key] = value.slice(0, 200);
   }
 
-  if (!Object.keys(next).length) return existing;
-
-  next.landingPath = (pathname ?? window.location.pathname).slice(0, 300);
-  next.capturedAt = new Date().toISOString();
+  if (existing?.landingPath && !hasCampaign(next)) return existing;
+  const landingPath = existing?.landingPath ?? safeLandingPath(pathname ?? window.location.pathname);
+  if (landingPath) next.landingPath = landingPath;
+  if (!hasCampaign(next) && !next.landingPath) return null;
+  next.capturedAt = existing?.capturedAt ?? new Date().toISOString();
 
   try {
     localStorage.setItem(UTM_ATTRIBUTION_KEY, JSON.stringify(next));

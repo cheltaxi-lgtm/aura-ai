@@ -18,4 +18,4 @@ FINDINGS:
 - ...
 ```
 
-If Playwright browsers are missing, PARTIAL with that reason.
+Reuse fresh relevant browser results and screenshots. If browser verification is required for the changed behavior and valid evidence cannot be obtained, report PARTIAL with that reason. Missing Playwright alone is not a blocker when another available browser provides the required verification.

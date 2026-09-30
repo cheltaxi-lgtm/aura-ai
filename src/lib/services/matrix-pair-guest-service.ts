@@ -287,7 +287,7 @@ export async function claimGuestMatrixPairPending(opts: {
            zodiac = $3,
            birth_time = NULL,
            birth_city = NULL,
-           astro_meta = $4::jsonb
+           astro_meta = COALESCE(astro_meta, '{}'::jsonb) || $4::jsonb
          WHERE id = $1`,
         [opts.profileUserId, dateA, zodiac, JSON.stringify(nextMeta)]
       );

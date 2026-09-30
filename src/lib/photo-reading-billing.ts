@@ -1,9 +1,10 @@
 import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { countUserPhotoReadings } from "@/lib/photo-reading-idempotency";
+import { FIRST_PHOTO_DISCOUNT_RATIO } from "@/lib/photo-reading-constants";
 
 /** 50% off the first completed photo reading for a user. */
-export const FIRST_PHOTO_DISCOUNT_RATIO = 0.5;
+export { FIRST_PHOTO_DISCOUNT_RATIO } from "@/lib/photo-reading-constants";
 
 export type PhotoReadingPricing = {
   baseCost: number;

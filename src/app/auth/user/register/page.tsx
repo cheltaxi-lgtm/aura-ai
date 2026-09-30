@@ -17,7 +17,7 @@ export default function UserRegisterPage() {
       <RegistrationHeader />
       {/* Main registration value: server-confirmed starter package (renders only
           when /api/runes/config loaded — never shows fallback numbers). */}
-      <div className="mb-3 min-h-[54px] text-center">
+      <div className="mb-2 min-h-[40px] text-center">
         <StarterRunesValue variant="badge" generic />
       </div>
       <AuthForm mode="register" role="user" />

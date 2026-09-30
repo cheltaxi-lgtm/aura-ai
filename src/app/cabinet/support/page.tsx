@@ -165,7 +165,7 @@ export default function SupportPage() {
     activeTicket?.status === "closed" || activeTicket?.status === "resolved";
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-8 pt-6 text-white">
+    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-8 pt-6 text-white ym-hide-content ym-disable-keys">
       <div className="mx-auto max-w-3xl px-4">
         <div className="mb-6 flex items-center gap-3">
           <Link
@@ -270,7 +270,7 @@ export default function SupportPage() {
                 onChange={(e) => setNewMessage(e.target.value)}
                 rows={5}
                 maxLength={4000}
-                className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white ym-hide-content ym-disable-keys"
                 placeholder="Опишите ситуацию подробнее…"
               />
             </div>

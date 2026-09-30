@@ -12,3 +12,15 @@ export function productCalendarDate(
     day: "2-digit",
   }).format(refDate);
 }
+
+/** Only the authenticated worker may finish a queued reading for its original date. */
+export function resolveDailyReadingRequestDate(
+  requestedDate: unknown,
+  trustedWorker: boolean,
+  now: Date = new Date()
+): string {
+  if (trustedWorker && typeof requestedDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(requestedDate)) {
+    return requestedDate;
+  }
+  return productCalendarDate(now);
+}

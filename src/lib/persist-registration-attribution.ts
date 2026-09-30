@@ -9,7 +9,7 @@ export async function persistRegistrationAttribution(): Promise<void> {
   const hasTouch = Object.keys(attribution).some(
     (k) => k.startsWith("utm_") || k.endsWith("clid")
   );
-  if (!hasTouch) return;
+  if (!hasTouch && !attribution.landingPath) return;
   try {
     await fetch("/api/profile/registration-attribution", {
       method: "POST",

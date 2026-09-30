@@ -3,12 +3,13 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   PRODUCT_FUNNEL_PRODUCTS,
   PRODUCT_FUNNEL_STAGES,
   sanitizeProductFunnelParams,
   inferProductFunnelFromPath,
+  trackProductFunnel,
   type ProductFunnelProduct,
   type ProductFunnelStage,
 } from "@/lib/seo/product-funnel";
@@ -20,6 +21,32 @@ function read(rel: string): string {
 }
 
 describe("product-funnel-analytics", () => {
+  it("keeps Aura's configured legacy start goal alongside the unified event", () => {
+    const ym = vi.fn();
+    vi.stubGlobal("window", { ym });
+    try {
+      trackProductFunnel("free_start", { product: "aura", source: "aura_flow" });
+      expect(ym.mock.calls.map((call) => call[2])).toEqual([
+        "free_start",
+        "aura_snapshot_start",
+      ]);
+      expect(ym.mock.calls[1][3]).toMatchObject({ product: "aura", source: "aura_flow" });
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("does not duplicate Palm's separately emitted legacy goals", () => {
+    const ym = vi.fn();
+    vi.stubGlobal("window", { ym });
+    try {
+      trackProductFunnel("free_start", { product: "palm", source: "palm_flow" });
+      expect(ym.mock.calls.map((call) => call[2])).toEqual(["free_start"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
   it("sanitize keeps only product/source/state and drops PII keys", () => {
     const clean = sanitizeProductFunnelParams({
       product: "tarot",

@@ -174,13 +174,14 @@ async function deliverEmail(row: DeliveryRow): Promise<void> {
   );
   const path = row.cta_path ?? "/cabinet";
   const ctaUrl = `${appUrl}${path.startsWith("/") ? path : `/${path}`}`;
-  await sendEmail({
+  const sent = await sendEmail({
     to: email,
     subject: `Zovus — ${row.title}`,
     html: reportReadyEmailHtml(name, row.title, ctaUrl),
     text: `${row.title}. ${BODY} ${ctaUrl}`,
     template: "report_ready",
   });
+  if (!sent) throw new Error("email_send_failed");
 }
 
 async function deliverTelegram(row: DeliveryRow): Promise<void> {

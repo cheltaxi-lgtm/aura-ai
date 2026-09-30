@@ -1,10 +1,10 @@
 /* ── Photo reading flow (modal + confirm) ── */
 .photo-flow-dialog {
-  background: linear-gradient(165deg, #100c1c 0%, #0c0916 45%, #080610 100%);
+  background: linear-gradient(165deg, #1a1816 0%, #141210 45%, #0a0908 100%);
   box-shadow:
     0 0 0 1px rgba(232, 199, 126, 0.1),
     0 28px 80px rgba(0, 0, 0, 0.75),
-    0 0 80px rgba(139, 90, 200, 0.06);
+    0 0 80px rgba(201, 162, 74, 0.06);
 }
 
 .photo-flow-dialog__header {
@@ -14,7 +14,7 @@
 
 .photo-flow-dialog__footer {
   border-top: 1px solid rgba(255, 255, 255, 0.06);
-  background: linear-gradient(0deg, rgba(8, 6, 16, 0.98) 0%, rgba(12, 9, 22, 0.92) 100%);
+  background: linear-gradient(0deg, rgba(10, 9, 8, 0.98) 0%, rgba(20, 18, 16, 0.92) 100%);
   backdrop-filter: blur(12px);
 }
 
@@ -423,7 +423,7 @@
   width: 100%;
   min-height: 9.5rem;
   aspect-ratio: 533 / 800;
-  background: #120c1c;
+  background: #141210;
 }
 
 .photo-spread-preview__card .lux-tarot-card__image-wrap > img.lux-tarot-card__image {
@@ -448,7 +448,7 @@
   aspect-ratio: 533 / 800;
   overflow: hidden;
   border-radius: var(--radius-lux);
-  background: #080612;
+  background: #0a0908;
   box-shadow:
     0 0 0 1px rgba(232, 199, 126, 0.35),
     inset 0 0 30px rgba(201, 162, 74, 0.06);
@@ -459,7 +459,7 @@
   height: 100%;
   object-fit: contain;
   display: block;
-  background: #080612;
+  background: #0a0908;
 }
 
 .photo-spread-preview__face--reversed img {
@@ -483,7 +483,7 @@
   justify-content: center;
   gap: 0.35rem;
   padding: 0.65rem;
-  background: linear-gradient(165deg, rgba(28, 22, 38, 0.95) 0%, rgba(12, 10, 18, 0.98) 100%);
+  background: linear-gradient(165deg, rgba(26, 24, 22, 0.95) 0%, rgba(10, 9, 8, 0.98) 100%);
   border: 1px solid rgba(232, 199, 126, 0.22);
   border-radius: 0.35rem;
   text-align: center;

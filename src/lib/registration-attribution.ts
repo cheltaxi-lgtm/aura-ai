@@ -1,4 +1,4 @@
-import type { UtmAttribution } from "@/lib/utm/attribution";
+import { safeLandingPath, type UtmAttribution } from "@/lib/utm/attribution";
 
 const ATTR_KEYS = [
   "utm_source",
@@ -26,13 +26,13 @@ export function sanitizeRegistrationAttribution(
     if (typeof value !== "string") continue;
     const trimmed = value.trim();
     if (!trimmed) continue;
-    const max = key === "landingPath" ? 300 : key === "capturedAt" ? 40 : 200;
-    (out as Record<string, string>)[key] = trimmed.slice(0, max);
+    const max = key === "capturedAt" ? 40 : 200;
+    const safeValue = key === "landingPath" ? safeLandingPath(trimmed) : trimmed.slice(0, max);
+    if (safeValue) (out as Record<string, string>)[key] = safeValue;
   }
-  const hasTouch = Object.keys(out).some(
-    (k) => k.startsWith("utm_") || k.endsWith("clid")
-  );
-  return hasTouch ? out : null;
+  return Object.keys(out).some((k) => k.startsWith("utm_") || k.endsWith("clid")) || out.landingPath
+    ? out
+    : null;
 }
 
 /** Parse attribution from OAuth start query (`attribution` JSON string). */

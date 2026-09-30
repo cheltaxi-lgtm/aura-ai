@@ -21,13 +21,14 @@ export function isYoomoneyConfigured(): boolean {
 
 export async function createYoomoneyPaymentUrl(params: {
   plan: PaymentPlan;
+  amountRub?: number;
   sessionId: string;
   returnUrl?: string;
 }): Promise<{ confirmationUrl: string; orderId: string; amount: number }> {
   const wallet = process.env.YOOMONEY_WALLET_NUMBER;
   if (!wallet) throw new Error("YOOMONEY_WALLET_NUMBER not configured");
 
-  const amountRub = await getYoomoneyPlanAmount(params.plan);
+  const amountRub = params.amountRub ?? await getYoomoneyPlanAmount(params.plan);
   const amountStr = amountRub.toFixed(2);
   const orderId = `aura_${params.sessionId.slice(0, 8)}_${params.plan}_${Date.now()}`;
   const label = `${params.sessionId}|${params.plan}|${orderId}`;
@@ -91,11 +92,12 @@ export function verifyYoomoneyNotification(data: YoomoneyNotification): boolean 
   }
 }
 
-export function parseYoomoneyLabel(label: string): { sessionId: string; plan: PaymentPlan } | null {
+export function parseYoomoneyLabel(label: string): { sessionId: string; plan: PaymentPlan; orderId?: string } | null {
   const parts = label.split("|");
   if (parts.length < 2) return null;
   const sessionId = parts[0];
   const plan = parts[1] as PaymentPlan;
   if (!sessionId || (plan !== "single" && plan !== "subscription")) return null;
-  return { sessionId, plan };
+  if(parts.length>3)return null;
+  return { sessionId, plan, ...(parts[2]?{orderId:parts[2]}:{}) };
 }

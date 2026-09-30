@@ -97,8 +97,11 @@ describe("starter 300ᚢ conversion pass — product placements", () => {
     const src = readSrc("src/app/dizayn-cheloveka/rasschitat/page.tsx");
     expect(src).toContain("Карта и основные параметры — бесплатно, без регистрации.");
     expect(src).not.toContain("бесплатно и без регистрации — разбор с Эвелиной после входа.");
-    // Price hint comes from code defaults, not a magic number.
-    expect(src).toContain("DEFAULT_RUNE_COSTS.HD_REPORT");
+    // The paid report uses live rune configuration; the landing must not show
+    // a possibly stale default price before that configuration is loaded.
+    expect(src).not.toContain("DEFAULT_RUNE_COSTS.HD_REPORT");
+    const report = readSrc("src/components/human-design/HdReportPanel.tsx");
+    expect(report).toContain('cost("HD_REPORT")');
     // SEO: URL and H1 intent unchanged.
     expect(src).toContain('path: "/dizayn-cheloveka/rasschitat"');
     expect(src).toContain("Рассчитать карту Дизайна Человека");
@@ -136,8 +139,9 @@ describe("starter gift on the public homepage", () => {
     expect(src).not.toMatch(/starterRunes\s*=\s*\d{2,}/);
     // No ruble conversion in the gift copy.
     expect(src).not.toContain("₽");
-    // Products costing more than the starter package get partial-coverage framing.
-    expect(src).toContain("вклад в стоимость");
+    // The "what it covers" list excludes products above the starter balance.
+    expect(src).toContain("if (count === 1)");
+    expect(src).toMatch(/if \(count === 1\)[\s\S]*return null;/);
   });
 
   it("gift section is display-only and hidden from authenticated users", () => {

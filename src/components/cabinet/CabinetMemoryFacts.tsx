@@ -776,7 +776,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                       placeholder="Например: ищу работу в IT, сыну 12 лет, развод в процессе"
                       rows={4}
                       autoFocus
-                      className="mt-1.5 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none"
+                      className="mt-1.5 w-full resize-none rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none ym-hide-content ym-disable-keys"
                     />
                   </label>
 
@@ -801,7 +801,7 @@ export default function CabinetMemoryFacts({ hideTitle = false }: { hideTitle?: 
                       type="date"
                       value={eventDate}
                       onChange={(e) => setEventDate(e.target.value)}
-                      className="mt-1 block w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                      className="mt-1 block w-full rounded-lg border border-white/10 bg-black/30 px-3 py-2 text-sm text-white ym-hide-content ym-disable-keys"
                     />
                     <span className="mt-1 block text-[10px] text-white/30">
                       Если включены напоминания, сервис заранее напомнит об этой дате.

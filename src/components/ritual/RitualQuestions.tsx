@@ -134,7 +134,7 @@ export default function RitualQuestions({
               msg.role === "master"
                 ? "mr-auto border border-amber-500/20 bg-amber-950/30 text-amber-50"
                 : "ml-auto bg-white/10 text-white"
-            }`}
+            } ym-hide-content ym-disable-keys`}
           >
             {msg.text}
             {typing && i === messages.length - 1 && msg.role === "master" ? (
@@ -155,7 +155,7 @@ export default function RitualQuestions({
               onKeyDown={(e) => e.key === "Enter" && void handleSubmit()}
               placeholder="Ваш ответ…"
               disabled={submitting}
-              className="flex-1 touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
+              className="flex-1 touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none ym-hide-content ym-disable-keys"
             />
             <button
               type="button"

@@ -487,7 +487,7 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
   }
 
   return (
-    <div id="calculate" className={`destiny-matrix-preview scroll-mt-24 ${embedded ? "" : "mt-10"}`}>
+    <div id="calculate" className={`destiny-matrix-preview scroll-mt-24 ${embedded ? "" : "mt-10"} ym-hide-content ym-disable-keys`}>
       <h2 className={embedded ? "sr-only" : "font-display text-xl font-semibold text-white"}>Рассчитать бесплатно</h2>
       {!embedded ? <p className="mt-2 text-sm text-white/55">
         Можно считать для себя, ребёнка, партнёра или любого человека — нужна только дата. Схема
@@ -642,7 +642,7 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
               setBirthDate(e.target.value);
               setFromProfile(false);
             }}
-            className="mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40"
+            className="mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40 ym-hide-content ym-disable-keys"
           />
         </label>
         <label className="block text-sm text-white/70">
@@ -658,7 +658,7 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
             }}
             maxLength={40}
             placeholder="Как к вам обращаться"
-            className="mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40"
+            className="mt-1.5 min-h-11 w-full rounded-xl border border-white/10 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/40 ym-hide-content ym-disable-keys"
           />
         </label>
         <button
@@ -674,7 +674,7 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
       {error ? <p className="mt-3 text-sm text-red-300">{error}</p> : null}
 
       {summary ? (
-        <div data-calculation-result className="mt-8 space-y-6">
+        <div data-calculation-result className="mt-8 space-y-6 ym-hide-content ym-disable-keys">
           <div className="rounded-xl border border-aura-gold/25 p-4">
             {matrixOwnership.reportId && !matrixOwnership.loading ? <ReportExportActions path={`/cabinet/numerology/matrix/${matrixOwnership.reportId}/print`} /> : <a className="text-sm text-aura-gold underline" href={`/numerology/destiny-matrix/print?${new URLSearchParams({ birthDate, asOfDate: summary.matrix.asOf.date, version: summary.matrix.calculationVersion })}`}>Печатная версия расчёта</a>}
           </div>

@@ -155,6 +155,7 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                 <div className="mb-4 rounded-2xl border border-aura-gold/15 bg-black/30 p-4">
                   <DeckCardsRow
                     cards={activeCards}
+                    positions={active.contextData.redrawSpread?.cards.map((card) => card.position || "Позиция")}
                     system={activeSystem}
                     masterId={active.characterName}
                     size="md"
@@ -164,7 +165,7 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                 </div>
               )}
 
-              <ReportExportActions path={`/cabinet/readings/${active.id}/print`} />
+              <ReportExportActions noteLink path={`/cabinet/readings/${active.id}/print`} />
               {active.contextData.question ? (
                 <p className="mb-3 text-sm text-gray-400">
                   Вопрос: {active.contextData.question}
@@ -193,7 +194,7 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                     placeholder="Как сложилось предсказание? Что заметили позже?"
                     rows={2}
                     maxLength={MAX_NOTE_LENGTH}
-                    className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/85 placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none"
+                    className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/85 placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none ym-hide-content ym-disable-keys"
                   />
                   <div className="mt-1.5 flex items-center justify-between">
                     <span className="text-[11px] text-white/30">

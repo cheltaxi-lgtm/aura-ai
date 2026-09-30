@@ -199,7 +199,7 @@ export default function HdChartView({
   const crossLabel = crossNameRu(chart);
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 ym-hide-content ym-disable-keys">
       {/* Compact identity — not six lookalike cards stacking the viewport */}
       <div className="hd-summary">
         <p className="hd-summary__title">

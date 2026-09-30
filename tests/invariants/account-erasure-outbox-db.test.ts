@@ -207,6 +207,22 @@ describe.skipIf(!hasTestDb)("durable account erasure (real PostgreSQL)", () => {
     expect(fetchMock).not.toHaveBeenCalled();
     expect((await query(`SELECT id FROM user_accounts WHERE id = $1`, [accountId])).rowCount).toBe(0);
   });
+
+  it("purges bot data for a Telegram shell account without a completed profile", async () => {
+    const shell = await createAccount(false, false);
+    await query(`UPDATE user_telegram_identities SET user_account_id = $1 WHERE user_account_id = $2`,
+      [shell.accountId, accountId]);
+    accountId = shell.accountId;
+    const accepted = await requestAccountErasure(accountId);
+    expect((await job()).telegram_user_ids.map(String)).toEqual([String(telegramId)]);
+    expect(await processDueAccountErasures(1)).toEqual({ completed: 1, failed: 0 });
+    expect(fetchMock.mock.calls.map(([, options]) => JSON.parse(options.body).action)).toEqual([
+      "begin_user_erasure", "complete_user_erasure",
+    ]);
+    expect(fetchMock.mock.calls.every(([, options]) => JSON.parse(options.body).operation_id === accepted.operationId)).toBe(true);
+    expect((await query(`SELECT id FROM user_accounts WHERE id = $1`, [accountId])).rowCount).toBe(0);
+    expect(await pendingTelegramErasure(telegramId)).toBeNull();
+  });
   it("atomically claims a matrix operation across access modes and retains its intent after session deletion", async () => {
     const operationId = randomUUID();
     const input = JSON.stringify({ subjectId: null, toolId: 'destiny_matrix', birthDate: '2000-01-02' });

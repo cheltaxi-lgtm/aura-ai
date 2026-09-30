@@ -24,16 +24,21 @@ export async function POST(
 
   let amount: number;
   let reason: string;
+  let operationId: string;
   try {
     const body = await request.json();
-    amount = Math.round(Number(body.amount));
+    amount = Number(body.amount);
     reason = String(body.reason ?? "").trim();
+    operationId = String(body.operationId ?? "");
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   const grantCap = getAdminRuneGrantCap();
-  if (!Number.isFinite(amount) || amount <= 0) {
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(operationId)) {
+    return NextResponse.json({ error: "operationId required" }, { status: 400 });
+  }
+  if (!Number.isSafeInteger(amount) || amount <= 0) {
     return NextResponse.json({ error: "amount must be positive" }, { status: 400 });
   }
   if (amount > grantCap) {
@@ -52,9 +57,12 @@ export async function POST(
   }
 
   try {
-    const newBalance = await adminGrantRunes(userId, amount, reason, auth.sub);
+    const newBalance = await adminGrantRunes(userId, amount, reason, auth.sub, operationId);
     return NextResponse.json({ ok: true, newBalance, granted: amount });
   } catch (err) {
+    if (err instanceof Error && err.message === "grant_operation_conflict") {
+      return NextResponse.json({ error: "Параметры повторной операции отличаются." }, { status: 409 });
+    }
     console.error("adminGrantRunes error:", err);
     return NextResponse.json({ error: "Grant failed" }, { status: 500 });
   }

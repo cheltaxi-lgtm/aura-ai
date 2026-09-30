@@ -1,14 +1,13 @@
 ---
-description: Change discipline — callers, no silent deletes, server-provided decks, preflight
+description: Change discipline — relevant callers, safe removals, product invariants and scoped checks
 alwaysApply: true
 ---
 
 # Zovus change discipline
 
-## Before editing a function
+## Before changing behavior or contracts
 
-1. Grep every call site by name.
-2. List callers in the response before changing behavior.
+Inspect relevant callers, including dynamic use where applicable. Describe caller impact in the response when it matters to the user or reviewer; a caller inventory is not required for every function edit.
 
 ## Do not delete “unused” code
 
@@ -32,4 +31,4 @@ Ship behind an ENV kill-switch, **default off**.
 
 ## Verify
 
-After any change: run `npm run preflight` and fix failures before deploy.
+Run existing checks appropriate to the changed behavior. Reuse fresh passing evidence and avoid repeating checks already covered by the selected harness level. Run required preflight/release checks before an authorized deploy and fix relevant failures; read-only or documentation-only work does not require product tests.

@@ -65,7 +65,7 @@ export default function NumerologyPublicCalc({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 ym-hide-content ym-disable-keys">
       <form onSubmit={onSubmit} className="space-y-3">
         {needsDate ? (
           <>
@@ -80,7 +80,7 @@ export default function NumerologyPublicCalc({
                 setDate(e.target.value);
                 setSubmitted(false);
               }}
-              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-white outline-none focus:border-aura-gold/50"
+              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-white outline-none focus:border-aura-gold/50 ym-hide-content ym-disable-keys"
               required
             />
           </>
@@ -99,7 +99,7 @@ export default function NumerologyPublicCalc({
                 setName(e.target.value);
                 setSubmitted(false);
               }}
-              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-white outline-none focus:border-aura-gold/50"
+              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2 text-white outline-none focus:border-aura-gold/50 ym-hide-content ym-disable-keys"
               required
               minLength={2}
             />

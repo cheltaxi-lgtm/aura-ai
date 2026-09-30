@@ -24,12 +24,14 @@ import {
 } from "@/lib/seo/product-funnel";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
 import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
+import DailyReminderCard from "@/components/retention/DailyReminderCard";
+import { trackActivation } from "@/lib/activation-client";
 
 const RETENTION_SESSION_KEY = "zovus_retention_return_emitted";
 
 function continueKindToProduct(
   kind: PersonalContinueItem["kind"]
-): ProductFunnelProduct {
+): ProductFunnelProduct | "photo" {
   if (kind === "hd") return "human_design";
   return kind;
 }
@@ -54,8 +56,9 @@ type PersonalZovusHomeProps = {
   /** Visible Tarot recap only (home-recap not hidden). */
   tarotContinueMasterName?: string | null;
   onContinueTarot?: () => void;
+  photoReading?: { id: string; masterName?: string | null } | null;
   onOpenOwnedMatrix?: () => void;
-  /** Auth photo hero already greets; hide duplicate title + Сегодня card. */
+  /** Auth home banner already greets; hide only the duplicate greeting. */
   showHeroBlocks?: boolean;
 };
 
@@ -69,6 +72,7 @@ export default function PersonalZovusHome({
   onPickRegularSpread,
   tarotContinueMasterName,
   onContinueTarot,
+  photoReading,
   onOpenOwnedMatrix,
   showHeroBlocks = true,
 }: PersonalZovusHomeProps) {
@@ -84,6 +88,15 @@ export default function PersonalZovusHome({
   const [reminderEnabled, setReminderEnabled] = useState(false);
   const [reminderReady, setReminderReady] = useState(false);
   const [reminderSaving, setReminderSaving] = useState(false);
+  const [reminderRevision, setReminderRevision] = useState(0);
+  const [previewContinuation, setPreviewContinuation] = useState<{product:"aura"|"palm";href:string;label:string}|null>(null);
+
+  useEffect(()=>{
+    let cancelled=false;
+    void fetch("/api/auth/activation",{credentials:"include",cache:"no-store"})
+      .then(r=>r.ok?r.json():null).then(data=>{if(!cancelled)setPreviewContinuation(data?.continuation ?? null);}).catch(()=>undefined);
+    return ()=>{cancelled=true;};
+  },[]);
 
   useEffect(() => {
     if (homeViewed.current) return;
@@ -95,13 +108,12 @@ export default function PersonalZovusHome({
   }, []);
 
   useEffect(() => {
-    if (!showHeroBlocks) return;
     if (viewed.current) return;
     if (!dailyCardsState || dailyCardsState === "loading") return;
     viewed.current = true;
-    if (dailyCardsState === "available") trackDailyCardsOfferView("personal_zovus");
+    if (dailyCardsState === "available") { trackDailyCardsOfferView("personal_zovus"); trackActivation("daily","offer_shown"); }
     else trackDailyCardsReturnView("personal_zovus");
-  }, [dailyCardsState, showHeroBlocks]);
+  }, [dailyCardsState]);
 
   // Retention return: server createdAt only; sessionStorage dedupe is UX-only.
   useEffect(() => {
@@ -166,6 +178,7 @@ export default function PersonalZovusHome({
       const data = (await res.json()) as { dailyCardsReminder?: boolean };
       const saved = data.dailyCardsReminder === true;
       setReminderEnabled(saved);
+      setReminderRevision((revision) => revision + 1);
       trackReminderOpt(saved);
     } catch {
       setReminderEnabled(prev);
@@ -222,10 +235,12 @@ export default function PersonalZovusHome({
       // Tarot can show immediately; hold product continues until ownership loads.
       return buildPersonalContinueItems({
         tarotMasterName: tarotContinueMasterName,
+        photoReading,
       });
     }
     return buildPersonalContinueItems({
       tarotMasterName: tarotContinueMasterName,
+      photoReading,
       matrixOwned,
       natalChartReady,
       hdChartId: humanDesignEnabled ? hdChartId : null,
@@ -238,6 +253,7 @@ export default function PersonalZovusHome({
     matrixOwned,
     natalChartReady,
     tarotContinueMasterName,
+    photoReading,
   ]);
 
   const dailyTitle =
@@ -251,7 +267,7 @@ export default function PersonalZovusHome({
 
   const dailyHint =
     dailyCardsState === "loading"
-      ? "Готовим карты дня…"
+      ? "Проверяем расклад на сутки…"
       : dailyCardsState === "available"
         ? EDITORIAL_DAILY_CARDS.authAvailableSubtitle
         : dailyCardsState === "opened"
@@ -288,12 +304,9 @@ export default function PersonalZovusHome({
   return (
     <section
       className="personal-zovus"
-      aria-labelledby={showHeroBlocks ? "personal-zovus-title" : "personal-zovus-explore"}
+      aria-labelledby={showHeroBlocks ? "personal-zovus-title" : "personal-zovus-today"}
     >
-      <RetentionOptInCard surface="authenticated_home" />
-
       {showHeroBlocks ? (
-        <>
       <header className="personal-zovus__header">
         <p className="personal-zovus__eyebrow">Personal Zovus</p>
         <h1 id="personal-zovus-title" className="personal-zovus__title">
@@ -306,12 +319,21 @@ export default function PersonalZovusHome({
           )}
         </h1>
       </header>
+      ) : null}
 
+      {previewContinuation ? <section className="personal-zovus__block" aria-label="Продолжить начатый разбор">
+        <div className="personal-zovus__panel">
+          <p className="personal-zovus__panel-title">Вы уже начали разбор</p>
+          <p className="personal-zovus__panel-text">Предварительный результат сохранён. Откройте его и выберите полный разбор — стоимость будет показана перед запуском.</p>
+          <Link href={previewContinuation.href} className="personal-zovus__cta" onClick={()=>trackActivation(previewContinuation.product,"offer_clicked")}>{previewContinuation.label}</Link>
+        </div>
+      </section> : null}
       <div className="personal-zovus__block" aria-labelledby="personal-zovus-today">
         <h2 id="personal-zovus-today" className="personal-zovus__kicker">
           Сегодня
         </h2>
         <div className="personal-zovus__panel">
+          <span className="personal-zovus__free-label">Бесплатно · каждый день</span>
           <p className="personal-zovus__panel-title">{dailyTitle}</p>
           <p className="personal-zovus__panel-text">{dailyHint}</p>
           {dailyCardsState === "available" ? (
@@ -320,6 +342,7 @@ export default function PersonalZovusHome({
               className="personal-zovus__cta"
               onClick={() => {
                 trackDailyCardsCtaClick("personal_zovus_available");
+                trackActivation("daily","offer_clicked");
                 onOpenDailyCards();
               }}
             >
@@ -358,13 +381,23 @@ export default function PersonalZovusHome({
                 disabled={reminderSaving}
                 onChange={(e) => void saveReminder(e.target.checked)}
               />
-              Напоминать о 3 картах дня
+              Напоминать о раскладе на сутки
             </label>
           ) : null}
+          <DailyReminderCard
+            source="personal_home"
+            embedded
+            showManage
+            key={reminderRevision}
+            onStatusChange={(status) => {
+              setReminderEnabled(status.masterReminder);
+              setReminderReady(true);
+            }}
+          />
         </div>
       </div>
-        </>
-      ) : null}
+
+      <RetentionOptInCard surface="authenticated_home" />
 
       {continueItems.length > 0 ? (
         <div className="personal-zovus__block" aria-labelledby="personal-zovus-continue">
@@ -432,17 +465,6 @@ export default function PersonalZovusHome({
           })}
         </ul>
       </div>
-      {!showHeroBlocks && reminderReady ? (
-        <label className="personal-zovus__reminder">
-          <input
-            type="checkbox"
-            checked={reminderEnabled}
-            disabled={reminderSaving}
-            onChange={(e) => void saveReminder(e.target.checked)}
-          />
-          Напоминать о 3 картах дня
-        </label>
-      ) : null}
     </section>
   );
 }

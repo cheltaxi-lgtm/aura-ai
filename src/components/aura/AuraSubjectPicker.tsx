@@ -60,7 +60,7 @@ export default function AuraSubjectPicker({
   const draftKey = auraSubjectNameKey(draftName);
 
   return (
-    <section className="aura-picker">
+    <section className="aura-picker ym-hide-content ym-disable-keys">
       <p className="aura-picker__title">Чья аура</p>
       <div className="aura-picker__chips">
         <button

@@ -295,7 +295,7 @@ export default function AdminAiPage() {
             rows={4}
             value={String(prompts.globalPrefix ?? "")}
             onChange={(e) => setPrompts({ ...prompts, globalPrefix: e.target.value })}
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
           />
         </div>
 
@@ -418,7 +418,7 @@ export default function AdminAiPage() {
               rows={3}
               value={String(visual.stylePrefix ?? "")}
               onChange={(e) => setVisual({ ...visual, stylePrefix: e.target.value })}
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
             />
           </div>
 

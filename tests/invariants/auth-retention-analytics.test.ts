@@ -3,12 +3,13 @@
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import {
   AUTH_RETENTION_TIMEZONE,
   calendarDaysBetween,
   resolveAuthRetentionState,
 } from "@/lib/auth-retention";
+import { trackRetentionReturn } from "@/lib/seo/product-funnel";
 
 const ROOT = path.resolve(__dirname, "../..");
 
@@ -71,7 +72,7 @@ describe("auth-retention-analytics", () => {
     ).toBe("later");
   });
 
-  it("days 2–6 are not measured buckets", () => {
+  it("days 2–6 are measured as one retention bucket", () => {
     for (const day of ["2026-08-07", "2026-08-08", "2026-08-09", "2026-08-10", "2026-08-11"]) {
       expect(
         resolveAuthRetentionState({
@@ -79,7 +80,22 @@ describe("auth-retention-analytics", () => {
           now: new Date(moscowNoonIso(day)),
           timezone: AUTH_RETENTION_TIMEZONE,
         })
-      ).toBeNull();
+      ).toBe("d2_6");
+    }
+  });
+
+  it("sends a D2–6 return without personal data", () => {
+    const ym = vi.fn();
+    vi.stubGlobal("window", { ym });
+    try {
+      trackRetentionReturn("d2_6");
+      expect(ym).toHaveBeenCalledWith(110138367, "reachGoal", "retention_return", {
+        product: "home",
+        source: "personal_zovus",
+        state: "d2_6",
+      });
+    } finally {
+      vi.unstubAllGlobals();
     }
   });
 

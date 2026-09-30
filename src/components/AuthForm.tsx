@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
 import { Eye, EyeOff } from "lucide-react";
@@ -88,9 +88,10 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [loading, setLoading] = useState(false);
   const [returnTo, setReturnTo] = useState("/");
   const [oauthError, setOauthError] = useState<string | null>(null);
-  const [showEmailRegister, setShowEmailRegister] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const [guestConversion, setGuestConversion] = useState(false);
+  const emailIntentTrackedRef = useRef(false);
+  const emailSectionRef = useRef<HTMLDivElement>(null);
 
   const isExpert = role === "expert";
   const isUserRegister = mode === "register" && role === "user";
@@ -137,7 +138,6 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     if (oauthErr) {
       setOauthError(oauthErr);
       if (oauthErr === "consent_required") {
-        setShowEmailRegister(false);
         requestAnimationFrame(() => {
           document.getElementById("oauth-consent-block")?.scrollIntoView({
             behavior: "smooth",
@@ -145,13 +145,6 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           });
         });
       }
-      if (oauthErr === "email_exists") {
-        setShowEmailRegister(true);
-      }
-    }
-    if (params.get("method") === "email") {
-      setShowEmailRegister(true);
-      if (isUserRegister) trackAuthEmailView("auth_form");
     }
   }, [isExpert, isUserRegister, role]);
 
@@ -159,6 +152,26 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     document.body.classList.add("auth-recaptcha-hidden");
     return () => document.body.classList.remove("auth-recaptcha-hidden");
   }, []);
+
+  useEffect(() => {
+    if (!isUserRegister || !emailSectionRef.current || emailIntentTrackedRef.current) return;
+    const markViewed = () => {
+      if (emailIntentTrackedRef.current) return;
+      emailIntentTrackedRef.current = true;
+      trackAuthEmailView("auth_form");
+    };
+    if (typeof IntersectionObserver === "undefined") {
+      markViewed();
+      return;
+    }
+    const observer = new IntersectionObserver((entries) => {
+      if (!entries.some((entry) => entry.isIntersecting)) return;
+      markViewed();
+      observer.disconnect();
+    });
+    observer.observe(emailSectionRef.current);
+    return () => observer.disconnect();
+  }, [isUserRegister]);
 
   useEffect(() => {
     if (role !== "user") return;
@@ -176,11 +189,11 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   }, [role]);
 
   useEffect(() => {
-    if (!featuresLoaded || shouldUseAppShellClient() || (isUserRegister && !showEmailRegister)) return;
+    if (!featuresLoaded || (shouldUseAppShellClient() && mode !== "register")) return;
     if (recaptcha.masterEnabled && recaptcha.scopes[recaptchaScope]) {
       preloadRecaptchaScript();
     }
-  }, [featuresLoaded, recaptcha, recaptchaScope, isUserRegister, showEmailRegister]);
+  }, [featuresLoaded, recaptcha, recaptchaScope, mode]);
 
   const loginHref = buildAuthHref(`/auth/${role}/login`, returnTo, isExpert ? "/expert" : "/");
   const registerHref = buildAuthHref(`/auth/${role}/register`, returnTo, isExpert ? "/expert" : "/");
@@ -521,59 +534,35 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
     ? "auth-salon-label"
     : "mb-1 block text-xs text-gray-500";
   const formShellClass =
-    isUserLogin || isUserRegister
-      ? "auth-form space-y-3 sm:space-y-5"
+    isUserRegister
+      ? "auth-form space-y-3"
+      : isUserLogin
+        ? "auth-form space-y-3 sm:space-y-5"
       : "auth-form glass-panel mx-auto max-w-lg space-y-5 p-8";
-
-  if (isUserRegister && !showEmailRegister) {
-    return (
-      <div className={formShellClass}>
-        <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
-        {legalConsentFields}
-        <SocialAuthButtons
-          mode="register"
-          returnTo={returnTo}
-          requireConsent
-          acceptedTerms={acceptedTerms}
-          ageConfirmed={ageConfirmed}
-          marketingConsent={marketingConsent}
-          disabled={loading}
-          consentScrollTargetId="oauth-consent-block"
-          showEmailDivider={false}
-        />
-        <button
-          type="button"
-          onClick={() => {
-            setShowEmailRegister(true);
-            trackAuthEmailView("auth_form");
-          }}
-          className="btn-ghost w-full py-3 text-sm"
-        >
-          Продолжить по email
-        </button>
-        <p className="text-center text-sm text-aura-ivory/55">
-          Уже есть аккаунт?{" "}
-          <Link
-            href={loginHref}
-            className="font-medium text-aura-champagne underline-offset-2 hover:underline"
-          >
-            Войти
-          </Link>
-        </p>
-      </div>
-    );
-  }
 
   return (
     <form onSubmit={handleSubmit} className={formShellClass}>
       {isUserRegister ? (
-        <button
-          type="button"
-          onClick={() => setShowEmailRegister(false)}
-          className="text-xs text-aura-ivory/50 transition hover:text-aura-champagne"
-        >
-          ← Другой способ входа
-        </button>
+        <>
+          <p className="text-sm text-white/65">
+            Стартовые руны начислим сразу после регистрации. Почту можно подтвердить позже — для писем и напоминаний.
+          </p>
+          <OAuthErrorBanner code={oauthError} returnTo={returnTo} />
+          {legalConsentFields}
+          <SocialAuthButtons
+            mode="register"
+            returnTo={returnTo}
+            requireConsent
+            acceptedTerms={acceptedTerms}
+            ageConfirmed={ageConfirmed}
+            marketingConsent={marketingConsent}
+            disabled={loading}
+            consentScrollTargetId="oauth-consent-block"
+            showConsentHint={false}
+            showEmailDivider
+            emailDividerLabel="или по email"
+          />
+        </>
       ) : null}
       {role === "user" && !isUserRegister ? (
         <>
@@ -604,7 +593,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className={fieldClass}
+              className={`${fieldClass} ym-hide-content ym-disable-keys`}
             />
           </div>
           {isExpert && (
@@ -646,7 +635,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className={fieldClass}
+              className={`${fieldClass} ym-hide-content ym-disable-keys`}
             />
           </div>
         </>
@@ -654,7 +643,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
       <div>
         <div className="space-y-4">
-          <div>
+          <div ref={isUserRegister ? emailSectionRef : undefined}>
             <label htmlFor={`${role}-${mode}-email`} className={labelClass}>
               Email *
             </label>
@@ -665,7 +654,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              className={fieldClass}
+              className={`${fieldClass} ym-hide-content ym-disable-keys`}
             />
           </div>
 
@@ -734,7 +723,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
                 aria-label="Дата рождения"
                 value={optionalBirthDate}
                 onChange={(e) => setOptionalBirthDate(e.target.value)}
-                className={fieldClass}
+                className={`${fieldClass} ym-hide-content ym-disable-keys`}
               />
             </div>
             <div>
@@ -752,8 +741,6 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           </div>
         </details>
       ) : null}
-
-      {isUserRegister ? legalConsentFields : null}
 
       <div className="auth-salon-error-slot space-y-2 text-center" aria-live="polite">
         {emailExists ? (

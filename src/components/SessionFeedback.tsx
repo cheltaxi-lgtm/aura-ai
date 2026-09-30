@@ -1,29 +1,51 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 
 interface SessionFeedbackProps {
-  characterId: string;
+  sessionId?: string | null;
   visible: boolean;
+  targetType?: "session" | "reading";
+  product?: string;
 }
 
-export default function SessionFeedback({ characterId, visible }: SessionFeedbackProps) {
+const REASONS = [
+  ["too_general", "Слишком общо"],
+  ["cards_wrong", "Карты распознаны неверно"],
+  ["did_not_answer", "Не ответило на вопрос"],
+  ["too_long", "Слишком длинно"],
+  ["technical", "Техническая проблема"],
+  ["other", "Другая причина"],
+] as const;
+
+export default function SessionFeedback({ sessionId, visible, targetType = "session", product = "tarot" }: SessionFeedbackProps) {
   const [rated, setRated] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [negative, setNegative] = useState(false);
+  const [error, setError] = useState("");
 
-  if (!visible || rated) return null;
+  useEffect(() => {
+    setRated(false);
+    setSubmitting(false);
+    setNegative(false);
+    setError("");
+  }, [sessionId, targetType]);
 
-  const submit = async (rating: number) => {
+  if (!visible || rated || !sessionId) return null;
+
+  const submit = async (useful: boolean, reason?: string) => {
     setSubmitting(true);
+    setError("");
     try {
-      await fetch("/api/memory/rate", {
+      const response = await fetch("/api/feedback/reading", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ characterId, outcomeRating: rating }),
+        body: JSON.stringify({ targetType, targetId: sessionId, useful, reason, product }),
       });
+      if (!response.ok) throw new Error("feedback_failed");
       setRated(true);
     } catch {
-      /* ignore */
+      setError("Не удалось отправить ответ. Попробуйте ещё раз.");
     } finally {
       setSubmitting(false);
     }
@@ -31,21 +53,24 @@ export default function SessionFeedback({ characterId, visible }: SessionFeedbac
 
   return (
     <div className="mb-2 rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-center">
-      <p className="mb-2 text-xs text-gray-400">Насколько откликнулся последний сеанс?</p>
-      <div className="flex justify-center gap-1">
-        {[1, 2, 3, 4, 5].map((n) => (
+      <p className="mb-2 text-xs text-gray-300">Этот разбор был полезен?</p>
+      {!negative ? <div className="flex justify-center gap-2">
+        <button type="button" disabled={submitting} onClick={() => void submit(true)} className="min-h-11 rounded-lg border border-emerald-400/30 px-4 text-sm text-emerald-200 hover:bg-emerald-400/10">Да</button>
+        <button type="button" disabled={submitting} onClick={() => setNegative(true)} className="min-h-11 rounded-lg border border-white/15 px-4 text-sm text-gray-200 hover:bg-white/5">Нет</button>
+      </div> : <div className="flex flex-wrap justify-center gap-2">
+        {REASONS.map(([value, label]) => (
           <button
-            key={n}
+            key={value}
             type="button"
             disabled={submitting}
-            onClick={() => void submit(n)}
-            className="flex h-8 w-8 items-center justify-center rounded-lg border border-white/10 text-sm text-aura-gold transition-colors hover:border-aura-gold/50 hover:bg-aura-gold/20 disabled:opacity-40"
-            aria-label={`Оценка ${n} из 5`}
+            onClick={() => void submit(false, value)}
+            className="min-h-11 rounded-lg border border-white/10 px-3 text-xs text-gray-300 hover:border-aura-gold/40 disabled:opacity-40"
           >
-            {n}
+            {label}
           </button>
         ))}
-      </div>
+      </div>}
+      {error ? <p className="mt-2 text-xs text-red-200" role="status">{error}</p> : null}
     </div>
   );
 }

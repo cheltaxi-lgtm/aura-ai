@@ -1,6 +1,6 @@
 ---
 name: full-audit
-description: Full Zovus audit across products (fast then full, production if releasing)
+description: Execute a requested full local Zovus audit across products, with production checks only when requested or releasing. Use for /full-audit.
 ---
 
-Read and follow `.cursor/skills/full-audit/SKILL.md`. Start with `--scope full --level fast`, then full. Add production only for a release. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/full-audit/SKILL.md`.

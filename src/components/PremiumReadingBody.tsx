@@ -19,7 +19,7 @@ export default function PremiumReadingBody({
     <ChatMessageRenderer
       content={content}
       role="assistant"
-      className={className}
+      className={`${className} ym-hide-content ym-disable-keys`}
       variant={variant}
     />
   );

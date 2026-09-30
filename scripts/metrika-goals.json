@@ -17,11 +17,6 @@
       "metrikaGoalId": 581800124
     },
     {
-      "id": "social_proof_view",
-      "group": "landing",
-      "metrikaGoalId": 581800476
-    },
-    {
       "id": "hero_question_started",
       "group": "landing",
       "metrikaGoalId": 581800493
@@ -216,6 +211,11 @@
       "group": "revenue",
       "monetary": true,
       "metrikaGoalId": 580953383
+    },
+    {
+      "id": "rune_checkout_started",
+      "group": "revenue",
+      "metrikaGoalId": 625725241
     },
     {
       "id": "paywall_open",
@@ -976,6 +976,16 @@
       "id": "auth_email_view",
       "group": "registration",
       "metrikaGoalId": 608840672
+    },
+    {
+      "id": "rune_purchase_attempted",
+      "group": "commerce",
+      "metrikaGoalId": 664038426
+    },
+    {
+      "id": "rune_purchase_failed",
+      "group": "commerce",
+      "metrikaGoalId": 664038427
     }
   ]
 }

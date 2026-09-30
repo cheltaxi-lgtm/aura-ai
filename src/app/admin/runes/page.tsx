@@ -24,6 +24,7 @@ const ACTION_KEYS = Object.keys(DEFAULT_RUNE_COSTS) as RuneActionType[];
 
 export default function AdminRunesPage() {
   const [settings, setSettings] = useState<RuneSettings | null>(null);
+  const [starterBonusPolicyLocked, setStarterBonusPolicyLocked] = useState(false);
   const [packages, setPackages] = useState<RunePackage[]>([]);
   const [saved, setSaved] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -33,6 +34,7 @@ export default function AdminRunesPage() {
       .then((r) => r.json())
       .then((d) => {
         setSettings(d.settings ?? null);
+        setStarterBonusPolicyLocked(d.starterBonusPolicyLocked === true);
         setPackages(d.packages ?? []);
       })
       .finally(() => setLoading(false));
@@ -134,12 +136,17 @@ export default function AdminRunesPage() {
                 type="number"
                 min={0}
                 value={settings.starterRunes}
+                disabled={starterBonusPolicyLocked}
                 onChange={(e) =>
                   setSettings({ ...settings, starterRunes: parseInt(e.target.value, 10) || 0 })
                 }
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white disabled:cursor-not-allowed disabled:opacity-60"
               />
-              <p className="mt-1 text-[10px] text-gray-600">Один раз при создании профиля</p>
+              <p className="mt-1 text-[10px] text-gray-600">
+                {starterBonusPolicyLocked
+                  ? "Размер зафиксирован действующей политикой первого опыта. Это поле нельзя изменить здесь."
+                  : "Один раз при создании профиля"}
+              </p>
             </div>
             <div>
               <label className="mb-1 block text-xs text-gray-500">Бесплатных вопросов в чате</label>

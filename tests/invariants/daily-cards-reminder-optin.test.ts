@@ -1,6 +1,5 @@
 /**
- * P2.4A: explicit authenticated opt-in for future daily-cards reminders.
- * Storage is server-authoritative; no email/push delivery in this change.
+ * Authenticated daily-reading reminder preference and persisted opt-out.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -32,7 +31,7 @@ describe("daily-cards-reminder-optin (source)", () => {
 
   it("Personal Zovus toggle is server-backed, no localStorage/permission", () => {
     const home = read("src/components/editorial/PersonalZovusHome.tsx");
-    expect(home).toMatch(/Напоминать о 3 картах дня/);
+    expect(home).toMatch(/Напоминать о раскладе на сутки/);
     expect(home).toMatch(/\/api\/auth\/daily-cards-reminder/);
     expect(home).toMatch(/trackReminderOpt/);
     expect(home).not.toMatch(/localStorage/);
@@ -42,7 +41,7 @@ describe("daily-cards-reminder-optin (source)", () => {
 
   it("guest homepage does not show the reminder toggle", () => {
     const landing = read("src/components/AuraSellingLanding.tsx");
-    expect(landing).not.toMatch(/Напоминать о 3 картах дня/);
+    expect(landing).not.toMatch(/Напоминать о раскладе на сутки/);
     expect(landing).not.toMatch(/daily-cards-reminder/);
   });
 
@@ -59,7 +58,7 @@ describe("daily-cards-reminder-optin (source)", () => {
     expect(fn).not.toMatch(/userId|email|createdAt|birthDate|sessionId|artifact/i);
   });
 
-  it("registration and daily draw do not write the reminder flag (DB default ON)", () => {
+  it("registration and daily draw do not overwrite the server reminder default", () => {
     const register = read("src/app/api/auth/user/register/route.ts");
     expect(register).not.toMatch(/daily_cards_reminder\s*=/i);
     expect(register).not.toMatch(/setAccountDailyCardsReminder\(/);
@@ -74,17 +73,19 @@ describe("daily-cards-reminder-optin (source)", () => {
     const reminder = read("src/lib/daily-reminder-service.ts");
     expect(reminder).toMatch(/ua\.daily_cards_reminder = TRUE/);
     expect(reminder).toMatch(/dailyCardsReminder/);
-    expect(reminder).toMatch(/checkTripletCooldown/);
+    expect(reminder).toMatch(/isDailyReadingUsedToday/);
   });
 
-  it("schema default is ON after migration 136", () => {
+  it("restores the daily reminder default without blanket-enabling existing accounts", () => {
     const schema = read("src/lib/schema.sql");
     expect(schema).toMatch(
       /daily_cards_reminder BOOLEAN NOT NULL DEFAULT TRUE/
     );
-    const mig = read("scripts/migrations/136_migrate_reminder_defaults_on.sql");
+    const mig = read("scripts/migrations/162_restore_daily_reminder_defaults.sql");
     expect(mig).toMatch(/daily_cards_reminder SET DEFAULT TRUE/);
-    expect(mig).toMatch(/SET daily_cards_reminder = TRUE/);
+    expect(mig).toMatch(/"dailyEmail": true/);
+    expect(mig).toMatch(/"dailyInApp": true/);
+    expect(mig).not.toMatch(/UPDATE user_accounts|UPDATE users/);
   });
 });
 

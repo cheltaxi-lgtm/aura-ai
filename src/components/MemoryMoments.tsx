@@ -148,7 +148,7 @@ export default function MemoryMoments({
                 onChange={(event) => setDraft(event.target.value)}
                 maxLength={400}
                 rows={2}
-                className="w-full resize-none rounded-lg border border-white/12 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-aura-gold/40"
+                className="w-full resize-none rounded-lg border border-white/12 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-aura-gold/40 ym-hide-content ym-disable-keys"
               />
               <div className="flex gap-2">
                 <button
@@ -170,7 +170,7 @@ export default function MemoryMoments({
             </div>
           ) : (
             <>
-              <p className="mt-1 text-sm leading-5 text-white/80">{item.fact}</p>
+              <p className="mt-1 text-sm leading-5 text-white/80 ym-hide-content ym-disable-keys">{item.fact}</p>
               <div className="mt-2 flex flex-wrap gap-1.5">
                 <button
                   type="button"

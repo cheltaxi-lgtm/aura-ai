@@ -111,6 +111,54 @@ competitors:
     free_entry: yes_content
     brand_terms: [sunhome, санхоум, "sunhome.ru"]
 
+  - name: Geocult
+    domain: geocult.ru
+    model: natal_calculator
+    positioning: Натальная карта и астрологические расчёты
+    ai_disclosure: none_visible
+    free_entry: yes_calculators
+    brand_terms: [geocult, геокульт, "geocult.ru"]
+
+  - name: Astro-online
+    domain: astro-online.ru
+    model: natal_calculator
+    positioning: Онлайн-расчёты натальной карты
+    ai_disclosure: none_visible
+    free_entry: yes_calculators
+    brand_terms: [astro-online, "астро онлайн", "астро-онлайн"]
+
+  - name: Sotis Online
+    domain: sotis-online.ru
+    model: astrology_calculator
+    positioning: Астрологический онлайн-калькулятор
+    ai_disclosure: none_visible
+    free_entry: yes_calculators
+    brand_terms: [sotis, сотис, "sotis online", "сотис онлайн"]
+
+  - name: Gadalkin Dom
+    domain: gadalkindom.ru
+    model: esoteric_portal
+    positioning: Эзотерические калькуляторы и трактовки
+    ai_disclosure: none_visible
+    free_entry: yes_calculators
+    brand_terms: [gadalkindom, гадалкин, "гадалкин дом"]
+
+  - name: Tvoya Matritsa
+    domain: tvoyamatritsa.ru
+    model: destiny_matrix_calculator
+    positioning: Расчёт и трактовка матрицы судьбы
+    ai_disclosure: none_visible
+    free_entry: yes_calculators
+    brand_terms: [tvoyamatritsa, "твоя матрица", "tvoyamatritsa.ru"]
+
+  - name: Matritsa Sudby Calculator
+    domain: matritsasudbi-kalkulator.ru
+    model: destiny_matrix_calculator
+    positioning: Калькулятор матрицы судьбы
+    ai_disclosure: none_visible
+    free_entry: yes_calculators
+    brand_terms: [matritsasudbi-kalkulator, "matritsasudbi-kalkulator.ru"]
+
 angles_allowed:
   # Bid/creative north star: registration + rune purchase (not free-card traffic)
   - спокойный вход в аккаунт и продолжение разбора без паники

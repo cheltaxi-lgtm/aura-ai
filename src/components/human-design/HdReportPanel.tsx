@@ -757,7 +757,7 @@ function HdReportPanelContent({
   }
 
   return (
-    <div className="space-y-5">
+    <div className="space-y-5 ym-hide-content ym-disable-keys">
       {journeyBlock}
       <div className="hd-panel">
         <div className="flex flex-wrap items-center justify-between gap-3">
@@ -833,7 +833,7 @@ function HdReportPanelContent({
             }}
             maxLength={2000}
             placeholder="Например: как мне принимать решения по авторитету?"
-            className="hd-field__input flex-1"
+            className="hd-field__input flex-1 ym-hide-content ym-disable-keys"
             disabled={asking}
           />
           <button

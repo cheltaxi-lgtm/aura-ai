@@ -11,6 +11,7 @@ import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import { buildCardFaq } from "@/lib/seo/card-faq";
 import { getSuitHubForCard } from "@/lib/seo/suit-hubs";
+import { getCardSeoDeepDive } from "@/lib/seo/card-deep-dives";
 
 export function generateStaticParams() {
   return getAllTarotCardSeoSlugs().map((slug) => ({ slug }));
@@ -94,6 +95,7 @@ export default async function CardDetailPage({
       faq={faq}
       breadcrumbs={breadcrumbs}
       suitHub={suitHub ? { title: suitHub.titleRu, slug: suitHub.slug } : undefined}
+      deepDive={getCardSeoDeepDive(slug)}
     />
   );
 }

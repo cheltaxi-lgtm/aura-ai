@@ -29,6 +29,8 @@ export async function createChatResponseStream(params: {
   temperature?: number;
   maxTokens?: number;
   qualityOpts?: ChatReplyQualityOpts;
+  /** Buffer paid output until final validation and billing/persistence complete. */
+  holdTokensUntilAccepted?: boolean;
   onComplete: (meta: ChatStreamMeta) => Promise<Record<string, unknown>>;
 }): Promise<Response | null> {
   const safeHistory = sanitizeChatHistory(params.messages);
@@ -57,7 +59,7 @@ export async function createChatResponseStream(params: {
   let rejectionReason: string | null = null;
   // Follow-up anti-repeat checks need the full candidate. Do not flash a
   // rejected second reading before the corrected done payload replaces it.
-  const holdTokensUntilAccepted = Boolean(params.qualityOpts?.previousAssistantReply);
+  const holdTokensUntilAccepted = Boolean(params.holdTokensUntilAccepted || params.qualityOpts?.previousAssistantReply);
 
   const stream = new ReadableStream({
     async start(controller) {
@@ -147,12 +149,17 @@ export async function createChatResponseStream(params: {
         });
       } catch (err) {
         console.error("[DB_CHAT_SAVE_FAILED] Stream onComplete error:", err);
+        if (params.holdTokensUntilAccepted) metaExtras = { reply: "", llmFailed: true };
       }
 
       const resolvedReply =
         typeof metaExtras.reply === "string" ? metaExtras.reply : reply;
       const resolvedFailed =
         typeof metaExtras.llmFailed === "boolean" ? metaExtras.llmFailed : llmFailed;
+
+      if (params.holdTokensUntilAccepted && !resolvedFailed && resolvedReply) {
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify({ token: resolvedReply })}\n\n`));
+      }
 
       controller.enqueue(
         encoder.encode(

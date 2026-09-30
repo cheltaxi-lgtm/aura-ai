@@ -1,5 +1,5 @@
 import type { Bot, Context } from "grammy";
-import { InputFile } from "grammy";
+import { InlineKeyboard, InputFile } from "grammy";
 import { botConfig } from "../config.js";
 import { copy } from "../copy/ru.js";
 import {
@@ -98,16 +98,15 @@ import {
   handleOwnQuestionPrompt,
 } from "./spread.js";
 import {
-  ensureBotOfferAccount,
   ensureSiteLinked,
   issueSiteLinkUrl,
   syncSiteAccount,
 } from "./site-account.js";
 import {
-  beginProfileOnboarding,
   continueProfileAfterTimezone,
   handleProfileCallback,
   handleProfileFlowText,
+  handleProfileUnexpectedInput,
 } from "./profile-onboarding.js";
 import {
   ensureOnboarded,
@@ -182,7 +181,12 @@ export function registerFlows(bot: Bot): void {
       await ctx.reply(copy.consentAsk(botConfig.siteUrl), { reply_markup: consentKeyboard() });
       return;
     }
+    const linked=await ensureSiteLinked(ctx);
+    if (!linked) return;
     await showSalonHome(ctx, { name: fresh.first_name });
+    if (linked.site.needsOnboarding) await ctx.reply("Начните с бесплатного расклада на сутки. Данные рождения можно заполнить позже для матрицы, натальной карты и Human Design.", {
+      reply_markup:new InlineKeyboard().text("Бесплатный расклад на сутки",CB.homeDay),
+    });
   });
 
   bot.callbackQuery(CB.ageYes, async (ctx) => {
@@ -207,15 +211,12 @@ export function registerFlows(bot: Bot): void {
     track(user, "consent_given", {});
     await ctx.answerCallbackQuery();
     await ctx.editMessageText("Согласие принято.");
-    const ensured = await ensureBotOfferAccount(ctx, user);
-    if (ensured?.linked) {
-      if (ensured.needsOnboarding) {
-        await beginProfileOnboarding(ctx);
-        return;
-      }
-      await ctx.reply(copy.accountOpened, { reply_markup: salonKeyboard() });
-    }
+    if (!(await ensureSiteLinked(ctx))) return;
+    await ctx.reply(copy.accountOpened, { reply_markup: salonKeyboard() });
     await showSalonHome(ctx, { name: user.first_name });
+    await ctx.reply("Начните с бесплатного расклада на сутки. Стартовые руны останутся для других разборов.", {
+      reply_markup:new InlineKeyboard().text("Бесплатный расклад на сутки",CB.homeDay),
+    });
   });
 
   bot.callbackQuery(/^tz:(.+)$/, async (ctx) => {
@@ -596,6 +597,7 @@ export function registerFlows(bot: Bot): void {
   });
 
   bot.on(["message:photo", "message:document"], async (ctx) => {
+    if (await handleProfileUnexpectedInput(ctx, ctx.message.document ? "document" : "photo")) return;
     if (await handlePhotoMessage(ctx)) return;
     await ctx.reply(
       "Сейчас фото не ожидается. Откройте «Расклад по фото» или нужный раздел в салоне.",
@@ -631,6 +633,7 @@ export function registerFlows(bot: Bot): void {
   });
 
   bot.on("message:voice", async (ctx) => {
+    if (await handleProfileUnexpectedInput(ctx, "voice")) return;
     await ctx.reply(
       "Голосовой ввод пока не распознаётся. Пришлите вопрос текстом — готовый разбор можно получить и голосом в настройках.",
       { reply_markup: salonKeyboard() }
@@ -759,7 +762,7 @@ export async function showProfile(ctx: Context): Promise<void> {
 
   const code = ensureRefCode(user.telegram_user_id);
   const inviteUrl = `https://t.me/${botConfig.botUsername}?start=ref_${code}`;
-  const linked = Boolean(site?.linked || user.zovus_user_id);
+  const linked = site?.ok ? site.linked : Boolean(user.zovus_user_id);
   const pending = findLatestUnclaimedCtaSession(user.telegram_user_id);
   let linkUrl = site?.linkUrl || pending?.cta_url || `${botConfig.siteUrl}/cabinet`;
   if (!linked) {

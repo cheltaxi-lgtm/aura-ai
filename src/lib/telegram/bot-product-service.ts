@@ -1,4 +1,5 @@
 import { captureMemoryGeneration } from "@/lib/memory/write-guard";
+import { isUserAgeEligible } from "@/lib/age-gate";
 /**
  * Thin product surface for Telegram bot ↔ site parity.
  * Site Postgres remains source of truth; bot calls these via /api/internal/bot/*.
@@ -234,19 +235,11 @@ export async function botRunVeronikaSpread(input: {
       linkUrl: resolved.linkUrl,
     };
   }
-  if (resolved.needsOnboarding) {
-    return {
-      ok: false,
-      error: "needs_onboarding",
-      message: "Завершите профиль (город и дата рождения) — в боте или в кабинете на сайте.",
-      linkUrl: resolved.linkUrl,
-    };
-  }
 
   const profileUserId = resolved.profileUserId;
   const captureGeneration = await captureMemoryGeneration(profileUserId);
   const user = await getUserById(profileUserId);
-  if (!user) {
+  if (!user || !isUserAgeEligible(user)) {
     return { ok: false, error: "internal", message: "Профиль не найден." };
   }
 
@@ -549,14 +542,6 @@ export async function botRunCatalogIntent(input: {
       linkUrl: resolved.linkUrl,
     };
   }
-  if (resolved.needsOnboarding) {
-    return {
-      ok: false,
-      error: "needs_onboarding",
-      message: "Завершите профиль (город и дата рождения) — в боте или в кабинете на сайте.",
-      linkUrl: resolved.linkUrl,
-    };
-  }
 
   const intent = getSpreadIntentBySlug(input.intentSlug.trim());
   if (!intent) {
@@ -585,7 +570,7 @@ export async function botRunCatalogIntent(input: {
   const profileUserId = resolved.profileUserId;
   const captureGeneration = await captureMemoryGeneration(profileUserId);
   const user = await getUserById(profileUserId);
-  if (!user) {
+  if (!user || !isUserAgeEligible(user)) {
     return { ok: false, error: "internal", message: "Профиль не найден." };
   }
 
@@ -893,16 +878,16 @@ export async function botDailyEnergy(input: {
     return {
       ok: false,
       error: "needs_link",
-      message: "Привяжите аккаунт Zovus, чтобы карта дня совпадала с сайтом.",
+      message: "Привяжите аккаунт Zovus, чтобы расклад на сутки совпадал с сайтом.",
       linkUrl: resolved.linkUrl,
     };
   }
   const user = await getUserById(resolved.profileUserId);
-  if (!user?.birth_date) {
+  if (!user || !isUserAgeEligible(user)) {
     return {
       ok: false,
       error: "needs_onboarding",
-      message: "Укажите дату рождения в кабинете на сайте.",
+      message: "Подтвердите возраст 18+ в аккаунте.",
       linkUrl: resolved.linkUrl,
     };
   }
@@ -911,8 +896,8 @@ export async function botDailyEnergy(input: {
       userId: resolved.profileUserId,
       characterKey: input.characterKey || "veronika",
       name: user.name || resolved.name || "друг",
-      zodiac: user.zodiac || "Овен",
-      birthDate: user.birth_date,
+      zodiac: user.zodiac || "",
+      birthDate: user.birth_date ?? "",
     });
     return {
       ok: true,
@@ -933,6 +918,6 @@ export async function botDailyEnergy(input: {
       };
     }
     console.error("[bot-product] daily", err);
-    return { ok: false, error: "internal", message: "Не удалось открыть карту дня." };
+    return { ok: false, error: "internal", message: "Не удалось открыть расклад на сутки." };
   }
 }

@@ -294,7 +294,7 @@ export default function OpenRouterDashboard() {
                   }}
                   placeholder="sk-or-v1-…"
                   autoComplete="off"
-                  className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 font-mono text-sm text-white"
+                  className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 font-mono text-sm text-white ym-hide-content ym-disable-keys"
                 />
               </div>
               <div className="flex shrink-0 gap-2">

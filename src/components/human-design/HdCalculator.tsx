@@ -529,7 +529,7 @@ export default function HdCalculator({
 
     if (showConnection && canCompare && selfChart && otherForConnection) {
       return (
-        <div id="hd-calculator" className="space-y-5 scroll-mt-24">
+        <div id="hd-calculator" className="space-y-5 scroll-mt-24 ym-hide-content ym-disable-keys">
           {mineChips}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-amber-100/80">
@@ -551,7 +551,7 @@ export default function HdCalculator({
     }
 
     return (
-      <div id="hd-calculator" className="space-y-5 scroll-mt-24">
+      <div id="hd-calculator" className="space-y-5 scroll-mt-24 ym-hide-content ym-disable-keys">
         {mineChips}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-white/55">{payload_line(result)}</p>
@@ -639,7 +639,7 @@ export default function HdCalculator({
   }
 
   return (
-    <div id="hd-calculator" className="space-y-5 scroll-mt-24">
+    <div id="hd-calculator" className="space-y-5 scroll-mt-24 ym-hide-content ym-disable-keys">
       {mineChips}
 
       <div className="hd-panel">
@@ -712,7 +712,7 @@ export default function HdCalculator({
             type="date"
             value={birthDate}
             onChange={(e) => setBirthDate(e.target.value)}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             min="1900-01-01"
             max={localTodayIso()}
           />
@@ -731,7 +731,7 @@ export default function HdCalculator({
             type="time"
             value={birthTime}
             onChange={(e) => setBirthTime(e.target.value)}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             disabled={timeUnknown}
           />
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/55">
@@ -758,7 +758,7 @@ export default function HdCalculator({
             }}
             onFocus={() => suggestions.length && setPlacesOpen(true)}
             placeholder="Начните вводить город…"
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             autoComplete="off"
           />
           {placesOpen && (placesLoading || placesSearched) && (

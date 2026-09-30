@@ -46,6 +46,12 @@ function spreadReadingMatchesRow(
     const storedKey = storedNumerologReadingKey(characterId, ctx);
     return storedKey === cardsKey;
   }
+  if (cardsKey.startsWith("intro:")) {
+    if (ctx.spreadType !== "intro") return false;
+    const stored = ctx.tarotCards as { name: string }[] | undefined;
+    return tarotCardsKey(stored) === cardsKey.slice("intro:".length);
+  }
+  if (ctx.spreadType === "intro") return false;
   const stored = ctx.tarotCards as { name: string }[] | undefined;
   return tarotCardsKey(stored) === cardsKey;
 }

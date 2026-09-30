@@ -1,3 +1,5 @@
+import type { SeoZodiacSign } from "@/lib/seo/zodiac-signs";
+
 export type ForecastMonth = {
   slug: string;
   name: string;
@@ -20,57 +22,70 @@ export const FORECAST_MONTHS: ForecastMonth[] = [
   { slug: "dekabr", name: "декабрь", nameGenitive: "декабря", namePrepositional: "декабре" },
 ];
 
-export const FORECAST_YEARS = [2026] as const;
+/** Keep historic 2026 pages accessible while adding the current and next year. */
+export function getForecastYears(now = new Date()): number[] {
+  const lastYear = Math.max(2027, now.getUTCFullYear() + 1);
+  return Array.from({ length: lastYear - 2025 }, (_, index) => 2026 + index);
+}
 
 export function getForecastMonthBySlug(slug: string): ForecastMonth | undefined {
   return FORECAST_MONTHS.find((m) => m.slug === slug);
 }
 
 export function getCurrentForecastMonth(date = new Date()): ForecastMonth {
-  return FORECAST_MONTHS[date.getMonth()]!;
+  return FORECAST_MONTHS[date.getUTCMonth()]!;
 }
 
 export function getCurrentForecastYear(date = new Date()): number {
-  return date.getFullYear();
+  return date.getUTCFullYear();
 }
 
-export function getYearForecastMeta(year: number) {
+export function isPastForecastMonth(year: number, month: ForecastMonth, now = new Date()): boolean {
+  const monthIndex = FORECAST_MONTHS.findIndex((item) => item.slug === month.slug);
+  return year < now.getUTCFullYear() ||
+    (year === now.getUTCFullYear() && monthIndex < now.getUTCMonth());
+}
+
+export function getYearForecastMeta(year: number, now = new Date()) {
   return {
-    title: `Таро прогноз на ${year} год — расклад по месяцам | Zovus`,
-    description: `Прогноз Таро на ${year} год: расклад по месяцам, советы карт на любовь, финансы и саморазвитие. Актуальный годовой обзор — онлайн на Zovus.`,
-    h1: `Таро прогноз на ${year} год`,
+    title: `Таро на ${year} год — как составить личный прогноз | Zovus`,
+    description: `Как составить личный прогноз Таро на ${year} год: вопросы по месяцам, схема расклада и способ сверять выводы с реальными событиями.`,
+    h1: `Таро на ${year} год: личный прогноз по месяцам`,
     path: `/prognoz/${year}`,
+    noIndex: year < getCurrentForecastYear(now),
   };
 }
 
-export function getMonthForecastMeta(year: number, month: ForecastMonth) {
+export function getMonthForecastMeta(year: number, month: ForecastMonth, now = new Date()) {
   return {
-    title: `Таро на ${month.name} ${year} — прогноз и расклад | Zovus`,
-    description: `Таро на ${month.name} ${year}: прогноз по картам на любовь, работу и ключевые события. Актуальный месячный расклад с трактовкой — онлайн на Zovus.`,
-    h1: `Таро на ${month.name} ${year}: прогноз по картам`,
+    title: `Таро на ${month.name} ${year} — вопросы для расклада | Zovus`,
+    description: `Таро на ${month.name} ${year}: какие вопросы задать о планах, отношениях и работе и как прочитать личный расклад на месяц.`,
+    h1: `Таро на ${month.name} ${year}: вопросы для прогноза`,
     path: `/prognoz/${year}/${month.slug}`,
+    noIndex: isPastForecastMonth(year, month, now),
   };
 }
 
 export function getZodiacSignForecastMeta(
-  signName: string,
-  signSlug: string,
+  sign: SeoZodiacSign,
   year: number,
-  month?: ForecastMonth
+  month?: ForecastMonth,
+  now = new Date()
 ) {
   if (month) {
     return {
-      title: `Таро ${signName} — прогноз на ${month.name} ${year} | Zovus`,
-      description: `Таро для ${signName}: прогноз на ${month.name} ${year} по картам. Любовь, карьера и совет арканов для знака ${signName} — персональный расклад на Zovus.`,
-      h1: `Таро для ${signName}: прогноз на ${month.name} ${year}`,
-      path: `/prognoz/znak/${signSlug}/${month.slug}`,
+      title: `Таро для ${sign.nameGenitive} на ${month.name} ${year} | Zovus`,
+      description: `Вопросы для личного расклада Таро на ${month.name} ${year} для ${sign.nameGenitive}: как связать карты с решением, не полагаясь на один знак зодиака.`,
+      h1: `Таро для ${sign.nameGenitive}: ${month.name} ${year}`,
+      path: `/prognoz/znak/${sign.slug}/${month.slug}`,
+      noIndex: isPastForecastMonth(year, month, now),
     };
   }
   return {
-    title: `Таро ${signName} ${year} — прогноз по знаку | Zovus`,
-    description: `Таро для ${signName} на ${year} год: прогноз по месяцам, любовь и карьера. Расклады по знаку ${signName} с трактовкой мастера — на Zovus.`,
-    h1: `Таро для ${signName}: прогноз на ${year} год`,
-    path: `/prognoz/znak/${signSlug}`,
+    title: `Таро для ${sign.nameGenitive} на ${year} год | Zovus`,
+    description: `Как составить личный прогноз Таро на ${year} год для ${sign.nameGenitive}: пример вопроса, чтение карт и переход к раскладу по месяцам.`,
+    h1: `Таро для ${sign.nameGenitive}: прогноз на ${year} год`,
+    path: `/prognoz/znak/${sign.slug}`,
   };
 }
 
@@ -92,6 +107,6 @@ export function getMonthForecastThemes(month: ForecastMonth): string[] {
   return themes[month.slug] ?? ["любовь", "работа", "личный рост"];
 }
 
-export function getZodiacMonthInsight(signName: string, month: ForecastMonth): string {
-  return `Для ${signName} в ${month.namePrepositional} карты подчёркивают ${getMonthForecastThemes(month).join(", ")}. Расклад поможет увидеть, где знак получает поддержку арканов, а где стоит проявить осознанность.`;
+export function getZodiacMonthInsight(sign: SeoZodiacSign, month: ForecastMonth): string {
+  return `Для ${sign.nameGenitive} в ${month.namePrepositional} можно поставить вопрос по теме «${getMonthForecastThemes(month)[0]}» и связать её со своей ситуацией. Один знак не определяет события месяца: ответ зависит от выпавших карт и вашего контекста.`;
 }

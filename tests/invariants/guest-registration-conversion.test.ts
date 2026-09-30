@@ -153,7 +153,8 @@ describe("guest-registration-conversion", () => {
     expect(guest).toContain("showMarketing={false}");
     expect(auth).not.toContain("Аккаунт для сохранения истории");
     expect(auth).toContain("Создать аккаунт и открыть разбор");
-    expect(auth).toContain("Продолжить по email");
+    expect(auth).toContain('emailDividerLabel="или по email"');
+    expect(auth).not.toContain("Продолжить по email");
   });
 
   it("post-auth success skips onboarding redirect when guest cards present", async () => {

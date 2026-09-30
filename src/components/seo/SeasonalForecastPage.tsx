@@ -51,11 +51,11 @@ export default function SeasonalForecastPage({
   return (
     <SeoPageShell backHref="/prognoz" backLabel="Прогнозы">
       <SeoBreadcrumbs items={breadcrumbs} />
-      <p className="text-sm text-aura-gold/80">Прогноз по картам</p>
+      <p className="text-sm text-aura-gold/80">Гид по личному раскладу</p>
       <h1 className="mt-2 font-display text-3xl font-bold">{h1}</h1>
       <p className="mt-4 text-white/70">{intro}</p>
 
-      <SeoSection title="Ключевые темы периода">
+      <SeoSection title="Темы и вопросы для расклада">
         <ul className="list-disc space-y-1 pl-5">
           {themes.map((theme) => (
             <li key={theme}>{theme}</li>

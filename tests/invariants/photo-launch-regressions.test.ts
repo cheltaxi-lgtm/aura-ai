@@ -51,8 +51,8 @@ vi.mock("@/lib/photo-reading-stream", () => ({
   createPhotoInterpretationStream: async ({ onComplete }: { onComplete: (result: { reply: string; llmFailed: boolean }) => Promise<unknown> }) => new Response(new ReadableStream({
     async start(controller) {
       await new Promise((resolve) => setTimeout(resolve, 10));
-      await onComplete({ reply: "saved legacy reading", llmFailed: false });
-      controller.enqueue(new TextEncoder().encode("data: done\n\n"));
+      const completed = await onComplete({ reply: "saved legacy reading", llmFailed: false });
+      controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(completed)}\n\n`));
       controller.close();
     },
   }), { headers: { "Content-Type": "text/event-stream" } }),
@@ -110,8 +110,29 @@ describe("photo delivery and refund regressions", () => {
   });
   it("keeps the legacy SSE lock until its completion callback saves the result", async () => {
     const response = await POST(request(false));
-    expect(await response.text()).toContain("data: done");
+    expect(await response.text()).toContain('"saved":true');
     expect(m.events).toEqual(["save", "unlock"]);
+  });
+  it.each([true, false])("refunds exactly once if saving after a charge fails (JSON: %s)", async (json) => {
+    m.save.mockRejectedValue(new Error("history unavailable"));
+    const log = vi.spyOn(console, "error").mockImplementation(() => {});
+    try {
+      const response = await POST(request(json));
+      const payload = json ? await response.json() : JSON.parse((await response.text()).replace(/^data: /u, ""));
+      expect(m.charge).toHaveBeenCalledTimes(1);
+      expect(m.refund).toHaveBeenCalledTimes(1);
+      expect(m.refund).toHaveBeenCalledWith(expect.objectContaining({ transactionId: "charge-1", cost: 30 }));
+      if (json) {
+        expect(response.status).toBe(502);
+        expect(payload).toMatchObject({ refunded: true, code: "generation_failed" });
+      } else {
+        expect(payload).toMatchObject({ refunded: true, saved: false, llmFailed: true, reply: "", analysis: "" });
+      }
+      expect(payload.historyId).toBeUndefined();
+      expect(payload.analysis).not.toBe("saved reading");
+    } finally {
+      log.mockRestore();
+    }
   });
   it("serializes two browser keys for the same spread and charges only once", async () => {
     m.find.mockImplementation(async () => m.persisted

@@ -323,7 +323,7 @@ export default function CabinetRitualsPanel({
                       </button>
                     </div>
 
-                    {!inProgress && <ReportExportActions path={`/cabinet/readings/${r.id}/print`} />}
+                    {!inProgress && <ReportExportActions noteLink path={`/cabinet/readings/${r.id}/print`} />}
                     <div className="mt-3">
                       {awaiting ? (
                         <button

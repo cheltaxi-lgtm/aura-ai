@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Bell, Gift, Mail, Sparkles } from "lucide-react";
 import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
+import DailyReminderCard, { type DailyReminderStatus } from "@/components/retention/DailyReminderCard";
 import { trackRetentionOptIn } from "@/lib/seo/product-funnel";
 
 type Prefs = {
@@ -17,9 +18,21 @@ type Prefs = {
   reportReadyTelegram: boolean;
 };
 
-export default function CabinetDailyNotifications() {
+export default function CabinetDailyNotifications({ onShowTelegram }: { onShowTelegram: () => void }) {
   const [prefs, setPrefs] = useState<Prefs | null>(null);
+  const [loadFailed, setLoadFailed] = useState(false);
+  const [marketingConsent, setMarketingConsent] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [contactStatus, setContactStatus] = useState<DailyReminderStatus | null>(null);
+  const [emailProofRequired, setEmailProofRequired] = useState(false);
+
+  const syncContactStatus = useCallback((status: DailyReminderStatus) => {
+    setContactStatus(status);
+    void fetch("/api/profile/notifications", { credentials: "include", cache: "no-store" })
+      .then(async (res) => res.ok ? await res.json() as { prefs?: Prefs } : null)
+      .then((data) => { if (data?.prefs) setPrefs(data.prefs); })
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     trackRetentionOptIn("retention_optin_settings_opened", {
@@ -28,12 +41,28 @@ export default function CabinetDailyNotifications() {
     });
     void (async () => {
       try {
-        const res = await fetch("/api/profile/notifications", { credentials: "include" });
-        if (!res.ok) return;
+        const [res, consentRes, emailProofRes] = await Promise.all([
+          fetch("/api/profile/notifications", { credentials: "include" }),
+          fetch("/api/profile/retention-optin", { credentials: "include" }).catch(() => null),
+          fetch("/api/auth/user/verify-email", { credentials: "include", cache: "no-store" }).catch(() => null),
+        ]);
+        if (!res.ok) {
+          setLoadFailed(true);
+          return;
+        }
         const data = (await res.json()) as { prefs?: Prefs };
         if (data.prefs) setPrefs(data.prefs);
+        else setLoadFailed(true);
+        if (consentRes?.ok) {
+          const consent = (await consentRes.json()) as { marketingConsent?: boolean };
+          setMarketingConsent(consent.marketingConsent === true);
+        }
+        if (emailProofRes?.ok) {
+          const emailProof = await emailProofRes.json() as { required?: boolean };
+          setEmailProofRequired(emailProof.required === true);
+        }
       } catch {
-        /* ignore */
+        setLoadFailed(true);
       }
     })();
   }, []);
@@ -53,13 +82,24 @@ export default function CabinetDailyNotifications() {
       if (res.ok) {
         const data = (await res.json()) as { prefs?: Prefs };
         if (data.prefs) setPrefs(data.prefs);
+      } else {
+        setPrefs(prefs);
+        if (res.status === 409 && patch.dailyTelegram === true) {
+          setContactStatus((current) => current ? {
+            ...current, hasTelegram: false, dailyTelegramReminder: false,
+          } : current);
+        }
       }
+    } catch {
+      setPrefs(prefs);
     } finally {
       setSaving(false);
     }
   }, [prefs]);
 
-  if (!prefs) return null;
+  if (!prefs) return <p className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-sm text-white/60" role="status">
+    {loadFailed ? "Не удалось загрузить настройки уведомлений. Обновите страницу и попробуйте снова." : "Загружаем настройки уведомлений…"}
+  </p>;
 
   return (
     <section className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-4">
@@ -68,25 +108,43 @@ export default function CabinetDailyNotifications() {
         <h2 className="text-sm font-medium text-white">Напоминания и письма</h2>
       </div>
       <p className="mt-1 text-xs text-white/45">
-        Вы сами выбираете, какие напоминания получать. Настройки можно изменить в кабинете.
+        Вы сами выбираете, какие напоминания получать и куда их доставлять.
       </p>
+      {emailProofRequired ? <p className="mt-2 text-xs text-amber-200/80">
+        Чтобы получать письма, <a className="underline" href="/auth/user/verify-email">подтвердите адрес почты</a>. На руны и бесплатные расклады это не влияет.
+      </p> : null}
+
+      <DailyReminderCard
+        source="cabinet"
+        showManage
+        showDailyReadingCta={false}
+        onStatusChange={syncContactStatus}
+        onShowTelegram={onShowTelegram}
+      />
 
       <div className="mt-4">
-        <RetentionOptInCard surface="cabinet" variant="settings" />
+        <RetentionOptInCard
+          surface="cabinet"
+          variant="settings"
+          onAccepted={() => {
+            setMarketingConsent(true);
+            setPrefs((current) => current ? { ...current, marketingEmail: true } : current);
+          }}
+        />
       </div>
 
       <div className="mt-4">
-        <p className="text-xs font-medium uppercase tracking-wide text-white/35">Карты дня</p>
+        <p className="text-xs font-medium uppercase tracking-wide text-white/35">Расклад на сутки</p>
         <p className="mt-0.5 text-xs text-white/40">
-          Отдельное согласие на напоминание о картах дня включается на главной.
-          Здесь только каналы доставки.
+          Включите напоминание о раскладе на сутки в карточке выше.
+          Здесь можно выбрать каналы доставки и время.
         </p>
         <div className="mt-3 space-y-3">
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
-              checked={prefs.dailyInApp}
-              disabled={saving}
+              checked={Boolean(contactStatus?.masterReminder && prefs.dailyInApp)}
+              disabled={saving || !contactStatus?.masterReminder}
               onChange={(e) => void save({ dailyInApp: e.target.checked })}
               className="rounded border-white/20"
             />
@@ -96,25 +154,22 @@ export default function CabinetDailyNotifications() {
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
-              checked={prefs.dailyEmail}
-              disabled={saving}
-              onChange={(e) => void save({ dailyEmail: e.target.checked })}
-              className="rounded border-white/20"
-            />
-            <Mail className="h-4 w-4 text-white/40" />
-            Письмо о картах дня
-          </label>
-          <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
-            <input
-              type="checkbox"
-              checked={prefs.dailyTelegram ?? true}
-              disabled={saving}
+              checked={Boolean(contactStatus?.hasTelegram && contactStatus.masterReminder && prefs.dailyTelegram)}
+              disabled={saving || !contactStatus?.masterReminder || !contactStatus?.hasTelegram}
               onChange={(e) => void save({ dailyTelegram: e.target.checked })}
               className="rounded border-white/20"
             />
             <Bell className="h-4 w-4 text-white/40" />
-            Сообщение в Telegram о картах дня
+            Сообщение в Telegram о раскладе на сутки
           </label>
+          {contactStatus && !contactStatus.hasTelegram ? (
+            <p className="text-xs text-white/45">
+              Для напоминания сначала <a href="/cabinet?tab=profile#cabinet-telegram-link" className="text-amber-200 underline" onClick={(event) => {
+                event.preventDefault();
+                onShowTelegram();
+              }}>привяжите Telegram</a> к аккаунту.
+            </p>
+          ) : null}
           <label className="block text-xs text-white/45">
             Час напоминания (МСК)
             <select
@@ -144,14 +199,19 @@ export default function CabinetDailyNotifications() {
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"
-              checked={prefs.marketingEmail}
-              disabled={saving}
+              checked={marketingConsent && prefs.marketingEmail}
+              disabled={saving || !marketingConsent}
               onChange={(e) => void save({ marketingEmail: e.target.checked })}
               className="rounded border-white/20"
             />
             <Sparkles className="h-4 w-4 text-white/40" />
             Персональные напоминания на почту
           </label>
+          {!marketingConsent ? (
+            <p className="text-xs text-white/45">
+              Чтобы включить письма, сначала выберите «Да, напоминать» выше.
+            </p>
+          ) : null}
           <label className="flex cursor-pointer items-center gap-3 text-sm text-white/75">
             <input
               type="checkbox"

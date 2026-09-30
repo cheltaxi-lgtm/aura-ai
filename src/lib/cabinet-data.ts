@@ -68,6 +68,7 @@ export interface CabinetSessionRow {
   matrixStructuredData?: Record<string, unknown> | null;
   /** Human Design rows: chart id for the delete action (row id is the report id). */
   hdChartId?: string | null;
+  journeyAvailable?: boolean;
 }
 
 export interface CabinetAchievementEarned {
@@ -413,6 +414,7 @@ export async function getCabinetSessions(
       matrix_subject_name: string | null;
       matrix_subject_kind: string | null;
       hd_chart_id: string | null;
+      journey_available: boolean;
     }>(
       `WITH last_assistant AS (
          SELECT DISTINCT ON (cm.session_id)
@@ -455,7 +457,19 @@ export async function getCabinetSessions(
          n.structured_data AS matrix_structured_data,
          ms.display_name AS matrix_subject_name,
          ms.kind AS matrix_subject_kind,
-         NULL::uuid AS hd_chart_id
+         NULL::uuid AS hd_chart_id,
+         EXISTS (
+           SELECT 1 FROM chat_messages answer
+           WHERE answer.session_id = s.id AND answer.role = 'assistant'
+             AND (answer.owner_user_id = s.user_id OR answer.owner_user_id IS NULL)
+             AND length(trim(answer.content)) > 0
+             AND EXISTS (
+               SELECT 1 FROM chat_messages question
+               WHERE question.session_id = s.id AND question.role = 'user'
+                 AND (question.owner_user_id = s.user_id OR question.owner_user_id IS NULL)
+                 AND question.created_at <= answer.created_at
+             )
+         ) AS journey_available
        FROM sessions s
        LEFT JOIN session_memories sm ON sm.session_id = s.id AND sm.user_id = s.user_id
        LEFT JOIN last_assistant la ON la.session_id = s.id
@@ -531,7 +545,8 @@ export async function getCabinetSessions(
          NULL::jsonb AS matrix_structured_data,
          NULL AS matrix_subject_name,
          NULL AS matrix_subject_kind,
-         r.chart_id AS hd_chart_id
+         r.chart_id AS hd_chart_id,
+         r.status = 'done' AS journey_available
        FROM hd_reports r
        JOIN hd_charts c ON c.id = r.chart_id
        WHERE r.user_id = $1
@@ -615,14 +630,15 @@ export async function getCabinetSessions(
       rawTopic.length >= 8 &&
       rawTopic !== "Свой вопрос" &&
       rawTopic !== topicFromIntention &&
-      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня"].includes(rawTopic);
+      !["Сеанс", "Нумерология", "Матрица судьбы", "Три карты дня", "Расклад на сутки"].includes(rawTopic);
     const resolvedQuestion =
       customQuestion ||
       (r.intention === "custom" && topicLooksLikeQuestion ? rawTopic : null) ||
       (topicLooksLikeQuestion ? rawTopic : null);
+    const displayTopic = rawTopic === "Три карты дня" ? "Расклад на сутки" : rawTopic;
     const topicSummary =
       resolvedQuestion ||
-      (rawTopic && rawTopic !== "Свой вопрос" ? rawTopic : "") ||
+      (displayTopic && displayTopic !== "Свой вопрос" ? displayTopic : "") ||
       topicFromIntention;
 
     const matrixBirth =
@@ -656,6 +672,7 @@ export async function getCabinetSessions(
       matrixSubjectName: r.matrix_subject_name?.trim() || null,
       matrixSubjectKind: r.matrix_subject_kind ?? null,
       hdChartId: r.hd_chart_id ?? null,
+      journeyAvailable: r.journey_available,
     };
   });
 
@@ -711,6 +728,7 @@ export async function getCabinetAchievements(
   const locked: CabinetAchievementLocked[] = [];
 
   for (const key of Object.keys(ACHIEVEMENTS) as AchievementKey[]) {
+    if (key === "brave_question") continue;
     if (earnedKeys.has(key)) continue;
     const ach = ACHIEVEMENTS[key];
     let progress = 0;
@@ -732,11 +750,6 @@ export async function getCabinetAchievements(
         progress = maxMasterSessions;
         progressMax = 10;
         progressLabel = `${Math.min(maxMasterSessions, 10)}/10 сеансов`;
-        break;
-      case "brave_question":
-        progress = 0;
-        progressMax = 1;
-        progressLabel = "Спроси о сложном";
         break;
       case "month_in":
         progress = daysWithUs;

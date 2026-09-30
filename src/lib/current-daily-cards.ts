@@ -31,7 +31,8 @@ export type CurrentDailyCardsResult =
 function withinDailyWindow(iso: string | null | undefined, anchorIso: string | null): boolean {
   if (!iso) return false;
   const t = new Date(iso).getTime();
-  if (!Number.isFinite(t)) return false;
+  const age = Date.now() - t;
+  if (!Number.isFinite(t) || age < 0 || age >= TRIPLET_COOLDOWN_MS) return false;
   if (anchorIso) {
     const a = new Date(anchorIso).getTime();
     if (Number.isFinite(a) && Math.abs(t - a) <= TRIPLET_COOLDOWN_MS) return true;
@@ -43,15 +44,6 @@ function withinDailyWindow(iso: string | null | undefined, anchorIso: string | n
 function deckFromContext(raw: unknown): DeckSystem {
   if (typeof raw === "string" && raw.trim()) return raw.trim() as DeckSystem;
   return DEFAULT_DECK_SYSTEM;
-}
-
-function cardsFromNames(names: string[]): DailyTripletCard[] {
-  return names.slice(0, 3).map((name, position) => ({
-    id: position,
-    name,
-    position,
-    reversed: false,
-  }));
 }
 
 /**
@@ -121,8 +113,8 @@ export async function resolveCurrentDailyCards(
     );
 
     let sessionId: string | null = null;
-    let sessionMaster: string | null = null;
     for (const row of sessionRes.rows) {
+      if (row.character_key?.trim() !== masterId) continue;
       const names = parseSessionDailyCardNames(row.cards);
       if (names.length < 3) continue;
       const sessionKey = dailyCardsKey(
@@ -132,7 +124,6 @@ export async function resolveCurrentDailyCards(
       const sessionAt = row.created_at?.toISOString?.() ?? null;
       if (!withinDailyWindow(sessionAt, anchor)) continue;
       sessionId = row.id;
-      sessionMaster = row.character_key?.trim() || null;
       break;
     }
 
@@ -140,7 +131,7 @@ export async function resolveCurrentDailyCards(
       exists: true,
       historyId: history.id,
       sessionId,
-      masterId: sessionMaster || masterId,
+      masterId,
       deckSystem,
       cards: historyCards,
       cardNames: historyCards.map((c) => c.name),
@@ -150,44 +141,6 @@ export async function resolveCurrentDailyCards(
     };
   }
 
-  // Fallback: daily session without history (rare) — still order by created_at only.
-  if (!anchor) return { exists: false };
-
-  const sessionOnly = await query<{
-    id: string;
-    character_key: string | null;
-    cards: unknown;
-    created_at: Date;
-  }>(
-    `SELECT id, character_key, cards, created_at
-     FROM sessions
-     WHERE user_id = $1
-       AND spread_type = 'daily'
-       AND cards IS NOT NULL
-     ORDER BY created_at DESC
-     LIMIT 1`,
-    [userId]
-  );
-  const session = sessionOnly.rows[0];
-  if (!session) return { exists: false };
-  const names = parseSessionDailyCardNames(session.cards);
-  if (names.length < 3) return { exists: false };
-  const sessionAt = session.created_at.toISOString();
-  if (!withinDailyWindow(sessionAt, anchor)) return { exists: false };
-  const cards = cardsFromNames(names);
-  const cardsKey = dailyCardsKey(cards);
-  const masterId = session.character_key?.trim() || "veronika";
-
-  return {
-    exists: true,
-    historyId: null,
-    sessionId: session.id,
-    masterId,
-    deckSystem: DEFAULT_DECK_SYSTEM,
-    cards,
-    cardNames: names,
-    cardsKey,
-    createdAt: sessionAt,
-    recapKey: buildHomeRecapKey({ sessionId: session.id }),
-  };
+  // Editable session metadata alone cannot establish a daily artifact.
+  return { exists: false };
 }

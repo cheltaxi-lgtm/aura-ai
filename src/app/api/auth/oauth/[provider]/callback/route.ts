@@ -227,6 +227,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
     }
 
     let code = "oauth_failed";
+    if (message === "ACCOUNT_LINK_REQUIRED") code = "account_link_required";
     if (message === "vk_device_id_required") code = "vk_device_id_required";
     else if (/device_id is invalid/i.test(message)) code = "vk_device_id_invalid";
     else if (/vk_token_failed|invalid_client|invalid_grant|service_token|Invalid code/i.test(message)) {

@@ -1,5 +1,6 @@
 import { getSetting, setSetting } from "@/lib/settings";
 import { STARTER_BONUS_RUNES, isFirstExperienceEnabled } from "@/lib/first-experience-policy";
+import type { PoolClient } from "@/lib/db";
 import {
   DEFAULT_RUNE_COSTS,
   RUNE_ACTION_LABELS,
@@ -23,8 +24,8 @@ export const DEFAULT_RUNE_SETTINGS: RuneSettings = {
   costs: { ...DEFAULT_RUNE_COSTS },
 };
 
-export async function getRuneSettings(): Promise<RuneSettings> {
-  const raw = await getSetting("runes");
+export async function getRuneSettings(client?: PoolClient): Promise<RuneSettings> {
+  const raw = await getSetting("runes",client);
   const costs: Record<RuneActionType, number> = { ...DEFAULT_RUNE_COSTS };
 
   const rawCosts = raw.costs as Partial<Record<RuneActionType, number>> | undefined;
@@ -55,7 +56,7 @@ export async function setRuneSettings(
     costs: { ...current.costs, ...(patch.costs ?? {}) },
   };
   // The rollout policy must never overwrite the stored legacy bonus, including
-  // full-form admin saves that submit the displayed effective 100.
+  // full-form admin saves that submit the displayed effective starter bonus.
   const raw = await getSetting("runes");
   await setSetting("runes", isFirstExperienceEnabled() ? {...merged, starterRunes: clampInt(raw.starterRunes, DEFAULT_RUNE_SETTINGS.starterRunes, 0, 100_000)} : merged, adminId);
   return getRuneSettings();

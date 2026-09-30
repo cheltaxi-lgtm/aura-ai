@@ -13,6 +13,7 @@ import {
   navigateToPhotoReading,
   navigateToRitualFlow,
   navigateToStartReading,
+  resolveAppAwarePath,
 } from "@/lib/app-shell-nav";
 import { usePaywallOptional } from "@/contexts/PaywallContext";
 import { useAuth } from "@/lib/useAuth";
@@ -76,6 +77,10 @@ export default function GlobalAppTopHeader() {
   const productAction = resolveProductHeaderAction(pathname);
   const handlePrimaryAction = () => {
     if (!productAction) {
+      if (isLoggedIn && pathname !== "/") {
+        window.location.assign(resolveAppAwarePath("/?daily=1"));
+        return;
+      }
       navigateToStartReading();
       return;
     }
@@ -109,7 +114,7 @@ export default function GlobalAppTopHeader() {
       authLoading={authLoading}
       onOpenPaywall={() => paywall?.openPaywall()}
       onNavMasters={() => navigateToAppSection(APP_SHELL_SECTIONS.masters)}
-      onNavTariffs={() => navigateToAppSection(APP_SHELL_SECTIONS.tariffs)}
+      onNavTariffs={() => window.location.assign(resolveAppAwarePath("/tariffs"))}
       onNavPhoto={() => navigateToPhotoReading()}
       onNavDecks={() => navigateToDecksModal()}
       onNavRitual={() => navigateToRitualFlow()}

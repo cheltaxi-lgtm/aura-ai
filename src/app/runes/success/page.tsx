@@ -1,14 +1,17 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { emitRuneBalanceUpdate } from "@/components/RuneBalance";
 import { clearPendingRunePurchase, hasFiredRunePurchaseGoal, markRunePurchaseGoalFired, readPendingRuneOrderId, readPendingRunePaymentId, readRunePurchaseDestination } from "@/lib/rune-purchase-client";
 import { trackPaymentCancelled, trackRunePurchase } from "@/lib/seo/metrika";
 import { pushEcommercePurchase } from "@/lib/seo/ecommerce";
+import { hasCookieConsent } from "@/lib/cookie-consent";
 
 export default function RunePurchaseSuccessPage() {
   const [destination,setDestination]=useState("/cabinet");
   const [status,setStatus]=useState<"polling"|"ready"|"timeout"|"cancelled"|"rejected">("polling");
+  const purchaseGoalInFlight = useRef(new Set<string>());
+  const ecommerceTracked = useRef(new Set<string>());
   useEffect(()=>{
     const controller=new AbortController(); let timer:ReturnType<typeof setTimeout>|undefined; let attempts=0;
     setDestination(readRunePurchaseDestination());
@@ -23,10 +26,26 @@ export default function RunePurchaseSuccessPage() {
         if(response.ok && ["credited","already_credited"].includes(data.status) && typeof data.balance==="number"){
           const confirmedId=typeof data.paymentId==="string"?data.paymentId:paymentId;
           if(confirmedId)setDestination(readRunePurchaseDestination(confirmedId));
-          if(confirmedId && typeof data.amountRub==="number" && !hasFiredRunePurchaseGoal(confirmedId)){
-            trackRunePurchase(data.amountRub,data.packageId);
-            pushEcommercePurchase({paymentId:confirmedId,amountRub:data.amountRub,product:{id:data.packageId??"custom",name:data.packageName??"Пакет рун",price:data.amountRub,category:"runes"}});
-            markRunePurchaseGoalFired(confirmedId);
+          if(confirmedId && typeof data.amountRub==="number" && hasCookieConsent() && !ecommerceTracked.current.has(confirmedId)){
+            const ecommerceKey = `aura_rune_ecommerce_purchase_fired_${confirmedId}`;
+            let alreadyTracked = false;
+            try { alreadyTracked = localStorage.getItem(ecommerceKey) === "1"; } catch { /* storage optional */ }
+            if (!alreadyTracked) {
+              pushEcommercePurchase({paymentId:confirmedId,amountRub:data.amountRub,product:{id:data.packageId??"custom",name:data.packageName??"Пакет рун",price:data.amountRub,category:"runes"}});
+              try { localStorage.setItem(ecommerceKey, "1"); } catch { /* storage optional */ }
+            }
+            ecommerceTracked.current.add(confirmedId);
+          }
+          if(confirmedId && typeof data.amountRub==="number" && !hasFiredRunePurchaseGoal(confirmedId) && !purchaseGoalInFlight.current.has(confirmedId)){
+            purchaseGoalInFlight.current.add(confirmedId);
+            try {
+              void trackRunePurchase(data.amountRub,data.packageId,() => {
+                if (hasFiredRunePurchaseGoal(confirmedId)) return;
+                markRunePurchaseGoalFired(confirmedId);
+              }).catch(() => undefined).finally(() => purchaseGoalInFlight.current.delete(confirmedId));
+            } catch {
+              purchaseGoalInFlight.current.delete(confirmedId);
+            }
           }
           emitRuneBalanceUpdate(data.balance);clearPendingRunePurchase(confirmedId,orderId);setStatus("ready");return;
         }

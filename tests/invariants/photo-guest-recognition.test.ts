@@ -8,6 +8,7 @@ const m = vi.hoisted(() => ({
   ageConfirmed: vi.fn(),
   rateLimit: vi.fn(),
   generate: vi.fn(),
+  parse: vi.fn(),
   profileId: vi.fn(),
   balance: vi.fn(),
 }));
@@ -33,12 +34,7 @@ vi.mock("@/lib/api-guards", () => ({
 vi.mock("@/lib/photo-reading-prompts", () => ({
   resolvePhotoRecognitionPrompt: async () => "recognize",
   generatePhotoRecognition: m.generate,
-  parsePhotoReadingResponse: () => ({
-    deckType: "Таро",
-    spreadType: "Одна карта",
-    detectedCards: ["Шут"],
-    cardConfidences: ["high"],
-  }),
+  parsePhotoReadingResponse: m.parse,
 }));
 vi.mock("@/lib/image-dimensions", () => ({
   getImageDimensionsFromBase64: () => ({ width: 800, height: 1200 }),
@@ -119,6 +115,10 @@ describe("guest photo recognition hook", () => {
     m.ageConfirmed.mockResolvedValue(true);
     m.rateLimit.mockResolvedValue({ allowed: true });
     m.generate.mockResolvedValue("recognized");
+    m.parse.mockReturnValue({
+      deckType: "Таро", spreadType: "Одна карта",
+      detectedCards: ["Шут"], cardConfidences: ["high"],
+    });
     m.profileId.mockResolvedValue("profile");
     m.balance.mockResolvedValue(300);
     delete process.env.PHOTO_RECOGNITION_BODY_TIMEOUT_MS;
@@ -136,6 +136,38 @@ describe("guest photo recognition hook", () => {
     expect(m.rateLimit).toHaveBeenCalledTimes(6);
     expect(m.profileId).not.toHaveBeenCalled();
     expect(m.balance).not.toHaveBeenCalled();
+  });
+
+  it("lets a signed-in person inspect cards with zero runes before choosing paid interpretation", async () => {
+    m.auth.mockResolvedValue({ sub: "account", name: "Test" });
+    m.balance.mockResolvedValue(0);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ guest: false, detectedCards: ["Шут"] });
+    expect(m.generate).toHaveBeenCalledTimes(1);
+    expect(m.balance).not.toHaveBeenCalled();
+  });
+
+  it("warns when vision sees more cards than the twelve-card reading can accept", async () => {
+    m.parse.mockReturnValue({
+      deckType: "Таро", spreadType: "Большой расклад",
+      detectedCards: Array.from({ length: 13 }, (_, index) => `Карта ${index + 1}`),
+      cardConfidences: Array.from({ length: 13 }, () => "high"),
+    });
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({
+      truncated: true, totalDetected: 13, overflowCards: ["Карта 13"],
+      detectedCards: Array.from({ length: 12 }, (_, index) => `Карта ${index + 1}`),
+    });
+  });
+
+  it("shares an IP budget across signed-in accounts before calling vision", async () => {
+    m.auth.mockResolvedValue({ sub: "account", name: "Test" });
+    m.rateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSec: 3600 });
+    const response = await POST(request());
+    expect(response.status).toBe(429);
+    expect(m.generate).not.toHaveBeenCalled();
   });
 
   it("requires the signed 18+ cookie and fails before vision", async () => {

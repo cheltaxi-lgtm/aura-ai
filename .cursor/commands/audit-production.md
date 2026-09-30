@@ -1,6 +1,6 @@
 ---
 name: audit-production
-description: Production health + smoke + deploy-safety review
+description: Execute requested production health, smoke, worker and deploy-safety checks. Use for /audit-production.
 ---
 
-Read and follow `.cursor/skills/audit-production/SKILL.md`. Run `--scope production --level production`, launch production + security reviews. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-production/SKILL.md`.

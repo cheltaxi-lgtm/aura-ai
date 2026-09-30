@@ -16,7 +16,7 @@ function symbolCountPhrase(n: number): string {
 
 export function buildSpreadTeaser(params: {
   userName: string;
-  cards: Pick<SpreadSymbol, "name">[];
+  cards: (Pick<SpreadSymbol, "name"> & Partial<Pick<SpreadSymbol, "meaning">>)[];
   positions: string[];
   masterName?: string | null;
 }): string {
@@ -32,11 +32,18 @@ export function buildSpreadTeaser(params: {
   const parts = shown
     .map((c, i) => `«${c.name}» (${positions[i] ?? `карта ${i + 1}`})`)
     .join(", ");
-  const dominant = shown[Math.floor((shown.length - 1) / 2)]?.name ?? shown[0].name;
+  const dominant = shown[Math.floor((shown.length - 1) / 2)] ?? shown[0];
+  const meaning = dominant.meaning?.replace(/\s+/g, " ").trim();
+  const shortMeaning = meaning && meaning.length > 180
+    ? `${meaning.slice(0, 180).replace(/\s+\S*$/, "").trimEnd()}…`
+    : meaning;
+  const theme = shortMeaning
+    ? `Тема «${dominant.name}»: ${shortMeaning.replace(/[.!?]+$/, "")}.`
+    : `Сильнее всего здесь звучит «${dominant.name}».`;
   const cta = masterName
     ? `Продолжите с ${masterName}, чтобы услышать полную расшифровку.`
     : `Выберите наставника, чтобы услышать полную расшифровку.`;
   const verb = shown.length === 1 ? "лёг" : "легли";
 
-  return `${userName}, ${symbolCountPhrase(shown.length)} ${verb} на ваш стол: ${parts}. Сейчас сильнее всего звучит ${dominant} — ${cta}`;
+  return `${userName}, ${symbolCountPhrase(shown.length)} ${verb} на ваш стол: ${parts}. ${theme} ${cta}`;
 }

@@ -245,7 +245,7 @@ function AdminPartnersPageInner() {
               <label className="block">
                 <span className="mb-1 block text-xs text-gray-500">Заметка оператора</span>
                 <textarea
-                  className="min-h-[5rem] w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                  className="min-h-[5rem] w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white ym-hide-content ym-disable-keys"
                   value={note}
                   onChange={(e) => setNote(e.target.value)}
                   maxLength={2000}

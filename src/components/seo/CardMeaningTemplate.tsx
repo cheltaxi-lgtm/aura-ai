@@ -22,6 +22,7 @@ export type CardMeaningTemplateProps = {
   faq: CardFaqItem[];
   breadcrumbs: BreadcrumbItem[];
   suitHub?: { title: string; slug: string };
+  deepDive?: { heading: string; body: string }[];
 };
 
 export default function CardMeaningTemplate({
@@ -39,6 +40,7 @@ export default function CardMeaningTemplate({
   faq,
   breadcrumbs,
   suitHub,
+  deepDive,
 }: CardMeaningTemplateProps) {
   const structuredData = buildCardStructuredData({
     name,
@@ -46,7 +48,7 @@ export default function CardMeaningTemplate({
     description: general,
     keyword,
     faq,
-    extraText: [love, money, self, reversed].filter(Boolean).join(" "),
+    extraText: [love, money, self, reversed, ...(deepDive ?? []).map((section) => section.body)].filter(Boolean).join(" "),
   });
 
   return (
@@ -93,6 +95,12 @@ export default function CardMeaningTemplate({
           <p>{reversed}</p>
         </SeoSection>
       ) : null}
+
+      {deepDive?.map((section) => (
+        <SeoSection key={section.heading} title={section.heading}>
+          <p>{section.body}</p>
+        </SeoSection>
+      ))}
 
       {relatedIntents.length > 0 ? (
         <SeoSection title="Подходящие расклады">

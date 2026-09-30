@@ -2,17 +2,18 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildLoginHref,
   buildRegisterHref,
   readPostAuthReturnTo,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
+import { trackRegistrationCtaClick, trackRegistrationGateView } from "@/lib/seo/metrika";
 import { isAgeGateConfirmed } from "@/lib/age-gate";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
+import { COOKIE_CONSENT_EVENT, METRIKA_READY_EVENT, hasCookieConsent } from "@/lib/cookie-consent";
 
 interface RegisterGateProps {
   title?: string;
@@ -38,6 +39,26 @@ export default function RegisterGate({
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(() => isAgeGateConfirmed());
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const gateViewTracked = useRef(false);
+
+  useEffect(() => {
+    const sendGateView = () => {
+      if (gateViewTracked.current || typeof window === "undefined" || !hasCookieConsent() || !window.ym) return;
+      try {
+        trackRegistrationGateView(source);
+        gateViewTracked.current = true;
+      } catch {
+        // Analytics must not affect the registration gate.
+      }
+    };
+    sendGateView();
+    window.addEventListener(COOKIE_CONSENT_EVENT, sendGateView);
+    window.addEventListener(METRIKA_READY_EVENT, sendGateView);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, sendGateView);
+      window.removeEventListener(METRIKA_READY_EVENT, sendGateView);
+    };
+  }, [source]);
 
   return (
     <motion.section

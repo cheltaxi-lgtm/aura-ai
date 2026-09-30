@@ -20,7 +20,7 @@ export default function RaskladIndexPage() {
       <h1 className="mt-2 font-display text-3xl font-bold">Расклады Таро: схемы и позиции</h1>
       <p className="mt-4 text-white/70">
         Каждая схема — фиксированные позиции карт. Выберите подходящую под свой вопрос или начните с
-        классики — три карты или одна карта дня.
+        классики — три карты по вопросу или расклад на сутки.
       </p>
 
       <SeoSection title="Популярные схемы">

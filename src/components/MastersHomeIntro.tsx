@@ -23,7 +23,7 @@ export default function MastersHomeIntro({
       <p className="masters-home-intro__lead">
         {hasSpread
           ? "Расклад готов — выберите наставника для расшифровки или начните новый сеанс."
-          : "Бесплатный расклад из 3 карт раз в сутки · колода каждого мастера · чат и расшифровка в рунах ᚢ"}
+          : "Бесплатный расклад на сутки · колода каждого мастера · чат и расшифровка в рунах ᚢ"}
       </p>
       {readingHint ? (
         <p className="masters-home-intro__hint">{readingHint}</p>

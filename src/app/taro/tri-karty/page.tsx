@@ -27,7 +27,7 @@ const faq = [
   },
   {
     q: "Это карта дня?",
-    a: "Нет. Карта дня — отдельный ежедневный ритуал. Первый расклад на три карты отвечает на ваш вопрос; после входа сохранятся те же карты.",
+    a: "Нет. Расклад на сутки — отдельный ежедневный ритуал. Первый расклад на три карты отвечает на ваш вопрос; после входа сохранятся те же карты.",
   },
   {
     q: "Можно ли сделать три карты бесплатно?",
@@ -50,11 +50,11 @@ export default function TaroTriKartyPage() {
       <h1 className="mt-2 font-display text-3xl font-bold">Расклад на три карты Таро</h1>
       <p className="mt-4 text-white/70">
         Три карты — самый короткий персональный расклад: ситуация, фон и следующий шаг. На Zovus
-        первый такой разбор открывается без регистрации. Это не «карта дня» и не ежедневные три
-        карты после входа.
+        первый такой разбор открывается без регистрации. Ежедневный расклад на сутки — отдельный
+        сценарий после входа.
       </p>
 
-      <SeoSection title="Три разных формата">
+      <SeoSection title="Первый расклад и следующие шаги">
         <div className="grid gap-3">
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
             <p className="font-medium text-white">Первый расклад из трёх карт</p>
@@ -64,12 +64,12 @@ export default function TaroTriKartyPage() {
             </p>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="font-medium text-white">3 карты дня после входа</p>
+            <p className="font-medium text-white">Расклад на сутки после входа</p>
             <p className="mt-1 text-sm text-white/70">
-              Отдельный ежедневный ритуал, который доступен раз в сутки после входа.
+              Один бесплатный ежедневный расклад на утро, день и вечер.
             </p>
             <Link href="/gadanie/karta-dnya" className="mt-2 inline-block text-sm text-aura-gold hover:underline">
-              Как устроена карта дня →
+              Как устроен расклад на сутки →
             </Link>
           </div>
           <div className="rounded-xl border border-white/10 bg-white/5 p-4">
@@ -117,7 +117,7 @@ export default function TaroTriKartyPage() {
       <SeoRelatedTools
         extraLinks={[
           { href: "/gadanie/besplatno", label: "Что бесплатно" },
-          { href: "/gadanie/karta-dnya", label: "Карта дня" },
+          { href: "/gadanie/karta-dnya", label: "Расклад на сутки" },
         ]}
       />
 

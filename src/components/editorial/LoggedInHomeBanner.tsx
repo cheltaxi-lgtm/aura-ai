@@ -1,12 +1,20 @@
 "use client";
 
 import EditorialImage from "@/components/editorial/EditorialImage";
+import type { DailyCardsUiState } from "@/lib/daily-cards-ui";
+import { trackDailyCardsCtaClick } from "@/lib/seo/metrika";
 
 type LoggedInHomeBannerProps = {
   userName?: string | null;
+  dailyCardsState?: DailyCardsUiState;
+  onOpenDailyCards?: () => void;
 };
 
-export default function LoggedInHomeBanner({ userName }: LoggedInHomeBannerProps) {
+export default function LoggedInHomeBanner({
+  userName,
+  dailyCardsState,
+  onOpenDailyCards,
+}: LoggedInHomeBannerProps) {
   const greetingName = userName?.trim().replace(/\s+/g, " ").split(/\s+/)[0] || "";
 
   return (
@@ -36,8 +44,22 @@ export default function LoggedInHomeBanner({ userName }: LoggedInHomeBannerProps
           )}
         </h2>
         <p className="editorial-hero__subtitle">
-          Мастера, расклады и личные разборы — в одном пространстве.
+          Начните день с бесплатного расклада на утро, день и вечер.
         </p>
+        {onOpenDailyCards && dailyCardsState !== "cooldown" ? (
+          <button
+            type="button"
+            className="editorial-hero__daily-cta"
+            onClick={() => {
+              trackDailyCardsCtaClick("auth_hero");
+              onOpenDailyCards();
+            }}
+          >
+            {dailyCardsState === "opened" ? "Посмотреть расклад на сутки" : "Открыть бесплатно · расклад на сутки"}
+          </button>
+        ) : dailyCardsState === "cooldown" ? (
+          <p className="editorial-hero__daily-status">Новый бесплатный расклад завтра</p>
+        ) : null}
       </div>
     </section>
   );

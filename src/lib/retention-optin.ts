@@ -78,7 +78,7 @@ export async function getRetentionOptInSnapshot(
     marketingConsent,
     dailyCardsReminder,
     weeklyDigestEmail: prefs.weeklyDigestEmail === true,
-    marketingEmail: prefs.marketingEmail !== false,
+    marketingEmail: prefs.marketingEmail === true,
     hasFirstValue,
     quietUntil,
     eligible,

@@ -113,16 +113,15 @@ export default function TarotTriplet({
         )}
       </motion.p>
 
-      <div className="mb-8 flex flex-wrap items-end justify-center gap-5 sm:gap-8">
+      <div className="mb-8 grid grid-cols-3 items-end gap-2 sm:flex sm:flex-wrap sm:justify-center sm:gap-8">
         {deck.map((card, i) => (
-          <div key={`${card.id}-${card.name}`} className="flex flex-col items-center gap-2">
-            <p className="lux-label mb-1">{positions[i]}</p>
+          <div key={`${card.id}-${card.name}`} className="flex min-w-0 flex-col items-center gap-2">
+            <p className="lux-label mb-1 text-center text-[10px] sm:text-xs">{positions[i]}</p>
             <button
               type="button"
               onClick={() => handleFlip(i)}
               disabled={revealed[i]}
-              className="lux-tarot-flip perspective-[900px] focus:outline-none disabled:cursor-default"
-              style={{ width: 148, height: 236 }}
+              className="lux-tarot-flip aspect-[37/59] w-full max-w-[148px] perspective-[900px] focus:outline-none disabled:cursor-default"
               aria-label={revealed[i] ? card.name : `Открыть ${positions[i]}`}
             >
               <motion.div
@@ -156,7 +155,7 @@ export default function TarotTriplet({
             <p className="text-sm leading-relaxed text-aura-ivory/75">
               Выпало:{" "}
               <strong className="text-aura-champagne">{deck.map((c) => c.name).join(" · ")}</strong>.
-              Первый символ уже шепчет о вашем прошлом — полный разбор откроет наставник.
+              У каждой карты своя позиция и значение. Как они связаны в раскладе, расскажет наставник.
             </p>
             <div className="mt-6 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
               <button

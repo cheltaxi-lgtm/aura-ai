@@ -377,7 +377,7 @@ export default function MatrixCompatibilityPreview() {
   }
 
   return (
-    <div id="calculate" className="mt-10 scroll-mt-24">
+    <div id="calculate" className="mt-10 scroll-mt-24 ym-hide-content ym-disable-keys">
       <h2 className="font-display text-xl font-semibold text-white">
         Совместимость матриц — бесплатный расчёт
       </h2>
@@ -434,7 +434,7 @@ export default function MatrixCompatibilityPreview() {
               required
               value={dateA}
               onChange={(e) => setDateA(e.target.value)}
-              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
+              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 ym-hide-content ym-disable-keys"
             />
             <input
               type="text"
@@ -453,7 +453,7 @@ export default function MatrixCompatibilityPreview() {
               required
               value={dateB}
               onChange={(e) => setDateB(e.target.value)}
-              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
+              className="w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 ym-hide-content ym-disable-keys"
             />
             <input
               type="text"

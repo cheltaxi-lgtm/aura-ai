@@ -6,6 +6,11 @@ export const RUNE_BALANCE_BEFORE_KEY = "aura_runes_before_purchase";
 export const RUNE_PENDING_PAYMENT_KEY = "aura_pending_rune_payment_id";
 const RUNE_GOAL_FIRED_PREFIX = "aura_rune_goal_fired_";
 const RUNE_DESTINATION_KEY = "aura_rune_purchase_destination";
+export function runeShopDestination(packageId?: string): string {
+  const params = new URLSearchParams({ shop: "1" });
+  if (packageId && /^[a-zA-Z0-9_-]{1,64}$/.test(packageId)) params.set("package", packageId);
+  return `/cabinet?${params}`;
+}
 /** Stable through transport retries. A different package is a different explicit choice. */
 export function runePurchaseAttempt(selection: string): string {
   const key=`aura_rune_attempt:${selection}`;

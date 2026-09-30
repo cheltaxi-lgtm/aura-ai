@@ -217,7 +217,7 @@ export default function AuraMap({
   }
 
   return (
-    <figure className="aura-map">
+    <figure className="aura-map ym-hide-content ym-disable-keys">
       <header className="aura-map__intro">
         <p className="aura-map__eyebrow">
           {subjectKind === "other" && subjectName?.trim()

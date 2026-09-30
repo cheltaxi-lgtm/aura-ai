@@ -16,7 +16,10 @@ export type AccountErasureJob = {
 const JOB_COLUMNS = "id, account_id, profile_user_id, telegram_user_ids::text[] AS telegram_user_ids, stage, attempts, lease_token";
 
 /** The only entry point for full erasure. No network calls occur in this transaction. */
-export async function requestAccountErasure(accountId: string): Promise<{ operationId: string; pending: boolean }> {
+export async function requestAccountErasure(
+  accountId: string,
+  options?: { adminActorId?: string }
+): Promise<{ operationId: string; pending: boolean }> {
   const accepted = await withTransaction(async (client) => {
     const { rows: accounts } = await client.query<{ id: string; profile_user_id: string | null }>(
       `SELECT id, profile_user_id FROM user_accounts WHERE id = $1 FOR UPDATE`, [accountId]
@@ -56,6 +59,13 @@ export async function requestAccountErasure(accountId: string): Promise<{ operat
       `INSERT INTO account_erasure_jobs (id, account_id, profile_user_id, telegram_user_ids)
        VALUES ($1, $2, $3, $4::bigint[])`, [operationId, accountId, account.profile_user_id, ids]
     );
+    if (options?.adminActorId) {
+      await client.query(
+        `INSERT INTO admin_audit_log (admin_id, action, entity_type, entity_id, details)
+         VALUES ($1, 'request_delete', 'user_account', $2, $3::jsonb)`,
+        [options.adminActorId, accountId, JSON.stringify({ operationId })]
+      );
+    }
     await client.query(
       `UPDATE user_accounts SET erasure_requested_at = NOW(), token_version = token_version + 1 WHERE id = $1`, [accountId]
     );

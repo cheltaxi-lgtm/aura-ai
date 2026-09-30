@@ -1,6 +1,49 @@
 import { query } from "@/lib/db";
+import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 
 export type EmailLogStatus = "sent" | "failed" | "skipped";
+
+/** Account coverage and SMTP acceptance for the daily reading, without recipient data. */
+export async function getDailyReminderDeliveryStatus() {
+  const [coverage, days] = await Promise.all([
+    query<{
+      accounts: string;
+      reminders_on: string;
+      reachable_email: string;
+      missing_email: string;
+    }>(`SELECT COUNT(*)::text AS accounts,
+       COUNT(*) FILTER (WHERE ua.daily_cards_reminder)::text AS reminders_on,
+       COUNT(*) FILTER (WHERE ua.daily_cards_reminder
+         AND COALESCE((u.notification_prefs->>'dailyEmail')::boolean, false)
+         AND (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) IS NOT NULL)::text AS reachable_email,
+       COUNT(*) FILTER (WHERE (${ACCOUNT_DELIVERABLE_EMAIL_SQL}) IS NULL)::text AS missing_email
+      FROM user_accounts ua JOIN users u ON u.id=ua.profile_user_id
+      WHERE ua.erasure_requested_at IS NULL AND u.erasure_requested_at IS NULL`),
+    query<{ day: string; sent: string; failed: string }>(`WITH days AS (
+       SELECT ((NOW() AT TIME ZONE 'Europe/Moscow')::date - g.offset_days)::date AS day
+       FROM generate_series(0, 6) AS g(offset_days)
+     )
+     SELECT d.day::text AS day,
+       COUNT(e.id) FILTER (WHERE e.status='sent')::text AS sent,
+       COUNT(e.id) FILTER (WHERE e.status='failed')::text AS failed
+     FROM days d LEFT JOIN email_log e
+       ON (e.created_at AT TIME ZONE 'Europe/Moscow')::date=d.day
+       AND e.template='daily_reminder'
+     GROUP BY d.day ORDER BY d.day DESC`),
+  ]);
+  const row = coverage.rows[0];
+  return {
+    accounts: Number(row?.accounts ?? 0),
+    remindersOn: Number(row?.reminders_on ?? 0),
+    reachableEmail: Number(row?.reachable_email ?? 0),
+    missingEmail: Number(row?.missing_email ?? 0),
+    days: days.rows.map((day) => ({
+      date: day.day,
+      sent: Number(day.sent),
+      failed: Number(day.failed),
+    })),
+  };
+}
 
 export type EmailLogFilters = {
   status?: EmailLogStatus;

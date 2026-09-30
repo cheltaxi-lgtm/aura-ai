@@ -39,6 +39,7 @@ export async function getSpreadMetricsSummary(days = 30): Promise<
      WHERE created_at >= NOW() - ($1 || ' days')::INTERVAL
        AND source IS DISTINCT FROM 'first_experience'
        AND source IS DISTINCT FROM 'guest_registration_funnel'
+       AND source IS DISTINCT FROM 'activation_funnel'
      GROUP BY spread_id, event
      ORDER BY COUNT(*) DESC, spread_id ASC
      LIMIT 40`,
@@ -52,9 +53,9 @@ export async function getSpreadMetricsSummary(days = 30): Promise<
   }));
 }
 
-export type JourneyEvent = "bonus_granted" | "bonus_spent" | "bonus_refunded" | "first_result" | "continuation_shown" | "continuation_selected" | "insight_saved" | "step_saved" | "changes_saved" | "payment_started" | "first_topup" | "repeat_topup";
+export type JourneyEvent = "bonus_granted" | "bonus_spent" | "bonus_refunded" | "first_result" | "continuation_shown" | "continuation_selected" | "insight_saved" | "step_saved" | "changes_saved" | "payment_attempted" | "payment_failed" | "payment_started" | "first_topup" | "repeat_topup";
 /** Internal existing metrics store. Never accepts questions, report text or arbitrary metadata. */
-export async function recordJourneyEvent(userId: string, event: JourneyEvent, key: string, data: { product?: string; runes?: number; amountRub?: number; bonusVersion?: string } = {}, client?: PoolClient) {
+export async function recordJourneyEvent(userId: string, event: JourneyEvent, key: string, data: { product?: string; runes?: number; amountRub?: number; bonusVersion?: string; errorCode?: string } = {}, client?: PoolClient) {
   if (!isFirstExperienceEnabled()) return;
   const sql = `INSERT INTO spread_metrics(user_id,event,spread_id,source,idempotency_key,metadata)
     VALUES($1,$2,'journey','first_experience',$3,$4::jsonb)

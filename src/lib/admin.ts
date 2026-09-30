@@ -1,4 +1,5 @@
 import { query } from "./db";
+import { activationStageSql } from "./activation-store";
 import { getSupportAdminStats } from "./support-service";
 import { testAccountEmailSql, testProfileNameSql } from "./test-accounts";
 
@@ -85,8 +86,30 @@ export async function getDashboardStats() {
   };
 }
 
+function accountListFilter(includeTest: boolean): string {
+  return includeTest ? "" : `WHERE NOT ${testAccountEmailSql("ua.email")}`;
+}
+
+function profileListFilter(includeTest: boolean): string {
+  return includeTest
+    ? ""
+    : `WHERE NOT ${testProfileNameSql("u.name")}
+         AND NOT EXISTS (
+           SELECT 1 FROM user_accounts ua
+           WHERE ua.profile_user_id = u.id
+             AND ${testAccountEmailSql("ua.email")}
+         )`;
+}
+
+export async function countUserAccounts(includeTest = false): Promise<number> {
+  const { rows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM user_accounts ua ${accountListFilter(includeTest)}`
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function listUserAccounts(limit = 50, offset = 0, includeTest = false) {
-  const testFilter = includeTest ? "" : `WHERE NOT ${testAccountEmailSql("ua.email")}`;
+  const testFilter = accountListFilter(includeTest);
   const { rows } = await query<{
     id: string;
     email: string;
@@ -97,13 +120,16 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
     profile_user_id: string | null;
     zodiac: string | null;
     sessions_count: string;
+    activation_stage: string;
     is_unlimited: boolean;
+    is_internal: boolean;
     last_triplet_draw_at: string | null;
     rune_balance: number | null;
     oauth_provider: string | null;
     has_password: boolean;
   }>(
-    `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited,
+    `SELECT ua.id, ua.email, ua.name, ua.created_at, ua.is_unlimited, ua.is_internal,
+            ua.erasure_requested_at,
             ua.profile_user_id,
             (ua.password_hash IS NOT NULL) AS has_password,
             (
@@ -117,8 +143,10 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
             u.rune_balance,
             u.astro_meta->>'lastTripletDrawAt' AS last_triplet_draw_at,
             (SELECT COUNT(*) FROM sessions s WHERE s.user_id = u.id)::text AS sessions_count,
+            ${activationStageSql("u.id")} AS activation_stage,
             GREATEST(
               ua.last_login_at,
+              u.last_product_activity_at,
               (SELECT MAX(oi.last_login_at) FROM user_oauth_identities oi WHERE oi.user_account_id = ua.id),
               (SELECT MAX(ti.last_login_at) FROM user_telegram_identities ti WHERE ti.user_account_id = ua.id),
               (SELECT MAX(s.updated_at) FROM sessions s WHERE s.user_id = ua.profile_user_id)
@@ -126,21 +154,21 @@ export async function listUserAccounts(limit = 50, offset = 0, includeTest = fal
      FROM user_accounts ua
      LEFT JOIN users u ON u.id = ua.profile_user_id
      ${testFilter}
-     ORDER BY ua.created_at DESC LIMIT $1 OFFSET $2`,
+     ORDER BY ua.created_at DESC, ua.id DESC LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
   return rows;
 }
 
+export async function countOnboardingProfiles(includeTest = false): Promise<number> {
+  const { rows } = await query<{ total: string }>(
+    `SELECT COUNT(*)::text AS total FROM users u ${profileListFilter(includeTest)}`
+  );
+  return Number(rows[0]?.total ?? 0);
+}
+
 export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest = false) {
-  const testFilter = includeTest
-    ? ""
-    : `WHERE NOT ${testProfileNameSql("u.name")}
-         AND NOT EXISTS (
-           SELECT 1 FROM user_accounts ua
-           WHERE ua.profile_user_id = u.id
-             AND ${testAccountEmailSql("ua.email")}
-         )`;
+  const testFilter = profileListFilter(includeTest);
   const { rows } = await query<{
     id: string;
     name: string;
@@ -151,9 +179,10 @@ export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest
     last_activity_at: Date | null;
     rune_balance: number;
     account_email: string | null;
+    erasure_requested_at: Date | null;
   }>(
     `SELECT u.id, u.name, u.gender, u.birth_date::text, u.zodiac, u.created_at,
-            u.rune_balance,
+            u.rune_balance, u.erasure_requested_at,
             (SELECT ua.email FROM user_accounts ua WHERE ua.profile_user_id = u.id LIMIT 1) AS account_email,
             GREATEST(
               (SELECT MAX(ua.last_login_at) FROM user_accounts ua WHERE ua.profile_user_id = u.id),
@@ -173,26 +202,10 @@ export async function listOnboardingProfiles(limit = 50, offset = 0, includeTest
             ) AS last_activity_at
      FROM users u
      ${testFilter}
-     ORDER BY u.created_at DESC LIMIT $1 OFFSET $2`,
+     ORDER BY u.created_at DESC, u.id DESC LIMIT $1 OFFSET $2`,
     [limit, offset]
   );
   return rows;
-}
-
-export async function deleteUserAccount(id: string) {
-  const { rows } = await query<{ profile_user_id: string | null }>(
-    "SELECT profile_user_id FROM user_accounts WHERE id = $1",
-    [id]
-  );
-  const profileUserId = rows[0]?.profile_user_id ?? null;
-
-  if (profileUserId) {
-    const { deleteUserAccountCompletely } = await import("@/lib/user-deletion");
-    await deleteUserAccountCompletely(id, profileUserId);
-    return;
-  }
-
-  await query("DELETE FROM user_accounts WHERE id = $1", [id]);
 }
 
 export async function listExperts(limit = 50, offset = 0) {

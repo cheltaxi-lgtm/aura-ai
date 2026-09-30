@@ -85,3 +85,4 @@ scripts/prod-journal.txt
 !.cursor/commands/**
 !.cursor/agents/
 !.cursor/agents/**
+.superdesign/tmp/

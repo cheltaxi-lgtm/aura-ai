@@ -403,14 +403,7 @@ export function normalizeSpreadId(raw?: string | null): SpreadId {
 let catalogSettings: SpreadCatalogSettings = { ...DEFAULT_SPREAD_CATALOG_SETTINGS };
 
 export function setSpreadCatalogSettings(settings: Partial<SpreadCatalogSettings>): void {
-  catalogSettings = {
-    spreadsCatalogEnabled:
-      settings.spreadsCatalogEnabled ?? catalogSettings.spreadsCatalogEnabled,
-    spreadOverrides: {
-      ...catalogSettings.spreadOverrides,
-      ...settings.spreadOverrides,
-    },
-  };
+  catalogSettings = mergeSpreadCatalogSettings(settings);
 }
 
 export function getSpreadCatalogSettings(): SpreadCatalogSettings {
@@ -535,7 +528,7 @@ export function requiredCardCount(
   spreadId: SpreadId | string | null | undefined,
   spreadType?: string | null
 ): number {
-  if (spreadType === "daily") return 3;
+  if (spreadType === "daily") return getSpread("triplet").cardCount;
   if (spreadType === "photo") return 1;
   return getSpread(spreadId).cardCount;
 }

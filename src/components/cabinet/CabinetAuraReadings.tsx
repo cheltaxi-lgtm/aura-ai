@@ -218,7 +218,7 @@ export default function CabinetAuraReadings({ readings, onDelete, deletingId = n
                   );
                 })()}
 
-                {active.paid && <ReportExportActions path={`/cabinet/readings/${active.id}/print`} />}
+                {active.paid && <ReportExportActions noteLink path={`/cabinet/readings/${active.id}/print`} />}
                 {active.paid ? (
                   <PremiumReadingBody
                     content={active.contextData.report ?? active.contextData.interpretation ?? ""}

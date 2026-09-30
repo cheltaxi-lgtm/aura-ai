@@ -8,7 +8,7 @@ const DEFAULT_LINKS = [
   { href: "/gadanie-po-ladoni", label: "Гадание по ладони" },
   { href: "/gadanie", label: "Гадание онлайн" },
   { href: "/gadanie/besplatno", label: "Гадание бесплатно" },
-  { href: "/gadanie/karta-dnya", label: "Карта дня" },
+  { href: "/gadanie/karta-dnya", label: "Расклад на сутки" },
   { href: "/gadanie/na-lyubov", label: "Гадание на любовь" },
   { href: "/gadanie/na-budushchee", label: "Гадание на будущее" },
   { href: "/goroskop-na-segodnya", label: "Гороскоп на сегодня" },

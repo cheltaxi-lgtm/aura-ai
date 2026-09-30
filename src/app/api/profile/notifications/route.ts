@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { ensureDb } from "@/lib/db";
+import { ensureDb, query } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import {
   getNotificationPrefs,
@@ -46,6 +46,13 @@ export async function PATCH(request: NextRequest) {
     if (typeof body.reportReadyEmail === "boolean") patch.reportReadyEmail = body.reportReadyEmail;
     if (typeof body.reportReadyTelegram === "boolean")
       patch.reportReadyTelegram = body.reportReadyTelegram;
+    if (patch.dailyTelegram === true) {
+      const linked = await query(`SELECT 1 FROM user_telegram_identities
+        WHERE user_account_id=$1 LIMIT 1`, [authed.auth.sub]);
+      if (!linked.rows.length) {
+        return NextResponse.json({ error: "telegram_not_linked" }, { status: 409 });
+      }
+    }
     if (typeof body.reminderHourMsk === "number") {
       patch.reminderHourMsk = Math.min(23, Math.max(0, Math.round(body.reminderHourMsk)));
     }

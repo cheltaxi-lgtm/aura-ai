@@ -56,6 +56,8 @@ export async function persistPhotoReadingResult(params: {
     historyId = entry?.id;
   }
 
+  if (!historyId) throw new Error("photo_reading_history_not_saved");
+
   if (params.resolvedSessionId && (await ensureDb())) {
     try {
       const userMsg = buildPhotoReadingUserMessage(params.question, params.detectedCards);

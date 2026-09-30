@@ -4,13 +4,15 @@ import SeasonalForecastPage from "@/components/seo/SeasonalForecastPage";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import {
   FORECAST_MONTHS,
-  FORECAST_YEARS,
+  getCurrentForecastYear,
   getForecastMonthBySlug,
   getMonthForecastThemes,
   getZodiacMonthInsight,
   getZodiacSignForecastMeta,
 } from "@/lib/seo/seasonal";
 import { getAllSeoZodiacSlugs, getSeoZodiacBySlug } from "@/lib/seo/zodiac-signs";
+
+export const revalidate = 3600;
 
 export function generateStaticParams() {
   return getAllSeoZodiacSlugs().flatMap((sign) =>
@@ -27,8 +29,8 @@ export async function generateMetadata({
   const sign = getSeoZodiacBySlug(signSlug);
   const month = getForecastMonthBySlug(monthSlug);
   if (!sign || !month) return { title: "Прогноз" };
-  const year = FORECAST_YEARS[0];
-  return buildSeoMetadata(getZodiacSignForecastMeta(sign.name, sign.slug, year, month));
+  const year = getCurrentForecastYear();
+  return buildSeoMetadata(getZodiacSignForecastMeta(sign, year, month));
 }
 
 export default async function PrognozZodiacMonthPage({
@@ -41,8 +43,8 @@ export default async function PrognozZodiacMonthPage({
   const month = getForecastMonthBySlug(monthSlug);
   if (!sign || !month) notFound();
 
-  const year = FORECAST_YEARS[0];
-  const meta = getZodiacSignForecastMeta(sign.name, sign.slug, year, month);
+  const year = getCurrentForecastYear();
+  const meta = getZodiacSignForecastMeta(sign, year, month);
   const breadcrumbs = [
     { name: "Zovus", path: "/" },
     { name: "Прогнозы", path: "/prognoz" },
@@ -53,12 +55,12 @@ export default async function PrognozZodiacMonthPage({
   return (
     <SeasonalForecastPage
       h1={meta.h1}
-      intro={getZodiacMonthInsight(sign.name, month)}
+      intro={getZodiacMonthInsight(sign, month)}
       breadcrumbs={breadcrumbs}
       path={meta.path}
       metaTitle={meta.title}
       metaDescription={meta.description}
-      themes={getMonthForecastThemes(month)}
+      themes={[...getMonthForecastThemes(month), sign.exampleQuestion]}
       intentLinks={[
         { label: "Расклад на месяц", href: "/rasklady/prognoz-na-mesyac" },
         { label: "На отношения", href: "/rasklady/lyubov" },
@@ -66,18 +68,22 @@ export default async function PrognozZodiacMonthPage({
       ]}
       faq={[
         {
-          q: `Чем полезен прогноз для ${sign.name} на ${month.name}?`,
-          a: "Он задаёт ориентиры месяца. Для точного ответа на личный вопрос сделайте тематический расклад.",
+          q: `Чем полезен расклад для ${sign.nameGenitive} на ${month.name}?`,
+          a: "Он помогает разобрать ваш вопрос в выбранный период. Сам знак не даёт готового прогноза и не заменяет выпавшие карты.",
         },
         {
           q: "Можно совместить знак и конкретный вопрос?",
-          a: "Да. Укажите знак в профиле — мастер учтёт его в трактовке вашего расклада.",
+          a: `Да. Например: «${sign.exampleQuestion}» Укажите период и обстоятельства, чтобы трактовка относилась к вашей ситуации.`,
         },
       ]}
       extraSections={[
         {
-          heading: `Ключевые темы для ${sign.name}`,
-          body: `В ${month.namePrepositional} для ${sign.name} (${sign.elementRu}) акцент на ${getMonthForecastThemes(month).join(", ")}.`,
+          heading: `Вопрос для ${sign.nameGenitive}`,
+          body: `${sign.readingFocus} В ${month.namePrepositional} выберите одну ситуацию, связанную с темой «${getMonthForecastThemes(month)[0]}», и назовите решение, которое предстоит принять.`,
+        },
+        {
+          heading: "Как проверить ответ",
+          body: sign.interpretation,
         },
       ]}
     />

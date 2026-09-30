@@ -99,6 +99,13 @@ export function trackProductFunnel(
   const clean = sanitizeProductFunnelParams(params as unknown as Record<string, unknown>);
   if (!clean) return;
   reachGoal(stage, clean);
+  // Aura calls only the unified tracker. Palm emits its legacy goals at call
+  // sites already, so duplicating them here would inflate Metrika conversions.
+  if (clean.product === "aura") {
+    for (const legacyGoal of PRODUCT_FUNNEL_LEGACY_GOALS.aura[stage] ?? []) {
+      if (legacyGoal !== stage) reachGoal(legacyGoal, clean);
+    }
+  }
 }
 
 export type PersonalZovusEvent =
@@ -109,7 +116,7 @@ export type PersonalZovusEvent =
 /** Personal Zovus home — product label only, never PII. */
 export function trackPersonalZovusEvent(
   event: PersonalZovusEvent,
-  params: { product?: ProductFunnelProduct | "daily" | "home"; source: string; state?: string }
+  params: { product?: ProductFunnelProduct | "daily" | "home" | "photo"; source: string; state?: string }
 ): void {
   const product =
     typeof params.product === "string" && params.product.trim()
@@ -132,13 +139,13 @@ export function trackCrossProductClick(params: ProductFunnelParams): void {
   reachGoal("cross_product_click", clean);
 }
 
-const RETENTION_STATES = new Set(["d1", "d7", "later"]);
+const RETENTION_STATES = new Set(["d1", "d2_6", "d7", "later"]);
 
 /**
  * Auth retention return (Personal Zovus). Params: product/source/state only.
  * Never send createdAt / userId / email.
  */
-export function trackRetentionReturn(state: "d1" | "d7" | "later"): void {
+export function trackRetentionReturn(state: "d1" | "d2_6" | "d7" | "later"): void {
   if (!RETENTION_STATES.has(state)) return;
   reachGoal("retention_return", {
     product: "home",

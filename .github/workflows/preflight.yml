@@ -38,7 +38,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22.13.0
           cache: npm
 
       - name: Install dependencies
@@ -114,3 +114,8 @@ jobs:
         run: npm run build
         env:
           NODE_OPTIONS: --max-old-space-size=8192
+
+      - name: First-experience note journey (browser)
+        run: |
+          npx playwright install --with-deps chromium
+          DATABASE_URL="$TEST_DATABASE_URL" node scripts/verify-first-experience-e2e.mjs tests/e2e/first-experience.public.spec.ts --grep 'free note|reading reminder'

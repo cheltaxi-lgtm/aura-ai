@@ -1,4 +1,4 @@
-import { workspaceFingerprint } from "./ai-harness-fingerprint.mjs";
+import { workspaceFingerprint, requiresVerification } from "./ai-harness-fingerprint.mjs";
 
 /**
  * Machine COMPLETED gate. COMPLETED is allowed only on verdict PASS
@@ -125,14 +125,10 @@ export function evaluateStopGate({
 }
 
 export function isWorkSession(dirtyFiles = [], state = null) {
-  if (state && ["FAIL", "PARTIAL", "PASS", "RUNNING"].includes(state.verdict)) {
-    return true;
-  }
-  return dirtyFiles.some((f) =>
-    /^(src|tests|scripts|telegram-bot|mobile|hosting|docs|\.cursor|package\.json|\.gitignore)\b/.test(
-      String(f).replace(/\\/g, "/")
-    )
-  );
+  // The legacy hook has no task identity: a clean checkout cannot prove that an
+  // explicit audit ended. Preserve negative results and freshness requirements.
+  if (state && ["FAIL", "PARTIAL", "PASS", "RUNNING"].includes(state.verdict)) return true;
+  return dirtyFiles.some(requiresVerification);
 }
 
 export function completedAllowed(state, currentFingerprint) {

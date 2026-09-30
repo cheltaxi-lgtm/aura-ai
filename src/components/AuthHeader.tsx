@@ -45,7 +45,7 @@ export default function AuthHeader({
         <NotificationBell variant="headerPill" />
         <button type="button" onClick={openCabinet} className={btnClass} title="Личный кабинет">
           <User className="h-4 w-4 shrink-0" aria-hidden />
-          <span className={compact ? "hidden sm:inline" : undefined}>
+          <span className={compact ? "hidden sm:inline ym-hide-content ym-disable-keys" : "ym-hide-content ym-disable-keys"}>
             {normalizePersonDisplayNameOr(user.name, user.name.split(" ")[0])}
           </span>
         </button>

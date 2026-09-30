@@ -1,3 +1,4 @@
+import { observeProductRequest } from "@/lib/activation-telemetry";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
@@ -70,7 +71,7 @@ function palmReportPayload(params: {
   };
 }
 
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   if (!(await isPalmReadingEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
@@ -388,4 +389,8 @@ export async function POST(request: NextRequest) {
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   });
+}
+
+export async function POST(request: NextRequest) {
+  return observeProductRequest(request, "palm", () => handlePost(request));
 }

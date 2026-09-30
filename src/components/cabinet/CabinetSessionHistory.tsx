@@ -254,7 +254,7 @@ function SessionCard({
         </p>
       )}
 
-      {!["Сеанс в процессе", "Сеанс завершён", ""].includes(session.prediction.trim()) && <ReportExportActions path={hdSession ? `/cabinet/human-design/reports/${session.id}/print` : `/cabinet/readings/${session.id}/print`} />}
+      {!["Сеанс в процессе", "Сеанс завершён", ""].includes(session.prediction.trim()) && <ReportExportActions noteLink={Boolean(session.journeyAvailable && (hdSession || (session.sessionId && !matrixSession && session.spreadType !== "photo")))} noteReadingId={hdSession ? session.id : session.sessionId ?? undefined} path={hdSession ? `/cabinet/human-design/reports/${session.id}/print` : `/cabinet/readings/${session.id}/print`} />}
       <div className="cabinet-session-card__actions">
         {hdSession ? (
           <>

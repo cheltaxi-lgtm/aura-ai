@@ -267,7 +267,7 @@ export async function renderDayCardImage(card: DrawnCard): Promise<Buffer> {
   const [plate, panel] = await Promise.all([getOrnatePlate(), cardFace(card, true, cardW, cardH)]);
   const overlaySvg = Buffer.from(
     `<svg width="${width}" height="${height}" viewBox="0 0 ${width} ${height}" xmlns="http://www.w3.org/2000/svg">
-      <text x="50%" y="110" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#E8D5A8">Карта дня</text>
+      <text x="50%" y="110" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#E8D5A8">Расклад на сутки</text>
       <rect x="${left - 4}" y="${top - 4}" width="${cardW + 8}" height="${cardH + 8}"
         fill="none" stroke="#C4A574" stroke-opacity="0.7" stroke-width="2.5" rx="6"/>
       <text x="50%" y="${height - 56}" text-anchor="middle" font-family="Georgia, serif" font-size="28" fill="#F5EDE3">${escapeXml(card.name)}${card.reversed ? " · перевёрнута" : ""}</text>

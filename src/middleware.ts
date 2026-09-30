@@ -142,6 +142,8 @@ function resolveSecretKey(): Uint8Array | null {
 }
 
 function isPublicApiRoute(pathname: string, method = "GET"): boolean {
+  if (pathname === "/api/rasklady/prices") return method === "GET" || method === "HEAD";
+  if (pathname === "/api/photo-reading/pricing") return method === "GET" || method === "HEAD";
   if (PUBLIC_API_EXACT.has(pathname)) return true;
   if (isPublicJointReadingRoute(pathname, method)) return true;
   return PUBLIC_API_PREFIXES.some((prefix) => pathname.startsWith(prefix));
@@ -442,9 +444,11 @@ export async function middleware(request: NextRequest) {
   // Dynamic env key avoids Next build-time inlining so flag flips work after restart.
   {
     const proPath =
+      pathname === "/zovus-pro" ||
       pathname === "/pro" ||
       pathname.startsWith("/pro/") ||
-      pathname.startsWith("/api/pro") ||
+      pathname === "/api/pro" ||
+      pathname.startsWith("/api/pro/") ||
       pathname.startsWith("/r/") ||
       pathname.startsWith("/p/") ||
       pathname === "/admin/pro" ||

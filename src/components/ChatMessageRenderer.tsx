@@ -111,7 +111,7 @@ function renderPlainBody(
 ): ReactNode {
   const paragraphs = toParagraphs(text);
   return (
-    <div className={`space-y-4 font-body ${className}`}>
+    <div className={`space-y-4 font-body ${className} ym-hide-content ym-disable-keys`}>
       <ReactMarkdown components={buildMarkdownComponents(variant)}>
         {paragraphs.map((para) => para.replace(/\n/g, "  \n")).join("\n\n")}
       </ReactMarkdown>
@@ -157,6 +157,22 @@ function buildMarkdownComponents(variant: ReadingRenderVariant): Components {
     h3: ({ children }) => {
       const heading = Children.toArray(children);
       if (typeof heading[0] === "string") heading[0] = heading[0].replace(/^\s*✦\s*/, "");
+      const tripletPosition =
+        heading.length === 1 && typeof heading[0] === "string"
+          ? /^(Прошлое|Настоящее|Будущее) · (.+)$/iu.exec(heading[0])
+          : null;
+      if (tripletPosition) {
+        return (
+          <header className={isPrint ? "mb-3 mt-6 border-t border-black/15 pt-3" : "mb-4 mt-8 border-t border-aura-gold/25 pt-5 first:mt-0"}>
+            <span className={isPrint ? "text-[10px] font-semibold uppercase tracking-[0.16em] text-black/60" : "text-[10px] font-semibold uppercase tracking-[0.2em] text-aura-champagne/75"}>
+              {tripletPosition[1]}
+            </span>
+            <h3 className={isPrint ? "mt-1 font-mystic-display text-lg font-semibold text-black" : "mt-1 font-mystic-display text-xl font-semibold leading-snug text-aura-ivory sm:text-2xl"}>
+              {tripletPosition[2]}
+            </h3>
+          </header>
+        );
+      }
       if (isPrint) {
         return (
           <header className="mb-2 mt-5 first:mt-0">
@@ -284,7 +300,7 @@ function ChatMessageRenderer({
 
   if (isUser) {
     return (
-      <p className={`whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-white ${className}`}>
+      <p className={`whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-white ${className} ym-hide-content ym-disable-keys`}>
         {trimmed}
       </p>
     );
@@ -299,7 +315,7 @@ function ChatMessageRenderer({
   }
 
   return (
-    <div className={`space-y-4 font-body ${className}`}>
+    <div className={`space-y-4 font-body ${className} ym-hide-content ym-disable-keys`}>
       {!hideSpreadCardImages && imageBlock ? renderCardImageRow(imageBlock) : null}
       {markdownSource ? (
         <ReactMarkdown components={buildMarkdownComponents(variant)}>

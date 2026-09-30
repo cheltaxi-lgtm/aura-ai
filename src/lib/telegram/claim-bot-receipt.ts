@@ -197,11 +197,13 @@ export async function claimTelegramBotReceipt(opts: {
       try {
         await recordGuestIntroUsed(opts.profileUserId, new Date(), client);
       } catch {
-        /* non-fatal */
+        // Roll back the claimed receipt if its durable entitlement marker cannot persist.
+        throw new Error("guest_intro_marker_write_failed");
       }
 
       return fromRow(row, symbols, system, masterId, fingerprint, Boolean(bot.alreadyClaimed));
     } catch (err) {
+      if (err instanceof Error && err.message === "guest_intro_marker_write_failed") throw err;
       const msg = err instanceof Error ? err.message : String(err);
       if (/unique|duplicate/i.test(msg)) {
         const conflict = await findGuestResumeByTokenHash(tokenHash, client);

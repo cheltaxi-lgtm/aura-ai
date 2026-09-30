@@ -1,6 +1,6 @@
 ---
 name: audit-seo
-description: Full SEO / landing audit (ask-spread, teasers, discoverability)
+description: Execute a requested full audit of SEO landings, ask-spread, teasers and discoverability. Use for /audit-seo.
 ---
 
-Read and follow `.cursor/skills/audit-seo/SKILL.md`. Run the SEO harness at level full, launch independent reviews, fix failures, retest. COMPLETED only on machine PASS.
+Read and follow the canonical skill at `.agents/skills/audit-seo/SKILL.md`.

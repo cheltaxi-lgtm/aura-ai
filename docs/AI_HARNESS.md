@@ -1,62 +1,44 @@
 # Zovus AI Harness
 
-Agent cycle: `discover → plan → implement → test → review → fix → retest`. Machine gate decides COMPLETED.
+Select existing checks and independent reviews for product implementation or an explicitly requested execution audit. Read-only analysis and documentation-only work do not need a machine PASS merely to finish.
 
-## Architecture
+## Maintained entrypoints
 
 | Piece | Path | Role |
 |---|---|---|
-| Rule | `.cursor/rules/zovus-ai-harness.mdc` | Always-on cycle + COMPLETED |
-| Orchestrator | `.cursor/skills/zovus-harness/SKILL.md` | When to run which scope |
-| Product skills | `.cursor/skills/audit-*/SKILL.md` | Slash procedures |
-| Commands | `.cursor/commands/audit-*.md` | `/audit-*` `/full-audit` |
-| Reviewers | `.cursor/agents/harness-*-review.md` | Independent reviews |
-| Runner | `scripts/ai-harness.mjs` | Wraps existing npm/scripts |
-| Catalog | `scripts/ai-harness-catalog.mjs` | Product → checks |
-| Gate | `scripts/ai-harness-gate.mjs` | PASS-only COMPLETED |
-| Hooks | `.cursor/hooks.json` | session hint, cheap post-edit, stop gate |
+| Canonical orchestrator | .agents/skills/zovus-harness/SKILL.md | Scope, evidence and completion |
+| Canonical audit skills | .agents/skills/audit-*/SKILL.md and full-audit/SKILL.md | Explicit audit execution |
+| Invocation policy | .agents/skills/audit-*/agents/openai.yaml and full-audit/agents/openai.yaml | Preserve explicit audit invocation |
+| Cursor compatibility | .cursor/skills/*/SKILL.md and .cursor/commands/audit-*.md | Thin links to canonical skills |
+| Reviewers | .codex/agents/harness-*-review.toml; .cursor/agents/harness-*-review.md | Runtime-specific reviewer definitions |
+| Runner and catalog | scripts/ai-harness.mjs; scripts/ai-harness-catalog.mjs | Reuse existing npm scripts and Playwright projects |
+| Gate | scripts/ai-harness-gate.mjs | Fresh evidence for implementation/audit completion |
+| Hooks | .codex/hooks.json; .cursor/hooks.json | Runtime-specific hints and gates |
 
-Existing preflight, guards, invariants, Playwright, and `scripts/deploy-prod.sh` stay canonical. This harness does not replace them.
+Existing P0 invariants, guards, verification scripts and safe deploy scripts remain authoritative. Cursor rules apply when loaded by that runtime or explicitly referenced; their alwaysApply flag does not by itself load them in Codex.
 
-## Commands
+## Select a run
 
-| Command | Scope |
-|---|---|
-| `/audit-matrix` | Destiny Matrix |
-| `/audit-natal` | Natal |
-| `/audit-hd` | Human Design |
-| `/audit-tarot` | Tarot / guest triplet |
-| `/audit-photo` | Photo reading |
-| `/audit-palm` | Palm reading |
-| `/audit-seo` | SEO landings |
-| `/audit-production` | Live health + smoke |
-| `/full-audit` | All local products |
+Normal implementation uses an appropriate scope and level, for example `node scripts/ai-harness.mjs --scope auto --level fast`. Full adds broader lint/unit/E2E or build coverage according to the scope; it is not mandatory for every UI/API edit. Production level includes the selected full checks and live health/smoke, and applies only to requested production checks or an authorized deploy. Run the chosen level once; a full run already includes fast checks.
 
-Equivalent CLI: `node scripts/ai-harness.mjs --scope <id> --level <fast\|full\|production>`.
+Repeat `--file <repo-relative-path>` for the task's files when unrelated changes share the workspace. These arguments limit check/review planning; the evidence fingerprint still covers the complete workspace. Without them, auto mode uses the changed files. Documentation-only/no-change auto runs require no product checks. Unknown runtime paths yield a scope-required PARTIAL: inspect them and select an appropriate explicit scope. Multiple affected products remain scoped; do not choose full merely because three products changed.
 
-## Gates
+Explicit execution audits add `--audit` and select a scope. For example, `node scripts/ai-harness.mjs --scope matrix --level full --audit` runs a full Matrix audit. `--scope full --level full --audit` runs all local products; `--scope production --level production --audit` performs a requested production audit. Use production level in the chosen run when needed, without a mandatory preceding fast/full run. Audit execution does not authorize a deploy.
 
-| Level | Runs | When |
-|---|---|---|
-| **fast** | typecheck/guards + product verify scripts | Default after small edits |
-| **full** | fast + lint + scoped unit/E2E + extra verifies | Behavior, UI, API, calc |
-| **production** | full + `https://zovus.ru/api/health` + product URLs | Deploy, infra, `/audit-production` |
+Commands: /audit-matrix, /audit-natal, /audit-hd, /audit-tarot, /audit-photo, /audit-palm, /audit-seo, /audit-production, /full-audit. These aliases route directly to the canonical skill; source-command-* skill copies are not maintained.
 
-`COMPLETED` requires fresh passing checks, production `PASS` or `NOT_REQUIRED`, and fresh independent reviews bound to the same working-tree fingerprint. The fingerprint includes HEAD and changed/untracked file contents; generated harness state, temporary test artifacts and Yandex audit output are excluded. An edit during or after testing invalidates the evidence. Any recorded `FAIL` or `PARTIAL` review blocks completion, including after the retry limit.
+## Reviews and fresh evidence
 
-After the final checks, record each applicable independent result with `node scripts/ai-harness.mjs --record-review code --result PASS` (or `security`, `visual`, `calc`, `production`). The command refuses `PASS` if the diff changed or checks have not passed. Recording a review does not refresh the test timestamp. Old review strings without fingerprint evidence must be reviewed again. Self-tests exercise synthetic states without overwriting the product's saved evidence.
+Normal implementation selects reviews from the task's changed files: code, calc for engines/goldens, visual for UI/CSS, security for auth/billing/receipts/API/storage/bot, and production when required. Explicit --audit runs require the selected scope's full product reviewer set; production reviews are required only when production checks are required.
 
-## Add a product or check
+For covered implementation and audit execution, COMPLETED requires fresh passing checks, production PASS or NOT_REQUIRED, and the required independent reviews. Evidence is bound to the workspace fingerprint, including HEAD and changed/untracked file contents; generated harness state and designated temporary artifacts are excluded. Any non-excluded workspace change invalidates fingerprint evidence. Any recorded FAIL/PARTIAL review blocks implementation/audit completion, including after the retry limit; it must not be erased or relabeled to bypass the gate.
 
-1. Add the check to `CHECKS` in `scripts/ai-harness-catalog.mjs` pointing at an **existing** npm script or Playwright project.
-2. Add the scope (paths, `fast`/`full`/`production` ids, `smokeUrls`, `reviews`).
-3. Add `.cursor/skills/audit-<id>/SKILL.md` + `.cursor/commands/audit-<id>.md`.
-4. Run `npm run harness:selftest`.
+Record each independent result with `node scripts/ai-harness.mjs --record-review code --result PASS` (or security, visual, calc, production; results PASS, FAIL, PARTIAL). PASS is refused when the diff changed or checks have not passed. Recording a review does not refresh the test timestamp. Reuse current passing evidence when scope, level, required checks/reviews and fingerprint still match. Missing or stale evidence needs the corresponding verification; do not rerun unrelated passing work merely to produce another status.
 
-## Troubleshooting
+## Maintaining and diagnosing the harness
 
-- **Hooks silent** — Cursor reloads `.cursor/hooks.json` on save; restart if needed. Scripts are Node (Windows-safe). Hooks fail-open.
-- **COMPLETED blocked** — read `.cursor/harness-state.json`. Re-run the same `--scope/--level`. Do not delete the state to bypass the gate.
-- **PARTIAL** — exact `reason` on the check (no Playwright browsers, unreachable zovus.ru, no `TEST_DATABASE_URL`). Fix the environment or keep PARTIAL.
-- **Post-edit feels heavy** — it no longer runs typecheck. Only `guards` on `src/` / `telegram-bot/src/` TS/JS.
-- **Self-check** — `npm run harness:selftest`.
+To add an actual product/check, update the existing catalog, canonical skill and needed compatibility command, then run npm run harness:selftest. Avoid adding a second test stack or duplicate skill bodies. Preserve the audit skills' existing explicit invocation policy.
+
+When a gate is blocked, inspect its exact reason and saved state. Diagnose FAIL/PARTIAL before repeating a command. Rerun after a relevant fix, environment change or new evidence; if the same required dependency remains unavailable, report PARTIAL and continue independent work. Do not delete state to bypass the gate. Hooks failing to load require inspecting the configuration of the runtime actually in use, not assuming Cursor settings control Codex.
+
+The legacy Cursor stop hook receives working-tree paths and shared saved state, but no reliable current-task intent. It conservatively retains audit failure and freshness enforcement, so old state or unrelated dirty code can still affect that legacy hook. Codex currently registers only the scoped SessionStart hint; the legacy stop hook is not registered in .codex/hooks.json. The CLI validates explicit audit results even on a clean checkout.

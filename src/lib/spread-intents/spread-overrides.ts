@@ -78,7 +78,7 @@ export const TOP_SPREAD_OVERRIDES: Record<string, SpreadOverride> = {
   // Hero
   "sovmestimost-12": { spreadId: "compatibility-12", requiresPartnerInfo: true },
   "lenormand-liniya": { spreadId: "lenormand-line", positions: LEN5 },
-  "karta-dnya": { spreadId: "single", positions: ["Послание"] },
+  "karta-dnya": { spreadId: "triplet", positions: ["Утро", "День", "Вечер"] },
   "moyo-prednaznachenie": { spreadId: "celtic-cross" },
 };
 

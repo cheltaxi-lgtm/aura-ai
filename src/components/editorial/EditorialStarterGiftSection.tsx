@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { useAuth } from "@/lib/useAuth";
@@ -50,6 +50,9 @@ export default function EditorialStarterGiftSection() {
   const { isLoggedIn, loading: authLoading } = useAuth();
   const { ref, className } = useScrollReveal<HTMLElement>();
   const trackedRef = useRef(false);
+  const [registerHref, setRegisterHref] = useState("/auth/user/register?returnTo=%2F");
+
+  useEffect(() => setRegisterHref(buildRegisterHref("/")), []);
 
   const shown = fromServer && config.starterRunes > 0 && !authLoading && !isLoggedIn;
 
@@ -81,12 +84,7 @@ export default function EditorialStarterGiftSection() {
         note: `${price} ᚢ — хватает целиком`,
       };
     }
-    // Product costs more than the starter package: honest partial-coverage framing.
-    return {
-      id: example.costKey,
-      title: capitalize(config.labels[example.costKey] ?? example.unit[0]),
-      note: `${starter} ᚢ — вклад в стоимость ${price} ᚢ`,
-    };
+    return null;
   })
     .filter((chip): chip is NonNullable<typeof chip> => chip !== null)
     .slice(0, 3);
@@ -108,12 +106,12 @@ export default function EditorialStarterGiftSection() {
             <p className="editorial-starter-gift__amount">При первой регистрации — {starter} ᚢ</p>
             <ul className="editorial-starter-gift__points">
               <li>Сохранённые разборы — перечитывайте, когда захотите</li>
-              <li>3 карты дня бесплатно раз в сутки</li>
+              <li>Расклад на сутки бесплатно раз в сутки</li>
               <li>{starter} ᚢ на дополнительные разборы — цена видна до начала</li>
             </ul>
             <div className="editorial-starter-pack__actions">
               <Link
-                href={buildRegisterHref("/")}
+                href={registerHref}
                 prefetch={false}
                 className="editorial-btn editorial-btn--gold"
                 onClick={() => trackSeoEvent("starter_gift_cta_click", { placement: "home" })}
@@ -122,9 +120,9 @@ export default function EditorialStarterGiftSection() {
               </Link>
             </div>
             <p className="editorial-starter-pack__fine">Без банковской карты. Решение о платных разборах — за вами.</p>
-            <details className="editorial-starter-gift__details">
+            {chips.length > 0 && <details className="editorial-starter-gift__details">
             <summary>На что хватит {starter} ᚢ</summary>
-            <p className="editorial-starter-pack__fine">Примеры на выбор: весь подарок на один из форматов. Количество указано по обычной цене, без дополнительных уточнений.</p>
+            <p className="editorial-starter-pack__fine">Примеры того, что можно оплатить из стартового баланса. Цены видны до начала разбора.</p>
             <ul className="editorial-starter-gift__chips" aria-label={`На что хватит ${starter} ᚢ`}>
               {chips.map((chip) => (
                 <li key={chip.id} className="editorial-starter-gift__chip">
@@ -136,7 +134,7 @@ export default function EditorialStarterGiftSection() {
             <p className="editorial-starter-pack__fine">
               ᚢ — внутренняя валюта Zovus. Начисляются один раз при первой регистрации.
             </p>
-            </details>
+            </details>}
           </div>
         </div>
       </div>

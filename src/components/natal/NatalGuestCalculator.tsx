@@ -412,7 +412,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
               required
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
-              className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
+              className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 ym-hide-content ym-disable-keys"
             />
           </label>
 
@@ -426,7 +426,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
               disabled={timeUnknown}
               value={birthTime}
               onChange={(e) => setBirthTime(e.target.value)}
-              className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 disabled:opacity-40"
+              className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 disabled:opacity-40 ym-hide-content ym-disable-keys"
             />
             <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm text-white/60">
               <input
@@ -458,7 +458,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
                   setPlace(null);
                   searchPlaces(q);
                 }}
-                className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50"
+                className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 ym-hide-content ym-disable-keys"
               />
             </label>
             {placesOpen && places.length > 0 ? (
@@ -500,7 +500,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
           </button>
         </form>
       ) : (
-        <div data-calculation-result className="mt-8 space-y-6">
+        <div data-calculation-result className="mt-8 space-y-6 ym-hide-content ym-disable-keys">
           <div>
             <h3 className="font-display text-2xl font-semibold text-white">Ваша карта построена</h3>
             <p className="mt-2 text-sm text-white/60">

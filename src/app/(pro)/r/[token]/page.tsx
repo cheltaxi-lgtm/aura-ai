@@ -161,7 +161,7 @@ export default function ProReportPublicPage() {
 
   return (
     <main
-      className="pro-public pro-public--report pro-report-ready mx-auto max-w-2xl px-4 py-12"
+      className="pro-public pro-public--report pro-report-ready mx-auto max-w-2xl px-4 py-12 ym-hide-content ym-disable-keys"
       data-pro-report-loaded="1"
     >
       <div className="pro-public__toolbar print:hidden flex flex-wrap items-start justify-between gap-3">
@@ -246,7 +246,7 @@ export default function ProReportPublicPage() {
             </p>
           ) : null}
           <textarea
-            className="pro-field mt-3"
+            className="pro-field mt-3 ym-hide-content ym-disable-keys"
             rows={3}
             value={question}
             onChange={(e) => {

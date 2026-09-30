@@ -1,17 +1,17 @@
 ---
-description: After finishing work — commit, push to main, and production deploy by default
+description: Commit, push, merge and production deploy within requested or already authorized release scope
 alwaysApply: true
 ---
 
-# Commit → push → deploy (default)
+# Authorized commit → push → deploy
 
-When a task is finished and changes are ready:
+Perform only the commit, push, merge and deploy steps included in the request or standing authorization, once their required checks pass. Completing local work alone does not add release steps. For an authorized release:
 
-1. **Commit** logical changes (unless the user explicitly said not to commit).
+1. **Commit** the task's logical changes when committing is authorized. Preserve unrelated work.
 2. **Push** the branch and **fast-forward merge into `main`**, then push `main` (no force-push).
 3. **Deploy production** with `scripts/deploy-prod.sh` via Git Bash (`C:\Program Files\Git\bin\bash.exe`), not WSL bash and not a hand-rolled wipe.
 
-Do this without waiting for a separate «пушь и деплой» confirmation when the work is clearly done and green (typecheck/relevant tests/build as appropriate).
+Do not ask again for authorization already provided in the session. If release authorization is missing and a release is requested, prepare the concrete reviewable change first; ask only for the missing action.
 
 ## Still respect
 

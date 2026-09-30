@@ -1,4 +1,5 @@
 import LegalDocLink from "@/components/legal/LegalDocLink";
+import ProOfferLink from "@/components/legal/ProOfferLink";
 import type { ReactNode } from "react";
 
 interface LegalDocumentLayoutProps {
@@ -41,9 +42,7 @@ export default function LegalDocumentLayout({
         <LegalDocLink href="/offer" className="text-aura-ivory/50 hover:text-aura-champagne">
           Оферта
         </LegalDocLink>
-        <LegalDocLink href="/offer-pro" className="text-aura-ivory/50 hover:text-aura-champagne">
-          Оферта Pro
-        </LegalDocLink>
+        <ProOfferLink />
         <LegalDocLink href="/disclaimer" className="text-aura-ivory/50 hover:text-aura-champagne">
           Отказ от ответственности
         </LegalDocLink>

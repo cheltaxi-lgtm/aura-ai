@@ -54,7 +54,7 @@ const SERVER_SCOPE_FILES: Record<RecaptchaScope, string[]> = {
   reviews: ["app/api/reviews/route.ts"],
 };
 
-/** Client must attach token for each scope somewhere */
+/** Client must attach a token for each scope that has a first-party submission UI. */
 const CLIENT_SCOPE_HINTS: Record<RecaptchaScope, string[]> = {
   register: ["components/AuthForm.tsx"],
   login: ["components/AuthForm.tsx"],
@@ -70,8 +70,12 @@ const CLIENT_SCOPE_HINTS: Record<RecaptchaScope, string[]> = {
     "components/RuneShopModal.tsx",
   ],
   share: ["contexts/ShareContext.tsx"],
-  reviews: ["components/editorial/EditorialReviewsSection.tsx"],
+  // Reviews are read-only in the current first-party UI. Keep POST protected for
+  // compatibility, but do not require a token producer that no longer exists.
+  reviews: [],
 };
+
+const SERVER_ONLY_SCOPES = new Set<RecaptchaScope>(["reviews"]);
 
 function checkStaticWiring() {
   console.log("\n[1] Static wiring");
@@ -103,7 +107,12 @@ function checkStaticWiring() {
 
     const clientHints = CLIENT_SCOPE_HINTS[scope];
     if (!Array.isArray(clientHints) || clientHints.length === 0) {
-      ok(false, `CLIENT_SCOPE_HINTS missing scope "${scope}"`);
+      ok(
+        SERVER_ONLY_SCOPES.has(scope),
+        SERVER_ONLY_SCOPES.has(scope)
+          ? `no first-party submission client for server-only scope "${scope}"`
+          : `CLIENT_SCOPE_HINTS missing scope "${scope}"`
+      );
       continue;
     }
     const clientHit = clientHints.some((file) => {
@@ -148,6 +157,9 @@ async function checkVerifyRecaptchaMocked() {
 
   const prevSecret = process.env.RECAPTCHA_SECRET_KEY;
   const prevSite = process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY;
+  const mockHostname = new URL(
+    process.env.NEXT_PUBLIC_APP_URL || process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru"
+  ).hostname;
   process.env.RECAPTCHA_SECRET_KEY = "test-secret";
   process.env.NEXT_PUBLIC_RECAPTCHA_SITE_KEY = "test-site";
 
@@ -156,10 +168,10 @@ async function checkVerifyRecaptchaMocked() {
   try {
     global.fetch = (async () =>
       ({
-        json: async () => ({ success: true, score: 0.9 }),
+        json: async () => ({ success: true, score: 0.9, action: "register", hostname: mockHostname }),
       }) as Response);
 
-    const pass = await verifyRecaptcha("valid-token", "203.0.113.7");
+    const pass = await verifyRecaptcha("valid-token", "register", "203.0.113.7");
     ok(pass.ok, "accepts valid Google response with score 0.9");
 
     global.fetch = (async () =>
@@ -167,18 +179,18 @@ async function checkVerifyRecaptchaMocked() {
         json: async () => ({ success: false, "error-codes": ["invalid-input-response"] }),
       }) as Response);
 
-    const fail = await verifyRecaptcha("bad-token", "203.0.113.7");
+    const fail = await verifyRecaptcha("bad-token", "register", "203.0.113.7");
     ok(!fail.ok && fail.error === "Проверка reCAPTCHA не пройдена", "rejects Google success:false");
 
     global.fetch = (async () =>
       ({
-        json: async () => ({ success: true, score: 0.1 }),
+        json: async () => ({ success: true, score: 0.1, action: "register", hostname: mockHostname }),
       }) as Response);
 
-    const low = await verifyRecaptcha("low-score", "203.0.113.7");
+    const low = await verifyRecaptcha("low-score", "register", "203.0.113.7");
     ok(!low.ok, "rejects score below MIN_SCORE");
 
-    const missing = await verifyRecaptcha(undefined, "203.0.113.7");
+    const missing = await verifyRecaptcha(undefined, "register", "203.0.113.7");
     ok(!missing.ok && missing.error === "Пройдите проверку reCAPTCHA", "requires token when enabled");
   } finally {
     global.fetch = originalFetch;

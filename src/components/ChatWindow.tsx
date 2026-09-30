@@ -76,7 +76,7 @@ import { canAffordRunes } from "@/lib/rune-afford-client";
 import { useSpeechInput } from "@/hooks/useSpeechInput";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
 import { trackMemoryProductEvent } from "@/lib/memory/memory-analytics";
-import RetentionOptInCard from "@/components/retention/RetentionOptInCard";
+import DailyReminderCard from "@/components/retention/DailyReminderCard";
 
 interface MasterDisplay {
   name: string;
@@ -148,6 +148,7 @@ interface ChatWindowProps {
   startingNewSession?: boolean;
   /** User birth date — for numerolog Pythagoras grid fallback in chat. */
   userBirthDate?: string;
+  userBirthCity?: string;
   /** Active consultation session id (share / persistence hooks). */
   sessionId?: string;
   /** Guest-resume follow-ups: static chips after full reading (click → send). */
@@ -158,6 +159,8 @@ interface ChatWindowProps {
   onSuggestedReplySend?: (message: string) => void;
   /** After a completed Tarot / guest-resume reading — never over paywall. */
   retentionOptInSurface?: "post_value";
+  /** Whether the first registered spread is the current reading. */
+  introductorySpread?: boolean;
 }
 
 export default function ChatWindow({
@@ -217,12 +220,14 @@ export default function ChatWindow({
   archivingSession = false,
   startingNewSession = false,
   userBirthDate,
+  userBirthCity,
   sessionId,
   suggestedReplies,
   showContinueInChat = false,
   onContinueInChat,
   onSuggestedReplySend,
   retentionOptInSurface,
+  introductorySpread = false,
 }: ChatWindowProps) {
   const character = master ?? getCharacterById(characterId);
   const [input, setInput] = useState("");
@@ -241,6 +246,14 @@ export default function ChatWindow({
   const [voiceInputNotice, setVoiceInputNotice] = useState<string | null>(null);
   const [memoryFresh, setMemoryFresh] = useState(false);
   const [memoryModeBusy, setMemoryModeBusy] = useState(false);
+  const [journeyReady, setJourneyReady] = useState<{ sessionId: string; messageCount: number } | null>(null);
+  const hasReading = messages.some(message => message.role === "assistant" && message.content.trim().length > 80);
+  useEffect(() => {
+    if (sessionId && !storageBlocked && !isLoading && !spreadReadingLoading && hasReading) {
+      setJourneyReady(current => current?.sessionId === sessionId && current.messageCount === messages.length
+        ? current : { sessionId, messageCount: messages.length });
+    }
+  }, [sessionId, storageBlocked, isLoading, spreadReadingLoading, hasReading, messages.length]);
   const memoryAnchorQuery = useMemo(() => {
     for (let index = messages.length - 1; index >= 0; index -= 1) {
       if (messages[index]?.role === "user") return messages[index].content;
@@ -592,7 +605,17 @@ export default function ChatWindow({
     !spreadCardsVisible;
 
   const userTurnCount = messages.filter((m) => m.role === "user").length;
-  const showSessionFeedback = userTurnCount >= 3 && userTurnCount % 3 === 0 && !isLoading;
+  const lastUserIndex = messages.reduce(
+    (lastIndex, message, index) => (message.role === "user" ? index : lastIndex),
+    -1
+  );
+  const showSessionFeedback =
+    userTurnCount >= 1 &&
+    lastUserIndex >= 0 &&
+    messages
+      .slice(lastUserIndex + 1)
+      .some((message) => message.role === "assistant" && message.content.trim().length > 0) &&
+    !isLoading;
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -1005,7 +1028,7 @@ export default function ChatWindow({
               return (
               <div
                 key={msg.id}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} ym-hide-content ym-disable-keys`}
               >
                 <div
                   className={
@@ -1083,7 +1106,15 @@ export default function ChatWindow({
           </AnimatePresence>
           )}
 
-          {sessionId && !storageBlocked && !isLoading && !spreadReadingLoading && messages.some(message=>message.role === "assistant" && message.content.trim().length>80) && <ReadingJourney key={`${sessionId}:${messages.length}`} readingId={sessionId} />}
+          {retentionOptInSurface === "post_value" && introductorySpread ? (
+            <div className="my-4 rounded-2xl border border-white/15 bg-white/[0.04] p-4 text-sm text-white/80">
+              <p className="font-semibold text-white">Первый расклад готов</p>
+              <p className="mt-1">Прошлое, настоящее и возможное будущее сохранены в истории. Далее можно открыть отдельный расклад на сутки или задать уточняющий вопрос мастеру.</p>
+              {!userBirthDate || !userBirthCity ? <a className="mt-3 inline-block text-amber-200 underline" href="/cabinet?tab=profile&edit=1#profile-editor">{userBirthDate ? "Добавить город рождения в профиль" : "Добавить дату рождения для персональных расчётов"}</a> : null}
+            </div>
+          ) : null}
+          {retentionOptInSurface === "post_value" ? <DailyReminderCard source="post_result" /> : null}
+          {sessionId && !storageBlocked && journeyReady?.sessionId === sessionId && <ReadingJourney key={sessionId} readingId={sessionId} refreshToken={journeyReady.messageCount} />}
           {showTypingIndicator && (
             <motion.div
               initial={{ opacity: 0 }}
@@ -1186,7 +1217,7 @@ export default function ChatWindow({
       />
       <MemoryContextReceipt sessionId={sessionId} refreshKey={messages.length} active={Boolean(sessionId) && !memoryFresh && !isLoading} />
       <MemoryMoments sessionId={sessionId} active={!readOnly && !memoryFresh} />
-      <SessionFeedback characterId={characterId} visible={showSessionFeedback && !readOnly} />
+      <SessionFeedback sessionId={sessionId} visible={showSessionFeedback && !readOnly} />
 
       {readOnly ? (
         <p className="glass-panel mb-2 px-4 py-2 text-center text-xs text-gray-400">
@@ -1249,9 +1280,6 @@ export default function ChatWindow({
               </button>
             ) : null}
           </div>
-        ) : null}
-        {retentionOptInSurface === "post_value" ? (
-          <RetentionOptInCard surface="post_value" />
         ) : null}
         {!readOnly && !hasFullAccess && questionsLeft != null ? (
           <p className="text-xs text-aura-champagne/85" aria-live="polite">
@@ -1390,7 +1418,7 @@ export default function ChatWindow({
           disabled={inputBlocked}
           enterKeyHint="send"
           aria-label="Текст сообщения"
-          className="max-h-32 min-h-[44px] flex-1 touch-auto select-text resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-gray-500 outline-none disabled:opacity-50"
+          className="max-h-32 min-h-[44px] flex-1 touch-auto select-text resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-gray-500 outline-none disabled:opacity-50 ym-hide-content ym-disable-keys"
         />
 
         <button

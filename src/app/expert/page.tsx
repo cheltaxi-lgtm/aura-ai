@@ -84,7 +84,7 @@ export default function ExpertCabinetPage() {
   if (!data) return null;
 
   return (
-    <div className="page-with-site-header min-h-screen px-6 py-12">
+    <div className="page-with-site-header min-h-screen px-6 py-12 ym-hide-content ym-disable-keys">
       <div className="mx-auto max-w-3xl">
         <div className="mb-8 flex items-center justify-end">
           <button
@@ -127,7 +127,7 @@ export default function ExpertCabinetPage() {
                 onChange={(e) => setKnowledge(e.target.value)}
                 rows={6}
                 placeholder="Трактовки, стиль речи, примеры раскладов..."
-                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder-gray-600"
+                className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-3 text-sm text-white placeholder-gray-600 ym-hide-content ym-disable-keys"
               />
               <button onClick={handleSave} className="btn-primary mt-4 text-sm">
                 {saved ? "Сохранено ✓" : "Загрузить материалы"}

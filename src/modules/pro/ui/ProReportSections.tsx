@@ -139,7 +139,7 @@ export default function ProReportSections({
             </header>
             {editable ? (
               <textarea
-                className="pro-report-card__body mt-3 w-full rounded bg-black/20 p-2 text-sm leading-relaxed text-gray-200"
+                className="pro-report-card__body mt-3 w-full rounded bg-black/20 p-2 text-sm leading-relaxed text-gray-200 ym-hide-content ym-disable-keys"
                 rows={8}
                 value={raw.body}
                 onChange={(e) => onChange?.(idx, { body: e.target.value })}
@@ -154,7 +154,7 @@ export default function ProReportSections({
               <div className="pro-report-practice mt-4">
                 <p className="pro-report-practice__label">Практика</p>
                 <textarea
-                  className="pro-report-practice__text mt-1 w-full rounded bg-black/20 p-2 text-sm text-gray-200"
+                  className="pro-report-practice__text mt-1 w-full rounded bg-black/20 p-2 text-sm text-gray-200 ym-hide-content ym-disable-keys"
                   rows={3}
                   value={raw.practice || ""}
                   onChange={(e) =>

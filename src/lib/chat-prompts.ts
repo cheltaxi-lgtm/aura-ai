@@ -15,6 +15,7 @@ import {
   type ReadingQualityIssue,
 } from "@/lib/reading-quality-gate";
 import { paidSpreadMaxTokens } from "@/lib/prompts/premium-reading";
+import { jointCombinedQualityIssue, jointPersonalQualityIssue } from "@/lib/joint-reading-quality";
 import { sanitizeChatHistory, LLM_CONTEXT_MESSAGES, type ChatHistoryMessage } from "@/lib/chat-sanitize";
 import {
   sanitizeReadingForClient,
@@ -318,6 +319,7 @@ export async function generateReading(
     spreadId?: string | null;
     positionLabels?: string[];
     userMessage?: string;
+    jointReadingMode?: "personal" | "combined";
   }
 ): Promise<ReadingGenerationResult> {
   const fullPrompt = await wrapSystemPrompt(systemPrompt);
@@ -360,9 +362,18 @@ export async function generateReading(
 
   const cardNames = ctx.tarotCards.map((c) => c.name);
   const characterId = ctx.characterId ?? "ragnar";
+  const jointQualityIssue = (candidate: string): string | null =>
+    ctx.jointReadingMode === "personal"
+      ? jointPersonalQualityIssue(candidate, cardCount)
+      : ctx.jointReadingMode === "combined"
+        ? jointCombinedQualityIssue(candidate)
+        : null;
 
   const passesPremiumQuality = (candidate: string): boolean => {
     if (!ctx.isPaid) return true;
+    // Joint readings have their own stage-specific contract. The generic paid
+    // gate demands a verdict and a second finale, both harmful to these stages.
+    if (ctx.jointReadingMode) return !isDegenerateLlmOutput(candidate) && !jointQualityIssue(candidate);
     return evaluatePaidReadingQuality(candidate, { cardCount, characterId }).ok;
   };
 
@@ -371,7 +382,7 @@ export async function generateReading(
       isTarotRuneMasterId(characterId) && characterId !== "numerolog"
         ? stripTheaterFromReply(raw)
         : raw;
-    return ctx.isPaid
+    return ctx.isPaid && !ctx.jointReadingMode
       ? normalizePaidReadingStructure(theaterStripped, characterId, ctx.userName)
       : theaterStripped;
   };
@@ -404,6 +415,7 @@ export async function generateReading(
     const cleaned = sanitizeReadingForClient(prepared, cardNames);
     if (
       cleaned.length >= 200 &&
+      !jointQualityIssue(cleaned) &&
       meetsPaidDensityFloor(cleaned, cardCount) &&
       !isDegenerateLlmOutput(cleaned) &&
       isPaidSpreadTextComplete(cleaned, cardNames)
@@ -413,6 +425,7 @@ export async function generateReading(
     const stripped = stripMemoryLeakFromReply(prepared);
     if (
       stripped.length >= 200 &&
+      !jointQualityIssue(stripped) &&
       meetsPaidDensityFloor(stripped, cardCount) &&
       !isDegenerateLlmOutput(stripped) &&
       isPaidSpreadTextComplete(stripped, cardNames)
@@ -473,7 +486,7 @@ export async function generateReading(
           detail: `missing_cards:${missing.join("|")}`,
         };
       }
-      if (ctx.isPaid) {
+      if (ctx.isPaid && !ctx.jointReadingMode) {
         const issues = listPaidReadingQualityIssues(prepared, { cardCount, characterId });
         if (issues.length) {
           return {
@@ -494,8 +507,9 @@ export async function generateReading(
       const qualityFromDetail = detail?.startsWith("quality:")
         ? (detail.slice("quality:".length).split("|").filter(Boolean) as ReadingQualityIssue[])
         : null;
-      const qualityIssues: ReadingQualityIssue[] =
-        qualityFromDetail ?? listPaidReadingQualityIssues(prepared, { cardCount, characterId });
+      const qualityIssues: ReadingQualityIssue[] = ctx.jointReadingMode
+        ? []
+        : qualityFromDetail ?? listPaidReadingQualityIssues(prepared, { cardCount, characterId });
       const missingLine = missing.length
         ? `Обязательно назови по имени и раскрой: ${missing.map((n) => `«${n}»`).join(", ")}.`
         : "Раскрой каждую позицию по имени символа.";
@@ -569,6 +583,12 @@ export async function generateReading(
       ms: Date.now() - startedAt,
     });
     return { text: preRescueSoft, fromLlm: true };
+  }
+
+  // Generic rescue writes a normal one-person paid spread and can reintroduce
+  // compatibility verdicts or the wrong finale. Joint stages fail closed here.
+  if (ctx.jointReadingMode) {
+    return { text: "", fromLlm: false };
   }
 
   // Last-resort AI rescue: lean prompt across the whole model chain, then

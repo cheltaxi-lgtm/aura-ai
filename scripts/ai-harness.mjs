@@ -15,7 +15,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHECKS, LEVELS, PATH_SCOPES, REVIEW_IDS, SCOPES, STATE_PATH } from "./ai-harness-catalog.mjs";
 import { completedAllowed } from "./ai-harness-gate.mjs";
-import { workspaceFingerprint, requiredReviewIds } from "./ai-harness-fingerprint.mjs";
+import { workspaceFingerprint, requiredReviewIds, requiresVerification } from "./ai-harness-fingerprint.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const npmBin = process.platform === "win32" ? "npm.cmd" : "npm";
@@ -33,6 +33,8 @@ function parseArgs(argv) {
     recordReview: null,
     reviewResult: null,
     selftestFail: false,
+    audit: false,
+    files: [],
   };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -46,6 +48,14 @@ function parseArgs(argv) {
     else if (a === "--record-review") out.recordReview = argv[++i];
     else if (a === "--result") out.reviewResult = argv[++i];
     else if (a === "--selftest-fail") out.selftestFail = true;
+    else if (a === "--audit") out.audit = true;
+    else if (a === "--file") {
+      const file = String(argv[++i] || "").replace(/\\/g, "/").replace(/^\.\//, "");
+      if (!file || file.startsWith("--") || path.isAbsolute(file) || /^[A-Za-z]:/.test(file) || file.split("/").includes("..")) {
+        throw new Error("--file requires a repository-relative file path");
+      }
+      out.files.push(file);
+    } else throw new Error(`Unknown argument ${a}`);
   }
   return out;
 }
@@ -68,21 +78,17 @@ export function parsePorcelain(line) {
 
 export function detectScopes(files) {
   const hit = new Set();
-  for (const file of files) {
+  for (const file of files.filter(requiresVerification)) {
     const rel = String(file).replace(/\\/g, "/");
     for (const id of PATH_SCOPES) {
       if (SCOPES[id].paths.test(rel)) hit.add(id);
     }
   }
-  if (hit.size === 0) return ["full"];
-  if (hit.has("harness") && hit.size === 1) return ["harness"];
-  hit.delete("harness");
-  if (hit.size >= 3) return ["full"];
   return [...hit];
 }
 
 function dirtyFiles() {
-  const r = spawnSync("git", ["status", "--porcelain"], { cwd: ROOT, encoding: "utf8" });
+  const r = spawnSync("git", ["status", "--porcelain", "--untracked-files=all"], { cwd: ROOT, encoding: "utf8" });
   if (r.status !== 0) return [];
   return String(r.stdout || "")
     .split(/\r?\n/)
@@ -98,11 +104,16 @@ function changedFiles() {
   return [...new Set([...dirty, ...vsMain, ...vsHead])];
 }
 
-function resolvePlan(scopeArg, level, files) {
+function resolvePlan(scopeArg, level, files, { audit = false } = {}) {
   if (!LEVELS.includes(level)) {
     throw new Error(`Unknown level ${level}. Use ${LEVELS.join("|")}`);
   }
-  const scopes = scopeArg === "auto" ? detectScopes(files) : [scopeArg];
+  if (audit && scopeArg === "auto") throw new Error("--audit requires an explicit --scope");
+  const verificationFiles = files.filter(requiresVerification);
+  const scopes = scopeArg === "auto" ? detectScopes(verificationFiles) : [scopeArg];
+  const unscopedFiles = scopeArg === "auto"
+    ? verificationFiles.filter(file => !PATH_SCOPES.some(id => SCOPES[id].paths.test(String(file).replace(/\\/g, "/"))))
+    : [];
   for (const s of scopes) {
     if (!SCOPES[s]) throw new Error(`Unknown scope ${s}`);
   }
@@ -126,7 +137,14 @@ function resolvePlan(scopeArg, level, files) {
     }
   }
   const productionRequired = ids.includes("prod-health") || ids.includes("prod-smoke");
-  return { scopes, checkIds: ids, productionRequired };
+  const requiredReviews = [...new Set([
+    ...(audit ? scopes.flatMap(scope => SCOPES[scope].reviews || []) : []),
+    ...requiredReviewIds(verificationFiles, productionRequired),
+    // Explicit verification still needs review even on a clean checkout.
+    ...(ids.length ? ["code"] : []),
+  ])].filter(id => id !== "production" || productionRequired);
+  return { scopes, checkIds: ids, productionRequired, requiredReviews, unscopedFiles,
+    notRequired: !ids.length && !unscopedFiles.length };
 }
 
 function expandCmd(check) {
@@ -301,11 +319,11 @@ async function runCheck(id, scopes) {
   return { id, title: check.title, status: "FAIL", durationMs, reason: tail || `exit ${result.status}` };
 }
 
-function verdictOf(rows, productionRequired) {
+function verdictOf(rows, productionRequired, notRequired = false) {
   if (rows.some((r) => r.status === "FAIL")) return "FAIL";
   if (rows.some((r) => r.status === "PARTIAL")) return "PARTIAL";
   if (rows.some((r) => r.status === "pending" || r.status === "not_run")) return "PARTIAL";
-  if (!rows.length) return "PARTIAL";
+  if (!rows.length) return notRequired ? "NOT_REQUIRED" : "PARTIAL";
   void productionRequired;
   return "PASS";
 }
@@ -344,6 +362,7 @@ function printHuman(state) {
   console.log(`LEVEL: ${state.level}`);
   console.log(`VERDICT: ${state.verdict}`);
   console.log(`PRODUCTION: ${state.production}`);
+  console.log(`REVIEWS: ${(state.requiredReviews || []).join(",") || "(none)"}`);
   console.log(`COMPLETED: ${completedAllowed(state) ? "allowed" : "blocked"}`);
   for (const row of state.checks || []) {
     const extra = row.reason ? ` — ${String(row.reason).split("\n")[0]}` : "";
@@ -372,18 +391,23 @@ async function main() {
     process.exit(0);
   }
 
-  const files = changedFiles();
-  const plan = resolvePlan(args.scope, args.level, files);
+  const files = args.files.length ? [...new Set(args.files)] : changedFiles();
+  const plan = resolvePlan(args.scope, args.level, files, { audit: args.audit });
   let checkIds = plan.checkIds;
   if (args.selftestFail) checkIds = ["__selftest_fail__", ...checkIds];
 
   if (args.dryRun) {
-    const payload = { scopes: plan.scopes, level: args.level, checks: checkIds, productionRequired: plan.productionRequired };
+    const payload = { scopes: plan.scopes, level: args.level, audit: args.audit, files,
+      checks: checkIds, productionRequired: plan.productionRequired, requiredReviews: plan.requiredReviews,
+      unscopedFiles: plan.unscopedFiles, notRequired: plan.notRequired };
     if (args.json) console.log(JSON.stringify(payload, null, 2));
     else {
       console.log(`SCOPE: ${plan.scopes.join(",")}`);
       console.log(`LEVEL: ${args.level}`);
       console.log(`PRODUCTION_REQUIRED: ${plan.productionRequired}`);
+      console.log(`REVIEWS: ${plan.requiredReviews.join(",") || "(none)"}`);
+      if (plan.notRequired) console.log("NOT_REQUIRED: no executable/configuration changes selected");
+      if (plan.unscopedFiles.length) console.log(`SCOPE_REQUIRED: ${plan.unscopedFiles.join(", ")}`);
       for (const id of checkIds) console.log(`  ${id}`);
     }
     process.exit(0);
@@ -391,6 +415,10 @@ async function main() {
 
   const fingerprintBefore = workspaceFingerprint();
   const rows = [];
+  if (plan.unscopedFiles.length) {
+    rows.push({ id: "scope-selection", title: "explicit scope required", status: "PARTIAL", durationMs: 0,
+      reason: `No automatic scope for: ${plan.unscopedFiles.join(", ")}. Choose an explicit --scope after assessing these changes.` });
+  }
   for (const id of checkIds) {
     if (id === "__selftest_fail__") {
       rows.push({ id, title: "selftest-fail", status: "FAIL", durationMs: 0, reason: "injected" });
@@ -407,7 +435,7 @@ async function main() {
     rows.push({ id: "workspace-stable", title: "workspace unchanged during checks", status: "PARTIAL", durationMs: 0,
       reason: "Working tree changed during verification; rerun against the final diff." });
   }
-  const verdict = verdictOf(rows, plan.productionRequired);
+  const verdict = verdictOf(rows, plan.productionRequired, plan.notRequired);
   const production = productionOf(rows, plan.productionRequired);
   const state = {
     version: 2,
@@ -416,6 +444,8 @@ async function main() {
     scope: args.scope,
     scopes: plan.scopes,
     level: args.level,
+    audit: args.audit,
+    taskFiles: args.files.length ? files : null,
     verdict,
     production,
     productionRequired: plan.productionRequired,
@@ -423,18 +453,16 @@ async function main() {
     checks: rows,
     reviews: readState().reviews || {},
     reviewEvidence: readState().reviewEvidence || {},
-    requiredReviews: [...new Set([
-      ...plan.scopes.flatMap(scope => SCOPES[scope].reviews || []),
-      ...requiredReviewIds(files, plan.productionRequired),
-    ])],
+    requiredReviews: plan.requiredReviews,
     diffFingerprint: fingerprintAfter,
     head: headSha(),
     files: files.slice(0, 80),
   };
-  if (args.writeState) writeState(state);
+  // A documentation/Q&A run must not replace an outstanding product verification.
+  if (args.writeState && verdict !== "NOT_REQUIRED") writeState(state);
   if (args.json) console.log(JSON.stringify(state, null, 2));
   else printHuman(state);
-  process.exit(verdict === "PASS" ? 0 : 1);
+  process.exit(verdict === "PASS" || verdict === "NOT_REQUIRED" ? 0 : 1);
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

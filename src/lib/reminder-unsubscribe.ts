@@ -120,5 +120,5 @@ export async function isTopicEnabled(
   if (!profileUserId) return false;
   const { getNotificationPrefs } = await import("@/lib/daily-reminder-service");
   const prefs = await getNotificationPrefs(profileUserId);
-  return prefs.bonusEmail !== false;
+  return prefs.bonusEmail === true;
 }

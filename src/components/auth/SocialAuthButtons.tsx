@@ -3,14 +3,16 @@
 import { isNativeCapacitorPlatform, shouldUseAppShellClient } from "@/lib/app-shell";
 import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
 import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
-import { trackAuthProviderClick, trackRegistrationStarted } from "@/lib/seo/metrika";
+import { trackAuthProviderClick, trackRegistrationError, trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
+import { COOKIE_CONSENT_EVENT, METRIKA_READY_EVENT, hasCookieConsent } from "@/lib/cookie-consent";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
+  account_link_required: "Этот email уже используется. Войдите по email (при необходимости восстановите пароль), затем привяжите соцсеть в кабинете.",
   consent_required: "Подтвердите согласие с условиями и возраст 18+ перед входом через соцсеть.",
   email_exists: "Email уже зарегистрирован. Войдите через email или используйте другой аккаунт.",
   provider_denied: "Вход через соцсеть отменён.",
@@ -62,6 +64,7 @@ interface SocialAuthButtonsProps {
   /** Providers already attached — buttons stay visible but inactive. */
   linkedProviders?: OAuthProvider[];
   consentScrollTargetId?: string;
+  showConsentHint?: boolean;
   showEmailDivider?: boolean;
   emailDividerLabel?: string;
 }
@@ -89,6 +92,7 @@ export default function SocialAuthButtons({
   disabled = false,
   linkedProviders = [],
   consentScrollTargetId,
+  showConsentHint = true,
   showEmailDivider = true,
   emailDividerLabel = "или по email",
 }: SocialAuthButtonsProps) {
@@ -97,6 +101,31 @@ export default function SocialAuthButtons({
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const useNativeOAuth = isNativeCapacitorPlatform();
   const linkedSet = useMemo(() => new Set(linkedProviders), [linkedProviders]);
+  const oauthErrorTracked = useRef(false);
+
+  useEffect(() => {
+    if (mode !== "register" || typeof window === "undefined") return;
+    const sendOAuthError = () => {
+      if (oauthErrorTracked.current || !hasCookieConsent() || !window.ym) return;
+      try {
+        const rawCode = new URLSearchParams(window.location.search).get("oauthError");
+        if (!rawCode) return;
+        trackRegistrationError(
+          Object.prototype.hasOwnProperty.call(OAUTH_ERROR_MESSAGES, rawCode) ? rawCode : "oauth_failed"
+        );
+        oauthErrorTracked.current = true;
+      } catch {
+        // Analytics must not affect OAuth.
+      }
+    };
+    sendOAuthError();
+    window.addEventListener(COOKIE_CONSENT_EVENT, sendOAuthError);
+    window.addEventListener(METRIKA_READY_EVENT, sendOAuthError);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, sendOAuthError);
+      window.removeEventListener(METRIKA_READY_EVENT, sendOAuthError);
+    };
+  }, [mode]);
 
   useEffect(() => {
     void fetch("/api/auth/oauth/providers")
@@ -212,6 +241,13 @@ export default function SocialAuthButtons({
       }
       await openNativeOAuth(startHref(provider));
     } catch {
+      if (mode === "register") {
+        try {
+          trackRegistrationError(provider === "vk" ? "native_vk_failed" : "native_oauth_failed");
+        } catch {
+          // Analytics must not affect OAuth.
+        }
+      }
       if (provider === "vk") {
         setNativeError("Обновите приложение и повторите вход через VK.");
       } else {
@@ -267,7 +303,7 @@ export default function SocialAuthButtons({
         </div>
       ) : null}
 
-      {consentBlocked ? (
+      {consentBlocked && showConsentHint ? (
         <p className="auth-salon-hint text-center">
           {ageConfirmed
             ? "Подтвердите согласие с условиями, чтобы продолжить"

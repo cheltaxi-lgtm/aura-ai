@@ -54,8 +54,8 @@ describe("palm-archive", () => {
     expect(flow).toContain('fetch("/api/palm/readings"');
     expect(flow).toContain('method: "DELETE"');
     expect(flow).toContain("resetAll()");
-    expect(flow).toContain("Ваши ладони");
-    expect(flow).toContain("aura-past__delete");
+    expect(flow).toContain("История ладоней");
+    expect(flow).toContain("palm-archive__delete");
     expect(flow).toContain("К ладоням");
   });
 

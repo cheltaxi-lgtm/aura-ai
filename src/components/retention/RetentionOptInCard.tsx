@@ -9,18 +9,21 @@ import {
 
 type Snapshot = {
   marketingConsent?: boolean;
+  marketingEmail?: boolean;
   eligible?: boolean;
 };
 
 type RetentionOptInCardProps = {
   surface: RetentionOptInSurface;
-  /** prompt = home / post-value (cooldown). settings = cabinet, always if consent off. */
+  /** prompt = home / post-value (cooldown). settings = cabinet, if consent or email is off. */
   variant?: "prompt" | "settings";
+  onAccepted?: () => void;
 };
 
 export default function RetentionOptInCard({
   surface,
   variant = "prompt",
+  onAccepted,
 }: RetentionOptInCardProps) {
   const [visible, setVisible] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -39,7 +42,7 @@ export default function RetentionOptInCard({
         if (cancelled) return;
         const show =
           variant === "settings"
-            ? data.marketingConsent !== true
+            ? data.marketingConsent !== true || data.marketingEmail !== true
             : data.eligible === true;
         if (!show) return;
         setVisible(true);
@@ -80,6 +83,7 @@ export default function RetentionOptInCard({
         action === "accept" ? "retention_optin_accepted" : "retention_optin_declined",
         { surface, topic: "personal_reminders" }
       );
+      if (action === "accept") onAccepted?.();
       setVisible(false);
     } finally {
       setBusy(false);

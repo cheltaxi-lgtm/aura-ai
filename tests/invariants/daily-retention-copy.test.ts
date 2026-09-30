@@ -14,11 +14,11 @@ import { TRIPLET_COOLDOWN_MS, tripletCooldownFromLastDraw } from "@/lib/triplet-
 describe("daily retention product copy (honest 24h)", () => {
   it("TEST15: anonymous landing sells consumer benefit without internal jargon", () => {
     expect(EDITORIAL_HERO.primaryCta).toMatch(/3 карты/i);
-    expect(EDITORIAL_HERO.retentionHook).toMatch(/3 карты/i);
+    expect(EDITORIAL_HERO.retentionHook).toMatch(/расклад на сутки/i);
     expect(EDITORIAL_DAILY_CARDS.body).toMatch(/раз в сутки/i);
     expect(EDITORIAL_DAILY_CARDS.body).not.toMatch(/не путать/i);
     expect(EDITORIAL_DAILY_CARDS.kicker).not.toMatch(/После регистрации/i);
-    expect(EDITORIAL_FREE_VALUE.items.some((i) => /карты дня/i.test(i.title))).toBe(true);
+    expect(EDITORIAL_FREE_VALUE.items.some((i) => /расклад на сутки/i.test(i.title))).toBe(true);
   });
 
   it("landing offer pricing mentions daily without false calendar promise", () => {
@@ -32,15 +32,15 @@ describe("daily retention product copy (honest 24h)", () => {
       undefined,
       "a"
     );
-    expect(offer.heroRetentionHook).toMatch(/3 карты/i);
-    expect(offer.seoFreeParagraph).toMatch(/раз в сутки/i);
+    expect(offer.heroRetentionHook).toMatch(/расклад на сутки/i);
+    expect(offer.seoFreeParagraph).toMatch(/расклад на сутки/i);
     expect(offer.seoFreeParagraph).toMatch(/один стартовый/i);
   });
 
-  it("TEST19: already-used UX points to daily cards", () => {
+  it("TEST19: already-used UX points to the daily reading", () => {
     expect(GUEST_RESUME_ALREADY_USED).toMatch(/один раз/i);
-    expect(GUEST_RESUME_ALREADY_USED).toMatch(/раз в сутки/i);
-    expect(GUEST_RESUME_ALREADY_USED_DAILY_CTA).toMatch(/карты дня/i);
+    expect(GUEST_RESUME_ALREADY_USED).toMatch(/расклад на сутки/i);
+    expect(GUEST_RESUME_ALREADY_USED_DAILY_CTA).toMatch(/расклад на сутки/i);
   });
 
   it("TEST9/10/11: rolling 24h daily rule (not calendar midnight)", () => {

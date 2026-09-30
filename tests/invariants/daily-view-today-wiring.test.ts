@@ -3,9 +3,9 @@ import { resolve } from "node:path";
 import { describe, expect, it } from "vitest";
 
 describe("daily view-today wiring", () => {
-  it("TEST4: HomePage view-today uses openCurrentDailyCards, not #мой-расклад scroll alone", () => {
+  it("TEST4: HomePage view-today opens the canonical daily reading", () => {
     const src = readFileSync(resolve("src/components/HomePage.tsx"), "utf8");
-    expect(src).toMatch(/onViewTodayDailyCards=\{\(\) => void openCurrentDailyCards\(\)\}/);
+    expect(src).toMatch(/onViewTodayDailyCards=\{openDailyReading\}/);
     // Must not bind view-today to generic home recap scroll.
     expect(src).not.toMatch(
       /onViewTodayDailyCards=\{\(\)\s*=>\s*\{?\s*document\.getElementById\(["']мой-расклад["']\)/

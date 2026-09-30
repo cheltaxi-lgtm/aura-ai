@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { buildJointReadingUrl, listJointReadingsForUser } from "@/lib/joint-reading-service";
@@ -7,7 +7,9 @@ import { stripMarkdownText } from "@/lib/cabinet-utils";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { sanitizeSynastryForClient } from "@/lib/natal/synastry";
 
-export async function GET() {
+const PAGE_SIZE = 20;
+
+export async function GET(request: NextRequest) {
   if (!(await ensureDb())) {
     return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
   }
@@ -22,10 +24,17 @@ export async function GET() {
   );
   if (rateLimited) return rateLimited;
 
-  const rows = await listJointReadingsForUser(authed.profileUserId);
+  const offsetRaw = request.nextUrl.searchParams.get("offset") ?? "0";
+  const offset = Number(offsetRaw);
+  if (!Number.isSafeInteger(offset) || offset < 0 || offset > 100_000) {
+    return NextResponse.json({ error: "Invalid offset" }, { status: 400 });
+  }
+  const rows = await listJointReadingsForUser(authed.profileUserId, PAGE_SIZE + 1, offset);
+  const hasMore = rows.length > PAGE_SIZE;
 
   return NextResponse.json({
-    items: rows.map((row) => {
+    nextOffset: hasMore ? offset + PAGE_SIZE : null,
+    items: rows.slice(0, PAGE_SIZE).map((row) => {
       const isInitiator = row.initiator_user_id === authed.profileUserId;
       const ownReading = isInitiator ? row.initiator_reading : row.partner_reading;
       const combined = row.combined_reading?.trim() || null;

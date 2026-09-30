@@ -532,7 +532,7 @@ export default function ProCasePage() {
               Дата рождения
               <input
                 type="date"
-                className="mt-1 w-full rounded border border-[#c9a24a]/30 bg-black/30 px-3 py-2"
+                className="mt-1 w-full rounded border border-[#c9a24a]/30 bg-black/30 px-3 py-2 ym-hide-content ym-disable-keys"
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
               />
@@ -542,7 +542,7 @@ export default function ProCasePage() {
                 Время
                 <input
                   type="time"
-                  className="mt-1 w-full rounded border border-[#c9a24a]/30 bg-black/30 px-3 py-2"
+                  className="mt-1 w-full rounded border border-[#c9a24a]/30 bg-black/30 px-3 py-2 ym-hide-content ym-disable-keys"
                   value={birthTime}
                   disabled={!timeKnown}
                   onChange={(e) => setBirthTime(e.target.value)}

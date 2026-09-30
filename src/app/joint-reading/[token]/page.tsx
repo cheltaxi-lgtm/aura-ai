@@ -12,8 +12,8 @@ import {
 import { buildJointSpreadStartPath } from "@/lib/joint-reading-nav";
 import { withAppShellIfNeeded } from "@/lib/post-auth-return";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
+import JointPersonalReading from "@/components/joint/JointPersonalReading";
 import { getSpread } from "@/lib/spreads";
-import { estimateJointSpreadCostPerPerson } from "@/lib/joint-reading-pricing";
 import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import ShareButton from "@/components/share/ShareButton";
 import NatalSynastryWheel from "@/components/natal/NatalSynastryWheel";
@@ -43,7 +43,9 @@ type JointPayload = {
   combinedPending?: boolean;
   combinedJobId?: string | null;
   initiatorReading: string | null;
+  initiatorCards?: { name: string; position?: string }[];
   partnerReading: string | null;
+  partnerCards?: { name: string; position?: string }[];
   viewerRole: "initiator" | "partner" | "guest" | null;
   canStartAsInitiator: boolean;
   canStartAsPartner: boolean;
@@ -74,9 +76,9 @@ export default function JointReadingTokenPage() {
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
   const [jointFailure, setJointFailure] = useState<string | null>(null);
+  const [jointFailureCode, setJointFailureCode] = useState<string | null>(null);
   const [jointRetrySessionId, setJointRetrySessionId] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
-  const [creatingNew, setCreatingNew] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const pollRef = useRef<number | null>(null);
 
@@ -84,12 +86,15 @@ export default function JointReadingTokenPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const failure = params.get("jointError");
+    const failureCode = params.get("jointErrorCode");
     const retrySessionId = params.get("jointSessionId");
     if (failure) {
       setJointFailure(failure);
+      setJointFailureCode(failureCode);
       setJointRetrySessionId(retrySessionId || null);
       const url = new URL(window.location.href);
       url.searchParams.delete("jointError");
+      url.searchParams.delete("jointErrorCode");
       url.searchParams.delete("jointSessionId");
       window.history.replaceState(null, "", url.pathname + url.search + url.hash);
     }
@@ -163,11 +168,6 @@ export default function JointReadingTokenPage() {
     return `${window.location.origin}/joint-reading/${encodeURIComponent(token)}`;
   }, [token]);
 
-  const spreadCost = useMemo(() => {
-    if (!data) return null;
-    return estimateJointSpreadCostPerPerson(undefined, data.spreadId);
-  }, [data]);
-
   const startReading = (role: "initiator" | "partner") => {
     if (!data) return;
     setJointReadingToken(token);
@@ -226,33 +226,6 @@ export default function JointReadingTokenPage() {
     }
   };
 
-  const createNewInvite = async () => {
-    if (!data || creatingNew) return;
-    setCreatingNew(true);
-    try {
-      const res = await fetch("/api/joint-reading/create", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        credentials: "include",
-        body: JSON.stringify({
-          initiatorName: data.initiatorName ?? undefined,
-          partnerName: data.partnerName ?? undefined,
-          spreadId: data.spreadId,
-          intentSlug: data.intentSlug,
-          forceNew: true,
-        }),
-      });
-      if (!res.ok) {
-        setCreatingNew(false);
-        return;
-      }
-      const created = (await res.json()) as { token: string };
-      router.push(`/joint-reading/${encodeURIComponent(created.token)}`);
-    } catch {
-      setCreatingNew(false);
-    }
-  };
-
   if (loading) {
     return (
       <div className="flex min-h-[40vh] items-center justify-center text-white/60">
@@ -279,31 +252,45 @@ export default function JointReadingTokenPage() {
   const isExpired = data.status === "expired";
 
   return (
-    <SeoPageShell backHref="/joint-reading" backLabel="Совместные расклады">
-      <div className="flex items-center gap-2 text-aura-gold">
-        <Users className="h-5 w-5" />
-        <h1 className="font-display text-2xl text-white">{themeTitle}</h1>
-      </div>
-      <p className="mt-2 text-sm text-white/55">
-        {labelA} и {labelB} — каждый проходит свой расклад («{spreadLabel}», {getSpread(data.spreadId).cardCount} карт),
-        затем вы получаете общую интерпретацию.
-      </p>
-      {spreadCost ? (
-        <p className="mt-2 text-xs text-white/40">
-          Каждый участник оплачивает свой расклад отдельно (~{spreadCost} ᚢ). Приглашение для
-          инициатора — 25 ᚢ.
+    <SeoPageShell backHref="/joint-reading" backLabel="Все совместные расклады" wide>
+      <div className="joint-result ym-hide-content ym-disable-keys">
+      <header className="joint-result__hero">
+        <span className="joint-eyebrow"><Users size={14} aria-hidden="true" /> Совместный расклад · {themeTitle}</span>
+        <h1>{labelA} и {labelB}</h1>
+        <p>
+          Каждый проходит свой расклад по схеме «{spreadLabel}» ({getSpread(data.spreadId).cardCount} карт).
+          {data.combinedReading ? " Общая интерпретация уже готова." : " Общая интерпретация появится после завершения обоих этапов."}
         </p>
-      ) : null}
+      </header>
+      <p className="joint-result__cost">
+        {bothDone
+          ? "Оба личных расклада сохранены. Общая интерпретация собирается из двух результатов."
+          : data.hasInitiatorReading || data.hasPartnerReading
+            ? "Готовая личная часть сохранена. Второй участник увидит стоимость своего расклада до подтверждения."
+            : "Приглашение и личные расклады оплачиваются отдельно; точная стоимость каждого шага показана до подтверждения."}
+      </p>
+
+      <ol className="joint-result__stages" aria-label="Этапы совместного расклада">
+        <li className="joint-result__stage--done"><span>01</span> Приглашение <span className="sr-only">— завершено</span></li>
+        <li className={bothDone ? "joint-result__stage--done" : ""}><span>02</span> Личные расклады <span className="sr-only">— {bothDone ? "завершено" : "ожидается"}</span></li>
+        <li className={data.combinedReading ? "joint-result__stage--done" : ""}><span>03</span> Общий результат <span className="sr-only">— {data.combinedReading ? "завершено" : "ожидается"}</span></li>
+      </ol>
 
       {jointFailure ? (
-        <div className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
+        <div role="alert" className="mt-4 rounded-xl border border-red-400/30 bg-red-500/10 p-4 text-sm text-red-200">
           <p>{jointFailure}</p>
           <p className="mt-1 text-xs text-red-200/70">
-            Ваш личный расклад сохранён в кабинете, но в совместный расклад он не попал.
-            {jointRetrySessionId
-              ? " Можно попробовать привязать уже готовый расклад без повторного прохождения."
-              : " Попробуйте пройти расклад по этой ссылке ещё раз."}
+            {jointFailureCode === "joint_attach_unknown"
+              ? "Статус сохранения пока не подтверждён. Проверьте, появился ли ваш личный расклад на этой странице. Если нет — обратитесь в поддержку перед повторной оплатой."
+              : jointRetrySessionId
+              ? "Личный расклад сохранён в кабинете. Можно попробовать привязать его без повторного прохождения."
+              : "Личный расклад не завершён. Попробуйте пройти его по этой ссылке ещё раз."}
           </p>
+          {jointFailureCode === "joint_attach_unknown" ? (
+            <Link href="/cabinet/support" className="mt-3 inline-block text-aura-gold underline underline-offset-2">
+              Написать в поддержку
+            </Link>
+          ) : null}
           {jointRetrySessionId ? (
             <button
               type="button"
@@ -325,16 +312,11 @@ export default function JointReadingTokenPage() {
           {data.viewerRole === "initiator" ? (
             <>
               <p className="mt-1 text-xs text-amber-100/70">
-                Создайте новое приглашение — имена {labelA} и {labelB} перенесутся автоматически.
+                Создайте новое приглашение. Актуальную стоимость увидите в форме перед подтверждением.
               </p>
-              <button
-                type="button"
-                onClick={() => void createNewInvite()}
-                disabled={creatingNew}
-                className="btn-luxe btn-luxe--sm btn-luxe--gold mt-3 disabled:opacity-60"
-              >
-                {creatingNew ? "Создаём…" : "Создать новое приглашение"}
-              </button>
+              <Link href="/joint-reading#joint-invite" className="btn-luxe btn-luxe--sm btn-luxe--gold mt-3">
+                Создать новое приглашение
+              </Link>
             </>
           ) : (
             <p className="mt-1 text-xs text-amber-100/70">
@@ -344,37 +326,29 @@ export default function JointReadingTokenPage() {
         </div>
       ) : null}
 
-      <div className="mt-6 grid gap-3 sm:grid-cols-2">
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <p className="text-sm font-medium text-white">{labelA}</p>
-          <p className="mt-1 text-xs text-white/45">
-            {data.hasInitiatorReading ? "✓ Расклад готов" : "Ожидает расклад"}
-          </p>
+      <div className="joint-result__participants">
+        <div>
+          <span className="joint-eyebrow">Первый участник</span>
+          <strong>{labelA}</strong>
+          <span>{data.hasInitiatorReading ? "✓ Расклад готов" : "Ожидает расклад"}</span>
         </div>
-        <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-          <p className="text-sm font-medium text-white">{labelB}</p>
-          <p className="mt-1 text-xs text-white/45">
-            {data.hasPartnerReading ? "✓ Расклад готов" : "Ожидает расклад"}
-          </p>
+        <div>
+          <span className="joint-eyebrow">Второй участник</span>
+          <strong>{labelB}</strong>
+          <span>{data.hasPartnerReading ? "✓ Расклад готов" : "Ожидает расклад"}</span>
         </div>
       </div>
 
-      {data.initiatorReading && (data.viewerRole === "initiator" || data.status === "completed") ? (
-        <article className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <h2 className="font-display text-base text-white">Расклад — {labelA}</h2>
-          <div className="mt-3">
-            <PremiumReadingBody content={data.initiatorReading} className="text-sm text-white/75" />
+      {data.viewerRole === "initiator" && data.hasInitiatorReading && !data.hasPartnerReading && !isExpired ? (
+        <div className="joint-result__handoff">
+          <div>
+            <span className="joint-eyebrow">Теперь ход партнёра</span>
+            <p>Ваш личный расклад сохранён. Отправьте ссылку второму участнику: общий вывод появится после его расклада.</p>
           </div>
-        </article>
-      ) : null}
-
-      {data.partnerReading && (data.viewerRole === "partner" || data.status === "completed") ? (
-        <article className="mt-6 rounded-2xl border border-white/10 bg-white/[0.03] p-5">
-          <h2 className="font-display text-base text-white">Расклад — {labelB}</h2>
-          <div className="mt-3">
-            <PremiumReadingBody content={data.partnerReading} className="text-sm text-white/75" />
-          </div>
-        </article>
+          <button type="button" onClick={() => void copyLink()} className="btn-luxe btn-luxe--sm btn-luxe--gold">
+            <Copy className="h-4 w-4" /> {copied ? "Скопировано" : "Копировать приглашение"}
+          </button>
+        </div>
       ) : null}
 
       {!data.combinedReading &&
@@ -397,10 +371,14 @@ export default function JointReadingTokenPage() {
       ) : null}
 
       {data.combinedReading ? (
-        <article className="mt-8 rounded-2xl border border-aura-gold/20 bg-aura-gold/5 p-5">
-          <div className="flex items-start justify-between gap-3">
-            <h2 className="font-display text-lg text-aura-gold">Общая интерпретация</h2>
-            <ShareButton
+        <article id="joint-result-report" className="joint-result__paper scroll-mt-24">
+          <div className="joint-result__paper-heading">
+            <div>
+              <span className="joint-eyebrow">Результат для двоих</span>
+              <h2>Общая интерпретация</h2>
+            </div>
+            <div className="joint-result__paper-actions">
+              <ShareButton
               payload={jointReadingToSharePayload({
                 token,
                 initiatorName: data.initiatorName,
@@ -410,11 +388,18 @@ export default function JointReadingTokenPage() {
               })}
               variant="pill"
               label="Поделиться"
+              className="joint-result__share"
             />
+              <Link href={`/joint-reading/${encodeURIComponent(token)}/print`}>Печатная версия / PDF</Link>
+            </div>
+          </div>
+
+          <div className="joint-result__reading">
+            <PremiumReadingBody content={data.combinedReading} variant="print" />
           </div>
 
           {data.synastry?.chartA?.western && data.synastry?.chartB?.western ? (
-            <div className="mt-6 space-y-4">
+            <div className="joint-result__visuals">
               {typeof data.synastry.overallScore === "number" ? (
                 <p className="text-center text-xs font-medium uppercase tracking-wide text-amber-200/70">
                   Индекс {data.synastry.overallScore}/100
@@ -457,13 +442,6 @@ export default function JointReadingTokenPage() {
               ) : null}
             </div>
           ) : null}
-
-          <div className="mt-4">
-            <PremiumReadingBody content={data.combinedReading} className="text-sm text-white/80" />
-          </div>
-          <Link href={`/joint-reading/${encodeURIComponent(token)}/print`} className="mt-5 inline-flex text-xs text-amber-200">
-            Печатная версия / PDF
-          </Link>
         </article>
       ) : bothDone ? (
         <p className="mt-8 flex items-center justify-center gap-2 text-center text-sm text-white/50">
@@ -472,8 +450,28 @@ export default function JointReadingTokenPage() {
         </p>
       ) : null}
 
+      {(data.initiatorReading && data.viewerRole === "initiator") ||
+      (data.partnerReading && data.viewerRole === "partner") ? (
+        <section className="joint-result__personal" aria-labelledby="joint-personal-title">
+          <span className="joint-eyebrow">Личная часть</span>
+          <h2 id="joint-personal-title">Ваш личный расклад</h2>
+          {data.initiatorReading && data.viewerRole === "initiator" ? (
+            <details>
+              <summary>Расклад — {labelA} <span>{getSpread(data.spreadId).cardCount} карт</span></summary>
+              <JointPersonalReading content={data.initiatorReading} cards={data.initiatorCards ?? []} complete={bothDone} />
+            </details>
+          ) : null}
+          {data.partnerReading && data.viewerRole === "partner" ? (
+            <details>
+              <summary>Расклад — {labelB} <span>{getSpread(data.spreadId).cardCount} карт</span></summary>
+              <JointPersonalReading content={data.partnerReading} cards={data.partnerCards ?? []} complete={bothDone} />
+            </details>
+          ) : null}
+        </section>
+      ) : null}
+
       {!data.isLoggedIn ? (
-        <div className="mt-8 rounded-xl border border-white/10 bg-white/5 p-4 text-sm text-white/70">
+        <div className="joint-result__next text-sm text-white/70">
           <Link href={loginHref} className="text-aura-gold hover:underline">
             Войдите
           </Link>
@@ -488,14 +486,14 @@ export default function JointReadingTokenPage() {
           , чтобы пройти расклад по приглашению. После входа вы вернётесь на эту страницу.
         </div>
       ) : (
-        <div className="mt-8 space-y-4">
-          {data.canStartAsInitiator ? (
+        <div className="joint-result__next space-y-4">
+          {data.canStartAsInitiator && jointFailureCode !== "joint_attach_unknown" ? (
             <p className="text-sm text-white/60">
               Нажмите «Пройти мой расклад» — откроется схема «{spreadLabel}». После интерпретации
               вы вернётесь сюда.
             </p>
           ) : null}
-          {data.canStartAsPartner ? (
+          {data.canStartAsPartner && jointFailureCode !== "joint_attach_unknown" ? (
             <p className="text-sm text-white/60">
               Вы проходите расклад как партнёр ({labelB}). Имя инициатора ({labelA}) подставится в
               форму автоматически. Войдите под своим аккаунтом — имя в профиле может отличаться от
@@ -507,10 +505,7 @@ export default function JointReadingTokenPage() {
           !data.hasPartnerReading &&
           !data.canStartAsInitiator &&
           !isExpired ? (
-            <p className="text-sm text-amber-200/80">
-              Это ваша ссылка как инициатора. Отправьте её партнёру ({labelB}) — со своего аккаунта
-              пройти расклад партнёра нельзя.
-            </p>
+            <p className="text-sm text-amber-200/80">Второй участник проходит расклад со своего аккаунта.</p>
           ) : null}
           {data.viewerRole === "guest" && !data.canStartAsPartner && !bothDone && !isExpired ? (
             <p className="text-sm text-amber-200/80">
@@ -520,7 +515,7 @@ export default function JointReadingTokenPage() {
           ) : null}
 
           <div className="flex flex-wrap gap-3">
-            {data.canStartAsInitiator ? (
+            {data.canStartAsInitiator && jointFailureCode !== "joint_attach_unknown" ? (
               <button
                 type="button"
                 onClick={() => startReading("initiator")}
@@ -529,7 +524,7 @@ export default function JointReadingTokenPage() {
                 Пройти мой расклад
               </button>
             ) : null}
-            {data.canStartAsPartner ? (
+            {data.canStartAsPartner && jointFailureCode !== "joint_attach_unknown" ? (
               <button
                 type="button"
                 onClick={() => startReading("partner")}
@@ -538,29 +533,11 @@ export default function JointReadingTokenPage() {
                 Пройти расклад партнёра
               </button>
             ) : null}
-            {data.viewerRole === "initiator" &&
-            data.hasInitiatorReading &&
-            !data.hasPartnerReading &&
-            !isExpired ? (
-              <>
-                <p className="w-full text-sm text-white/50">
-                  Ждём партнёра — отправьте ему ссылку на эту страницу.
-                </p>
-                <button
-                  type="button"
-                  onClick={() => void copyLink()}
-                  className="btn-luxe btn-luxe--sm border-aura-gold/30 bg-aura-gold/10 text-aura-gold"
-                >
-                  <Copy className="h-4 w-4" />
-                  {copied ? "Скопировано" : "Копировать ссылку"}
-                </button>
-              </>
-            ) : null}
           </div>
         </div>
       )}
 
-      {!isExpired ? (
+      {!isExpired && !data.combinedReading ? (
         <p className="mt-8 text-center text-xs text-white/35">
           Ссылка действует до {new Date(data.expiresAt).toLocaleDateString("ru-RU")}
         </p>
@@ -568,7 +545,7 @@ export default function JointReadingTokenPage() {
 
       {data.isLoggedIn &&
       (data.viewerRole === "initiator" || data.viewerRole === "partner") ? (
-        <div className="mt-8 flex justify-center border-t border-white/8 pt-6">
+        <div className="joint-result__delete">
           <button
             type="button"
             disabled={deleting}
@@ -607,6 +584,7 @@ export default function JointReadingTokenPage() {
           </button>
         </div>
       ) : null}
+      </div>
     </SeoPageShell>
   );
 }

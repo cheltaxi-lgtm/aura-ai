@@ -105,12 +105,6 @@ export function buildHeaderNavSections(
           icon: LayoutGrid,
           onClick: navigateToSpreadCatalog,
         },
-        {
-          id: "reading",
-          label: "Получить расклад",
-          icon: Sparkles,
-          onClick: callbacks.onStartReading,
-        },
         ...(isLoggedIn && jointReadingEnabled
           ? [
               {
@@ -223,7 +217,7 @@ export function buildHeaderNavSections(
       items: [
         {
           id: "tariffs",
-          label: "Тарифы",
+          label: "Тарифы и магазин",
           icon: LayoutGrid,
           onClick: callbacks.onNavTariffs,
         },

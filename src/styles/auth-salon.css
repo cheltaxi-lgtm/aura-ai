@@ -19,6 +19,31 @@
   justify-content: flex-start;
 }
 
+.auth-salon-page--register .auth-salon-card {
+  padding-top: 1.25rem;
+}
+
+.auth-salon-page--register .auth-salon-header {
+  margin-bottom: 0.85rem;
+}
+
+.auth-salon-page--register .auth-salon-oauth {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.5rem;
+}
+
+.auth-salon-page--register .auth-salon-oauth-btn {
+  min-width: 0;
+  padding-inline: 0.65rem;
+  font-size: 0.8125rem;
+}
+
+.auth-salon-page--register .auth-salon-oauth-icon {
+  height: 1.75rem;
+  width: 1.75rem;
+}
+
 .auth-salon-vignette {
   pointer-events: none;
   position: absolute;
@@ -42,7 +67,6 @@
 .auth-salon-back a {
   font-size: 0.8125rem;
   color: rgba(237, 230, 218, 0.5);
-  transition: color 0.2s ease;
 }
 
 .auth-salon-back a:hover {
@@ -118,9 +142,6 @@
   padding: 0.75rem 1rem;
   font-size: 0.9375rem;
   color: #ede6da;
-  transition:
-    border-color 0.2s ease,
-    box-shadow 0.2s ease;
 }
 
 .auth-salon-field:focus {
@@ -161,10 +182,6 @@
   font-weight: 500;
   color: #ede6da;
   text-decoration: none;
-  transition:
-    border-color 0.2s ease,
-    background 0.2s ease,
-    transform 0.15s ease;
 }
 
 .auth-salon-oauth-btn:hover:not([aria-disabled="true"]) {
@@ -295,7 +312,6 @@
   justify-content: center;
   border-radius: 0.5rem;
   color: rgba(237, 230, 218, 0.55);
-  transition: color 0.15s ease, background 0.15s ease;
 }
 
 .auth-salon-password-toggle:hover {
@@ -306,6 +322,16 @@
 .auth-salon-password-toggle:focus-visible {
   outline: 2px solid rgba(201, 162, 74, 0.55);
   outline-offset: 1px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-salon-page *,
+  .auth-salon-page *::before,
+  .auth-salon-page *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .cookie-banner__docs {

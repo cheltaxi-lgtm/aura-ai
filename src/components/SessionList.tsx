@@ -148,7 +148,7 @@ function sessionPreviewText(item: SessionListItem): string {
 
 function sessionSpreadLabel(item: SessionListItem): string | null {
   if (item.spreadType === "guest_resume") return null;
-  if (item.spreadType === "daily") return "Карты дня";
+  if (item.spreadType === "daily") return "Сохранённый расклад";
   if (!item.spreadId || item.spreadType === "photo") return null;
   const numerologToolId = decodeNumerologSpreadId(item.spreadId);
   if (numerologToolId) return getNumerologTool(numerologToolId).label;

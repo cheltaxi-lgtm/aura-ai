@@ -125,7 +125,26 @@ export async function getFirstExperienceAnalytics() {
       AND event IN ('receipt_reused','claim_failed')
       AND created_at>=DATE_TRUNC('day',NOW())-INTERVAL '29 days'
     GROUP BY event`);
+  const checkout=await query<{event:string;code:string;requests:string;users:string}>(`WITH external_users AS (
+    SELECT DISTINCT u.id FROM users u JOIN user_accounts ua ON ua.profile_user_id=u.id
+    WHERE ua.is_internal=FALSE AND ua.is_unlimited=FALSE
+      AND ua.erasure_requested_at IS NULL AND u.erasure_requested_at IS NULL
+      AND NOT COALESCE(${testAccountEmailSql("ua.email")},false)
+      AND NOT COALESCE(${testProfileNameSql("u.name")},false)
+      AND NOT COALESCE(ua.email ILIKE '%@example.%',false)
+      AND NOT COALESCE(ua.email ILIKE '%+test@%',false)
+  )
+  SELECT m.event,COALESCE(m.metadata->>'errorCode','') AS code,
+    COUNT(*)::text AS requests,COUNT(DISTINCT m.user_id)::text AS users
+  FROM spread_metrics m JOIN external_users u ON u.id=m.user_id
+  WHERE m.source='first_experience' AND m.event IN ('payment_attempted','payment_started','payment_failed')
+    AND m.created_at>=NOW()-INTERVAL '30 days'
+  GROUP BY m.event,code
+  UNION ALL SELECT 'payment_confirmed','',COUNT(*)::text,COUNT(DISTINCT t.user_id)::text
+  FROM rune_transactions t JOIN external_users u ON u.id=t.user_id
+  WHERE t.type='purchase' AND t.amount>0 AND t.payment_id IS NOT NULL AND t.created_at>=NOW()-INTERVAL '30 days'`);
   return {
+    checkout:{days:30,stages:checkout.rows.map(r=>({event:r.event,code:r.code,requests:Number(r.requests),users:Number(r.users)}))},
     events:events.rows.map(r=>({event:r.event,count:Number(r.count)})),
     funnel:funnel.rows.map(r=>({event:r.event,count:Number(r.count)})),
     guestRegistration:{

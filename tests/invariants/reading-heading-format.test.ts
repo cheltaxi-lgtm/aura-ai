@@ -4,9 +4,85 @@ import { renderToStaticMarkup } from "react-dom/server";
 import ChatMessageRenderer from "@/components/ChatMessageRenderer";
 import ReportRichText from "@/components/reports/ReportRichText";
 import { polishSpreadReadingText, repairLegacyReadingHeadings } from "@/lib/reading-text-polish";
+import { formatPremiumReadingForDisplay } from "@/lib/format-premium-reading";
 
 
 describe("reading emphasis boundaries", () => {
+  it("renders a saved three-card reading as distinct position sections without raw stars", () => {
+    const content = [
+      "Расклад в плюс: ты выходишь из сложного периода к спокойствию.",
+      "**5 Кубков — прошлое. ** Прежнее разочарование влияло на решения.",
+      "**Отшельник — настоящее. ** Сейчас полезно разобраться в себе.",
+      "**Король Кубков — будущее. ** Дальше возможен зрелый разговор.",
+      "Итог: выбери один спокойный шаг.",
+    ].join("\n\n");
+    const html = renderToStaticMarkup(React.createElement(ChatMessageRenderer, { content }));
+    for (const [position, card] of [["Прошлое", "5 Кубков"], ["Настоящее", "Отшельник"], ["Будущее", "Король Кубков"]]) {
+      expect(html).toContain(`>${position}</span>`);
+      expect(html).toContain(`>${card}</h3>`);
+    }
+    expect(html).not.toContain("**");
+    expect(html.match(/<h3 /g)).toHaveLength(3);
+    expect(html).toContain("border-aura-gold/25");
+    expect(html).toContain(">5 Кубков</h3>");
+    expect(html).toContain("Прежнее разочарование влияло на решения.");
+    const printHtml = renderToStaticMarkup(React.createElement(ReportRichText, { content }));
+    expect(printHtml.match(/<h3>/g)).toHaveLength(3);
+    expect(printHtml).not.toContain("**");
+  });
+  it("styles the position-first format requested for new introductory readings", () => {
+    const content = "Общий смысл в спокойном выборе.\n\nПрошлое — 5 Кубков\n\nРазочарование осталось позади.\n\nНастоящее — Отшельник\n\nСейчас нужна пауза.\n\nБудущее — Король Кубков\n\nОткроется возможность для разговора.";
+    const html = renderToStaticMarkup(React.createElement(ChatMessageRenderer, { content }));
+    expect(html.match(/<h3 /g)).toHaveLength(3);
+    for (const [position, card] of [["Прошлое", "5 Кубков"], ["Настоящее", "Отшельник"], ["Будущее", "Король Кубков"]]) {
+      expect(html).toContain(`>${position}</span>`);
+      expect(html).toContain(`>${card}</h3>`);
+    }
+  });
+  it("restores card-first prose from an existing saved introductory reading", () => {
+    const content = [
+      "Общий смысл расклада — выбор нового направления.",
+      "**Королева Жезлов** в прошлом — уверенность и личная сила.",
+      "**Влюблённые** в настоящем — честный выбор и союз.",
+      "**Паж Кубков** в будущем — возможность мягкого нового начала.",
+      "Простыми словами: сделай один шаг к тому, что тебе важно.",
+    ].join("\n\n");
+    for (const Component of [ChatMessageRenderer, ReportRichText]) {
+      const html = renderToStaticMarkup(React.createElement(Component, { content }));
+      expect(html.match(/<h3[ >]/g)).toHaveLength(3);
+      expect(html).not.toContain("**");
+      expect(html).toContain("уверенность и личная сила");
+      expect(html).toContain("честный выбор и союз");
+      expect(html).toContain("мягкого нового начала");
+      for (const card of ["Королева Жезлов", "Влюблённые", "Паж Кубков"]) {
+        expect(html).toContain(card);
+      }
+    }
+  });
+  it("does not reinterpret ordinary report sections or incomplete spreads as tarot cards", () => {
+    const report = "Прошлое — влияние семьи\n\nНастоящее — выбор работы\n\nБудущее — пространство для роста";
+    expect(formatPremiumReadingForDisplay(report)).not.toContain("### Прошлое ·");
+    const incomplete = "Прошлое — Сила\n\nНастоящее — Отшельник";
+    expect(formatPremiumReadingForDisplay(incomplete)).not.toContain("### Прошлое ·");
+    const celtic = "Настоящее — Сила\n\nВызов — Луна\n\nПрошлое — Отшельник\n\nБудущее — Мир";
+    expect(formatPremiumReadingForDisplay(celtic)).not.toContain("### Прошлое ·");
+  });
+  it("leaves non-card text alone even when three valid card sections are present", () => {
+    const mixed = "Прошлое — Сила\n\nНастоящее — Отшельник\n\nБудущее — Мир\n\nПрошлое — влияние семьи";
+    const formatted = formatPremiumReadingForDisplay(mixed);
+    expect(formatted).toContain("### Прошлое · Сила");
+    expect(formatted).toContain("Прошлое — влияние семьи");
+    expect(formatted).not.toContain("### Прошлое · влияние семьи");
+  });
+  it("keeps daily position headings without turning a later sentence into another heading", () => {
+    const formatted = formatPremiumReadingForDisplay(
+      "Утро — действуй спокойно.\nДень — выбери цель.\nВечер — проверь слова.\nВечер может показать новую мысль."
+    );
+    expect(formatted).toContain("### Утро");
+    expect(formatted).toContain("### День");
+    expect(formatted.match(/### Вечер/g)).toHaveLength(1);
+    expect(formatted).toContain("Вечер может показать новую мысль.");
+  });
   it("preserves adjacent card title and bold opening without inserting another card", () => {
     const text = "**8 Пентаклей**\n\n**8 Пентаклей в позиции «Итог»** — усердие, оттачивание мастерства и кропотливый труд.";
     expect(polishSpreadReadingText(text, ["8 Пентаклей"])).toBe(text);

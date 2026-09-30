@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getSetting } from "@/lib/settings";
 import { buildRunePurchaseReturnUrl } from "@/lib/rune-purchase-client";
 
@@ -35,11 +35,12 @@ function authHeader(): string {
 
 export async function createYukassaPayment(params: {
   plan: PaymentPlan;
+  amountRub?: number;
   sessionId: string;
   returnUrl: string;
 }) {
   const prices = await getLegacyPrices();
-  const amountRub = params.plan === "single" ? prices.single : prices.subscription;
+  const amountRub = params.amountRub ?? (params.plan === "single" ? prices.single : prices.subscription);
   const idempotenceKey = `${params.sessionId}-${params.plan}-${Date.now()}`;
 
   const response = await fetch(`${YUKASSA_API}/payments`, {
@@ -96,7 +97,9 @@ export async function createYukassaRunePayment(params: {
   source?: string;
 }) {
   const orderId = params.requestId && /^[0-9a-f-]{36}$/i.test(params.requestId) ? params.requestId : randomUUID();
-  const idempotenceKey = `rune-${params.userId}-${params.packageId}-${orderId}`;
+  const idempotenceKey = createHash("sha256")
+    .update(`rune-${params.userId}-${params.packageId}-${orderId}`)
+    .digest("hex");
   const returnUrl =
     params.returnUrl || buildRunePurchaseReturnUrl(params.appUrl, undefined, orderId);
 

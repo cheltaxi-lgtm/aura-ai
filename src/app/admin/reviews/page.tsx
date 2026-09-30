@@ -218,7 +218,7 @@ export default function AdminReviewsPage() {
               <label className="block text-xs text-gray-400">
                 Заметка модератора
                 <textarea
-                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white"
+                  className="mt-1 w-full rounded-xl border border-white/10 bg-black/40 px-3 py-2 text-sm text-white ym-hide-content ym-disable-keys"
                   rows={3}
                   value={note}
                   onChange={(e) => setNote(e.target.value)}

@@ -1,6 +1,10 @@
 import { BRAND_NAME } from "@/lib/brand";
 import { getSiteUrl, getSupportEmail } from "@/lib/email/mail-config";
 
+/** Same daily action as the in-app reminder, attributed as an email visit. */
+export const DAILY_REMINDER_EMAIL_PATH =
+  "/?daily=1&utm_source=zovus&utm_medium=email&utm_campaign=daily_reading";
+
 function shell(bodyHtml: string, footerNote?: string): string {
   const note =
     footerNote ??
@@ -81,7 +85,9 @@ export function passwordChangedEmailHtml(name: string): string {
 export function dailyReminderEmailHtml(
   name: string,
   siteUrl?: string,
-  unsubscribeUrl?: string
+  unsubscribeUrl?: string,
+  bonus?: { amount: number; claimable: boolean; unsubscribeUrl: string },
+  nextStep?: {path:string;label:string;firstUse:boolean;preview:boolean}
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
@@ -90,9 +96,17 @@ export function dailyReminderEmailHtml(
     : "";
   return shell(
     `<p>Здравствуйте, ${safeName}!</p>
-     <p>Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день.</p>
-     ${cta(`${url}/?dailyCards=1`, "Открыть карты дня бесплатно")}
-     ${unsub}`,
+       <p>${nextStep?.preview
+         ? "Ваш предварительный результат сохранён. Продолжите разбор — перед запуском вы увидите стоимость в рунах."
+         : nextStep?.firstUse ? "Начните с <strong>бесплатного расклада на сутки</strong>: он поможет познакомиться с Zovus. Стартовые руны останутся для других разборов."
+         : "Новый день — новая энергия. <strong>Бесплатный</strong> расклад на сутки ждёт вас — узнайте, что несёт сегодняшний день."}</p>
+         ${cta(`${url}${nextStep?.path ?? DAILY_REMINDER_EMAIL_PATH}`, nextStep?.label ?? "Открыть расклад на сутки")}
+       ${bonus ? `<p>${bonus.claimable
+         ? `Ваш ежедневный бонус готов: <strong>${bonus.amount} рун</strong> можно забрать бесплатно в личном кабинете.`
+         : `Ежедневный бонус в размере ${bonus.amount} рун доступен каждые 24 часа. Проверьте время следующего получения в кабинете.`}</p>
+       ${cta(`${url}/cabinet#daily-bonus`, bonus.claimable ? `Забрать ${bonus.amount} рун` : "Проверить бонус")}
+       <p style="font-size:12px;color:#888"><a href="${bonus.unsubscribeUrl}" style="color:#888">Отключить бонусные напоминания</a></p>` : ""}
+       ${unsub}`,
     unsubscribeUrl
       ? "Если письмо пришло по ошибке, отключите напоминание ссылкой выше."
       : "Напоминание можно отключить в профиле Zovus."
@@ -134,11 +148,12 @@ export function inactiveUserEmailHtml(
   name: string,
   inactiveDays: number,
   siteUrl?: string,
-  unsubscribeUrl?: string
+  unsubscribeUrl?: string,
+  ctaUrlOverride?: string
 ): string {
   const url = siteUrl || getSiteUrl();
   const safeName = name.trim() || "друг";
-  const ctaUrl = inactiveWinbackCtaUrl(url);
+  const ctaUrl = ctaUrlOverride || inactiveWinbackCtaUrl(url);
   const body =
     inactiveDays <= 7
       ? `<p>Давно не виделись.</p>
@@ -163,10 +178,11 @@ export function inactiveUserEmailText(
   name: string,
   inactiveDays: number,
   siteUrl?: string,
-  unsubscribeUrl?: string
+  unsubscribeUrl?: string,
+  ctaUrlOverride?: string
 ): string {
   const safeName = name.trim() || "друг";
-  const ctaUrl = inactiveWinbackCtaUrl(siteUrl);
+  const ctaUrl = ctaUrlOverride || inactiveWinbackCtaUrl(siteUrl);
   const lead =
     inactiveDays <= 7
       ? "Давно не виделись. Можно вернуться к своим вопросам, поговорить с мастером или открыть персональный Zovus."

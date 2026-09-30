@@ -159,7 +159,7 @@ function PersonForm({
             type="date"
             value={state.birthDate}
             onChange={(e) => onChange({ birthDate: e.target.value })}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             min="1900-01-01"
             max={localTodayIso()}
           />
@@ -171,7 +171,7 @@ function PersonForm({
             type="time"
             value={state.birthTime}
             onChange={(e) => onChange({ birthTime: e.target.value })}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             disabled={state.timeUnknown}
           />
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/55">
@@ -353,7 +353,7 @@ export default function HdCompatibilityCalculator() {
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 ym-hide-content ym-disable-keys">
       <div className="grid gap-5 lg:grid-cols-2">
         <PersonForm title="Первый человек" idPrefix="hd-compat-a" state={a} onChange={(p) => setA((prev) => ({ ...prev, ...p }))} onCompute={() => void computeA()} />
         <PersonForm title="Второй человек" idPrefix="hd-compat-b" state={b} onChange={(p) => setB((prev) => ({ ...prev, ...p }))} onCompute={() => void computeB()} />

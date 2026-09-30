@@ -105,7 +105,7 @@ export default function AdminLoginForm() {
         onChange={(e) => setEmail(e.target.value)}
         placeholder="Email"
         autoComplete="username"
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
       />
       <input
         type="password"
@@ -114,7 +114,7 @@ export default function AdminLoginForm() {
         onChange={(e) => setPassword(e.target.value)}
         placeholder="Пароль"
         autoComplete="current-password"
-        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+        className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
       />
       {error && <p className="text-center text-sm text-red-400">{error}</p>}
       <button type="submit" disabled={loading} className="btn-primary w-full py-3 text-sm disabled:opacity-50">

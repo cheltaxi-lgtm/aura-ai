@@ -1,8 +1,8 @@
 {
-  "versionCode": 20,
-  "versionName": "1.0.8",
-  "builtAt": "2026-07-16T15:13:58.372Z",
+  "versionCode": 15,
+  "versionName": "1.0.6",
+  "builtAt": "2026-09-23T17:18:46.643Z",
   "apkFile": "zovus-latest.apk",
-  "apkSha256": "a99ef15aa84bd96126cf75f5cbd574e73d27136ea721073c72f5e54e691a8567",
-  "apkBytes": 12808066
+  "apkSha256": "bca1f9a7e10fe9a500583730e446b42a3a739f3d5039680eff177a693369963f",
+  "apkBytes": 7090505
 }

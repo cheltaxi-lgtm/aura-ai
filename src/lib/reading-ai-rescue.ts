@@ -59,7 +59,7 @@ function cardsBlock(cards: RescueCard[]): string {
  */
 function buildLeanSystemPrompt(characterId: string, cardCount: number): string {
   const voice = VOICE_HINTS[characterId] ?? VOICE_HINTS.veronika!;
-  const minWords = cardCount <= 3 ? 240 : cardCount <= 5 ? 340 : Math.max(480, cardCount * 55);
+  const minWords = cardCount <= 3 ? 110 : cardCount <= 5 ? 160 : Math.max(180, cardCount * 30);
   const tarotFinale =
     characterId === "veronika" ||
     characterId === "ragnar" ||
@@ -80,7 +80,7 @@ function buildLeanSystemPrompt(characterId: string, cardCount: number): string {
     "",
     "ЖЁСТКИЕ ТРЕБОВАНИЯ:",
     `- Раскрой ВСЕ ${cardCount} символов, каждый — по имени, в своей позиции.`,
-    `- Объём не меньше ${minWords} слов. На каждый символ — не меньше 4 предложений: имя → смысл здесь → вывод по вопросу.`,
+    `- Ориентир по объёму — от ${minWords} слов. На каждый символ — 2–3 содержательных предложения: имя → смысл здесь → вывод по вопросу.`,
     "- Отвечай на заданный вопрос прямо, по доминанте символов. Тема войны, болезни, смерти, расставания — не повод уходить в общие слова.",
     "- Запрещено: «энергии», «вибрации», «вселенная посылает», «прислушайтесь к себе», «период трансформации» и прочая вода.",
     "- Запрещено: отказ отвечать, дисклеймеры про ИИ, советы обратиться к специалисту вместо разбора.",

@@ -125,7 +125,7 @@ export default function ProIntakePublicPage() {
   }
 
   return (
-    <main className="pro-public mx-auto max-w-md px-4 py-12">
+    <main className="pro-public mx-auto max-w-md px-4 py-12 ym-hide-content ym-disable-keys">
       <p className="pro-public__eyebrow">Конфиденциально</p>
       <h1 className="pro-public__title mt-1 text-2xl">Анкета-бриф</h1>
       <p className="mt-2 text-sm text-gray-400">
@@ -173,7 +173,7 @@ export default function ProIntakePublicPage() {
           </label>
           <textarea
             id="intake-question"
-            className="pro-field"
+            className="pro-field ym-hide-content ym-disable-keys"
             rows={4}
             value={question}
             onChange={(e) => setQuestion(e.target.value)}
@@ -188,7 +188,7 @@ export default function ProIntakePublicPage() {
               <input
                 id="intake-birth"
                 type="date"
-                className="pro-field"
+                className="pro-field ym-hide-content ym-disable-keys"
                 value={birthDate}
                 onChange={(e) => setBirthDate(e.target.value)}
               />
@@ -200,7 +200,7 @@ export default function ProIntakePublicPage() {
               <input
                 id="intake-time"
                 type="time"
-                className="pro-field"
+                className="pro-field ym-hide-content ym-disable-keys"
                 value={birthTime}
                 onChange={(e) => setBirthTime(e.target.value)}
               />
@@ -211,7 +211,7 @@ export default function ProIntakePublicPage() {
               </label>
               <input
                 id="intake-place"
-                className="pro-field"
+                className="pro-field ym-hide-content ym-disable-keys"
                 value={birthPlace}
                 onChange={(e) => setBirthPlace(e.target.value)}
                 placeholder="Например, Москва"

@@ -52,6 +52,7 @@ async function handleYoomoneyWebhook(data: YoomoneyNotification & { test_notific
     operationId: data.operation_id,
     sessionId: parsed.sessionId,
     plan: parsed.plan,
+    orderId: parsed.orderId,
     amount: parseFloat(data.amount),
   });
 
@@ -60,7 +61,7 @@ async function handleYoomoneyWebhook(data: YoomoneyNotification & { test_notific
     return NextResponse.json({ error: "Payment not completed" }, { status: 409 });
   }
 
-  if (result.influencer_id && result.amount) {
+  if (!result.alreadyCompleted && result.influencer_id && result.amount) {
     await creditInfluencerBalance(
       result.influencer_id,
       Number(result.amount),

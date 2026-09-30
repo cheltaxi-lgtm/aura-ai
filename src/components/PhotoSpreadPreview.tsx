@@ -15,6 +15,7 @@ import {
 import {
   confidenceLabel,
   MAX_PHOTO_CARDS,
+  MAX_PHOTO_POSITION_LENGTH,
   type PhotoRecognitionConfidence,
 } from "@/lib/photo-reading-constants";
 
@@ -83,10 +84,6 @@ export default function PhotoSpreadPreview({
   const [activeIndex, setActiveIndex] = useState<number | null>(0);
   const [readySlots, setReadySlots] = useState<Record<string, true>>({});
   const deckOptions = useMemo(() => listDeckCards(spread.system), [spread.system]);
-  const positions = useMemo(
-    () => inferSpreadPositions(spread.cards.length, spread.system, spread.spreadType),
-    [spread.cards.length, spread.system, spread.spreadType]
-  );
   const faceSlotKeys = useMemo(
     () =>
       spread.cards.map((card, index) => {
@@ -126,13 +123,13 @@ export default function PhotoSpreadPreview({
     onChange({ ...spread, cards });
   };
 
-  const remapFromDetected = (detected: string[], confidences: PhotoRecognitionConfidence[]) => {
+  const remapFromDetected = (detected: string[], confidences: PhotoRecognitionConfidence[], positions: string[]) => {
     return mapDetectedToRedrawSpread({
       detectedCards: detected,
       system: spread.system,
       deckType: spread.deckType,
       spreadType: spread.spreadType ?? `${detected.length} символов`,
-      positions: inferSpreadPositions(detected.length, spread.system, spread.spreadType),
+      positions,
       confidences,
     }).cards.map((c, i) => ({
       ...c,
@@ -148,6 +145,12 @@ export default function PhotoSpreadPreview({
     updateCards(cards);
   };
 
+  const updatePosition = (index: number, position: string) => {
+    updateCards(spread.cards.map((card, i) =>
+      i === index ? { ...card, position: position.slice(0, MAX_PHOTO_POSITION_LENGTH) } : card
+    ));
+  };
+
   const moveCard = (index: number, dir: -1 | 1) => {
     const next = index + dir;
     if (next < 0 || next >= spread.cards.length) return;
@@ -157,7 +160,7 @@ export default function PhotoSpreadPreview({
       cards.map((c, i) => ({
         ...c,
         order: i,
-        position: inferSpreadPositions(cards.length, spread.system, spread.spreadType)[i] ?? c.position,
+        position: spread.cards[i]?.position || c.position,
       }))
     );
     setActiveIndex(next);
@@ -169,7 +172,7 @@ export default function PhotoSpreadPreview({
       return spread.cards[index].reversed ? `${name} (перев.)` : name;
     });
     const confidences = spread.cards.map((c, i) => (i === index ? "high" : c.confidence ?? "unknown"));
-    updateCards(remapFromDetected(detected, confidences));
+    updateCards(remapFromDetected(detected, confidences, spread.cards.map((card) => card.position)));
     setEditingIndex(null);
   };
 
@@ -180,7 +183,8 @@ export default function PhotoSpreadPreview({
       name,
     ];
     const confidences = [...spread.cards.map((c) => c.confidence ?? "unknown"), "high" as const];
-    updateCards(remapFromDetected(detected, confidences));
+    const nextPosition = inferSpreadPositions(detected.length, spread.system, spread.spreadType).at(-1) ?? `Позиция ${detected.length}`;
+    updateCards(remapFromDetected(detected, confidences, [...spread.cards.map((card) => card.position), nextPosition]));
     setAddingCard(false);
   };
 
@@ -192,7 +196,7 @@ export default function PhotoSpreadPreview({
     const confidences = spread.cards
       .filter((_, i) => i !== index)
       .map((c) => c.confidence ?? "unknown");
-    updateCards(remapFromDetected(detected, confidences));
+    updateCards(remapFromDetected(detected, confidences, spread.cards.filter((_, i) => i !== index).map((card) => card.position)));
     setEditingIndex(null);
     setActiveIndex(null);
   };
@@ -298,6 +302,7 @@ export default function PhotoSpreadPreview({
                 )}
 
                 {isActive && (
+                  <>
                   <div className="photo-spread-preview__toolbar" role="toolbar" aria-label="Правка карты">
                     <button
                       type="button"
@@ -353,6 +358,7 @@ export default function PhotoSpreadPreview({
                       </button>
                     )}
                   </div>
+                  </>
                 )}
 
                 {isEditing && (
@@ -378,6 +384,20 @@ export default function PhotoSpreadPreview({
             );
           })}
         </div>
+
+        {activeIndex !== null && spread.cards[activeIndex] && (
+          <label className="mx-auto mt-5 block w-full max-w-xl text-left text-xs text-aura-ivory/65">
+            Позиция карты {activeIndex + 1}
+            <input
+              type="text"
+              value={spread.cards[activeIndex].position}
+              maxLength={MAX_PHOTO_POSITION_LENGTH}
+              onChange={(event) => updatePosition(activeIndex, event.target.value)}
+              className="mt-1 w-full rounded-lg border border-aura-gold/25 bg-[#100e0c] px-3 py-2 text-sm text-aura-ivory outline-none focus:border-aura-gold"
+              aria-label={`Позиция карты ${activeIndex + 1}`}
+            />
+          </label>
+        )}
 
         {spread.cards.length < MAX_PHOTO_CARDS_LOCAL && (
           <div className="mt-4 text-center">

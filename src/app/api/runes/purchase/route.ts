@@ -12,9 +12,39 @@ import {
   runesFromRubAmount,
 } from "@/lib/rune-purchase-constants";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
-import { recordJourneyEvent } from "@/lib/spread-metrics-store";
+import { randomUUID } from "node:crypto";
+import { recordRuneCheckoutEvent } from "@/lib/rune-checkout-telemetry";
+import { reportError } from "@/lib/error-report";
 
 const CUSTOM_PACKAGE_ID = "custom";
+
+function logRunePurchaseFailure(
+  error: unknown,
+  kind: "custom" | "package",
+  orderId: string | undefined
+): void {
+  try {
+    const exceptionType =
+      error instanceof TypeError ? "TypeError" : error instanceof Error ? "Error" : "unknown";
+    const code =
+      error instanceof Error && error.message.startsWith("YooKassa error:")
+        ? "provider_rejected"
+        : error instanceof TypeError
+          ? "type_error"
+          : "payment_creation_error";
+    const context = {
+      route: "runes/purchase",
+      kind,
+      exceptionType,
+      code,
+      orderId: orderId ?? null,
+    };
+    console.error("Rune purchase error:", context);
+    reportError(new Error(code), context);
+  } catch {
+    // Diagnostics must never change the payment response.
+  }
+}
 
 function parseStrictCustomAmount(raw: unknown): number | null {
   const str = String(raw ?? "").trim();
@@ -33,11 +63,19 @@ export async function POST(request: NextRequest) {
   const rateLimited = await enforcePaidRouteRateLimit(authed.auth.sub, "rune_purchase");
   if (rateLimited) return rateLimited;
 
+  const attemptKey = randomUUID();
+  await recordRuneCheckoutEvent(authed.profileUserId, "payment_attempted", attemptKey);
+  const rejected = async (error: string, status: number, code: string) => {
+    await recordRuneCheckoutEvent(authed.profileUserId, "payment_failed", attemptKey, { errorCode: code });
+    return NextResponse.json({ error, code }, { status });
+  };
+
   if (!(await ensureDb())) {
-    return NextResponse.json({ error: "Сервис временно недоступен. Попробуйте позже." }, { status: 503 });
+    return rejected("Сервис временно недоступен. Попробуйте позже.", 503, "database_unavailable");
   }
 
   if (!isYukassaConfigured()) {
+    await recordRuneCheckoutEvent(authed.profileUserId, "payment_failed", attemptKey, { errorCode: "payments_not_configured" });
     return NextResponse.json(
       {
         error:
@@ -52,12 +90,16 @@ export async function POST(request: NextRequest) {
   try {
     body = await request.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return rejected("Invalid JSON", 400, "invalid_json");
   }
+  if (!body || typeof body !== "object" || Array.isArray(body)) return rejected("Invalid body", 400, "invalid_body");
 
   const captchaBlock = await enforceRecaptchaScope("payments", body.recaptchaToken, request);
-  if (captchaBlock) return captchaBlock;
-  if(body.requestId !== undefined && (typeof body.requestId!=="string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId))) return NextResponse.json({error:"invalid_request_id"},{status:400});
+  if (captchaBlock) {
+    await recordRuneCheckoutEvent(authed.profileUserId, "payment_failed", attemptKey, { errorCode: "captcha_rejected" });
+    return captchaBlock;
+  }
+  if(body.requestId !== undefined && (typeof body.requestId!=="string" || !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(body.requestId))) return rejected("invalid_request_id",400,"invalid_request_id");
 
   const appUrl = getAppUrl();
   const customAmountRaw = body.customAmount;
@@ -67,24 +109,21 @@ export async function POST(request: NextRequest) {
   if (hasCustomAmount) {
     const amountRub = parseStrictCustomAmount(customAmountRaw);
     if (amountRub === null) {
-      return NextResponse.json({ error: "Invalid amount" }, { status: 400 });
+      return rejected("Invalid amount",400,"invalid_amount");
     }
 
     if (amountRub > MAX_CUSTOM_RUNE_PURCHASE_RUB) {
-      return NextResponse.json({ error: "Amount exceeds limit" }, { status: 400 });
+      return rejected("Amount exceeds limit",400,"amount_exceeds_limit");
     }
 
     if (amountRub < MIN_CUSTOM_RUNE_PURCHASE_RUB) {
-      return NextResponse.json(
-        { error: `Минимальная сумма — ${MIN_CUSTOM_RUNE_PURCHASE_RUB} ₽` },
-        { status: 400 }
-      );
+      return rejected(`Минимальная сумма — ${MIN_CUSTOM_RUNE_PURCHASE_RUB} ₽`,400,"amount_below_minimum");
     }
 
     const settings = await getRuneSettings();
     const totalRunes = runesFromRubAmount(amountRub, settings.rubPerRune);
     if (totalRunes <= 0) {
-      return NextResponse.json({ error: "Сумма слишком мала для начисления рун" }, { status: 400 });
+      return rejected("Сумма слишком мала для начисления рун",400,"insufficient_amount");
     }
 
     try {
@@ -99,10 +138,10 @@ export async function POST(request: NextRequest) {
       });
 
       const paymentUrl = payment.confirmation?.confirmation_url;
-      await recordJourneyEvent(authed.profileUserId,"payment_started",payment.id,{amountRub,runes:totalRunes});
       if (!paymentUrl) {
-        return NextResponse.json({ error: "No confirmation URL" }, { status: 502 });
+        return rejected("No confirmation URL",502,"missing_confirmation_url");
       }
+      await recordRuneCheckoutEvent(authed.profileUserId,"payment_started",payment.id,{amountRub,runes:totalRunes});
 
       return NextResponse.json({
         paymentUrl,
@@ -111,16 +150,14 @@ export async function POST(request: NextRequest) {
         returnUrl: buildRunePurchaseReturnUrl(appUrl, payment.id),
       });
     } catch (error) {
-      console.error("Rune custom purchase error:", error);
-      const { reportError } = await import("@/lib/error-report");
-      reportError(error, { route: "runes/purchase", kind: "custom" });
-      return NextResponse.json({ error: "Payment creation failed" }, { status: 502 });
+      logRunePurchaseFailure(error, "custom", body.requestId);
+      return rejected("Payment creation failed",502,"provider_creation_failed");
     }
   }
 
   const packageId = String(body.packageId ?? "");
   if (!packageId) {
-    return NextResponse.json({ error: "packageId or customAmount required" }, { status: 400 });
+    return rejected("packageId or customAmount required",400,"selection_required");
   }
 
   const { rows } = await query<{
@@ -135,7 +172,7 @@ export async function POST(request: NextRequest) {
 
   const pkg = rows[0];
   if (!pkg) {
-    return NextResponse.json({ error: "Пакет не найден" }, { status: 404 });
+    return rejected("Пакет не найден",404,"package_not_found");
   }
 
   const totalRunes = pkg.runes + pkg.bonus_runes;
@@ -152,10 +189,10 @@ export async function POST(request: NextRequest) {
     });
 
     const paymentUrl = payment.confirmation?.confirmation_url;
-    await recordJourneyEvent(authed.profileUserId,"payment_started",payment.id,{amountRub:Number(pkg.price_rub),runes:totalRunes});
     if (!paymentUrl) {
-      return NextResponse.json({ error: "No confirmation URL" }, { status: 502 });
+      return rejected("No confirmation URL",502,"missing_confirmation_url");
     }
+    await recordRuneCheckoutEvent(authed.profileUserId,"payment_started",payment.id,{amountRub:Number(pkg.price_rub),runes:totalRunes});
 
     return NextResponse.json({
       paymentUrl,
@@ -163,9 +200,7 @@ export async function POST(request: NextRequest) {
       returnUrl: buildRunePurchaseReturnUrl(appUrl, payment.id),
     });
   } catch (error) {
-    console.error("Rune purchase error:", error);
-    const { reportError } = await import("@/lib/error-report");
-    reportError(error, { route: "runes/purchase", kind: "package" });
-    return NextResponse.json({ error: "Payment creation failed" }, { status: 502 });
+    logRunePurchaseFailure(error, "package", body.requestId);
+    return rejected("Payment creation failed",502,"provider_creation_failed");
   }
 }

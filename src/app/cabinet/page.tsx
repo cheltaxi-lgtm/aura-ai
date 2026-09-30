@@ -1,5 +1,6 @@
 "use client";
-import ReadingJourney from "@/components/ReadingJourney";
+import DailyBonusCard from "@/components/DailyBonusCard";
+import { RUNE_BALANCE_EVENT } from "@/components/RuneBalance";
 import PendingReadingResume from "@/components/cabinet/PendingReadingResume";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
@@ -29,6 +30,7 @@ import CabinetAchievementsRow, {
 import CabinetSessionHistory, {
   CabinetSessionHistorySkeleton,
 } from "@/components/cabinet/CabinetSessionHistory";
+import ReadingJourney from "@/components/ReadingJourney";
 import CabinetActiveReports from "@/components/cabinet/CabinetActiveReports";
 import CabinetBottomNav, { type CabinetTab } from "@/components/cabinet/CabinetBottomNav";
 import CabinetTabHero from "@/components/cabinet/CabinetTabHero";
@@ -125,6 +127,30 @@ async function fetchWithRetry(
   throw lastError instanceof Error ? lastError : new Error("Network error");
 }
 
+function scrollToAnchorWhenMounted(id: string): () => void {
+  let observer: MutationObserver | null = null;
+  let timeout: number | undefined;
+  const scroll = () => {
+    const target = document.getElementById(id);
+    if (!target) return false;
+    target.scrollIntoView({ block: "start" });
+    observer?.disconnect();
+    if (timeout !== undefined) window.clearTimeout(timeout);
+    return true;
+  };
+  const frame = requestAnimationFrame(() => {
+    if (scroll()) return;
+    observer = new MutationObserver(() => { scroll(); });
+    observer.observe(document.body, { childList: true, subtree: true });
+    timeout = window.setTimeout(() => observer?.disconnect(), 5000);
+  });
+  return () => {
+    cancelAnimationFrame(frame);
+    observer?.disconnect();
+    if (timeout !== undefined) window.clearTimeout(timeout);
+  };
+}
+
 export default function CabinetPage() {
   const router = useRouter();
   const { openPaywall } = usePaywall();
@@ -136,6 +162,7 @@ export default function CabinetPage() {
   const [sessionsHasMore, setSessionsHasMore] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [activeTab, setActiveTab] = useState<CabinetTab>("profile");
+  const [noteReadingId, setNoteReadingId] = useState<string | null>(null);
   const [balancePulse, setBalancePulse] = useState(false);
   const [deletingSessionId, setDeletingSessionId] = useState<string | null>(null);
   const [deletingPhotoSpreadId, setDeletingPhotoSpreadId] = useState<string | null>(null);
@@ -171,7 +198,7 @@ export default function CabinetPage() {
     );
     if (res.status === 401) {
       if (redirectHomeAfterAccountDeletion()) return null;
-      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath("/cabinet")));
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath(`/cabinet${window.location.search}${window.location.hash}`)));
       return null;
     }
     if (res.status === 403) {
@@ -206,7 +233,7 @@ export default function CabinetPage() {
     if (!authUser) {
       // After account deletion, go to guest homepage — never the login wall.
       if (redirectHomeAfterAccountDeletion()) return;
-      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath("/cabinet")));
+      router.replace("/auth/user/login?returnTo=" + encodeURIComponent(resolveAppAwarePath(`/cabinet${window.location.search}${window.location.hash}`)));
       setLoading(false);
       return;
     }
@@ -260,15 +287,23 @@ export default function CabinetPage() {
     if (typeof window === "undefined") return;
     const params = new URLSearchParams(window.location.search);
     const tab = params.get("tab");
+    setNoteReadingId(params.get("readingId"));
+    if (params.has("readingId") && !tab) {
+      setActiveTab("history");
+      params.set("tab", "history");
+      window.history.replaceState(window.history.state, "", `${window.location.pathname}?${params.toString()}${window.location.hash}`);
+      return;
+    }
     if (
       tab === "profile" ||
       tab === "history" ||
       tab === "rituals" ||
       tab === "memory" ||
-      tab === "runes"
+      tab === "runes" ||
+      tab === "settings"
     ) {
       setActiveTab(tab);
-      params.delete("tab");
+      if (!params.has("readingId")) params.delete("tab");
       const qs = params.toString();
       window.history.replaceState(
         {},
@@ -277,6 +312,18 @@ export default function CabinetPage() {
       );
     }
   }, []);
+
+  /** Scroll to Telegram binding after async cabinet content mounts. */
+  useEffect(() => {
+    if (loading || !data || activeTab !== "profile" || window.location.hash !== "#cabinet-telegram-link") return;
+    return scrollToAnchorWhenMounted("cabinet-telegram-link");
+  }, [loading, data, activeTab]);
+
+  /** Profile editor mounts only after the separate profile request finishes. */
+  useEffect(() => {
+    if (loading || profileLoading || activeTab !== "profile" || window.location.hash !== "#profile-editor") return;
+    return scrollToAnchorWhenMounted("profile-editor");
+  }, [loading, profileLoading, activeTab]);
 
   /** Deep link from Telegram: /cabinet?shop=1 → open YooKassa paywall. */
   useEffect(() => {
@@ -289,6 +336,7 @@ export default function CabinetPage() {
     setActiveTab("runes");
     openPaywall({
       currentBalance: data.profile?.runeBalance ?? data.runes?.balance ?? 0,
+      highlightPackageId: /^[a-zA-Z0-9_-]{1,64}$/.test(params.get("package") ?? "") ? params.get("package")! : undefined,
       onClose: async () => {
         await fetchCabinet(0, false);
         setBalancePulse(true);
@@ -298,6 +346,7 @@ export default function CabinetPage() {
 
     params.delete("shop");
     params.delete("topup");
+    params.delete("package");
     const qs = params.toString();
     window.history.replaceState({}, "", `${window.location.pathname}${qs ? `?${qs}` : ""}${window.location.hash}`);
   }, [loading, authLoading, authUser, data, openPaywall, fetchCabinet]);
@@ -562,8 +611,23 @@ export default function CabinetPage() {
   };
 
   const scrollToSection = (tab: CabinetTab) => {
+    if (noteReadingId && tab !== "history") {
+      const url = new URL(window.location.href);
+      url.searchParams.delete("readingId");
+      url.searchParams.delete("tab");
+      window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+      setNoteReadingId(null);
+    }
     setActiveTab(tab);
     window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const openTelegramProfile = () => {
+    const url = new URL(window.location.href);
+    url.searchParams.delete("tab");
+    url.hash = "cabinet-telegram-link";
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
+    setActiveTab("profile");
   };
 
   const profile = data?.profile;
@@ -657,6 +721,16 @@ export default function CabinetPage() {
     setShowRitualFlow(true);
   };
 
+  useEffect(() => {
+    const update = (event: Event) => {
+      const balance = (event as CustomEvent<number>).detail;
+      if (!Number.isFinite(balance)) return;
+      setData(current => current ? {...current,profile:{...current.profile,runeBalance:balance},runes:{...current.runes,balance}} : current);
+    };
+    window.addEventListener(RUNE_BALANCE_EVENT,update);
+    return () => window.removeEventListener(RUNE_BALANCE_EVENT,update);
+  },[]);
+
   const handleTopUp = () => {
     openPaywall({
       currentBalance: profile?.runeBalance ?? runes?.balance ?? 0,
@@ -686,6 +760,8 @@ export default function CabinetPage() {
         return <div className="h-64 animate-pulse rounded-2xl bg-white/5" />;
       case "runes":
         return <CabinetRunesPanelSkeleton />;
+      case "settings":
+        return <div className="h-64 animate-pulse rounded-2xl bg-white/5" />;
       default:
         return null;
     }
@@ -706,7 +782,6 @@ export default function CabinetPage() {
                 balancePulse={balancePulse}
               />
             ) : null}
-            <CabinetActiveReports />
             {authUser?.email && !profileLoading ? (
               <CabinetProfilePanel
                 email={authUser.email}
@@ -718,6 +793,7 @@ export default function CabinetPage() {
             ) : authUser?.email && profileLoading ? (
               <CabinetProfileHeaderSkeleton />
             ) : null}
+            <CabinetActiveReports />
             <CabinetLoginMethods />
             <CabinetTelegramLink />
             {natalChartEnabled ? <CabinetNatalChart key={natalChartRefreshKey} /> : null}
@@ -732,10 +808,27 @@ export default function CabinetPage() {
             <CabinetSupportLink />
             {authUser?.role === "user" ? <CabinetReviewForm /> : null}
             <CabinetJointReadings variant="compact" />
-            <CabinetDailyNotifications />
             <CabinetAppVersion />
-            <CabinetDangerZone onPurged={handlePurgeAll} />
-            <CabinetDeleteAccount />
+          </div>
+        );
+
+      case "settings":
+        return (
+          <div>
+            <CabinetTabHero
+              kicker="Ваш выбор"
+              title="Настройки"
+              subtitle="Управляйте уведомлениями, данными и аккаунтом."
+            />
+            <CabinetDailyNotifications onShowTelegram={openTelegramProfile} />
+            <section className="mt-8 space-y-3" aria-labelledby="cabinet-data-settings-title">
+              <div>
+                <h3 id="cabinet-data-settings-title" className="text-sm font-medium text-white/80">Данные и аккаунт</h3>
+                <p className="mt-1 text-xs text-white/45">Очистка истории и полное удаление аккаунта — разные действия.</p>
+              </div>
+              <CabinetDangerZone onPurged={handlePurgeAll} />
+              <CabinetDeleteAccount />
+            </section>
           </div>
         );
 
@@ -748,6 +841,8 @@ export default function CabinetPage() {
               subtitle="Все расклады, карты и расшифровки — в одном месте."
             />
 
+            {noteReadingId && <ReadingJourney readingId={noteReadingId} showDailyReminder={false} showContinuation={false} />}
+
             <div className="space-y-3">
               <div className="flex gap-2 overflow-x-auto pb-1 [-ms-overflow-style:none] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
                 {(
@@ -757,7 +852,7 @@ export default function CabinetPage() {
                     ["photo", "По фото", photoSpreads.length],
                     ["aura", "Аура", auraReadings.length],
                     ["palm", "Ладонь", palmReadings.length],
-                    ["daily", "Карта дня", dailyReadings.length],
+                    ["daily", "Расклад на сутки", dailyReadings.length],
                     ["joint", "Совместные", null],
                   ] as const
                 ).map(([key, label, count]) => (
@@ -920,7 +1015,8 @@ export default function CabinetPage() {
         <span className="text-sm font-semibold text-white/90">Личный кабинет</span>
       </div>
 
-      <main className="mx-auto max-w-3xl px-4 py-6">
+      <main className="mx-auto max-w-3xl px-4 py-6 ym-hide-content ym-disable-keys">
+        <DailyBonusCard key={authUser?.profileUserId??"guest"} enabled={!authLoading&&Boolean(authUser?.profileUserId)&&runesEnabled} />
         {error && (
           <div className="mb-6 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">
             {error}
@@ -931,8 +1027,9 @@ export default function CabinetPage() {
           <div className="mb-6 rounded-xl border border-aura-gold/25 bg-aura-gold/10 p-4 text-sm text-aura-champagne">
             <p className="font-medium text-white">Сделать Zovus ещё точнее?</p>
             <p className="mt-1 text-white/70">
-              Добавьте дату рождения — откроются персональные расчёты, Матрица судьбы и
-              астрологические возможности. Таро уже доступно без этого шага.
+              {data?.profile?.birthDate
+                ? "Дата рождения сохранена. Добавьте город рождения, чтобы завершить профиль для персональных астрологических расчётов. Таро уже доступно."
+                : "Добавьте дату рождения — откроются персональные расчёты, Матрица судьбы и астрологические возможности. Таро уже доступно без этого шага."}
             </p>
             <div className="mt-4 flex flex-wrap gap-3">
               <button
@@ -946,7 +1043,6 @@ export default function CabinetPage() {
           </div>
         ) : null}
 
-        {!loading && activeTab === "profile" && <ReadingJourney />}
         {!loading && activeTab === "profile" && <PendingReadingResume />}
         {loading ? (
           <div className="space-y-6">{renderTabSkeleton()}</div>

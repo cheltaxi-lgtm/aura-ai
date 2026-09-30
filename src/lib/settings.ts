@@ -1,5 +1,6 @@
 import { query } from "./db";
 import { BRAND_NAME } from "./brand";
+import { queryClient, type PoolClient } from "./db";
 import { DEFAULT_RUNE_COSTS, type RuneActionType } from "./rune-costs";
 import { RITUAL_TYPES, RITUAL_TYPE_KEYS, type RitualType } from "./ritual-config";
 import {
@@ -272,13 +273,12 @@ const DEFAULTS = {
 };
 
 export async function getSetting<K extends keyof typeof DEFAULTS>(
-  key: K
+  key: K,
+  client?: PoolClient
 ): Promise<(typeof DEFAULTS)[K]> {
   try {
-    const { rows } = await query<{ value: (typeof DEFAULTS)[K] }>(
-      "SELECT value FROM platform_settings WHERE key = $1",
-      [key]
-    );
+    const sql="SELECT value FROM platform_settings WHERE key = $1";
+    const {rows}=client ? await queryClient<{value:(typeof DEFAULTS)[K]}>(client,sql,[key]) : await query<{value:(typeof DEFAULTS)[K]}>(sql,[key]);
     const merged = { ...DEFAULTS[key], ...(rows[0]?.value ?? {}) };
     if (key === "features") {
       const features = merged as FeatureSettings;

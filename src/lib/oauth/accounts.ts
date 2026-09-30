@@ -140,7 +140,7 @@ export async function upsertOAuthAccountWithClient(
            age_confirmed_at = COALESCE(age_confirmed_at, $3::timestamptz),
            marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
            marketing_consent_at = CASE
-             WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
+             WHEN $4 AND NOT marketing_consent THEN $5::timestamptz
              ELSE marketing_consent_at
            END
          WHERE id = $1`,
@@ -152,6 +152,16 @@ export async function upsertOAuthAccountWithClient(
           opts.consent.marketingConsentAt,
         ]
       );
+      if (opts.consent.marketingConsent) {
+        await queryClient(
+          client,
+          `UPDATE users u
+           SET notification_prefs = u.notification_prefs || '{"marketingEmail":true}'::jsonb
+           FROM user_accounts a
+           WHERE a.id = $1 AND a.profile_user_id = u.id`,
+          [existingIdentity.user_account_id]
+        );
+      }
     }
     const accountName = await maybeNormalizeAccountName(
       client,
@@ -178,48 +188,8 @@ export async function upsertOAuthAccountWithClient(
     );
     const account = linked.rows[0];
     if (account) {
-      await queryClient(
-        client,
-        `INSERT INTO user_oauth_identities (
-           user_account_id, provider, provider_user_id, provider_email,
-           provider_email_verified, provider_gender, last_login_at
-         ) VALUES ($1, $2, $3, $4, TRUE, $5, NOW())`,
-        [
-          account.id,
-          opts.provider,
-          opts.info.providerUserId,
-          normalizedProviderEmail,
-          opts.info.gender ?? null,
-        ]
-      );
-      if (opts.consent) {
-        await queryClient(
-          client,
-          `UPDATE user_accounts SET
-             terms_accepted_at = COALESCE(terms_accepted_at, $2::timestamptz),
-             age_confirmed_at = COALESCE(age_confirmed_at, $3::timestamptz),
-             marketing_consent = CASE WHEN $4 THEN TRUE ELSE marketing_consent END,
-             marketing_consent_at = CASE
-               WHEN $4 THEN COALESCE(marketing_consent_at, $5::timestamptz)
-               ELSE marketing_consent_at
-             END
-           WHERE id = $1`,
-          [
-            account.id,
-            opts.consent.termsAcceptedAt,
-            opts.consent.ageConfirmedAt,
-            opts.consent.marketingConsent,
-            opts.consent.marketingConsentAt,
-          ]
-        );
-      }
-      const accountName = await maybeNormalizeAccountName(client, account.id, account.name);
-      return {
-        accountId: account.id,
-        email: account.email,
-        name: accountName,
-        isNewUser: false,
-      };
+      // A login cannot silently merge independently created credentials.
+      throw new Error("ACCOUNT_LINK_REQUIRED");
     }
   }
 

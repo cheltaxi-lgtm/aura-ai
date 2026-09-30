@@ -1,3 +1,4 @@
+import { observeProductRequest } from "@/lib/activation-telemetry";
 import { NextRequest, NextResponse } from "next/server";
 import { randomUUID } from "node:crypto";
 
@@ -78,7 +79,7 @@ function auraReportPayload(params: {
  * snapshot (never re-runs vision, never stores the photo).
  * Client path: async enqueue → poll /api/jobs/[id]. Worker path: async=false.
  */
-export async function POST(request: NextRequest) {
+async function handlePost(request: NextRequest) {
   if (!(await isAuraReadingEnabled())) {
     return NextResponse.json({ error: "Feature disabled" }, { status: 404 });
   }
@@ -461,4 +462,8 @@ export async function POST(request: NextRequest) {
   await trackWorkerJobCompleted(request, payload);
   return NextResponse.json(payload);
   });
+}
+
+export async function POST(request: NextRequest) {
+  return observeProductRequest(request, "aura", () => handlePost(request));
 }

@@ -20,7 +20,7 @@ export function isSpreadReadingBillingActive(opts: {
   isUnlimited?: boolean;
 }): boolean {
   // UI preflight only — server decides final billing.
-  if (opts.spreadType === "daily" || opts.spreadType === "guest_resume") return false;
+  if (opts.spreadType === "daily" || opts.spreadType === "intro" || opts.spreadType === "guest_resume") return false;
   return (
     opts.isLoggedIn &&
     opts.runeBillingEnabled &&

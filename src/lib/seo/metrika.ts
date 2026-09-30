@@ -5,6 +5,7 @@ import {
   trackProductFunnel,
 } from "@/lib/seo/product-funnel";
 import { utmParamsForMetrika } from "@/lib/utm/attribution";
+import { hasCookieConsent } from "@/lib/cookie-consent";
 
 const YANDEX_METRIKA_ID = 110138367;
 
@@ -15,7 +16,7 @@ declare global {
 }
 
 export function trackSeoEvent(goal: string, params?: Record<string, string | number>): void {
-  if (typeof window === "undefined" || !window.ym) return;
+  if (typeof window === "undefined" || !hasCookieConsent() || !window.ym) return;
   try {
     const withUtm = { ...utmParamsForMetrika(), ...params };
     window.ym(
@@ -84,10 +85,6 @@ export function trackLandingEvent(
 export function trackLandingView(params?: Record<string, string | number>): void {
   trackLandingEvent("landing_view", params);
   trackProductFunnel("product_view", { product: "tarot", source: "homepage" });
-}
-
-export function trackSocialProofView(): void {
-  trackLandingEvent("social_proof_view");
 }
 
 export function trackHeroQuestionStarted(): void {
@@ -337,15 +334,73 @@ export function trackGuestTripletRedrawPrevented(props: {
   });
 }
 
-export function trackRunePurchase(amountRub: number, packageId?: string): void {
-  if (typeof window === "undefined" || !window.ym || !Number.isFinite(amountRub)) return;
+export async function trackRunePurchase(amountRub: number, packageId?: string, onSent?: () => void): Promise<boolean> {
+  if (typeof window === "undefined" || !Number.isFinite(amountRub) || !hasCookieConsent()) return false;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (window.ym) break;
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
+  }
+  if (!window.ym || !hasCookieConsent()) return false;
+  return new Promise<boolean>((resolve) => {
+    let delivered = false;
+    const timeout = window.setTimeout(() => resolve(false), 5000);
+    try {
+      window.ym!(YANDEX_METRIKA_ID, "reachGoal", "rune_purchase", {
+        order_price: amountRub,
+        currency: "RUB",
+        ...(packageId ? { packageId } : {}),
+        ...utmParamsForMetrika(),
+      }, () => {
+        if (delivered) return;
+        delivered = true;
+        window.clearTimeout(timeout);
+        try { onSent?.(); } catch { /* analytics optional */ }
+        resolve(true);
+      });
+    } catch {
+      window.clearTimeout(timeout);
+      resolve(false);
+    }
+  });
+}
+
+export function trackRunePurchaseAttempt(selection: string): void {
+  trackSeoEvent("rune_purchase_attempted", { selection });
+}
+
+export function trackRunePurchaseFailed(stage: "captcha" | "http_401" | "http_429" | "server_rejected" | "missing_url" | "network"): void {
+  trackSeoEvent("rune_purchase_failed", { stage });
+}
+
+/** A qualified checkout: YooKassa returned a payment URL, not merely a paywall view. */
+export async function trackRuneCheckoutStarted(paymentId: string, amountRub: number): Promise<void> {
+  if (typeof window === "undefined" || !hasCookieConsent() || !window.ym || !paymentId || !Number.isFinite(amountRub) || amountRub <= 0) return;
+  const key = `aura_rune_checkout_goal_fired_${paymentId}`;
   try {
-    window.ym(YANDEX_METRIKA_ID, "reachGoal", "rune_purchase", {
-      order_price: amountRub,
-      currency: "RUB",
-      ...(packageId ? { packageId } : {}),
-      ...utmParamsForMetrika(),
-    });
+    if (localStorage.getItem(key) === "1") return;
+  } catch {
+    // Private browsing can disable storage; sending the goal is still useful.
+  }
+  await new Promise<void>((resolve) => {
+    const timeout = window.setTimeout(resolve, 500);
+    try {
+      window.ym!(YANDEX_METRIKA_ID, "reachGoal", "rune_checkout_started", {
+        ...utmParamsForMetrika(),
+      }, () => {
+        try { localStorage.setItem(key, "1"); } catch { /* storage optional */ }
+        window.clearTimeout(timeout);
+        resolve();
+      });
+    } catch {
+      window.clearTimeout(timeout);
+      resolve();
+    }
+  });
+}
+
+export function trackRuneCheckoutFailed(code: "rate_limited" | "payment_creation_failed" | "request_failed" | "recaptcha_failed"): void {
+  try {
+    trackSeoEvent("rune_checkout_failed", { error_code: code });
   } catch {
     /* analytics optional */
   }

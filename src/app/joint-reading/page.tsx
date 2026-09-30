@@ -1,138 +1,120 @@
 import type { Metadata } from "next";
-
 import Link from "next/link";
-
-import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
+import { ArrowUpRight } from "lucide-react";
 
 import { BRAND_NAME } from "@/lib/brand";
-
 import { buildSeoMetadata } from "@/lib/seo/metadata";
-
+import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
-
 import JointReadingInvite from "@/components/seo/JointReadingInvite";
-
-import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
-
-
+import JointReadingArchive from "@/components/joint/JointReadingArchive";
 
 export const metadata: Metadata = buildSeoMetadata({
-
   title: `Совместный расклад для двоих | ${BRAND_NAME}`,
-
   description:
-
-    "Совместный расклад для пары, друзей или бизнес-партнёров: мастер смотрит каждого отдельно и связь между вами. Пригласите вторым участником по ссылке.",
-
+    "Совместный расклад для пары, друзей или бизнес-партнёров: каждый проходит свой расклад, затем получает общую интерпретацию. Пригласите второго участника по ссылке.",
   path: "/joint-reading",
-
 });
 
+const STEPS = [
+  {
+    number: "01",
+    title: "Создайте приглашение",
+    text: "Выберите тему и глубину. Ссылка появится сразу после создания.",
+  },
+  {
+    number: "02",
+    title: "Пройдите каждый свой расклад",
+    text: "Вы и второй участник проходите выбранную схему со своих аккаунтов в удобное время.",
+  },
+  {
+    number: "03",
+    title: "Откройте общий результат",
+    text: "Когда оба закончат, здесь появится общая интерпретация и останется доступной в истории.",
+  },
+];
 
+const FAQ = [
+  {
+    question: "Нужно проходить расклад одновременно?",
+    answer: "Нет. Сначала создайте приглашение, затем каждый участник проходит свой расклад в удобное время. Ссылка действует 14 дней.",
+  },
+  {
+    question: "За что списываются руны?",
+    answer: "Инициатор оплачивает создание приглашения. Затем каждый участник отдельно оплачивает свой расклад; его стоимость зависит от выбранной схемы. Точная цена показана перед подтверждением.",
+  },
+  {
+    question: "Где найти готовый результат?",
+    answer: "Ваши приглашения и результаты всегда доступны в истории на этой странице и в кабинете. Общая интерпретация появляется после завершения обоих личных раскладов.",
+  },
+];
 
 export default function JointReadingPage() {
-
-  const cost = DEFAULT_RUNE_COSTS.JOINT_READING;
-
-  const label = RUNE_ACTION_LABELS.JOINT_READING;
-
-
-
   return (
+    <SeoPageShell wide>
+      <section className="joint-hero" aria-labelledby="joint-title">
+        <div className="joint-hero__copy">
+          <p className="joint-eyebrow">Одна история · два взгляда</p>
+          <h1 id="joint-title">Совместный расклад для двоих</h1>
+          <p className="joint-hero__lead">
+            Каждый получает личный расклад, а затем — общую интерпретацию вашей связи.
+            Подходит для пары, дружбы или делового союза.
+          </p>
+          <div className="joint-hero__facts" aria-label="Как устроена оплата">
+            <span>Стоимость приглашения — перед созданием</span>
+            <span>Каждый оплачивает свой расклад отдельно</span>
+            <span>Ссылка действует 14 дней</span>
+          </div>
+          <div className="joint-hero__actions">
+            <SeoTrackedCta href="#joint-invite" trackGoal="joint_reading_cta_click">Создать приглашение</SeoTrackedCta>
+            <SeoTrackedCta href="#joint-history" variant="ghost" trackGoal="joint_reading_cta_click">Моя история</SeoTrackedCta>
+          </div>
+          <p className="joint-hero__note">Символическое чтение карт, не предсказание гарантированного исхода. 18+.</p>
+        </div>
+        <div className="joint-hero__art" aria-hidden="true">
+          <span className="joint-hero__orbit joint-hero__orbit--one" />
+          <span className="joint-hero__orbit joint-hero__orbit--two" />
+          <span className="joint-hero__star joint-hero__star--one">✦</span>
+          <span className="joint-hero__star joint-hero__star--two">✦</span>
+          <span className="joint-hero__art-label">ДВА ПУТИ · ОДИН ВЗГЛЯД</span>
+        </div>
+      </section>
 
-    <SeoPageShell>
-
-      <p className="text-sm text-aura-gold/80">Совместный расклад</p>
-
-      <h1 className="mt-2 font-display text-3xl font-bold">Совместный расклад для двоих</h1>
-
-      <p className="mt-4 text-white/70">
-
-        Мастер смотрит не только каждого отдельно, но и связь между вами — подходит для пары, друзей
-
-        или бизнес-партнёров. Отправьте ссылку второму участнику — каждый проходит свой расклад в
-
-        удобное время.
-
-      </p>
-
-
-
-      <p className="mt-4 text-sm text-white/50">
-
-        {label} · {cost} ᚢ
-
-      </p>
-
-
-
-      <div className="mt-8 flex flex-wrap gap-3">
-        <SeoTrackedCta href="#joint-invite" trackGoal="joint_reading_cta_click">
-          Создать совместный расклад
-        </SeoTrackedCta>
-        <SeoTrackedCta href="/rasklady/sovmestimost-pary" variant="ghost" trackGoal="joint_reading_cta_click">
-          Обычный расклад на совместимость
-        </SeoTrackedCta>
+      <div className="joint-workspace">
+        <JointReadingArchive />
+        <JointReadingInvite />
       </div>
 
+      <section className="joint-steps" aria-label="Как проходит совместный расклад">
+        {STEPS.map((step) => (
+          <article key={step.number}>
+            <span>{step.number}</span>
+            <h2>{step.title}</h2>
+            <p>{step.text}</p>
+          </article>
+        ))}
+      </section>
 
-
-      <JointReadingInvite />
-
-
-
-      <SeoSection title="Когда подходит">
-
-        <p>Для пар, которые хотят понять динамику отношений.</p>
-
-        <p>Для друзей — проверить крепость и глубину дружбы.</p>
-
-        <p>Для бизнес-партнёров — оценить сильные стороны и риски союза.</p>
-
-        <p>После конфликта, паузы или перед важным разговором.</p>
-
-      </SeoSection>
-
-      <SeoSection title="Также на Zovus">
-        <ul className="flex flex-wrap gap-x-4 gap-y-2 text-sm">
-          <li>
-            <Link href="/natalnaya-karta" className="text-aura-gold hover:underline">
-              Натальная карта
-            </Link>
-          </li>
-          <li>
-            <Link href="/numerology/destiny-matrix" className="text-aura-gold hover:underline">
-              Матрица судьбы
-            </Link>
-          </li>
-          <li>
-            <Link href="/sovmestimost-znakov-zodiaka" className="text-aura-gold hover:underline">
-              Совместимость знаков
-            </Link>
-          </li>
-          <li>
-            <Link href="/numerology/compatibility" className="text-aura-gold hover:underline">
-              Совместимость по дате
-            </Link>
-          </li>
-        </ul>
-      </SeoSection>
-
-
-
-      <p className="mt-10">
-
-        <Link href="/rasklady" className="text-sm text-aura-gold hover:underline">
-
-          ← Все расклады
-
-        </Link>
-
-      </p>
-
+      <div className="joint-after">
+        <section className="joint-faq" aria-labelledby="joint-faq-title">
+          <p className="joint-eyebrow">Перед началом</p>
+          <h2 id="joint-faq-title">Частые вопросы</h2>
+          {FAQ.map((item) => (
+            <details key={item.question}>
+              <summary>{item.question}</summary>
+              <p>{item.answer}</p>
+            </details>
+          ))}
+        </section>
+        <section className="joint-related" aria-labelledby="joint-related-title">
+          <p className="joint-eyebrow">Ещё на Zovus</p>
+          <h2 id="joint-related-title">Другие способы узнать друг друга</h2>
+          <Link href="/rasklady/sovmestimost-pary">Обычный расклад на совместимость <ArrowUpRight size={15} aria-hidden="true" /></Link>
+          <Link href="/numerology/compatibility">Совместимость по дате <ArrowUpRight size={15} aria-hidden="true" /></Link>
+          <Link href="/sovmestimost-znakov-zodiaka">Совместимость знаков <ArrowUpRight size={15} aria-hidden="true" /></Link>
+        </section>
+      </div>
+      <Link href="/rasklady" className="joint-back">← Все расклады</Link>
     </SeoPageShell>
-
   );
-
 }
-

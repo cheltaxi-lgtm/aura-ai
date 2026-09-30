@@ -6,10 +6,11 @@ import {
   Flame,
   Brain,
   Coins,
+  Settings2,
   type LucideIcon,
 } from "lucide-react";
 
-export type CabinetTab = "profile" | "history" | "memory" | "runes" | "rituals";
+export type CabinetTab = "profile" | "history" | "memory" | "runes" | "rituals" | "settings";
 
 interface Props {
   active: CabinetTab;
@@ -29,6 +30,7 @@ const BASE_TABS: {
   { id: "rituals", label: "Обряды", icon: Flame },
   { id: "memory", label: "Память", icon: Brain },
   { id: "runes", label: "Руны", icon: Coins },
+  { id: "settings", label: "Настройки", icon: Settings2 },
 ];
 
 function ritualBadge(pending: number, attention: number): string | null {
