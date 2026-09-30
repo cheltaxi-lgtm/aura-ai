@@ -99,7 +99,7 @@ export default function AppTopHeaderAccount({
   };
 
   if (loading) {
-    return <div className="app-top-header__pill h-8 w-24 animate-pulse rounded-full bg-white/5" />;
+    return <div className="app-top-header__pill h-8 w-[3.75rem] animate-pulse rounded-full bg-white/5 md:w-24" />;
   }
 
   const pillClass =

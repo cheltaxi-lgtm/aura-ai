@@ -33,7 +33,7 @@ describe("guest landing conversion cleanup", () => {
     const hero = readSrc("src/components/editorial/EditorialHeroSection.tsx");
     expect(hero).not.toContain("EDITORIAL_HERO.retentionHook");
     expect(hero).not.toContain("EDITORIAL_HERO.microcopy");
-    expect(hero).toContain('StarterRunesValue variant="line"');
+    expect(hero).not.toContain('StarterRunesValue variant="line"');
     expect(hero).not.toContain("Как проходит сеанс");
     expect(hero).toContain("expectationSubtitle");
   });

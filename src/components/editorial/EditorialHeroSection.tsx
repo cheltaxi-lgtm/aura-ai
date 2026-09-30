@@ -11,7 +11,6 @@ import { GUEST_HERO_PAIN_CHIPS } from "@/lib/landing-offer";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
 import { trackQuickQuestionClick, trackRegistrationCtaClick } from "@/lib/seo/metrika";
 import { buildRegisterHref } from "@/lib/post-auth-return";
-import StarterRunesValue from "@/components/auth/StarterRunesValue";
 
 type EditorialHeroSectionProps = {
   isLoggedIn: boolean;
@@ -109,7 +108,6 @@ export default function EditorialHeroSection({
         )}
         {guestConversion ? (
           <div className="editorial-hero__gift">
-            <StarterRunesValue variant="line" generic product="home_hero" />
             <Link
               href={registerHref}
               prefetch={false}

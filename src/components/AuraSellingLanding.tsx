@@ -55,7 +55,6 @@ import {
 import EditorialHeroSection from "@/components/editorial/EditorialHeroSection";
 import EditorialPreviewSection from "@/components/editorial/EditorialPreviewSection";
 import EditorialProductEntries from "@/components/editorial/EditorialProductEntries";
-import HomeAuraBanner from "@/components/editorial/HomeAuraBanner";
 import EditorialStarterGiftSection from "@/components/editorial/EditorialStarterGiftSection";
 import EditorialTopicsSection from "@/components/editorial/EditorialTopicsSection";
 import EditorialBirthToolsSection from "@/components/editorial/EditorialBirthToolsSection";
@@ -407,7 +406,6 @@ export default function AuraSellingLanding({
         />
         <EditorialPreviewSection />
         <EditorialStarterGiftSection />
-        <HomeAuraBanner />
         <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
         <EditorialSessionStepsSection />
         <EditorialDailyCardsSection

@@ -55,7 +55,7 @@ const HERO_VARIANTS: Record<
 
 /** Guest editorial control copy (variant A). B/C use HERO_VARIANTS expectation lines. */
 export const LANDING_HERO_CONTROL_SUBTITLE =
-  "Отношения, работа или важный выбор. Получите краткую трактовку от ИИ по своему вопросу. Первый полный разбор этих же карт — бесплатно после регистрации.";
+  "Откройте три карты без регистрации. Первый полный разбор — бесплатно после регистрации.";
 
 export function landingHeroExpectationCopy(variant: LandingHeroVariant): string {
   if (variant === "a") return LANDING_HERO_CONTROL_SUBTITLE;
