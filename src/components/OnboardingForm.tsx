@@ -130,7 +130,7 @@ export default function OnboardingForm({
       </p>
 
       {nameLocked ? (
-        <p className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center text-sm text-gray-300">
+        <p className="rounded-xl border border-white/10 bg-white/[0.03] px-4 py-3 text-center text-sm text-gray-300 ym-hide-content ym-disable-keys">
           {accountName}, добро пожаловать
         </p>
       ) : (
@@ -146,7 +146,7 @@ export default function OnboardingForm({
             value={name}
             onChange={(e) => setName(e.target.value)}
             placeholder="Как к вам обращаться?"
-            className="ui-input w-full"
+            className="ui-input w-full ym-hide-content ym-disable-keys"
           />
         </div>
       )}

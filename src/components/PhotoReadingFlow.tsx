@@ -1694,7 +1694,7 @@ export default function PhotoReadingFlow({
                       onChange={(e) => setQuestion(e.target.value)}
                       placeholder="Что означает этот расклад?"
                       rows={2}
-                      className="resize-none placeholder:text-white/28"
+                      className="resize-none placeholder:text-white/28 ym-hide-content ym-disable-keys"
                     />
                   </div>
 
@@ -1885,7 +1885,7 @@ export default function PhotoReadingFlow({
                     </div>
                   )}
 
-                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
+                  <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5 ym-hide-content ym-disable-keys">
                     {displayAnalysis ? (
                       <>
                         <ChatMessageRenderer content={displayAnalysis} role="assistant" />

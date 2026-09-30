@@ -137,7 +137,7 @@ export default function HeroQuestionField({
     autoComplete: "off",
     autoCorrect: "on" as const,
     spellCheck: true,
-    className: "hero-question__input",
+    className: "hero-question__input ym-hide-content ym-disable-keys",
     maxLength: 280,
     onFocus: () => trackHeroQuestionStarted(),
   };

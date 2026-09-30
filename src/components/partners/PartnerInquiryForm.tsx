@@ -112,6 +112,7 @@ export default function PartnerInquiryForm({
             onChange={(e) => setName(e.target.value)}
             maxLength={120}
             disabled={sending}
+            className="ym-hide-content ym-disable-keys"
           />
         </label>
         <label className="editorial-partners__field" htmlFor={`${baseId}-phone`}>
@@ -127,6 +128,7 @@ export default function PartnerInquiryForm({
             maxLength={40}
             placeholder="+7 …"
             disabled={sending}
+            className="ym-hide-content ym-disable-keys"
           />
         </label>
         <label className="editorial-partners__field" htmlFor={`${baseId}-email`}>
@@ -141,6 +143,7 @@ export default function PartnerInquiryForm({
             onChange={(e) => setEmail(e.target.value)}
             maxLength={200}
             disabled={sending}
+            className="ym-hide-content ym-disable-keys"
           />
         </label>
         <label className="editorial-partners__field" htmlFor={`${baseId}-company`}>
@@ -187,6 +190,7 @@ export default function PartnerInquiryForm({
             maxLength={4000}
             placeholder="Чем занимаетесь и какой формат сотрудничества интересен"
             disabled={sending}
+            className="ym-hide-content ym-disable-keys"
           />
         </label>
         <label className="editorial-partners__hp" aria-hidden tabIndex={-1}>

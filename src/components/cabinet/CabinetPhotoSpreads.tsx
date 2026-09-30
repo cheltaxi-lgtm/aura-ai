@@ -194,7 +194,7 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                     placeholder="Как сложилось предсказание? Что заметили позже?"
                     rows={2}
                     maxLength={MAX_NOTE_LENGTH}
-                    className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/85 placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none"
+                    className="mt-1.5 w-full resize-none rounded-xl border border-white/10 bg-black/25 p-3 text-sm text-white/85 placeholder:text-white/30 focus:border-aura-gold/40 focus:outline-none ym-hide-content ym-disable-keys"
                   />
                   <div className="mt-1.5 flex items-center justify-between">
                     <span className="text-[11px] text-white/30">

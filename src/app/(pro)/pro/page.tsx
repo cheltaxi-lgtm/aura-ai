@@ -248,7 +248,7 @@ export default function ProHomePage() {
               <span className="pro-apply__label">Отображаемое имя</span>
               <input
                 id="pro-display-name"
-                className="pro-apply__input"
+                className="pro-apply__input ym-hide-content ym-disable-keys"
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
                 placeholder="Как вас видят клиенты"
@@ -296,7 +296,7 @@ export default function ProHomePage() {
               </span>
               <textarea
                 id="pro-bio"
-                className="pro-apply__input pro-apply__textarea"
+                className="pro-apply__input pro-apply__textarea ym-hide-content ym-disable-keys"
                 rows={4}
                 value={bio}
                 onChange={(e) => setBio(e.target.value)}

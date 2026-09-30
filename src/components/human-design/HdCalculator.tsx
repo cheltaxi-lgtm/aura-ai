@@ -712,7 +712,7 @@ export default function HdCalculator({
             type="date"
             value={birthDate}
             onChange={(e) => setBirthDate(e.target.value)}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             min="1900-01-01"
             max={localTodayIso()}
           />
@@ -731,7 +731,7 @@ export default function HdCalculator({
             type="time"
             value={birthTime}
             onChange={(e) => setBirthTime(e.target.value)}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             disabled={timeUnknown}
           />
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/55">
@@ -758,7 +758,7 @@ export default function HdCalculator({
             }}
             onFocus={() => suggestions.length && setPlacesOpen(true)}
             placeholder="Начните вводить город…"
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             autoComplete="off"
           />
           {placesOpen && (placesLoading || placesSearched) && (

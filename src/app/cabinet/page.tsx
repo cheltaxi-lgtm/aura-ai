@@ -1015,7 +1015,7 @@ export default function CabinetPage() {
         <span className="text-sm font-semibold text-white/90">Личный кабинет</span>
       </div>
 
-      <main className="mx-auto max-w-3xl px-4 py-6">
+      <main className="mx-auto max-w-3xl px-4 py-6 ym-hide-content ym-disable-keys">
         <DailyBonusCard key={authUser?.profileUserId??"guest"} enabled={!authLoading&&Boolean(authUser?.profileUserId)&&runesEnabled} />
         {error && (
           <div className="mb-6 rounded-xl border border-red-500/30 bg-red-950/30 p-4 text-sm text-red-200">

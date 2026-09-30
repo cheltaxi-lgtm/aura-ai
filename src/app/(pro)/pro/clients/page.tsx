@@ -133,7 +133,7 @@ export default function ProClientsPage() {
             <span className="pro-label">Дата рождения</span>
             <input
               type="date"
-              className="pro-field w-full"
+              className="pro-field w-full ym-hide-content ym-disable-keys"
               value={birthDate}
               onChange={(e) => setBirthDate(e.target.value)}
             />
@@ -142,7 +142,7 @@ export default function ProClientsPage() {
             <span className="pro-label">Время (если известно)</span>
             <input
               type="time"
-              className="pro-field w-full"
+              className="pro-field w-full ym-hide-content ym-disable-keys"
               value={birthTime}
               onChange={(e) => setBirthTime(e.target.value)}
             />

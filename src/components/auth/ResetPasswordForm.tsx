@@ -70,7 +70,7 @@ export default function ResetPasswordForm() {
             minLength={MIN_PASSWORD_LENGTH}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
           />
         </div>
         <div>
@@ -83,7 +83,7 @@ export default function ResetPasswordForm() {
             minLength={MIN_PASSWORD_LENGTH}
             value={confirm}
             onChange={(e) => setConfirm(e.target.value)}
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
           />
         </div>
         {error ? <p role="alert" className="text-center text-sm text-red-400">{error}</p> : null}

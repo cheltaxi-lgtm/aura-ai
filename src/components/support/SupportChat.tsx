@@ -151,7 +151,7 @@ export default function SupportChat({
             disabled={disabled || sending}
             placeholder={disabled ? "Чат закрыт" : "Напишите сообщение…"}
             rows={2}
-            className="flex-1 touch-auto select-text resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-aura-gold/50 focus:outline-none disabled:opacity-50"
+            className="flex-1 touch-auto select-text resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white placeholder:text-gray-600 focus:border-aura-gold/50 focus:outline-none disabled:opacity-50 ym-hide-content ym-disable-keys"
           />
           <button
             type="button"

@@ -232,7 +232,7 @@ function CabinetLoginMethodsInner() {
             placeholder="email@example.com"
             value={email}
             onChange={(e) => setEmail(e.target.value)}
-            className="ui-input w-full"
+            className="ui-input w-full ym-hide-content ym-disable-keys"
           />
           <input
             type="password"
@@ -242,7 +242,7 @@ function CabinetLoginMethodsInner() {
             placeholder={`Пароль, минимум ${MIN_PASSWORD_LENGTH} символов`}
             value={password}
             onChange={(e) => setPassword(e.target.value)}
-            className="ui-input w-full"
+            className="ui-input w-full ym-hide-content ym-disable-keys"
           />
           <button type="submit" disabled={busy} className="btn-primary w-full disabled:opacity-60">
             {busy ? "Сохраняем…" : "Сохранить email и пароль"}

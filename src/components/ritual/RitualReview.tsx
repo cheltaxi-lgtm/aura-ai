@@ -102,7 +102,7 @@ export default function RitualReview({
         placeholder="Что произошло? (необязательно)"
         rows={4}
         maxLength={500}
-        className="w-full touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
+        className="w-full touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none ym-hide-content ym-disable-keys"
       />
 
       <div className="mt-4 flex justify-center gap-2">

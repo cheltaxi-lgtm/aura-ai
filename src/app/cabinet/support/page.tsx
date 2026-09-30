@@ -270,7 +270,7 @@ export default function SupportPage() {
                 onChange={(e) => setNewMessage(e.target.value)}
                 rows={5}
                 maxLength={4000}
-                className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white"
+                className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-3 py-2 text-sm text-white ym-hide-content ym-disable-keys"
                 placeholder="Опишите ситуацию подробнее…"
               />
             </div>

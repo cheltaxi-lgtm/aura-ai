@@ -155,7 +155,7 @@ export default function RitualQuestions({
               onKeyDown={(e) => e.key === "Enter" && void handleSubmit()}
               placeholder="Ваш ответ…"
               disabled={submitting}
-              className="flex-1 touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none"
+              className="flex-1 touch-auto select-text rounded-xl border border-white/10 bg-black/40 px-4 py-3 text-sm text-white placeholder:text-white/30 focus:border-amber-400/50 focus:outline-none ym-hide-content ym-disable-keys"
             />
             <button
               type="button"

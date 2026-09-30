@@ -148,7 +148,7 @@ export default function MemoryMoments({
                 onChange={(event) => setDraft(event.target.value)}
                 maxLength={400}
                 rows={2}
-                className="w-full resize-none rounded-lg border border-white/12 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-aura-gold/40"
+                className="w-full resize-none rounded-lg border border-white/12 bg-black/25 px-3 py-2 text-sm text-white outline-none focus:border-aura-gold/40 ym-hide-content ym-disable-keys"
               />
               <div className="flex gap-2">
                 <button

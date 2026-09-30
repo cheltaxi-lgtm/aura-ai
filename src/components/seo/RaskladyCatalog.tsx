@@ -155,6 +155,7 @@ export default function RaskladyCatalog() {
             <Search size={19} aria-hidden="true" />
             <input
               id="rasklady-search"
+              className="ym-hide-content ym-disable-keys"
               type="search"
               aria-label="Поиск расклада"
               value={query}

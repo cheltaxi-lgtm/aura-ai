@@ -1028,7 +1028,7 @@ export default function ChatWindow({
               return (
               <div
                 key={msg.id}
-                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+                className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"} ym-hide-content ym-disable-keys`}
               >
                 <div
                   className={
@@ -1418,7 +1418,7 @@ export default function ChatWindow({
           disabled={inputBlocked}
           enterKeyHint="send"
           aria-label="Текст сообщения"
-          className="max-h-32 min-h-[44px] flex-1 touch-auto select-text resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-gray-500 outline-none disabled:opacity-50"
+          className="max-h-32 min-h-[44px] flex-1 touch-auto select-text resize-none bg-transparent px-2 py-2 text-sm text-white placeholder-gray-500 outline-none disabled:opacity-50 ym-hide-content ym-disable-keys"
         />
 
         <button

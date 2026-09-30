@@ -150,7 +150,7 @@ export default function ProfileAstroFields({
             onChange={(e) => onChange({ birthDate: e.target.value })}
             max={new Date().toISOString().slice(0, 10)}
             min="1900-01-01"
-            className="ui-input w-full"
+            className="ui-input w-full ym-hide-content ym-disable-keys"
           />
         </div>
         <div>
@@ -160,7 +160,7 @@ export default function ProfileAstroFields({
             value={values.birthTime}
             disabled={values.birthTimeUnknown}
             onChange={(e) => onChange({ birthTime: e.target.value, birthTimeUnknown: false })}
-            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white disabled:opacity-40"
+            className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white disabled:opacity-40 ym-hide-content ym-disable-keys"
           />
           <label className="mt-2 flex cursor-pointer items-center gap-2 text-xs text-gray-500">
             <input
@@ -219,7 +219,7 @@ export default function ProfileAstroFields({
             }
           }}
           placeholder="Москва, Алматы..."
-          className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+          className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
           autoComplete="off"
           role={enableCitySearch ? "combobox" : undefined}
           aria-autocomplete={enableCitySearch ? "list" : undefined}
@@ -334,7 +334,7 @@ export default function ProfileAstroFields({
           onChange={(e) => onChange({ mainQuestion: e.target.value })}
           placeholder="Например: стоит ли менять работу этой осенью?"
           rows={2}
-          className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white placeholder-gray-600"
+          className="w-full resize-none rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white placeholder-gray-600 ym-hide-content ym-disable-keys"
         />
       </div>
     </div>

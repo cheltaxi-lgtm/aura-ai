@@ -159,7 +159,7 @@ function PersonForm({
             type="date"
             value={state.birthDate}
             onChange={(e) => onChange({ birthDate: e.target.value })}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             min="1900-01-01"
             max={localTodayIso()}
           />
@@ -171,7 +171,7 @@ function PersonForm({
             type="time"
             value={state.birthTime}
             onChange={(e) => onChange({ birthTime: e.target.value })}
-            className="hd-field__input"
+            className="hd-field__input ym-hide-content ym-disable-keys"
             disabled={state.timeUnknown}
           />
           <label className="flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/55">

@@ -224,7 +224,7 @@ export default function ProClientDetailPage() {
           <span className="pro-label">Дата рождения</span>
           <input
             type="date"
-            className="pro-field w-full"
+            className="pro-field w-full ym-hide-content ym-disable-keys"
             value={birthDate}
             onChange={(e) => setBirthDate(e.target.value)}
           />
@@ -233,7 +233,7 @@ export default function ProClientDetailPage() {
           <span className="pro-label">Время</span>
           <input
             type="time"
-            className="pro-field w-full"
+            className="pro-field w-full ym-hide-content ym-disable-keys"
             value={birthTime}
             onChange={(e) => setBirthTime(e.target.value)}
           />
@@ -249,7 +249,7 @@ export default function ProClientDetailPage() {
         <label className="text-sm">
           <span className="pro-label">Заметки</span>
           <textarea
-            className="pro-field w-full"
+            className="pro-field w-full ym-hide-content ym-disable-keys"
             rows={3}
             value={notes}
             onChange={(e) => setNotes(e.target.value)}

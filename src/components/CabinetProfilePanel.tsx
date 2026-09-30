@@ -223,7 +223,7 @@ export default function CabinetProfilePanel({
               type="text"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
             />
             <p className="mt-1 text-[10px] text-gray-600">{email}</p>
           </div>

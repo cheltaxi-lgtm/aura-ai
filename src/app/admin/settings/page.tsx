@@ -449,7 +449,7 @@ export default function AdminSettingsPage() {
                     disabled={!recaptchaMaster || isLockoutExempt}
                     checked={!isLockoutExempt && recaptchaScopes[scope] !== false}
                     onChange={() => toggleRecaptchaScope(scope)}
-                    className="h-4 w-4 accent-aura-gold disabled:opacity-40"
+                    className="h-4 w-4 accent-aura-gold disabled:opacity-40 ym-hide-content ym-disable-keys"
                   />
                 </label>
               );
@@ -577,7 +577,7 @@ export default function AdminSettingsPage() {
                       disabled={!spreadsMaster || id === "triplet"}
                       checked={enabled}
                       onChange={() => toggleSpreadEnabled(id)}
-                      className="h-4 w-4 accent-aura-gold disabled:opacity-40"
+                      className="h-4 w-4 accent-aura-gold disabled:opacity-40 ym-hide-content ym-disable-keys"
                     />
                     <span className="text-sm text-gray-300">{SPREAD_ADMIN_LABELS[id]}</span>
                   </label>
@@ -651,7 +651,7 @@ export default function AdminSettingsPage() {
                     .filter(Boolean),
                 })
               }
-              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white"
+              className="w-full rounded-xl border border-white/10 bg-black/30 px-4 py-2.5 text-sm text-white ym-hide-content ym-disable-keys"
             />
           </div>
           <div className="grid gap-4 sm:grid-cols-2">

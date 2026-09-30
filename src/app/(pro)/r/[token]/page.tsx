@@ -246,7 +246,7 @@ export default function ProReportPublicPage() {
             </p>
           ) : null}
           <textarea
-            className="pro-field mt-3"
+            className="pro-field mt-3 ym-hide-content ym-disable-keys"
             rows={3}
             value={question}
             onChange={(e) => {

@@ -166,7 +166,7 @@ export default function ProInboxPage() {
               {m.author === "ai_draft" && m.moderation_state === "pending" ? (
                 <>
                   <textarea
-                    className="pro-field mt-2 min-h-[100px]"
+                    className="pro-field mt-2 min-h-[100px] ym-hide-content ym-disable-keys"
                     value={editBody[m.id] ?? m.body}
                     onChange={(e) =>
                       setEditBody((prev) => ({ ...prev, [m.id]: e.target.value }))
@@ -194,7 +194,7 @@ export default function ProInboxPage() {
                   {rejectOpen === m.id ? (
                     <div className="mt-2">
                       <textarea
-                        className="pro-field min-h-[60px] text-xs"
+                        className="pro-field min-h-[60px] text-xs ym-hide-content ym-disable-keys"
                         placeholder="Что не так? (необязательно — поможет следующим черновикам)"
                         value={rejectFeedback}
                         onChange={(e) => setRejectFeedback(e.target.value)}

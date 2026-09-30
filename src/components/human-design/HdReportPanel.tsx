@@ -833,7 +833,7 @@ function HdReportPanelContent({
             }}
             maxLength={2000}
             placeholder="Например: как мне принимать решения по авторитету?"
-            className="hd-field__input flex-1"
+            className="hd-field__input flex-1 ym-hide-content ym-disable-keys"
             disabled={asking}
           />
           <button

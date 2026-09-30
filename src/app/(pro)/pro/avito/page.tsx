@@ -315,7 +315,7 @@ export default function ProAvitoPage() {
                 ) : null}
                 <div className="flex items-end gap-2">
                   <textarea
-                    className="pro-field min-h-[44px] flex-1"
+                    className="pro-field min-h-[44px] flex-1 ym-hide-content ym-disable-keys"
                     placeholder={notReady ? "Avito API не настроен" : "Сообщение клиенту…"}
                     value={draft}
                     disabled={notReady || sending}

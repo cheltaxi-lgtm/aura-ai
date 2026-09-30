@@ -593,7 +593,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className={fieldClass}
+              className={`${fieldClass} ym-hide-content ym-disable-keys`}
             />
           </div>
           {isExpert && (
@@ -635,7 +635,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               onChange={(e) => setName(e.target.value)}
               placeholder="Как к вам обращаться?"
               autoComplete="name"
-              className={fieldClass}
+              className={`${fieldClass} ym-hide-content ym-disable-keys`}
             />
           </div>
         </>
@@ -654,7 +654,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoComplete="email"
-              className={fieldClass}
+              className={`${fieldClass} ym-hide-content ym-disable-keys`}
             />
           </div>
 
@@ -723,7 +723,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
                 aria-label="Дата рождения"
                 value={optionalBirthDate}
                 onChange={(e) => setOptionalBirthDate(e.target.value)}
-                className={fieldClass}
+                className={`${fieldClass} ym-hide-content ym-disable-keys`}
               />
             </div>
             <div>
