@@ -2,14 +2,14 @@
 
 import { motion } from "framer-motion";
 import Link from "next/link";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import {
   buildLoginHref,
   buildRegisterHref,
   readPostAuthReturnTo,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import { trackRegistrationCtaClick } from "@/lib/seo/metrika";
+import { trackRegistrationCtaClick, trackRegistrationGateView } from "@/lib/seo/metrika";
 import { isAgeGateConfirmed } from "@/lib/age-gate";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
@@ -38,6 +38,17 @@ export default function RegisterGate({
   const [acceptedTerms, setAcceptedTerms] = useState(false);
   const [ageConfirmed, setAgeConfirmed] = useState(() => isAgeGateConfirmed());
   const [marketingConsent, setMarketingConsent] = useState(false);
+  const gateViewTracked = useRef(false);
+
+  useEffect(() => {
+    if (gateViewTracked.current) return;
+    gateViewTracked.current = true;
+    try {
+      trackRegistrationGateView(source);
+    } catch {
+      // Analytics must not affect the registration gate.
+    }
+  }, [source]);
 
   return (
     <motion.section

@@ -5,6 +5,7 @@ import {
   trackProductFunnel,
 } from "@/lib/seo/product-funnel";
 import { utmParamsForMetrika } from "@/lib/utm/attribution";
+import { hasCookieConsent } from "@/lib/cookie-consent";
 
 const YANDEX_METRIKA_ID = 110138367;
 
@@ -15,7 +16,7 @@ declare global {
 }
 
 export function trackSeoEvent(goal: string, params?: Record<string, string | number>): void {
-  if (typeof window === "undefined" || !window.ym) return;
+  if (typeof window === "undefined" || !hasCookieConsent() || !window.ym) return;
   try {
     const withUtm = { ...utmParamsForMetrika(), ...params };
     window.ym(
@@ -333,18 +334,30 @@ export function trackGuestTripletRedrawPrevented(props: {
   });
 }
 
-export function trackRunePurchase(amountRub: number, packageId?: string): void {
-  if (typeof window === "undefined" || !window.ym || !Number.isFinite(amountRub)) return;
-  try {
-    window.ym(YANDEX_METRIKA_ID, "reachGoal", "rune_purchase", {
-      order_price: amountRub,
-      currency: "RUB",
-      ...(packageId ? { packageId } : {}),
-      ...utmParamsForMetrika(),
-    });
-  } catch {
-    /* analytics optional */
+export async function trackRunePurchase(amountRub: number, packageId?: string): Promise<boolean> {
+  if (typeof window === "undefined" || !Number.isFinite(amountRub) || !hasCookieConsent()) return false;
+  for (let attempt = 0; attempt < 5; attempt += 1) {
+    if (window.ym) break;
+    await new Promise<void>((resolve) => window.setTimeout(resolve, 500));
   }
+  if (!window.ym || !hasCookieConsent()) return false;
+  return new Promise<boolean>((resolve) => {
+    const timeout = window.setTimeout(() => resolve(false), 500);
+    try {
+      window.ym!(YANDEX_METRIKA_ID, "reachGoal", "rune_purchase", {
+        order_price: amountRub,
+        currency: "RUB",
+        ...(packageId ? { packageId } : {}),
+        ...utmParamsForMetrika(),
+      }, () => {
+        window.clearTimeout(timeout);
+        resolve(true);
+      });
+    } catch {
+      window.clearTimeout(timeout);
+      resolve(false);
+    }
+  });
 }
 
 export function trackRunePurchaseAttempt(selection: string): void {
@@ -357,7 +370,7 @@ export function trackRunePurchaseFailed(stage: "captcha" | "http_401" | "http_42
 
 /** A qualified checkout: YooKassa returned a payment URL, not merely a paywall view. */
 export async function trackRuneCheckoutStarted(paymentId: string, amountRub: number): Promise<void> {
-  if (typeof window === "undefined" || !window.ym || !paymentId || !Number.isFinite(amountRub) || amountRub <= 0) return;
+  if (typeof window === "undefined" || !hasCookieConsent() || !window.ym || !paymentId || !Number.isFinite(amountRub) || amountRub <= 0) return;
   const key = `aura_rune_checkout_goal_fired_${paymentId}`;
   try {
     if (localStorage.getItem(key) === "1") return;
@@ -369,11 +382,22 @@ export async function trackRuneCheckoutStarted(paymentId: string, amountRub: num
     try {
       window.ym!(YANDEX_METRIKA_ID, "reachGoal", "rune_checkout_started", {
         ...utmParamsForMetrika(),
-      }, () => { window.clearTimeout(timeout); resolve(); });
-      try { localStorage.setItem(key, "1"); } catch { /* storage optional */ }
+      }, () => {
+        try { localStorage.setItem(key, "1"); } catch { /* storage optional */ }
+        window.clearTimeout(timeout);
+        resolve();
+      });
     } catch {
       window.clearTimeout(timeout);
       resolve();
     }
   });
+}
+
+export function trackRuneCheckoutFailed(code: "rate_limited" | "payment_creation_failed" | "request_failed" | "recaptcha_failed"): void {
+  try {
+    trackSeoEvent("rune_checkout_failed", { error_code: code });
+  } catch {
+    /* analytics optional */
+  }
 }

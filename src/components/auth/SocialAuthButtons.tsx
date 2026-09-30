@@ -3,10 +3,10 @@
 import { isNativeCapacitorPlatform, shouldUseAppShellClient } from "@/lib/app-shell";
 import type { OAuthMode, OAuthProvider } from "@/lib/oauth/types";
 import { registerPlugin } from "@capacitor/core";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import OAuthProviderIcon, { OAUTH_PROVIDER_BRAND } from "@/components/auth/OAuthProviderIcon";
 import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
-import { trackAuthProviderClick, trackRegistrationStarted } from "@/lib/seo/metrika";
+import { trackAuthProviderClick, trackRegistrationError, trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
 
@@ -100,6 +100,21 @@ export default function SocialAuthButtons({
   const [pendingProvider, setPendingProvider] = useState<OAuthProvider | null>(null);
   const useNativeOAuth = isNativeCapacitorPlatform();
   const linkedSet = useMemo(() => new Set(linkedProviders), [linkedProviders]);
+  const oauthErrorTracked = useRef(false);
+
+  useEffect(() => {
+    if (mode !== "register" || oauthErrorTracked.current || typeof window === "undefined") return;
+    try {
+      const rawCode = new URLSearchParams(window.location.search).get("oauthError");
+      if (!rawCode) return;
+      oauthErrorTracked.current = true;
+      trackRegistrationError(
+        Object.prototype.hasOwnProperty.call(OAUTH_ERROR_MESSAGES, rawCode) ? rawCode : "oauth_failed"
+      );
+    } catch {
+      // Analytics must not affect OAuth.
+    }
+  }, [mode]);
 
   useEffect(() => {
     void fetch("/api/auth/oauth/providers")
@@ -215,6 +230,13 @@ export default function SocialAuthButtons({
       }
       await openNativeOAuth(startHref(provider));
     } catch {
+      if (mode === "register") {
+        try {
+          trackRegistrationError(provider === "vk" ? "native_vk_failed" : "native_oauth_failed");
+        } catch {
+          // Analytics must not affect OAuth.
+        }
+      }
       if (provider === "vk") {
         setNativeError("Обновите приложение и повторите вход через VK.");
       } else {

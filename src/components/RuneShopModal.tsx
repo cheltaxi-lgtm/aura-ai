@@ -12,7 +12,7 @@ import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { storePendingRunePurchase, prepareRunePurchaseAttempt, readSelectedRuneCost } from "@/lib/rune-purchase-client";
 import { pushEcommerceAdd, pushEcommerceDetail } from "@/lib/seo/ecommerce";
-import { trackPaywallOpen, trackRuneCheckoutStarted, trackRunePurchaseAttempt, trackRunePurchaseFailed } from "@/lib/seo/metrika";
+import { trackPaywallOpen, trackRuneCheckoutFailed, trackRuneCheckoutStarted, trackRunePurchaseAttempt, trackRunePurchaseFailed } from "@/lib/seo/metrika";
 import LegalOfferNotice from "@/components/legal/LegalOfferNotice";
 import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppProvider";
 
@@ -125,6 +125,7 @@ export default function RuneShopModal({
       const captchaErr = await attachRecaptchaToken(payload, "payments", features);
       if (captchaErr) {
         trackRunePurchaseFailed("captcha");
+        try { trackRuneCheckoutFailed("recaptcha_failed"); } catch { /* analytics optional */ }
         setError(captchaErr);
         setPurchasingId(null);purchaseLock.current=false;
         return;
@@ -138,6 +139,7 @@ export default function RuneShopModal({
       const data = await res.json();
       if (!res.ok || !data.paymentUrl) {
         trackRunePurchaseFailed(res.status === 401 ? "http_401" : res.status === 429 ? "http_429" : !res.ok ? "server_rejected" : "missing_url");
+        try { trackRuneCheckoutFailed(res.status === 429 ? "rate_limited" : "payment_creation_failed"); } catch { /* analytics optional */ }
         setError(data.error ?? "Ошибка оплаты");
         setPurchasingId(null);purchaseLock.current=false;
         return;
@@ -155,6 +157,7 @@ export default function RuneShopModal({
       setPurchasingId(null);purchaseLock.current=false;
     } catch {
       trackRunePurchaseFailed("network");
+      try { trackRuneCheckoutFailed("request_failed"); } catch { /* analytics optional */ }
       setError("Ошибка соединения");
       setPurchasingId(null);purchaseLock.current=false;
     }
@@ -171,6 +174,7 @@ export default function RuneShopModal({
       const captchaErr = await attachRecaptchaToken(payload, "payments", features);
       if (captchaErr) {
         trackRunePurchaseFailed("captcha");
+        try { trackRuneCheckoutFailed("recaptcha_failed"); } catch { /* analytics optional */ }
         setError(captchaErr);
         setPurchasingId(null);purchaseLock.current=false;
         return;
@@ -184,6 +188,7 @@ export default function RuneShopModal({
       const data = await res.json();
       if (!res.ok || !data.paymentUrl) {
         trackRunePurchaseFailed(res.status === 401 ? "http_401" : res.status === 429 ? "http_429" : !res.ok ? "server_rejected" : "missing_url");
+        try { trackRuneCheckoutFailed(res.status === 429 ? "rate_limited" : "payment_creation_failed"); } catch { /* analytics optional */ }
         setError(data.error ?? "Ошибка оплаты");
         setPurchasingId(null);purchaseLock.current=false;
         return;
@@ -198,6 +203,7 @@ export default function RuneShopModal({
       setPurchasingId(null);purchaseLock.current=false;
     } catch {
       trackRunePurchaseFailed("network");
+      try { trackRuneCheckoutFailed("request_failed"); } catch { /* analytics optional */ }
       setError("Ошибка соединения");
       setPurchasingId(null);purchaseLock.current=false;
     }
