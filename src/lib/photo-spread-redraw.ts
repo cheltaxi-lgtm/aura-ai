@@ -135,8 +135,12 @@ function clampSpreadCardInput<T extends { name: string; position?: string }>(
   return cards.slice(0, MAX_PHOTO_CARDS).map((card) => ({
     ...card,
     name: card.name.trim().slice(0, MAX_PHOTO_CARD_NAME_LENGTH),
-    position: card.position?.trim().slice(0, MAX_PHOTO_POSITION_LENGTH),
+    position: normalizePhotoPosition(card.position),
   }));
+}
+
+function normalizePhotoPosition(position?: string): string | undefined {
+  return position?.replace(/[\p{Cc}\p{Cf}]+/gu, " ").replace(/\s+/gu, " ").trim().slice(0, MAX_PHOTO_POSITION_LENGTH);
 }
 
 export function normalizeRedrawSpreadForMaster(
@@ -146,7 +150,10 @@ export function normalizeRedrawSpreadForMaster(
   const system = resolveMasterDeckSystem(masterId);
   const count = Math.max(spread.cards.length, spread.cards.filter((c) => c.name?.trim()).length);
   const cardCount = count > 0 ? count : spread.cards.length;
-  const positions = inferSpreadPositions(cardCount, system, spread.spreadType);
+  const inferredPositions = inferSpreadPositions(cardCount, system, spread.spreadType);
+  const positions = spread.cards.map((card, index) =>
+    normalizePhotoPosition(card.position) || inferredPositions[index] || `Позиция ${index + 1}`
+  );
   const detected = spread.cards.map((c) => (c.reversed ? `${c.name} (перев.)` : c.name));
   const confidences = spread.cards.map((c) => c.confidence ?? "unknown");
 
@@ -341,7 +348,8 @@ export function normalizeRedrawSpreadInput(
   const detected = safeCards.map((c) =>
     c.reversed ? `${c.name} (перев.)` : c.name
   );
-  const positions = safeCards.map((c, i) => c.position ?? `Позиция ${i + 1}`);
+  const inferredPositions = inferSpreadPositions(safeCards.length, system, input.spreadType);
+  const positions = safeCards.map((c, i) => c.position || inferredPositions[i] || `Позиция ${i + 1}`);
   const spread = mapDetectedToRedrawSpread({
     detectedCards: detected,
     system,

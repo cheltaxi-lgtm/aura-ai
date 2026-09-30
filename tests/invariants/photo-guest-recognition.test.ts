@@ -138,6 +138,24 @@ describe("guest photo recognition hook", () => {
     expect(m.balance).not.toHaveBeenCalled();
   });
 
+  it("lets a signed-in person inspect cards with zero runes before choosing paid interpretation", async () => {
+    m.auth.mockResolvedValue({ sub: "account", name: "Test" });
+    m.balance.mockResolvedValue(0);
+    const response = await POST(request());
+    expect(response.status).toBe(200);
+    expect(await response.json()).toMatchObject({ guest: false, detectedCards: ["Шут"] });
+    expect(m.generate).toHaveBeenCalledTimes(1);
+    expect(m.balance).not.toHaveBeenCalled();
+  });
+
+  it("shares an IP budget across signed-in accounts before calling vision", async () => {
+    m.auth.mockResolvedValue({ sub: "account", name: "Test" });
+    m.rateLimit.mockResolvedValueOnce({ allowed: false, retryAfterSec: 3600 });
+    const response = await POST(request());
+    expect(response.status).toBe(429);
+    expect(m.generate).not.toHaveBeenCalled();
+  });
+
   it("requires the signed 18+ cookie and fails before vision", async () => {
     m.ageConfirmed.mockResolvedValue(false);
     const response = await POST(request());

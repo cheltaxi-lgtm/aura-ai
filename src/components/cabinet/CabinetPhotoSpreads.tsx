@@ -155,6 +155,7 @@ export default function CabinetPhotoSpreads({ spreads, onDelete, deletingId = nu
                 <div className="mb-4 rounded-2xl border border-aura-gold/15 bg-black/30 p-4">
                   <DeckCardsRow
                     cards={activeCards}
+                    positions={active.contextData.redrawSpread?.cards.map((card) => card.position || "Позиция")}
                     system={activeSystem}
                     masterId={active.characterName}
                     size="md"

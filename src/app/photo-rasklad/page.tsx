@@ -1,12 +1,12 @@
 import type { Metadata } from "next";
-import Link from "next/link";
+import { Camera, Check, ScanLine, Sparkles } from "lucide-react";
 import { PHOTO_READING_GUIDE_STEPS } from "@/lib/photo-reading-guide";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildPhotoMarkUrl, buildPhotoReadingUrl } from "@/lib/spread-intents/router";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 import SeoTrackedCta from "@/components/seo/SeoTrackedCta";
 import SeoPageTracker from "@/components/seo/SeoPageTracker";
-import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
+import { SeoPageShell } from "@/components/seo/SeoPageShell";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
 import PhotoReadingOffer from "@/components/seo/PhotoReadingOffer";
@@ -20,8 +20,8 @@ export const metadata: Metadata = buildSeoMetadata({
 
 const FAQ = [
   {
-    q: "Можно ли расшифровать Таро по фото бесплатно?",
-    a: "Фото можно отправить до регистрации: Zovus бесплатно покажет распознанные карты и позиции. Аккаунт понадобится только для полной трактовки и сохранения. При первой регистрации начисляются стартовые руны, которыми можно оплатить разбор без пополнения, если баланса хватает.",
+    q: "Можно ли начать бесплатно?",
+    a: "Да. Загрузка, распознавание и проверка карт бесплатны даже до регистрации. Руны списываются только при запуске полной трактовки после входа.",
   },
   {
     q: "Нужна ли колода Zovus?",
@@ -32,8 +32,12 @@ const FAQ = [
     a: "Камера сверху, все карты в кадре, ровный свет без бликов и размытия. Подробнее — в статье «Как фотографировать расклад».",
   },
   {
-    q: "Что если карты не распознались?",
-    a: "Соберите расклад вручную: отметьте карты и позиции перед расшифровкой — смысл не теряется.",
+    q: "Что если карты распознаны неверно?",
+    a: "Перед оплатой проверьте названия, порядок, позиции и перевороты карт. Любую ошибку можно исправить вручную.",
+  },
+  {
+    q: "Где найти готовый разбор?",
+    a: "После получения он сохранится в кабинете, в истории раскладов по фото.",
   },
   {
     q: "Сколько стоит полная расшифровка?",
@@ -44,6 +48,7 @@ const FAQ = [
 export default function PhotoRaskladPage() {
   return (
     <SeoPageShell
+      wide
       breadcrumbs={[
         { name: "Zovus", path: "/" },
         { name: "Гадание", path: "/gadanie" },
@@ -51,74 +56,49 @@ export default function PhotoRaskladPage() {
       ]}
     >
       <SeoPageTracker goal="photo_landing_view" />
-      <p className="text-sm text-aura-gold/80">Расшифровка по фото</p>
-      <h1 className="mt-2 font-display text-3xl font-bold">
-        Расшифровка Таро по фото онлайн
-      </h1>
-      <p className="mt-4 text-white/70">
-        Загрузите свой расклад и задайте вопрос. Бесплатно проверьте распознанные карты и
-        позиции. После входа получите их общий смысл, полный разбор и продолжение в чате.
-      </p>
-
-      <p className="mt-4 text-sm font-medium text-aura-champagne">
-        Проверка распознанных карт — бесплатно, до регистрации и без списания рун.
-      </p>
-      <div className="mt-5 flex flex-wrap gap-3">
-        <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click" pendingLabel="Открываем фото-расклад">
-          Загрузить фото расклада
-        </SeoTrackedCta>
-        <SeoTrackedCta href={buildPhotoMarkUrl()} variant="ghost" trackGoal="photo_landing_cta_click" pendingLabel="Открываем выбор карт">
-          Отметить карты вручную
-        </SeoTrackedCta>
-      </div>
-
-      <div className="mt-4"><PhotoReadingOffer /></div>
-
-      {/* Conversion value, client island: renders only with server-confirmed rune
-          config. min-h reserves space so the late paint causes no layout shift. */}
-      <div className="mt-4 min-h-[2.25rem]">
-        <StarterRunesValue variant="badge" />
-      </div>
-
-      <SeoSection title="Кому подходит расшифровка по фото">
-        <ul className="list-disc space-y-2 pl-5">
-          <li>Уже разложили колоду дома и нужна спокойная трактовка без записи к тарологу</li>
-          <li>Хотите сохранить свой ритуал (свечи, своя колода), а разбор получить онлайн</li>
-          <li>Нужно проверить спорные позиции: прямые и перевёрнутые карты</li>
-          <li>Ищете продолжение в диалоге, а не одноразовый шаблонный текст</li>
-        </ul>
-      </SeoSection>
-
-      <SeoSection title="Что будет в вашем разборе">
-        <div className="grid gap-4 sm:grid-cols-2">
-          <div className="rounded-xl border border-white/10 bg-white/5 p-4">
-            <p className="font-medium text-white">Ваш вопрос и карты</p>
-            <p className="mt-2 text-sm text-white/60">
-              Фото своей колоды или скриншот. Можно проверить названия, порядок и перевёрнутые
-              позиции до расшифровки.
-            </p>
+      <section className="relative isolate overflow-hidden rounded-[28px] border border-aura-gold/20 bg-[#141210] p-6 shadow-[0_28px_90px_rgba(0,0,0,0.28)] sm:p-10 lg:p-12">
+        <div aria-hidden className="pointer-events-none absolute -right-24 -top-24 size-80 rounded-full bg-aura-gold/[0.08] blur-3xl" />
+        <div className="relative grid items-center gap-10 lg:grid-cols-[minmax(0,1.1fr)_minmax(300px,0.9fr)] lg:gap-14">
+          <div>
+            <p className="text-[11px] font-semibold uppercase tracking-[0.28em] text-aura-champagne">ФотоТаро · ваш расклад</p>
+            <h1 className="mt-5 max-w-2xl font-display text-[clamp(2.7rem,6vw,5rem)] font-medium leading-[0.98] text-aura-ivory">Расшифровка Таро по фото онлайн</h1>
+            <p className="mt-6 max-w-xl text-base leading-7 text-aura-ivory/70 sm:text-lg">Карты уже лежат перед вами. Загрузите снимок, проверьте, что мы увидели, и получите разбор именно вашего вопроса.</p>
+            <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:items-center">
+              <SeoTrackedCta href={buildPhotoReadingUrl()} trackGoal="photo_landing_cta_click" pendingLabel="Открываем фото-расклад"><span className="inline-flex items-center gap-2"><Camera size={17} aria-hidden />Загрузить фото расклада</span></SeoTrackedCta>
+              <SeoTrackedCta href={buildPhotoMarkUrl()} variant="ghost" trackGoal="photo_landing_cta_click" pendingLabel="Открываем выбор карт">Отметить карты вручную</SeoTrackedCta>
+            </div>
+            <p className="mt-5 flex items-center gap-2 text-sm text-aura-champagne"><Check size={16} aria-hidden />Распознавание бесплатно · полный разбор после входа</p>
           </div>
-          <div className="rounded-xl border border-aura-gold/20 bg-aura-gold/5 p-4">
-            <p className="font-medium text-aura-gold">Ответ, к которому можно вернуться</p>
-            <p className="mt-2 text-sm text-white/70">
-              Связь карт с вашим вопросом, смысл их сочетания и варианты следующего шага.
-              Расклад сохранится в кабинете; уточнения можно задать в том же чате.
-            </p>
+          <div className="rounded-[24px] border border-aura-gold/20 bg-[#0a0908] p-5 shadow-[0_24px_60px_rgba(0,0,0,0.35)] sm:p-7" aria-label="Три шага до расшифровки">
+            {[
+              { n: "01", title: "Загрузите фото", text: "Своя колода, своя схема, свой вопрос.", Icon: Camera },
+              { n: "02", title: "Проверьте карты", text: "Бесплатно уточните названия, позиции и перевороты.", Icon: ScanLine },
+              { n: "03", title: "Прочитайте разбор", text: "Увидите цену до списания. Ответ сохранится в кабинете.", Icon: Sparkles },
+            ].map(({ n, title, text, Icon }, index) => <div key={n} className={`flex gap-4 py-5 ${index < 2 ? "border-b border-white/10" : ""}`}>
+              <span className="flex size-11 shrink-0 items-center justify-center rounded-xl border border-aura-gold/25 bg-aura-gold/10 text-aura-champagne"><Icon size={20} aria-hidden /></span>
+              <div><p className="text-[10px] font-semibold tracking-[0.22em] text-aura-gold">{n} / 03</p><h2 className="mt-1 font-display text-2xl text-aura-ivory">{title}</h2><p className="mt-1 text-sm leading-6 text-aura-ivory/55">{text}</p></div>
+            </div>)}
           </div>
         </div>
-      </SeoSection>
+      </section>
 
-      <SeoSection title="Три шага до расшифровки">
-        <ol className="list-decimal space-y-3 pl-5">
-          <li>Выберите фото и напишите вопрос — карты и позиции распознаются бесплатно до регистрации.</li>
-          <li>Проверьте найденные карты. Чтобы открыть полную трактовку, войдите или создайте аккаунт.</li>
-          <li>Подтвердите расклад и прочитайте ответ. Фото, вопрос и карты вернутся после входа автоматически.</li>
-        </ol>
-      </SeoSection>
+      <section className="mt-6 grid gap-4 md:grid-cols-2">
+        <div className="rounded-3xl border border-white/10 bg-[#141210] p-6 sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-aura-gold">Ваш расклад</p>
+          <h2 className="mt-3 font-display text-3xl text-aura-ivory">Не шаблон, а разбор ваших карт</h2>
+          <p className="mt-4 leading-7 text-aura-ivory/65">Мастер учитывает подтверждённые карты, позиции и ваш вопрос. Вы проверяете расклад до решения о платной трактовке.</p>
+        </div>
+        <div className="rounded-3xl border border-aura-gold/30 bg-gradient-to-br from-aura-gold/[0.12] via-[#17130e] to-[#0a0908] p-6 sm:p-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.2em] text-aura-gold">Честная стоимость</p>
+          <h2 className="mt-3 font-display text-3xl text-aura-ivory">Сначала проверьте. Потом решите.</h2>
+          <div className="mt-5 border-t border-aura-gold/20 pt-4"><PhotoReadingOffer /></div>
+          <div className="mt-4 min-h-[2.25rem]"><StarterRunesValue variant="badge" /></div>
+        </div>
+      </section>
 
-      <details className="mt-8 rounded-xl border border-white/10 p-4">
+      <details className="mt-8 rounded-2xl border border-aura-gold/20 bg-[#141210] p-5 sm:p-6">
         <summary className="cursor-pointer font-medium text-white">Как подготовить и сфотографировать расклад</summary>
-        <ol className="space-y-4">
+        <ol className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
           {PHOTO_READING_GUIDE_STEPS.map((step, i) => (
             <li key={step.title} className="rounded-xl border border-white/10 bg-white/5 px-4 py-3">
               <p className="font-medium text-white">
@@ -130,39 +110,17 @@ export default function PhotoRaskladPage() {
         </ol>
       </details>
 
-      <SeoSection title="Бесплатно и по тарифу — честно">
-        <p>
-          Распознавание карт по фото доступно бесплатно до входа. Полная трактовка ФотоТаро
-          оплачивается рунами с вашего баланса. Новый аккаунт получает стартовые руны; когда их
-          хватает, покупать пакет не требуется. Размер подарка и стоимость разбора показаны выше.
-          Подробнее — в статье{" "}
-          <Link
-            href="/statyi/rasshifrovka-taro-po-foto-besplatno"
-            className="text-aura-gold hover:underline"
-          >
-            «расшифровка по фото бесплатно»
-          </Link>
-          .
-        </p>
-      </SeoSection>
-
-      <SeoSection title="Преимущества">
-        <ul className="list-disc space-y-2 pl-5">
-          <li>Работает с вашей реальной колодой</li>
-          <li>Ручная правка, если распознавание ошиблось</li>
-          <li>Учитывает перевёрнутые карты</li>
-          <li>Стриминг расшифровки — текст появляется по мере чтения</li>
-          <li>Озвучка и продолжение в чате с мастером</li>
-        </ul>
-      </SeoSection>
-
-      <SeoSection title="Частые вопросы">
-        {FAQ.map((item) => (
-          <p key={item.q}>
-            <strong className="text-white">{item.q}</strong> {item.a}
-          </p>
-        ))}
-      </SeoSection>
+      <section className="mt-12" aria-labelledby="photo-faq-title">
+        <h2 id="photo-faq-title" className="font-display text-3xl text-aura-ivory">Частые вопросы</h2>
+        <div className="mt-5 divide-y divide-white/10 rounded-2xl border border-white/10 bg-[#141210] px-5 sm:px-7">
+          {FAQ.map((item) => (
+            <details key={item.q} className="group py-4">
+              <summary className="cursor-pointer font-medium text-aura-ivory">{item.q}</summary>
+              <p className="max-w-3xl pt-3 text-sm leading-6 text-aura-ivory/65">{item.a}</p>
+            </details>
+          ))}
+        </div>
+      </section>
 
       <SeoRelatedTools
         links={[

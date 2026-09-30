@@ -667,14 +667,13 @@ export default function PhotoReadingFlow({
       return;
     }
     if (initialMode !== "mark" || markModeBootedRef.current) return;
-    if (runesBlocked) return;
     markModeBootedRef.current = true;
     trackPhotoReadingPhase("manual_mark");
     openConfirmStep(createEmptyManualRedrawSpread(masterId), {
       manual: true,
       confidence: "unknown",
     });
-  }, [open, initialMode, masterId, runesBlocked]);
+  }, [open, initialMode, masterId]);
 
   useEffect(() => {
     if (!open) return;
@@ -777,12 +776,6 @@ export default function PhotoReadingFlow({
 
   const startManualSpread = () => {
     clearPhotoAuthDraft(window.sessionStorage);
-    if (runesBlocked) {
-      onInsufficientRunes?.({ balance: runeBalance, required: photoCost });
-      onOpenPaywall?.();
-      setError(`Недостаточно рун: нужно ${formatRunes(photoCost)}, у вас ${formatRunes(runeBalance)}.`);
-      return;
-    }
     openConfirmStep(createEmptyManualRedrawSpread(masterId), {
       manual: true,
       confidence: "unknown",
@@ -917,10 +910,44 @@ export default function PhotoReadingFlow({
     if (!redrawSpread) return;
     mergeBaseSpreadRef.current = redrawSpread;
     setMergeBaseCount(redrawSpread.cards.length);
+    preserveSourcePhoto(previewUrl);
+    // The previous photo is the merge source, not the next upload. Keep its
+    // object URL alive only while the source comparison needs it.
+    if (previewObjectUrlRef.current && previewObjectUrlRef.current !== sourcePhotoUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+    }
+    previewObjectUrlRef.current = null;
+    setPreviewUrl(null);
+    setImageData(null);
+    setFileOriginalBytes(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
     setResult(null);
     setError("");
     setStep("upload");
     trackPhotoReadingPhase("merge_photo_start");
+  };
+
+  const cancelAddPhotoMerge = () => {
+    const original = mergeBaseSpreadRef.current;
+    if (!original) return;
+    if (previewObjectUrlRef.current && previewObjectUrlRef.current !== sourcePhotoUrlRef.current) {
+      URL.revokeObjectURL(previewObjectUrlRef.current);
+    }
+    previewObjectUrlRef.current = null;
+    setPreviewUrl(null);
+    setImageData(null);
+    setFileOriginalBytes(0);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+    if (cameraInputRef.current) cameraInputRef.current.value = "";
+    mergeBaseSpreadRef.current = null;
+    setMergeBaseCount(null);
+    setError("");
+    openConfirmStep(original, {
+      confidence: recognitionConfidence,
+      manual: manualMode,
+      recognitionFailed,
+    });
   };
 
   const recognize = async () => {
@@ -937,15 +964,10 @@ export default function PhotoReadingFlow({
       setError("Сначала загрузите или сфотографируйте расклад");
       return;
     }
-    if (runesBlocked) {
-      onInsufficientRunes?.({ balance: runeBalance, required: photoCost });
-      onOpenPaywall?.();
-      setError(`Недостаточно рун: нужно ${formatRunes(photoCost)}, у вас ${formatRunes(runeBalance)}.`);
-      return;
-    }
-
     const cacheKey = imageCacheKey(imageData);
-    const cachedRecognize = recognizeCacheRef.current.get(cacheKey);
+    // A cached stand-alone result cannot replace the confirmed base while
+    // adding another photo; the merge branch must handle this request.
+    const cachedRecognize = mergeBaseSpreadRef.current ? undefined : recognizeCacheRef.current.get(cacheKey);
     if (cachedRecognize) {
       trackPhotoReadingPhase("recognize_ok", { cached: true });
       openConfirmStep(cachedRecognize.spread, {
@@ -1134,7 +1156,7 @@ export default function PhotoReadingFlow({
       const overflowCards = Array.isArray(data.overflowCards) ? (data.overflowCards as string[]) : [];
       const truncatedNotice = data.truncated
         ? `Мы распознали ${data.totalDetected} карт, но расклад поддерживает не больше ${MAX_PHOTO_CARDS_LIMIT}. Показаны первые ${MAX_PHOTO_CARDS_LIMIT}${
-            overflowCards.length ? ` — «${overflowCards.join("», «")}» можно добавить вручную` : ""
+            overflowCards.length ? `; ещё ${overflowCards.length} оставьте для отдельного расклада` : ""
           }.`
         : undefined;
 
@@ -1147,7 +1169,7 @@ export default function PhotoReadingFlow({
         const { spread: merged, overflow } = mergeSpreadCards(mergeBase, recognizedSpread, masterId);
         spread = merged;
         mergeNotice = overflow > 0
-          ? `Добавили карты со второго фото. Расклад заполнен до ${MAX_PHOTO_CARDS_LIMIT} — ${overflow} лишних карт со второго фото не поместились, добавьте их вручную при необходимости.`
+          ? `Добавили карты со второго фото. Расклад заполнен до ${MAX_PHOTO_CARDS_LIMIT}; ещё ${overflow} карт можно разобрать отдельным раскладом.`
           : "Карты со второго фото добавлены к раскладу.";
       } else if (mergeBase && manual) {
         mergeNotice = "Не удалось распознать второе фото — можете добавить карты вручную к уже подтверждённому раскладу.";
@@ -1495,8 +1517,10 @@ export default function PhotoReadingFlow({
                 <p className="text-[11px] text-aura-gold/70 mt-0.5">
                   {runeConfig.enabled && step !== "result"
                     ? isLoggedIn
-                      ? `${photoPriceLabel} · распознавание и расшифровка`
-                      : "Фото сохранится при входе · точная цена перед разбором"
+                      ? step === "upload"
+                        ? "Распознавание бесплатно · разбор после проверки карт"
+                        : `${photoPriceLabel} за полный разбор`
+                      : "Проверка карт бесплатно · полная трактовка после входа"
                     : (selectedMaster?.title ?? "Фото-расклад")}
                 </p>
               </div>
@@ -1561,6 +1585,9 @@ export default function PhotoReadingFlow({
                       <span className="photo-flow-badge photo-flow-badge--medium">
                         Добавляем ко {mergeBaseCount} уже подтверждённым картам
                       </span>
+                      <button type="button" onClick={cancelAddPhotoMerge} className="photo-flow-link mt-3 block">
+                        Вернуться к подтверждённым картам
+                      </button>
                     </div>
                   )}
                   {/* Guide */}
@@ -1676,7 +1703,7 @@ export default function PhotoReadingFlow({
                     <button
                       type="button"
                       onClick={startManualSpread}
-                      disabled={loading || runesBlocked}
+                      disabled={loading}
                       className="disabled:opacity-40"
                     >
                       Собрать расклад вручную
@@ -1685,7 +1712,7 @@ export default function PhotoReadingFlow({
 
                   {runeConfig.enabled && (
                     <p className="text-center text-xs text-gray-500">
-                      Стоимость — {formatRunes(photoCost)} (руны Zovus)
+                      Полный разбор после проверки карт — {formatRunes(photoCost)} (руны Zovus)
                       {photoPricing?.firstPhotoDiscount && photoCost < photoBaseCost ? (
                         <>
                           {" "}
@@ -1777,8 +1804,8 @@ export default function PhotoReadingFlow({
                           </p>
                           <p className="mt-1.5 text-sm leading-relaxed text-white/65">
                             {question.trim()
-                              ? `Я уже связал ${redrawSpread.cards.length} ${redrawSpread.cards.length === 1 ? "карту" : "карт"} с вашим вопросом. В полном разборе покажу смысл каждой позиции, ключевую связку и следующий шаг.`
-                              : `Я уже увидел структуру из ${redrawSpread.cards.length} ${redrawSpread.cards.length === 1 ? "карты" : "карт"}. В полном разборе покажу общий сюжет, скрытое напряжение и следующий шаг.`}
+                              ? `Проверьте ${redrawSpread.cards.length} ${redrawSpread.cards.length === 1 ? "карту" : "карт"} и позиции. В полном разборе мастер свяжет их с вашим вопросом.`
+                              : `Проверьте ${redrawSpread.cards.length} ${redrawSpread.cards.length === 1 ? "карту" : "карт"} и позиции. Затем мастер разберёт их общий смысл.`}
                           </p>
                         </div>
                       </div>
@@ -1848,6 +1875,7 @@ export default function PhotoReadingFlow({
                     <div className="rounded-2xl border border-aura-gold/12 bg-black/20 p-4">
                       <DeckCardsRow
                         cards={resultCards}
+                        positions={redrawSpread.cards.map((card) => card.position || "Позиция")}
                         system={redrawSpread.system}
                         masterId={masterId}
                         size="md"
@@ -1856,8 +1884,6 @@ export default function PhotoReadingFlow({
                       />
                     </div>
                   )}
-
-                  {!loading && result && isLoggedIn ? <DailyReminderCard source="post_result" compact /> : null}
 
                   <div className="rounded-2xl border border-white/8 bg-white/[0.03] p-4 sm:p-5">
                     {displayAnalysis ? (
@@ -1878,6 +1904,8 @@ export default function PhotoReadingFlow({
                       </p>
                     )}
                   </div>
+
+                  {!loading && result && isLoggedIn ? <DailyReminderCard source="post_result" compact /> : null}
 
                   {result?.saved && !loading && (
                     <div className="flex flex-wrap items-center gap-2">
@@ -1965,7 +1993,7 @@ export default function PhotoReadingFlow({
                       <button
                         type="button"
                         onClick={startManualSpread}
-                        disabled={loading || runesBlocked}
+                        disabled={loading}
                         className="rounded-xl border border-aura-gold/25 px-3 py-2 text-xs text-aura-gold hover:bg-aura-gold/10"
                       >
                         Собрать вручную
@@ -2007,8 +2035,8 @@ export default function PhotoReadingFlow({
               )}
 
               {/* Runes blocked */}
-              {isLoggedIn && (step === "upload" || step === "confirm") && <RuneOrderPreview cost={photoCost} />}
-              {runesBlocked && isLoggedIn && (step === "upload" || step === "confirm") && (
+              {isLoggedIn && step === "confirm" && <RuneOrderPreview cost={photoCost} />}
+              {runesBlocked && isLoggedIn && step === "confirm" && (
                 <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-amber-500/25 bg-amber-500/8 px-4 py-3 text-sm text-amber-200/80">
                   <span>Нужно {formatRunes(photoCost)}, у вас {formatRunes(runeBalance)}</span>
                   {onOpenPaywall ? (
@@ -2029,7 +2057,7 @@ export default function PhotoReadingFlow({
                 <button
                   type="button"
                   onClick={() => void recognize()}
-                  disabled={!imageData || loading || preparingImage || runesBlocked}
+                  disabled={!imageData || loading || preparingImage}
                   className="btn-luxe btn-luxe--md btn-luxe--gold btn-luxe--block disabled:cursor-not-allowed disabled:opacity-40"
                 >
                   <span className="flex items-center justify-center gap-2">
@@ -2044,11 +2072,7 @@ export default function PhotoReadingFlow({
                       ? recognizeAttempt > 1
                         ? `Повторная отправка (${recognizeAttempt}/${RECOGNIZE_MAX_ATTEMPTS})… ${loadingElapsedLabel}`
                         : `Распознаём и перерисовываем… ${loadingElapsedLabel}`
-                      : !isLoggedIn
-                        ? "Распознать карты бесплатно"
-                      : runeConfig.enabled
-                        ? `Начать фото-расклад · ${formatRunes(photoCost)}`
-                        : "Начать фото-расклад"}
+                      : "Распознать карты бесплатно"}
                   </span>
                 </button>
               )}
@@ -2074,7 +2098,7 @@ export default function PhotoReadingFlow({
                       ) : !isLoggedIn ? (
                         <>Создать аккаунт и продолжить<ArrowRight className="h-4 w-4" /></>
                       ) : (
-                        <>Подтвердить<ArrowRight className="h-4 w-4" /></>
+                        <>Получить полный разбор{runeConfig.enabled ? ` · ${formatRunes(photoCost)}` : ""}<ArrowRight className="h-4 w-4" /></>
                       )}
                     </span>
                   </button>

@@ -13,17 +13,12 @@ import {
   isLandscapePhotoBase64,
   isWideOrSquarePhotoBase64,
 } from "@/lib/image-dimensions";
-import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
-import { getUserById, serializeUserProfile } from "@/lib/users";
+import { getProfileUserIdForAccount } from "@/lib/accounts";
+import { getUserById } from "@/lib/users";
 import { clientIp, enforcePaidRouteRateLimit, MAX_IMAGE_BYTES, validateImageMime, validateImageBase64Payload } from "@/lib/api-guards";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
-import { resolvePhotoReadingPricing } from "@/lib/photo-reading-billing";
-import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
-import { getRuneSettings } from "@/lib/rune-settings";
-import { insufficientRunesResponse } from "@/lib/insufficient-runes";
 import { reportError } from "@/lib/error-report";
 import { resolveApiCharacterId, sanitizeTextField } from "@/lib/chat-sanitize";
-import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
   isRecognizedSpread,
   isUnrecognizedCardLabel,
@@ -43,6 +38,8 @@ const GUEST_RECOGNITION_CONCURRENCY = 4;
 const REQUEST_BODY_OVERHEAD_BYTES = 256 * 1024;
 const MAX_RECOGNITION_REQUEST_BYTES = Math.ceil((MAX_IMAGE_BYTES * 4) / 3) + REQUEST_BODY_OVERHEAD_BYTES;
 let guestRecognitionInflight = 0;
+let accountRecognitionInflight = 0;
+const ACCOUNT_RECOGNITION_CONCURRENCY = 4;
 
 class RequestBodyTooLargeError extends Error {}
 class RequestBodyTimeoutError extends Error {}
@@ -174,6 +171,28 @@ async function enforceGuestRecognitionRateLimit(request: NextRequest): Promise<N
   );
 }
 
+async function enforceAccountVisionBudget(request: NextRequest): Promise<NextResponse | null> {
+  const { ip } = guestFingerprints(request);
+  const ipDaily = await checkRateLimit(
+    rateLimitKey("photo_account_recognize_ip_day", ip),
+    30,
+    24 * 60 * 60 * 1000
+  );
+  const budget = ipDaily.allowed
+    ? await checkRateLimit(
+        rateLimitKey("photo_account_recognize_budget", new Date().toISOString().slice(0, 10)),
+        guestBudgetPerDay(),
+        24 * 60 * 60 * 1000
+      )
+    : ipDaily;
+  const blocked = !ipDaily.allowed ? ipDaily : !budget.allowed ? budget : null;
+  if (!blocked) return null;
+  return NextResponse.json(
+    { error: "rate_limit", message: "Сегодня достигнут лимит бесплатного распознавания. Попробуйте позже." },
+    { status: 429, headers: { "Retry-After": String(blocked.retryAfterSec ?? 3600) } }
+  );
+}
+
 /** Vision-only pass: guests get a rate-limited acquisition preview; billing stays in the authenticated interpretation. */
 export async function POST(request: NextRequest) {
   if (!(await isPhotoReadingEnabled())) {
@@ -197,8 +216,18 @@ export async function POST(request: NextRequest) {
 
   const actorId = auth?.sub ?? "guest";
   let guestSlotReserved = false;
+  let accountSlotReserved = false;
 
-  if (!auth) {
+  if (auth) {
+    if (accountRecognitionInflight >= ACCOUNT_RECOGNITION_CONCURRENCY) {
+      return NextResponse.json(
+        { error: "busy", message: "Сейчас много фото. Подождите несколько секунд и повторите." },
+        { status: 429, headers: { "Retry-After": "10" } }
+      );
+    }
+    accountRecognitionInflight += 1;
+    accountSlotReserved = true;
+  } else {
     const ingressLimited = await enforceGuestIngressRateLimit(request);
     if (ingressLimited) return ingressLimited;
     if (guestRecognitionInflight >= GUEST_RECOGNITION_CONCURRENCY) {
@@ -331,6 +360,9 @@ export async function POST(request: NextRequest) {
   if (!auth) {
     const guestLimited = await enforceGuestRecognitionRateLimit(request);
     if (guestLimited) return guestLimited;
+  } else {
+    const budgetLimited = await enforceAccountVisionBudget(request);
+    if (budgetLimited) return budgetLimited;
   }
 
   console.info("[photo-recognize] start", {
@@ -340,7 +372,6 @@ export async function POST(request: NextRequest) {
     mimeType,
   });
 
-    let profile: ReturnType<typeof serializeUserProfile> | null = null;
     if (auth) {
     const profileUserId = await getProfileUserIdForAccount(auth.sub);
     const profileRow = profileUserId ? await getUserById(profileUserId) : null;
@@ -348,20 +379,6 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(AGE_REQUIRED_ERROR, { status: 403 });
     }
 
-    // Vision is not charged, but authenticated users must be able to afford the full interpretation.
-    const unlimited = await resolveUnlimitedAccess({
-      accountId: auth.sub,
-      profileUserId,
-    });
-    const runeSettings = await getRuneSettings();
-    if (isRuneBillingActive(profileUserId, unlimited, runeSettings) && profileUserId) {
-      const pricing = await resolvePhotoReadingPricing(profileUserId);
-      const balance = await getRuneBalance(profileUserId);
-      if (balance < pricing.effectiveCost) {
-        return insufficientRunesResponse(balance, pricing.effectiveCost);
-      }
-    }
-      profile = serializeUserProfile(profileRow);
   }
 
   const today = new Date().toLocaleDateString("ru-RU", {
@@ -371,13 +388,7 @@ export async function POST(request: NextRequest) {
   });
 
   const ctx = {
-    userName: normalizePersonDisplayNameOr(profile?.name ?? auth?.name, "друг"),
-    gender: profile?.gender === "male" ? "Мужской" : profile?.gender === "female" ? "Женский" : undefined,
-    zodiac: profile?.zodiac,
-    birthDate: profile?.birthDate ?? undefined,
-    question,
     today,
-    isPaid: true,
   };
 
   try {
@@ -534,5 +545,6 @@ export async function POST(request: NextRequest) {
     }
   } finally {
     if (guestSlotReserved) guestRecognitionInflight = Math.max(0, guestRecognitionInflight - 1);
+    if (accountSlotReserved) accountRecognitionInflight = Math.max(0, accountRecognitionInflight - 1);
   }
 }

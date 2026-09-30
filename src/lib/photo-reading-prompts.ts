@@ -53,7 +53,9 @@ ${buildPaidSpreadReadingExtras({ cardCount: n, masterId, includeDepthBlocks: tru
 ДОПОЛНИТЕЛЬНО ДЛЯ ФОТО-РАСКЛАДА:
 - по каждой карте: название → значение в её позиции → вывод для клиента (отдельный развёрнутый абзац);
 - если карт больше одной — отдельно назови значимые связки соседних и повторяющихся карт (масти, числа, стихии, конфликт или усиление) и что они добавляют к смыслу;
-- свяжи с вопросом клиента и астрологическим профилем (если есть);
+- свяжи с вопросом клиента; астрологический профиль упоминай только когда он действительно помогает ответу;
+- не выводи названия служебных блоков «Вердикт», «В плюс», «Жёстко», «Простыми словами» и не повторяй вывод в конце;
+- формат именно этого фото-разбора: чистые короткие абзацы без Markdown, звёздочек, решёток, нумерации и списков. Если общие правила мастера требуют Markdown или заголовок «## Простыми словами», для фото-разбора приоритет у этого правила;
 - оставайся в образе; на прямой вопрос «ты ИИ?» — честно, в образе мастера.`;
 }
 
@@ -223,6 +225,7 @@ export interface DetectedCardEntry {
   name: string;
   reversed: boolean;
   confidence: PhotoRecognitionConfidence;
+  orientationConfidence?: PhotoRecognitionConfidence;
 }
 
 function splitCardTokens(raw: string): string[] {
@@ -242,14 +245,14 @@ function splitCardTokens(raw: string): string[] {
 
 function parseJsonCardArray(raw: string): DetectedCardEntry[] {
   try {
-    const arr = JSON.parse(raw) as Array<{ name?: string; reversed?: boolean; confidence?: string }>;
+    const arr = JSON.parse(raw) as Array<{ name?: string; reversed?: unknown; confidence?: string; orientation_confidence?: string }>;
     if (!Array.isArray(arr)) return [];
     return arr
-      .slice(0, MAX_PHOTO_CARDS)
       .map((item) => ({
         name: String(item.name ?? "").trim(),
-        reversed: Boolean(item.reversed),
+        reversed: item.reversed === true && normalizeCardConfidence(item.orientation_confidence) === "high",
         confidence: normalizeCardConfidence(item.confidence),
+        orientationConfidence: normalizeCardConfidence(item.orientation_confidence),
       }))
       .filter((c) => c.name.length > 0);
   } catch {
@@ -305,9 +308,8 @@ function parseDetectedCardsFromLists(analysis: string): string[] {
 
 /**
  * Corrects false reversed flags from horizontal / multi-card-row photos.
- * Vision models often treat phone landscape (or a sideways EXIF frame) as
- * "every other card is upside-down" even when all cards are upright on the table.
- * The UI already lets the user toggle reversed manually — prefer upright default.
+ * Frame orientation is not card orientation. Keep reversals recognized with
+ * explicit high orientation confidence; card-name confidence is unrelated.
  */
 export function sanitizeLandscapeReversedGuesses(
   cards: DetectedCardEntry[],
@@ -319,11 +321,6 @@ export function sanitizeLandscapeReversedGuesses(
   const landscape = Boolean(opts?.landscapePhoto);
   const rowSuspect = Boolean(opts?.horizontalRowSuspect) || landscape;
 
-  // Horizontal frame: never trust model reversed — clear all.
-  if (landscape) {
-    return cards.map((card) => ({ ...card, reversed: false }));
-  }
-
   if (cards.length < 2) return cards;
 
   // Need ≥3 cards — on a pair, "second reversed" is a valid reading, not a checkerboard artifact.
@@ -331,19 +328,12 @@ export function sanitizeLandscapeReversedGuesses(
     cards.length >= 3 &&
     (cards.every((card, index) => card.reversed === (index % 2 === 0)) ||
       cards.every((card, index) => card.reversed === (index % 2 === 1)));
-  const partialMix = reversedCount >= 1 && reversedCount < cards.length;
-
-  // Patterned / partial reverses on a multi-card row are almost always artifacts.
-  // Keep unanimous reverses on upright portrait photos (user may have flipped the whole pack).
-  const shouldClear =
-    alternating ||
-    (rowSuspect && partialMix) ||
-    (rowSuspect && cards.length >= 3 && reversedCount >= 1) ||
-    (cards.length >= 3 && partialMix);
-
-  if (!shouldClear) return cards;
-
-  return cards.map((card) => ({ ...card, reversed: false }));
+  if (!rowSuspect && !alternating) return cards;
+  return cards.map((card) =>
+    card.reversed && card.orientationConfidence !== "high"
+      ? { ...card, reversed: false }
+      : card
+  );
 }
 
 function parseDetectedCardEntries(
@@ -416,7 +406,7 @@ const PHOTO_RECOGNITION_ONLY = `
 
 КОЛОДА: [тип/название · уверенность: высокая/средняя/низкая]
 РАСКЛАД: [название или описание · N символов · назначение если ясно]
-КАРТЫ_JSON: [{"name":"Название с фото","reversed":false,"confidence":"высокая"}, ...]
+КАРТЫ_JSON: [{"name":"Название с фото","reversed":false,"confidence":"высокая","orientation_confidence":"высокая"}, ...]
 КАРТЫ: «Символ1» · «Символ2 (перев.)» · …
 
 Правила КАРТЫ_JSON и КАРТЫ:
@@ -433,6 +423,7 @@ const PHOTO_RECOGNITION_ONLY = `
   - reversed: true только если внутри рамки карты изображение/текст перевёрнуты на 180° относительно нормального положения этой колоды; иначе false.
   - При сомнении в reversed всегда ставь false — клиент поправит вручную. Ложный reversed хуже, чем пропущенный реальный переворот.
 - confidence — твоя уверенность именно в ЭТОЙ карте (не в колоде целиком): "высокая" если название читается чётко, "средняя" при частичном перекрытии/блике, "низкая" при угадывании по обрывку образа. Только русские слова: высокая/средняя/низкая.
+- orientation_confidence — отдельная уверенность в перевороте по собственным признакам карты. Не копируй сюда confidence названия. «высокая» только когда положение текста или рисунка в рамке однозначно; иначе «средняя» или «низкая».
 - НЕ отказывайся от распознавания из-за незнакомой колоды — опиши каждую видимую карту.
 - КАРТЫ: не удалось распознать — ТОЛЬКО если на фото точно нет карт/рун/символов (портрет, пейзаж, пустой стол).
 - Если видна хотя бы 1 карта — перечисли её; при сомнении укажи лучшее предположение и низкую уверенность и в КОЛОДА, и в confidence этой карты.`;
@@ -440,8 +431,8 @@ const PHOTO_RECOGNITION_ONLY = `
 const PHOTO_RECOGNITION_USER_HINT =
   "Важно: фото может быть горизонтальным, особенно если карт много в ряд. Ориентацию reversed определяй только по рамке каждой карты, не по рамке всего фото. При сомнении reversed=false.";
 
-const PHOTO_RECOGNITION_LANDSCAPE_FORCE_UPRIGHT =
-  "КРИТИЧНО: это горизонтальное фото (кадр шире высоты, карты обычно в один ряд). Поставь reversed:false для КАЖДОЙ карты в КАРТЫ_JSON и не пиши «(перев.)» в КАРТЫ. Клиент поправит переворот вручную при необходимости.";
+const PHOTO_RECOGNITION_LANDSCAPE_HINT =
+  "Это горизонтальное фото. Для каждой карты отдельно сравни ориентацию рисунка и текста с её собственной рамкой. Не переноси ориентацию кадра на карты. Если признаки переворота неясны, ставь reversed:false и orientation_confidence:низкая.";
 
 export async function generatePhotoRecognition(
   systemPrompt: string,
@@ -453,7 +444,7 @@ export async function generatePhotoRecognition(
   const fullPrompt = await wrapSystemPrompt(`${systemPrompt}\n\n${PHOTO_RECOGNITION_ONLY}`);
   const hints = [
     PHOTO_RECOGNITION_USER_HINT,
-    opts?.landscapePhoto ? PHOTO_RECOGNITION_LANDSCAPE_FORCE_UPRIGHT : "",
+    opts?.landscapePhoto ? PHOTO_RECOGNITION_LANDSCAPE_HINT : "",
   ]
     .filter(Boolean)
     .join("\n");

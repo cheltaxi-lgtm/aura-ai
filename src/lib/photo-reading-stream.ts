@@ -21,6 +21,51 @@ function buildPhotoInterpretationUserBlock(params: {
     .join("\n\n");
 }
 
+export function normalizePhotoInterpretation(text: string): string {
+  return text
+    .replace(/^\s*#{1,6}\s*/gmu, "")
+    .replace(/\*{1,3}/gu, "")
+    .replace(/_{2,3}/gu, "")
+    .trim();
+}
+
+function normalizeForCoverage(value: string): string {
+  return value.toLocaleLowerCase("ru-RU").replace(/ё/gu, "е").replace(/[^\p{L}\p{N}]+/gu, " ");
+}
+
+function namesSameCard(paragraph: string, name: string): boolean {
+  const words = normalizeForCoverage(name).trim().split(/\s+/u).filter(Boolean);
+  const textWords = normalizeForCoverage(paragraph).trim().split(/\s+/u).filter(Boolean);
+  if (!words.length) return false;
+  // Compare every word of the card name in sequence. Longer stems tolerate
+  // Russian inflection; short names require exact words (Суд != Судьба).
+  return textWords.some((_, start) => words.every((word, offset) =>
+    word.length <= 3
+      ? textWords[start + offset] === word
+      : textWords[start + offset]?.startsWith(word.slice(0, 4))
+  ));
+}
+
+export function hasPhotoInterpretationDepth(text: string, cardCount: number, spreadSummary: string): boolean {
+  const trimmed = normalizePhotoInterpretation(text);
+  const paragraphs = trimmed.split(/\n\s*\n/u).filter(Boolean);
+  if (trimmed.length < Math.max(200, cardCount * 90) || paragraphs.length < cardCount + 1) return false;
+  const listedCards = Array.from(spreadSummary.matchAll(/^\d+\.\s+(.+)$/gmu), (match) =>
+    Array.from(match[1].matchAll(/«([^»]+)»/gu), (name) => name[1])
+  );
+  if (listedCards.length !== cardCount) return false;
+  const usedParagraphs = new Set<number>();
+  return listedCards.every((alternatives) => {
+    const index = paragraphs.findIndex((paragraph, paragraphIndex) =>
+      !usedParagraphs.has(paragraphIndex) && paragraph.length >= 70 &&
+      alternatives.some((name) => namesSameCard(paragraph, name))
+    );
+    if (index < 0) return false;
+    usedParagraphs.add(index);
+    return true;
+  });
+}
+
 /** Non-stream JSON path for durable worker / async poll clients. */
 export async function createPhotoInterpretationJson(params: {
   systemPrompt: string;
@@ -56,18 +101,9 @@ export async function createPhotoInterpretationJson(params: {
     temperature: 0.65,
     timeoutMs: 120_000,
     validate: (text) => {
-      const trimmed = text.trim();
-      if (trimmed.length < 200) {
-        return { ok: false, code: "validation_failed", detail: "too_short" };
-      }
-      // Soft structure: verdict signal or closing section — card names live in spreadSummary prose.
-      const hasClose =
-        /##\s*Простыми словами/iu.test(trimmed) ||
-        /вердикт|в плюс|жёстк|жестк|если коротко|в сумме/iu.test(trimmed.slice(0, 400)) ||
-        /вердикт|в плюс|жёстк|жестк|итог/iu.test(trimmed.slice(-700));
-      return hasClose
+      return hasPhotoInterpretationDepth(text, n, params.spreadSummary)
         ? { ok: true }
-        : { ok: false, code: "validation_failed", detail: "missing_verdict_or_finale" };
+        : { ok: false, code: "validation_failed", detail: "insufficient_card_depth" };
     },
     buildRepairMessages: (failedText) => [
       ...messages,
@@ -75,7 +111,7 @@ export async function createPhotoInterpretationJson(params: {
       {
         role: "user",
         content:
-          "Перепиши целиком: первая фраза — вердикт; отдельный абзац по каждой позиции с названием символа; в конце полный финальный блок (для таро — «## Простыми словами»). Без воды.",
+          "Перепиши целиком: первая фраза отвечает на вопрос; отдельный содержательный абзац по каждой позиции с названием символа; в конце общий вывод без повтора. Только чистый текст, без Markdown, звёздочек и заголовков.",
       },
     ],
   });
@@ -83,7 +119,7 @@ export async function createPhotoInterpretationJson(params: {
     const { normalizeClientTyAddress, softenShoutyClientName } = await import(
       "@/lib/reading-quality-gate"
     );
-    let reply = outcome.content.trim();
+    let reply = normalizePhotoInterpretation(outcome.content);
     reply = normalizeClientTyAddress(reply);
     reply = softenShoutyClientName(reply, params.userName);
     return { reply, llmFailed: false, provenance: outcome.provenance };
@@ -104,6 +140,7 @@ export async function createPhotoInterpretationStream(params: {
 
   return createChatResponseStream({
     systemPrompt: params.systemPrompt,
+    holdTokensUntilAccepted: true,
     messages: [
       {
         role: "user",
@@ -117,11 +154,16 @@ export async function createPhotoInterpretationStream(params: {
     temperature: 0.65,
     maxTokens: photoInterpretationMaxTokens(n),
     onComplete: async (meta) => {
-      const llmFailed = meta.llmFailed || !meta.reply.trim();
+      const normalized = normalizePhotoInterpretation(meta.reply);
+      const llmFailed = meta.llmFailed || !hasPhotoInterpretationDepth(normalized, n, params.spreadSummary);
       // Fail-closed: never substitute template prose for a failed photo reading.
-      const reply = llmFailed ? "" : meta.reply;
+      const reply = llmFailed ? "" : normalized;
       const extras = await params.onComplete({ reply, llmFailed });
-      return { ...extras, reply, llmFailed };
+      return {
+        ...extras,
+        reply: typeof extras.reply === "string" ? extras.reply : reply,
+        llmFailed: typeof extras.llmFailed === "boolean" ? extras.llmFailed : llmFailed,
+      };
     },
   });
 }

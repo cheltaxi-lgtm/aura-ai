@@ -423,7 +423,8 @@ export async function POST(request: NextRequest) {
             { status: 502 }
           );
         }
-        historyId = await persistPhotoReadingResult({
+        try {
+          historyId = await persistPhotoReadingResult({
           captureGeneration,
           profileUserId,
           characterId,
@@ -438,7 +439,11 @@ export async function POST(request: NextRequest) {
           photoSpreadKey,
           idempotencyKey,
           firstPhotoDiscount,
-        });
+          });
+        } catch (error) {
+          console.error("Photo reading save failed:", error);
+          return refundAndFail("Photo reading save failed");
+        }
       }
 
       const payload = {
@@ -502,12 +507,14 @@ export async function POST(request: NextRequest) {
       userName: ctx.userName ?? "друг",
       cardCount: confirmedSpread!.cards.length,
       onComplete: async ({ reply, llmFailed }) => {
-        const refunded = llmFailed ? await refundCurrentCharge() : false;
+        let refunded = llmFailed ? await refundCurrentCharge() : false;
+        let saveFailed = false;
 
         let historyId: string | undefined;
         if (profileUserId && !llmFailed) {
-          historyId = await persistPhotoReadingResult({
-          captureGeneration,
+          try {
+            historyId = await persistPhotoReadingResult({
+            captureGeneration,
             profileUserId,
             characterId,
             analysisBody: reply,
@@ -521,11 +528,18 @@ export async function POST(request: NextRequest) {
             photoSpreadKey,
             idempotencyKey,
             firstPhotoDiscount,
-          });
+            });
+          } catch (error) {
+            console.error("Photo reading stream save failed:", error);
+            saveFailed = true;
+            refunded = await refundCurrentCharge();
+          }
         }
 
         return {
-          analysis: reply,
+          analysis: saveFailed ? "" : reply,
+          reply: saveFailed ? "" : reply,
+          llmFailed: llmFailed || saveFailed,
           detectedCards,
           deckType: confirmedSpread!.deckType,
           spreadType: confirmedSpread!.spreadType,
@@ -534,7 +548,7 @@ export async function POST(request: NextRequest) {
           tarotCards,
           characterId,
           isPaid: isPaid || spentRunes > 0,
-          saved: Boolean(profileUserId) && !llmFailed,
+          saved: Boolean(profileUserId) && !llmFailed && !saveFailed,
           historyId,
           sessionId: resolvedSessionId,
           runeBalance,
