@@ -4450,3 +4450,148 @@ html.app-shell-has-tabs {
     --guest-continue-nav-offset: 0px;
   }
 }
+
+/* On the guest homepage, keep the full directory available without making it
+   the longest section of the mobile conversion path. */
+.editorial-footer__mobile-directory {
+  display: none;
+}
+@media (max-width: 767px) {
+  body:has(.editorial-landing--guest-conversion) .editorial-footer__columns {
+    display: none;
+  }
+  body:has(.editorial-landing--guest-conversion) .editorial-footer__mobile-directory {
+    display: block;
+    border-top: 1px solid rgba(255, 255, 255, .12);
+    padding-top: .75rem;
+  }
+  .editorial-footer__mobile-directory summary {
+    min-height: 44px;
+    display: flex;
+    align-items: center;
+    cursor: pointer;
+    color: #e8c77e;
+  }
+  .editorial-footer__mobile-directory summary:focus-visible {
+    outline: 2px solid #f3dc8e;
+    outline-offset: 3px;
+  }
+  .editorial-footer__mobile-directory-links {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: .75rem 1rem;
+    padding: .75rem 0;
+  }
+  .editorial-footer__mobile-directory-links a {
+    color: #cfc6b6;
+    font-size: .875rem;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+}
+
+@media (max-width: 430px) {
+  .editorial-landing--guest-conversion .editorial-preview {
+    padding-block: 1.5rem;
+  }
+  .editorial-landing--guest-conversion .editorial-preview__grid {
+    gap: .9rem;
+  }
+  .editorial-landing--guest-conversion .editorial-preview__example {
+    padding: .9rem;
+  }
+  .editorial-landing--guest-conversion .editorial-preview__question {
+    margin: .4rem 0;
+  }
+  .editorial-landing--guest-conversion .editorial-preview__example blockquote {
+    margin-bottom: .5rem;
+    line-height: 1.5;
+  }
+  .editorial-landing--guest-conversion .editorial-daily-ritual {
+    margin-block: .75rem;
+  }
+  .editorial-landing--guest-conversion .editorial-daily-ritual__shell {
+    padding: 1.2rem 1rem;
+  }
+  .editorial-landing--guest-conversion .editorial-daily-ritual__benefits {
+    gap: .4rem;
+    margin-top: .75rem;
+  }
+  .editorial-landing--guest-conversion .editorial-daily-ritual__benefit {
+    display: grid;
+    grid-template-columns: .45rem minmax(0, 1fr);
+    align-items: baseline;
+    gap: .15rem .5rem;
+    padding: .45rem .65rem;
+    text-align: left;
+  }
+  .editorial-landing--guest-conversion .editorial-daily-ritual__benefit-text {
+    grid-column: 2;
+  }
+  .editorial-landing--guest-conversion .editorial-daily-ritual__actions {
+    margin-top: .9rem;
+  }
+  .editorial-landing--guest-conversion .editorial-product-entries {
+    padding-block: 1.5rem;
+  }
+  .editorial-landing--guest-conversion .editorial-product-entry {
+    min-height: 7.25rem;
+    padding: .6rem;
+  }
+  .editorial-landing--guest-conversion .editorial-product-entry__text {
+    display: -webkit-box;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    overflow: hidden;
+  }
+  .editorial-landing--guest-conversion .editorial-product-entries__heading {
+    margin-bottom: .8rem;
+  }
+  .editorial-landing--guest-conversion .editorial-starter-gift__card {
+    padding: 1.15rem;
+  }
+  .editorial-landing--guest-conversion .editorial-starter-gift,
+  .editorial-landing--guest-conversion .editorial-section:has(.editorial-steps__grid) {
+    padding-block: 1.25rem;
+  }
+  .editorial-landing--guest-conversion .editorial-starter-gift__points {
+    gap: .35rem;
+    margin-top: .75rem;
+  }
+  .editorial-landing--guest-conversion .master-showcase-card--guest-landing {
+    min-height: 12rem;
+  }
+  .editorial-landing--guest-conversion .aura-landing-masters .master-showcase-grid > :nth-child(3) {
+    display: none;
+  }
+  .editorial-landing--guest-conversion .master-showcase-all-link {
+    margin-top: .6rem;
+  }
+  .editorial-landing--guest-conversion .editorial-steps__grid {
+    grid-template-columns: minmax(0, 1fr);
+    gap: .4rem;
+    margin-top: .75rem;
+  }
+  .editorial-landing--guest-conversion .editorial-step {
+    display: grid;
+    grid-template-columns: 2rem minmax(0, 1fr);
+    gap: .1rem .75rem;
+    padding: .4rem 0;
+    text-align: left;
+  }
+  .editorial-landing--guest-conversion .editorial-step__icon {
+    width: 2rem;
+    height: 2rem;
+    margin: 0;
+    grid-row: span 2;
+  }
+  .editorial-landing--guest-conversion .editorial-step__text {
+    margin: 0;
+  }
+  .editorial-landing--guest-conversion .editorial-more {
+    margin-block: .5rem;
+  }
+  .editorial-landing--guest-conversion .landing-closing-band {
+    padding-block: 1.25rem .75rem;
+  }
+}

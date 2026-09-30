@@ -128,7 +128,7 @@ export default function EditorialDailyCardsSection({
           {subtitle}
         </p>
 
-        {!isLoggedIn || dailyState === "available" ? (
+        {isLoggedIn && dailyState === "available" ? (
           <ul
             className="editorial-daily-ritual__benefits salon-reveal__item"
             style={{ ["--salon-i" as string]: 2 }}
