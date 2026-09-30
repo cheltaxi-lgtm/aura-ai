@@ -6,10 +6,6 @@ export default function EditorialPreviewSection() {
         <div className="editorial-preview__intro">
           <p className="editorial-preview__eyebrow">Что вы получите</p>
           <h2 id="editorial-preview-title">От вопроса — к понятному следующему шагу</h2>
-          <ul className="editorial-preview__stages">
-            <li><strong>Без аккаунта</strong><span>Три карты и краткий ответ на ваш вопрос.</span></li>
-            <li><strong>После регистрации</strong><span>Первый полный разбор этих же карт бесплатно, с сохранением в кабинете.</span></li>
-          </ul>
         </div>
         <figure className="editorial-preview__example">
           <figcaption>Пример ответа · демонстрация формата</figcaption>

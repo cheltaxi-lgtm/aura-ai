@@ -426,7 +426,7 @@ export default function AuraSellingLanding({
             showExpertCta={false}
             showDisclaimer={false}
             title="Выберите наставника"
-            subtitle="Три подхода к вашему вопросу. Выберите, с кем продолжить разговор."
+            subtitle="Выберите подход к вашему вопросу и продолжите разговор."
             className="aura-landing-masters"
           />
         ) : null}

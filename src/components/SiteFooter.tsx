@@ -142,6 +142,28 @@ export default function SiteFooter({
           </div>
         </div>
 
+        <details className="editorial-footer__mobile-directory">
+          <summary>Все разделы и документы</summary>
+          <nav aria-label="Разделы и документы" className="editorial-footer__mobile-directory-links">
+            <Link href="/tariffs">Тарифы и магазин</Link>
+            {EDITORIAL_NAV.map((item) => {
+              const href = "hash" in item
+                ? `/#${item.hash}`
+                : !isLoggedIn && item.guestHref ? item.guestHref : item.href;
+              return <Link key={item.label} href={href}>{item.label}</Link>;
+            })}
+            <Link href="/partners">Партнёрам</Link>
+            <Link href="/auth/expert/register">Стать мастером</Link>
+            {proModuleEnabled ? <Link href="/zovus-pro">Zovus Pro</Link> : null}
+            <LegalDocLink href="/offer">Оферта</LegalDocLink>
+            {proModuleEnabled ? <LegalDocLink href="/offer-pro">Оферта Pro</LegalDocLink> : null}
+            <LegalDocLink href="/privacy">Конфиденциальность</LegalDocLink>
+            <LegalDocLink href="/terms">Соглашение</LegalDocLink>
+            <LegalDocLink href="/disclaimer">О сервисе</LegalDocLink>
+            <LegalDocLink href="/app">Приложение</LegalDocLink>
+          </nav>
+        </details>
+
         <div className="editorial-footer__columns">
           <nav className="editorial-footer__col" aria-label="Разделы">
             <p className="editorial-footer__col-title">Разделы</p>
