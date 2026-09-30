@@ -87,7 +87,6 @@ export const CHECKS = {
       "tests/invariants/multiproduct-seo-discoverability.test.ts",
       "tests/invariants/spread-intent-match-question.test.ts",
       "tests/invariants/ads-seo-overrides.test.ts",
-      "tests/invariants/landing-social-proof.test.ts",
       "tests/invariants/landing-reviews.test.ts",
       "tests/invariants/guest-landing-conversion.test.ts",
       "tests/invariants/aura-seo-landings.test.ts",

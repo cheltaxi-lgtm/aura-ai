@@ -568,34 +568,6 @@ html[data-motion-lite="1"] .salon-bg__lines {
   color: var(--color-text-muted);
 }
 
-.editorial-hero__proof {
-  margin-top: 1.25rem;
-  width: 100%;
-  max-width: 26rem;
-  margin-inline: auto;
-}
-
-.editorial-hero .landing-social-proof--hero {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0.35rem;
-  padding: 0.7rem 0.5rem;
-  border-color: rgba(232, 199, 126, 0.18);
-  background: linear-gradient(
-    165deg,
-    rgba(12, 8, 22, 0.72),
-    rgba(6, 4, 14, 0.55)
-  );
-  backdrop-filter: blur(8px);
-}
-
-@media (max-width: 479px) {
-  .editorial-hero .landing-social-proof--hero {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 0.2rem;
-    padding: 0.6rem 0.35rem;
-  }
-}
-
 /* Auth photo band: hug greeting. Do not reuse guest 74vh void.
    HomePage wrapper already has header padding; 1× header here plus the
    inherited negative margin pulls the photo under the bar without tucking
@@ -3640,7 +3612,6 @@ html[data-guest-spread-active="1"] .landing-sticky-cta {
 .editorial-hero.salon-reveal .editorial-hero__micro,
 .editorial-hero.salon-reveal .editorial-hero__pricing,
 .editorial-hero.salon-reveal .editorial-hero__gift,
-.editorial-hero.salon-reveal .editorial-hero__proof,
 .editorial-hero.salon-reveal .editorial-hero__legal-note { --salon-delay: 420ms; }
 
 .editorial-hero.salon-reveal .editorial-hero__brand,
@@ -3652,7 +3623,6 @@ html[data-guest-spread-active="1"] .landing-sticky-cta {
 .editorial-hero.salon-reveal .editorial-hero__micro,
 .editorial-hero.salon-reveal .editorial-hero__pricing,
 .editorial-hero.salon-reveal .editorial-hero__gift,
-.editorial-hero.salon-reveal .editorial-hero__proof,
 .editorial-hero.salon-reveal .editorial-hero__legal-note {
   opacity: 0;
   transform: translate3d(0, 16px, 0);
@@ -3671,7 +3641,6 @@ html[data-guest-spread-active="1"] .landing-sticky-cta {
 .editorial-hero.salon-reveal--in .editorial-hero__micro,
 .editorial-hero.salon-reveal--in .editorial-hero__pricing,
 .editorial-hero.salon-reveal--in .editorial-hero__gift,
-.editorial-hero.salon-reveal--in .editorial-hero__proof,
 .editorial-hero.salon-reveal--in .editorial-hero__legal-note {
   opacity: 1;
   transform: translate3d(0, 0, 0);
@@ -3761,7 +3730,6 @@ html[data-motion-lite="1"] .editorial-hero.salon-reveal--in .editorial-hero__img
   .editorial-hero.salon-reveal .editorial-hero__micro,
   .editorial-hero.salon-reveal .editorial-hero__pricing,
   .editorial-hero.salon-reveal .editorial-hero__gift,
-  .editorial-hero.salon-reveal .editorial-hero__proof,
   .editorial-hero.salon-reveal .editorial-hero__legal-note,
   .landing-demo.salon-reveal .landing-demo__head,
   .landing-demo.salon-reveal .landing-demo__question,

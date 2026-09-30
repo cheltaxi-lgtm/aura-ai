@@ -52,9 +52,6 @@ import {
   buildRegisterHref,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import LandingSocialProofStats, {
-  useLandingSocialProofVisible,
-} from "@/components/seo/LandingSocialProofStats";
 import EditorialHeroSection from "@/components/editorial/EditorialHeroSection";
 import EditorialPreviewSection from "@/components/editorial/EditorialPreviewSection";
 import EditorialProductEntries from "@/components/editorial/EditorialProductEntries";
@@ -299,9 +296,6 @@ export default function AuraSellingLanding({
     detail: GuestSpreadStartDetail;
   } | null>(null);
   const offer = buildLandingOfferCopy(config, formatRunes, formatRunesWithRub, heroVariant);
-  useLandingSocialProofVisible(
-    !isLoggedIn && (isGuestEditorial || showSellingSections || showHero)
-  );
 
   useEffect(() => {
     const variant = resolveLandingHeroVariant();
@@ -503,7 +497,6 @@ export default function AuraSellingLanding({
               </div>
               <p className="aura-landing-hero__trust aura-landing-hero__trust--prominent">{offer.heroMicrocopy}</p>
               {ready ? <p className="aura-landing-hero__pricing">{offer.pricingLine}</p> : null}
-              {!isLoggedIn ? <LandingSocialProofStats variant="hero" className="mt-5" /> : null}
             </div>
 
             <div className="aura-landing-hero__visual" aria-hidden>
@@ -786,11 +779,10 @@ export default function AuraSellingLanding({
             <div className="aura-landing-section__head">
               <h2 className="font-mystic-display aura-landing-section__title">Доверие и прозрачность</h2>
               <p className="aura-landing-section__subtitle">
-                Честно о формате, приватности и оплате — без срочности и фальшивых счётчиков.
+                Честно о формате, приватности и оплате.
               </p>
             </div>
             <div className="aura-landing-trust">
-              <LandingSocialProofStats variant="trust" className="aura-landing-trust__stats" />
               <div className="aura-landing-trust__quotes">
                 {TRUST_POINTS.map((item) => (
                   <article key={item.title} className="aura-landing-review">

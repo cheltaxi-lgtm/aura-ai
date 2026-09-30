@@ -17,11 +17,6 @@
       "metrikaGoalId": 581800124
     },
     {
-      "id": "social_proof_view",
-      "group": "landing",
-      "metrikaGoalId": 581800476
-    },
-    {
       "id": "hero_question_started",
       "group": "landing",
       "metrikaGoalId": 581800493

@@ -86,10 +86,6 @@ export function trackLandingView(params?: Record<string, string | number>): void
   trackProductFunnel("product_view", { product: "tarot", source: "homepage" });
 }
 
-export function trackSocialProofView(): void {
-  trackLandingEvent("social_proof_view");
-}
-
 export function trackHeroQuestionStarted(): void {
   trackLandingEvent("hero_question_started");
 }

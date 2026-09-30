@@ -34,7 +34,6 @@ const DISPLAY_NAMES = {
   auth_provider_click: "Регистрация — выбор провайдера",
   auth_email_view: "Регистрация — открытие email-формы",
   landing_view: "Лендинг — просмотр",
-  social_proof_view: "Лендинг — social proof",
   hero_question_started: "Лендинг — вопрос (начало)",
   hero_question_submitted: "Лендинг — вопрос (отправка)",
   guest_spread_started: "Гостевой расклад — начало",

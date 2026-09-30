@@ -12,7 +12,6 @@ import { getSpreadIntentBySlug } from "@/lib/spread-intents/registry";
 import { trackQuickQuestionClick, trackRegistrationCtaClick } from "@/lib/seo/metrika";
 import { buildRegisterHref } from "@/lib/post-auth-return";
 import StarterRunesValue from "@/components/auth/StarterRunesValue";
-import LandingSocialProofStats from "@/components/seo/LandingSocialProofStats";
 
 type EditorialHeroSectionProps = {
   isLoggedIn: boolean;
@@ -21,7 +20,7 @@ type EditorialHeroSectionProps = {
   onSecondaryCta: () => void;
   onQuestionSubmit: (question: string) => void;
   onPainChip?: (question: string, intentSlug: string) => void;
-  /** Guest conversion funnel: pain chips + live social-proof counters. */
+  /** Guest conversion funnel: pain chips and a direct path to the first spread. */
   conversionHero?: boolean;
   /** Current guest offer; historical variants remain available to existing callers. */
   expectationSubtitle?: string;
@@ -119,11 +118,6 @@ export default function EditorialHeroSection({
             >
               Или сначала создать аккаунт
             </Link>
-          </div>
-        ) : null}
-        {guestConversion ? (
-          <div className="editorial-hero__proof">
-            <LandingSocialProofStats variant="hero" />
           </div>
         ) : null}
         {pricingLine ? <p className="editorial-hero__pricing">{pricingLine}</p> : null}

@@ -157,11 +157,10 @@ for(const width of [390,1280])test(`minimal custom topup and daily CTA for enabl
   expect(f.calls.some(call=>call==="POST /api/reading")).toBe(false);
 });
 
-for(const width of [390,1280])test(`public catalog preserves package selection and shows actual two counters at ${width}px`,async({page},info)=>{
+for(const width of [390,1280])test(`public catalog preserves package selection at ${width}px`,async({page},info)=>{
   await page.setViewportSize({width,height:900});
   await page.emulateMedia({reducedMotion:"reduce"});
   await page.route("**/api/auth/me",route=>route.fulfill({json:{authenticated:false}}));
-  await page.route("**/api/stats/public",route=>route.fulfill({json:{users:68,sessions:321}}));
   await page.goto("/tariffs#shop");
   const cookieChoice=page.getByRole("button",{name:"Только необходимые",exact:true});
   if(await cookieChoice.isVisible())await cookieChoice.click();
@@ -175,14 +174,12 @@ for(const width of [390,1280])test(`public catalog preserves package selection a
   await page.locator("#shop").screenshot({path:info.outputPath(`public-tariffs-${width}.png`)});
   await selection.click();await expect(page).toHaveURL(/auth\/user\/register/,{timeout:20000});
   expect(new URL(page.url()).searchParams.get("returnTo")).toBe(destination);
+});
+
+for(const width of [390,1280])test(`guest homepage shows the first spread without public counters at ${width}px`,async({page})=>{
+  await page.setViewportSize({width,height:900});
+  await page.route("**/api/auth/me",route=>route.fulfill({json:{authenticated:false}}));
   await page.goto("/");
-  const counters=page.locator(".landing-social-proof--hero");
-  await expect(counters.locator(".landing-social-proof__stat")).toHaveCount(2);
-  await expect(counters).toContainText("68");await expect(counters).toContainText("321");
-  await expect(counters).not.toContainText("онлайн");
-  await counters.scrollIntoViewIfNeeded();
-  await expect(counters).toBeVisible();
-  await expect.poll(()=>counters.evaluate(el=>getComputedStyle(el).gridTemplateColumns.split(" ").length)).toBe(2);
-  await expect.poll(()=>counters.evaluate(el=>getComputedStyle(el.closest(".editorial-hero__proof")!).opacity)).toBe("1");
-  await counters.screenshot({path:info.outputPath(`public-counters-${width}.png`)});
+  await expect(page.locator(".landing-social-proof")).toHaveCount(0);
+  await expect(page.getByRole("textbox",{name:"Ваш вопрос для расклада Таро"})).toBeVisible();
 });

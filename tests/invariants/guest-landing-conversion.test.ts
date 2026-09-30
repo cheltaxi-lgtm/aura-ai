@@ -38,15 +38,13 @@ describe("guest landing conversion cleanup", () => {
     expect(hero).toContain("expectationSubtitle");
   });
 
-  it("guest conversion hero shows live social-proof counters", () => {
+  it("guest conversion hero keeps the first spread prominent without public counters", () => {
     const hero = readSrc("src/components/editorial/EditorialHeroSection.tsx");
-    expect(hero).toContain("LandingSocialProofStats");
-    expect(hero).toContain('variant="hero"');
-    expect(hero).toContain("editorial-hero__proof");
+    expect(hero).not.toContain("LandingSocialProofStats");
+    expect(hero).toContain("HeroQuestionField");
     const landing = readSrc("src/components/AuraSellingLanding.tsx");
-    expect(landing).toMatch(
-      /useLandingSocialProofVisible\(\s*!isLoggedIn && \(isGuestEditorial/
-    );
+    expect(landing).not.toContain("LandingSocialProofStats");
+    expect(landing).not.toContain("useLandingSocialProofVisible");
   });
 
   it("guest editorial hero receives A/B/C expectation copy", () => {
