@@ -4,6 +4,7 @@
 import { parseBirthDate, sumDigits } from "./constants";
 import { arcanaForNumber } from "./matrix-arcana-map";
 import { matrixCalendarDate } from "./matrix-calendar";
+import { resolveAsOf } from "./matrix-calendar-options";
 import {
   MATRIX_V3_CALCULATION_VERSION,
   MATRIX_V3_METHODOLOGY_ID,
@@ -27,8 +28,9 @@ export function computeDestinyMatrixV3(
 ): DestinyMatrixResult | null {
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
+  if (!resolveAsOf(options)) return null;
   const asOf =
-    legacyResolveAsOf(options) ?? legacyResolveAsOf({ asOfDate: matrixCalendarDate() });
+    legacyResolveAsOf(options) ?? resolveAsOf(options ?? { asOfDate: matrixCalendarDate() });
   if (!asOf) return null;
   const reduce = reduceToArcanaSubtract22;
   const point = (n: number) => arcanaForNumber(n, MATRIX_V3_CALCULATION_VERSION);

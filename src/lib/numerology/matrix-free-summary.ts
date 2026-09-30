@@ -1,3 +1,4 @@
+import { formatAgePeriodRange } from "./matrix-labels";
 import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import {
   destinyMatrix,
@@ -105,7 +106,7 @@ export function formatMatrixDenseTeaser(
     `✨ ${m.comfort.number} ${comfort.title} — ${clip(comfort.short, 52)}`,
     `💎 ${m.talents.number} ${talents.title} — ${clip(talents.short, 52)}`,
     `♻️ Хвост ${tail} · корень ${root.title}`,
-    `🪴 ${m.chronologicalAge} лет · период ${m.ageCurrent.age}–${m.ageModel?.periodEnd ?? m.ageCurrent.age + 5} · ${m.ageCurrent.number} ${age.title}`,
+    `🪴 ${m.chronologicalAge} лет · период ${formatAgePeriodRange(m.ageCurrent.age, m.ageModel?.periodEnd ?? m.ageNext?.age)} · ${m.ageCurrent.number} ${age.title}`,
     `💰 ${m.money.number} ${money.title} — ${clip(money.money || money.short, 52)}`,
     `💞 ${m.relationships.number} ${love.title} — ${clip(love.love || love.short, 52)}`,
     `📅 Год ${m.yearArcana.number} ${year.title} · месяц ${m.monthArcana.number} ${month.title}`,

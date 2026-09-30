@@ -25,6 +25,7 @@ import {
   canonicalizeArcanaNamesInText,
   isCompleteMatrixReading,
   matrixMissingSections,
+  matrixProseMatchesRoles,
 } from "./matrix-completeness";
 import {
   buildMatrixPlainFinale,
@@ -34,6 +35,7 @@ import {
 import { appendNumerologFinale } from "./numerolog-finale-client";
 import {
   listMatrixZones,
+  matrixZoneDefsFor,
   type MatrixZoneId,
   type MatrixZoneInstance,
 } from "./matrix-zones";
@@ -97,13 +99,44 @@ export type MatrixSectionedMeta = MatrixReadingMeta;
 /** Hard quality floor for paid full-matrix runs (mode=all). Below → fail + refund. */
 export const MATRIX_AI_ZONES_CANARY_MIN = 15;
 
+/** A quality floor must be attainable by the selected report's actual zone set. */
+export function matrixAiZonesCanaryMin(toolId?: string, total?: number): number {
+  const count = total ?? matrixZoneDefsFor(toolId).length;
+  return Math.min(count, toolId === "child_matrix" ? Math.ceil(count * 0.7) : MATRIX_AI_ZONES_CANARY_MIN);
+}
+
+/** Catch copied explanations even when the model changes only the heading. */
+export function matrixZoneTextsRepeat(a: string, b: string): boolean {
+  const sentences = (text: string) => text.split("\n").slice(1).join(" ")
+    .toLowerCase().replace(/ё/g, "е").split(/[.!?…]+/u)
+    .map((s) => s.replace(/[^\p{L}\p{N}]+/gu, " ").trim()).filter((s) => s.length > 35);
+  const left = sentences(a);
+  const right = sentences(b);
+  if (left.length < 3 || right.length < 3) return false;
+  const shared = left.filter((s) => right.includes(s)).length;
+  return shared >= 3 && shared / Math.min(left.length, right.length) >= 0.8;
+}
+
+/** Authoritative facts always come from the resolved (possibly frozen) result. */
+export function buildMatrixAuthoritativeFacts(matrix: DestinyMatrixResult, toolId?: string): string {
+  const zones = listMatrixZones(matrix, toolId);
+  const lines = zones.filter((z) => z.number != null).map((z) => `${z.label}: ${z.number} — ${z.arcanaName}`);
+  return [
+    `ЧИСЛА ДВИЖКА: версия ${matrix.calculationVersion}; дата расчёта ${matrix.asOf.date}; возраст ${matrix.chronologicalAge}. Только эти числа определяют зоны.`,
+    ...lines,
+    ...matrix.channels.map((ch) => `Канал ${ch.id}: ${ch.points.map((p) => `${p.number} — ${p.arcanaName}`).join(" → ")}`),
+    `Период: ${matrix.focusLabel}; текущий аркан ${matrix.ageCurrent.number}; следующий ${matrix.ageNext?.number ?? "нет"}.`,
+    "Одинаковый аркан в разных зонах — разные функции: связывай ресурс характера с конкретным риском и действием этой зоны, не повторяй словарное описание. Деньги: договорённости и обмен; отношения: близость и границы; таланты: освоение навыка; комфорт: восстановление. Практики должны различаться по действию и ситуации. Сравнения с другими зонами называй явно; не присваивай их числа текущей зоне.",
+  ].join("\n");
+}
+
 export class MatrixQualityCanaryError extends Error {
   readonly code = "matrix_ai_canary" as const;
   readonly meta: MatrixSectionedMeta;
 
-  constructor(meta: MatrixSectionedMeta) {
+  constructor(meta: MatrixSectionedMeta, toolId?: string) {
     super(
-      `matrix_ai_canary: aiZones=${meta.aiZones} < ${MATRIX_AI_ZONES_CANARY_MIN} (engine=${meta.engineZones})`
+      `matrix_ai_canary: aiZones=${meta.aiZones} < ${matrixAiZonesCanaryMin(toolId, meta.totalZones)} (engine=${meta.engineZones})`
     );
     this.name = "MatrixQualityCanaryError";
     this.meta = meta;
@@ -186,6 +219,11 @@ export function renderEngineZoneProse(
   const aboutOther = isMatrixAboutOther(audience.subjectKind);
   const subject = subjectHandle(audience.subjectKind, audience.subjectName);
   const title = headingLine(zone);
+
+  if (zone.id === "parent_role") {
+    const entry = getMatrixArcanaEntry(matrix.body.number, matrix.calculationVersion);
+    return `${title}\nЭто потребности ребёнка по его характеру, а не оценка характера родителя. Ресурс ребёнка: ${trimDot(entry?.light ?? "самостоятельность")}. В трудной ситуации ему нужна помощь с ${trimDot(entry?.shadow ?? "перегрузкой")}. Твоя задача — наблюдать его реакцию, договариваться о посильных границах и поддерживать этот ресурс.\nПрактика: ${trimDot(entry?.advice ?? "обсуди с ребёнком, какая помощь ему нужна")}.`;
+  }
 
   if (zone.id === "steps") {
     const year = getMatrixArcanaEntry(matrix.yearArcana.number, matrix.calculationVersion);
@@ -487,7 +525,7 @@ function zoneLlmFidelityOk(
   zone: MatrixZoneInstance,
   matrix: DestinyMatrixResult
 ): boolean {
-  if (!zoneHasForeignArcana(text, zone, matrix)) return true;
+  if (!zoneHasForeignArcana(text, zone, matrix) && matrixProseMatchesRoles(text, matrix)) return true;
   console.warn(`[matrix-sectioned] zone reject arcana-fidelity label=${zone.label}`);
   return false;
 }
@@ -496,7 +534,8 @@ async function generateMatrixZoneLlm(
   zone: MatrixZoneInstance,
   audience: MatrixAudience,
   matrix: DestinyMatrixResult,
-  contextFacts?: string | null
+  contextFacts?: string | null,
+  avoidBlocks?: string
 ): Promise<string | null> {
   const readerName = clampMatrixPromptName(audience.readerName);
   const gender = audience.readerGender;
@@ -519,8 +558,8 @@ async function generateMatrixZoneLlm(
     /ГЛАВНЫЙ ЗАПРОС|Фокус запроса заказчика/i.test(skyRaw);
   const skyHint = skyRaw
     ? skyIsClientFocus
-      ? `ОБЯЗАТЕЛЬНЫЙ ФОКУС ОТЧЁТА (вернись к нему в тексте этой зоны и в практике; арканы не меняй): ${skyRaw.slice(0, 900)}`
-      : `Небо (мягкий слой, не меняй арканы): ${skyRaw.slice(0, 600)}`
+      ? `ФОКУС И КОНТЕКСТ (числа только из блока движка): ${skyRaw.slice(0, 3000)}`
+      : `Дополнительный контекст (числа только из блока движка): ${skyRaw.slice(0, 3000)}`
     : "";
 
   if (zone.id === "steps") {
@@ -541,6 +580,7 @@ async function generateMatrixZoneLlm(
       `Зона комфорта (готовая строка): ${matrix.comfort.number} — ${matrix.comfort.arcanaName}`,
       `Деньги (готовая строка): ${matrix.money.number} — ${matrix.money.arcanaName}`,
       `Узел периода: ${matrix.focusLabel}`,
+      buildMatrixAuthoritativeFacts(matrix),
       skyHint,
       aboutOther
         ? "Напиши практичные шаги на 30 дней для заказчика."
@@ -565,6 +605,7 @@ async function generateMatrixZoneLlm(
       : null;
   const system = [
     "Ты — Эвелина. Пишешь ОДНУ зону полной матрицы судьбы.",
+    "«Материя / год» — точка из года рождения, а не прогноз текущего года. Фон текущего года берётся только из отдельного «Аркана года». Не смешивай их даже без указания числа.",
     genderBlock,
     audienceBlock,
     aboutOther
@@ -579,6 +620,8 @@ async function generateMatrixZoneLlm(
       ? "Далее 4–6 предложений про человека матрицы и строка «Практика: …» для заказчика."
       : "Далее 4–6 предложений и строка «Практика: …».",
     "Не копируй словарь дословно — пиши конкретно: ресурс, риск, что делать.",
+    avoidBlocks ? "Повторная редакция: прежний текст повторял соседние зоны. Используй иную ситуацию и действие. Не копируй предложения и практики из соседних блоков ниже." : "",
+    zone.id === "parent_role" ? "Матрица принадлежит ребёнку. Объясни, какая поддержка нужна ему от родителя; нельзя выводить характер родителя из даты ребёнка." : "",
   ]
     .filter(Boolean)
     .join("\n");
@@ -587,6 +630,7 @@ async function generateMatrixZoneLlm(
     audienceBlock,
     gender ? `Пол заказчика: ${genderLabelRu(gender)}` : "",
     `Зона: ${zone.label}`,
+    buildMatrixAuthoritativeFacts(matrix, audience.subjectKind === "child" ? "child_matrix" : undefined),
     lockedArcana ? `Аркан (готовая строка, копируй как есть): ${lockedArcana}` : "",
     entry
       ? `Словарь: свет=${entry.light}; тень=${entry.shadow}; опора=${entry.resource}; риск=${entry.risk}; совет=${entry.advice}`
@@ -595,6 +639,7 @@ async function generateMatrixZoneLlm(
     zone.age != null ? `Возраст пояса: ${zone.age}` : "",
     zone.focusLabel ? `Фокус: ${zone.focusLabel}` : "",
     skyHint,
+    avoidBlocks ? `УЖЕ НАПИСАННЫЕ СОСЕДНИЕ БЛОКИ, НЕ ПОВТОРЯТЬ:\n${avoidBlocks}` : "",
     "Напиши только эту зону.",
   ]
     .filter(Boolean)
@@ -647,7 +692,7 @@ export function forceFillMissingSections(
       : nameOrAudience;
   let out = (text || "").trim();
   const zones = listMatrixZones(matrix, toolId);
-  const missing = new Set(matrixMissingSections(out, toolId));
+  const missing = new Set(matrixMissingSections(out, toolId, matrix.calculationVersion));
 
   for (const zone of zones) {
     if (!zone.required && !missing.has(zone.label)) continue;
@@ -857,6 +902,30 @@ export async function generateFullMatrixSectionedReading(input: {
     );
   }
 
+  // Review the assembled report, since individual parallel calls cannot see neighbours.
+  // Retry only duplicates once with their actual surrounding prose; still-duplicated
+  // zones fall back and do not count toward the paid quality floor.
+  if (mode !== "off") {
+    for (let i = 0; i < zoneBlocks.length; i++) {
+      const item = zoneBlocks[i]!;
+      if (item.source !== "ai") continue;
+      const neighbours = zoneBlocks.slice(0, i).filter((b) => b.source === "ai");
+      const repeated = neighbours.filter((b) => matrixZoneTextsRepeat(item.block, b.block));
+      if (!repeated.length) continue;
+      let revised: string | null = null;
+      try {
+        revised = await generateMatrixZoneLlm(item.zone, audience, matrix, contextFacts, repeated.map((b) => b.block).join("\n\n").slice(0, 5000));
+      } catch { /* dictionary fallback is counted below */ }
+      if (revised && !neighbours.some((b) => matrixZoneTextsRepeat(revised!, b.block))) {
+        zoneBlocks[i] = { ...item, block: revised };
+      } else {
+        zoneBlocks[i] = { ...item, block: renderEngineZoneProse(item.zone, audience, matrix), source: "engine" };
+        aiZones -= 1;
+        engineZones += 1;
+      }
+    }
+  }
+
   const finale = buildMatrixPlainFinale(audience.readerName, matrix, {
     aboutOther,
     subjectName: audience.subjectName,
@@ -871,7 +940,7 @@ export async function generateFullMatrixSectionedReading(input: {
       finale,
     ].join("\n\n");
     const missing = new Set(
-      matrixMissingSections(draftPlain, toolId).filter((m) => m !== "Простыми словами")
+      matrixMissingSections(draftPlain, toolId, matrix.calculationVersion).filter((m) => m !== "Простыми словами")
     );
     if (missing.size) {
       filledBlocks = filledBlocks.map((item) => {
@@ -913,10 +982,10 @@ export async function generateFullMatrixSectionedReading(input: {
 
   let reading = renderMatrixReadingMarkdown(document);
 
-  if (!isCompleteMatrixReading(reading, toolId)) {
+  if (!isCompleteMatrixReading(reading, toolId, matrix.calculationVersion)) {
     console.warn(
       "[matrix-sectioned] structured markdown incomplete; engine-filling missing:",
-      matrixMissingSections(reading, toolId).join(", ")
+      matrixMissingSections(reading, toolId, matrix.calculationVersion).join(", ")
     );
     const byId = new Map(document.zones.map((z) => [z.id, z]));
     for (const z of zones) {
@@ -942,7 +1011,7 @@ export async function generateFullMatrixSectionedReading(input: {
     reading = renderMatrixReadingMarkdown(document);
   }
 
-  if (!isCompleteMatrixReading(reading, toolId)) {
+  if (!isCompleteMatrixReading(reading, toolId, matrix.calculationVersion)) {
     // Paid full path must never silently ship a pure dictionary report.
     if (mode === "all") {
       const metaFail: MatrixSectionedMeta = {
@@ -952,7 +1021,7 @@ export async function generateFullMatrixSectionedReading(input: {
       };
       console.error(
         "[matrix-sectioned] incomplete after fill on paid path; refusing engine dump",
-        matrixMissingSections(reading, toolId).join(", "),
+        matrixMissingSections(reading, toolId, matrix.calculationVersion).join(", "),
         metaFail
       );
       throw new MatrixQualityCanaryError(metaFail);
@@ -995,11 +1064,12 @@ export async function generateFullMatrixSectionedReading(input: {
   console.info(
     `[matrix-sectioned] zones ai=${meta.aiZones} engine=${meta.engineZones} total=${meta.totalZones} len=${reading.length} structured=1`
   );
-  if (mode === "all" && meta.aiZones < MATRIX_AI_ZONES_CANARY_MIN) {
+  const canaryMin = matrixAiZonesCanaryMin(toolId, meta.totalZones);
+  if (mode === "all" && meta.aiZones < canaryMin) {
     console.error(
-      `[matrix-sectioned] quality canary FAIL: aiZones=${meta.aiZones} < ${MATRIX_AI_ZONES_CANARY_MIN} (engine=${meta.engineZones})`
+      `[matrix-sectioned] quality canary FAIL: aiZones=${meta.aiZones} < ${canaryMin} (engine=${meta.engineZones})`
     );
-    throw new MatrixQualityCanaryError(meta);
+    throw new MatrixQualityCanaryError(meta, toolId);
   }
 
   return { reading, meta, matrix, document };

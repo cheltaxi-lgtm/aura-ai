@@ -1274,7 +1274,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         // Child matrix must use the child's date only — never the parent profile.
         const birthDate =
           subjectBirth ||
-          (toolId === "child_matrix"
+          (toolId === "child_matrix" || sessionSpreadMetaRef.current?.matrixSubjectId || sessionSpreadMetaRef.current?.numerologToolParams?.matrixSubjectId
             ? null
             : getActiveProfile()?.birthDate || profile?.birthDate || null);
         return {
@@ -2634,7 +2634,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           null;
         setMatrixSessionBirthDate(restoredBirth);
         setMatrixSessionSubjectName(restoredSubject);
-        setMatrixSessionAsOf(restored?.sessionCreatedAt ?? null);
+        setMatrixSessionAsOf(restored?.matrixAsOf ?? restored?.sessionCreatedAt ?? null);
         setMatrixSessionCalculationVersion(
           restored?.matrixCalculationVersion ??
             restored?.numerologToolParams?.calculationVersion ??
@@ -3469,20 +3469,13 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         /^\d{4}-\d{2}-\d{2}$/.test(numerologToolParams.matrixAsOf.trim())
           ? numerologToolParams.matrixAsOf.trim()
           : null;
-      if (matrixBirthFromParams) {
-        setMatrixSessionBirthDate(matrixBirthFromParams);
-        // Guest→auth freeze wins; otherwise drop as-of inherited from a reopen.
-        setMatrixSessionAsOf(matrixAsOfFromParams);
-        setMatrixSessionCalculationVersion(
-          numerologToolParams?.calculationVersion?.trim() || MATRIX_CALCULATION_VERSION
-        );
-        setMatrixSessionStructuredData(null);
-      } else if (matrixAsOfFromParams) {
-        setMatrixSessionAsOf(matrixAsOfFromParams);
-      }
-      if (numerologToolParams?.subjectName?.trim()) {
-        setMatrixSessionSubjectName(numerologToolParams.subjectName.trim());
-      }
+      // Replace every identity field together, including absent fields. Keeping a
+      // previous subject's snapshot while awaiting ownership metadata shows A's grid for B.
+      setMatrixSessionBirthDate(matrixBirthFromParams);
+      setMatrixSessionAsOf(matrixAsOfFromParams);
+      setMatrixSessionCalculationVersion(numerologToolParams?.calculationVersion?.trim() || null);
+      setMatrixSessionStructuredData(null);
+      setMatrixSessionSubjectName(numerologToolParams?.subjectName?.trim() || null);
       sessionSpreadMetaRef.current = {
         spreadType,
         spreadId: isNumerologSessionStart
@@ -5170,6 +5163,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     sessionSpreadMetaRef,
     matrixSessionBirthDate,
     setMatrixSessionBirthDate,
+    setMatrixSessionAsOf,
+    setMatrixSessionCalculationVersion,
+    setMatrixSessionStructuredData,
     matrixSessionSubjectName,
     setMatrixSessionSubjectName,
     effectiveTripletCooldown,

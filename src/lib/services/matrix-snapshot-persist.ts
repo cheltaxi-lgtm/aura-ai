@@ -11,7 +11,7 @@ import {
   type MatrixSubjectKind,
 } from "@/lib/services/matrix-subject-service";
 import { PRICING } from "@/lib/config/pricing";
-import { hydrateDestinyMatrixFromSnapshot } from "@/lib/numerology/matrix-snapshot";
+import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
 
 export type PersistedMatrixSnapshot = {
   subjectId: string;
@@ -109,28 +109,27 @@ export async function persistOwnedMatrixSnapshot(input: {
     input.subjectKind && isMatrixSubjectKind(input.subjectKind) ? input.subjectKind : "self";
   const displayName = input.displayName?.trim().slice(0, 80) || null;
 
-  let snapshot =
-    input.snapshot &&
-    typeof input.snapshot === "object" &&
-    hydrateDestinyMatrixFromSnapshot(input.snapshot)
-      ? input.snapshot
-      : null;
+  const suppliedMatrix = input.snapshot ? resolveMatrixForEngine({ birthDate, snapshot: input.snapshot }) : null;
+  if (input.snapshot && !suppliedMatrix) throw persistError("invalid_matrix_snapshot");
+  let snapshot = suppliedMatrix ? { ...input.snapshot, ...matrixToStructuredData(suppliedMatrix, birthDate) } : null;
   let asOfDate =
     typeof input.asOfDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(input.asOfDate)
       ? input.asOfDate
       : asOfFromSnapshot(snapshot);
-  let calculationVersion = input.calculationVersion?.trim() || null;
+  if (suppliedMatrix) asOfDate = suppliedMatrix.asOf.date;
+  let calculationVersion = suppliedMatrix?.calculationVersion ?? input.calculationVersion?.trim() ?? null;
 
   if (!snapshot) {
     asOfDate = asOfDate || matrixCalendarDate();
     const matrix = destinyMatrix(birthDate, { asOfDate });
     if (!matrix) throw persistError("invalid_birth_date");
-    snapshot = matrixToStructuredData(matrix);
+    snapshot = matrixToStructuredData(matrix, birthDate);
     calculationVersion = matrix.calculationVersion;
   } else if (!asOfDate) {
     asOfDate = matrixCalendarDate();
   }
   if (!snapshot || !asOfDate) throw persistError("invalid_birth_date");
+  snapshot = { ...snapshot, birthDate };
   calculationVersion = calculationVersion || MATRIX_CALCULATION_VERSION;
 
   return withTransaction(async (client) => {

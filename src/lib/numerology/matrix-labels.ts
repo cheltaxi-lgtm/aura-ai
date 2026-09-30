@@ -45,8 +45,12 @@ export const MATRIX_LABELS = {
   pairScoreDisclaimer: "Авторская аналитика Zovus, не научная метрика.",
 } as const;
 
+export function formatAgePeriodRange(periodStart: number, periodEnd = periodStart + 5): string {
+  return periodStart >= 80 ? `${periodStart}+` : `${periodStart}–${periodEnd}`;
+}
+
 export function formatAgePeriodLabel(periodStart: number, periodEnd = periodStart + 5): string {
-  return `Период ${periodStart}–${periodEnd} лет`;
+  return `Период ${formatAgePeriodRange(periodStart, periodEnd)} лет`;
 }
 
 export function formatAgeAndPeriodFocus(input: {
@@ -54,7 +58,7 @@ export function formatAgeAndPeriodFocus(input: {
   periodStart: number;
   periodEnd: number;
 }): string {
-  return `${MATRIX_LABELS.ageChronological}: ${input.chronological} лет. Период Матрицы: ${input.periodStart}–${input.periodEnd} лет`;
+  return `${MATRIX_LABELS.ageChronological}: ${input.chronological} лет. Период Матрицы: ${formatAgePeriodRange(input.periodStart, input.periodEnd)} лет`;
 }
 
 /** Client-safe report badge — never leak engine ids like matrix-v5. */
@@ -71,6 +75,9 @@ export function clientSafeMatrixVersionLabel(input: {
 export function clientSafeMatrixResolveError(
   error: "unsupported_matrix_version" | "legacy_without_snapshot" | "invalid_birth_date" | string
 ): string {
+  if (error === "invalid_matrix_snapshot") {
+    return "Сохранённая схема не соответствует этому человеку или повреждена.";
+  }
   if (error === "legacy_without_snapshot") {
     return "Этот разбор сохранён в старой методике, и схему нельзя восстановить.";
   }

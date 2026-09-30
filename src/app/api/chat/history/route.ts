@@ -297,6 +297,7 @@ export async function GET(request: NextRequest) {
       ? numerologToolParams.calculationVersion
       : null;
   let matrixStructuredData: Record<string, unknown> | null = null;
+  let matrixAsOf: string | null = null;
 
   // Reopen must use the report's subject birth — profile DOB would show "my" grid for everyone.
   if (
@@ -312,13 +313,19 @@ export async function GET(request: NextRequest) {
         kind: string | null;
         calculation_version: string | null;
         structured_data: Record<string, unknown> | null;
+        created_at: Date | string;
       }>(
         `SELECT n.subject_id, n.birth_date, s.display_name, s.kind,
-                n.calculation_version, n.structured_data
+                n.calculation_version, n.structured_data, n.created_at
          FROM numerology_report_history n
          LEFT JOIN matrix_subjects s ON s.id = n.subject_id
          WHERE n.user_id = $1
-           AND n.session_id = $2::uuid
+           AND (n.session_id = $2::uuid OR EXISTS (
+             SELECT 1 FROM history h
+             WHERE h.user_id = n.user_id
+               AND h.context_data->>'sessionId' = $2::text
+               AND h.context_data->>'reportId' = n.id::text
+           ))
            AND n.tool_id = $3
            AND length(trim(n.content)) > 0
          ORDER BY n.created_at DESC
@@ -336,10 +343,13 @@ export async function GET(request: NextRequest) {
         subjectName = report.display_name ?? subjectName;
         subjectKind = report.kind;
         matrixCalculationVersion = report.calculation_version ?? matrixCalculationVersion;
+        matrixAsOf = report.created_at instanceof Date ? report.created_at.toISOString() : String(report.created_at);
         matrixStructuredData =
           report.structured_data && typeof report.structured_data === "object"
             ? report.structured_data
             : null;
+        const snapshotAsOf = matrixStructuredData?.asOf as { date?: unknown } | undefined;
+        if (typeof snapshotAsOf?.date === "string") matrixAsOf = snapshotAsOf.date;
         numerologToolParams = {
           ...(numerologToolParams ?? {}),
           ...(matrixSubjectId ? { matrixSubjectId } : {}),
@@ -371,6 +381,7 @@ export async function GET(request: NextRequest) {
     matrixBirthDate,
     matrixCalculationVersion,
     matrixStructuredData,
+    matrixAsOf,
     subjectName,
     subjectKind,
     // Anchors the matrix diagram to the day the reading was made.

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
+import { matrixReportDisplayMetadata } from "@/lib/numerology/matrix-report-display";
 
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { requireProfileUserId } from "@/lib/require-auth";
@@ -68,6 +69,7 @@ export async function GET(request: NextRequest) {
       report: owned && report
         ? {
             id: report.id,
+            ...matrixReportDisplayMetadata(report),
             subjectId: report.subjectId,
             birthDate: report.birthDate,
             calculationVersion: report.calculationVersion,

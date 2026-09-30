@@ -142,6 +142,7 @@ export type DestinyMatrixOptions = {
 };
 
 export type MatrixResolveError =
+  | "invalid_matrix_snapshot"
   | "unsupported_matrix_version"
   | "legacy_without_snapshot"
   | "invalid_birth_date";

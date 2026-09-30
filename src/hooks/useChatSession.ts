@@ -40,6 +40,7 @@ export interface RestoreChatResult {
   numerologToolParams?: import("@/lib/numerology/tools").NumerologToolParams | null;
   matrixSubjectId?: string | null;
   matrixBirthDate?: string | null;
+  matrixAsOf?: string | null;
   matrixCalculationVersion?: string | null;
   matrixStructuredData?: Record<string, unknown> | null;
   subjectName?: string | null;
@@ -285,6 +286,7 @@ export function useChatSession(options: UseChatSessionOptions) {
                   ?.matrixSubjectId ||
                 null,
               matrixBirthDate,
+              matrixAsOf: typeof data.matrixAsOf === "string" ? data.matrixAsOf : null,
               matrixCalculationVersion:
                 (typeof data.matrixCalculationVersion === "string" &&
                   data.matrixCalculationVersion) ||

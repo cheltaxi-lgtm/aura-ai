@@ -187,7 +187,7 @@ export function buildMatrixSemanticModel(
   ];
 
   const ageMarks: MatrixSemanticAgeMark[] = matrix.agePoints
-    .filter((p) => p.age < 80)
+    .filter((p) => p.age < 80 || p.age === matrix.ageCurrent.age)
     .map((p) => ({
       ...p,
       current: p.age === matrix.ageCurrent.age,

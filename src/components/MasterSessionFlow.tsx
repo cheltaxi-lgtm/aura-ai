@@ -305,11 +305,14 @@ export default function MasterSessionFlow({
     return {
       ...numerologToolParams,
       ...(matrixSubjectId ? { matrixSubjectId } : {}),
-      ...(subject?.birthDate ? { matrixBirthDate: subject.birthDate } : {}),
+      ...((matrixOwnership.owned ? matrixOwnership.birthDate : subject?.birthDate)
+        ? { matrixBirthDate: (matrixOwnership.owned ? matrixOwnership.birthDate : subject?.birthDate)! } : {}),
+      ...(matrixOwnership.owned && matrixOwnership.calculationVersion
+        ? { calculationVersion: matrixOwnership.calculationVersion } : {}),
       ...(subject?.displayName ? { subjectName: subject.displayName } : {}),
       ...(matrixAsOf ? { matrixAsOf } : {}),
     };
-  }, [matrixSubjectId, matrixSubjects.subjects, numerologToolParams, matrixAsOf]);
+  }, [matrixSubjectId, matrixSubjects.subjects, numerologToolParams, matrixAsOf, matrixOwnership.owned, matrixOwnership.birthDate, matrixOwnership.calculationVersion]);
   const matrixOwned = matrixOwnership.owned;
   const matrixBuyOnceOwned =
     numerologFlow && selectedNumerologTool === "destiny_matrix" && matrixOwned;

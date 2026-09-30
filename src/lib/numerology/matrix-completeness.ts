@@ -7,7 +7,7 @@
 import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import { MATRIX_CALCULATION_VERSION } from "./matrix-result";
 import type { MatrixReadingDocument } from "./matrix-reading-document";
-import { matrixZoneDefsFor } from "./matrix-zones";
+import { listMatrixZones, matrixZoneDefsFor } from "./matrix-zones";
 import type { DestinyMatrixResult } from "./destiny-matrix";
 
 /** Rider–Waite majors 1–22 (22 = Шут). Engine / prompt / validator SSOT for names. */
@@ -25,6 +25,27 @@ const ARCANA_PAIR_RE =
 
 function normArcanaName(s: string): string {
   return s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
+}
+
+/** Check explicit role→arcana assertions, allowing accurately labelled comparisons. */
+export function matrixProseMatchesRoles(text: string, matrix: DestinyMatrixResult): boolean {
+  const roles: Array<[string, number]> = [
+    [String.raw`(?:денежн\p{L}*\s+канал\p{L}*|деньги|финансов\p{L}*\s+(?:канал|зона))`, matrix.money.number],
+    [String.raw`(?:отношения|любовн\p{L}*\s+канал\p{L}*)`, matrix.relationships.number],
+    [String.raw`(?:характер|точка\s+характера)`, matrix.body.number],
+    [String.raw`(?:таланты|талант\p{L}*\s+канал\p{L}*)`, matrix.talents.number],
+    [String.raw`зона\s+комфорта`, matrix.comfort.number],
+    [String.raw`(?:аркан\s+года|энергия\s+года)`, matrix.yearArcana.number],
+    [String.raw`(?:аркан\s+месяца|энергия\s+месяца)`, matrix.monthArcana.number],
+  ];
+  const raw = text.replace(/\*\*/g, "");
+  for (const [role, expected] of roles) {
+    const re = new RegExp(String.raw`(?:^|[^\p{L}])${role}\s*(?:(?:это|—|–|-|:|=|через|под\s+влиянием|соответствует)\s*)?(?:\(\s*)?(?:аркан\p{L}*\s*(?:№\s*)?)?(\d{1,2})(?!\d)`, "giu");
+    for (const match of raw.matchAll(re)) {
+      if (Number(match[1]) !== expected) return false;
+    }
+  }
+  return true;
 }
 
 /**
@@ -55,6 +76,8 @@ export function matrixDocumentMatchesEngine(
   doc: MatrixReadingDocument,
   matrix: DestinyMatrixResult
 ): boolean {
+  const toolId = doc.zones.some((z) => z.id === "parent_role") ? "child_matrix" : undefined;
+  const byId = new Map(listMatrixZones(matrix, toolId).map((z) => [z.id, z]));
   const expected = new Map<number, string>();
   const add = (p: { number: number; arcanaName: string } | null | undefined) => {
     if (p && !expected.has(p.number)) expected.set(p.number, p.arcanaName);
@@ -84,6 +107,9 @@ export function matrixDocumentMatchesEngine(
   for (const ch of matrix.channels) ch.points.forEach(add);
 
   for (const zone of doc.zones) {
+    const own = byId.get(zone.id);
+    if (own && zone.number !== own.number) return false;
+    if (!matrixProseMatchesRoles(`${zone.prose}\n${zone.practice ?? ""}`, matrix)) return false;
     if (zone.number == null || !zone.arcanaName) continue;
     const table = getMatrixArcanaEntry(zone.number, matrix.calculationVersion)?.title;
     if (!table) return false;
@@ -206,6 +232,7 @@ export function matrixReadingMatchesEngine(
 ): boolean {
   const t = (text || "").replace(/\*\*/g, "");
   if (!t.trim()) return false;
+  if (!matrixProseMatchesRoles(t, matrix)) return false;
 
   const expected = new Map<number, string>();
   const add = (p: { number: number; arcanaName: string } | null | undefined) => {

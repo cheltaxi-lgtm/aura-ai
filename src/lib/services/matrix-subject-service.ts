@@ -245,13 +245,19 @@ export async function deleteMatrixSubject(
     }
     if (subject.rows[0].kind === "self") throw subjectError("self_immutable");
 
-    const reports = await queryClient<{ session_id: string | null }>(
+    const reports = await queryClient<{ id: string; session_id: string | null }>(
       client,
       `DELETE FROM numerology_report_history
        WHERE user_id = $1 AND subject_id = $2::uuid
-       RETURNING session_id`,
+       RETURNING id, session_id`,
       [userId, subjectId.trim()]
     );
+    const reopened = reports.rows.length ? await queryClient<{ session_id: string | null }>(
+      client,
+      `SELECT DISTINCT context_data->>'sessionId' AS session_id FROM history
+       WHERE user_id = $1 AND context_data->>'reportId' = ANY($2::text[])`,
+      [userId, reports.rows.map(row => row.id)]
+    ) : { rows: [] };
     const removed = await queryClient(
       client,
       `DELETE FROM matrix_subjects WHERE user_id = $1 AND id = $2::uuid`,
@@ -262,7 +268,7 @@ export async function deleteMatrixSubject(
       deletedReports: reports.rowCount ?? 0,
       sessionIds: [
         ...new Set(
-          reports.rows
+          [...reports.rows, ...reopened.rows]
             .map((row) => row.session_id)
             .filter((id): id is string => Boolean(id?.trim()))
         ),
