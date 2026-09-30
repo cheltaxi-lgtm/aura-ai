@@ -118,7 +118,9 @@ export default function EditorialReviewsSection() {
     };
   }, [loadPage]);
 
-  if (!enabled) return null;
+  // A homepage endorsement must be backed by published reviews. Suppress the
+  // section entirely while loading or when moderation has published none.
+  if (!enabled || items.length === 0) return null;
 
   const averageLabel = summary.averageRating
     ? summary.averageRating.toLocaleString("ru-RU", {
@@ -155,9 +157,7 @@ export default function EditorialReviewsSection() {
           </p>
         </header>
 
-        {loading ? (
-          <p className="editorial-reviews__status">Загрузка отзывов…</p>
-        ) : items.length > 0 ? (
+        {items.length > 0 ? (
           <>
             <div className="editorial-reviews__navigation" aria-label="Листать отзывы">
               <button type="button" className="editorial-reviews__arrow" aria-label="Предыдущие отзывы" aria-controls={`${baseId}-track`} disabled={!canPrevious} onClick={() => scrollReviews(-1)}>←</button>
