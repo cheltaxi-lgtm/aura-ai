@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 import { getSetting } from "@/lib/settings";
 import { buildRunePurchaseReturnUrl } from "@/lib/rune-purchase-client";
 
@@ -97,7 +97,9 @@ export async function createYukassaRunePayment(params: {
   source?: string;
 }) {
   const orderId = params.requestId && /^[0-9a-f-]{36}$/i.test(params.requestId) ? params.requestId : randomUUID();
-  const idempotenceKey = `rune-${params.userId}-${params.packageId}-${orderId}`;
+  const idempotenceKey = createHash("sha256")
+    .update(`rune-${params.userId}-${params.packageId}-${orderId}`)
+    .digest("hex");
   const returnUrl =
     params.returnUrl || buildRunePurchaseReturnUrl(params.appUrl, undefined, orderId);
 
