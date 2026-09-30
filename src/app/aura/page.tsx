@@ -7,13 +7,17 @@ import SeoPageTracker from "@/components/seo/SeoPageTracker";
 import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { BRAND_NAME } from "@/lib/brand";
-import { DEFAULT_RUNE_COSTS, RUNE_ACTION_LABELS } from "@/lib/rune-costs";
+import { RUNE_ACTION_LABELS } from "@/lib/rune-costs";
+import { getRuneSettings } from "@/lib/rune-settings";
+import { FIRST_AURA_DISCOUNT_RATIO } from "@/lib/aura-reading-billing";
+
+export const dynamic = "force-dynamic";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Аура по фото онлайн — цвета, слои поля и чакры | ${BRAND_NAME}`,
   description:
-    "Узнайте цвет своей ауры по фото или с камеры: доминирующие цвета поля, семь слоёв по Бреннан и состояние чакр. Символическое чтение портрета мастером — первый разбор со скидкой 50%.",
+    "Узнайте цвет своей ауры по фото или с камеры: доминирующие цвета поля, семь слоёв по Бреннан и состояние чакр. Краткий результат бесплатно, цену полного ИИ-разбора покажем заранее.",
   path: "/aura",
 });
 
@@ -40,12 +44,14 @@ const FAQ = [
   },
   {
     q: "Сколько стоит полный разбор?",
-    a: `Один снимок ауры и краткий результат для каждого человека — бесплатно раз в сутки. Полный разбор — ${DEFAULT_RUNE_COSTS.AURA_READING} ᚢ за человека, первый разбор аккаунта со скидкой 50%. Повтор сегодня откроет тот же текст и не спишет руны снова.`,
+    a: "Один снимок ауры и краткий результат для каждого человека — бесплатно раз в сутки. Полный ИИ-разбор оплачивается отдельно; точную цену первого и повторного разбора показываем до подтверждения. Повтор сегодня откроет тот же текст и не спишет руны снова.",
   },
 ];
 
-export default function AuraLandingPage() {
-  const cost = DEFAULT_RUNE_COSTS.AURA_READING;
+export default async function AuraLandingPage() {
+  const settings = await getRuneSettings();
+  const cost = settings.costs.AURA_READING;
+  const firstCost = Math.max(1, Math.round(cost * FIRST_AURA_DISCOUNT_RATIO));
   const label = RUNE_ACTION_LABELS.AURA_READING;
 
   return (
@@ -62,7 +68,7 @@ export default function AuraLandingPage() {
           <div className="aura-reading-hero__facts" aria-label="Условия разбора">
             <span>Снимок бесплатно раз в сутки</span>
             <span>{label} · {cost} ᚢ</span>
-            <span>Первый полный разбор −50%</span>
+            <span>Первый полный разбор · {firstCost} ᚢ</span>
           </div>
           <div className="aura-reading-hero__actions">
             <a href="#aura-new" className="btn-luxe btn-luxe--md btn-luxe--gold">Сделать снимок</a>

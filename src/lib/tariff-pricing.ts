@@ -1,5 +1,6 @@
 import { SPREAD_REGISTRY } from "@/lib/spreads/registry";
 import type { SpreadId, SpreadCatalogSettings } from "@/lib/spreads/types";
+import { MAX_INTENTION_SPREAD_RUNES } from "@/lib/spreads/price-limits";
 
 /** Actual price including bonus runes, compared with the live custom top-up rate. */
 export function runePackageValue(pkg: {runes:number;bonus_runes:number;price_rub:number},rubPerRune:number) {
@@ -22,7 +23,7 @@ export function intentionSpreadPriceRange(
       : id === "triplet")
     .map((id) => {
       const multiplier = settings.spreadOverrides[id]?.costMultiplier || SPREAD_REGISTRY[id].costMultiplier;
-      return Math.max(1, Math.round(baseCost * multiplier));
+      return Math.min(MAX_INTENTION_SPREAD_RUNES, Math.max(1, Math.round(baseCost * multiplier)));
     });
   if (costs.length === 0) return null;
   return { min: Math.min(...costs), max: Math.max(...costs) };

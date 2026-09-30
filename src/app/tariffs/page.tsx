@@ -11,6 +11,8 @@ import { RITUAL_PAGE_SLUGS } from "@/lib/ritual-recommendations";
 import { getRitualSettings, isRitualCatalogEnabled, isRitualTypeEnabled, ritualCostFromSettings } from "@/lib/ritual-settings";
 import { mergeSpreadSettingsFromFeatures } from "@/lib/spread-settings";
 import { intentionSpreadPriceRange, runePackageValue } from "@/lib/tariff-pricing";
+import { FIRST_AURA_DISCOUNT_RATIO } from "@/lib/aura-reading-billing";
+import { FIRST_PALM_DISCOUNT_RATIO } from "@/lib/palm-reading-billing";
 import { MIN_CUSTOM_RUNE_PURCHASE_RUB, MAX_CUSTOM_RUNE_PURCHASE_RUB } from "@/lib/rune-purchase-constants";
 import {
   isAuraReadingEnabled, isHumanDesignEnabled, isJointReadingEnabled,
@@ -64,7 +66,7 @@ export default async function TariffsPage() {
       <div className="absolute -right-9 top-0 select-none text-[14rem] leading-none text-amber-200/[0.035]" aria-hidden>ᚢ</div>
       <p className="relative flex items-center gap-2 text-xs font-semibold uppercase tracking-[0.22em] text-amber-300"><ShoppingBag size={14} /> Zovus · тарифы</p>
       <h1 className="relative mt-5 max-w-2xl font-display text-4xl font-semibold leading-tight text-white sm:text-5xl">Всё о стоимости — <span className="text-amber-200">до выбора услуги</span></h1>
-      <p className="relative mt-5 max-w-2xl text-base leading-7 text-white/70">Смотрите, что входит в каждый разбор, сколько рун он стоит и по какой цене можно пополнить баланс. Списание за услугу происходит только при её заказе.</p>
+      <p className="relative mt-5 max-w-2xl text-base leading-7 text-white/70">Смотрите, что входит в каждый ИИ-разбор, сколько рун он стоит и по какой цене можно пополнить баланс. Разборы создаёт ИИ-наставник, а не живой консультант. Списание за услугу происходит только при её заказе.</p>
       <div className="relative mt-7 flex flex-wrap gap-3"><a href="#services" className="btn-luxe btn-luxe--md btn-luxe--gold inline-flex items-center gap-2">Смотреть услуги <ArrowRight size={16} /></a><a href="#shop" className="btn-luxe btn-luxe--md btn-luxe--ghost inline-flex items-center gap-2">Магазин рун</a></div>
     </div>
     <div className="mt-5 grid gap-3 sm:grid-cols-3">
@@ -82,7 +84,8 @@ export default async function TariffsPage() {
           const cost = settings.costs[service.action];
           const variable = service.action === "INTENTION_SPREAD";
           const firstPhoto = service.action === "AURA_READING" || service.action === "PALM_READING";
-          const firstPhotoCost = firstPhoto ? Math.max(1, Math.round(cost * 0.5)) : cost;
+          const firstPhotoRatio = service.action === "AURA_READING" ? FIRST_AURA_DISCOUNT_RATIO : FIRST_PALM_DISCOUNT_RATIO;
+          const firstPhotoCost = firstPhoto ? Math.max(1, Math.round(cost * firstPhotoRatio)) : cost;
           const costText = variable && spreadMin !== spreadMax ? `${spreadMin}–${spreadMax}` : `${variable ? spreadMin : firstPhotoCost}`;
           const rubText = variable && spreadMin !== spreadMax ? `${RUB.format(Math.round(spreadMin * settings.rubPerRune))}–${RUB.format(Math.round(spreadMax * settings.rubPerRune))}` : RUB.format(Math.round((variable ? spreadMin : firstPhotoCost) * settings.rubPerRune));
           const unit = service.action === "VOICE_TTS";
@@ -90,7 +93,7 @@ export default async function TariffsPage() {
             <div className="flex items-start justify-between gap-3"><h4 className="font-display text-lg font-semibold leading-snug">{service.title}</h4><span className="shrink-0 rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-sm font-bold text-amber-200">{unit || firstPhoto ? "от " : ""}{costText} ᚢ{unit ? " / 2 000 зн." : ""}</span></div>
             <p className="mt-3 text-sm leading-6 text-white/65">{service.description}</p><p className="mt-3 text-xs leading-5 text-white/50"><span className="text-white/75">Входит:</span> {service.includes}</p>
             {service.priceNote ? <p className="mt-2 text-xs leading-5 text-amber-200/75">{service.priceNote}</p> : null}
-            {firstPhoto ? <p className="mt-2 text-xs leading-5 text-amber-200/75">Первый разбор со скидкой: {firstPhotoCost} ᚢ; следующие: {cost} ᚢ</p> : null}
+            {firstPhoto ? <p className="mt-2 text-xs leading-5 text-amber-200/75">Первый разбор: {firstPhotoCost} ᚢ; следующие: {cost} ᚢ</p> : null}
             <div className="mt-auto flex items-center justify-between gap-3 border-t border-white/10 pt-4 text-xs"><span className="text-white/45">≈ {unit || firstPhoto ? "от " : ""}{rubText} ₽ по базовому курсу</span><Link href={service.href} className="shrink-0 text-amber-200 hover:text-white">Подробнее →</Link></div>
           </article>;
         })}</div>
@@ -111,7 +114,7 @@ export default async function TariffsPage() {
     <section id="shop" className="scroll-mt-28 pt-16">
       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">Пополнение</p><h2 className="mt-2 font-display text-3xl">Магазин рун</h2>
       <p className="mt-3 max-w-3xl text-sm leading-6 text-white/60">Покупка пополняет единый баланс. Руны не сгорают. Указана итоговая цена пакета в рублях; бонусные руны уже включены в общий объём.</p>
-      {settings.enabled && packages && packages.length > 0 ? <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">{packages.map((pkg) => <div key={pkg.id} className={`flex flex-col rounded-2xl border p-5 ${pkg.is_popular ? "border-amber-300/55 bg-amber-300/[0.08]" : "border-white/10 bg-white/[0.035]"}`}>
+      {settings.enabled && packages && packages.length > 0 ? <div className="mt-6 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">{packages.map((pkg) => <div key={pkg.id} className={`flex flex-col rounded-2xl border p-5 ${pkg.is_popular ? "border-amber-300/55 bg-amber-300/[0.08]" : "border-white/10 bg-white/[0.035]"}`}>
         <div className="flex min-h-12 flex-col items-start justify-between gap-1"><p className="min-w-0 break-words font-semibold">{pkg.name}</p>{pkg.is_popular ? <span className="shrink-0 rounded-full bg-amber-300 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-[#21170c]">Популярный</span> : null}</div>
         <p className="mt-5 font-display text-3xl text-amber-100">{RUB.format(pkg.runes + pkg.bonus_runes)} <span className="text-xl">ᚢ</span></p><p className="mt-1 min-h-5 text-xs text-white/50">{pkg.bonus_runes > 0 ? `${RUB.format(pkg.runes)} + ${RUB.format(pkg.bonus_runes)} бонусных` : `${RUB.format(pkg.runes)} рун`}</p>
         <p className="mt-5 border-t border-white/10 pt-4 text-xl font-semibold">{RUB.format(pkg.price_rub)} ₽</p>

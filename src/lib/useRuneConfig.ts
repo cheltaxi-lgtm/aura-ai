@@ -18,8 +18,8 @@ export interface RuneConfig {
 
 const FALLBACK: RuneConfig = {
   enabled: true,
-  rubPerRune: 2,
-  starterRunes: 30,
+  rubPerRune: 5,
+  starterRunes: 25,
   freeQuestions: 2,
   costs: { ...DEFAULT_RUNE_COSTS },
   labels: { ...RUNE_ACTION_LABELS },

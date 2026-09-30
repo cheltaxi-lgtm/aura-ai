@@ -439,7 +439,7 @@ export async function botPhotoInterpret(input: {
           cost: pricing.effectiveCost,
           actionType: "VISION_ANALYSIS",
           description: pricing.firstPhotoDiscount
-            ? "Фото-расклад (первая скидка 50%)"
+            ? "Фото-расклад"
             : "Фото-расклад",
           sessionId: resolvedSessionId,
           // Prefer client/flow key — never a freshly minted session id.

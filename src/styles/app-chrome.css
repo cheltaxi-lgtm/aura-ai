@@ -460,6 +460,10 @@ body.has-site-header .page-with-site-header {
     font-size: 0.44em;
     padding: 0.16em 0.6em 0.14em;
   }
+
+  .brand-beta-badge--mobile {
+    display: none;
+  }
 }
 
 /* Paywall must sit above header (5000) and ritual flows (100–210). */

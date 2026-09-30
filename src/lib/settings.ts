@@ -225,8 +225,8 @@ const DEFAULTS = {
   },
   runes: {
     enabled: true,
-    rubPerRune: 2,
-    starterRunes: 30,
+    rubPerRune: 5,
+    starterRunes: 25,
     freeQuestions: 2,
     costs: { ...DEFAULT_RUNE_COSTS } as Record<RuneActionType, number>,
   },

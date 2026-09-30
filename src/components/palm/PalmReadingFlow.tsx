@@ -15,6 +15,7 @@ import PalmInsightCards from "@/components/palm/PalmInsightCards";
 import PalmPhotoStage from "@/components/palm/PalmPhotoStage";
 import { useAuth } from "@/lib/useAuth";
 import { useRuneConfig } from "@/lib/useRuneConfig";
+import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { canAffordRunes } from "@/lib/rune-afford-client";
 import { compressImageForUpload } from "@/lib/compress-image-client";
 import { isAppCameraAvailable, pickPhotoFromApp } from "@/lib/app-camera";
@@ -154,8 +155,8 @@ export default function PalmReadingFlow() {
     return search.get("reading")?.trim() ?? "";
   }, []);
 
-  const palmCost = pricing?.effectiveCost ?? config.costs.PALM_READING ?? 100;
-  const palmBaseCost = pricing?.baseCost ?? config.costs.PALM_READING ?? 100;
+  const palmCost = pricing?.effectiveCost ?? config.costs.PALM_READING ?? DEFAULT_RUNE_COSTS.PALM_READING;
+  const palmBaseCost = pricing?.baseCost ?? config.costs.PALM_READING ?? DEFAULT_RUNE_COSTS.PALM_READING;
   const canOpenCamera = ageReady === true;
 
   useEffect(() => {
@@ -192,8 +193,8 @@ export default function PalmReadingFlow() {
         if (cancelled || !data) return;
         setPricing({
           unlimited: data.unlimited === true,
-          baseCost: Number(data.baseCost) || 100,
-          effectiveCost: Number(data.effectiveCost) || 100,
+          baseCost: Number(data.baseCost) || DEFAULT_RUNE_COSTS.PALM_READING,
+          effectiveCost: Number(data.effectiveCost) || DEFAULT_RUNE_COSTS.PALM_READING,
           firstPalmDiscount: data.firstPalmDiscount === true,
           todayPaid: data.todayPaid === true,
           todayHistoryId: data.todayHistoryId ?? null,
@@ -1067,7 +1068,7 @@ export default function PalmReadingFlow() {
                     ) : null}
                     <span className="palm-price__now">{formatRunes(palmCost)}</span>
                     {pricing.firstPalmDiscount && palmCost < palmBaseCost ? (
-                      <span className="palm-price__note">Первый разбор −50%</span>
+                      <span className="palm-price__note">Цена первого разбора: {formatRunes(palmCost)}</span>
                     ) : (
                       <span className="palm-price__note">Полный разбор</span>
                     )}
@@ -1219,7 +1220,7 @@ export default function PalmReadingFlow() {
                     ) : null}
                     <span className="palm-price__now">{formatRunes(palmCost)}</span>
                     {pricing.firstPalmDiscount && palmCost < palmBaseCost ? (
-                      <span className="palm-price__note">Первый разбор −50%</span>
+                      <span className="palm-price__note">Цена первого разбора: {formatRunes(palmCost)}</span>
                     ) : (
                       <span className="palm-price__note">Полный разбор</span>
                     )}

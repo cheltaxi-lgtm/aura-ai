@@ -295,7 +295,7 @@ async function handlePost(request: NextRequest) {
         cost: pricing.effectiveCost,
         actionType: "AURA_READING",
         description: pricing.firstAuraDiscount
-          ? "Аура по фото (первая скидка 50%)"
+          ? "Аура по фото (первый разбор)"
           : undefined,
         idempotencyKey: idempotencyKey || `aura-reading:${snapshotId}`,
       });
@@ -346,7 +346,7 @@ async function handlePost(request: NextRequest) {
             cost: pricing.effectiveCost,
             actionType: "AURA_READING",
             description: pricing.firstAuraDiscount
-              ? "Аура по фото (первая скидка 50%)"
+              ? "Аура по фото (первый разбор)"
               : undefined,
             idempotencyKey: `aura-reading:${snapshotId}:${randomUUID()}`,
           });

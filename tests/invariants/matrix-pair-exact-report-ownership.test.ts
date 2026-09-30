@@ -97,9 +97,9 @@ describe("matrix-pair-exact-report-ownership", () => {
     );
   });
 
-  it("G: MATRIX_PAIR_REPORT stays 30 ᚢ on the new-pair path", () => {
-    expect(PRICING.MATRIX_PAIR_REPORT).toBe(30);
-    expect(DEFAULT_RUNE_COSTS.MATRIX_PAIR_REPORT).toBe(30);
+  it("G: MATRIX_PAIR_REPORT stays 20 ᚢ on the new-pair path", () => {
+    expect(PRICING.MATRIX_PAIR_REPORT).toBe(20);
+    expect(DEFAULT_RUNE_COSTS.MATRIX_PAIR_REPORT).toBe(20);
     const reading = read("src/app/api/reading/route.ts");
     expect(reading).toMatch(
       /if \(toolId === "matrix_compatibility"\) return "MATRIX_PAIR_REPORT"/

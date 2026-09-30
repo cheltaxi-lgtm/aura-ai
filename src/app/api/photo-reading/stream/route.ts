@@ -262,7 +262,7 @@ export async function POST(request: NextRequest) {
           cost: pricing.effectiveCost,
           actionType: "VISION_ANALYSIS",
           description: pricing.firstPhotoDiscount
-            ? "Фото-расклад (первая скидка 50%)"
+            ? "Фото-расклад"
             : undefined,
           sessionId,
           idempotencyKey: billingIdempotencyKey,

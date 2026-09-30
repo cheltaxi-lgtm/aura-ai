@@ -94,7 +94,7 @@ describe("free-to-paid-conversion", () => {
 
   it("MATRIX_PAIR_REPORT stays a paid rune action; pair CTA uses server ownership", () => {
     expect(PRICING.MATRIX_PAIR_REPORT).toBe(DEFAULT_RUNE_COSTS.MATRIX_PAIR_REPORT);
-    expect(PRICING.MATRIX_PAIR_REPORT).toBe(30);
+    expect(PRICING.MATRIX_PAIR_REPORT).toBe(20);
     const pair = read("src/components/numerolog/MatrixCompatibilityPreview.tsx");
     expect(pair).toMatch(/matrix-pair-owned\?pendingId=/);
     expect(pair).not.toMatch(/\/api\/numerology\/matrix-report\?birthDate=/);

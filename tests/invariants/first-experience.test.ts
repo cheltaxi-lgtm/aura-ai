@@ -25,9 +25,10 @@ const PROJECT_ROOT = path.resolve(__dirname, "../..");
 
 afterEach(()=>{vi.unstubAllEnvs();vi.unstubAllGlobals();});
 describe("first experience policy and consent",()=>{
-  it("fails closed and uses one 40-rune policy",()=>{vi.stubEnv("FIRST_EXPERIENCE_ENABLED","false");expect(isFirstExperienceEnabled()).toBe(false);expect(STARTER_BONUS_RUNES).toBe(40);});
+  it("fails closed and uses one 25-rune policy",()=>{vi.stubEnv("FIRST_EXPERIENCE_ENABLED","false");expect(isFirstExperienceEnabled()).toBe(false);expect(STARTER_BONUS_RUNES).toBe(25);});
   it("presents cohort dates and bonus versions as human-readable labels",()=>{
     expect(formatBonusVersion("legacy")).toBe("Старый сценарий");
+    expect(formatBonusVersion("starter-25-v2")).toBe("Бонус 25 рун");
     expect(formatBonusVersion("starter-40-v1")).toBe("Бонус 40 рун");
     expect(formatBonusVersion("starter-100-v1")).toBe("Бонус 100 рун");
     expect(formatCohortDate("2026-09-08")).toContain("8");
@@ -111,7 +112,7 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
   });
   it("keeps stored legacy bonus intact across effective admin saves and flag rollback",async()=>{
     const original=await getSetting("runes");
-    try{await setSetting("runes",{...original,starterRunes:300});expect((await getRuneSettings()).starterRunes).toBe(40);await setRuneSettings({...await getRuneSettings(),freeQuestions:3});expect((await getSetting("runes")).starterRunes).toBe(300);vi.stubEnv("FIRST_EXPERIENCE_ENABLED","false");expect((await getRuneSettings()).starterRunes).toBe(300);}
+    try{await setSetting("runes",{...original,starterRunes:300});expect((await getRuneSettings()).starterRunes).toBe(25);await setRuneSettings({...await getRuneSettings(),freeQuestions:3});expect((await getSetting("runes")).starterRunes).toBe(300);vi.stubEnv("FIRST_EXPERIENCE_ENABLED","false");expect((await getRuneSettings()).starterRunes).toBe(300);}
     finally{await setSetting("runes",original);}
   });
   it("turns legacy paid scene flags off idempotently",async()=>{
@@ -143,7 +144,7 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
   });
   it("grants exactly once under parallel signup/OAuth/cabinet retries; preserves an existing grant",async()=>{
     const user=await createTestUser();const results=await Promise.all(Array.from({length:8},()=>grantStarterRunesIfNeeded(user.id)));
-    expect(results.filter(Boolean)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(40);
+    expect(results.filter(Boolean)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(25);
     expect((await query("SELECT 1 FROM spread_metrics WHERE user_id=$1 AND event='bonus_granted'",[user.id])).rowCount).toBe(1);
     await query("UPDATE users SET rune_balance=287,starter_runes_granted=FALSE WHERE id=$1",[user.id]);
     expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();expect(await getRuneBalance(user.id)).toBe(287);
@@ -169,7 +170,7 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
       [`new-${newcomer.id}@example.invalid`,"New Test",newcomer.id]
     );
     expect((await query<{starter_bonus_version:string|null}>("SELECT starter_bonus_version FROM users WHERE id=$1",[newcomer.id])).rows[0].starter_bonus_version).toBeNull();
-    expect((await grantStarterRunesIfNeeded(newcomer.id))?.granted).toBe(40);
+    expect((await grantStarterRunesIfNeeded(newcomer.id))?.granted).toBe(25);
     expect((await query<{bonus_email_verification_required:boolean}>("SELECT bonus_email_verification_required FROM user_accounts WHERE id=$1",[newAccount.rows[0].id])).rows[0].bonus_email_verification_required).toBe(true);
   });
   it("keeps account/profile creation and starter credit in one transaction",()=>{
@@ -184,15 +185,15 @@ describe.skipIf(!hasTestDb)("first experience (isolated database, no providers)"
   });
   it("serializes bonus spend and refunds only the original amount once",async()=>{
     const user=await createTestUser();await grantStarterRunesIfNeeded(user.id);
-    const results=await Promise.all(Array.from({length:4},()=>chargeForSession({userId:user.id,cost:30,actionType:"VISION_ANALYSIS",idempotencyKey:"same-order"})));
-    const debit=results.find(r=>r.spentRunes===30)!;expect(results.filter(r=>r.spentRunes===30)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(10);
-    await expect(refundRunes(user.id,31,"error","VISION_ANALYSIS",debit.transactionId)).rejects.toThrow();
-    await Promise.all(Array.from({length:4},()=>refundRunes(user.id,30,"error","VISION_ANALYSIS",debit.transactionId)));
-    expect(await getRuneBalance(user.id)).toBe(40);
+    const results=await Promise.all(Array.from({length:4},()=>chargeForSession({userId:user.id,cost:15,actionType:"VISION_ANALYSIS",idempotencyKey:"same-order"})));
+    const debit=results.find(r=>r.spentRunes===15)!;expect(results.filter(r=>r.spentRunes===15)).toHaveLength(1);expect(await getRuneBalance(user.id)).toBe(10);
+    await expect(refundRunes(user.id,16,"error","VISION_ANALYSIS",debit.transactionId)).rejects.toThrow();
+    await Promise.all(Array.from({length:4},()=>refundRunes(user.id,15,"error","VISION_ANALYSIS",debit.transactionId)));
+    expect(await getRuneBalance(user.id)).toBe(25);
     expect((await query("SELECT 1 FROM spread_metrics WHERE user_id=$1 AND event='bonus_spent'",[user.id])).rowCount).toBe(1);
     expect((await query("SELECT 1 FROM spread_metrics WHERE user_id=$1 AND event='bonus_refunded'",[user.id])).rowCount).toBe(1);
     await expect(chargeForSession({userId:user.id,cost:41,actionType:"HD_REPORT",idempotencyKey:"low"})).rejects.toThrow();
-    expect(await getRuneBalance(user.id)).toBe(40);
+    expect(await getRuneBalance(user.id)).toBe(25);
   });
   it("credits a verified price/rune snapshot once despite package changes, rejects mismatched RUB",async()=>{
     const user=await createTestUser();

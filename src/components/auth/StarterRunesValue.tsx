@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRuneConfig } from "@/lib/useRuneConfig";
 import { useAuth } from "@/lib/useAuth";
-import type { RuneActionType } from "@/lib/rune-costs";
+import { DEFAULT_RUNE_COSTS, type RuneActionType } from "@/lib/rune-costs";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { resolveAuthProduct, type AuthProduct } from "@/lib/auth-product-context";
 
@@ -109,8 +109,8 @@ export default function StarterRunesValue({
   }
 
   if (variant === "hero") {
-    const photoCost = config.costs.VISION_ANALYSIS || 30;
-    const readingCost = config.costs.READING || 15;
+    const photoCost = config.costs.VISION_ANALYSIS || DEFAULT_RUNE_COSTS.VISION_ANALYSIS;
+    const readingCost = config.costs.READING || DEFAULT_RUNE_COSTS.READING;
     const photoCount = Math.floor(starter / photoCost);
     const readingCount = Math.floor(starter / readingCost);
     const genericLine =
@@ -122,17 +122,17 @@ export default function StarterRunesValue({
     if (heroContext === "photo" && photoCount > 0) {
       line = `Хватит на ${photoCount} ${pluralRu(photoCount, "фото-расклад", "фото-расклада", "фото-раскладов")} по ${photoCost} ᚢ — после регистрации продолжите свой расклад.`;
     } else if (heroContext === "hd") {
-      const hdCost = config.costs.HD_REPORT || 300;
+      const hdCost = config.costs.HD_REPORT || DEFAULT_RUNE_COSTS.HD_REPORT;
       if (starter >= hdCost) {
         line = `Хватит на полный разбор Дизайна человека (${hdCost} ᚢ) — после регистрации продолжите с того же места.`;
       }
     } else if (heroContext === "natal") {
-      const natalCost = config.costs.NATAL_READING || 300;
+      const natalCost = config.costs.NATAL_READING || DEFAULT_RUNE_COSTS.NATAL_READING;
       if (starter >= natalCost) {
         line = `Хватит на полную натальную трактовку (${natalCost} ᚢ) — карта сохранится в кабинете.`;
       }
     } else if (heroContext === "matrix") {
-      const matrixCost = config.costs.NUMEROLOGY_SESSION || 100;
+      const matrixCost = config.costs.NUMEROLOGY_SESSION || DEFAULT_RUNE_COSTS.NUMEROLOGY_SESSION;
       const matrixCount = Math.floor(starter / matrixCost);
       if (matrixCount >= 2) {
         line = `Хватит на ${matrixCount} ${pluralRu(matrixCount, "полный разбор", "полных разбора", "полных разборов")} Матрицы судьбы по ${matrixCost} ᚢ.`;
@@ -173,7 +173,7 @@ export default function StarterRunesValue({
     }
   } else if (!generic) {
     // Legacy default (Photo Conversion Pass placements): photo-reading math.
-    const photoCost = config.costs.VISION_ANALYSIS || 30;
+    const photoCost = config.costs.VISION_ANALYSIS || DEFAULT_RUNE_COSTS.VISION_ANALYSIS;
     const photoCount = Math.floor(starter / photoCost);
     if (photoCount > 0) {
       valueLine = `хватит на ${photoCount} ${pluralRu(photoCount, "фото-расклад", "фото-расклада", "фото-раскладов")}`;

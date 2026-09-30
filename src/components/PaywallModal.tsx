@@ -293,7 +293,7 @@ function RuneShopView({
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="text-sm font-semibold text-white">{pkg.name}</span>
                   {pkg.is_popular ? (
-                    <span className="text-[10px] tracking-[0.18em] text-[#8A7349] uppercase">
+                    <span className="text-[10px] tracking-[0.18em] text-amber-200 uppercase">
                       Популярный
                     </span>
                   ) : null}
@@ -536,7 +536,7 @@ export default function PaywallModal({ isOpen, onClose, options }: PaywallModalP
         setConfig({
           enabled: Boolean(d.enabled),
           packages: d.packages ?? [],
-          rubPerRune: Number(d.rubPerRune) || 2,
+          rubPerRune: Number(d.rubPerRune) || 5,
           legacyPrices: d.legacyPrices ?? { single: 199, subscription: 590 },
         });
       })
@@ -544,7 +544,7 @@ export default function PaywallModal({ isOpen, onClose, options }: PaywallModalP
         setConfig({
           enabled: true,
           packages: [],
-          rubPerRune: 2,
+          rubPerRune: 5,
           legacyPrices: { single: 199, subscription: 590 },
         })
       )

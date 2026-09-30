@@ -20,6 +20,7 @@ import {
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
 import { useNativeInputSync } from "@/lib/use-native-input-sync";
+import { MAX_INTENTION_SPREAD_RUNES } from "@/lib/spreads/price-limits";
 import {
   resolveJointReadingToken,
   resolveJointIntentionSpreadFields,
@@ -330,7 +331,7 @@ export default function MasterSessionFlow({
     ? 0
     : numerologFlow
       ? (numerologTool?.cost ?? PRICING.NUMEROLOGY_SESSION)
-      : Math.max(1, Math.round(runeCost("INTENTION_SPREAD") * spreadDef.costMultiplier));
+      : Math.min(MAX_INTENTION_SPREAD_RUNES, Math.max(1, Math.round(runeCost("INTENTION_SPREAD") * spreadDef.costMultiplier)));
 
   /** Owned matrix: do not auto-open — user chooses «open saved» vs «new matrix». */
   const [matrixReplaceBusy, setMatrixReplaceBusy] = useState(false);

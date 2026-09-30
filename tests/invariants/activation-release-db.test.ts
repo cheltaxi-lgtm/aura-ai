@@ -26,7 +26,7 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
   });
   const input=()=>({telegramUserId:7000000000+Math.floor(Math.random()*100000000),firstName:"Activation fixture",termsAcceptedAt:new Date().toISOString(),ageConfirmedAt:new Date().toISOString()});
 
-  it("creates one adult consumer profile and one 40-rune grant under concurrent bot entry, with no invented birth data",async()=>{
+  it("creates one adult consumer profile and one 25-rune grant under concurrent bot entry, with no invented birth data",async()=>{
     const params=input();
     const results=await Promise.all(Array.from({length:24},()=>ensureBotOfferAccount(params)));
     const id=results[0].profileUserId!;
@@ -36,7 +36,7 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
     expect(profile).toMatchObject({birth_date:null,birth_city:null,zodiac:""});
     expect(isUserAgeEligible(profile!)).toBe(true);
     expect(profile?.astro_meta).toMatchObject({genderUnspecified:true});
-    expect((await query("SELECT rune_balance FROM users WHERE id=$1",[id])).rows[0].rune_balance).toBe(40);
+    expect((await query("SELECT rune_balance FROM users WHERE id=$1",[id])).rows[0].rune_balance).toBe(25);
     expect((await query("SELECT COUNT(*)::int AS n FROM rune_transactions WHERE user_id=$1 AND type='bonus'",[id])).rows[0].n).toBe(1);
     expect((await query("SELECT marketing_consent FROM user_accounts WHERE id=$1",[results[0].accountId])).rows[0].marketing_consent).toBe(false);
   });

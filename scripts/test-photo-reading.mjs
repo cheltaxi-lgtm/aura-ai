@@ -202,8 +202,8 @@ const spreadKeyB = buildPhotoSpreadKey("veronika", normalized, "other");
 assert.notEqual(spreadKeyA, spreadKeyB, "spread key differs by question");
 
 const pricing = photoReadingPricingFromSettings(0);
-assert.ok(pricing.firstPhotoDiscount, "first photo discount for new user");
-assert.ok(pricing.effectiveCost < pricing.baseCost, "discounted cost lower");
+assert.equal(pricing.firstPhotoDiscount, false, "photo reading has no first-time discount");
+assert.equal(pricing.effectiveCost, pricing.baseCost, "all photo readings share one price");
 
 const chips = buildPhotoFollowUpChips("любовь и отношения");
 assert.ok(chips.length >= 3, "follow-up chips generated");

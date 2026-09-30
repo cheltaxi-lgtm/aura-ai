@@ -44,15 +44,15 @@ const testRuneSettings = {
   enabled: true,
   costs: DEFAULT_RUNE_COSTS,
   freeQuestions: 2,
-  rubPerRune: 2,
+  rubPerRune: 5,
   starterRunes: 0,
 };
 
 const cost5 = resolveSpreadCost("situation-5", testRuneSettings);
-assert(cost5 === 30, `situation-5 cost = 30 (got ${cost5})`);
+assert(cost5 === 24, `situation-5 cost = 24 (got ${cost5})`);
 
 const costSingle = resolveSpreadCost("single", testRuneSettings);
-assert(costSingle === 10, `single cost = 10 (got ${costSingle})`);
+assert(costSingle === 8, `single cost = 8 (got ${costSingle})`);
 
 const all = listSpreads({ system: "tarot-veronika" });
 assert(all.some((s) => s.id === "yes-no"), "yes-no available for tarot");

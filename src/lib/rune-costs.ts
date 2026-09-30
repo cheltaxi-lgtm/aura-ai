@@ -1,37 +1,34 @@
 export const DEFAULT_RUNE_COSTS = {
-  QUESTION: 10,
-  VISION_ANALYSIS: 30,
-  READING: 15,
-  INTENTION_SPREAD: 20,
+  QUESTION: 3,
+  VISION_ANALYSIS: 15,
+  READING: 10,
+  INTENTION_SPREAD: 16,
   DESTINY_CARD: 20,
   /** Chat scene illustration (AI image). */
   SCENE_ILLUSTRATION: 10,
   /** Atmosphere / spread background art. */
   TAROT_ATMOSPHERE: 8,
-  JOINT_READING: 25,
+  JOINT_READING: 20,
   DAILY_AMULET: 5,
   DAILY_EXTENDED: 10,
   FINAL_REPORT: 30,
-  /** ~1500 ₽ at platform rubPerRune (prod = 5 ₽/ᚢ → 300). */
-  NATAL_READING: 300,
-  FORECAST_REPORT: 20,
-  SYNASTRY_REPORT: 30,
-  /** Full numerology / destiny matrix — ~500 ₽ (prod 5 ₽/ᚢ → 100). Matches PRICING. */
-  NUMEROLOGY_SESSION: 100,
-  MATRIX_SUBJECT_REPORT: 100,
-  CHILD_MATRIX_REPORT: 25,
-  MATRIX_PAIR_REPORT: 30,
-  MATRIX_YEAR_FORECAST: 20,
-  /** Human Design personal report — ~1500 ₽ (prod 5 ₽/ᚢ → 300). */
-  HD_REPORT: 300,
-  /** Human Design Connection Chart — same premium tier as personal. */
-  HD_COMPOSITE_REPORT: 300,
+  /** Full natal reading: 500 ₽ at the base rate of 5 ₽/ᚢ. */
+  NATAL_READING: 100,
+  FORECAST_REPORT: 15,
+  SYNASTRY_REPORT: 20,
+  NUMEROLOGY_SESSION: 60,
+  MATRIX_SUBJECT_REPORT: 60,
+  CHILD_MATRIX_REPORT: 20,
+  MATRIX_PAIR_REPORT: 20,
+  MATRIX_YEAR_FORECAST: 15,
+  HD_REPORT: 100,
+  HD_COMPOSITE_REPORT: 120,
   /** Human Design: follow-up question after included asks are used. */
   HD_ASK: 10,
-  /** Aura reading by photo — full premium report (~250 ₽ at prod 5 ₽/ᚢ). */
-  AURA_READING: 50,
-  /** Palm reading by photo — full chiromancy report (~500 RUB at prod 5 RUB/rune). */
-  PALM_READING: 100,
+  /** First aura reading is half of the 40-rune repeat price. */
+  AURA_READING: 40,
+  /** First palm reading is 25 runes; repeat price is 40. */
+  PALM_READING: 40,
   /** Per TTS request; long texts scale by VOICE_TTS_CHARS_PER_UNIT below. */
   VOICE_TTS: 2,
 } as const;

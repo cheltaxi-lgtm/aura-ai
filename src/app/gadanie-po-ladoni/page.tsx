@@ -8,11 +8,15 @@ import { SeoPageShell, SeoSection } from "@/components/seo/SeoPageShell";
 import SeoRelatedTools from "@/components/seo/SeoRelatedTools";
 import { BRAND_NAME } from "@/lib/brand";
 import { buildSeoMetadata } from "@/lib/seo/metadata";
+import { getRuneSettings } from "@/lib/rune-settings";
+import { FIRST_PALM_DISCOUNT_RATIO } from "@/lib/palm-reading-billing";
+
+export const dynamic = "force-dynamic";
 
 export const metadata: Metadata = buildSeoMetadata({
   title: `Гадание по ладони онлайн — хиромантия по фото | ${BRAND_NAME}`,
   description:
-    "Гадание по ладони онлайн: снимите ладонь или загрузите фото. Тип руки, линии жизни, ума, сердца и судьбы, холмы. Символическая хиромантия — первый разбор со скидкой 50%.",
+    "Гадание по ладони онлайн: снимите ладонь или загрузите фото. Тип руки, линии жизни, ума, сердца и судьбы, холмы. Краткий результат бесплатно, цену полного ИИ-разбора покажем заранее.",
   path: "/gadanie-po-ladoni",
 });
 
@@ -35,11 +39,13 @@ const FAQ = [
   },
   {
     q: "Сколько стоит полный разбор?",
-    a: "Снимок и краткий результат — бесплатно. Актуальную цену полного разбора показываем до подтверждения; на первый разбор действует скидка 50%. Каждая ладонь оплачивается отдельно, повторное открытие уже оплаченного снимка не спишет руны снова.",
+    a: "Снимок и краткий результат — бесплатно. Актуальную цену первого и повторного полного разбора показываем до подтверждения. Каждая ладонь оплачивается отдельно, повторное открытие уже оплаченного снимка не спишет руны снова.",
   },
 ];
 
-export default function PalmLandingPage() {
+export default async function PalmLandingPage() {
+  const settings = await getRuneSettings();
+  const firstCost = Math.max(1, Math.round(settings.costs.PALM_READING * FIRST_PALM_DISCOUNT_RATIO));
   return (
     <SeoPageShell breadcrumbs={PALM_SEO_CRUMBS} wide>
       <SeoPageTracker goal="palm_landing_view" funnelProduct="palm" />
@@ -54,7 +60,7 @@ export default function PalmLandingPage() {
           <div className="palm-reading-hero__facts" aria-label="Условия разбора">
             <span>Каждая ладонь · бесплатно раз в сутки</span>
             <span>Цена полного разбора — до подтверждения</span>
-            <span>Первый полный разбор −50%</span>
+            <span>Первый полный разбор · {firstCost} ᚢ</span>
           </div>
           <div className="palm-reading-hero__actions">
             <a href="#palm-new" className="btn-luxe btn-luxe--md btn-luxe--gold">Сделать снимок</a>

@@ -59,10 +59,10 @@ describe.skipIf(!hasTestDb)("bonus transactions (isolated PostgreSQL)",()=>{
   });
   it("awards starter and daily runes before email proof; proof stays owner-bound and cannot grant twice",async()=>{
     const user=await createTestUser();const account=await accountFor(user.id,true);
-    expect((await grantStarterRunesIfNeeded(user.id))?.granted).toBe(40);
+    expect((await grantStarterRunesIfNeeded(user.id))?.granted).toBe(25);
     expect(await getDailyBonusStatus(user.id)).toMatchObject({available:true,verificationRequired:false});
     expect(await claimDailyBonus(user.id)).toMatchObject({claimed:true,bonusAmount:5});
-    expect(await getRuneBalance(user.id)).toBe(45);
+    expect(await getRuneBalance(user.id)).toBe(30);
     vi.stubEnv("AUTH_SECRET","bonus-test-signing-secret-for-local-tests-only");
     const email=(await query<{email:string}>("SELECT email FROM user_accounts WHERE id=$1",[account.id])).rows[0].email;
     const token=await new SignJWT({purpose:"bonus-email",email,tv:0}).setProtectedHeader({alg:"HS256"}).setAudience("bonus-email").setSubject(account.id).setExpirationTime("1h").sign(createHmac("sha256",process.env.AUTH_SECRET!).update("zovus:bonus-email:v1").digest());
@@ -73,7 +73,7 @@ describe.skipIf(!hasTestDb)("bonus transactions (isolated PostgreSQL)",()=>{
     expect(verified.rows[0]).toMatchObject({bonus_email_verification_required:false});
     expect(verified.rows[0].email_verified_at).not.toBeNull();
     expect(await grantStarterRunesIfNeeded(user.id)).toBeNull();
-    expect(await getRuneBalance(user.id)).toBe(45);
+    expect(await getRuneBalance(user.id)).toBe(30);
     expect((await query("SELECT id FROM rune_transactions WHERE user_id=$1 AND description LIKE 'Стартовый пакет%'",[user.id])).rows).toHaveLength(1);
   });
   it("computes a real PostgreSQL DATE series and grants all earned numerical achievements, never sensitive keywords",async()=>{
