@@ -20,7 +20,7 @@ describe("personal-zovus-home", () => {
       "utf8"
     );
     expect(landing).toMatch(/EditorialProductEntries/);
-    expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(6);
+    expect(EDITORIAL_PRODUCT_ENTRIES).toHaveLength(8);
     expect(EDITORIAL_PRODUCT_ENTRIES.map((e) => e.id)).toContain("palm");
   });
 

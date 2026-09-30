@@ -1,14 +1,10 @@
 /**
- * Landing reviews: editorial seed stays conversational, user posts are
- * sanitized and stay pending until admin approval.
+ * Landing reviews: only real user posts can become public after moderation.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { LANDING_REVIEW_SEEDS } from "@/lib/landing-reviews-seed";
 import {
-  LANDING_REVIEW_BODY_MAX,
-  LANDING_REVIEW_BODY_MIN,
   formatLandingReviewWhen,
 } from "@/lib/landing-reviews-shared";
 import {
@@ -23,29 +19,14 @@ const VALID_BODY =
   "Спрашивала про работу и получила спокойный разбор без обещаний. Этого хватило, чтобы не ходить кругами.";
 
 describe("landing reviews", () => {
-  it("seeds 72 unique conversational reviews without marketplace superlatives", () => {
-    expect(LANDING_REVIEW_SEEDS).toHaveLength(72);
-    const keys = LANDING_REVIEW_SEEDS.map((seed) => seed.key);
-    expect(new Set(keys).size).toBe(72);
-    const joined = LANDING_REVIEW_SEEDS.map((seed) => seed.body).join("\n");
-    expect(joined).not.toMatch(/реальн(ые|ый|ых) (покупател|отзыв)/i);
-    expect(joined).not.toMatch(/лучший сервис/i);
-    expect(joined).not.toMatch(/100%/);
-    for (const seed of LANDING_REVIEW_SEEDS) {
-      expect(seed.body.length).toBeGreaterThanOrEqual(LANDING_REVIEW_BODY_MIN);
-      expect(seed.body.length).toBeLessThanOrEqual(LANDING_REVIEW_BODY_MAX);
-      expect([3, 4, 5]).toContain(seed.rating);
-      const parsed = validateReviewSubmission({
-        name: seed.name,
-        body: seed.body,
-        rating: seed.rating,
-        product: seed.product,
-      });
-      expect(parsed.ok, seed.key).toBe(true);
-    }
-    const threes = LANDING_REVIEW_SEEDS.filter((seed) => seed.rating === 3);
-    expect(threes.length).toBeGreaterThanOrEqual(3);
-    expect(threes.length).toBeLessThan(12);
+  it("public list and rating exclude old fabricated seed rows", () => {
+    const source = readFileSync(path.join(__dirname, "../../src/lib/landing-reviews.ts"), "utf8");
+    expect(source).toContain("status = 'approved' AND source = 'user'");
+    expect(source).toContain("FROM landing_reviews WHERE source = 'user' GROUP BY status");
+    const route = readFileSync(path.join(__dirname, "../../src/app/api/reviews/route.ts"), "utf8");
+    expect(route).not.toContain("ensureLandingReviewSeed");
+    expect(readFileSync(path.join(__dirname, "../../src/app/api/admin/reviews/route.ts"), "utf8"))
+      .not.toContain("ensureLandingReviewSeed");
   });
 
   it("strips tags, links and emails from user copy", () => {

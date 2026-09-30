@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { query } from "@/lib/db";
-import { LANDING_REVIEW_SEEDS } from "@/lib/landing-reviews-seed";
 import {
   LANDING_REVIEW_BODY_MAX,
   LANDING_REVIEW_BODY_MIN,
@@ -127,50 +126,15 @@ function toPublic(row: {
   };
 }
 
-let seedPromise: Promise<void> | null = null;
-
 function isMissingRelationError(error: unknown): boolean {
   return (error as { code?: string } | null)?.code === "42P01";
-}
-
-export async function ensureLandingReviewSeed(): Promise<void> {
-  if (seedPromise) {
-    await seedPromise;
-    return;
-  }
-  seedPromise = (async () => {
-    const { rows } = await query<{ n: string }>(
-      `SELECT COUNT(*)::text AS n FROM landing_reviews WHERE source = 'seed'`
-    );
-    if (Number.parseInt(rows[0]?.n ?? "0", 10) >= LANDING_REVIEW_SEEDS.length) return;
-
-    const now = Date.now();
-    for (const seed of LANDING_REVIEW_SEEDS) {
-      const published = new Date(now - seed.daysAgo * 86_400_000 - (seed.key.charCodeAt(2) % 11) * 3_600_000);
-      await query(
-        `INSERT INTO landing_reviews (
-           seed_key, source, status, rating, author_name, city, product, body, published_at
-         ) VALUES ($1, 'seed', 'approved', $2, $3, $4, $5, $6, $7)
-         ON CONFLICT (seed_key) DO NOTHING`,
-        [seed.key, seed.rating, seed.name, seed.city, seed.product, seed.body, published.toISOString()]
-      );
-    }
-  })()
-    .catch((error) => {
-      if (isMissingRelationError(error)) return;
-      throw error;
-    })
-    .finally(() => {
-      seedPromise = null;
-    });
-  await seedPromise;
 }
 
 export async function getApprovedReviewSummary(): Promise<{ count: number; averageRating: number }> {
   try {
     const { rows } = await query<{ count: string; avg: string | null }>(
       `SELECT COUNT(*)::text AS count, ROUND(AVG(rating)::numeric, 1)::text AS avg
-       FROM landing_reviews WHERE status = 'approved'`
+       FROM landing_reviews WHERE status = 'approved' AND source = 'user'`
     );
     return {
       count: Number.parseInt(rows[0]?.count ?? "0", 10),
@@ -189,7 +153,7 @@ export async function listApprovedReviews(opts: {
 }): Promise<{ items: PublicLandingReview[]; nextCursor: { publishedAt: string; id: string } | null }> {
   const limit = Math.min(Math.max(opts.limit ?? LANDING_REVIEW_PAGE_SIZE, 1), 24);
   const params: unknown[] = [];
-  let where = `status = 'approved'`;
+  let where = `status = 'approved' AND source = 'user'`;
   if (opts.cursorPublishedAt && opts.cursorId) {
     params.push(opts.cursorPublishedAt, opts.cursorId);
     where += ` AND (published_at, id) < ($1::timestamptz, $2::uuid)`;
@@ -272,10 +236,10 @@ export async function listAdminReviews(opts: {
   const limit = Math.min(Math.max(opts.limit ?? 50, 1), 100);
   const offset = Math.max(opts.offset ?? 0, 0);
   const params: unknown[] = [];
-  let where = "TRUE";
+  let where = "source = 'user'";
   if (opts.status !== "all") {
     params.push(opts.status);
-    where = `status = $1`;
+    where += ` AND status = $1`;
   }
   params.push(limit, offset);
   const { rows } = await query<LandingReviewRow>(
@@ -293,7 +257,7 @@ export async function listAdminReviews(opts: {
 export async function getAdminReviewStats(): Promise<LandingReviewStats> {
   const { rows } = await query<{ status: LandingReviewStatus; n: string; avg: string | null }>(
     `SELECT status, COUNT(*)::text AS n, ROUND(AVG(rating)::numeric, 1)::text AS avg
-     FROM landing_reviews GROUP BY status`
+     FROM landing_reviews WHERE source = 'user' GROUP BY status`
   );
   const stats: LandingReviewStats = { approved: 0, pending: 0, rejected: 0, averageRating: 0 };
   for (const row of rows) {

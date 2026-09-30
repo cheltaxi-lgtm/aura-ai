@@ -14,22 +14,25 @@ type EditorialProductEntriesProps = {
  * Compact multiproduct map under the hero — not four full marketing blocks.
  */
 export default function EditorialProductEntries({ onTarotCta }: EditorialProductEntriesProps) {
-  const { humanDesignEnabled, auraReadingEnabled, palmReadingEnabled } = usePlatformFeatures();
+  const { humanDesignEnabled, auraReadingEnabled, palmReadingEnabled, photoReadingEnabled, jointReadingEnabled } = usePlatformFeatures();
 
   return (
     <section
       id={EDITORIAL_SECTION_IDS.practices}
       className="editorial-product-entries scroll-mt-24"
-      aria-label="Направления Zovus"
+      aria-labelledby="editorial-product-entries-title"
     >
       <div className="editorial-landing__inner">
         <p className="editorial-product-entries__kicker">Направления Zovus</p>
+        <h2 id="editorial-product-entries-title" className="editorial-product-entries__heading">Выберите свой способ взглянуть на ситуацию</h2>
         <ul className="editorial-product-entries__grid">
           {EDITORIAL_PRODUCT_ENTRIES.map((entry) => {
             const hdHidden = entry.id === "hd" && !humanDesignEnabled;
             const auraHidden = entry.id === "aura" && !auraReadingEnabled;
             const palmHidden = entry.id === "palm" && !palmReadingEnabled;
-            if (hdHidden || auraHidden || palmHidden) return null;
+            const photoHidden = entry.id === "photo" && !photoReadingEnabled;
+            const jointHidden = entry.id === "joint" && !jointReadingEnabled;
+            if (hdHidden || auraHidden || palmHidden || photoHidden || jointHidden) return null;
 
             if (entry.kind === "action") {
               return (

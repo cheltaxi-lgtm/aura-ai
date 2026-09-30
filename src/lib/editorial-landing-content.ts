@@ -69,6 +69,22 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
     href: "/gadanie-po-ladoni",
     kind: "link" as const,
   },
+  {
+    id: "photo",
+    title: "Фото-расклад",
+    text: "Расшифровка вашего расклада Таро по фото",
+    cta: "Разобрать расклад",
+    href: "/photo-rasklad",
+    kind: "link" as const,
+  },
+  {
+    id: "joint",
+    title: "Совместный расклад",
+    text: "Взгляд на отношения через карты",
+    cta: "Посмотреть расклад",
+    href: "/joint-reading",
+    kind: "link" as const,
+  },
 ] as const;
 
 export const EDITORIAL_DAILY_CARDS = {

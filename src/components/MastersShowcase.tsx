@@ -198,20 +198,12 @@ export default function MastersShowcase({
           className="master-showcase-grid mx-auto grid w-full max-w-[390px] grid-cols-1 justify-items-center gap-7 px-1 sm:max-w-[760px] sm:grid-cols-2 sm:gap-7 lg:max-w-[1120px] lg:grid-cols-3 lg:gap-8 [&_.master-showcase-card]:w-full [&_.master-showcase-card]:max-w-[350px]"
         >
           {listBody}
-          {guestLanding ? (
-            <Link
-              href="/about/masters"
-              className="master-showcase-card master-showcase-card--gallery master-showcase-card--compact master-showcase-card--guest-landing master-showcase-card--all-masters group relative flex h-full w-full max-w-[350px] flex-col items-center justify-center gap-3 p-6 text-center no-underline salon-reveal__item"
-              style={{ ["--salon-i" as string]: masters.length + 2 }}
-            >
-              <span className="master-showcase-card__all-arrow" aria-hidden>
-                →
-              </span>
-              <span className="master-showcase-card__name">Все наставники</span>
-              <span className="master-showcase-card__system">Смотреть полный список</span>
-            </Link>
-          ) : null}
         </div>
+        {guestLanding ? (
+          <Link href="/about/masters" className="master-showcase-all-link salon-reveal__item">
+            <span aria-hidden>→</span> Все наставники
+          </Link>
+        ) : null}
 
         {showDisclaimer ? (
           <MasterServiceDisclaimer className="master-showcase-section__disclaimer mx-auto mt-6 max-w-3xl text-center" />

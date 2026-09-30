@@ -1,5 +1,5 @@
 /**
- * P1.2: multiproduct homepage — 6 public entries (aura + palm) + root SEO.
+ * Multiproduct homepage — eight public directions behind their feature flags.
  */
 import { readFileSync } from "node:fs";
 import path from "node:path";
@@ -21,6 +21,8 @@ describe("multiproduct-homepage", () => {
       "tarot",
       "aura",
       "palm",
+      "photo",
+      "joint",
     ]);
     // Quick Tarot path kept.
     expect(EDITORIAL_HERO.primaryCta.toLowerCase()).toMatch(/3 карты|три карты/);
@@ -41,6 +43,9 @@ describe("multiproduct-homepage", () => {
     expect(byId.palm?.href).toBe("/gadanie-po-ladoni");
     expect(byId.palm?.kind).toBe("link");
     expect(byId.palm?.cta).toMatch(/ладонь/i);
+    expect(byId.photo?.href).toBe("/photo-rasklad");
+    expect(byId.photo?.text).toMatch(/расклада Таро по фото/i);
+    expect(byId.joint?.href).toBe("/joint-reading");
   });
 
   it("guest landing mounts product entries before guest spread; Tarot is action not auth redirect", () => {
@@ -60,6 +65,8 @@ describe("multiproduct-homepage", () => {
     // Aura / palm entries stay behind their kill-switch flags.
     expect(entries).toMatch(/entry\.id === "aura" && !auraReadingEnabled/);
     expect(entries).toMatch(/entry\.id === "palm" && !palmReadingEnabled/);
+    expect(entries).toMatch(/entry\.id === "photo" && !photoReadingEnabled/);
+    expect(entries).toMatch(/entry\.id === "joint" && !jointReadingEnabled/);
 
     const page = readFileSync(path.join(ROOT, "src/app/page.tsx"), "utf8");
     expect(page).toMatch(/Матрица судьбы, Натальная карта, Дизайн человека и Таро/);

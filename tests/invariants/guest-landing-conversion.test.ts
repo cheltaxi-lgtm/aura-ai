@@ -61,11 +61,12 @@ describe("guest landing conversion cleanup", () => {
       "<GuestTripletDraw",
       "<EditorialHeroSection",
       "<EditorialPreviewSection",
-      "<EditorialStarterGiftSection",
-      "<EditorialProductEntries",
-      "<EditorialSessionStepsSection",
       "<EditorialDailyCardsSection",
+      "<EditorialProductEntries",
+      "<EditorialStarterGiftSection",
       "<MastersShowcase",
+      "<EditorialReviewsSection",
+      "<EditorialSessionStepsSection",
       "<EditorialBirthToolsSection",
       "<EditorialExtraFeaturesSection",
       "<LandingSeoHub",
@@ -82,12 +83,12 @@ describe("guest landing conversion cleanup", () => {
     expect(guest).not.toContain("<EditorialPracticesSection");
   });
 
-  it("does not publish reviews on the guest landing while preserving real review collection", () => {
+  it("shows only published reviews on the guest landing while preserving moderated collection", () => {
     const guest = guestLandingBranch();
-    expect(guest).not.toContain("<EditorialReviewsSection");
-    expect(readSrc("src/components/AuraSellingLanding.tsx")).not.toContain(
-      'import EditorialReviewsSection from'
-    );
+    expect(guest).toContain("<EditorialReviewsSection");
+    const reviews = readSrc("src/components/editorial/EditorialReviewsSection.tsx");
+    expect(reviews).toContain('fetch(`/api/reviews?${params}`)');
+    expect(reviews).toContain("if (!enabled || items.length === 0) return null");
     expect(readSrc("src/lib/editorial-landing-content.ts")).not.toContain(
       '{ label: "Отзывы", hash:'
     );
