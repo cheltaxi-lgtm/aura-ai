@@ -506,6 +506,7 @@ body,
 
   .master-showcase-section__subtitle {
     @apply mx-auto mt-1.5 max-w-2xl text-xs leading-snug text-gray-500 md:text-sm;
+    color: #c5beb1;
   }
 
   .master-showcase-section__filters {

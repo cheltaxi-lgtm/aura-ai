@@ -339,14 +339,14 @@
   flex-wrap: wrap;
   gap: 0.5rem 0.75rem;
   font-size: 0.6875rem;
-  color: rgba(237, 230, 218, 0.45);
+  color: #bdb5a8;
 }
 
 .cookie-banner__docs a {
   touch-action: manipulation;
   text-decoration: underline;
   text-underline-offset: 2px;
-  color: rgba(232, 199, 126, 0.75);
+  color: #e8c77e;
 }
 
 .cookie-banner__docs a:hover {

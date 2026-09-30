@@ -3,6 +3,7 @@
 import Link from "next/link";
 import { EDITORIAL_PRODUCT_ENTRIES, EDITORIAL_SECTION_IDS } from "@/lib/editorial-landing-content";
 import { usePlatformFeatures } from "@/lib/usePlatformFeatures";
+import { trackProductFunnel } from "@/lib/seo/product-funnel";
 
 type EditorialProductEntriesProps = {
   /** Guest Tarot must stay inline (no auth gate). */
@@ -48,7 +49,14 @@ export default function EditorialProductEntries({ onTarotCta }: EditorialProduct
 
             return (
               <li key={entry.id}>
-                <Link href={entry.href} prefetch={false} className="editorial-product-entry">
+                <Link
+                  href={entry.href}
+                  prefetch={false}
+                  className="editorial-product-entry"
+                  onClick={entry.id === "aura" || entry.id === "palm"
+                    ? () => trackProductFunnel("product_view", { product: entry.id, source: "home_banner" })
+                    : undefined}
+                >
                   <span className="editorial-product-entry__title">{entry.title}</span>
                   <span className="editorial-product-entry__text">{entry.text}</span>
                   <span className="editorial-product-entry__cta">{entry.cta}</span>

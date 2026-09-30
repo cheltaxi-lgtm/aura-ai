@@ -25,6 +25,7 @@ export const BRAND_LOGO_HEADER = {
   linkToHome: true,
   showTagline: false,
   showBeta: true,
+  iconOnlyOnMobile: true,
   markSize: 32,
   titleClassName:
     "font-display text-lg font-semibold tracking-[0.14em] text-[#ede6da] sm:text-2xl",

@@ -2211,7 +2211,7 @@ button.editorial-practice-card {
   margin: 0;
   font-size: 0.75rem;
   line-height: 1.35;
-  color: rgba(237, 230, 218, 0.45);
+  color: #bdb5a8;
 }
 
 .editorial-footer__social {
@@ -2325,11 +2325,11 @@ button.editorial-practice-card {
 
 .editorial-footer__col-title {
   margin: 0 0 0.15rem;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 600;
   letter-spacing: 0.08em;
   text-transform: uppercase;
-  color: rgba(237, 230, 218, 0.42);
+  color: #bdb5a8;
 }
 
 .editorial-footer__link {
@@ -4108,7 +4108,7 @@ button.editorial-reviews__star:focus-visible {
 }
 .editorial-landing--guest-conversion .editorial-hero__brand {
   font-family: var(--font-sans), sans-serif;
-  font-size: 0.6875rem;
+  font-size: 0.75rem;
   line-height: 1.7;
   letter-spacing: 0.13em;
   color: #d8be86;
@@ -4126,7 +4126,7 @@ button.editorial-reviews__star:focus-visible {
 .editorial-landing--guest-conversion .editorial-hero__subtitle {
   margin: 1.125rem auto 0;
   max-width: 35rem;
-  font-size: 0.9375rem;
+  font-size: 1rem;
   line-height: 1.6;
   color: #ded7ca;
 }
@@ -4157,7 +4157,7 @@ button.editorial-reviews__star:focus-visible {
 .editorial-landing--guest-conversion .hero-question__hint {
   color: #c5beb1;
   text-align: center;
-  font-size: .8125rem;
+  font-size: .875rem;
 }
 .editorial-landing--guest-conversion .editorial-hero__pain-chips {
   gap: .5rem;

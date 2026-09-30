@@ -178,10 +178,14 @@ describe("starter gift on the public homepage", () => {
     expect(guestBranch).not.toContain("<EditorialStarterPackSection");
   });
 
-  it("hero shows the compact starter accent to guests near the main CTA", () => {
-    const src = readSrc("src/components/editorial/EditorialHeroSection.tsx");
-    expect(src).toContain('StarterRunesValue variant="line" generic product="home_hero"');
-    expect(src).toContain("guestConversion");
+  it("keeps the starter gift below the main hero, with a clear guest path", () => {
+    const hero = readSrc("src/components/editorial/EditorialHeroSection.tsx");
+    const landing = readSrc("src/components/AuraSellingLanding.tsx");
+    const gift = readSrc("src/components/editorial/EditorialStarterGiftSection.tsx");
+    expect(hero).not.toContain('StarterRunesValue variant="line" generic product="home_hero"');
+    expect(hero).toContain("guestConversion");
+    expect(landing).toContain("<EditorialStarterGiftSection />");
+    expect(gift).toContain("config.starterRunes");
   });
 
   it("no second starter-grant mechanism was created", () => {

@@ -1,7 +1,6 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { createPortal } from "react-dom";
 import { usePathname } from "next/navigation";
 import AppTopHeader from "@/components/AppTopHeader";
 import BrandLogo from "@/components/BrandLogo";
@@ -55,7 +54,8 @@ export default function GlobalAppTopHeader() {
   if (isAdminPath(pathname) || isProPublicReportPath(pathname)) return null;
 
   /* Pre-mount: paint the chrome shell immediately (SSR) so the header doesn't
-     flash in after hydration; the portal swap reuses the same layout. */
+     flash in after hydration. Keep the interactive header in this DOM position
+     so keyboard focus follows the visible page order. */
   if (!mounted || typeof document === "undefined") {
     return (
       <header
@@ -106,7 +106,7 @@ export default function GlobalAppTopHeader() {
     target?.focus?.({ preventScroll: true });
   };
 
-  return createPortal(
+  return (
     <AppTopHeader
       photoNavLabel={photoNavLabel}
       isLoggedIn={isLoggedIn}
@@ -121,7 +121,6 @@ export default function GlobalAppTopHeader() {
       onStartReading={handlePrimaryAction}
       primaryActionLabel={productAction?.desktopLabel}
       primaryActionMobileLabel={productAction?.mobileLabel}
-    />,
-    document.body
+    />
   );
 }
