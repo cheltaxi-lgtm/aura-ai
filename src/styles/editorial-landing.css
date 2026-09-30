@@ -4351,6 +4351,7 @@ html.app-shell-has-tabs {
   padding-block: clamp(2.5rem, 5vw, 4.5rem);
 }
 .editorial-landing--guest-conversion .editorial-product-entries__grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 9rem), 1fr));
   gap: .75rem;
 }
 .editorial-landing--guest-conversion .editorial-product-entry {
@@ -4358,6 +4359,7 @@ html.app-shell-has-tabs {
   border-radius: 1.1rem;
   background: linear-gradient(155deg, #1b1816, #10100f);
   box-shadow: inset 0 1px rgba(255, 244, 220, .04);
+  overflow-wrap: anywhere;
 }
 .editorial-landing--guest-conversion .editorial-product-entry:is(:hover, :focus-visible) {
   border-color: rgba(235, 193, 107, .7);
@@ -4368,7 +4370,7 @@ html.app-shell-has-tabs {
   font-size: .875rem;
 }
 .editorial-landing--guest-conversion .aura-landing-masters .master-showcase-grid {
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   max-width: 64rem;
   align-items: stretch;
   gap: .65rem;
@@ -4387,16 +4389,30 @@ html.app-shell-has-tabs {
 .editorial-landing--guest-conversion .master-showcase-card--guest-landing .master-showcase-card__meta {
   display: none;
 }
-.editorial-landing--guest-conversion .master-showcase-card--all-masters {
-  grid-column: 1 / -1;
+.editorial-landing--guest-conversion .master-showcase-all-link {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: .75rem;
+  width: min(100% - 2rem, 64rem);
   min-height: 3.25rem;
-  flex-direction: row;
-  padding: .75rem;
+  margin: 1rem auto 0;
+  border: 1px solid rgba(215, 178, 106, .3);
+  border-radius: .9rem;
+  background: #17130f;
+  color: #ead2a1;
+  text-decoration: none;
 }
-.editorial-landing--guest-conversion .master-showcase-card--all-masters .master-showcase-card__system {
-  display: none;
+.editorial-landing--guest-conversion .master-showcase-all-link:hover {
+  border-color: #d8b57b;
+  color: #fff3d6;
 }
 @media (max-width: 639px) {
+  .editorial-landing--guest-conversion .aura-landing-masters .master-showcase-grid > :nth-child(3) {
+    grid-column: 1 / -1;
+    justify-self: center;
+    max-width: min(100%, 22rem);
+  }
   .editorial-landing--guest-conversion .master-showcase-card--guest-landing .master-showcase-card__name {
     font-size: .875rem;
   }
@@ -4419,6 +4435,9 @@ html.app-shell-has-tabs {
   }
   .editorial-landing--guest-conversion .master-showcase-card--guest-landing {
     min-height: 17rem;
+  }
+  .editorial-landing--guest-conversion .aura-landing-masters .master-showcase-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
   }
 }
 @media (max-width: 390px) {

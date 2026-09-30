@@ -72,8 +72,8 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
   {
     id: "photo",
     title: "Фото-расклад",
-    text: "Символический разбор образа по фото",
-    cta: "Загрузить фото",
+    text: "Расшифровка вашего расклада Таро по фото",
+    cta: "Разобрать расклад",
     href: "/photo-rasklad",
     kind: "link" as const,
   },

@@ -121,7 +121,7 @@ export default function MasterShowcaseCard({
             masterName={master.name}
             size="grid"
             hoverZoom
-            priority={index < 5}
+            priority={index < 5 && !guestLanding}
           />
         </div>
 

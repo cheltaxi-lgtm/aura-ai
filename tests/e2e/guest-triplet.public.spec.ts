@@ -30,7 +30,6 @@ test.describe("mobile guest triplet entry points", () => {
 
   test("daily guest CTA opens registration and returns to the daily reading", async ({ page }) => {
     await openFreshLanding(page);
-    await page.getByText("Другие возможности Zovus", { exact: true }).click();
     const button = page.locator(".editorial-daily-ritual").getByRole("button", {
       name: "Открыть расклад на сутки",
     });

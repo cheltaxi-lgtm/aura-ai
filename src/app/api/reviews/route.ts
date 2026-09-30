@@ -6,7 +6,6 @@ import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import {
   createUserReview,
-  ensureLandingReviewSeed,
   getApprovedReviewSummary,
   hasRecentPendingReview,
   hashReviewIp,
@@ -25,7 +24,6 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ enabled: false, items: [], summary: { count: 0, averageRating: 0 } });
   }
   await ensureDb();
-  await ensureLandingReviewSeed();
 
   const ip = clientIp(request);
   const { allowed, retryAfterSec } = await checkRateLimit(
