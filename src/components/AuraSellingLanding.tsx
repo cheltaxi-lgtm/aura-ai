@@ -64,6 +64,7 @@ import EditorialPracticesSection from "@/components/editorial/EditorialPractices
 import EditorialExtraFeaturesSection from "@/components/editorial/EditorialExtraFeaturesSection";
 import EditorialDailyCardsSection from "@/components/editorial/EditorialDailyCardsSection";
 import EditorialFreeValueSection from "@/components/editorial/EditorialFreeValueSection";
+import EditorialReviewsSection from "@/components/editorial/EditorialReviewsSection";
 import LoggedInHomeBanner from "@/components/editorial/LoggedInHomeBanner";
 import HomeDestinyMatrixBanner from "@/components/editorial/HomeDestinyMatrixBanner";
 import HomeHumanDesignBanner from "@/components/editorial/HomeHumanDesignBanner";
@@ -405,15 +406,14 @@ export default function AuraSellingLanding({
           }}
         />
         <EditorialPreviewSection />
-        <EditorialStarterGiftSection />
-        <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
-        <EditorialSessionStepsSection />
         <EditorialDailyCardsSection
           isLoggedIn={false}
         />
+        <EditorialProductEntries onTarotCta={() => startGuestSpread()} />
+        <EditorialStarterGiftSection />
         {showMasters ? (
           <MastersShowcase
-            masters={masters}
+            masters={masters.slice(0, 3)}
             onSelect={onSelectMaster}
             onBrowseDeck={onBrowseDeck}
             recommendedId={recommendedId}
@@ -430,6 +430,8 @@ export default function AuraSellingLanding({
             className="aura-landing-masters"
           />
         ) : null}
+        <EditorialReviewsSection />
+        <EditorialSessionStepsSection />
         <details className="editorial-more mx-auto my-6 max-w-6xl px-5">
         <summary className="cursor-pointer rounded-2xl border border-aura-gold/25 px-5 py-4 text-aura-champagne">Другие возможности Zovus</summary>
         <EditorialBirthToolsSection />

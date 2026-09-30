@@ -69,6 +69,22 @@ export const EDITORIAL_PRODUCT_ENTRIES = [
     href: "/gadanie-po-ladoni",
     kind: "link" as const,
   },
+  {
+    id: "photo",
+    title: "Фото-расклад",
+    text: "Символический разбор образа по фото",
+    cta: "Загрузить фото",
+    href: "/photo-rasklad",
+    kind: "link" as const,
+  },
+  {
+    id: "joint",
+    title: "Совместный расклад",
+    text: "Взгляд на отношения через карты",
+    cta: "Посмотреть расклад",
+    href: "/joint-reading",
+    kind: "link" as const,
+  },
 ] as const;
 
 export const EDITORIAL_DAILY_CARDS = {

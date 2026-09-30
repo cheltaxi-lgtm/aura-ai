@@ -14,7 +14,7 @@ type EditorialProductEntriesProps = {
  * Compact multiproduct map under the hero — not four full marketing blocks.
  */
 export default function EditorialProductEntries({ onTarotCta }: EditorialProductEntriesProps) {
-  const { humanDesignEnabled, auraReadingEnabled, palmReadingEnabled } = usePlatformFeatures();
+  const { humanDesignEnabled, auraReadingEnabled, palmReadingEnabled, photoReadingEnabled, jointReadingEnabled } = usePlatformFeatures();
 
   return (
     <section
@@ -29,7 +29,9 @@ export default function EditorialProductEntries({ onTarotCta }: EditorialProduct
             const hdHidden = entry.id === "hd" && !humanDesignEnabled;
             const auraHidden = entry.id === "aura" && !auraReadingEnabled;
             const palmHidden = entry.id === "palm" && !palmReadingEnabled;
-            if (hdHidden || auraHidden || palmHidden) return null;
+            const photoHidden = entry.id === "photo" && !photoReadingEnabled;
+            const jointHidden = entry.id === "joint" && !jointReadingEnabled;
+            if (hdHidden || auraHidden || palmHidden || photoHidden || jointHidden) return null;
 
             if (entry.kind === "action") {
               return (
