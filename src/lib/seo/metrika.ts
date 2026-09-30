@@ -334,7 +334,7 @@ export function trackGuestTripletRedrawPrevented(props: {
   });
 }
 
-export async function trackRunePurchase(amountRub: number, packageId?: string): Promise<boolean> {
+export async function trackRunePurchase(amountRub: number, packageId?: string, onSent?: () => void): Promise<boolean> {
   if (typeof window === "undefined" || !Number.isFinite(amountRub) || !hasCookieConsent()) return false;
   for (let attempt = 0; attempt < 5; attempt += 1) {
     if (window.ym) break;
@@ -342,7 +342,8 @@ export async function trackRunePurchase(amountRub: number, packageId?: string): 
   }
   if (!window.ym || !hasCookieConsent()) return false;
   return new Promise<boolean>((resolve) => {
-    const timeout = window.setTimeout(() => resolve(false), 500);
+    let delivered = false;
+    const timeout = window.setTimeout(() => resolve(false), 5000);
     try {
       window.ym!(YANDEX_METRIKA_ID, "reachGoal", "rune_purchase", {
         order_price: amountRub,
@@ -350,7 +351,10 @@ export async function trackRunePurchase(amountRub: number, packageId?: string): 
         ...(packageId ? { packageId } : {}),
         ...utmParamsForMetrika(),
       }, () => {
+        if (delivered) return;
+        delivered = true;
         window.clearTimeout(timeout);
+        try { onSent?.(); } catch { /* analytics optional */ }
         resolve(true);
       });
     } catch {

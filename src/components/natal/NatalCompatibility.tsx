@@ -533,7 +533,7 @@ export default function NatalCompatibility() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 ym-hide-content ym-disable-keys">
       {acceptedReport ? (
         <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
           <ReportAcceptedScreen

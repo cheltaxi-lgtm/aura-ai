@@ -40,7 +40,7 @@ export default function CabinetAstrologyPage() {
   }
 
   return (
-    <div className={shellClassName}>
+    <div className={`${shellClassName} ym-hide-content ym-disable-keys`}>
       <AstrologyWorkspace />
     </div>
   );

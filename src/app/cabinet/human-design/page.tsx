@@ -41,7 +41,7 @@ export default function CabinetHumanDesignPage() {
 
   return (
     <div className={shellClassName}>
-      <main className="mx-auto w-full max-w-3xl px-4 py-8">
+      <main className="mx-auto w-full max-w-3xl px-4 py-8 ym-hide-content ym-disable-keys">
         <HdCabinet />
       </main>
     </div>

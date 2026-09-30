@@ -25,7 +25,7 @@ export default function LifePathPreview() {
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 ym-hide-content ym-disable-keys">
       <form onSubmit={onSubmit} className="space-y-3">
         <label htmlFor="life-path-date" className="block text-sm text-white/70">
           Дата рождения

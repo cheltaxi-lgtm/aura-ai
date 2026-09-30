@@ -377,7 +377,7 @@ export default function MatrixCompatibilityPreview() {
   }
 
   return (
-    <div id="calculate" className="mt-10 scroll-mt-24">
+    <div id="calculate" className="mt-10 scroll-mt-24 ym-hide-content ym-disable-keys">
       <h2 className="font-display text-xl font-semibold text-white">
         Совместимость матриц — бесплатный расчёт
       </h2>

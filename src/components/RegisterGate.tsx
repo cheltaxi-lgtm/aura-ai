@@ -13,6 +13,7 @@ import { trackRegistrationCtaClick, trackRegistrationGateView } from "@/lib/seo/
 import { isAgeGateConfirmed } from "@/lib/age-gate";
 import SocialAuthButtons from "@/components/auth/SocialAuthButtons";
 import OAuthConsentFields from "@/components/auth/OAuthConsentFields";
+import { COOKIE_CONSENT_EVENT, METRIKA_READY_EVENT, hasCookieConsent } from "@/lib/cookie-consent";
 
 interface RegisterGateProps {
   title?: string;
@@ -41,13 +42,22 @@ export default function RegisterGate({
   const gateViewTracked = useRef(false);
 
   useEffect(() => {
-    if (gateViewTracked.current) return;
-    gateViewTracked.current = true;
-    try {
-      trackRegistrationGateView(source);
-    } catch {
-      // Analytics must not affect the registration gate.
-    }
+    const sendGateView = () => {
+      if (gateViewTracked.current || typeof window === "undefined" || !hasCookieConsent() || !window.ym) return;
+      try {
+        trackRegistrationGateView(source);
+        gateViewTracked.current = true;
+      } catch {
+        // Analytics must not affect the registration gate.
+      }
+    };
+    sendGateView();
+    window.addEventListener(COOKIE_CONSENT_EVENT, sendGateView);
+    window.addEventListener(METRIKA_READY_EVENT, sendGateView);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, sendGateView);
+      window.removeEventListener(METRIKA_READY_EVENT, sendGateView);
+    };
   }, [source]);
 
   return (

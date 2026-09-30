@@ -144,7 +144,7 @@ export default function MatrixSubjectPicker({
       : "+ Другой человек");
 
   return (
-    <section className="rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/20 via-black/20 to-transparent p-4">
+    <section className="rounded-2xl border border-aura-gold/15 bg-gradient-to-b from-amber-950/20 via-black/20 to-transparent p-4 ym-hide-content ym-disable-keys">
       <p className="text-xs uppercase tracking-widest text-amber-200/70">{title}</p>
       {visibleSubjects.length > 0 ? (
         <div className="mt-3 flex flex-wrap gap-2">

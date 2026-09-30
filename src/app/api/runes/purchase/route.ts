@@ -30,7 +30,7 @@ function logRunePurchaseFailure(
       error instanceof Error && error.message.startsWith("YooKassa error:")
         ? "provider_rejected"
         : error instanceof TypeError
-          ? "network_error"
+          ? "type_error"
           : "payment_creation_error";
     const context = {
       route: "runes/purchase",

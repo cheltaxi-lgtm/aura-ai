@@ -529,7 +529,7 @@ export default function HdCalculator({
 
     if (showConnection && canCompare && selfChart && otherForConnection) {
       return (
-        <div id="hd-calculator" className="space-y-5 scroll-mt-24">
+        <div id="hd-calculator" className="space-y-5 scroll-mt-24 ym-hide-content ym-disable-keys">
           {mineChips}
           <div className="flex flex-wrap items-center justify-between gap-3">
             <p className="text-sm text-amber-100/80">
@@ -551,7 +551,7 @@ export default function HdCalculator({
     }
 
     return (
-      <div id="hd-calculator" className="space-y-5 scroll-mt-24">
+      <div id="hd-calculator" className="space-y-5 scroll-mt-24 ym-hide-content ym-disable-keys">
         {mineChips}
         <div className="flex flex-wrap items-center justify-between gap-3">
           <p className="text-sm text-white/55">{payload_line(result)}</p>
@@ -639,7 +639,7 @@ export default function HdCalculator({
   }
 
   return (
-    <div id="hd-calculator" className="space-y-5 scroll-mt-24">
+    <div id="hd-calculator" className="space-y-5 scroll-mt-24 ym-hide-content ym-disable-keys">
       {mineChips}
 
       <div className="hd-panel">

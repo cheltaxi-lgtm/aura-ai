@@ -120,7 +120,7 @@ export default function SupportChat({
                       Автоответ
                     </p>
                   ) : null}
-                  <p className="whitespace-pre-wrap break-words">{msg.content}</p>
+                  <p className="whitespace-pre-wrap break-words ym-hide-content ym-disable-keys">{msg.content}</p>
                   <p className="mt-1 text-[10px] text-gray-500">{formatTime(msg.created_at)}</p>
                 </div>
               </div>

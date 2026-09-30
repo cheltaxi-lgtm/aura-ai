@@ -250,7 +250,7 @@ export default function AppTopHeaderAccount({
         title={label}
       >
         <User className="h-3.5 w-3.5 shrink-0" aria-hidden />
-        <span className="max-w-[5.5rem] truncate">{label}</span>
+        <span className="max-w-[5.5rem] truncate ym-hide-content ym-disable-keys">{label}</span>
         {notificationCount > 0 ? (
           <span className="flex h-4 min-w-4 items-center justify-center rounded-full bg-[#1a0f06] px-1 text-[10px] font-bold leading-none text-amber-200">
             {notificationCount > 9 ? "9+" : notificationCount}

@@ -65,7 +65,7 @@ export default function NumerologyPublicCalc({
   }
 
   return (
-    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
+    <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-5 ym-hide-content ym-disable-keys">
       <form onSubmit={onSubmit} className="space-y-3">
         {needsDate ? (
           <>

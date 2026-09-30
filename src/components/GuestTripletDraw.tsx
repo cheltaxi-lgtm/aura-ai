@@ -887,7 +887,7 @@ export default function GuestTripletDraw({
                 <span className="block text-[11px] uppercase tracking-wide text-aura-ivory/45">
                   Ваш вопрос
                 </span>
-                <span className="mt-1 block font-medium text-white">{landingQuestion}</span>
+                <span className="mt-1 block font-medium text-white ym-hide-content ym-disable-keys">{landingQuestion}</span>
               </p>
             ) : null}
 
@@ -1032,7 +1032,7 @@ export default function GuestTripletDraw({
 
         {landingQuestion ? (
           <p className="mb-6 text-center text-sm text-aura-ivory/70">
-            Вопрос: <span className="text-white">{landingQuestion}</span>
+            Вопрос: <span className="text-white ym-hide-content ym-disable-keys">{landingQuestion}</span>
           </p>
         ) : null}
 

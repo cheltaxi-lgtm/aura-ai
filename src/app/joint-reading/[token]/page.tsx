@@ -253,7 +253,7 @@ export default function JointReadingTokenPage() {
 
   return (
     <SeoPageShell backHref="/joint-reading" backLabel="Все совместные расклады" wide>
-      <div className="joint-result">
+      <div className="joint-result ym-hide-content ym-disable-keys">
       <header className="joint-result__hero">
         <span className="joint-eyebrow"><Users size={14} aria-hidden="true" /> Совместный расклад · {themeTitle}</span>
         <h1>{labelA} и {labelB}</h1>

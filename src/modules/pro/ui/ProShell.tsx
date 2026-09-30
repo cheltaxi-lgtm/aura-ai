@@ -31,8 +31,8 @@ export default function ProShell({
     <div
       className={
         isGate
-          ? "pro-shell pro-shell--gate"
-          : "pro-shell mx-auto w-full max-w-5xl px-4 py-8 sm:px-6"
+          ? "pro-shell pro-shell--gate ym-hide-content ym-disable-keys"
+          : "pro-shell mx-auto w-full max-w-5xl px-4 py-8 sm:px-6 ym-hide-content ym-disable-keys"
       }
     >
       {isGate ? (

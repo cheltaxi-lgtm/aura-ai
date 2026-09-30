@@ -146,7 +146,7 @@ export default function AdminShell({ children }: { children: React.ReactNode }) 
   const closeMobileNav = () => setMobileNavOpen(false);
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen ym-hide-content ym-disable-keys">
       <header className="sticky top-0 z-30 flex items-center justify-between border-b border-white/5 bg-black/40 px-4 py-3 backdrop-blur md:hidden">
         <div className="min-w-0">
           <p className="font-display text-base font-bold text-aura-champagne">Zovus Admin</p>

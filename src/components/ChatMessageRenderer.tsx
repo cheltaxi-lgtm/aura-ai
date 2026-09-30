@@ -111,7 +111,7 @@ function renderPlainBody(
 ): ReactNode {
   const paragraphs = toParagraphs(text);
   return (
-    <div className={`space-y-4 font-body ${className}`}>
+    <div className={`space-y-4 font-body ${className} ym-hide-content ym-disable-keys`}>
       <ReactMarkdown components={buildMarkdownComponents(variant)}>
         {paragraphs.map((para) => para.replace(/\n/g, "  \n")).join("\n\n")}
       </ReactMarkdown>
@@ -300,7 +300,7 @@ function ChatMessageRenderer({
 
   if (isUser) {
     return (
-      <p className={`whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-white ${className}`}>
+      <p className={`whitespace-pre-wrap break-words font-body text-sm leading-relaxed text-white ${className} ym-hide-content ym-disable-keys`}>
         {trimmed}
       </p>
     );
@@ -315,7 +315,7 @@ function ChatMessageRenderer({
   }
 
   return (
-    <div className={`space-y-4 font-body ${className}`}>
+    <div className={`space-y-4 font-body ${className} ym-hide-content ym-disable-keys`}>
       {!hideSpreadCardImages && imageBlock ? renderCardImageRow(imageBlock) : null}
       {markdownSource ? (
         <ReactMarkdown components={buildMarkdownComponents(variant)}>

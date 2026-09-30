@@ -353,7 +353,7 @@ export default function HdCompatibilityCalculator() {
     : null;
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-6 ym-hide-content ym-disable-keys">
       <div className="grid gap-5 lg:grid-cols-2">
         <PersonForm title="Первый человек" idPrefix="hd-compat-a" state={a} onChange={(p) => setA((prev) => ({ ...prev, ...p }))} onCompute={() => void computeA()} />
         <PersonForm title="Второй человек" idPrefix="hd-compat-b" state={b} onChange={(p) => setB((prev) => ({ ...prev, ...p }))} onCompute={() => void computeB()} />

@@ -487,7 +487,7 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
   }
 
   return (
-    <div id="calculate" className={`destiny-matrix-preview scroll-mt-24 ${embedded ? "" : "mt-10"}`}>
+    <div id="calculate" className={`destiny-matrix-preview scroll-mt-24 ${embedded ? "" : "mt-10"} ym-hide-content ym-disable-keys`}>
       <h2 className={embedded ? "sr-only" : "font-display text-xl font-semibold text-white"}>Рассчитать бесплатно</h2>
       {!embedded ? <p className="mt-2 text-sm text-white/55">
         Можно считать для себя, ребёнка, партнёра или любого человека — нужна только дата. Схема

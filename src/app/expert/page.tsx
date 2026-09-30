@@ -84,7 +84,7 @@ export default function ExpertCabinetPage() {
   if (!data) return null;
 
   return (
-    <div className="page-with-site-header min-h-screen px-6 py-12">
+    <div className="page-with-site-header min-h-screen px-6 py-12 ym-hide-content ym-disable-keys">
       <div className="mx-auto max-w-3xl">
         <div className="mb-8 flex items-center justify-end">
           <button

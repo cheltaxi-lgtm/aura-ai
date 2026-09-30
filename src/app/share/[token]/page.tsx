@@ -77,7 +77,7 @@ export default async function ShareLandingPage({ params }: PageProps) {
   const shareUrl = `${getAppUrl()}/share/${token}`;
 
   return (
-    <main className="share-landing">
+    <main className="share-landing ym-hide-content ym-disable-keys">
       <ShareLandingTracker token={token} kind={kind} />
       <article className="share-landing__card">
         <p className="lux-label share-landing__label">Расклад {BRAND_NAME}</p>

@@ -9,6 +9,7 @@ import { openTelegramExternalUrl } from "@/components/telegram/TelegramWebAppPro
 import { trackAuthProviderClick, trackRegistrationError, trackRegistrationStarted } from "@/lib/seo/metrika";
 import { resolveRegistrationSource } from "@/lib/share/registration-attribution";
 import { readUtmAttribution } from "@/lib/utm/attribution";
+import { COOKIE_CONSENT_EVENT, METRIKA_READY_EVENT, hasCookieConsent } from "@/lib/cookie-consent";
 
 const OAUTH_ERROR_MESSAGES: Record<string, string> = {
   account_link_required: "Этот email уже используется. Войдите по email (при необходимости восстановите пароль), затем привяжите соцсеть в кабинете.",
@@ -103,17 +104,27 @@ export default function SocialAuthButtons({
   const oauthErrorTracked = useRef(false);
 
   useEffect(() => {
-    if (mode !== "register" || oauthErrorTracked.current || typeof window === "undefined") return;
-    try {
-      const rawCode = new URLSearchParams(window.location.search).get("oauthError");
-      if (!rawCode) return;
-      oauthErrorTracked.current = true;
-      trackRegistrationError(
-        Object.prototype.hasOwnProperty.call(OAUTH_ERROR_MESSAGES, rawCode) ? rawCode : "oauth_failed"
-      );
-    } catch {
-      // Analytics must not affect OAuth.
-    }
+    if (mode !== "register" || typeof window === "undefined") return;
+    const sendOAuthError = () => {
+      if (oauthErrorTracked.current || !hasCookieConsent() || !window.ym) return;
+      try {
+        const rawCode = new URLSearchParams(window.location.search).get("oauthError");
+        if (!rawCode) return;
+        trackRegistrationError(
+          Object.prototype.hasOwnProperty.call(OAUTH_ERROR_MESSAGES, rawCode) ? rawCode : "oauth_failed"
+        );
+        oauthErrorTracked.current = true;
+      } catch {
+        // Analytics must not affect OAuth.
+      }
+    };
+    sendOAuthError();
+    window.addEventListener(COOKIE_CONSENT_EVENT, sendOAuthError);
+    window.addEventListener(METRIKA_READY_EVENT, sendOAuthError);
+    return () => {
+      window.removeEventListener(COOKIE_CONSENT_EVENT, sendOAuthError);
+      window.removeEventListener(METRIKA_READY_EVENT, sendOAuthError);
+    };
   }, [mode]);
 
   useEffect(() => {
