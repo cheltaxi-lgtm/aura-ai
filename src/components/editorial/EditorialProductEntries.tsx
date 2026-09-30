@@ -20,10 +20,11 @@ export default function EditorialProductEntries({ onTarotCta }: EditorialProduct
     <section
       id={EDITORIAL_SECTION_IDS.practices}
       className="editorial-product-entries scroll-mt-24"
-      aria-label="Направления Zovus"
+      aria-labelledby="editorial-product-entries-title"
     >
       <div className="editorial-landing__inner">
         <p className="editorial-product-entries__kicker">Направления Zovus</p>
+        <h2 id="editorial-product-entries-title" className="editorial-product-entries__heading">Выберите свой способ взглянуть на ситуацию</h2>
         <ul className="editorial-product-entries__grid">
           {EDITORIAL_PRODUCT_ENTRIES.map((entry) => {
             const hdHidden = entry.id === "hd" && !humanDesignEnabled;
