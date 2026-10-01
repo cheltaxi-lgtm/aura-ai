@@ -8,5 +8,6 @@ export function normalizeSessionIntention(
   const value = raw.trim();
   if (isSessionTopicId(value) || value === "life_death") return value as SessionTopicId;
   if (INTENTION_OPTIONS.some((o) => o.id === value)) return value as SessionIntention;
-  return value as SessionIntention;
+  // Product/tool IDs from saved bot sessions are not conversation topics.
+  return null;
 }

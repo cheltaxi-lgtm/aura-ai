@@ -41,6 +41,7 @@ export default function SessionIntentionBar({
 
   const customQ = intention === "custom" ? readSessionCustomQuestion(characterKey) : null;
   const meta = intentionDisplay(intention);
+  if (!meta) return null;
   const displayLabel =
     intention === "custom" && customQ
       ? customQ.length > 72
