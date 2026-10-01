@@ -133,13 +133,13 @@ function mapRow(row: NumerologyReportHistoryRow): NumerologyReportHistoryItem {
 }
 
 const SELECT_COLS = `
-  id, tool_id, subject_id, birth_date, calculation_version, content, structured_data,
+  id, tool_id, subject_id, birth_date::text AS birth_date, calculation_version, content, structured_data,
   rune_cost, session_id, created_at, updated_at
 `;
 
 /** Same columns qualified for queries that join matrix_subjects (shared column names). */
 const SELECT_COLS_N = `
-  n.id, n.tool_id, n.subject_id, n.birth_date, n.calculation_version, n.content,
+  n.id, n.tool_id, n.subject_id, n.birth_date::text AS birth_date, n.calculation_version, n.content,
   n.structured_data, n.rune_cost, n.session_id, n.created_at, n.updated_at
 `;
 
@@ -362,7 +362,7 @@ export async function listUserMatrixReportSummaries(
   const { rows } = await query<
     NumerologyReportHistoryRow & { subject_kind: string | null; subject_name: string | null }
   >(
-    `SELECT n.id, n.tool_id, n.subject_id, n.birth_date, n.calculation_version,
+    `SELECT n.id, n.tool_id, n.subject_id, n.birth_date::text AS birth_date, n.calculation_version,
             n.content, n.structured_data, n.rune_cost, n.session_id, n.created_at, n.updated_at,
             s.kind AS subject_kind, s.display_name AS subject_name
      FROM numerology_report_history n
@@ -459,7 +459,7 @@ export async function saveMatrixReport(params: {
     }
     const ownedSubject = await queryClient<{ birth_date: Date | string }>(
       client,
-      `SELECT birth_date FROM matrix_subjects
+      `SELECT birth_date::text AS birth_date FROM matrix_subjects
        WHERE id = $1::uuid AND user_id = $2
        LIMIT 1`,
       [subjectId, params.userId]

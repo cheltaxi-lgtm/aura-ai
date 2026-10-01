@@ -3,9 +3,11 @@ import { NextRequest } from "next/server";
 import { createUser } from "@/lib/accounts";
 import { query, getPool } from "@/lib/db";
 import { getRuneSettings, setRuneSettings } from "@/lib/rune-settings";
+import { createSession, updateSessionChatMeta } from "@/lib/session";
+import { getCabinetSessions } from "@/lib/cabinet-data";
 import { ensureMinimalConsumerProfile, updateUserProfile } from "@/lib/users";
-import { ensureSelfSubject } from "@/lib/services/matrix-subject-service";
-import { saveMatrixReport } from "@/lib/services/numerology-report-service";
+import { ensureSelfSubject, upsertMatrixSubject, getMatrixSubject } from "@/lib/services/matrix-subject-service";
+import { saveMatrixReport, getUserMatrixReportById } from "@/lib/services/numerology-report-service";
 import { createAsyncJob, claimAsyncJobs, getAsyncJobById, claimAsyncJobForSave, completeAsyncJob, failAsyncJobAndRefundIfCharged, retryOrFailReportJob, refundChargedAsyncJobIfNeeded, type AsyncJobRow } from "@/lib/async-jobs";
 import { chargeRuneActionForWorkerJob, refundWorkerJobCharge, beginWorkerJobSave } from "@/lib/async-job-lifecycle";
 import { WORKER_SECRET_HEADER, WORKER_USER_HEADER, WORKER_JOB_HEADER, WORKER_ATTEMPT_HEADER, WORKER_ID_HEADER } from "@/lib/async-job-worker-auth";
@@ -100,5 +102,27 @@ describe.runIf(hasTestDb)("Matrix purchase and worker attempt isolation", () => 
     await query("UPDATE async_jobs SET status='failed' WHERE id=$1", [job.id]);
     expect(await refundChargedAsyncJobIfNeeded(job.id)).toBe(false);
     expect(await getAsyncJobById(job.id)).toMatchObject({ status: "completed", billing_state: "completed", result: { reportId: saved.report.id, reading: "Durable report" } });
+  });
+  it.each(["Asia/Yekaterinburg", "Pacific/Apia", "America/Los_Angeles"])("preserves PostgreSQL DATE for subjects and reports in %s", async TZ => {
+    const previous = process.env.TZ;
+    process.env.TZ = TZ;
+    try {
+      const { user, subject } = await seed();
+      expect(subject.birthDate).toBe("1990-08-15");
+      expect((await ensureSelfSubject(user.id))?.birthDate).toBe("1990-08-15");
+      expect((await query("SELECT birth_date::text FROM matrix_subjects WHERE id=$1", [subject.id])).rows[0].birth_date).toBe("1990-08-15");
+      const child = await upsertMatrixSubject({ userId: user.id, kind: "child", displayName: "QA child", birthDate: "2011-12-30" });
+      expect(child.birthDate).toBe("2011-12-30");
+      expect((await getMatrixSubject(user.id, child.id))?.birthDate).toBe(child.birthDate);
+      const session = await createSession(undefined, user.id);
+      await updateSessionChatMeta(session.id, { characterKey: "numerolog", intention: "child_matrix", spreadType: "new", spreadId: "child_matrix", cards: [] });
+      const saved = await saveMatrixReport({ userId: user.id, subjectId: child.id, toolId: "child_matrix", birthDateRaw: child.birthDate, content: "Calendar fixture", runeCost: 0, sessionId: session.id });
+      expect(saved.report.birthDate).toBe("2011-12-30");
+      expect((await getUserMatrixReportById(user.id, saved.report.id))?.birthDate).toBe("2011-12-30");
+      expect((await getCabinetSessions(user.id)).sessions.find(item => item.sessionId === session.id)?.matrixBirthDate).toBe("2011-12-30");
+    } finally {
+      if (previous === undefined) delete process.env.TZ;
+      else process.env.TZ = previous;
+    }
   });
 });
