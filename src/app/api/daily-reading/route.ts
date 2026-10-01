@@ -21,7 +21,7 @@ import {
 } from "@/lib/daily-energy";
 import { isDailyReadingUsedToday } from "@/lib/rate-limit-anchors";
 import { productCalendarDate, resolveDailyReadingRequestDate } from "@/lib/product-calendar";
-import { isCharacterKey } from "@/lib/prompts";
+import { resolveDailyMasterKey } from "@/lib/daily-master-policy";
 import { ensureSpreadCatalogSettingsLoaded } from "@/lib/spread-catalog-loader";
 import { DEFAULT_SPREAD_ID, isSpreadEnabled, normalizeSpreadId } from "@/lib/spreads";
 import { isRuneBillingActive } from "@/lib/rune-service";
@@ -128,7 +128,7 @@ async function handlePost(request: NextRequest) {
   const rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const asyncRequested = rawBody.async === true;
   const requested = typeof body.characterKey === "string" ? body.characterKey : "veronika";
-  const charKey = isCharacterKey(requested) ? requested : "veronika";
+  const charKey = resolveDailyMasterKey(requested);
   const localDate = resolveDailyReadingRequestDate(body.localDate, Boolean(workerUserId));
   const requestedSpreadId =
     typeof body.spreadId === "string" ? normalizeSpreadId(body.spreadId) : DEFAULT_SPREAD_ID;
