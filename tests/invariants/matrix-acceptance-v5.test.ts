@@ -331,7 +331,8 @@ describe("one authoritative reducer (source audit)", () => {
     const compat = readFileSync(path.join(ROOT, "src/lib/numerology/matrix-compatibility.ts"), "utf8");
     expect(v5).toContain("reduceToArcanaDigitSum");
     expect(v5).not.toMatch(/%\s*22/);
-    expect(forecast).toContain("reduceToArcanaNumber");
+    expect(forecast).toContain("matrix.monthArcana");
+    expect(forecast).not.toMatch(/reduceToArcanaNumber|%\s*22/);
     expect(compat).toContain("reduceToArcanaNumber");
     expect(MATRIX_CALCULATION_VERSION).toBe("matrix-v5");
     expect(MATRIX_METHODOLOGY_ID).toBe("zovus-matrix-22-v2");
