@@ -1,4 +1,4 @@
-import { formatAgePeriodRange } from "./matrix-labels";
+import { formatAgePeriodRange, formatMatrixAge } from "./matrix-labels";
 import { getMatrixArcanaEntry } from "./matrix-arcana-map";
 import {
   destinyMatrix,
@@ -106,7 +106,7 @@ export function formatMatrixDenseTeaser(
     `✨ ${m.comfort.number} ${comfort.title} — ${clip(comfort.short, 52)}`,
     `💎 ${m.talents.number} ${talents.title} — ${clip(talents.short, 52)}`,
     `♻️ Хвост ${tail} · корень ${root.title}`,
-    `🪴 ${m.chronologicalAge} лет · период ${formatAgePeriodRange(m.ageCurrent.age, m.ageModel?.periodEnd ?? m.ageNext?.age)} · ${m.ageCurrent.number} ${age.title}`,
+    `🪴 ${formatMatrixAge(m.chronologicalAge)} · период ${formatAgePeriodRange(m.ageCurrent.age, m.ageModel?.periodEnd ?? m.ageNext?.age)} · ${m.ageCurrent.number} ${age.title}`,
     `💰 ${m.money.number} ${money.title} — ${clip(money.money || money.short, 52)}`,
     `💞 ${m.relationships.number} ${love.title} — ${clip(love.love || love.short, 52)}`,
     `📅 Год ${m.yearArcana.number} ${year.title} · месяц ${m.monthArcana.number} ${month.title}`,
@@ -142,7 +142,8 @@ export function buildMatrixFreeSummary(
   const tail = matrix.karmicTail.map((p) => `${p.number}`).join(" → ");
   const rootEntry = getMatrixArcanaEntry(matrix.karmicTail[0].number, matrix.calculationVersion);
 
-  const portrait = `${who}${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}) — ${clip(body?.light ?? body?.shortMeaning ?? matrix.body.arcanaMeaning, 80)}. Комфорт: ${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}).`;
+  const meaning = clip(body?.light ?? body?.shortMeaning ?? matrix.body.arcanaMeaning, 80);
+  const portrait = `${who}${body?.title ?? matrix.body.arcanaName} (${matrix.body.number}) — ${meaning}${/[.!?…]$/.test(meaning) ? "" : "."} Комфорт: ${comfort?.title ?? matrix.comfort.arcanaName} (${matrix.comfort.number}).`;
 
   const summary: MatrixFreeSummary = {
     version: matrix.calculationVersion,

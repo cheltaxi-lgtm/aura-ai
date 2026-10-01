@@ -49,6 +49,13 @@ export function formatAgePeriodRange(periodStart: number, periodEnd = periodStar
   return periodStart >= 80 ? `${periodStart}+` : `${periodStart}–${periodEnd}`;
 }
 
+export function formatMatrixAge(age: number): string {
+  const lastTwo = age % 100;
+  const last = age % 10;
+  const word = lastTwo >= 11 && lastTwo <= 14 ? "лет" : last === 1 ? "год" : last >= 2 && last <= 4 ? "года" : "лет";
+  return `${age} ${word}`;
+}
+
 export function formatAgePeriodLabel(periodStart: number, periodEnd = periodStart + 5): string {
   return `Период ${formatAgePeriodRange(periodStart, periodEnd)} лет`;
 }
@@ -58,7 +65,7 @@ export function formatAgeAndPeriodFocus(input: {
   periodStart: number;
   periodEnd: number;
 }): string {
-  return `${MATRIX_LABELS.ageChronological}: ${input.chronological} лет. Период Матрицы: ${formatAgePeriodRange(input.periodStart, input.periodEnd)} лет`;
+  return `${MATRIX_LABELS.ageChronological}: ${formatMatrixAge(input.chronological)}. Период Матрицы: ${formatAgePeriodRange(input.periodStart, input.periodEnd)} лет`;
 }
 
 /** Client-safe report badge — never leak engine ids like matrix-v5. */
