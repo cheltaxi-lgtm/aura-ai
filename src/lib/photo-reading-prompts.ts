@@ -51,7 +51,8 @@ function photoInterpretationRules(cardCount: number, masterId: string): string {
 ${buildPaidSpreadReadingExtras({ cardCount: n, masterId, includeDepthBlocks: true })}
 
 ДОПОЛНИТЕЛЬНО ДЛЯ ФОТО-РАСКЛАДА:
-- по каждой карте: название → значение в её позиции → вывод для клиента (отдельный развёрнутый абзац);
+- по каждой карте: название → значение в её позиции → вывод для клиента (отдельный развёрнутый абзац, отделённый пустой строкой);
+- если название карты содержит неопределённость или варианты, прямо укажи, что карта не определена точно; трактуй только достоверные признаки, не выдавай предполагаемый вариант за факт;
 - если карт больше одной — отдельно назови значимые связки соседних и повторяющихся карт (масти, числа, стихии, конфликт или усиление) и что они добавляют к смыслу;
 - свяжи с вопросом клиента; астрологический профиль упоминай только когда он действительно помогает ответу;
 - не выводи названия служебных блоков «Вердикт», «В плюс», «Жёстко», «Простыми словами» и не повторяй вывод в конце;
@@ -518,4 +519,8 @@ async function resolvePromptWithBuilder(
   }
 }
 
-export { paidSpreadMaxTokens as photoInterpretationMaxTokens } from "@/lib/prompts/premium-reading";
+/** Photo spreads need room for up to twelve separate positions plus synthesis. */
+export function photoInterpretationMaxTokens(cardCount: number): number {
+  const count = Number.isFinite(cardCount) ? Math.max(1, Math.min(MAX_PHOTO_CARDS, Math.floor(cardCount))) : 1;
+  return Math.max(1600, 1000 + count * 480);
+}

@@ -495,7 +495,7 @@ export async function POST(request: NextRequest) {
         cardCount: confirmedSpread!.cards.length,
       });
       if (generated.llmFailed || !generated.reply.trim()) {
-        return refundAndFail("Photo reading generation failed");
+        return refundAndFail(`Photo reading generation failed: ${generated.failureCode ?? "empty_response"}${generated.failureDetail ? `; ${generated.failureDetail}` : ""}`);
       }
       return finalizeSuccess(generated.reply);
     }

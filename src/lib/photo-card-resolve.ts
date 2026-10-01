@@ -5,6 +5,7 @@ import {
   normalizePhotoCardName,
 } from "@/lib/photo-card-aliases";
 import { getDeckImagePath, DECK_BACK_PATHS } from "@/data/decks";
+import { isUncertainPhotoCardName } from "@/lib/photo-reading-quality";
 
 const TAROT_SYSTEMS: DeckSystem[] = ["tarot-veronika", "tarot-marina"];
 
@@ -53,6 +54,11 @@ export function resolveAuraArtForDetected(
   }
 ): AuraArtMatch {
   const originalName = rawName.replace(/[«»"']/g, "").trim();
+  // A label with alternative identities is not a confirmed exact card. Keep
+  // the recognition uncertainty instead of mapping one candidate to its art.
+  if (isUncertainPhotoCardName(originalName)) {
+    return {displayName: originalName, originalName, imagePath: "", artSystem: options.primarySystem, placeholder: true};
+  }
   const systemsToTry = [
     ...new Set([
       ...(options.preferSystems ?? []),
