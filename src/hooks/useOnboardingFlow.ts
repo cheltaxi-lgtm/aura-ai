@@ -183,6 +183,7 @@ import {
 import { restoredTripletSpreadType } from "@/lib/daily-spread-client";
 import type { CurrentDailyCardsResult } from "@/lib/current-daily-cards";
 import { shouldEmitDailyCardsStarted } from "@/lib/daily-cards-ui";
+import { resolveDailyMasterKey } from "@/lib/daily-master-policy";
 import { buildHomeRecapKey, isHomeRecapHidden } from "@/lib/home-recap-key";
 import { tarotCardsKey } from "@/lib/tarot";
 import {
@@ -1700,8 +1701,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   }, [masters, displayTarotCards, tripletOwnerMasterId]);
 
   const dailyEnergyMasterId = useMemo(() => {
-    if (tripletOwnerMasterId) return tripletOwnerMasterId;
-    return (
+    if (tripletOwnerMasterId) return resolveDailyMasterKey(tripletOwnerMasterId);
+    return resolveDailyMasterKey(
       recommendedId ??
       lastMasterId ??
       tripletMasterId ??

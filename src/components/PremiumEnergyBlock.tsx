@@ -9,6 +9,7 @@ import { resolveMasterDeckSystem, DECK_REGISTRY } from "@/lib/decks";
 import { DECK_SYSTEM_DISPLAY } from "@/lib/photo-spread-redraw";
 import type { DeckSystem } from "@/lib/decks/types";
 import DeckCard from "@/components/DeckCard";
+import { resolveDailyMasterKey } from "@/lib/daily-master-policy";
 import BodyPortal from "@/components/BodyPortal";
 import MasterAvatar from "@/components/MasterAvatar";
 import PremiumReadingBody from "@/components/PremiumReadingBody";
@@ -103,7 +104,7 @@ export default function PremiumEnergyBlock({
   const [lockedToday, setLockedToday] = useState(false);
   const [open, setOpen] = useState(false);
 
-  const [master, setMaster] = useState(characterKey);
+  const [master, setMaster] = useState(() => resolveDailyMasterKey(characterKey));
   const [spreadId, setSpreadId] = useState<SpreadId>(initialSpreadId);
   const [text, setText] = useState<string | null>(null);
   const [cards, setCards] = useState<DailyCard[]>([]);
@@ -602,7 +603,7 @@ export default function PremiumEnergyBlock({
                           <button
                             key={m.id}
                             type="button"
-                            onClick={() => setMaster(m.id)}
+                            onClick={() => setMaster(resolveDailyMasterKey(m.id))}
                             disabled={drawing}
                             className={`flex shrink-0 flex-col items-center gap-1.5 rounded-2xl border px-3 py-2.5 transition-all disabled:opacity-50 ${
                               selected

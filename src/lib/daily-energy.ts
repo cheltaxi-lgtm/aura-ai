@@ -1,4 +1,6 @@
-import { query } from "@/lib/db";
+import { query, queryClient, withTransaction } from "@/lib/db";
+import type { PoolClient, QueryResultRow } from "pg";
+import { resolveDailyMasterKey } from "@/lib/daily-master-policy";
 import { createHistoryEntry, getUserById, profileGenderForPersonalization } from "@/lib/users";
 import { type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
@@ -406,6 +408,44 @@ export async function getExistingDailyReading(
 
   const storedSpreadId = normalizeSpreadId(rows[0].spread_id);
 
+  if (rows[0].character_key === "numerolog" || rows[0].deck_system === "numerology") {
+    const user = await getUserById(userId);
+    if (!user) throw new DailyReadingGenerationError();
+    // Generate before touching the saved artifact. A failed repair retains it.
+    const replacement = await generateDailyReadingArtifact({
+      userId, characterKey: "veronika", name: user.name, zodiac: user.zodiac,
+      birthDate: user.birth_date ?? "", localDate: today, spreadId: storedSpreadId,
+    });
+    return withTransaction(async client => {
+      const current = (await queryClient<{
+        reading_text: string; cards: unknown; deck_system: string | null;
+        character_key: string; spread_id: string | null;
+      }>(client, `SELECT reading_text,cards,deck_system,character_key,spread_id
+        FROM daily_readings WHERE user_id=$1 AND reading_date=$2::date FOR UPDATE`, [userId, today])).rows[0];
+      if (!current) throw new DailyReadingLockedError(storedSpreadId);
+      const stillNumeric = current.character_key === "numerolog" || current.deck_system === "numerology";
+      const result: DailyReadingResult = stillNumeric ? replacement : {
+        text: current.reading_text, cards: parseStoredCards(current.cards),
+        system: current.deck_system as DeckSystem | null, cached: true,
+        spreadId: normalizeSpreadId(current.spread_id),
+      };
+      const master = stillNumeric ? "veronika" : resolveDailyMasterKey(current.character_key);
+      if (stillNumeric) await queryClient(client, `UPDATE daily_readings SET
+        character_key=$3,deck_system=$4,reading_text=$5,cards=$6::jsonb
+        WHERE user_id=$1 AND reading_date=$2::date`,
+      [userId, today, master, result.system, result.text, JSON.stringify(result.cards)]);
+      await syncDailyReadingHistory({ userId, characterKey: master, readingDate: today,
+        reading: result.text, cards: result.cards, system: result.system ?? resolveMasterDeckSystem(master), spreadId: result.spreadId }, client);
+      await queryClient(client, `UPDATE async_jobs SET result=result || $3::jsonb
+        WHERE user_id=$1 AND kind IN ('daily_reading','daily_extended') AND status='completed'
+          AND COALESCE(input->>'localDate',input->>'readingDate')=$2
+          AND result->>'system'='numerology'`,
+      [userId, today, JSON.stringify({ localDate: today, text: result.text, cards: result.cards,
+        system: result.system, drawn: true, spreadId: result.spreadId, locked: false, purged: false })]);
+      return { ...result, cached: true };
+    });
+  }
+
   const charKey: CharacterKey = isCharacterKey(rows[0].character_key)
     ? rows[0].character_key
     : "veronika";
@@ -485,10 +525,7 @@ export async function getOrCreateDailyReading(params: {
   localDate?: string | null;
   spreadId?: SpreadId | string | null;
 }): Promise<DailyReadingResult> {
-  const charKey: CharacterKey = isCharacterKey(params.characterKey)
-    ? params.characterKey
-    : "veronika";
-  const system = resolveMasterDeckSystem(charKey);
+  const charKey = resolveDailyMasterKey(params.characterKey);
   const requestedSpreadId = normalizeSpreadId(params.spreadId);
   let drawSpreadId: SpreadId =
     requestedSpreadId === "daily-extended" ? "daily-extended" : DEFAULT_SPREAD_ID;
@@ -512,6 +549,36 @@ export async function getOrCreateDailyReading(params: {
     throw new DailyReadingLockedError(usage.spreadId);
   }
 
+  const generated = await generateDailyReadingArtifact({ ...params, characterKey: charKey, localDate: today, spreadId: drawSpreadId });
+  const { text: reading, cards, system } = generated;
+
+  await query(
+    `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date, spread_id)
+     VALUES ($1, $2, $3, $4::jsonb, $5, $6::date, $7)
+     ON CONFLICT (user_id, reading_date) DO UPDATE SET
+       reading_text = EXCLUDED.reading_text,
+       cards = EXCLUDED.cards,
+       character_key = EXCLUDED.character_key,
+       deck_system = EXCLUDED.deck_system,
+       spread_id = EXCLUDED.spread_id`,
+    [params.userId, charKey, reading, JSON.stringify(cards), system, today, drawSpreadId]
+  );
+
+  await syncDailyReadingHistory({ userId: params.userId, characterKey: charKey,
+    readingDate: today, reading, cards, system: system!, spreadId: drawSpreadId });
+  await recordDailyReadingAnchor(params.userId, today, drawSpreadId);
+  return generated;
+}
+
+/** Generate from the daily master policy without writing or consuming entitlement. */
+export async function generateDailyReadingArtifact(params: {
+  userId: string; characterKey: string; name: string; zodiac: string; birthDate: string;
+  localDate: string; spreadId: SpreadId;
+}): Promise<DailyReadingResult> {
+  const charKey = resolveDailyMasterKey(params.characterKey);
+  const system = resolveMasterDeckSystem(charKey);
+  const today = resolveReadingDate(params.localDate);
+  const drawSpreadId = params.spreadId;
   // Build display date from the user's local calendar date (append T12:00 to
   // avoid timezone shifting the day when formatting).
   const dateRu = new Date(`${today}T12:00:00`).toLocaleDateString("ru-RU", {
@@ -549,29 +616,6 @@ export async function getOrCreateDailyReading(params: {
     throw new DailyReadingGenerationError();
   }
 
-  await query(
-    `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date, spread_id)
-     VALUES ($1, $2, $3, $4::jsonb, $5, $6::date, $7)
-     ON CONFLICT (user_id, reading_date) DO UPDATE SET
-       reading_text = EXCLUDED.reading_text,
-       cards = EXCLUDED.cards,
-       deck_system = EXCLUDED.deck_system,
-       spread_id = EXCLUDED.spread_id`,
-    [params.userId, charKey, reading, JSON.stringify(cards), system, today, drawSpreadId]
-  );
-
-  await syncDailyReadingHistory({
-    userId: params.userId,
-    characterKey: charKey,
-    readingDate: today,
-    reading,
-    cards,
-    system,
-    spreadId: drawSpreadId,
-  });
-
-  await recordDailyReadingAnchor(params.userId, today, drawSpreadId);
-
   return { text: reading, cards, system, cached: false, spreadId: drawSpreadId };
 }
 
@@ -583,22 +627,17 @@ async function syncDailyReadingHistory(params: {
   cards: DailyReadingCard[];
   system: DeckSystem;
   spreadId: SpreadId;
-}): Promise<void> {
-  const existing = await query<{ id: string }>(
-    `SELECT id FROM history
+}, client?: PoolClient): Promise<void> {
+  const runQuery = <T extends QueryResultRow = QueryResultRow>(sql: string, values?: unknown[]) =>
+    client ? queryClient<T>(client, sql, values) : query<T>(sql, values);
+  const existing = await runQuery<{ id: string; context_data: Record<string, unknown> }>(
+    `SELECT id, context_data FROM history
      WHERE user_id = $1
        AND character_name = 'daily_energy'
-       AND context_data->>'readingDate' = $2
-     LIMIT 1`,
+       AND context_data->>'readingDate' = $2`,
     [params.userId, params.readingDate]
   );
-  if (existing.rows[0]) return;
-
-  await createHistoryEntry({
-    userId: params.userId,
-    characterName: "daily_energy",
-    isPaid: false,
-    contextData: {
+  const contextData = {
       type: "daily_reading",
       spreadId: params.spreadId,
       reading: params.reading,
@@ -618,6 +657,18 @@ async function syncDailyReadingHistory(params: {
         contentHash: hashAiContent(params.reading),
         model: "daily-energy",
       },
-    },
-  });
+    };
+  if (existing.rows[0]) {
+    for (const entry of existing.rows) {
+      const prior = entry.context_data;
+      if (prior.reading === params.reading && prior.characterKey === params.characterKey &&
+          prior.deckSystem === params.system && prior.spreadId === params.spreadId &&
+          JSON.stringify(prior.tarotCards) === JSON.stringify(contextData.tarotCards)) continue;
+      await runQuery(`UPDATE history SET context_data=context_data || $3::jsonb
+        WHERE id=$1 AND user_id=$2`, [entry.id, params.userId, JSON.stringify(contextData)]);
+    }
+    return;
+  }
+  await createHistoryEntry({ userId: params.userId, characterName: "daily_energy",
+    isPaid: false, contextData }, client);
 }

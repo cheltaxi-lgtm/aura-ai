@@ -13,7 +13,7 @@ const dailyCards = exactCards.map((card, index) => ({
 const historyId = "e2e-daily-history-1";
 const sessionId = "e2e-daily-session-1";
 
-async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean; hasEmail?: boolean; masterReminder?: boolean }) {
+async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean; hasEmail?: boolean; masterReminder?: boolean; previousMatrixMaster?: boolean }) {
   let homeRecapHiddenKey: string | null = opts?.hiddenKey ?? null;
   let dailyExists = opts?.dailyExists ?? true;
   let cooldownAllowed = false;
@@ -66,7 +66,11 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
                   },
                 },
               ]
-            : [],
+            : opts?.previousMatrixMaster ? [{
+                id: "matrix-master-spread", characterName: "triplet", createdAt: new Date().toISOString(),
+                contextData: { type: "intro_triplet", masterId: "numerolog", deckSystem: "numerology",
+                  tarotCards: ["6", "9", "33"].map((name, id) => ({ id, name, position: id, reversed: false })) },
+              }] : [],
           continueMasterIds: ["veronika"],
           tripletCooldown: {
             allowed: cooldownAllowed,
@@ -198,6 +202,26 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
 }
 
 test.describe("daily artifact + landing copy", () => {
+  test("Matrix master cannot replace daily Tarot cards or their images", async ({ page }, testInfo) => {
+    await installDailyMocks(page, { dailyExists: false, previousMatrixMaster: true });
+    await page.addInitScript(() => localStorage.setItem("aura_last_master", "numerolog"));
+    await page.goto("/?app=1");
+    await page.locator(".editorial-hero--logged-in").getByRole("button", { name: "Открыть бесплатно · расклад на сутки" }).click();
+    const dialog = page.getByRole("dialog", { name: "Расклад на сутки" });
+    const drawRequest = page.waitForRequest(request => new URL(request.url()).pathname === "/api/daily-reading" && request.method() === "POST");
+    await dialog.getByRole("button", { name: "Начать бесплатный расклад · 0 рун" }).click();
+    expect((await drawRequest).postDataJSON()).toMatchObject({ characterKey: "veronika" });
+    for (let i = 0; i < exactCards.length; i++) await dialog.getByRole("button", { name: "Открыть карту" }).first().click();
+    for (const card of exactCards) await expect(dialog).toContainText(card.name);
+    const faces = dialog.locator('img[src*="/decks/tarot-veronika/"]');
+    await expect(faces).toHaveCount(3);
+    await expect.poll(() => faces.evaluateAll(images => images.every(img => (img as HTMLImageElement).naturalWidth > 0))).toBe(true);
+    await page.setViewportSize({ width: 1280, height: 900 });
+    await dialog.screenshot({ path: testInfo.outputPath("daily-matrix-tarot-desktop.png") });
+    await page.setViewportSize({ width: 390, height: 844 });
+    await dialog.screenshot({ path: testInfo.outputPath("daily-matrix-tarot-mobile.png") });
+  });
+
   test("Scenario C: anonymous landing has premium copy without internal jargon", async ({
     page,
   }, testInfo) => {
@@ -281,6 +305,7 @@ test.describe("daily artifact + landing copy", () => {
     await page.goto("/?app=1");
     const contact = page.getByRole("complementary", { name: "Напоминания о раскладе на сутки" });
     await expect(contact).toBeVisible({ timeout: 20_000 });
+    await contact.getByText("Настроить письма и Telegram", { exact: true }).click();
     await contact.getByRole("textbox", { name: "Адрес для уведомлений" }).fill("reader@example.com");
     const sent = page.waitForRequest((request) => request.url().includes("/api/profile/contact-email") && request.method() === "POST");
     await contact.getByRole("button", { name: "Подтвердить почту и включить письмо" }).click();
@@ -362,10 +387,12 @@ test.describe("daily artifact + landing copy", () => {
     const switcher = page.getByRole("checkbox", { name: "Напоминать о раскладе на сутки" });
     const contact = page.getByRole("complementary", { name: "Напоминания о раскладе на сутки" });
     await expect(switcher).not.toBeChecked();
+    await contact.getByText("Настроить письма и Telegram", { exact: true }).click();
     await contact.getByRole("button", { name: "Включить письмо о раскладе" }).click();
     await expect(switcher).toBeChecked();
     await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toHaveCount(0);
     await switcher.uncheck();
+    await contact.getByText("Настроить письма и Telegram", { exact: true }).click();
     await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toBeVisible();
   });
 
