@@ -37,9 +37,12 @@ describe("Matrix audit calculation fixes", () => {
   });
   it.each(["UTC", "Pacific/Apia", "America/Los_Angeles"])("accepts Gregorian dates independently of real host TZ: %s", TZ => {
     const probe = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval",
-      `import { destinyMatrix } from './src/lib/numerology/destiny-matrix.ts';
-       import { parseBirthDate } from './src/lib/numerology/constants.ts';
-       import { buildLocalMatrixDiagram } from './telegram-bot/src/domain/matrix/calc.ts';
+      `import * as matrixModule from './src/lib/numerology/destiny-matrix.ts';
+       import * as dateModule from './src/lib/numerology/constants.ts';
+       import * as botModule from './telegram-bot/src/domain/matrix/calc.ts';
+       const {destinyMatrix}=matrixModule.default??matrixModule;
+       const {parseBirthDate}=dateModule.default??dateModule;
+       const {buildLocalMatrixDiagram}=botModule.default??botModule;
        console.log(JSON.stringify({date:parseBirthDate('2011-12-30'),bot:Boolean(buildLocalMatrixDiagram('2011-12-30',null,{asOfDate:'2011-12-30'})),matrices:['matrix-v3','matrix-v4','matrix-v5'].map(calculationVersion=>destinyMatrix('2011-12-30',{asOfDate:'2011-12-30',calculationVersion})?.asOf.date)}));`],
     { cwd: process.cwd(), env: { ...process.env, TZ }, encoding: "utf8" });
     expect(probe.status, probe.stderr).toBe(0);
