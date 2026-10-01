@@ -1,5 +1,5 @@
 import { addMatrixCalendarMonths, matrixCalendarYmd } from "./matrix-calendar";
-import { arcanaForNumber, destinyMatrix, reduceToArcanaNumber, type DestinyMatrixResult } from "./destiny-matrix";
+import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
 
 const RU_MONTHS = [
   "Январь", "Февраль", "Март", "Апрель", "Май", "Июнь",
@@ -41,8 +41,8 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date(), cal
     const matrix = destinyMatrix(birthDate, { ...asOfFor(cur.year, cur.month), calculationVersion })!;
     const previous = destinyMatrix(birthDate, { ...asOfFor(prev.year, prev.month, new Date(Date.UTC(prev.year, prev.month, 0)).getUTCDate()), calculationVersion });
     const monthEnd = destinyMatrix(birthDate, { ...asOfFor(cur.year, cur.month, new Date(Date.UTC(cur.year, cur.month, 0)).getUTCDate()), calculationVersion })!;
-    const number = reduceToArcanaNumber(matrix.yearArcana.number + cur.month);
-    const point = arcanaForNumber(number, matrix.calculationVersion);
+    const point = matrix.monthArcana;
+    const number = point.number;
     const ageTransition = Boolean(previous && previous.ageCurrent.age !== monthEnd.ageCurrent.age);
     return {
       year: cur.year,

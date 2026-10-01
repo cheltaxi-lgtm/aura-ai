@@ -62,14 +62,14 @@ describe("Matrix audit calculation fixes", () => {
     expect(result.matrix.chronologicalAge).toBe(35);
     expect(result.matrix.ageCurrent.age).toBe(35);
   });
-  it("keeps the purchased version throughout a historical yearly forecast", () => {
-    const result = matrixYearForecast(DOB, new Date("2025-08-20T12:00:00Z"), "matrix-v4")!;
-    expect(result.matrix.calculationVersion).toBe("matrix-v4");
+  it.each(["matrix-v3", "matrix-v4"])("keeps purchased %s throughout a historical yearly forecast", calculationVersion => {
+    const result = matrixYearForecast(DOB, new Date("2025-08-20T12:00:00Z"), calculationVersion)!;
+    expect(result.matrix.calculationVersion).toBe(calculationVersion);
     expect(result.matrix.asOf.date).toBe("2025-08-20");
-    expect(result.matrix.talents.number).toBe(5);
+    expect(result.matrix.talents.number).toBe(calculationVersion === "matrix-v4" ? 5 : 1);
     for (const month of result.months) {
-      const frozen = destinyMatrix(DOB, { calculationVersion: "matrix-v4", asOfYear: month.year, asOfMonth: month.month, asOfDate: `${month.year}-${String(month.month).padStart(2, "0")}-01` })!;
-      expect(month.number).toBe(reduceToArcanaSubtract22(frozen.yearArcana.number + month.month));
+      const frozen = destinyMatrix(DOB, { calculationVersion, asOfYear: month.year, asOfMonth: month.month, asOfDate: `${month.year}-${String(month.month).padStart(2, "0")}-01` })!;
+      expect(month.number).toBe(frozen.monthArcana.number);
     }
   });
   it("uses the frozen v3 reducer for pair derived energies", () => {
