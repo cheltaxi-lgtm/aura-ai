@@ -126,6 +126,23 @@ export default function DestinyMatrixDiagram({
           <li>Контур — возраст</li>
         </ul>
       )}
+      <details className="destiny-matrix-point-list">
+        <summary>Все точки матрицы</summary>
+        <ul>
+          {model.nodes.filter((node) => node.role !== "period" || showPeriod !== false).map((node) => (
+            <li key={node.id}>
+              <button
+                type="button"
+                aria-pressed={selectedId === node.id}
+                onClick={() => setSelectedId(node.id)}
+              >
+                <span>{node.label}</span>
+                <strong>{node.number} — {node.arcanaName}</strong>
+              </button>
+            </li>
+          ))}
+        </ul>
+      </details>
       {hint ? <figcaption className="destiny-matrix__hint">{hint}</figcaption> : null}
     </figure>
   );

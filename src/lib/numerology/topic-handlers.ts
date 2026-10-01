@@ -1,4 +1,4 @@
-import { formatAgePeriodRange } from "./matrix-labels";
+import { formatAgePeriodRange, formatMatrixAge } from "./matrix-labels";
 import {
   destinyNumber,
   karmicDebts,
@@ -492,7 +492,7 @@ function buildTopicBlock(
         { role: "karmicTip", label: "13. Кармический хвост · остриё", number: matrix.karmicTail[2].number },
         {
           role: "age",
-          label: `14. Текущий возраст ${matrix.chronologicalAge} лет · период ${formatAgePeriodRange(matrix.ageCurrent.age, matrix.ageModel?.periodEnd ?? matrix.ageNext?.age)}`,
+          label: `14. Текущий возраст ${formatMatrixAge(matrix.chronologicalAge)} · период ${formatAgePeriodRange(matrix.ageCurrent.age, matrix.ageModel?.periodEnd ?? matrix.ageNext?.age)}`,
           number: matrix.ageCurrent.number,
         },
         ...(matrix.ageNext

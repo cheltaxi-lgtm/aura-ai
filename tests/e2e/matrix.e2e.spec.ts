@@ -543,6 +543,32 @@ test("free matrix has a readable print document and browser PDF action on mobile
   await expect(page.locator("body")).toHaveAttribute("data-printed", "yes");
 });
 
+test("matrix points remain readable and selectable on narrow screens", async ({ page }) => {
+  await installMatrixBackend(page);
+  await confirmAge(page);
+  await page.setViewportSize({ width: 360, height: 800 });
+  await page.goto("/numerology/destiny-matrix");
+  await page.locator('input[type="date"]').first().fill(DOB);
+  await page.getByRole("button", { name: /Рассчитать бесплатно|Пересчитать/i }).first().click();
+  const points = page.locator(".destiny-matrix-point-list");
+  await points.locator("summary").click();
+  await expect(points.getByRole("button")).toHaveCount(16);
+  const money = points.getByRole("button", { name: /Деньги/ });
+  await money.press("Enter");
+  await expect(money).toHaveAttribute("aria-pressed", "true");
+  const expected = await money.locator("strong").textContent();
+  await expect(page.locator(".destiny-matrix-node-card__value")).toHaveText(expected!);
+  for (const width of [360, 390, 768]) {
+    await page.setViewportSize({ width, height: 844 });
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth)).toBe(true);
+    const targets = await points.getByRole("button").evaluateAll(elements => elements.map(element => {
+      const rect = element.getBoundingClientRect();
+      return { height: rect.height, fontSize: parseFloat(getComputedStyle(element.querySelector("strong")!).fontSize) };
+    }));
+    expect(targets.every(target => target.height >= 44 && target.fontSize >= 16)).toBe(true);
+  }
+});
+
 test("subject load failure is visible and can be retried", async ({ page }) => {
   await installMatrixBackend(page); await confirmAge(page);
   await page.route("**/api/profile", route => route.fulfill({ json: { profile: { name: "QA", birthDate: DOB } } }));
