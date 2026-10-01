@@ -3,8 +3,9 @@ import { NextRequest } from "next/server";
 import { createUser } from "@/lib/accounts";
 import { query, getPool } from "@/lib/db";
 import { getRuneSettings, setRuneSettings } from "@/lib/rune-settings";
-import { createSession, updateSessionChatMeta } from "@/lib/session";
+import { createSession, updateSessionChatMeta, listConsultationSessions } from "@/lib/session";
 import { getCabinetSessions } from "@/lib/cabinet-data";
+import { wipeMatrixOwnershipForSession } from "@/lib/numerology/matrix-session-cleanup";
 import { ensureMinimalConsumerProfile, updateUserProfile } from "@/lib/users";
 import { ensureSelfSubject, upsertMatrixSubject, getMatrixSubject } from "@/lib/services/matrix-subject-service";
 import { saveMatrixReport, getUserMatrixReportById } from "@/lib/services/numerology-report-service";
@@ -120,6 +121,8 @@ describe.runIf(hasTestDb)("Matrix purchase and worker attempt isolation", () => 
       expect(saved.report.birthDate).toBe("2011-12-30");
       expect((await getUserMatrixReportById(user.id, saved.report.id))?.birthDate).toBe("2011-12-30");
       expect((await getCabinetSessions(user.id)).sessions.find(item => item.sessionId === session.id)?.matrixBirthDate).toBe("2011-12-30");
+      expect((await listConsultationSessions(user.id, "numerolog")).active?.matrix_birth_date).toBe("2011-12-30");
+      expect((await wipeMatrixOwnershipForSession({ userId: user.id, sessionId: session.id, isMatrixSession: true })).birthDates).toEqual(["2011-12-30"]);
     } finally {
       if (previous === undefined) delete process.env.TZ;
       else process.env.TZ = previous;

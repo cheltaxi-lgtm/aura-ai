@@ -112,7 +112,7 @@ export async function wipeUserMatrixReports(input: {
       session_id: string | null;
       subject_id: string | null;
     }>(
-      `SELECT birth_date, session_id, subject_id
+      `SELECT birth_date::text AS birth_date, session_id, subject_id
        FROM numerology_report_history
        WHERE user_id = $1 AND id = $2::uuid AND tool_id = ANY($3::text[])
        LIMIT 1`,
@@ -196,7 +196,7 @@ export async function wipeMatrixOwnershipForSession(input: {
     birth_date: Date | string;
     subject_id: string | null;
   }>(
-    `SELECT id, birth_date, subject_id
+    `SELECT id, birth_date::text AS birth_date, subject_id
      FROM numerology_report_history
      WHERE user_id = $1
        AND tool_id = ANY($2::text[])
