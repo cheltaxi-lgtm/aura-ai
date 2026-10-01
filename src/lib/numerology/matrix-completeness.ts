@@ -21,8 +21,14 @@ export function majorArcanaNameTable(): ReadonlyArray<{ number: number; name: st
   return out;
 }
 
-const ARCANA_PAIR_RE =
-  /\b(\d{1,2})\s*([—–-])\s*([«"']?)([А-ЯЁA-Z][^\n,()»"']{1,40}?)(?=[,)\n»"']|$)/giu;
+const ARCANA_TITLE_PREFIXES = [...majorArcanaNameTable().map(row => row.name),
+  "Колесо Судьбы", "Правосудие", "Верховная Жрица", "Верховный Жрец"]
+  .sort((a, b) => b.length - a.length);
+const ARCANA_TITLE_PATTERN = ARCANA_TITLE_PREFIXES.map(title =>
+  title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/\s+/g, String.raw`\s+`)).join("|");
+const ARCANA_TITLE_PREFIX_RE = new RegExp(`^(?:${ARCANA_TITLE_PATTERN})(?!\\p{L})`, "iu");
+const ARCANA_PAIR_RE = new RegExp(
+  String.raw`\b(\d{1,2})\s*([—–-])\s*([«"']?)((?:${ARCANA_TITLE_PATTERN})(?!\p{L})|[А-ЯЁA-Z][^\n,().!?;:»"']{1,40}?(?=[,.!?;:)\n»"']|$))`, "giu");
 
 function normArcanaName(s: string): string {
   return s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
@@ -59,15 +65,19 @@ export function canonicalizeArcanaNamesInText(
 ): string {
   return String(text || "").replace(
     ARCANA_PAIR_RE,
-    (_full, numStr: string, dash: string, openQuote: string, name: string) => {
+    (full, numStr: string, dash: string, openQuote: string, name: string, offset: number, source: string) => {
       const n = Number(numStr);
       const canon = getMatrixArcanaEntry(n, calculationVersion)?.title;
       if (!canon || n < 1 || n > 22) {
         return `${numStr} ${dash} ${openQuote}${name}`;
       }
-      const close =
-        openQuote === "«" ? "»" : openQuote === '"' ? '"' : openQuote === "'" ? "'" : "";
-      return `${numStr} ${dash} ${openQuote}${canon}${close}`;
+      const prefix = ARCANA_TITLE_PREFIX_RE.exec(name)?.[0];
+      // Only the title is replaceable. Everything after it is client prose,
+      // including the final punctuation of a numbered action.
+      if (prefix) return `${numStr} ${dash} ${openQuote}${canon}${name.slice(prefix.length)}`;
+      // Unknown names are safe to normalize only inside an explicit title.
+      if (openQuote || source[offset + full.length] === ")") return `${numStr} ${dash} ${openQuote}${canon}`;
+      return full;
     }
   );
 }

@@ -169,6 +169,7 @@ function resolveEffectiveChargeIdempotencyKey(
 }
 
 export type RollbackChargeParams = {
+  client?: PoolClient;
   userId: string;
   cost: number;
   wasFreeQuestion: boolean;
@@ -536,17 +537,20 @@ export async function rollbackChargeEx(
   if (slotReserved && sessionId && cost===0) {
     try {
       if(transactionId) {
-        await withTransaction(async client=>{
+        const restoreSlot = async (client: PoolClient) => {
           const balance=await lockUserRow(client,userId);
           const claim=await queryClient(client,`INSERT INTO rune_transactions(user_id,type,amount,balance_after,description,refund_of_transaction_id)
             SELECT $1,'refund',0,$2,'Возврат бесплатного вопроса',id FROM rune_transactions WHERE id=$3 AND user_id=$1 AND type='spend' AND amount=0
             ON CONFLICT(refund_of_transaction_id) WHERE type='refund' AND refund_of_transaction_id IS NOT NULL DO NOTHING RETURNING id`,[userId,balance,transactionId]);
           if(claim.rowCount)await queryClient(client,"UPDATE sessions SET free_questions_used=GREATEST(0,free_questions_used-1),updated_at=NOW() WHERE id=$1 AND user_id=$2",[sessionId,userId]);
-        });
+        };
+        if (params.client) await restoreSlot(params.client);
+        else await withTransaction(restoreSlot);
       }else await decrementQuestionCount(sessionId);
       refunded = true;
     } catch (err) {
       console.error("[BillingService] slot rollback failed:", err);
+      if (params.client) throw err;
     }
   }
 
@@ -558,16 +562,18 @@ export async function rollbackChargeEx(
         "Возврат: ошибка генерации",
         actionType as RuneActionType | undefined,
         transactionId,
-        slotReserved ? sessionId : undefined
+        slotReserved ? sessionId : undefined,
+        params.client
       );
       return { balance, refunded: true };
     } catch (err) {
       console.error("[BillingService] rune rollback failed:", err);
+      if (params.client) throw err;
       return { balance: await getRuneBalance(userId), refunded: false };
     }
   }
 
-  return { balance: await getRuneBalance(userId), refunded };
+  return { balance: await getRuneBalance(userId, params.client), refunded };
 }
 
 /** Charge by configured action type (READING, QUESTION, etc.). */
@@ -583,7 +589,7 @@ export async function chargeRuneAction(params: {
   idempotencyKey?: string;
   maxCost?: number;
 }): Promise<BillingChargeResult> {
-  const settings = await getRuneSettings();
+  const settings = await getRuneSettings(params.client);
   const cost = runeCostFromSettings(settings, params.action);
   return chargeForSession({
     userId: params.userId,

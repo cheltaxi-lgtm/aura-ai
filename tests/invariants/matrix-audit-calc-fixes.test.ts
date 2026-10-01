@@ -5,12 +5,46 @@ import { buildMatrixSemanticModel } from "@/lib/numerology/matrix-semantic-model
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { matrixCompatibility } from "@/lib/numerology/matrix-compatibility";
 import { reduceToArcanaSubtract22 } from "@/lib/numerology/matrix-reducers";
+import { spawnSync } from "node:child_process";
 
 const DOB = "1990-08-15";
 const AS_OF = "2026-09-30";
 const snapshot = () => matrixToStructuredData(destinyMatrix(DOB, { asOfDate: AS_OF })!);
 
 describe("Matrix audit calculation fixes", () => {
+  it("replays the published v4 lineage topology independently of live v5 channels", () => {
+    const matrix = destinyMatrix(DOB, { asOfDate: AS_OF, calculationVersion: "matrix-v4" })!;
+    expect(matrix.channels.find(ch => ch.id === "male")?.points.map(p => p.number)).toEqual([15, 21, 7, 19]);
+    expect(matrix.channels.find(ch => ch.id === "female")?.points.map(p => p.number)).toEqual([5, 8, 9]);
+    expect(resolveMatrixForEngine({ birthDate: DOB, snapshot: matrixToStructuredData(matrix, DOB) })).not.toBeNull();
+  });
+  it.each(["lineage", "talentsChain", "loveDeep", "moneyDeep", "ageModel", "channels", "chronologicalAge"])("rejects incomplete v5 snapshots: %s", key => {
+    const data = snapshot(); delete data[key];
+    expect(hydrateDestinyMatrixFromSnapshot(data)).toBeNull();
+    expect(resolveMatrixForEngine({ birthDate: DOB, snapshot: data })).toBeNull();
+  });
+  it("requires all five v5 channels with their correct lengths", () => {
+    const data = snapshot(); data.channels = (data.channels as unknown[]).slice(1);
+    expect(hydrateDestinyMatrixFromSnapshot(data)).toBeNull();
+  });
+  it.each(["matrix-v3", "matrix-v4", "matrix-v5"])("canonicalizes names with the saved dictionary while preserving historical meaning: %s", calculationVersion => {
+    const data = matrixToStructuredData(destinyMatrix(DOB, { asOfDate: AS_OF, calculationVersion })!, DOB);
+    data.energy = { number: 8, arcanaName: "Неверный аркан", arcanaMeaning: "Исторический текст" };
+    const restored = resolveMatrixForEngine({ birthDate: DOB, snapshot: data })!;
+    expect(restored.energy.arcanaName).toBe(calculationVersion === "matrix-v3" ? "Сила" : "Справедливость");
+    expect(restored.energy.arcanaMeaning).toBe("Исторический текст");
+    expect(hydrateDestinyMatrixFromSnapshot({ ...data, calculationVersion: "matrix-v99" })).toBeNull();
+  });
+  it.each(["UTC", "Pacific/Apia", "America/Los_Angeles"])("accepts Gregorian dates independently of real host TZ: %s", TZ => {
+    const probe = spawnSync(process.execPath, ["--import", "tsx", "--input-type=module", "--eval",
+      `import { destinyMatrix } from './src/lib/numerology/destiny-matrix.ts';
+       import { parseBirthDate } from './src/lib/numerology/constants.ts';
+       import { buildLocalMatrixDiagram } from './telegram-bot/src/domain/matrix/calc.ts';
+       console.log(JSON.stringify({date:parseBirthDate('2011-12-30'),bot:Boolean(buildLocalMatrixDiagram('2011-12-30',null,{asOfDate:'2011-12-30'})),matrices:['matrix-v3','matrix-v4','matrix-v5'].map(calculationVersion=>destinyMatrix('2011-12-30',{asOfDate:'2011-12-30',calculationVersion})?.asOf.date)}));`],
+    { cwd: process.cwd(), env: { ...process.env, TZ }, encoding: "utf8" });
+    expect(probe.status, probe.stderr).toBe(0);
+    expect(JSON.parse(probe.stdout)).toEqual({ date: { year: 2011, month: 12, day: 30 }, bot: true, matrices: ["2011-12-30", "2011-12-30", "2011-12-30"] });
+  });
   it("binds newly stored snapshots even when two births share the same numeric matrix", () => {
     const matrix = destinyMatrix("1990-08-04", { asOfDate: AS_OF })!;
     const data = matrixToStructuredData(matrix, "1990-08-04");

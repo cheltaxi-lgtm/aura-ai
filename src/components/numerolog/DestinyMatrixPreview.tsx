@@ -6,7 +6,7 @@ import DestinyMatrixGrid, {
   DESTINY_MATRIX_UI_SLOT_COUNT,
 } from "@/components/numerolog/DestinyMatrixGrid";
 import { buildMatrixFreeSummary, type MatrixFreeSummary } from "@/lib/numerology/matrix-free-summary";
-import { hydrateDestinyMatrixFromSnapshot } from "@/lib/numerology/matrix-snapshot";
+import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
 import { downloadMatrixShareCardSvg } from "@/lib/numerology/matrix-share-card-svg";
 import { parseBirthDate } from "@/lib/numerology/constants";
 import { readStoredProfile } from "@/lib/home-flow-storage";
@@ -167,7 +167,7 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
     }
     if (!response.ok) throw new Error("Не удалось открыть сохранённую матрицу. Повторите расчёт.");
     const data = await response.json();
-    const matrix = hydrateDestinyMatrixFromSnapshot(data.snapshot ?? null);
+    const matrix = resolveMatrixForEngine({ birthDate: date, snapshot: data.snapshot ?? null });
     if (!matrix || data.birthDate !== date) throw new Error("Сохранённая матрица не соответствует выбранной дате.");
     return matrix;
   }, []);
@@ -333,8 +333,8 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
               birthDate?: string;
               snapshot?: Record<string, unknown>;
             };
-            const matrix = hydrateDestinyMatrixFromSnapshot(data.snapshot ?? null);
             const date = data.birthDate && parseBirthDate(data.birthDate) ? data.birthDate : "";
+            const matrix = date ? resolveMatrixForEngine({ birthDate: date, snapshot: data.snapshot ?? null }) : null;
             if (matrix && date) {
               const frozen = buildMatrixFreeSummary(date, { name: nextName || undefined, matrix });
               if (frozen && isCurrent()) {
@@ -611,10 +611,12 @@ export default function DestinyMatrixPreview({ embedded = false }: { embedded?: 
           <div>
             <p className="text-xs uppercase tracking-[0.12em] text-aura-gold/70">Расчёт выбранного человека</p>
             <p className="mt-1 text-sm text-white/75">{name || "Без имени"} · {birthDate}</p>
+            {pending ? <p role="status" className="mt-2 text-sm text-aura-gold">Подготавливаем расчёт…</p> : null}
           </div>
           <button
             type="button"
             onClick={() => {
+              calculationRequest.current += 1;
               setSelectedSubjectId(null);
               setSummary(null);
               setBirthDate("");

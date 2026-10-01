@@ -5,6 +5,7 @@ const withTransactionMock = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   query: (...args: unknown[]) => queryMock(...args),
+  queryClient: (_client: unknown, ...args: unknown[]) => queryMock(...args),
   withTransaction: (fn: (client: { query: typeof queryMock }) => unknown) =>
     withTransactionMock(fn),
 }));
@@ -94,6 +95,6 @@ describe("async job orphan / stale / watchdog reapers", () => {
     const [sql, params] = queryMock.mock.calls[0] as [string, unknown[]];
     expect(sql).toMatch(/locked_at = NOW\(\)/);
     expect(sql).toMatch(/worker_id = \$2/);
-    expect(params).toEqual(["job-1", "worker-alive"]);
+    expect(params).toEqual(["job-1", "worker-alive", null]);
   });
 });

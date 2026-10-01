@@ -6,6 +6,8 @@ import {
   WORKER_JOB_HEADER,
   WORKER_SECRET_HEADER,
   WORKER_USER_HEADER,
+  WORKER_ATTEMPT_HEADER,
+  WORKER_ID_HEADER,
 } from "../src/lib/async-job-worker-auth-shared";
 import {
   ASYNC_JOB_REGISTRY,
@@ -240,6 +242,7 @@ async function reconcileReportSlots(): Promise<void> {
 async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
   await sleep(TIMEOUT_GRACE_MS);
   const latest = await getAsyncJobById(job.id);
+    if (latest && latest.attempt_count !== job.attempt_count) return;
   if (!latest || latest.status === "completed") return;
   if (latest.status === "failed" || latest.status === "needs_regeneration") return;
   if (latest.status === "pending") return; // route self-requeued via retry budget
@@ -247,6 +250,7 @@ async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
   if (isReportJobKind(job.kind) && isReportJobRetryEnabled()) {
     const outcome = await retryOrFailReportJob({
       jobId: job.id,
+        attempt: { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" },
       message: "Генерация превысила лимит ожидания worker.",
       errorCode: "worker_timeout",
       delayMs: 30_000,
@@ -259,8 +263,7 @@ async function reconcileAfterTimeout(job: AsyncJobRow): Promise<void> {
   await failAsyncJobAndRefundIfCharged(
     job.id,
     "Генерация превысила лимит ожидания worker.",
-    "worker_timeout"
-  );
+    "worker_timeout", { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
 }
 
 async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
@@ -280,6 +283,8 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
         [WORKER_SECRET_HEADER]: secret,
         [WORKER_USER_HEADER]: job.user_id,
         [WORKER_JOB_HEADER]: job.id,
+        [WORKER_ATTEMPT_HEADER]: String(job.attempt_count),
+        [WORKER_ID_HEADER]: job.worker_id ?? "",
       },
       body: JSON.stringify(body),
       signal: controller.signal,
@@ -288,6 +293,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
     const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
       const latest = await getAsyncJobById(job.id);
+    if (latest && latest.attempt_count !== job.attempt_count) return;
       if (
         latest?.status === "completed" ||
         latest?.status === "failed" ||
@@ -306,8 +312,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
         await rescheduleAsyncJob(
           job.id,
           delayMs,
-          "Провайдер временно ограничил запросы. Задача вернётся в очередь автоматически."
-        );
+          "Провайдер временно ограничил запросы. Задача вернётся в очередь автоматически.", { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
         return;
       }
       if (response.status >= 500) {
@@ -322,7 +327,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
             ? "insufficient_runes"
             : "generation_failed";
       if (codeFromBody === "needs_regeneration") {
-        const regen = await retryNeedsRegenerationOnce(job.id, message);
+        const regen = await retryNeedsRegenerationOnce(job.id, message, { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
         if (regen === "requeued") {
           console.warn(`[async-jobs] quality regen requeue job=${job.id} kind=${job.kind}`);
         }
@@ -335,6 +340,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
       ) {
         const outcome = await retryOrFailReportJob({
           jobId: job.id,
+        attempt: { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" },
           message,
           errorCode: codeFromBody,
           delayMs: 30_000,
@@ -346,22 +352,22 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
         }
         return;
       }
-      await failAsyncJobAndRefundIfCharged(job.id, message, codeFromBody);
+      await failAsyncJobAndRefundIfCharged(job.id, message, codeFromBody, { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
       return;
     }
     if (isReportJobKind(job.kind)) recordReportProviderSuccess();
     await finalizeAsyncJobMetrics(job.id, { generationMs: Date.now() - started });
     const latest = await getAsyncJobById(job.id);
+    if (latest && latest.attempt_count !== job.attempt_count) return;
     if (latest?.status === "running") {
-      const completed = await completeAsyncJob(job.id, data);
+      const completed = await completeAsyncJob(job.id, data, { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
       if (!completed) {
         const again = await getAsyncJobById(job.id);
         if (again?.status === "running") {
           await failAsyncJobAndRefundIfCharged(
             job.id,
             "Worker could not finalize job after successful generation",
-            "complete_rejected"
-          );
+            "complete_rejected", { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
           return;
         }
       }
@@ -379,6 +385,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
       return;
     }
     const latest = await getAsyncJobById(job.id);
+    if (latest && latest.attempt_count !== job.attempt_count) return;
     if (
       latest?.status === "completed" ||
       latest?.status === "failed" ||
@@ -390,8 +397,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
     await failAsyncJobAndRefundIfCharged(
       job.id,
       error instanceof Error ? error.message : "async job failed",
-      "generation_failed"
-    );
+      "generation_failed", { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
   } finally {
     clearTimeout(timeout);
   }
@@ -400,7 +406,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
 async function runJobInProcess(job: AsyncJobRow): Promise<void> {
   const started = Date.now();
   const beat = () => {
-    void touchAsyncJobHeartbeat(job.id, workerId).catch((err) => {
+    void touchAsyncJobHeartbeat(job.id, workerId, job.attempt_count).catch((err) => {
       console.warn(
         `[async-jobs] heartbeat failed job=${job.id}:`,
         err instanceof Error ? err.message : err
@@ -412,6 +418,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
   try {
     const outcome = await runReportJobInProcess(job);
     const latest = await getAsyncJobById(job.id);
+    if (latest && latest.attempt_count !== job.attempt_count) return;
     if (outcome.ok) {
       // Routes self-complete via trackWorkerJobCompleted, so latest is usually
       // already "completed" here — metrics and the guaranteed report-ready
@@ -419,7 +426,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       recordReportProviderSuccess();
       await finalizeAsyncJobMetrics(job.id, { generationMs: Date.now() - started });
       if (latest?.status === "running" && latest.worker_id === workerId) {
-        const completed = await completeAsyncJob(job.id, outcome.result);
+        const completed = await completeAsyncJob(job.id, outcome.result, { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
         if (!completed) {
           const again = await getAsyncJobById(job.id);
           if (again?.status === "running") {
@@ -429,8 +436,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
             await failAsyncJobAndRefundIfCharged(
               job.id,
               "Worker could not finalize job after successful generation",
-              "complete_rejected"
-            );
+              "complete_rejected", { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
             return;
           }
         }
@@ -452,7 +458,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       return;
     }
     if (outcome.needsRegeneration || outcome.code === "needs_regeneration") {
-      const regen = await retryNeedsRegenerationOnce(job.id, outcome.message);
+      const regen = await retryNeedsRegenerationOnce(job.id, outcome.message, { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
       if (regen === "requeued") {
         console.warn(`[async-jobs] quality regen requeue job=${job.id} kind=${job.kind}`);
       }
@@ -463,8 +469,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       await rescheduleAsyncJob(
         job.id,
         outcome.retryAfterMs ?? 15_000,
-        outcome.message
-      );
+        outcome.message, { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
       return;
     }
     if (
@@ -476,6 +481,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       void runProviderProbe("job-provider-error");
       const resched = await rescheduleOrFailReportJob({
         jobId: job.id,
+        attempt: { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" },
         delayMs: outcome.retryAfterMs ?? 30_000,
         message:
           "Провайдер временно недоступен, задача вернётся в очередь. Повторного списания не будет.",
@@ -499,6 +505,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
     if (isReportJobRetryEnabled() && isRetryableReportErrorCode(outcomeCode)) {
       const retry = await retryOrFailReportJob({
         jobId: job.id,
+        attempt: { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" },
         message: outcome.message,
         errorCode: outcomeCode,
         delayMs: 30_000,
@@ -513,8 +520,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
     await failAsyncJobAndRefundIfCharged(
       job.id,
       outcome.message,
-      outcomeCode
-    );
+      outcomeCode, { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "async job failed";
     if (/not implemented/i.test(msg)) {
@@ -525,6 +531,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       return;
     }
     const latest = await getAsyncJobById(job.id);
+    if (latest && latest.attempt_count !== job.attempt_count) return;
     if (
       latest?.status === "completed" ||
       latest?.status === "failed" ||
@@ -537,6 +544,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       void runProviderProbe("job-throw-provider-error");
       const resched = await rescheduleOrFailReportJob({
         jobId: job.id,
+        attempt: { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" },
         delayMs: 30_000,
         message:
           "Провайдер временно недоступен, задача вернётся в очередь. Повторного списания не будет.",
@@ -552,6 +560,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
     if (isReportJobRetryEnabled()) {
       const retry = await retryOrFailReportJob({
         jobId: job.id,
+        attempt: { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" },
         message: msg,
         errorCode: "generation_failed",
         delayMs: 30_000,
@@ -563,7 +572,7 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
       }
       return;
     }
-    await failAsyncJobAndRefundIfCharged(job.id, msg, "generation_failed");
+    await failAsyncJobAndRefundIfCharged(job.id, msg, "generation_failed", { attemptCount: job.attempt_count, workerId: job.worker_id ?? "" });
   } finally {
     clearInterval(heartbeat);
   }

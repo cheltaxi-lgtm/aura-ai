@@ -258,6 +258,9 @@ export async function deleteMatrixSubject(
        WHERE user_id = $1 AND context_data->>'reportId' = ANY($2::text[])`,
       [userId, reports.rows.map(row => row.id)]
     ) : { rows: [] };
+    await queryClient(client,
+      `DELETE FROM matrix_guest_pending WHERE claimed_user_id = $1 AND claimed_subject_id = $2::uuid`,
+      [userId, subjectId.trim()]);
     const removed = await queryClient(
       client,
       `DELETE FROM matrix_subjects WHERE user_id = $1 AND id = $2::uuid`,

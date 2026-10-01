@@ -1,4 +1,4 @@
-import { query, queryClient, withTransaction } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 import { BillingService } from "@/lib/services/billing-service";
 import { captureMemoryGeneration } from "@/lib/memory/write-guard";
@@ -30,6 +30,11 @@ export type AsyncJobStatus =
   | "failed"
   | "needs_regeneration";
 export type AsyncJobBillingState = "unbilled" | "charged" | "refunded" | "completed";
+export type AsyncJobAttempt = { attemptCount: number; workerId: string };
+
+export function asyncJobAttemptMatches(job: Pick<AsyncJobRow, "attempt_count" | "worker_id" | "status">, attempt: AsyncJobAttempt): boolean {
+  return job.status === "running" && job.attempt_count === attempt.attemptCount && job.worker_id === attempt.workerId;
+}
 
 export type AsyncJobRow = {
   id: string;
@@ -162,15 +167,16 @@ export async function countActiveAsyncJobsForUser(input: {
  * Claim exclusive right to persist a paid report for a worker job.
  * Blocks timeout-refund from winning after generation finishes.
  */
-export async function claimAsyncJobForSave(jobId: string): Promise<boolean> {
+export async function claimAsyncJobForSave(jobId: string, attempt?: AsyncJobAttempt): Promise<boolean> {
   const { rowCount } = await query(
     `UPDATE async_jobs
      SET period_metadata = period_metadata || '{"save_claimed":true}'::jsonb,
          updated_at = NOW()
      WHERE id = $1
        AND status = 'running'
-       AND billing_state IN ('unbilled', 'charged')`,
-    [jobId]
+       AND billing_state IN ('unbilled', 'charged')
+       AND ($2::int IS NULL OR (attempt_count = $2 AND worker_id = $3))`,
+    [jobId, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
   return rowCount === 1;
 }
@@ -179,28 +185,30 @@ export async function claimAsyncJobForSave(jobId: string): Promise<boolean> {
  * Drop save_claimed after a failed persist so timeout/reaper can terminalize
  * refunded+running orphans (handler crashed after claim, before failAsyncJob).
  */
-export async function releaseAsyncJobSaveClaim(jobId: string): Promise<void> {
+export async function releaseAsyncJobSaveClaim(jobId: string, attempt?: AsyncJobAttempt): Promise<void> {
   await query(
     `UPDATE async_jobs
      SET period_metadata = COALESCE(period_metadata, '{}'::jsonb) - 'save_claimed',
          updated_at = NOW()
-     WHERE id = $1 AND status = 'running'`,
-    [jobId]
+     WHERE id = $1 AND status = 'running'
+       AND ($2::int IS NULL OR (attempt_count = $2 AND worker_id = $3))`,
+    [jobId, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
 }
 
 /** Merge progress / UI hints into period_metadata while job is running. */
 export async function mergeAsyncJobPeriodMetadata(
   jobId: string,
-  patch: Record<string, unknown>
+  patch: Record<string, unknown>,
+  attempt?: AsyncJobAttempt
 ): Promise<void> {
   if (!jobId.trim() || !Object.keys(patch).length) return;
   await query(
     `UPDATE async_jobs
      SET period_metadata = COALESCE(period_metadata, '{}'::jsonb) || $2::jsonb,
          updated_at = NOW()
-     WHERE id = $1 AND status IN ('pending', 'running')`,
-    [jobId, JSON.stringify(patch)]
+     WHERE id = $1 AND status IN ('pending', 'running') AND ($3::int IS NULL OR (attempt_count=$3 AND worker_id=$4))`,
+    [jobId, JSON.stringify(patch), attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
 }
 
@@ -258,6 +266,8 @@ export async function claimAsyncJobs(input: {
              GREATEST(0, FLOOR(EXTRACT(EPOCH FROM (NOW() - jobs.created_at)) * 1000))::int
            ),
            attempt_count = jobs.attempt_count + 1,
+           period_metadata = COALESCE(jobs.period_metadata, '{}'::jsonb) - 'save_claimed',
+           progress = '{}'::jsonb,
            next_attempt_at = NULL,
            updated_at = NOW()
        FROM candidates
@@ -273,7 +283,8 @@ export async function claimAsyncJobs(input: {
 export async function rescheduleAsyncJob(
   jobId: string,
   delayMs: number,
-  message?: string
+  message?: string,
+  attempt?: AsyncJobAttempt
 ): Promise<boolean> {
   const wait = Math.max(1_000, Math.min(delayMs, 15 * 60_000));
   const { rowCount } = await query(
@@ -286,22 +297,23 @@ export async function rescheduleAsyncJob(
          error_message = COALESCE($3, error_message),
          expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours'),
          updated_at = NOW()
-     WHERE id = $1 AND status = 'running'`,
-    [jobId, Math.floor(wait / 1000), message?.slice(0, 2000) ?? null]
+     WHERE id = $1 AND status = 'running' AND ($4::int IS NULL OR (attempt_count=$4 AND worker_id=$5))`,
+    [jobId, Math.floor(wait / 1000), message?.slice(0, 2000) ?? null, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
   return rowCount === 1;
 }
 
 export async function updateAsyncJobProgress(
   jobId: string,
-  progress: Record<string, unknown>
+  progress: Record<string, unknown>,
+  attempt?: AsyncJobAttempt
 ): Promise<void> {
   await query(
     `UPDATE async_jobs
      SET progress = COALESCE(progress, '{}'::jsonb) || $2::jsonb,
          updated_at = NOW()
-     WHERE id = $1 AND status IN ('pending', 'running')`,
-    [jobId, JSON.stringify(progress)]
+     WHERE id = $1 AND status IN ('pending', 'running') AND ($3::int IS NULL OR (attempt_count=$3 AND worker_id=$4))`,
+    [jobId, JSON.stringify(progress), attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
 }
 
@@ -570,13 +582,14 @@ export async function reapWatchdogRunningAsyncJobs(input?: {
 /** Keep locked_at fresh so orphan reaper does not treat a live long job as dead. */
 export async function touchAsyncJobHeartbeat(
   jobId: string,
-  workerId: string
+  workerId: string,
+  attemptCount?: number
 ): Promise<void> {
   await query(
     `UPDATE async_jobs
      SET locked_at = NOW(), updated_at = NOW()
-     WHERE id = $1 AND status = 'running' AND worker_id = $2`,
-    [jobId, workerId]
+     WHERE id = $1 AND status = 'running' AND worker_id = $2 AND ($3::int IS NULL OR attempt_count=$3)`,
+    [jobId, workerId, attemptCount ?? null]
   );
 }
 
@@ -594,29 +607,32 @@ export async function countRecentWatchdogReaps(withinHours = 1): Promise<number>
 
 /** Refund a charged job that already reached a terminal failed state. */
 export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<boolean> {
-  const job = await getAsyncJobById(jobId);
-  if (!job || job.billing_state !== "charged" || !job.charge_transaction_id) {
-    return false;
-  }
-  const { rows } = await query<{ amount: number; action_type: string | null }>(
-    `SELECT ABS(amount) AS amount, action_type
-     FROM rune_transactions
-     WHERE id = $1 AND user_id = $2 AND amount < 0
-     LIMIT 1`,
-    [job.charge_transaction_id, job.user_id]
-  );
-  const ledger = rows[0];
-  if (!ledger || ledger.amount <= 0) return false;
-  const rollback=await BillingService.rollbackChargeEx({
-    userId: job.user_id,
-    cost: ledger.amount,
-    wasFreeQuestion: false,
-    transactionId: job.charge_transaction_id,
-    actionType: ledger.action_type ?? undefined,
+  return withTransaction(async client => {
+    const { rows } = await queryClient<AsyncJobRow>(client, 'SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE', [jobId]);
+    const job = rows[0];
+    if (!job || job.billing_state !== 'charged' || !job.charge_transaction_id || !['failed','needs_regeneration'].includes(job.status)) return false;
+    // A crash after durable save is delivery recovery, never a refundable failure.
+    const saved = await queryClient<{id:string}>(client, 'SELECT id FROM numerology_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1', [job.user_id,job.charge_transaction_id]);
+    if (saved.rows[0]) {
+      const { getUserMatrixReportById } = await import('@/lib/services/numerology-report-service');
+      const { matrixReportDisplayMetadata } = await import('@/lib/numerology/matrix-report-display');
+      const report = await getUserMatrixReportById(job.user_id,saved.rows[0].id,client);
+      if (!report) throw new Error('matrix_delivery_recovery_missing');
+      const result = { ...matrixReportDisplayMetadata(report), reading:report.content, reportId:report.id,
+        isPaid:true,matrixOwned:true,matrixSubjectId:report.subjectId,createdAt:report.createdAt };
+      await queryClient(client, `UPDATE async_jobs SET status='completed',billing_state='completed',result=$2::jsonb,
+        error_message=NULL,error_code=NULL,worker_id=NULL,locked_at=NULL,completed_at=NOW(),updated_at=NOW() WHERE id=$1`, [jobId,JSON.stringify(result)]);
+      await recordJourneyEvent(job.user_id,'first_result','first',{product:job.kind},client);
+      return false;
+    }
+    const ledger = await queryClient<{amount:number;action_type:string|null}>(client,
+      'SELECT ABS(amount) AS amount,action_type FROM rune_transactions WHERE id=$1 AND user_id=$2 AND amount<0', [job.charge_transaction_id,job.user_id]);
+    if (!ledger.rows[0]) return false;
+    const rollback=await BillingService.rollbackChargeEx({ userId:job.user_id,cost:ledger.rows[0].amount,
+      wasFreeQuestion:false,transactionId:job.charge_transaction_id,actionType:ledger.rows[0].action_type??undefined,client });
+    if (rollback.refunded) await markAsyncJobRefunded(jobId,undefined,client);
+    return rollback.refunded;
   });
-  if(!rollback.refunded)return false;
-  await markAsyncJobRefunded(jobId);
-  return true;
 }
 
 export async function markAsyncJobRunning(jobId: string): Promise<boolean> {
@@ -631,9 +647,12 @@ export async function markAsyncJobRunning(jobId: string): Promise<boolean> {
 
 export async function markAsyncJobCharged(
   jobId: string,
-  chargeTransactionId: string
+  chargeTransactionId: string,
+  attempt?: AsyncJobAttempt,
+  client?: PoolClient
 ): Promise<void> {
-  await query(
+  const execute = client ? queryClient.bind(null, client) : query;
+  await execute(
     `UPDATE async_jobs
      SET billing_state = CASE
            WHEN billing_state IN ('refunded', 'completed') THEN billing_state
@@ -642,19 +661,22 @@ export async function markAsyncJobCharged(
          charge_transaction_id = COALESCE(charge_transaction_id, $2),
          updated_at = NOW()
      WHERE id = $1
-       AND status IN ('pending', 'running')`,
-    [jobId, chargeTransactionId]
+       AND status IN ('pending', 'running')
+       AND ($3::int IS NULL OR (attempt_count = $3 AND worker_id = $4))`,
+    [jobId, chargeTransactionId, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
 }
 
-export async function markAsyncJobRefunded(jobId: string): Promise<void> {
-  await query(
+export async function markAsyncJobRefunded(jobId: string, attempt?: AsyncJobAttempt, client?: PoolClient): Promise<void> {
+  const execute = client ? queryClient.bind(null, client) : query;
+  await execute(
     `UPDATE async_jobs
      SET billing_state = 'refunded',
          updated_at = NOW()
      WHERE id = $1
-       AND billing_state IN ('unbilled', 'charged')`,
-    [jobId]
+       AND billing_state IN ('unbilled', 'charged')
+       AND ($2::int IS NULL OR (attempt_count = $2 AND worker_id = $3))`,
+    [jobId, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
 }
 
@@ -666,7 +688,8 @@ export async function markAsyncJobRefunded(jobId: string): Promise<void> {
  */
 export async function completeAsyncJob(
   jobId: string,
-  result: Record<string, unknown>
+  result: Record<string, unknown>,
+  attempt?: AsyncJobAttempt
 ): Promise<boolean> {
   return withTransaction(async client=>{
   const { rowCount,rows } = await queryClient<{user_id:string;kind:string}>(client,
@@ -685,8 +708,9 @@ export async function completeAsyncJob(
          locked_at = NULL
      WHERE id = $1
        AND status = 'running'
-       AND billing_state IN ('unbilled', 'charged', 'refunded') RETURNING user_id,kind`,
-    [jobId, JSON.stringify(result)]
+       AND billing_state IN ('unbilled', 'charged', 'refunded')
+       AND ($3::int IS NULL OR (attempt_count = $3 AND worker_id = $4)) RETURNING user_id,kind`,
+    [jobId, JSON.stringify(result), attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
   if(rowCount===1 && rows[0].kind!=="image_generate")await recordJourneyEvent(rows[0].user_id,"first_result","first",{product:rows[0].kind},client);
   return rowCount === 1;
@@ -697,7 +721,7 @@ export async function failAsyncJob(
   jobId: string,
   message: string,
   errorCode = "generation_failed",
-  options?: { onlyIfSaveNotClaimed?: boolean }
+  options?: { onlyIfSaveNotClaimed?: boolean; attempt?: AsyncJobAttempt }
 ): Promise<boolean> {
   const saveGuard = options?.onlyIfSaveNotClaimed
     ? `AND COALESCE((period_metadata->>'save_claimed')::boolean, false) = false`
@@ -710,8 +734,9 @@ export async function failAsyncJob(
          completed_at = NOW(),
          updated_at = NOW()
      WHERE id = $1 AND status = 'running'
+       AND ($4::int IS NULL OR (attempt_count = $4 AND worker_id = $5))
        ${saveGuard}`,
-    [jobId, message.slice(0, 2000), errorCode.slice(0, 100)]
+    [jobId, message.slice(0, 2000), errorCode.slice(0, 100), options?.attempt?.attemptCount ?? null, options?.attempt?.workerId ?? null]
   );
   return rowCount === 1;
 }
@@ -724,17 +749,18 @@ export async function failAsyncJob(
  */
 export async function retryNeedsRegenerationOnce(
   jobId: string,
-  message: string
+  message: string,
+  attempt?: AsyncJobAttempt
 ): Promise<"requeued" | "failed"> {
   const { rows } = await query<{ regen_attempts: number }>(
     `SELECT COALESCE((period_metadata->>'regen_attempts')::int, 0) AS regen_attempts
      FROM async_jobs
-     WHERE id = $1 AND status = 'running'`,
-    [jobId]
+     WHERE id = $1 AND status = 'running' AND ($2::int IS NULL OR (attempt_count=$2 AND worker_id=$3))`,
+    [jobId, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
   const attempts = rows[0]?.regen_attempts ?? 0;
   if (attempts >= 1) {
-    await failAsyncJobAndRefundIfCharged(jobId, message, "regeneration_failed");
+    await failAsyncJobAndRefundIfCharged(jobId, message, "regeneration_failed", attempt);
     return "failed";
   }
   const { rowCount } = await query(
@@ -748,17 +774,18 @@ export async function retryNeedsRegenerationOnce(
            COALESCE(period_metadata, '{}'::jsonb), '{regen_attempts}', '1'::jsonb
          ),
          updated_at = NOW()
-     WHERE id = $1 AND status = 'running'`,
-    [jobId]
+     WHERE id = $1 AND status = 'running' AND ($2::int IS NULL OR (attempt_count=$2 AND worker_id=$3))`,
+    [jobId, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
   if (rowCount === 1) return "requeued";
-  await markAsyncJobNeedsRegeneration(jobId, message);
+  await markAsyncJobNeedsRegeneration(jobId, message, attempt);
   return "failed";
 }
 
 export async function markAsyncJobNeedsRegeneration(
   jobId: string,
-  message: string
+  message: string,
+  attempt?: AsyncJobAttempt
 ): Promise<boolean> {
   const { rowCount } = await query(
     `UPDATE async_jobs
@@ -769,8 +796,9 @@ export async function markAsyncJobNeedsRegeneration(
          updated_at = NOW()
      WHERE id = $1
        AND status = 'running'
-       AND billing_state IN ('unbilled', 'charged')`,
-    [jobId, message.slice(0, 2000)]
+       AND billing_state IN ('unbilled', 'charged')
+       AND ($3::int IS NULL OR (attempt_count=$3 AND worker_id=$4))`,
+    [jobId, message.slice(0, 2000), attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
   return rowCount === 1;
 }
@@ -814,11 +842,13 @@ export async function retryOrFailReportJob(input: {
   errorCode: string;
   delayMs?: number;
   maxAttempts?: number;
+  attempt?: AsyncJobAttempt;
 }): Promise<"requeued" | "failed"> {
   const maxAttempts = Math.max(1, input.maxAttempts ?? REPORT_JOB_MAX_ATTEMPTS);
   const { rows } = await query<{ attempt_count: number }>(
-    `SELECT attempt_count FROM async_jobs WHERE id = $1 AND status = 'running'`,
-    [input.jobId]
+    `SELECT attempt_count FROM async_jobs WHERE id = $1 AND status = 'running'
+      AND ($2::int IS NULL OR (attempt_count=$2 AND worker_id=$3))`,
+    [input.jobId, input.attempt?.attemptCount ?? null, input.attempt?.workerId ?? null]
   );
   const attemptCount = rows[0]?.attempt_count;
   // Already transitioned elsewhere (reaped / completed) — do not interfere.
@@ -835,18 +865,21 @@ export async function retryOrFailReportJob(input: {
            error_code = $4,
            expires_at = GREATEST(expires_at, NOW() + INTERVAL '24 hours'),
            updated_at = NOW()
-       WHERE id = $1 AND status = 'running'`,
+       WHERE id = $1 AND status = 'running'
+         AND ($5::int IS NULL OR (attempt_count=$5 AND worker_id=$6))`,
       [
         input.jobId,
         Math.floor(wait / 1000),
         input.message.slice(0, 2000),
         input.errorCode.slice(0, 100),
+        input.attempt?.attemptCount ?? null,
+        input.attempt?.workerId ?? null,
       ]
     );
     // Lost the race with reaper/complete — treat as handled elsewhere.
     return rowCount === 1 ? "requeued" : "failed";
   }
-  await failAsyncJobAndRefundIfCharged(input.jobId, input.message, input.errorCode);
+  await failAsyncJobAndRefundIfCharged(input.jobId, input.message, input.errorCode, input.attempt);
   return "failed";
 }
 
@@ -860,19 +893,21 @@ export async function rescheduleOrFailReportJob(input: {
   delayMs: number;
   message: string;
   maxReschedules?: number;
+  attempt?: AsyncJobAttempt;
 }): Promise<"requeued" | "failed"> {
   const cap = Math.max(1, input.maxReschedules ?? REPORT_JOB_MAX_PROVIDER_RESCHEDULES);
   const { rows } = await query<{ retry_429_count: number }>(
-    `SELECT retry_429_count FROM async_jobs WHERE id = $1 AND status = 'running'`,
-    [input.jobId]
+    `SELECT retry_429_count FROM async_jobs WHERE id = $1 AND status = 'running'
+      AND ($2::int IS NULL OR (attempt_count=$2 AND worker_id=$3))`,
+    [input.jobId, input.attempt?.attemptCount ?? null, input.attempt?.workerId ?? null]
   );
   const count = rows[0]?.retry_429_count;
   if (count === undefined) return "failed";
   if (count >= cap) {
-    await failAsyncJobAndRefundIfCharged(input.jobId, input.message, "provider_unavailable");
+    await failAsyncJobAndRefundIfCharged(input.jobId, input.message, "provider_unavailable", input.attempt);
     return "failed";
   }
-  const ok = await rescheduleAsyncJob(input.jobId, input.delayMs, input.message);
+  const ok = await rescheduleAsyncJob(input.jobId, input.delayMs, input.message, input.attempt);
   return ok ? "requeued" : "failed";
 }
 
@@ -962,16 +997,18 @@ export async function reapNeedsRegenerationAsyncJobs(input: {
 export async function failAsyncJobAndRefundIfCharged(
   jobId: string,
   message: string,
-  errorCode = "worker_timeout"
+  errorCode = "worker_timeout",
+  attempt?: AsyncJobAttempt
 ): Promise<{ failed: boolean; refunded: boolean }> {
   const job = await getAsyncJobById(jobId);
-  if (!job || job.status !== "running") {
+  if (!job || job.status !== "running" || (attempt && !asyncJobAttemptMatches(job, attempt))) {
     return { failed: false, refunded: job?.billing_state === "refunded" };
   }
 
   // Atomic: lose to save_claimed / complete so we never refund a delivered report.
   const failed = await failAsyncJob(jobId, message, errorCode, {
     onlyIfSaveNotClaimed: true,
+    attempt,
   });
   if (!failed) {
     return { failed: false, refunded: false };
@@ -1133,6 +1170,11 @@ export function asyncJobPollPayload(job: AsyncJobRow) {
   return {
     jobId: job.id,
     kind: job.kind,
+    context: {
+      sessionId: typeof job.input.sessionId === "string" ? job.input.sessionId : null,
+      characterId: typeof job.input.characterId === "string" ? job.input.characterId : null,
+      matrixSubjectId: typeof job.input.matrixSubjectId === "string" ? job.input.matrixSubjectId : null,
+    },
     status: job.status,
     result: job.status === "completed" ? job.result : undefined,
     error:

@@ -1056,6 +1056,9 @@ export async function generateFullMatrixSectionedReading(input: {
 
   // Engine titles win over LLM renames (Marseille swaps / synonyms).
   reading = canonicalizeArcanaNamesInText(reading, matrix.calculationVersion);
+  if (!isCompleteMatrixReading(reading, toolId, matrix.calculationVersion)) {
+    throw new MatrixQualityCanaryError(document.meta, toolId);
+  }
 
   const meta: MatrixSectionedMeta = {
     aiZones: document.meta.aiZones,

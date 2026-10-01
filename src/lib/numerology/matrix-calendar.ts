@@ -22,10 +22,10 @@ export function matrixCalendarYmd(refDate: Date = new Date()): {
   return { year, month, day };
 }
 
-/** Local Date whose Y/M/D getters match the Matrix calendar day. */
+/** UTC date-only carrier; use UTC getters for Matrix calendar arithmetic. */
 export function matrixCalendarDateObject(refDate: Date = new Date()): Date {
   const { year, month, day } = matrixCalendarYmd(refDate);
-  return new Date(year, month - 1, day);
+  return new Date(Date.UTC(year, month - 1, day));
 }
 
 export function matrixCalendarDateFromTimestamp(timestamp: string): string | null {

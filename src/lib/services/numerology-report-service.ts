@@ -1,6 +1,7 @@
-import { query, queryClient, withTransaction } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { parseBirthDate } from "@/lib/numerology/constants";
 import { matrixCalendarYmd } from "@/lib/numerology/matrix-calendar";
+import type { AsyncJobAttempt } from "@/lib/async-jobs";
 import {
   isLegacyMatrixCalculationVersion,
   MATRIX_CALCULATION_VERSION,
@@ -410,6 +411,7 @@ export async function saveMatrixReport(params: {
   overwrite?: boolean;
   /** Server-selected paid artifact: repair in place, retaining its receipt and ID. */
   repairUnusableReportId?: string;
+  workerJob?: { jobId: string; attempt: AsyncJobAttempt };
 }): Promise<SaveMatrixReportResult> {
   const birthDate = toIsoBirthDate(params.birthDateRaw);
   if (!birthDate) {
@@ -447,6 +449,14 @@ export async function saveMatrixReport(params: {
   }
 
   return withTransaction(async (client) => {
+    if (params.workerJob) {
+      const lease = params.workerJob;
+      const job = await queryClient(client, `SELECT id FROM async_jobs WHERE id=$1 AND user_id=$2
+        AND status='running' AND billing_state IN ('unbilled','charged') AND attempt_count=$3 AND worker_id=$4
+        AND period_metadata->>'save_claimed'='true' FOR UPDATE`,
+      [lease.jobId, params.userId, lease.attempt.attemptCount, lease.attempt.workerId]);
+      if (!job.rows.length) throw new Error("stale_async_job_attempt");
+    }
     const ownedSubject = await queryClient<{ birth_date: Date | string }>(
       client,
       `SELECT birth_date FROM matrix_subjects
@@ -671,11 +681,15 @@ export async function findStoredMatrixPairReport(userId: string, dateA: string, 
 
 export async function getUserMatrixReportById(
   userId: string,
-  reportId: string
+  reportId: string,
+  client?: PoolClient
 ): Promise<NumerologyReportHistoryItem | null> {
   const id = reportId.trim();
   if (!id || !UUID_RE.test(id)) return null;
-  const { rows } = await query<NumerologyReportHistoryRow>(
+  const execute = client
+    ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) => queryClient<T>(client, text, params)
+    : query;
+  const { rows } = await execute<NumerologyReportHistoryRow>(
     `SELECT ${SELECT_COLS}
      FROM numerology_report_history
      WHERE user_id = $1
@@ -684,7 +698,7 @@ export async function getUserMatrixReportById(
      LIMIT 1`,
     [userId, id]
   );
-  return rows[0] ? mapRow(rows[0]) : findArchivedMatrixPairReport(userId,{id});
+  return rows[0] ? mapRow(rows[0]) : client ? null : findArchivedMatrixPairReport(userId,{id});
 }
 
 async function matrixReportSessionIds(userId: string, reports: Array<{ id: string; session_id: string | null }>): Promise<string[]> {

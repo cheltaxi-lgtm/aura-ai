@@ -4,9 +4,9 @@ import type { DestinyMatrixAgePoint, DestinyMatrixPoint } from "./matrix-result"
 export const AGE_BELT_END = 80;
 
 export function toIsoDay(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
+  const y = date.getUTCFullYear();
+  const m = String(date.getUTCMonth() + 1).padStart(2, "0");
+  const d = String(date.getUTCDate()).padStart(2, "0");
   return `${y}-${m}-${d}`;
 }
 
@@ -14,9 +14,9 @@ export function yearsBetween(
   birth: { year: number; month: number; day: number },
   asOf: Date
 ): number {
-  let age = asOf.getFullYear() - birth.year;
-  const m = asOf.getMonth() + 1;
-  const d = asOf.getDate();
+  let age = asOf.getUTCFullYear() - birth.year;
+  const m = asOf.getUTCMonth() + 1;
+  const d = asOf.getUTCDate();
   if (m < birth.month || (m === birth.month && d < birth.day)) age -= 1;
   return Math.max(0, age);
 }

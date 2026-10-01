@@ -1,4 +1,5 @@
 import { parseBirthDate } from "./constants";
+import { arcanaForNumber } from "./matrix-arcana-map";
 import { parseMatrixCalendarDay, pickAgeWindow, yearsBetween } from "./destiny-matrix-internal";
 import {
   destinyMatrix,
@@ -81,6 +82,10 @@ export function hydrateDestinyMatrixFromSnapshot(
   data: Record<string, unknown> | null | undefined
 ): DestinyMatrixResult | null {
   if (!data || typeof data !== "object") return null;
+  const version =
+    (typeof data.calculationVersion === "string" && data.calculationVersion) ||
+    (typeof data.version === "string" && data.version) || "";
+  if (!isKnownMatrixCalculationVersion(version)) return null;
   const points: Partial<Record<(typeof REQUIRED_POINTS)[number], DestinyMatrixPoint>> = {};
   for (const key of REQUIRED_POINTS) {
     const point = asPoint(data[key]);
@@ -118,10 +123,6 @@ export function hydrateDestinyMatrixFromSnapshot(
       points: chPoints as DestinyMatrixPoint[],
     });
   }
-  const version =
-    (typeof data.calculationVersion === "string" && data.calculationVersion) ||
-    (typeof data.version === "string" && data.version) ||
-    "";
   const rendererFallback = (() => {
     const base = matrixBaseVersion(version);
     if (base === "matrix-v5") return MATRIX_V5_RENDERER_VERSION;
@@ -138,13 +139,17 @@ export function hydrateDestinyMatrixFromSnapshot(
       (data.lineage != null && !lineage) || (data.loveDeep != null && !asPoint(data.loveDeep)) ||
       (data.moneyDeep != null && !asPoint(data.moneyDeep))) return null;
   const purpose = asPoint(data.purpose);
-  if (matrixBaseVersion(version) === "matrix-v5" && (!purpose || !purposeBlock || purpose.number !== purposeBlock.personal.number)) return null;
+  if (matrixBaseVersion(version) === "matrix-v5" &&
+      (!purpose || !purposeBlock || purpose.number !== purposeBlock.personal.number ||
+       !talentsChain || !lineage || !ageModel || !asPoint(data.loveDeep) || !asPoint(data.moneyDeep) ||
+       typeof data.chronologicalAge !== "number" || channels.length !== 5 ||
+       channels.some(ch => ch.points.length !== ({ love: 5, money: 5, male: 3, female: 3, skyEarth: 5 })[ch.id]))) return null;
   if (data.ageModel != null && !ageModel) return null;
   if (ageModel && (ageModel.chronological !== chronologicalAge || ageModel.periodStart !== ageCurrent.age ||
       ageModel.energy.number !== ageCurrent.number || (ageModel.nextPeriod?.age ?? null) !== (ageNext?.age ?? null) ||
       (ageModel.nextPeriod?.number ?? null) !== (ageNext?.number ?? null) ||
       (ageNext ? ageModel.periodEnd !== ageNext.age : ![80, 85].includes(ageModel.periodEnd)))) return null;
-  return {
+  const result: DestinyMatrixResult = {
     methodologyId: methodologyIdForCalculationVersion(version),
     calculationVersion: version,
     rendererVersion:
@@ -180,6 +185,19 @@ export function hydrateDestinyMatrixFromSnapshot(
     ...(asPoint(data.loveDeep) ? { loveDeep: asPoint(data.loveDeep)! } : {}),
     ...(asPoint(data.moneyDeep) ? { moneyDeep: asPoint(data.moneyDeep)! } : {}),
   };
+  // Numbers and version determine titles. Preserve historical explanatory
+  // prose, but never display a corrupted title beside a valid number.
+  const canonicalizePoint = (point: DestinyMatrixPoint) => {
+    point.arcanaName = arcanaForNumber(point.number, version).arcanaName;
+  };
+  for (const key of [...REQUIRED_POINTS, "purpose"] as const) canonicalizePoint(result[key]);
+  for (const point of [...result.karmicTail, ...result.agePoints, result.ageCurrent,
+    ...(result.ageNext ? [result.ageNext] : []), ...result.channels.flatMap(ch => ch.points),
+    ...Object.values(result.purposeBlock ?? {}), ...Object.values(result.talentsChain ?? {}),
+    ...(result.lineage?.male ?? []), ...(result.lineage?.female ?? []),
+    ...(result.ageModel ? [result.ageModel.energy, ...(result.ageModel.nextPeriod ? [result.ageModel.nextPeriod] : [])] : []),
+    ...(result.loveDeep ? [result.loveDeep] : []), ...(result.moneyDeep ? [result.moneyDeep] : [])]) canonicalizePoint(point);
+  return result;
 }
 
 function asPurposeBlock(value: unknown): DestinyMatrixPurposeBlock | null {
@@ -322,7 +340,7 @@ function snapshotMatchesBirth(matrix: DestinyMatrixResult, birthDate: string, da
     if (!parsed || parsed.year !== birth.year || parsed.month !== birth.month || parsed.day !== birth.day) return false;
   }
   const date = parseMatrixCalendarDay(matrix.asOf.date);
-  if (!date || matrix.chronologicalAge !== yearsBetween(birth, new Date(date.year, date.month - 1, date.day))) return false;
+  if (!date || matrix.chronologicalAge !== yearsBetween(birth, new Date(Date.UTC(date.year, date.month - 1, date.day)))) return false;
   const version = matrixBaseVersion(matrix.calculationVersion);
   if (version === "matrix-v1" || version === "matrix-v2") return recorded != null;
   const expected = destinyMatrix(birthDate, { asOfDate: matrix.asOf.date, calculationVersion: version });

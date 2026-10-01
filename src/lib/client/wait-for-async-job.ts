@@ -30,6 +30,7 @@ export type AsyncJobProgress = {
 export type AsyncJobPollResult = {
   jobId?: string;
   kind?: string;
+  context?: { sessionId: string | null; characterId: string | null; matrixSubjectId: string | null };
   status: string;
   result?: Record<string, unknown>;
   error?: string;
@@ -324,14 +325,24 @@ export async function resumeStoredOrActiveAsyncJob(params: {
   storageKey: string;
   kind?: string;
   signal?: AbortSignal;
+  context?: { sessionId: string | null; characterId: string | null; matrixSubjectId: string | null };
 }): Promise<Record<string, unknown> | null> {
   let jobId = readStoredAsyncJobId(params.storageKey);
+  if (jobId) {
+    const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, { credentials: "include", cache: "no-store", signal: params.signal });
+    if (!response.ok) jobId = null;
+    else {
+      const job = await responseJson<AsyncJobPollResult>(response);
+      if (!asyncJobMatchesContext(job, params)) jobId = null;
+    }
+  }
   if (!jobId && params.kind) {
     const jobs = await fetchActiveAsyncJobs(params.kind);
     const active = jobs.find(
       (job) =>
         typeof job.jobId === "string" &&
-        (job.status === "pending" || job.status === "running" || job.status === "claimed")
+        (job.status === "pending" || job.status === "running" || job.status === "claimed") &&
+        asyncJobMatchesContext(job, params)
     );
     jobId = active?.jobId ?? null;
   }
@@ -341,4 +352,14 @@ export async function resumeStoredOrActiveAsyncJob(params: {
     storageKey: params.storageKey,
     signal: params.signal,
   });
+}
+
+export function asyncJobMatchesContext(job: AsyncJobPollResult, expected: {
+  kind?: string;
+  context?: { sessionId: string | null; characterId: string | null; matrixSubjectId: string | null };
+}): boolean {
+  if (expected.kind && job.kind !== expected.kind) return false;
+  if (!expected.context) return true;
+  return Boolean(job.context && Object.entries(expected.context).every(([key, value]) =>
+    (job.context?.[key as keyof typeof job.context] ?? null) === value));
 }

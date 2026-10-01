@@ -1,6 +1,8 @@
 import { timingSafeEqual } from "node:crypto";
 
 import type { NextRequest } from "next/server";
+import type { AsyncJobAttempt } from "@/lib/async-jobs";
+
 
 import {
   isDirectLoopbackWorkerCall,
@@ -8,9 +10,13 @@ import {
   WORKER_JOB_HEADER,
   WORKER_SECRET_HEADER,
   WORKER_USER_HEADER,
+  WORKER_ATTEMPT_HEADER,
+  WORKER_ID_HEADER,
 } from "@/lib/async-job-worker-auth-shared";
 
 export {
+  WORKER_ATTEMPT_HEADER,
+  WORKER_ID_HEADER,
   assertLoopbackAppUrl,
   isAuthenticatedAsyncJobWorkerRequest,
   isAuthenticatedNatalWorkerRequest,
@@ -61,6 +67,15 @@ export function getAsyncJobIdFromRequest(request: NextRequest): string | null {
   if (!getAsyncJobWorkerUserId(request)) return null;
   const jobId = request.headers.get(WORKER_JOB_HEADER);
   return isWorkerUserId(jobId) ? jobId : null;
+}
+
+export function getAsyncJobAttemptFromRequest(request: NextRequest): AsyncJobAttempt | null {
+  if (!getAsyncJobIdFromRequest(request)) return null;
+  const raw = request.headers.get(WORKER_ATTEMPT_HEADER) ?? "";
+  const workerId = request.headers.get(WORKER_ID_HEADER)?.trim() ?? "";
+  const attemptCount = Number(raw);
+  return /^\d+$/.test(raw) && Number.isSafeInteger(attemptCount) && attemptCount > 0 && workerId && workerId.length <= 200
+    ? { attemptCount, workerId } : null;
 }
 
 export function isAsyncJobWorkerConfigured(): boolean {

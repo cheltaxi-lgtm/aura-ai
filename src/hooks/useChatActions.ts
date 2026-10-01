@@ -1660,6 +1660,8 @@ export function useChatActions(options: UseChatActionsOptions) {
     if (!isLoggedIn || authLoading || sessionLoading) return;
     if (readingInFlightRef.current || isLoading) return;
     let cancelled = false;
+    const resumeContext = { sessionId: consultationSessionIdRef.current,
+      characterId: selectedCharacter, matrixSubjectId: sessionSpreadMetaRef.current?.matrixSubjectId ?? null };
     void (async () => {
       try {
         const data = await resumeStoredOrActiveAsyncJob({
@@ -1667,24 +1669,28 @@ export function useChatActions(options: UseChatActionsOptions) {
           kind: isNumerologMaster(selectedCharacter)
             ? "numerology_reading"
             : "reading",
+          context: resumeContext,
         });
-        if (cancelled || !data) return;
+        if (cancelled || !data || exitingToSessionListRef.current ||
+            selectedCharacterRef.current !== resumeContext.characterId ||
+            consultationSessionIdRef.current !== resumeContext.sessionId ||
+            (sessionSpreadMetaRef.current?.matrixSubjectId ?? null) !== resumeContext.matrixSubjectId) return;
         const readingText =
           typeof data.reading === "string" ? data.reading.trim() : "";
         if (readingText.length < MIN_SPREAD_READING_CHARS) return;
-        readingInFlightRef.current = true;
-        setIsLoading(true);
+        if (isNumerologMaster(selectedCharacter)) {
+          const identity = matrixSessionIdentity(data);
+          setMatrixSessionBirthDate?.(identity.birthDate);
+          setMatrixSessionAsOf?.(identity.asOf);
+          setMatrixSessionCalculationVersion?.(identity.calculationVersion);
+          setMatrixSessionStructuredData?.(identity.structuredData);
+        }
         setMessages((prev) => appendSpreadReadingMessage(prev, readingText));
         if (typeof data.runeBalance === "number") {
           emitRuneBalanceUpdate(data.runeBalance);
         }
       } catch {
         /* keep chat as-is */
-      } finally {
-        if (!cancelled) {
-          readingInFlightRef.current = false;
-          setIsLoading(false);
-        }
       }
     })();
     return () => {
@@ -1699,6 +1705,12 @@ export function useChatActions(options: UseChatActionsOptions) {
     setIsLoading,
     setMessages,
     readingInFlightRef,
+    consultationSessionIdRef,
+    sessionSpreadMetaRef,
+    setMatrixSessionBirthDate,
+    setMatrixSessionAsOf,
+    setMatrixSessionCalculationVersion,
+    setMatrixSessionStructuredData,
   ]);
 
   useEffect(() => {

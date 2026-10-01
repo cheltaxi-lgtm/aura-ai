@@ -27,6 +27,21 @@ function skeletonReading(matrix: ReturnType<typeof destinyMatrix>): string {
 }
 
 describe("matrix arcana name table (Marseille for Matrix, RW for Tarot)", () => {
+  it("checks long prose and normalizes flexible whitespace without deleting the continuation", () => {
+    const matrix = destinyMatrix("1990-05-15")!;
+    const long = "8 — Сила поможет принять справедливое решение в денежном канале.";
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${long}`, matrix)).toBe(false);
+    const fixed = canonicalizeArcanaNamesInText(long);
+    expect(fixed).toBe("8 — Справедливость поможет принять справедливое решение в денежном канале.");
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${fixed}`, matrix)).toBe(true);
+    expect(canonicalizeArcanaNamesInText("10 — Колесо  Судьбы. 2 — Верховная   Жрица.")).toBe("10 — Колесо Фортуны. 2 — Жрица.");
+  });
+  it("preserves complete actions and surrounding punctuation while correcting only an arcana title", () => {
+    const raw = "2) Перед оплатой проверь бюджет — ресурс 4 — Император поможет удержать границы.\n3) Так ты экологично проживёшь 12 — Повешенный.\n4) Используй 8 — «Сила», сохраняя спокойствие.";
+    const fixed = canonicalizeArcanaNamesInText(raw);
+    expect(fixed).toBe("2) Перед оплатой проверь бюджет — ресурс 4 — Император поможет удержать границы.\n3) Так ты экологично проживёшь 12 — Повешенный.\n4) Используй 8 — «Справедливость», сохраняя спокойствие.");
+    expect(canonicalizeArcanaNamesInText(fixed)).toBe(fixed);
+  });
   it("keeps Tarot deck on Rider–Waite while Matrix uses 8 Justice / 11 Strength", () => {
     const table = majorArcanaNameTable();
     expect(table).toHaveLength(22);

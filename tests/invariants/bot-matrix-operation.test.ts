@@ -38,7 +38,10 @@ vi.mock("@/lib/telegram/bot-charge-idempotency", async (importOriginal) => ({
   bindBotChargeSession: m.bind, findSessionIdForBotCharge: m.boundSession,
 }));
 vi.mock("@/lib/rune-service", () => ({ getRuneBalance: vi.fn(async () => 900), isRuneBillingActive: m.billing }));
-vi.mock("@/lib/rune-settings", () => ({ getRuneSettings: vi.fn(async () => ({})) }));
+vi.mock("@/lib/rune-settings", async importOriginal => ({
+  ...await importOriginal<typeof import("@/lib/rune-settings")>(),
+  getRuneSettings: vi.fn(async () => ({ costs: { CHILD_MATRIX_REPORT: 73, NUMEROLOGY_SESSION: 81 } })),
+}));
 vi.mock("@/lib/session", () => ({ createSession: m.createSession, getSession: vi.fn(), updateSessionChatMeta: vi.fn() }));
 vi.mock("@/lib/memory/build-memory-context", () => ({ buildMemoryContext: vi.fn(async () => ({ clientBlock: "", pastSessionsBlock: "", factsBlock: "" })) }));
 vi.mock("@/lib/services/numerology-service", () => ({ generateNumerologSessionReading: m.generate }));
@@ -214,6 +217,25 @@ describe("Telegram matrix operation identity", () => {
     expect(await botMatrixRun(123, { replace: false, operationId: 'free-A' })).toMatchObject({ ok: false, error: 'operation_failed' });
     expect(m.wipe).not.toHaveBeenCalled();
     expect(m.generate).not.toHaveBeenCalled();
+  });
+
+  it("reopens a child with its actual tool and frozen subject receipt", async () => {
+    const result = await botMatrixRun(123, { subjectId: subject.id });
+    expect(result).toMatchObject({ ok: true, charged: 0, reused: true });
+    const update = m.query.mock.calls.find(([sql]) => String(sql).includes("|| $3::jsonb"));
+    expect(update).toBeTruthy();
+    expect(JSON.parse(String(update![1][2]))).toMatchObject({ matrixSubjectId: subject.id, matrixBirthDate: subject.birthDate, subjectKind: "child", botMatrixReceipt: { birthDate: subject.birthDate, calculationVersion: report.calculationVersion } });
+    expect(m.charge).not.toHaveBeenCalled();
+  });
+  it("keeps historical DOB and calculation version in the bot get response", async () => {
+    m.subject.mockResolvedValue({ ...subject, birthDate: "2016-07-08" });
+    m.getReport.mockResolvedValue({ ...report, calculationVersion: "matrix-v4" });
+    expect(await botMatrixGet(123, report.id)).toMatchObject({ ok: true, birthDate: report.birthDate, subject: { birthDate: report.birthDate } });
+    expect(m.usable).toHaveBeenCalledWith(report.content, report.toolId, "matrix-v4");
+  });
+  it("charges the configured Matrix price instead of the static catalog price", async () => {
+    await botMatrixRun(123, { replace: true, subjectId: subject.id, operationId: "configured-price" });
+    expect(m.charge).toHaveBeenCalledWith(expect.objectContaining({ cost: 73 }));
   });
   it("keeps an invalid paid report through a failed free repair and never charges the retry", async () => {
     const broken = { ...report, content: "Broken paid reading" };
