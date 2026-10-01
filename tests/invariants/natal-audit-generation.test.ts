@@ -52,7 +52,7 @@ describe("Natal factual fidelity and fail-closed generation", () => {
       { kind: "sign_change", planet: "Марс", planetKey: "mars", previousSign: "Gemini", transitSign: "Cancer", date: "2026-10-02", note: "Транзит Марс: вход в Рак (из Близнецы)" },
     ] };
     const evidence = buildNatalEvidence(chart, { tradition: "western", timing: null });
-    const aspect = evidence.filter(item => item.value.includes("Трин"));
+    const aspect = evidence.filter(item => item.sourcePath === "transits.0");
     const ingress = evidence.filter(item => item.value.includes("→"));
     expect(aspect).toHaveLength(1); expect(ingress).toHaveLength(1);
     expect(natalClaimFactErrors("Транзитный Марс в трине к натальному Солнцу", evidence, aspect)).toEqual([]);
