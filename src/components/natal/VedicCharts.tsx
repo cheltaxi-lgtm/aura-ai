@@ -78,7 +78,7 @@ function D1HouseCell({
     <article
       tabIndex={0}
       aria-label={label}
-      className={`${GRID_POSITION[number]} min-h-20 rounded-lg border border-violet-200/15 bg-violet-300/[0.035] p-2 outline-none transition focus:border-amber-200/60 focus:ring-2 focus:ring-amber-200/20 sm:min-h-24`}
+      className={`${GRID_POSITION[number]} min-h-20 rounded-lg border border-violet-200/15 bg-violet-300/[0.035] p-2 outline-none transition-opacity motion-reduce:transition-none focus:border-amber-200/60 focus:ring-2 focus:ring-amber-200/20 sm:min-h-24`}
     >
       <div className="flex items-start justify-between gap-1">
         <span className="text-[10px] font-semibold text-violet-100/60">H{number}</span>
@@ -111,7 +111,7 @@ function D9SignCell({
     <article
       tabIndex={0}
       aria-label={label}
-      className={`${GRID_POSITION[number]} min-h-20 rounded-lg border border-cyan-200/15 bg-cyan-300/[0.025] p-2 outline-none transition focus:border-amber-200/60 focus:ring-2 focus:ring-amber-200/20 sm:min-h-24`}
+      className={`${GRID_POSITION[number]} min-h-20 rounded-lg border border-cyan-200/15 bg-cyan-300/[0.025] p-2 outline-none transition-opacity motion-reduce:transition-none focus:border-amber-200/60 focus:ring-2 focus:ring-amber-200/20 sm:min-h-24`}
     >
       <div className="flex items-start justify-between gap-1">
         <span className="text-[10px] font-semibold text-cyan-100/55">R{number}</span>
@@ -148,7 +148,7 @@ function D1RashiCell({
     <article
       tabIndex={0}
       aria-label={label}
-      className={`${GRID_POSITION[number]} min-h-20 rounded-lg border border-violet-200/15 bg-violet-300/[0.035] p-2 outline-none transition focus:border-amber-200/60 focus:ring-2 focus:ring-amber-200/20 sm:min-h-24`}
+      className={`${GRID_POSITION[number]} min-h-20 rounded-lg border border-violet-200/15 bg-violet-300/[0.035] p-2 outline-none transition-opacity motion-reduce:transition-none focus:border-amber-200/60 focus:ring-2 focus:ring-amber-200/20 sm:min-h-24`}
     >
       <div className="flex items-start justify-between gap-1">
         <span className="text-[10px] font-semibold text-violet-100/60">R{number}</span>

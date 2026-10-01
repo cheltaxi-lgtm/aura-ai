@@ -19,6 +19,9 @@ const REQUIRED_MIGRATIONS = [
   "070_migrate_natal_async_jobs.sql",
   "073_migrate_async_job_billing_and_reaper.sql",
   "077_migrate_premium_ai_delivery.sql",
+  "164_natal_report_revisions.sql",
+  "165_natal_compatibility_participant_identity.sql",
+  "166_natal_participant_receipt_identity.sql",
 ];
 const REQUIRED_TABLES = [
   "natal_report_history",
@@ -58,6 +61,8 @@ const REQUIRED_COLUMNS = {
     "rune_cost",
     "charge_transaction_id",
     "claim_token",
+    "chart_snapshot",
+    "generation_revision",
   ],
   natal_timing_cache: [
     "horizon_days",
@@ -100,6 +105,7 @@ const REQUIRED_COLUMNS = {
   natal_compatibility_reports: [
     "owner_user_id",
     "participant_user_id",
+    "participant_identity_id",
     "canonical_report_id",
     "mode",
     "status",
@@ -145,8 +151,8 @@ const REQUIRED_CONSTRAINTS = [
   "natal_compatibility_completed_data",
   "natal_compatibility_snapshot_private",
 ];
-const REQUIRED_FUNCTIONS = ["validate_private_report_share_target"];
-const REQUIRED_TRIGGERS = ["trg_validate_private_report_share_target"];
+const REQUIRED_FUNCTIONS = ["validate_private_report_share_target", "retain_natal_participant_identity"];
+const REQUIRED_TRIGGERS = ["trg_validate_private_report_share_target", "retain_natal_participant_identity"];
 
 function loadEnvFile(name) {
   const file = path.join(ROOT, name);

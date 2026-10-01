@@ -612,14 +612,10 @@ export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<bool
     const job = rows[0];
     if (!job || job.billing_state !== 'charged' || !job.charge_transaction_id || !['failed','needs_regeneration'].includes(job.status)) return false;
     // A crash after durable save is delivery recovery, never a refundable failure.
-    const saved = await queryClient<{id:string}>(client, 'SELECT id FROM numerology_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1', [job.user_id,job.charge_transaction_id]);
-    if (saved.rows[0]) {
-      const { getUserMatrixReportById } = await import('@/lib/services/numerology-report-service');
-      const { matrixReportDisplayMetadata } = await import('@/lib/numerology/matrix-report-display');
-      const report = await getUserMatrixReportById(job.user_id,saved.rows[0].id,client);
-      if (!report) throw new Error('matrix_delivery_recovery_missing');
-      const result = { ...matrixReportDisplayMetadata(report), reading:report.content, reportId:report.id,
-        isPaid:true,matrixOwned:true,matrixSubjectId:report.subjectId,createdAt:report.createdAt };
+    const { durableReportResult, lockPaidReportReceipt } = await import('@/lib/services/durable-report-receipt');
+    await lockPaidReportReceipt(client, job.charge_transaction_id);
+    const result = await durableReportResult(client, job.user_id, job.charge_transaction_id);
+    if (result) {
       await queryClient(client, `UPDATE async_jobs SET status='completed',billing_state='completed',result=$2::jsonb,
         error_message=NULL,error_code=NULL,worker_id=NULL,locked_at=NULL,completed_at=NOW(),updated_at=NOW() WHERE id=$1`, [jobId,JSON.stringify(result)]);
       await recordJourneyEvent(job.user_id,'first_result','first',{product:job.kind},client);

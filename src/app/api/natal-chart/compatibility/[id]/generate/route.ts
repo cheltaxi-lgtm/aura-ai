@@ -1,3 +1,5 @@
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
+import { getReportWorkerJobFromRequest } from "@/lib/async-job-worker-auth";
 import { NextRequest, NextResponse } from "next/server";
 
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -7,18 +9,14 @@ import {
   compatibilityReportJsonInstructions,
   extractCompatibilityJson,
   formatCompatibilityEvidence,
-  salvageCompatibilityReport,
   validateCompatibilityReport,
 } from "@/lib/natal/compatibility-report";
 import { getNatalModel } from "@/lib/ai-model";
 import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
-import { appendNatalPersonalizationLens } from "@/lib/natal/personalization-lens";
 import { requireProfileUserId } from "@/lib/require-auth";
-import { getUserById } from "@/lib/users";
 import { isNatalChartEnabled } from "@/lib/settings";
 import {
-  BillingService,
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
@@ -35,12 +33,24 @@ import {
   shouldRefundBeforeWorkerFail,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
-  trackWorkerJobRefunded,
+  refundWorkerJobCharge,
 } from "@/lib/natal/async-job-lifecycle";
 import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
 export const maxDuration = 300;
 type RouteParams = { params: Promise<{ id: string }> };
+
+async function boundedCompatibilityChat(options: Parameters<typeof completeChatDetailed>[0], deadlineAt: number) {
+  const remaining = deadlineAt - Date.now();
+  if (remaining <= 0) throw new Error("Генерация превысила время ожидания.");
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    return await Promise.race([
+      completeChatDetailed({ ...options, maxAttempts: 1, timeoutMs: Math.min(options.timeoutMs ?? 90000, remaining) }),
+      new Promise<never>((_, reject) => { timer = setTimeout(() => reject(new Error("Генерация превысила время ожидания.")), remaining); }),
+    ]);
+  } finally { if (timer) clearTimeout(timer); }
+}
 
 export async function POST(request: NextRequest, { params }: RouteParams) {
   if (!(await isNatalChartEnabled())) {
@@ -63,12 +73,15 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "ai_data_use_acknowledgement_required" },
       { status: 400 }
     );
   }
+  const recovered = await recoverSavedWorkerReport(auth.profileUserId, getReportWorkerJobFromRequest(request));
+  if (recovered) return NextResponse.json(recovered);
   if (body.async === true) {
     return enqueueNatalAsyncJob({
       userId: auth.profileUserId,
@@ -117,9 +130,7 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   const eitherTimeUnknown =
     claim.record.synastry?.chartA?.timeKnown === false ||
     claim.record.synastry?.chartB?.timeKnown === false;
-  const compatUser = await getUserById(auth.profileUserId).catch(() => null);
-  const systemPrompt = await appendNatalPersonalizationLens(
-    await wrapSystemPrompt(`Ты — астрологический аналитик Zovus.
+  const systemPrompt = await wrapSystemPrompt(`Ты — астрологический аналитик Zovus.
 Создай проверяемый отчёт о совместимости на русском языке.
 Это не расклад Таро: сначала как это ощущается в паре, потом одна короткая отсылка к аспекту.
 Используй ТОЛЬКО рассчитанный evidence ниже. Не выдумывай положения, аспекты,
@@ -128,9 +139,7 @@ ${eitherTimeUnknown ? "У одного из партнёров время рож
 ${compatibilityReportJsonInstructions()}
 
 EVIDENCE:
-${formatCompatibilityEvidence(evidence)}`),
-    { profileUserId: auth.profileUserId, user: compatUser }
-  );
+${formatCompatibilityEvidence(evidence)}`);
   const baseMessages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
     {
@@ -141,10 +150,10 @@ ${formatCompatibilityEvidence(evidence)}`),
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
+  let durablePayload: Record<string, unknown> | undefined;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
-    rollbackAttempted = true;
-    await BillingService.rollbackCharge({
+    const outcome = await refundWorkerJobCharge(request, {
       userId: auth.profileUserId,
       cost: charge.spentRunes,
       wasFreeQuestion: charge.wasFreeQuestion,
@@ -152,7 +161,7 @@ ${formatCompatibilityEvidence(evidence)}`),
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
-    await trackWorkerJobRefunded(request);
+    rollbackAttempted = outcome.refunded;
   };
 
   try {
@@ -162,18 +171,19 @@ ${formatCompatibilityEvidence(evidence)}`),
       action: "SYNASTRY_REPORT",
     });
     const natalModel = await getNatalModel();
-    const first = await completeChatDetailed({
+    const deadlineAt = Date.now() + 240_000;
+    const first = await boundedCompatibilityChat({
       messages: baseMessages,
       maxTokens: 7000,
       temperature: 0.3,
-      timeoutMs: 170_000,
-      maxAttempts: 3,
+      timeoutMs: 90_000,
+      maxAttempts: 1,
       jsonObject: true,
       allowReasoningFallback: true,
       skipTemperatureRetry: true,
       modelOverride: natalModel,
       priority: "report",
-    });
+    }, deadlineAt);
     let raw = first.text;
     let validation = (() => {
       try {
@@ -186,7 +196,7 @@ ${formatCompatibilityEvidence(evidence)}`),
       }
     })();
     if (!validation.ok) {
-      const repaired = await completeChatDetailed({
+      const repaired = await boundedCompatibilityChat({
         messages: [
           ...baseMessages,
           { role: "assistant", content: raw ?? "{}" },
@@ -198,13 +208,13 @@ ${formatCompatibilityEvidence(evidence)}`),
         maxTokens: 7000,
         temperature: 0.1,
         timeoutMs: 90_000,
-        maxAttempts: 3,
+        maxAttempts: 1,
         jsonObject: true,
         allowReasoningFallback: true,
         skipTemperatureRetry: true,
         modelOverride: natalModel,
         priority: "report",
-      });
+      }, deadlineAt);
       raw = repaired.text;
       try {
         validation = validateCompatibilityReport(
@@ -216,29 +226,6 @@ ${formatCompatibilityEvidence(evidence)}`),
           ok: false,
           errors: [error instanceof Error ? error.message : "invalid_json"],
         };
-      }
-    }
-    // Keep model prose where possible; coerce evidence IDs / fill thin sections from synastry.
-    if (!validation.ok) {
-      try {
-        const salvaged = salvageCompatibilityReport(
-          extractCompatibilityJson(raw ?? "{}"),
-          evidence
-        );
-        if (salvaged.ok) {
-          console.warn("[natal-compatibility] accepted via evidence salvage");
-          validation = salvaged;
-        }
-      } catch {
-        /* keep prior validation errors */
-      }
-    }
-    if (!validation.ok) {
-      // Absolute fallback: pure evidence-grounded report (no LLM prose).
-      const grounded = salvageCompatibilityReport({}, evidence);
-      if (grounded.ok) {
-        console.warn("[natal-compatibility] accepted via grounded synastry salvage");
-        validation = grounded;
       }
     }
     if (!validation.ok) {
@@ -253,19 +240,19 @@ ${formatCompatibilityEvidence(evidence)}`),
       await trackWorkerJobFailed(
         request,
         refundNow
-          ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена."
+          ? (rollbackAttempted ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена." : "Модель не смогла создать проверяемый отчёт.")
           : "Модель не смогла создать проверяемый отчёт. Повторяем попытку.",
         {
-          refunded: refundNow,
+          refunded: rollbackAttempted,
           errorCode: "invalid_model_report",
         }
       );
       return NextResponse.json(
         {
           error: "invalid_model_report",
-          refunded: refundNow,
+          refunded: rollbackAttempted,
           message: refundNow
-            ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена."
+            ? (rollbackAttempted ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена." : "Модель не смогла создать проверяемый отчёт.")
             : "Модель не смогла создать проверяемый отчёт. Повторяем попытку.",
         },
         { status: 502 }
@@ -277,11 +264,11 @@ ${formatCompatibilityEvidence(evidence)}`),
       // The save barrier was lost (timeout/abort): refund landed, so close the
       // job terminally instead of leaving it running until the reaper.
       await trackWorkerJobFailed(request, "generation_timeout", {
-        refunded: true,
+        refunded: rollbackAttempted,
         errorCode: "generation_claim_lost",
       });
       return NextResponse.json(
-        { error: "generation_timeout", refunded: true },
+        { error: "generation_timeout", refunded: rollbackAttempted },
         { status: 409 }
       );
     }
@@ -293,22 +280,29 @@ ${formatCompatibilityEvidence(evidence)}`),
       evidence,
       runeCost: charge.spentRunes,
       chargeTransactionId: charge.transactionId,
+      workerJob: getReportWorkerJobFromRequest(request),
     });
     if (!saved) {
       await rollback();
       await trackWorkerJobFailed(request, "generation_claim_lost", {
-        refunded: true,
+        refunded: rollbackAttempted,
         errorCode: "generation_claim_lost",
       });
       return NextResponse.json(
-        { error: "generation_claim_lost", refunded: true },
+        { error: "generation_claim_lost", refunded: rollbackAttempted },
         { status: 409 }
       );
     }
     const payload = { record: saved, runeBalance: charge.newBalance };
+    durablePayload = payload;
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (error) {
+    if (durablePayload) {
+      // The receipt already exists. Return it; a later worker/reaper recovers delivery.
+      console.warn("[natal-chart] completed receipt awaiting job delivery recovery");
+      return NextResponse.json(durablePayload);
+    }
     if (error instanceof InsufficientFundsError) {
       await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
       return NextResponse.json(
@@ -324,7 +318,7 @@ ${formatCompatibilityEvidence(evidence)}`),
         console.warn("[natal-compatibility] billing rollback failed");
       });
     }
-    const refunded = refundNow && rollbackAttempted;
+    const refunded = rollbackAttempted;
     console.warn("[natal-compatibility] generation failed");
     await trackWorkerJobFailed(request, "generation_failed", {
       refunded,

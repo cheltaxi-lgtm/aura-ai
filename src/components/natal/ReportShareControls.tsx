@@ -3,6 +3,8 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { REPORT_SHARE_SECTION_ALLOWLIST, type ShareReportKind } from "@/lib/natal/report-share";
 
+const SECTION_LABELS: Record<string, string> = { summary: "Общий итог", currentPeriod: "Текущий период", emotional: "Чувства", stability: "Устойчивость", dimensions: "Сферы отношений", aspects: "Аспекты", composite: "Карта пары", methodology: "Метод расчёта", evidence: "Основания выводов", personality: "Характер", resources: "Сильные стороны", tensions: "Сложности", relationships: "Отношения", career: "Работа", timing: "Периоды", actions: "Практические шаги", strengths: "Сильные стороны", challenges: "Сложности", communication: "Общение", attraction: "Притяжение", growth: "Развитие", recommendations: "Рекомендации", overview: "Обзор", dynamics: "Динамика" };
+
 type Share = {
   id: string; token?: string; reportKind: ShareReportKind; reportId: string;
   selectedSections: string[]; expiresAt: string; revokedAt: string | null;
@@ -117,7 +119,7 @@ function ReportShareControlsContent({ reportKind, reportId, requireThirdPartyCon
         className="flex min-h-9 items-center gap-2 rounded-lg bg-white/[0.04] px-2 text-white/60">
         <input type="checkbox" checked={selected.includes(section)} onChange={() =>
           setSelected((current) => current.includes(section) ? current.filter((item) => item !== section) : [...current, section])} />
-        {section}
+        {SECTION_LABELS[section] ?? "Раздел отчёта"}
       </label>)}</div>
     </fieldset>
     <div className="mt-3 flex flex-wrap items-center gap-2">

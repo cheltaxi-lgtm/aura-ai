@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
         body.reportKind !== "relationship" &&
         body.reportKind !== "compatibility"
       ) ||
-      typeof body.reportId !== "string") {
+      typeof body.reportId !== "string" || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(body.reportId)) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
   const sections = allowedShareSections(body.reportKind, body.sections);
@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
   const days = Number.isFinite(body.expiresInDays)
     ? Math.min(Math.max(Math.floor(body.expiresInDays ?? 7), 1), 90) : 7;
   return withTransaction(async (client) => {
+  // Match report writers/deletion: owner first, then the source receipt.
+  await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR KEY SHARE", [auth.profileUserId]);
   let payload: Record<string, unknown>;
   if (body.reportKind === "natal") {
     const { rows } = await queryClient<{
@@ -70,6 +72,7 @@ export async function POST(request: NextRequest) {
     );
     const report = rows[0];
     if (!report) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!report.structured_data && !["summary", "personality", "relationships", "career", "resources", "tensions", "currentPeriod", "recommendations"].every(key => sections.includes(key))) return NextResponse.json({ error: "У старого отчёта нет разметки разделов. Для его публикации выберите все разделы." }, { status: 400 });
     payload = sanitizeNatalReportShare({
       structuredData: report.structured_data, content: report.content,
       evidenceRefs: report.evidence_refs, sections,

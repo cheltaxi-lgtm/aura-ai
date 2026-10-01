@@ -1,11 +1,12 @@
 /** Western chart assembly (Celestine MIT + Placidus). Server-side only. */
 
-import { calculatePlanets, calculateHouseCusps } from "celestine";
+import { calculateHouseCusps } from "celestine";
 import { dateToJulianDay } from "natalengine/astronomy";
 import { computeAspects } from "./aspects";
 import { formatHouseCusps } from "./houses";
 import { houseForLongitude, signFromLongitude } from "./math";
 import { computeMidpoints } from "./midpoints";
+import { computeNatalSky } from "./astronomy-sky";
 import { toCelestineBirthData } from "./celestine/adapter";
 import { detectPatterns } from "./patterns";
 
@@ -19,26 +20,6 @@ function formatBody(longitude: number, retrograde = false) {
   };
 }
 
-const BODY_TO_KEY: Record<string, string> = {
-  Sun: "sun",
-  Moon: "moon",
-  Mercury: "mercury",
-  Venus: "venus",
-  Mars: "mars",
-  Jupiter: "jupiter",
-  Saturn: "saturn",
-  Uranus: "uranus",
-  Neptune: "neptune",
-  Pluto: "pluto",
-};
-
-const CHART_OPTIONS = {
-  includeAsteroids: false,
-  includeChiron: false,
-  includeLilith: false,
-  includeNodes: false,
-} as const;
-
 export async function computeWesternChart(params: {
   birthDate: string;
   localHourDecimal: number;
@@ -48,20 +29,13 @@ export async function computeWesternChart(params: {
   timeKnown: boolean;
 }): Promise<Record<string, unknown>> {
   const birth = toCelestineBirthData(params);
-  const planetsRaw = calculatePlanets(birth, CHART_OPTIONS);
+  const positions = computeNatalSky(birth);
   const { houses: houseBlock, angles, warnings: houseWarnings } = calculateHouseCusps(birth, {
     houseSystem: "placidus",
   });
 
   const cuspLongitudes = houseBlock.cusps.map((c) => c.longitude);
   const houses = formatHouseCusps(cuspLongitudes);
-
-  const positions: Partial<Record<string, { longitude: number; retrograde: boolean }>> = {};
-  for (const p of planetsRaw) {
-    const key = BODY_TO_KEY[p.body] ?? BODY_TO_KEY[p.name];
-    if (!key) continue;
-    positions[key] = { longitude: p.longitude, retrograde: p.isRetrograde };
-  }
 
   const ascLon = angles.ascendant.longitude;
   const mcLon = angles.midheaven.longitude;
@@ -117,7 +91,8 @@ export async function computeWesternChart(params: {
   const jd = dateToJulianDay(y, m, d, utHour);
 
   const chart: Record<string, unknown> = {
-    ephemeris: "celestine",
+    ephemeris: "astronomy-engine",
+    planetMethodology: "Astronomy Engine: геоцентрические видимые долготы, истинная эклиптика даты; дома Placidus (Celestine).",
     houseSystem: houseBlock.systemName,
     sun,
     moon,

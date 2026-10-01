@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { motion, useReducedMotion } from "framer-motion";
 import { Bell, Check, Mail, Send, ShieldCheck, Sparkles } from "lucide-react";
@@ -34,12 +34,33 @@ const STEPS = [
 export default function ReportAcceptedScreen({
   accepted,
   onStay,
+  modal = false,
 }: {
   accepted: AcceptedAsyncReport;
   /** Switch back to the classic blocking wait on the same page. */
   onStay?: () => void;
+  modal?: boolean;
 }) {
   const reduceMotion = useReducedMotion();
+  const panel = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!modal) return;
+    const previous = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const overlay = panel.current?.closest("[data-report-accepted-overlay]");
+    const backgrounds = overlay?.parentElement === document.body
+      ? Array.from(document.body.children).filter((element): element is HTMLElement => element instanceof HTMLElement && element !== overlay)
+      : [];
+    const previousInert = backgrounds.map(element => element.inert);
+    backgrounds.forEach(element => { element.inert = true; });
+    const overflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    panel.current?.focus({ preventScroll: true });
+    return () => {
+      backgrounds.forEach((element, index) => { element.inert = previousInert[index]; });
+      document.body.style.overflow = overflow;
+      if (previous?.isConnected) previous.focus({ preventScroll: true });
+    };
+  }, [modal]);
   const [channels, setChannels] = useState<Channels | null>(null);
 
   useEffect(() => {
@@ -67,15 +88,22 @@ export default function ReportAcceptedScreen({
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.35, ease: "easeOut" }}
       className="mx-auto w-full max-w-lg rounded-3xl border border-white/10 bg-gradient-to-b from-white/[0.06] to-white/[0.02] p-6 sm:p-8"
-      role="status"
-      aria-live="polite"
+      ref={panel} tabIndex={-1} role={modal ? "dialog" : "status"} aria-modal={modal || undefined} aria-label="Отчёт принят в работу"
+      onKeyDown={event => {
+        if (!modal || event.key !== "Tab") return;
+        const controls = Array.from(panel.current?.querySelectorAll<HTMLElement>('a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), [tabindex="0"]') ?? []);
+        const first = controls[0], last = controls.at(-1);
+        if (!first) { event.preventDefault(); return; }
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === panel.current)) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && (document.activeElement === last || document.activeElement === panel.current)) { event.preventDefault(); first.focus(); }
+      }}
     >
       <div className="flex items-center gap-3">
         <span className="flex h-11 w-11 items-center justify-center rounded-full border border-emerald-300/30 bg-emerald-400/10">
           <Check className="h-5 w-5 text-emerald-300" />
         </span>
         <div>
-          <p className="text-lg font-semibold text-white">Отчёт принят в работу</p>
+          <h2 className="text-lg font-semibold text-white">Отчёт принят в работу</h2>
           <p className="text-sm text-white/60">{title}</p>
         </div>
       </div>
@@ -150,7 +178,7 @@ export default function ReportAcceptedScreen({
       <div className="mt-6 flex flex-col gap-2.5 sm:flex-row">
         <Link
           href={destination}
-          className="flex-1 rounded-2xl bg-gradient-to-r from-amber-200 to-amber-400 px-5 py-3 text-center text-sm font-semibold text-[#241a08] transition hover:brightness-105"
+          className="flex-1 rounded-2xl bg-gradient-to-r from-amber-200 to-amber-400 px-5 py-3 text-center text-sm font-semibold text-[#241a08] transition-opacity motion-reduce:transition-none hover:brightness-105"
         >
           Перейти в кабинет
         </Link>
@@ -158,7 +186,7 @@ export default function ReportAcceptedScreen({
           <button
             type="button"
             onClick={onStay}
-            className="flex-1 rounded-2xl border border-white/15 px-5 py-3 text-sm font-medium text-white/80 transition hover:bg-white/5"
+            className="flex-1 rounded-2xl border border-white/15 px-5 py-3 text-sm font-medium text-white/80 transition-opacity motion-reduce:transition-none hover:bg-white/5"
           >
             Дождаться здесь
           </button>

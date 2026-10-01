@@ -242,13 +242,6 @@ export function claimHasEvidenceAnchor(
   if (!cited.length) return false;
   const norm = normalizeClaimText(text);
   if (!norm) return false;
-  if (
-    /\d{4}-\d{2}-\d{2}|\d{1,2}\s*(?:[./]|январ|феврал|март|апрел|ма[йя]|июн|июл|август|сентябр|октябр|ноябр|декабр)/i.test(
-      text
-    )
-  ) {
-    return true;
-  }
   for (const item of cited) {
     for (const anchor of extractEvidenceAnchors(item)) {
       if (anchor.length >= 4 && norm.includes(anchor)) return true;

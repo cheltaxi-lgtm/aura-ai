@@ -2,6 +2,7 @@
 import ReadingJourney from "@/components/ReadingJourney";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BRAND_NAME } from "@/lib/brand";
 import {
@@ -31,7 +32,7 @@ import {
 import { toUserFacingError } from "@/lib/user-facing-error";
 import {
   aspectRows, bigThree, methodology, midpointRows, patternRows,
-  positionRows, matchesCurrentChart, type NatalChartPayload,
+  positionRows, matchesCurrentChart, natalForecastWindowIsCurrent, type NatalChartPayload,
 } from "@/lib/natal/presentation";
 import { evidenceAnchorId } from "@/lib/natal/evidence-anchor";
 import {
@@ -58,12 +59,16 @@ import {
 type Tab = "overview" | "western" | "jyotish" | "timing" | "compatibility" | "reports" | "settings";
 type Report = {
   id: string; tradition: NatalTradition; reportType: string; content: string;
-  runeCost: number | null; createdAt: string; engineVersion: string; ephemeris: string;
+  runeCost: number | null; createdAt: string; engineVersion: string;
+  ephemeris: string;
   structuredData: NatalReport | null;
   evidenceRefs: NatalEvidence[] | null;
   birthFingerprint: string;
 };
 type FreshReport = {
+  birthFingerprint: string;
+  engineVersion: string;
+  ephemeris: string;
   text: string;
   report: NatalReport | null;
   evidence: NatalEvidence[];
@@ -160,7 +165,7 @@ export default function AstrologyWorkspace() {
   const [enabled, setEnabled] = useState<boolean | null>(null);
   const [loading, setLoading] = useState(true);
   const [historyLoading, setHistoryLoading] = useState(true);
-  const [busy, setBusy] = useState<"recompute" | "delete" | "forecast" | NatalTradition | null>(null);
+  const [busy, setBusy] = useState<"recompute" | "delete" | "forecast" | "restore" | NatalTradition | null>(null);
   const [needsRebuild, setNeedsRebuild] = useState(false);
   const [canCompute, setCanCompute] = useState(true);
   const [deletingReportId, setDeletingReportId] = useState<string | null>(null);
@@ -235,6 +240,7 @@ export default function AstrologyWorkspace() {
   }, []);
 
   const loadChart = useCallback(async (recompute = false) => {
+    setFreshReports({});
     setError("");
     setNotice("");
     if (recompute) setBusy("recompute");
@@ -283,7 +289,7 @@ export default function AstrologyWorkspace() {
       );
     } finally {
       setLoading(false);
-      setBusy(null);
+      if (recompute) setBusy(current => current === "recompute" ? null : current);
     }
   }, [loadHistory]);
 
@@ -307,9 +313,11 @@ export default function AstrologyWorkspace() {
 
   useEffect(() => {
     if (requestedReportId || requestedCompatibilityId) return;
-    const pendingJobId = window.localStorage.getItem("aura:natal-active-job");
+    let pendingJobId: string | null = null;
+    try { pendingJobId = window.localStorage.getItem("aura:natal-active-job"); } catch { return; }
     if (!pendingJobId) return;
     let active = true;
+    setBusy("restore");
     setNotice("Восстанавливаем генерацию, начатую до обновления страницы…");
     void waitForNatalJob(pendingJobId)
       .then(async (result) => {
@@ -319,11 +327,9 @@ export default function AstrologyWorkspace() {
         const reportId = typeof result.reportId === "string" ? result.reportId : null;
         const saved = reportId
           ? nextReports.find((report) => report.id === reportId)
-          : nextReports[0];
-        if (saved?.reportType.startsWith("forecast:")) selectTab("timing");
-        else if (saved?.tradition === "vedic") selectTab("jyotish");
-        else if (saved) selectTab("western");
-        setSelectedReportId(saved?.id ?? null);
+          : undefined;
+        if (saved) openReportArchive(saved.id);
+        else setSelectedReportId(null);
         setError("");
         setNotice("Генерация завершена. Результат показан в соответствующем разделе.");
       })
@@ -336,13 +342,13 @@ export default function AstrologyWorkspace() {
             "Не удалось восстановить генерацию."
           )
         );
-      });
+      }).finally(() => { if (active) setBusy(null); });
     return () => {
       active = false;
     };
-  }, [loadHistory, requestedCompatibilityId, requestedReportId, selectTab]);
+  }, [loadHistory, requestedCompatibilityId, requestedReportId, openReportArchive]);
 
-  const requestInterpretation = async (tradition: NatalTradition, opts?: { forceWait?: boolean }) => {
+  const requestInterpretation = async (tradition: NatalTradition, opts?: { forceWait?: boolean; resumeJobId?: string }) => {
     if (!chart?.[tradition]) {
       setError("Сначала укажите дату и город рождения в настройках карты.");
       selectTab("settings");
@@ -353,7 +359,7 @@ export default function AstrologyWorkspace() {
     setNotice("");
     let enqueuedJob = false;
     try {
-      const response = await fetchWithTimeout("/api/natal-chart/interpretation", {
+      const response = opts?.resumeJobId ? Response.json({ jobId: opts.resumeJobId }, { status: 202 }) : await fetchWithTimeout("/api/natal-chart/interpretation", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -368,15 +374,16 @@ export default function AstrologyWorkspace() {
       let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
         enqueuedJob = true;
+        try { window.localStorage.setItem("aura:natal-active-job", data.jobId); window.localStorage.setItem("aura:natal-active-job-started", String(Date.now())); } catch { /* polling still works when storage is unavailable */ }
         // Background delivery: show «Отчёт принят» and release the user.
-        // Re-POST dedupes to the same job server-side, so «дождаться здесь» is safe.
+        // Resume by accepted id even if it has already completed.
         const accepted = parseAcceptedAsyncReport(data);
         if (accepted && !opts?.forceWait) {
           setAcceptedReport({
             report: accepted,
             resume: () => {
               setAcceptedReport(null);
-              void requestInterpretation(tradition, { forceWait: true });
+              void requestInterpretation(tradition, { forceWait: true, resumeJobId: accepted.jobId });
             },
           });
           return;
@@ -428,12 +435,15 @@ export default function AstrologyWorkspace() {
         throw new Error("Сервер не вернул текст отчёта. Оставайтесь в этой вкладке и повторите попытку.");
       }
       const nextEvidence = Array.isArray(data.evidence) ? data.evidence : [];
-      setChart((previous) => previous ? {
+      setChart((previous) => previous && matchesCurrentChart({ birthFingerprint: chart.birthFingerprint, engineVersion: chart.engineVersion ?? "", ephemeris: String(chart.western?.ephemeris ?? "unknown") }, previous) ? {
         ...previous, interpretations: { ...previous.interpretations, [tradition]: data.interpretation },
       } : previous);
       setFreshReports((previous) => ({
         ...previous,
         [tradition]: {
+          birthFingerprint: chart.birthFingerprint,
+          engineVersion: chart.engineVersion ?? "",
+          ephemeris: typeof chart.western?.ephemeris === "string" ? chart.western.ephemeris : "unknown",
           text: data.interpretation!,
           report: isNatalReport(data.report) ? data.report : null,
           evidence: nextEvidence,
@@ -501,7 +511,7 @@ export default function AstrologyWorkspace() {
     }
   };
 
-  const requestForecast = async (horizon: TimingHorizon, opts?: { forceWait?: boolean; forceRegenerate?: boolean }) => {
+  const requestForecast = async (horizon: TimingHorizon, opts?: { forceWait?: boolean; forceRegenerate?: boolean; resumeJobId?: string }) => {
     if (!chart?.western) {
       setError("Сначала укажите дату и город рождения в настройках карты.");
       selectTab("settings");
@@ -512,7 +522,7 @@ export default function AstrologyWorkspace() {
     setNotice("");
     let enqueuedJob = false;
     try {
-      const response = await fetchWithTimeout("/api/natal-chart/forecast", {
+      const response = opts?.resumeJobId ? Response.json({ jobId: opts.resumeJobId }, { status: 202 }) : await fetchWithTimeout("/api/natal-chart/forecast", {
         method: "POST",
         credentials: "include",
         headers: { "Content-Type": "application/json" },
@@ -532,13 +542,14 @@ export default function AstrologyWorkspace() {
       let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
         enqueuedJob = true;
+        try { window.localStorage.setItem("aura:natal-active-job", data.jobId); window.localStorage.setItem("aura:natal-active-job-started", String(Date.now())); } catch { /* polling still works when storage is unavailable */ }
         const accepted = parseAcceptedAsyncReport(data);
         if (accepted && !opts?.forceWait) {
           setAcceptedReport({
             report: accepted,
             resume: () => {
               setAcceptedReport(null);
-              void requestForecast(horizon, { forceWait: true, forceRegenerate: opts?.forceRegenerate });
+              void requestForecast(horizon, { forceWait: true, resumeJobId: accepted.jobId });
             },
           });
           return;
@@ -706,6 +717,7 @@ export default function AstrologyWorkspace() {
         throw new Error(toUserFacingError(data.error, "Не удалось удалить карту"));
       }
       setChart(null);
+      setFreshReports({});
       setNeedsRebuild(false);
       setNotice("Старая карта удалена. Проверьте данные рождения и нажмите «Получить новую карту».");
     } catch (reason) {
@@ -739,7 +751,7 @@ export default function AstrologyWorkspace() {
                 type="button"
                 onClick={() => void loadChart(true)}
                 disabled={busy !== null}
-                className="btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2 text-sm"
+                className="transition-[transform,opacity] motion-reduce:transition-none btn-primary inline-flex min-h-11 items-center justify-center gap-2 px-4 py-2 text-sm"
               >
                 <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden />
                 Получить новую карту
@@ -771,17 +783,18 @@ export default function AstrologyWorkspace() {
   return (
     <main className="relative text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(245,158,11,.12),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(124,58,237,.11),transparent_30%)]" />
-      {acceptedReport ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+      {acceptedReport ? createPortal(
+        <div data-report-accepted-overlay className="fixed inset-0 z-[6000] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
           <ReportAcceptedScreen
+            modal
             accepted={acceptedReport.report}
             onStay={acceptedReport.resume}
           />
-        </div>
+        </div>, document.body
       ) : null}
-      <div className="relative mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
+      <div inert={Boolean(acceptedReport)} className="relative mx-auto max-w-7xl px-3 py-5 sm:px-6 sm:py-8">
         <nav className="flex flex-wrap items-center gap-2 text-xs text-white/50" aria-label="Навигация по сайту">
-          <Link href="/cabinet" className="transition hover:text-amber-100">
+          <Link href="/cabinet" className="transition-opacity motion-reduce:transition-none hover:text-amber-100">
             ← Кабинет
           </Link>
           <span aria-hidden>·</span>
@@ -802,17 +815,17 @@ export default function AstrologyWorkspace() {
             <div className="flex shrink-0 flex-col gap-1 rounded-2xl bg-white/[0.035] p-1 sm:flex-row sm:flex-wrap lg:justify-end">
               <button type="button" onClick={() => void loadChart(true)} disabled={busy !== null}
                 title="Строит новую карту по текущим данным профиля. Платные отчёты не перегенерируются."
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-amber-100/90 transition hover:bg-amber-300/[0.1] disabled:opacity-50">
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm font-medium text-amber-100/90 transition-opacity motion-reduce:transition-none hover:bg-amber-300/[0.1] disabled:opacity-50">
                 <RefreshCw className={`h-4 w-4 ${busy === "recompute" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Получить новую карту
               </button>
               <button type="button" onClick={() => void deleteChart()} disabled={busy !== null}
-                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm text-rose-100/75 transition hover:bg-rose-400/[0.08] disabled:opacity-50">
+                className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl px-4 text-sm text-rose-100/75 transition-opacity motion-reduce:transition-none hover:bg-rose-400/[0.08] disabled:opacity-50">
                 <Trash2 className={`h-4 w-4 ${busy === "delete" ? "motion-safe:animate-spin" : ""}`} aria-hidden /> Удалить карту
               </button>
               <button
                 type="button"
                 onClick={navigateToBirthProfileOnboarding}
-                className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm text-white/48 transition hover:bg-white/[0.04] hover:text-amber-100/80"
+                className="inline-flex min-h-11 items-center justify-center rounded-xl px-4 text-sm text-white/48 transition-opacity motion-reduce:transition-none hover:bg-white/[0.04] hover:text-amber-100/80"
               >
                 Изменить данные рождения
               </button>
@@ -848,7 +861,7 @@ export default function AstrologyWorkspace() {
           {TABS.map((item) => {
             const Icon = item.icon;
             return <button key={item.id} type="button" onClick={() => selectTab(item.id)} aria-current={tab === item.id ? "page" : undefined}
-              className={`flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-xl px-3.5 text-sm transition sm:flex-1 sm:justify-center ${tab === item.id ? "bg-amber-300/15 text-amber-100 ring-1 ring-amber-300/25" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"}`}>
+              className={`flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-xl px-3.5 text-sm transition-opacity motion-reduce:transition-none sm:flex-1 sm:justify-center ${tab === item.id ? "bg-amber-300/15 text-amber-100 ring-1 ring-amber-300/25" : "text-white/45 hover:bg-white/[0.04] hover:text-white/75"}`}>
               <Icon className="h-4 w-4" aria-hidden /> {item.label}
             </button>;
           })}
@@ -866,12 +879,12 @@ export default function AstrologyWorkspace() {
 
         <div className="mt-5">
           {tab === "overview" && <Overview chart={chart} reports={reports} onTab={selectTab} />}
-          {tab === "western" && (western ? <Western chart={chart} western={western} savedReport={currentWesternReport} freshReport={freshReports.western} fallbackText={westernReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} /> : <Unavailable title="Западный расчёт отсутствует" />)}
-          {tab === "jyotish" && (chart.vedic ? <Jyotish chart={chart} vedic={chart.vedic} savedReport={currentVedicReport} freshReport={freshReports.vedic} fallbackText={vedicReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} /> : <Unavailable title="Расчёт джйотиш отсутствует" />)}
+          {tab === "western" && (western ? <Western chart={chart} western={western} savedReport={currentWesternReport} freshReport={freshReports.western && matchesCurrentChart(freshReports.western, chart) ? freshReports.western : undefined} fallbackText={westernReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} /> : <Unavailable title="Западный расчёт отсутствует" />)}
+          {tab === "jyotish" && (chart.vedic ? <Jyotish chart={chart} vedic={chart.vedic} savedReport={currentVedicReport} freshReport={freshReports.vedic && matchesCurrentChart(freshReports.vedic, chart) ? freshReports.vedic : undefined} fallbackText={vedicReport} busy={busy} cost={cost("NATAL_READING")} onRequest={requestInterpretation} /> : <Unavailable title="Расчёт джйотиш отсутствует" />)}
           {tab === "timing" && <Timing chart={chart} reports={reports} busy={busy} forecastCost={cost("FORECAST_REPORT")} onRequestForecast={requestForecast} />}
           {tab === "compatibility" && <NatalCompatibility />}
           {tab === "reports" && <Reports chart={chart} reports={reports} loading={historyLoading} error={historyError} deletingReportId={deletingReportId} onDelete={deleteReport} onReload={loadHistory} selectedReportId={selectedReportId} onSelectReport={(reportId) => { setSelectedReportId(reportId); setDeepLinkError(""); }} />}
-          {tab === "settings" && <NatalSettings />}
+          {tab === "settings" && <NatalSettings onBirthTimeChanged={() => void loadChart()} />}
         </div>
       </div>
     </main>
@@ -885,7 +898,7 @@ function Overview({ chart, reports, onTab }: { chart: NatalChartPayload; reports
     <Panel className="lg:col-span-2" title="Ключевые положения" eyebrow="Западная карта">
       <SectionIntroduction title="Большая тройка">Солнце, Луна и асцендент — удобная отправная точка. Асцендент показывается только при известном времени рождения.</SectionIntroduction>
       <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
-        {positions.slice(0, 12).map((position) => <button key={position.key} type="button" onClick={() => onTab("western")} className="rounded-xl border border-white/8 bg-white/[0.025] p-3 text-left transition hover:border-amber-300/20">
+        {positions.slice(0, 12).map((position) => <button key={position.key} type="button" onClick={() => onTab("western")} className="rounded-xl border border-white/8 bg-white/[0.025] p-3 text-left transition-opacity motion-reduce:transition-none hover:border-amber-300/20">
           <span className="text-lg text-amber-200">{position.glyph}</span>
           <span className="ml-2 text-sm font-medium">{position.name}</span>
           <span className="mt-1 block text-xs text-white/45">{position.sign} {position.degree == null ? "" : `${position.degree.toFixed(2)}°`}{position.retrograde ? " · ℞" : ""}</span>
@@ -1161,7 +1174,7 @@ function Timing({ chart, reports, busy, forecastCost, onRequestForecast }: {
           type="button"
           disabled={!timing || busy !== null}
           onClick={() => onRequestForecast(horizon, { forceRegenerate: Boolean(currentForecast) })}
-          className="btn-primary flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50"
+          className="transition-[transform,opacity] motion-reduce:transition-none btn-primary flex min-h-11 items-center justify-center gap-2 self-start px-5 text-sm disabled:opacity-50"
         >
           {busy === "forecast" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}
           {!timing
@@ -1326,7 +1339,7 @@ function Reports({ chart, reports, loading, error, deletingReportId, onDelete, o
         : error ? <div><p className="text-sm text-rose-300">{error}</p><button type="button" onClick={onReload} className="mt-2 text-xs text-amber-200">Повторить</button></div>
         : currentReports.length ? <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">{currentReports.map((report) =>
           <button key={report.id} type="button" onClick={() => selectReport(report.id)}
-            className={`rounded-xl border p-4 text-left transition ${selected?.id === report.id ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-white/10 bg-black/20 hover:border-amber-300/20"}`}>
+            className={`rounded-xl border p-4 text-left transition-opacity motion-reduce:transition-none ${selected?.id === report.id ? "border-amber-300/30 bg-amber-300/[0.08]" : "border-white/10 bg-black/20 hover:border-amber-300/20"}`}>
             <span className="block text-sm font-medium text-white/80">{reportLabel(report)}</span>
             <span className="mt-2 block text-xs text-white/40">{new Date(report.createdAt).toLocaleString("ru-RU")} · {report.runeCost ?? "—"} ᚢ</span>
             <span className="mt-3 inline-block rounded-full bg-emerald-300/10 px-2 py-1 text-[10px] text-emerald-200">текущий</span>
@@ -1359,14 +1372,7 @@ function Reports({ chart, reports, loading, error, deletingReportId, onDelete, o
 function isCurrentReport(report: Report, chart: NatalChartPayload): boolean {
   if (!matchesCurrentChart(report, chart)) return false;
   if (!report.reportType.startsWith("forecast:")) return true;
-  const [, rawHorizon, windowStart] = report.reportType.split(":");
-  const horizon = Number(rawHorizon);
-  if (!windowStart || !Number.isFinite(horizon)) return false;
-  const start = new Date(`${windowStart}T00:00:00Z`);
-  if (Number.isNaN(start.getTime())) return false;
-  const end = new Date(start.getTime() + horizon * 86_400_000);
-  const now = Date.now();
-  return now >= start.getTime() && now < end.getTime();
+  return natalForecastWindowIsCurrent(report.reportType, chart.place?.timezone ?? "UTC");
 }
 
 function reportLabel(report: Report): string {
@@ -1378,7 +1384,7 @@ function reportLabel(report: Report): string {
       if (Number.isFinite(horizonDays) && horizonDays > 0) {
         const start = new Date(`${windowStart}T00:00:00Z`);
         if (!Number.isNaN(start.getTime())) {
-          const end = new Date(start.getTime() + horizonDays * 86_400_000);
+          const end = new Date(start.getTime() + (horizonDays - 1) * 86_400_000);
           const endIso = end.toISOString().slice(0, 10);
           return `Прогноз · ${horizonLabel} · ${formatRuDateRange(windowStart, endIso)}`;
         }
@@ -1404,7 +1410,7 @@ function ReportCard({ tradition, title, text, report, evidence, savedReport, bus
   return <Panel title={title} eyebrow={text ? "Готов · сохранён в архиве" : "Отдельная покупка"}>
     {!text && !isNatalReport(report) && <RuneOrderPreview cost={cost} />}
     {savedReport ? <p className="text-xs text-emerald-100/60">Создан {new Date(savedReport.createdAt).toLocaleString("ru-RU")} · {savedReport.runeCost ?? "—"} ᚢ</p> : null}
-    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу только рассчитанных астрологических данных внешней языковой модели. Данные рождения и координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
+    {isNatalReport(report) ? <StructuredReport report={report} evidence={evidence ?? []} /> : text ? <Interpretation text={text} /> : <><p className="text-sm leading-6 text-white/50">Персональный отчёт создаётся здесь для выбранной традиции и после завершения остаётся в этой вкладке. Копия автоматически сохраняется в архиве.</p><p className="mt-4 rounded-xl border border-amber-300/15 bg-amber-300/[0.04] p-3 text-xs leading-5 text-white/55">Нажимая кнопку ниже, вы подтверждаете передачу рассчитанных факторов карты, имени и сведений профиля внешней языковой модели. При включённой памяти также используется разрешённый вами личный контекст. Координаты не передаются.</p><button type="button" disabled={busy !== null} onClick={() => onRequest(tradition)} className="transition-[transform,opacity] motion-reduce:transition-none btn-primary mt-4 flex min-h-11 w-full items-center justify-center gap-2 text-sm disabled:opacity-50">{busy === tradition ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}Подтвердить и получить отчёт · {cost} ᚢ</button></>}
     {text ? <div className="flex flex-wrap items-center gap-3 border-t border-white/[0.07] pt-4">
       {savedReport ? <ReportExportActions path={`/cabinet/astrology/reports/${savedReport.id}/print`} /> : null}
     </div> : null}

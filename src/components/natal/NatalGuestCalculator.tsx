@@ -14,6 +14,7 @@ import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { formatBirthPlaceLabel } from "@/lib/place-presentation";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
+import BirthTimeOccurrence from "./BirthTimeOccurrence";
 import type { NatalGuestSafePayload } from "@/lib/natal/guest-free-summary";
 import {
   FREE_TO_PAID,
@@ -77,6 +78,11 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
   const [timeUnknown, setTimeUnknown] = useState(false);
+  const [occurrence, setOccurrence] = useState<"" | "earlier" | "later">("");
+  const [placesLoading, setPlacesLoading] = useState(false);
+  const [placesError, setPlacesError] = useState("");
+  const [activePlace, setActivePlace] = useState(-1);
+  const placeRequest = useRef<AbortController | null>(null);
   const [placeQuery, setPlaceQuery] = useState("");
   const [place, setPlace] = useState<PlaceOption | null>(null);
   const [places, setPlaces] = useState<PlaceOption[]>([]);
@@ -137,27 +143,31 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
     };
   }, [isLoggedIn, result?.artifactId]);
 
+  const choosePlace = (p: PlaceOption) => {
+    placeRequest.current?.abort();
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    setOccurrence(""); setPlace(p); setPlaceQuery(formatBirthPlaceLabel(p.label)); setPlacesOpen(false); setActivePlace(-1); setPlacesLoading(false); setPlacesError("");
+  };
   const searchPlaces = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
-    if (q.trim().length < 2) {
-      setPlaces([]);
-      setPlacesOpen(false);
-      return;
-    }
-    debounceRef.current = setTimeout(() => {
-      fetch(`/api/natal-chart/places?q=${encodeURIComponent(q.trim())}`)
-        .then((r) => (r.ok ? r.json() : null))
-        .then((d) => {
-          const list = Array.isArray(d?.places) ? (d.places as PlaceOption[]) : [];
-          setPlaces(list);
-          setPlacesOpen(list.length > 0);
-        })
-        .catch(() => {
-          setPlaces([]);
-          setPlacesOpen(false);
-        });
+    placeRequest.current?.abort();
+    setPlaces([]); setActivePlace(-1); setPlacesError("");
+    if (q.trim().length < 2) { setPlacesOpen(false); setPlacesLoading(false); return; }
+    const controller = new AbortController();
+    placeRequest.current = controller;
+    setPlacesLoading(true); setPlacesOpen(true);
+    debounceRef.current = setTimeout(async () => {
+      try {
+        const r = await fetch('/api/natal-chart/places?q=' + encodeURIComponent(q.trim()), { signal: controller.signal });
+        const d = await r.json();
+        if (!r.ok) throw new Error("Не удалось загрузить города. Попробуйте ещё раз.");
+        if (!controller.signal.aborted) setPlaces(Array.isArray(d?.places) ? d.places : []);
+      } catch (reason) {
+        if (!controller.signal.aborted) setPlacesError(reason instanceof Error ? reason.message : "Ошибка поиска города");
+      } finally { if (!controller.signal.aborted) setPlacesLoading(false); }
     }, 280);
   }, []);
+  useEffect(() => () => { placeRequest.current?.abort(); if (debounceRef.current) clearTimeout(debounceRef.current); }, []);
 
   useEffect(() => {
     const onClick = (e: MouseEvent) => {
@@ -268,6 +278,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
           birthDate,
           birthTime: timeUnknown ? null : birthTime,
           timeKnown: !timeUnknown,
+          ...(occurrence && !timeUnknown ? { birthTimeOccurrence: occurrence } : {}),
           place,
         }),
       });
@@ -281,7 +292,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
           setAgeReady(false);
           setError("Подтвердите возраст 18+.");
         } else {
-          setError("Не удалось построить карту. Проверьте данные и попробуйте ещё раз.");
+          setError(data.error || "Не удалось построить карту. Проверьте данные и попробуйте ещё раз.");
         }
         setPending(false);
         return;
@@ -330,7 +341,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
             type="button"
             disabled={ageConfirming}
             onClick={() => void confirmAge()}
-            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60"
+            className="mt-4 inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition-opacity motion-reduce:transition-none hover:brightness-110 disabled:opacity-60"
           >
             {ageConfirming ? "Подтверждаем…" : "Мне есть 18 лет — построить карту"}
           </button>
@@ -411,7 +422,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
               type="date"
               required
               value={birthDate}
-              onChange={(e) => setBirthDate(e.target.value)}
+              onChange={(e) => { setBirthDate(e.target.value); setOccurrence(""); }}
               className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 ym-hide-content ym-disable-keys"
             />
           </label>
@@ -425,7 +436,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
               aria-label="Время рождения"
               disabled={timeUnknown}
               value={birthTime}
-              onChange={(e) => setBirthTime(e.target.value)}
+              onChange={(e) => { setBirthTime(e.target.value); setOccurrence(""); }}
               className="min-h-11 w-full rounded-xl border border-white/15 bg-black/30 px-3 py-2.5 text-white outline-none focus:border-aura-gold/50 disabled:opacity-40 ym-hide-content ym-disable-keys"
             />
             <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-sm text-white/60">
@@ -434,6 +445,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
                 checked={timeUnknown}
                 onChange={(e) => {
                   setTimeUnknown(e.target.checked);
+                  setOccurrence("");
                   if (e.target.checked) setBirthTime("");
                 }}
                 className="h-5 w-5 shrink-0"
@@ -441,6 +453,8 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
               Не знаю точное время
             </label>
           </div>
+
+          {!timeUnknown ? <BirthTimeOccurrence value={occurrence} onChange={setOccurrence} disabled={pending} /> : null}
 
           <div ref={placeBoxRef} className="relative">
             <label className="block">
@@ -451,10 +465,18 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
                 type="text"
                 value={placeQuery}
                 autoComplete="off"
+                role="combobox" aria-autocomplete="list" aria-expanded={placesOpen} aria-controls="natal-guest-places"
+                aria-activedescendant={activePlace >= 0 ? `natal-guest-place-${activePlace}` : undefined}
+                onKeyDown={event => {
+                  if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setPlacesOpen(true); setActivePlace(current => places.length ? (current + (event.key === "ArrowDown" ? 1 : -1) + places.length) % places.length : -1); }
+                  else if (event.key === "Enter" && placesOpen && activePlace >= 0 && places[activePlace]) { event.preventDefault(); choosePlace(places[activePlace]); }
+                  else if (event.key === "Escape") setPlacesOpen(false);
+                }}
                 placeholder="Начните вводить город…"
                 onChange={(e) => {
                   const q = e.target.value;
                   setPlaceQuery(q);
+                  setOccurrence("");
                   setPlace(null);
                   searchPlaces(q);
                 }}
@@ -462,17 +484,13 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
               />
             </label>
             {placesOpen && places.length > 0 ? (
-              <ul className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-white/15 bg-[#1a1520] py-1 shadow-xl">
-                {places.map((p) => (
-                  <li key={`${p.label}-${p.latitude}-${p.longitude}`}>
+              <ul id="natal-guest-places" role="listbox" className="absolute z-20 mt-1 max-h-56 w-full overflow-auto rounded-xl border border-white/15 bg-[#1a1520] py-1 shadow-xl">
+                {places.map((p, index) => (
+                  <li role="option" aria-selected={activePlace === index} id={`natal-guest-place-${index}`} key={`${p.label}-${p.latitude}-${p.longitude}`}>
                     <button
                       type="button"
-                      className="block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-white/10"
-                      onClick={() => {
-                        setPlace(p);
-                        setPlaceQuery(formatBirthPlaceLabel(p.label));
-                        setPlacesOpen(false);
-                      }}
+                      className={`block w-full px-3 py-2 text-left text-sm text-white/85 hover:bg-white/10 ${activePlace === index ? "bg-white/10" : ""}`}
+                      onClick={() => choosePlace(p)}
                     >
                       {formatBirthPlaceLabel(p.label)}
                     </button>
@@ -480,8 +498,11 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
                 ))}
               </ul>
             ) : null}
+            {placesLoading ? <p className="mt-2 text-xs text-white/50" role="status">Ищем город…</p> : null}
+            {placesError ? <p className="mt-2 text-xs text-rose-200" role="alert">{placesError}</p> : null}
+            {placesOpen && !placesLoading && !placesError && !places.length ? <p className="mt-2 text-xs text-white/50" role="status">Город не найден. Уточните название.</p> : null}
             {place ? (
-              <p className="mt-1.5 text-xs text-aura-gold/70">Выбрано: {place.label}</p>
+              <p className="mt-1.5 text-xs text-aura-gold/70">Выбрано: {formatBirthPlaceLabel(place.label)}</p>
             ) : null}
           </div>
 
@@ -494,7 +515,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
           <button
             type="submit"
             disabled={pending || claiming}
-            className="inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition hover:brightness-110 disabled:opacity-60 sm:w-auto"
+            className="inline-flex w-full items-center justify-center rounded-xl bg-aura-gold px-4 py-3 text-sm font-semibold text-black transition-opacity motion-reduce:transition-none hover:brightness-110 disabled:opacity-60 sm:w-auto"
           >
             {pending ? "Строим карту…" : "Построить мою карту"}
           </button>
@@ -507,6 +528,10 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
               Ниже — основные акценты карты. Полный разбор связывает планеты, аспекты и жизненные
               сферы в одну картину.
             </p>
+            <p className="mt-2 text-sm text-white/60">{birthDate}{birthTime && result.timeKnown ? ` · ${birthTime}` : ""} · {formatBirthPlaceLabel(result.placeLabel)} · {result.timezone}</p>
+            {result.birthTimeOccurrence ? <p className="mt-2 text-sm text-white/60">{result.birthTimeOccurrence === "earlier" ? "Первое наступление времени (до перевода часов)" : "Второе наступление времени (после перевода часов)"}</p> : null}
+            {result.warnings.filter(warning => result.timeKnown || !/асцендент|MC|дом/i.test(warning)).map(warning => <p key={warning} className="mt-2 text-sm text-amber-100/70">{warning}</p>)}
+            <button type="button" className="mt-3 min-h-11 text-sm text-amber-200 underline" onClick={() => { setResult(null); clearPendingClaimIntent(); }}>Изменить данные и пересчитать</button>
             {!result.timeKnown ? (
               <p className="mt-2 text-sm text-amber-100/70">
                 Точное время неизвестно — асцендент, MC и дома не показываем как достоверные.
@@ -623,7 +648,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
             <details className="group rounded-2xl border border-white/10 bg-white/[0.02] px-4 py-2">
               <summary className="flex min-h-11 cursor-pointer list-none items-center justify-between gap-3 text-sm font-medium text-aura-champagne">
                 <span>Открыть подробную схему карты</span>
-                <span aria-hidden className="text-aura-gold transition-transform group-open:rotate-180">⌄</span>
+                <span aria-hidden className="text-aura-gold transition-transform motion-reduce:transition-none group-open:rotate-180">⌄</span>
               </summary>
               <div className="mx-auto mt-4 w-full min-w-0 max-w-lg">
                 <NatalChartWheel western={result.western} timeKnown={result.timeKnown} size={360} />
@@ -638,6 +663,7 @@ export default function NatalGuestCalculator({ embedded = false }: { embedded?: 
             className="text-sm text-white/45 underline-offset-2 hover:underline"
             onClick={() => {
               setResult(null);
+              setOccurrence("");
               clearPendingClaimIntent();
             }}
           >

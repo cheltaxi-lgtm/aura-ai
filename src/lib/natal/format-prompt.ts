@@ -130,7 +130,7 @@ export function buildNatalPromptBlock(
     lines.push("", "Ведическая (сидерик, Лахири):");
     if (v.moonSign.summary) lines.push(v.moonSign.summary);
     const current = v.dasha.current;
-    if (current) {
+    if (v.dasha.authoritative && current) {
       lines.push(
         `Текущая махадаша: ${current.lord} (${current.startDate.slice(0, 10)} — ${current.endDate.slice(0, 10)})`
       );
@@ -172,7 +172,7 @@ export function buildNatalPromptBlock(
     }
   }
 
-  if (chart.transits?.length) {
+  if (tradition !== "vedic" && chart.transits?.length) {
     const aspectTransits = chart.transits.filter((t) => t.kind === "aspect_hit").slice(0, 6);
     const signTransits = chart.transits.filter((t) => t.kind === "sign_change").slice(0, 4);
     if (aspectTransits.length) {

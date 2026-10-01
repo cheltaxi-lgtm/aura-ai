@@ -60,7 +60,7 @@ export function sanitizeNatalReportShare(params: {
     kind: "natal",
     meta: params.meta,
     sections,
-    legacyContent: !report && selected.includes("summary") ? params.content.slice(0, 50_000) : undefined,
+    legacyContent: !report && ["summary", "personality", "relationships", "career", "resources", "tensions", "currentPeriod", "recommendations"].every(key => selected.includes(key)) ? params.content.slice(0, 50_000) : undefined,
     methodology: selected.includes("methodology") && typeof report?.methodology === "string"
       ? report.methodology.slice(0, 4000) : undefined,
     disclaimer: typeof report?.disclaimer === "string" ? report.disclaimer.slice(0, 2000) : undefined,

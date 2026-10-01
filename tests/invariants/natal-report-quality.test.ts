@@ -87,7 +87,7 @@ describe("natal report quality contracts", () => {
     expect(claimHasEvidenceAnchor("Солнце во Льве даёт яркий стиль.", [WESTERN])).toBe(true);
   });
 
-  it("salvage splits identical timing-trio prose into role-specific texts", () => {
+  it("citation repair preserves duplicate prose for the substantive gate to reject", () => {
     const candidate = {
       version: NATAL_REPORT_VERSION,
       tradition: "western",
@@ -115,10 +115,9 @@ describe("natal report quality contracts", () => {
       salvaged.report.sections.find((s) => s.key === "recommendations")?.claims[0]?.text ?? "";
     const period =
       salvaged.report.sections.find((s) => s.key === "currentPeriod")?.claims[0]?.text ?? "";
-    expect(claimTextSimilarity(summary, recs)).toBeLessThan(0.68);
-    expect(claimTextSimilarity(summary, period)).toBeLessThan(0.68);
-    expect(summary.toLowerCase()).toContain("марс");
-    expect(recs.toLowerCase()).toMatch(/сделай|действие|шаг/);
-    expect(findNearDuplicateSections(salvaged.report)).toHaveLength(0);
+    expect(summary).toBe(SAME);
+    expect(recs).toBe(SAME);
+    expect(period).toBe(SAME);
+    expect(findNearDuplicateSections(salvaged.report).length).toBeGreaterThan(0);
   });
 });

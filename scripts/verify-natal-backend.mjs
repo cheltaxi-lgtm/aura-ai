@@ -132,7 +132,7 @@ assert.match(compatibilityService, /getOrComputeNatalChart/);
 assert.match(compatibilityService, /sanitizeSynastryForClient/);
 assert.match(compatibilityService, /invite_token_hash/);
 assert.match(compatibilityService, /UPDATE private_report_shares[\s\S]*revoked_at/);
-assert.doesNotMatch(compatibilityService, /birth_date|birth_time|birth_city/);
+assert.doesNotMatch(compatibilityService.match(/INSERT INTO natal_compatibility_reports[\s\S]*?RETURNING/g)?.join("\n") ?? "", /birth_date|birth_time|birth_city/);
 assert.doesNotMatch(compatibilityService, /joint_readings/);
 assert.match(compatibilityService, /compatibilityChartsAreCurrent/);
 

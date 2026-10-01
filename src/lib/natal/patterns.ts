@@ -40,7 +40,7 @@ export function detectPatterns(aspects: NatalAspect[]): NatalPattern[] {
     }
   }
 
-  const planets = [...new Set(majors.flatMap((a) => [a.planet1, a.planet2]))];
+  const planets = [...new Set(majors.flatMap((a) => [a.planet1, a.planet2]))].sort();
   for (let i = 0; i < planets.length; i++) {
     for (let j = i + 1; j < planets.length; j++) {
       for (let k = j + 1; k < planets.length; k++) {
@@ -57,21 +57,22 @@ export function detectPatterns(aspects: NatalAspect[]): NatalPattern[] {
             note: "Гармоничный поток между тремя точками",
           });
         }
-        if (
-          hasAspect(majors, a, b, "square") &&
-          hasAspect(majors, b, c, "square") &&
-          hasAspect(majors, a, c, "opposition")
-        ) {
+        const apex = [a, b, c].find(focus => {
+          const [left, right] = [a, b, c].filter(p => p !== focus);
+          return hasAspect(majors, left, right, "opposition") &&
+            hasAspect(majors, focus, left, "square") && hasAspect(majors, focus, right, "square");
+        });
+        if (apex) {
           patterns.push({
             id: `t-square-${a}-${b}-${c}`,
             label: "T-квадрат",
             planets: [a, b, c],
-            note: "Напряжённая конфигурация — точка b как фокус",
+            note: `Напряжённая конфигурация — ${apex} как фокус`,
           });
         }
       }
     }
   }
 
-  return patterns.slice(0, 8);
+  return [...new Map(patterns.map(pattern => [pattern.id, pattern])).values()].sort((a, b) => a.id.localeCompare(b.id)).slice(0, 8);
 }

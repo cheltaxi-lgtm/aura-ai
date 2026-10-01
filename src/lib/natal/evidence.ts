@@ -123,7 +123,7 @@ export function buildNatalEvidence(
         evidence.push({
           id: stableId("western", "aspect", key),
           tradition: "western",
-          category: aspect.nature === "hard" ? "tensions" : "relationships",
+          category: ["square", "opposition", "quincunx"].includes(aspect.aspect) ? "tensions" : "relationships",
           type: "aspect",
           label: `${russianPlanetLabel(aspect.planet1)} — ${russianPlanetLabel(aspect.planet2)}`,
           value: `${ASPECT_NAMES[aspect.aspect] ?? "Неуказанный аспект"}${degree(aspect.orb)}`,
@@ -165,7 +165,7 @@ export function buildNatalEvidence(
       uncertainty: chart.timeKnown ? null : "Граница накшатры чувствительна к неизвестному времени рождения.",
       deepLink: "/cabinet/astrology?tab=jyotish#vedic-moon",
     });
-    if (vedic.dasha.current) {
+    if (vedic.dasha.authoritative && vedic.dasha.current) {
       const current = vedic.dasha.current;
       evidence.push({
         id: stableId("vedic", "dasha", `${current.lord}-${current.startDate.slice(0, 10)}`),
@@ -190,7 +190,7 @@ export function buildNatalEvidence(
       .filter((item) => chart.timeKnown || item.targetKey !== "rising")
       .slice(0, 24)) {
       const subject = event.kind === "ingress"
-        ? `${russianPlanetLabel(event.planetKey)}: ${event.previousSign ?? "знак не указан"} → ${event.sign ?? "знак не указан"}`
+        ? `${russianPlanetLabel(event.planetKey)}: ${event.previousSign ? signLabel(event.previousSign) : "знак не указан"} → ${event.sign ? signLabel(event.sign) : "знак не указан"}`
         : `${russianPlanetLabel(event.planetKey)} · ${ASPECT_NAMES[event.aspect ?? ""] ?? "аспект не указан"} · ${russianPlanetLabel(event.targetKey ?? "")}`;
       evidence.push({
         id: stableId("timing", "transit", event.id),
@@ -205,7 +205,7 @@ export function buildNatalEvidence(
         deepLink: `/cabinet/astrology?tab=timing#${evidenceAnchorId("timing", event.id)}`,
       });
     }
-    evidence.push({
+    if (timing.solarReturn.exactAtLocal.slice(0, 10) >= timing.windowStart && timing.solarReturn.exactAtLocal.slice(0, 10) <= timing.windowEnd) evidence.push({
       id: stableId("timing", "solar_return", String(timing.solarReturn.year)),
       tradition: "timing",
       category: "timing",
@@ -234,7 +234,7 @@ export function buildNatalEvidence(
         deepLink: "/cabinet/astrology?tab=timing#secondary-progressions",
       });
     }
-  } else if (chart.transits?.length) {
+  } else if (includeWestern && chart.transits?.length) {
     chart.transits.filter((transit) =>
       // Snapshots stored before the unknown-time transit fix may still carry
       // ascendant-targeted hits; never surface them in limited mode.
@@ -245,7 +245,11 @@ export function buildNatalEvidence(
       category: "timing",
       type: "transit",
       label: "Текущий транзит",
-      value: transit.note,
+      value: transit.kind === "sign_change" && transit.planetKey && transit.transitSign
+        ? `${russianPlanetLabel(transit.planetKey)}: ${transit.previousSign ? signLabel(transit.previousSign) : "знак не указан"} → ${signLabel(transit.transitSign)}${transit.date ? ` · пик ${transit.date}` : ""}`
+        : transit.kind === "aspect_hit" && transit.planetKey && transit.targetKey && transit.aspect
+          ? `${russianPlanetLabel(transit.planetKey)} · ${ASPECT_NAMES[transit.aspect] ?? "аспект не указан"} · ${russianPlanetLabel(transit.targetKey)}${transit.date ? ` · пик ${transit.date}` : ""}`
+          : transit.note,
       sourcePath: `transits.${index}`,
       confidence: "medium",
       uncertainty: "Краткий транзитный контекст.",

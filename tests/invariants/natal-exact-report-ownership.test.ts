@@ -71,7 +71,7 @@ async function insertInterpretation(opts: {
       opts.userId,
       opts.birthFingerprint,
       opts.engineVersion,
-      opts.ephemeris ?? "celestine",
+      opts.ephemeris ?? "astronomy-engine",
       opts.tradition ?? "western",
       opts.reportType ?? "interpretation",
       opts.content ?? "полный купленный разбор натальной карты",

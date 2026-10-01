@@ -27,7 +27,7 @@ describe("natal 7-day forecast depth contract", () => {
       "utf8"
     );
     const finalSalvage = source.match(
-      /Absolute fallback for forecasts[\s\S]*?acceptedViaSalvage = true;/
+      /Absolute fallback for forecasts[\s\S]*?validation = salvaged;/
     );
     expect(finalSalvage).not.toBeNull();
     expect(finalSalvage![0]).toContain("isSubstantiveReport(salvaged.report, params)");
@@ -49,7 +49,7 @@ describe("natal forecast human voice", () => {
     expect(plain.headline).not.toMatch(/квадрат|орб/i);
   });
 
-  it("forecast salvage speaks like a person, not a textbook", () => {
+  it("an empty response cannot become an invented paid forecast", () => {
     const evidence: NatalEvidence[] = [
       {
         id: "ne.timing.saturn-moon",
@@ -65,12 +65,6 @@ describe("natal forecast human voice", () => {
       },
     ];
     const salvaged = salvageNatalReport({}, evidence, "western", "forecast", 7);
-    expect(salvaged.ok).toBe(true);
-    if (!salvaged.ok) return;
-    const body = salvaged.report.sections.map((section) => section.claims.map((claim) => claim.text).join(" ")).join("\n");
-    expect(body).toMatch(/Простыми словами/);
-    expect(body).not.toMatch(/задаёт тон окна — держи её как рамку/);
-    expect(body).not.toMatch(/практический акцент/i);
-    expect(salvaged.report.sections[0]?.title).toBe("Что важно сейчас");
+    expect(salvaged.ok).toBe(false);
   });
 });

@@ -2,6 +2,7 @@ import { query } from "@/lib/db";
 
 /** Match the historical report fingerprint and engine; never substitute the current profile chart. */
 export async function getNatalPrintRecord(userId: string, id: string) {
+  if (!/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(id)) return null;
   const { rows } = await query<{
     tradition: string; report_type: string; content: string; structured_data: Record<string, unknown> | null;
     evidence_refs: unknown; birth_fingerprint: string; engine_version: string; ephemeris: string; created_at: string;

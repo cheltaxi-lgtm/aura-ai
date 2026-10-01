@@ -1,5 +1,4 @@
-import { calculateAstrology, calculateVedic } from "natalengine";
-import { getSetting } from "@/lib/settings";
+import { calculateVedic } from "natalengine";
 import { computeDeepTransits } from "./transits";
 import { resolveBirthPlace } from "./geocode";
 import {
@@ -10,7 +9,8 @@ import {
 } from "./time";
 import type { NatalChartInput, NatalChartRecord, NatalPlace } from "./types";
 import { NATAL_ENGINE_VERSION, buildBirthFingerprint } from "./types";
-import { computeWesternChart, stripUnreliableAngles } from "./western";
+import { computeWesternChart } from "./western";
+import { canonicalVedicEnginePayload } from "./vedic-precision";
 import { normalizeVedicChart } from "./vedic";
 
 function normalizeBirthDate(raw: string): string {
@@ -41,17 +41,18 @@ export async function computeNatalChartRecord(
   const birthDate = normalizeBirthDate(input.birthDate);
   const warnings: string[] = [];
   const timeKnown = input.timeKnown && Boolean(input.birthTime?.trim());
-  const birthFingerprint = buildBirthFingerprint({
+  const profileFingerprint = buildBirthFingerprint({
     birthDate,
     birthTime: input.birthTime,
     birthCity: input.birthCity,
+    birthTimeOccurrence: input.birthTimeOccurrence,
   });
 
   let place: NatalPlace | null = null;
   if (
     input.place &&
-    typeof input.place.latitude === "number" &&
-    typeof input.place.longitude === "number" &&
+    typeof input.place.latitude === "number" && Number.isFinite(input.place.latitude) && Math.abs(input.place.latitude) <= 90 &&
+    typeof input.place.longitude === "number" && Number.isFinite(input.place.longitude) && Math.abs(input.place.longitude) <= 180 &&
     typeof input.place.timezone === "string" &&
     input.place.timezone.trim() &&
     typeof input.place.label === "string" &&
@@ -65,6 +66,8 @@ export async function computeNatalChartRecord(
       longitude: input.place.longitude,
       timezone: input.place.timezone.trim(),
     };
+  } else if (input.place) {
+    throw new Error("INVALID_BIRTH_PLACE");
   } else if (input.birthCity?.trim()) {
     const resolved = await resolveBirthPlace(input.birthCity.trim());
     if (resolved) {
@@ -83,7 +86,7 @@ export async function computeNatalChartRecord(
 
   const decimalHour = timeKnown ? parseBirthTimeToDecimal(input.birthTime) : null;
   if (timeKnown && decimalHour == null) {
-    warnings.push("Некорректное время рождения — используем полдень для Луны.");
+    throw new Error("INVALID_BIRTH_TIME");
   }
 
   const effectiveHour = decimalHour ?? 12;
@@ -94,36 +97,13 @@ export async function computeNatalChartRecord(
 
   if (place) {
     const timeStr = birthTimeLabel(effectiveHour);
-    const utcOffset = resolveBirthUtcOffsetHours(birthDate, timeStr, place.timezone);
-    const natalSettings = await getSetting("natalChart");
-    const ephemeris = natalSettings.ephemeris ?? "celestine";
-
-    if (ephemeris === "natalengine") {
-      const calculated = calculateAstrology(
-        birthDate,
-        effectiveHour,
-        utcOffset,
-        place.latitude,
-        place.longitude
-      ) as Record<string, unknown>;
-      western = { ...calculated, ephemeris: "natalengine" };
-      if (!effectiveTimeKnown) {
-        western = stripUnreliableAngles(western);
-      }
-    } else {
-      western = await computeWesternChart({
-        birthDate,
-        localHourDecimal: effectiveHour,
-        utcOffsetHours: utcOffset,
-        latitude: place.latitude,
-        longitude: place.longitude,
-        timeKnown: effectiveTimeKnown,
-      });
-      const houseWarnings = Array.isArray(western.houseWarnings)
-        ? western.houseWarnings.filter((item): item is string => typeof item === "string")
-        : [];
-      warnings.push(...houseWarnings);
-    }
+    const utcOffset = resolveBirthUtcOffsetHours(birthDate, timeStr, place.timezone, input.birthTimeOccurrence);
+    // Planet positions use one canonical, independently verified ephemeris.
+    // Legacy configuration names no longer select a less accurate planet engine.
+    western = await computeWesternChart({ birthDate, localHourDecimal: effectiveHour,
+      utcOffsetHours: utcOffset, latitude: place.latitude, longitude: place.longitude, timeKnown: effectiveTimeKnown });
+    const houseWarnings = Array.isArray(western.houseWarnings) ? western.houseWarnings.filter((item): item is string => typeof item === "string") : [];
+    warnings.push(...houseWarnings);
 
     const calculatedVedic = calculateVedic(
       birthDate,
@@ -132,7 +112,7 @@ export async function computeNatalChartRecord(
       place.latitude,
       place.longitude
     );
-    vedic = normalizeVedicChart(calculatedVedic, {
+    vedic = normalizeVedicChart(canonicalVedicEnginePayload(calculatedVedic), {
       timeKnown: effectiveTimeKnown,
       hasLocation: true,
     });
@@ -155,7 +135,9 @@ export async function computeNatalChartRecord(
     place,
     western,
     vedic,
-    birthFingerprint,
+    birthFingerprint: buildBirthFingerprint({ birthDate, birthTime: input.birthTime, birthCity: input.birthCity, birthTimeOccurrence: input.birthTimeOccurrence, place, timeKnown: effectiveTimeKnown }),
+    profileFingerprint,
+    birthTimeOccurrence: input.birthTimeOccurrence,
     computedAt: new Date().toISOString(),
     engineVersion: NATAL_ENGINE_VERSION,
     warnings,

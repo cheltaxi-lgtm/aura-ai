@@ -1,7 +1,8 @@
+import { paidReportCanSave, lockReportWorkerSave, completeReportWorkerSave, lockReportDeletionJobs, clearDeletedReportDelivery, type ReportWorkerJob } from "./durable-report-receipt";
 import { randomUUID } from "crypto";
 import { query, queryClient, withTransaction } from "@/lib/db";
 import { getUserById } from "@/lib/users";
-import { getSetting, isNatalChartEnabled } from "@/lib/settings";
+import { isNatalChartEnabled } from "@/lib/settings";
 import {
   computeNatalChartRecord,
   computeDeepTransits,
@@ -13,7 +14,7 @@ import {
   normalizeVedicChart,
 } from "@/lib/natal";
 import { localDateStringInTimezone } from "@/lib/natal/time";
-import { birthFingerprintsMatch } from "@/lib/natal/types";
+import { birthFingerprintsMatch, birthTimeOccurrenceFromProfile, natalPlaceFromProfile } from "@/lib/natal/types";
 
 type NatalChartRow = {
   user_id: string;
@@ -36,21 +37,35 @@ function rowToRecord(row: NatalChartRow): NatalChartRecord | null {
       ? normalizeVedicChart(chart.vedic, {
           timeKnown: chart.timeKnown,
           hasLocation: Boolean(chart.place),
+          source: "snapshot",
         })
       : null,
   };
 }
 
 function fingerprintFromUser(user: {
-  birth_date: string | Date;
+  birth_date: string | Date | null;
   birth_time?: string | null;
   birth_city?: string | null;
+  astro_meta?: unknown;
 }): string {
   return buildBirthFingerprint({
     birthDate: String(user.birth_date).slice(0, 10),
     birthTime: user.birth_time,
     birthCity: user.birth_city,
+    birthTimeOccurrence: birthTimeOccurrenceFromProfile(user),
   });
+}
+
+type BirthProfile = { birth_date: string | Date | null; birth_time?: string | null; birth_city?: string | null; astro_meta?: unknown };
+function fingerprintFromUserWithPlace(user: BirthProfile): string {
+  return buildBirthFingerprint({ birthDate: String(user.birth_date).slice(0,10), birthTime: user.birth_time,
+    birthCity: user.birth_city, birthTimeOccurrence: birthTimeOccurrenceFromProfile(user),
+    timeKnown: Boolean(user.birth_time?.trim()), place: natalPlaceFromProfile(user) });
+}
+function selectedPlaceMatches(chart: NatalChartRecord, user: BirthProfile): boolean {
+  const place = natalPlaceFromProfile(user);
+  return !place || Boolean(chart.place && chart.place.latitude === place.latitude && chart.place.longitude === place.longitude && chart.place.timezone === place.timezone);
 }
 
 export async function getStoredNatalChart(userId: string): Promise<NatalChartRecord | null> {
@@ -68,22 +83,22 @@ export async function getStoredNatalChart(userId: string): Promise<NatalChartRec
 export async function isStoredNatalChartStale(
   stored: NatalChartRecord,
   user: {
-    birth_date: string | Date;
+    birth_date: string | Date | null;
     birth_time?: string | null;
     birth_city?: string | null;
+    astro_meta?: unknown;
   }
 ): Promise<boolean> {
   const fingerprint = fingerprintFromUser(user);
-  const settings = await getSetting("natalChart");
-  const expectedEphemeris =
-    settings.ephemeris === "natalengine" ? "natalengine" : "celestine";
+  const expectedEphemeris = "astronomy-engine";
   const storedEphemeris =
     stored.western && typeof stored.western.ephemeris === "string"
       ? stored.western.ephemeris
       : null;
   return (
     stored.engineVersion !== NATAL_ENGINE_VERSION ||
-    !birthFingerprintsMatch(stored.birthFingerprint, fingerprint) ||
+    !birthFingerprintsMatch(stored.profileFingerprint ?? stored.birthFingerprint, fingerprint) ||
+    !selectedPlaceMatches(stored, user) ||
     (stored.western !== null && storedEphemeris !== expectedEphemeris)
   );
 }
@@ -106,6 +121,7 @@ export async function getNatalChartClientView(userId: string): Promise<{
     birth_date: user.birth_date,
     birth_time: user.birth_time,
     birth_city: user.birth_city,
+    astro_meta: user.astro_meta,
   });
   return { chart, needsRebuild, canCompute };
 }
@@ -131,15 +147,21 @@ export async function computeAndStoreNatalChart(userId: string): Promise<NatalCh
     birthTime: user.birth_time,
     birthCity: user.birth_city,
     timeKnown: Boolean(user.birth_time?.trim()),
+    birthTimeOccurrence: birthTimeOccurrenceFromProfile(user),
+    place: natalPlaceFromProfile(user),
   };
 
+  const expectedProfileInput = buildBirthFingerprint(input);
   const record = await computeNatalChartRecord(userId, input);
   const houseSystem =
     record.western && typeof record.western.houseSystem === "string"
       ? record.western.houseSystem.toLowerCase()
       : "placidus";
 
-  const stored = await query<{ chart_data: NatalChartRecord }>(
+  const stored = await withTransaction(async client => {
+    const current = await queryClient<{ birth_date: string; birth_time: string | null; birth_city: string | null; astro_meta: unknown }>(client, "SELECT birth_date::text, birth_time::text, birth_city, astro_meta FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    if (!current.rows[0] || !birthFingerprintsMatch(expectedProfileInput, fingerprintFromUserWithPlace(current.rows[0]))) throw new Error("NATAL_PROFILE_CHANGED");
+    return queryClient<{ chart_data: NatalChartRecord }>(client,
     `INSERT INTO natal_charts (
        user_id, birth_lat, birth_lon, birth_tzid, birth_place_label,
        time_known, house_system, chart_data, engine_version, computed_at, updated_at
@@ -179,7 +201,8 @@ export async function computeAndStoreNatalChart(userId: string): Promise<NatalCh
       JSON.stringify(record),
       NATAL_ENGINE_VERSION,
     ]
-  );
+    );
+  });
 
   return stored.rows[0]?.chart_data ?? record;
 }
@@ -194,11 +217,10 @@ export async function getOrComputeNatalChart(userId: string): Promise<NatalChart
     birth_date: user.birth_date,
     birth_time: user.birth_time,
     birth_city: user.birth_city,
+    astro_meta: user.astro_meta,
   });
   const stored = await getStoredNatalChart(userId);
-  const settings = await getSetting("natalChart");
-  const expectedEphemeris =
-    settings.ephemeris === "natalengine" ? "natalengine" : "celestine";
+  const expectedEphemeris = "astronomy-engine";
   const storedEphemeris =
     stored?.western && typeof stored.western.ephemeris === "string"
       ? stored.western.ephemeris
@@ -207,7 +229,8 @@ export async function getOrComputeNatalChart(userId: string): Promise<NatalChart
   const stale =
     !stored ||
     stored.engineVersion !== NATAL_ENGINE_VERSION ||
-    !birthFingerprintsMatch(stored.birthFingerprint, fingerprint) ||
+    !birthFingerprintsMatch(stored.profileFingerprint ?? stored.birthFingerprint, fingerprint) ||
+    !selectedPlaceMatches(stored, user) ||
     (stored.western !== null && storedEphemeris !== expectedEphemeris);
 
   if (stale) {
@@ -221,16 +244,18 @@ export async function getOrComputeNatalChart(userId: string): Promise<NatalChart
     }
     const transits = await computeDeepTransits({ ...stored, userId }, { correlateMemory: false });
     const refreshed = { ...stored, transits, transitCacheDate: today };
-    await query(
+    const updated = await query(
       `UPDATE natal_charts
        SET chart_data = jsonb_set(
              jsonb_set(chart_data, '{transits}', $2::jsonb, true),
              '{transitCacheDate}', to_jsonb($3::text), true
            ),
            updated_at = NOW()
-       WHERE user_id = $1`,
-      [userId, JSON.stringify(transits), today]
+       WHERE user_id = $1 AND chart_data->>'birthFingerprint' = $4 AND engine_version = $5
+         AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $6`,
+      [userId, JSON.stringify(transits), today, stored.birthFingerprint, stored.engineVersion, storedEphemeris ?? "unknown"]
     );
+    if (updated.rowCount !== 1) throw new Error("NATAL_PROFILE_CHANGED");
     return refreshed;
   }
 
@@ -332,6 +357,9 @@ export async function deleteCurrentUserNatalReport(
   reportId: string
 ): Promise<NatalReportHistoryItem | null> {
   return withTransaction(async (client) => {
+    await lockReportDeletionJobs(client, userId, reportId, "natal");
+    await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR UPDATE", [userId]);
+    await queryClient(client, "SELECT user_id FROM natal_charts WHERE user_id=$1 FOR UPDATE", [userId]);
     const selected = await queryClient<NatalReportHistoryRow>(
       client,
       `SELECT id, birth_fingerprint, engine_version, ephemeris, tradition,
@@ -344,6 +372,7 @@ export async function deleteCurrentUserNatalReport(
     );
     const report = selected.rows[0];
     if (!report) return null;
+    await clearDeletedReportDelivery(client, userId, reportId, "natal");
 
     await queryClient(
       client,
@@ -360,33 +389,17 @@ export async function deleteCurrentUserNatalReport(
     );
 
     if (report.report_type === "interpretation") {
-      await queryClient(
-        client,
-        `UPDATE natal_charts
-         SET chart_data = jsonb_set(
-               jsonb_set(
-                 CASE WHEN $2 = 'western' THEN chart_data - 'interpretation' ELSE chart_data END,
-                 '{interpretations}',
-                 COALESCE(chart_data->'interpretations', '{}'::jsonb) - $2::text,
-                 true
-               ),
-               '{interpretationClaims}',
-               COALESCE(chart_data->'interpretationClaims', '{}'::jsonb) - $2::text,
-               true
-             ),
-             updated_at = NOW()
-         WHERE user_id = $1
-           AND chart_data->>'birthFingerprint' = $3
-           AND engine_version = $4
-           AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}', ''), 'unknown') = $5`,
-        [
-          userId,
-          report.tradition,
-          report.birth_fingerprint,
-          report.engine_version,
-          report.ephemeris,
-        ]
-      );
+      const remaining = await queryClient<{ content: string }>(client,
+        "SELECT content FROM natal_report_history WHERE user_id=$1 AND birth_fingerprint=$2 AND engine_version=$3 AND ephemeris=$4 AND tradition=$5 AND report_type='interpretation' ORDER BY created_at DESC,id DESC LIMIT 1",
+        [userId, report.birth_fingerprint, report.engine_version, report.ephemeris, report.tradition]);
+      const text = remaining.rows[0]?.content ?? null;
+      await queryClient(client, `UPDATE natal_charts SET chart_data =
+        (CASE WHEN $2='western' THEN chart_data - 'interpretation' ELSE chart_data END) ||
+        jsonb_build_object('interpretations', (COALESCE(chart_data->'interpretations','{}'::jsonb) - $2::text) ||
+          CASE WHEN $6::text IS NULL THEN '{}'::jsonb ELSE jsonb_build_object($2::text,$6::text) END), updated_at=NOW()
+        WHERE user_id=$1 AND chart_data->>'birthFingerprint'=$3 AND engine_version=$4
+          AND COALESCE(NULLIF(chart_data #>> '{western,ephemeris}',''),'unknown')=$5`,
+        [userId, report.tradition, report.birth_fingerprint, report.engine_version, report.ephemeris, text]);
     }
 
     return mapNatalReportHistoryRow(report);
@@ -419,8 +432,12 @@ export async function saveCurrentNatalInterpretation(params: {
   reportType?: string;
   claimKey?: string;
   forceRegenerate?: boolean;
+  workerJob?: ReportWorkerJob;
 }): Promise<SaveNatalInterpretationResult> {
   return withTransaction(async (client) => {
+    if (!(await lockReportWorkerSave(client, params.userId, params.workerJob, params.chargeTransactionId))) return { status: "stale" };
+    if (!(await paidReportCanSave(client, params.chargeTransactionId))) return { status: "stale" };
+    const currentUser = await queryClient<{ birth_date: string; birth_time: string | null; birth_city: string | null; astro_meta: unknown }>(client, "SELECT birth_date::text, birth_time::text, birth_city, astro_meta FROM users WHERE id=$1 FOR UPDATE", [params.userId]);
     const reportType = params.reportType ?? "interpretation";
     const claimKey = params.claimKey ?? params.tradition;
     const locked = await queryClient<{ user_id: string; chart_data: NatalChartRecord }>(
@@ -442,20 +459,22 @@ export async function saveCurrentNatalInterpretation(params: {
         params.claimToken,
       ]
     );
-    if (!locked.rows[0]) return { status: "stale" };
+    if (!locked.rows[0] || !currentUser.rows[0] || !selectedPlaceMatches(locked.rows[0].chart_data, currentUser.rows[0]) || !birthFingerprintsMatch(locked.rows[0].chart_data.profileFingerprint ?? locked.rows[0].chart_data.birthFingerprint, fingerprintFromUser(currentUser.rows[0]))) return { status: "stale" };
 
     const inserted = await queryClient<NatalReportHistoryRow>(
       client,
       `INSERT INTO natal_report_history (
          user_id, birth_fingerprint, engine_version, ephemeris, tradition,
          report_type, content, structured_data, evidence_refs, rune_cost,
-         charge_transaction_id, claim_token, chart_snapshot
-       ) VALUES (
-         $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12, $13::jsonb
+         charge_transaction_id, claim_token, chart_snapshot, generation_revision
+       ) SELECT $1, $2, $3, $4, $5, $6, $7, $8::jsonb, $9::jsonb, $10, $11, $12, $13::jsonb, $14::uuid
+       WHERE $14::uuid <> '00000000-0000-0000-0000-000000000000'::uuid OR NOT EXISTS (
+         SELECT 1 FROM natal_report_history WHERE user_id=$1 AND birth_fingerprint=$2 AND engine_version=$3
+           AND ephemeris=$4 AND tradition=$5 AND report_type=$6
        )
        ON CONFLICT (
-         user_id, birth_fingerprint, engine_version, ephemeris, tradition, report_type
-       ) ${params.forceRegenerate ? `DO UPDATE SET content=EXCLUDED.content, structured_data=EXCLUDED.structured_data, evidence_refs=EXCLUDED.evidence_refs, rune_cost=EXCLUDED.rune_cost, charge_transaction_id=EXCLUDED.charge_transaction_id, claim_token=EXCLUDED.claim_token, chart_snapshot=EXCLUDED.chart_snapshot, updated_at=NOW()` : "DO NOTHING"}
+         user_id, birth_fingerprint, engine_version, ephemeris, tradition, report_type, generation_revision
+       ) DO NOTHING
        RETURNING id, birth_fingerprint, engine_version, ephemeris, tradition,
                  report_type, content, structured_data, evidence_refs, rune_cost,
                  created_at, updated_at`,
@@ -473,6 +492,7 @@ export async function saveCurrentNatalInterpretation(params: {
         params.chargeTransactionId ?? null,
         params.claimToken,
         JSON.stringify(locked.rows[0].chart_data),
+        params.forceRegenerate ? params.claimToken : "00000000-0000-0000-0000-000000000000",
       ]
     );
 
@@ -490,7 +510,7 @@ export async function saveCurrentNatalInterpretation(params: {
              AND engine_version = $3
              AND ephemeris = $4
              AND tradition = $5
-             AND report_type = $6`,
+             AND report_type = $6 ORDER BY created_at DESC, id DESC LIMIT 1`,
           [
             params.userId,
             params.expectedBirthFingerprint,
@@ -560,6 +580,11 @@ export async function saveCurrentNatalInterpretation(params: {
         );
     if (saved.rowCount !== 1) throw new Error("natal_chart_claim_lost_during_save");
 
+    if (inserted.rows[0]) await completeReportWorkerSave(client, params.userId, params.workerJob, {
+      [reportType.startsWith("forecast:") ? "forecast" : "interpretation"]: existing.content,
+      reportId: existing.id, report: existing.structured_data, evidence: existing.evidence_refs, tradition: params.tradition,
+      ...(reportType.startsWith("forecast:") ? { horizon: Number(reportType.split(":")[1]) } : {}),
+    });
     return {
       status: inserted.rows[0] ? "saved" : "already_saved",
       report: mapNatalReportHistoryRow(existing),
@@ -799,13 +824,13 @@ export async function claimNatalInterpretation(
             history.structured_data AS report_structured_data,
             history.evidence_refs AS report_evidence_refs
      FROM natal_charts chart
-     LEFT JOIN natal_report_history history
-       ON history.user_id = chart.user_id
-      AND history.birth_fingerprint = $3
-      AND history.engine_version = $4
-      AND history.ephemeris = $5
-      AND history.tradition = $2
-      AND history.report_type = $6
+     LEFT JOIN LATERAL (
+       SELECT * FROM natal_report_history history
+       WHERE history.user_id = chart.user_id
+         AND history.birth_fingerprint = $3 AND history.engine_version = $4
+         AND history.ephemeris = $5 AND history.tradition = $2 AND history.report_type = $6
+       ORDER BY history.created_at DESC, history.id DESC LIMIT 1
+     ) history ON true
      WHERE chart.user_id = $1`,
     [userId, tradition, expectedBirthFingerprint, expectedEngineVersion, expectedEphemeris, reportType]
   );

@@ -114,16 +114,18 @@ export async function waitForAsyncJob(
   let authFailures = 0;
   let transientFailures = 0;
 
-  if (typeof window !== "undefined") {
+  try { if (typeof window !== "undefined") {
     window.localStorage.setItem(storageKey, jobId);
     if (!window.localStorage.getItem(startedAtKey)) {
       window.localStorage.setItem(startedAtKey, String(Date.now()));
     }
-  }
+  } } catch { /* Storage is optional; polling remains available. */ }
 
   try {
-    if (typeof window !== "undefined") {
-      const startedAt = Number(window.localStorage.getItem(startedAtKey) || Date.now());
+    let startedAt = Date.now();
+    try { if (typeof window !== "undefined") startedAt = Number(window.localStorage.getItem(startedAtKey) || Date.now()); } catch { /* Storage unavailable. */ }
+    {
+      // Preserve the original start when storage is available.
       if (Number.isFinite(startedAt) && Date.now() - startedAt > maxAgeMs) {
         terminal = true;
         throw new Error(
@@ -246,16 +248,14 @@ export async function waitForAsyncJob(
     );
   } finally {
     if (terminal && typeof window !== "undefined") {
-      window.localStorage.removeItem(storageKey);
-      window.localStorage.removeItem(startedAtKey);
+      clearStoredAsyncJob(storageKey, startedAtKey);
     }
   }
 }
 
 export function readStoredAsyncJobId(storageKey: string): string | null {
   if (typeof window === "undefined") return null;
-  const value = window.localStorage.getItem(storageKey)?.trim();
-  return value || null;
+  try { return window.localStorage.getItem(storageKey)?.trim() || null; } catch { return null; }
 }
 
 export function clearStoredAsyncJob(
@@ -263,8 +263,7 @@ export function clearStoredAsyncJob(
   startedAtKey = `${storageKey}-started`
 ): void {
   if (typeof window === "undefined") return;
-  window.localStorage.removeItem(storageKey);
-  window.localStorage.removeItem(startedAtKey);
+  try { window.localStorage.removeItem(storageKey); window.localStorage.removeItem(startedAtKey); } catch { /* Storage is optional. */ }
 }
 
 /** Resume any active server-side job for the current user (localStorage lost). */

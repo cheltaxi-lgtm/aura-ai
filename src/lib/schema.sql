@@ -2416,3 +2416,43 @@ CREATE TABLE IF NOT EXISTS user_memory_source_suppressions (
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   PRIMARY KEY (user_id, source_entity_id)
 );
+
+-- Snapshot sync: 164_natal_report_revisions.sql
+-- Paid regenerations are separate immutable receipts, including the original snapshot.
+ALTER TABLE natal_report_history
+  ADD COLUMN IF NOT EXISTS generation_revision uuid NOT NULL
+    DEFAULT '00000000-0000-0000-0000-000000000000';
+ALTER TABLE natal_report_history DROP CONSTRAINT IF EXISTS natal_report_history_version_unique;
+ALTER TABLE natal_report_history ADD CONSTRAINT natal_report_history_version_unique UNIQUE (
+  user_id, birth_fingerprint, engine_version, ephemeris, tradition, report_type, generation_revision
+);
+
+-- Snapshot sync: 165_natal_compatibility_participant_identity.sql
+-- Matching birth data do not grant access to a different participant's report.
+DROP INDEX IF EXISTS idx_natal_compatibility_owner_pair;
+CREATE UNIQUE INDEX idx_natal_compatibility_owner_pair
+  ON natal_compatibility_reports(owner_user_id, pair_fingerprint,
+    COALESCE(participant_user_id, '00000000-0000-0000-0000-000000000000'::uuid))
+  WHERE pair_fingerprint IS NOT NULL AND status <> 'expired';
+
+-- Snapshot sync: 166_natal_participant_receipt_identity.sql
+-- Preserve a receipt's participant identity when the account FK becomes NULL.
+-- This opaque identifier is never returned by APIs and grants no access.
+ALTER TABLE natal_compatibility_reports ADD COLUMN IF NOT EXISTS participant_identity_id uuid;
+UPDATE natal_compatibility_reports SET participant_identity_id=participant_user_id
+ WHERE participant_identity_id IS NULL AND participant_user_id IS NOT NULL;
+CREATE OR REPLACE FUNCTION retain_natal_participant_identity() RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+  IF NEW.participant_identity_id IS NULL AND NEW.participant_user_id IS NOT NULL THEN
+    NEW.participant_identity_id := NEW.participant_user_id;
+  END IF;
+  RETURN NEW;
+END $$;
+DROP TRIGGER IF EXISTS retain_natal_participant_identity ON natal_compatibility_reports;
+CREATE TRIGGER retain_natal_participant_identity BEFORE INSERT OR UPDATE OF participant_user_id
+ ON natal_compatibility_reports FOR EACH ROW EXECUTE FUNCTION retain_natal_participant_identity();
+DROP INDEX IF EXISTS idx_natal_compatibility_owner_pair;
+CREATE UNIQUE INDEX idx_natal_compatibility_owner_pair
+ ON natal_compatibility_reports(owner_user_id,pair_fingerprint,
+   COALESCE(participant_identity_id,'00000000-0000-0000-0000-000000000000'::uuid))
+ WHERE pair_fingerprint IS NOT NULL AND status<>'expired';

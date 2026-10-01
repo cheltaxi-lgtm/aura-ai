@@ -17,6 +17,7 @@ function normalize(value: string): string {
 }
 
 export function formatBirthPlaceLabel(label: string): string {
+  label = label.replace(/^Moscow,\s*Moscow,\s*Russia$/i, "Москва, Россия");
   const parts = label.split(",").map((part) => part.trim()).filter(Boolean);
   const last = parts.at(-1)?.toUpperCase() ?? "";
   const country = COUNTRY_LABELS[last]
@@ -33,8 +34,10 @@ export function rankBirthPlaces<T extends PlaceLike>(places: T[], query: string)
   return [...places].sort((a, b) => {
     const score = (place: T) => {
       const label = normalize(place.label);
-      const primary = normalize(place.label.split(",")[0] ?? place.label);
+      const primary = normalize(formatBirthPlaceLabel(place.label).split(",")[0] ?? place.label);
       let value = primary === q ? 1000 : primary.startsWith(q) ? 600 : label.includes(q) ? 200 : 0;
+      // Curated capitals are unambiguous defaults; villages with the same name remain selectable.
+      if ((q === "москва" || q === "moscow") && Math.abs(place.latitude - 55.7558) < 0.05 && Math.abs(place.longitude - 37.6173) < 0.05) value += 2000;
       if (/россия|russia|,\s*ru$/i.test(place.label)) value += 120;
       if (cyrillicQuery && /[а-яё]/i.test(place.label)) value += 80;
       return value;

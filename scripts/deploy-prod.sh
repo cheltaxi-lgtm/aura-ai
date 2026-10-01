@@ -80,6 +80,11 @@ rollback_on_failure() {
     fi
     if [ "$TREE_MOVED" -eq 1 ]; then
       systemctl stop aura-ai-async-jobs zovus-telegram-bot aura-ai || true
+      if [ "$MIGRATIONS_STARTED" -eq 1 ] && ! timeout 25s /usr/bin/node "$APP_DIR/hosting/restore-natal-rollback.mjs" "$APP_DIR" "$PREVIOUS" > "$SNAPSHOT/natal-rollback.log" 2>&1; then
+        echo "NEEDS_FORWARD_RECOVERY: paid Natal revisions retained; incompatible old code was not restored. Snapshot: $SNAPSHOT" >&2
+        systemctl restart aura-ai aura-ai-async-jobs zovus-telegram-bot || true
+        exit "$code"
+      fi
       if [ "$MIGRATIONS_STARTED" -eq 1 ] && ! timeout 25s /usr/bin/node "$APP_DIR/hosting/restore-matrix-rollback.mjs" "$APP_DIR" "$PREVIOUS" > "$SNAPSHOT/matrix-rollback.log" 2>&1; then
         echo "NEEDS_FORWARD_RECOVERY: Matrix identities retained; incompatible old code was not restored. Snapshot: $SNAPSHOT" >&2
         systemctl restart aura-ai aura-ai-async-jobs zovus-telegram-bot || true
@@ -162,6 +167,10 @@ SERVICES_STOPPED=1
 systemctl stop aura-ai-async-jobs
 systemctl stop zovus-telegram-bot
 systemctl stop aura-ai
+
+# Freeze provably matching history with the OLD calculator before the tree changes.
+# This also protects future deployments if a legacy receipt still lacks a snapshot.
+(cd "$APP_DIR" && timeout 40s /usr/bin/node --env-file=.env.local --import tsx "$STAGE_APP/hosting/freeze-natal-legacy-history.mjs" "$APP_DIR") > "$SNAPSHOT/natal-legacy-freeze.json"
 
 mv "$APP_DIR" "$PREVIOUS"
 TREE_MOVED=1

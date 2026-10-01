@@ -7,13 +7,7 @@ import {
   validateNatalReport,
 } from "@/lib/natal/report";
 
-// Regression: forecast jobs failed with invalid_model_report (~20% of runs)
-// because the model cited valid western (non-timing) evidence IDs in
-// summary/currentPeriod/recommendations. Salvage coerced IDs but kept the
-// non-timing citation, so the forecast timing rule rejected the report even
-// after every repair + salvage pass. coerceClaimEvidenceIds must now append a
-// timing evidence ID for timing sections when one exists in the pool.
-
+// Citation repair may fix spelling but must never invent unrelated evidence.
 const WESTERN: NatalEvidence = {
   id: "ne.western.sun_leo",
   tradition: "western",
@@ -63,7 +57,7 @@ function forecastCandidate(evidenceId: string) {
 }
 
 describe("natal forecast salvage — timing citation coercion", () => {
-  it("salvage accepts forecast when timing sections cite only valid western IDs", () => {
+  it("rejects timing sections supported only by natal IDs", () => {
     const candidate = forecastCandidate(WESTERN.id);
     const salvaged = salvageNatalReport(
       candidate,
@@ -72,7 +66,7 @@ describe("natal forecast salvage — timing citation coercion", () => {
       "forecast",
       30
     );
-    expect(salvaged.ok).toBe(true);
+    expect(salvaged.ok).toBe(false);
     if (salvaged.ok) {
       for (const key of ["summary", "currentPeriod", "recommendations"] as const) {
         const section = salvaged.report.sections.find((s) => s.key === key);
@@ -108,8 +102,11 @@ describe("natal forecast salvage — timing citation coercion", () => {
     expect(salvaged.ok).toBe(false);
   });
 
-  it("does not add timing IDs to non-timing sections", () => {
+  it("preserves all prose and citations when they already support the section", () => {
     const candidate = forecastCandidate(WESTERN.id);
+    for (const section of candidate.sections) {
+      if (["summary", "currentPeriod", "recommendations"].includes(section.key)) section.claims[0].evidenceIds = [TIMING.id];
+    }
     const salvaged = salvageNatalReport(
       candidate,
       [WESTERN, TIMING],
@@ -119,6 +116,7 @@ describe("natal forecast salvage — timing citation coercion", () => {
     );
     expect(salvaged.ok).toBe(true);
     if (salvaged.ok) {
+      expect(salvaged.report.sections.map(s => s.claims[0].text)).toEqual(candidate.sections.map(s => s.claims[0].text));
       const personality = salvaged.report.sections.find((s) => s.key === "personality");
       expect(
         personality?.claims.every((c) => !c.evidenceIds.includes(TIMING.id))

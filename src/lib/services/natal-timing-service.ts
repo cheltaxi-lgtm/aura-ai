@@ -9,7 +9,8 @@ import {
   type TimingChartIdentity,
   type TimingHorizon,
 } from "@/lib/natal/timing";
-import { getOrComputeNatalChart } from "./natal-chart-service";
+import type { NatalChartRecord } from "@/lib/natal/types";
+import { getOrComputeNatalChart, isStoredNatalChartStale } from "./natal-chart-service";
 
 export type NatalEventFrequency = "daily" | "weekly";
 export interface NatalEventPreferences {
@@ -188,9 +189,9 @@ export async function getCachedPersonalTiming(userId: string, identity: TimingCh
 export async function getOrComputePersonalTiming(
   userId: string,
   horizon: TimingHorizon,
-  options?: { force?: boolean; referenceDate?: Date }
+  options?: { force?: boolean; referenceDate?: Date; chart?: NatalChartRecord }
 ): Promise<{ timing: PersonalTimingResult; cached: boolean }> {
-  const chart = await getOrComputeNatalChart(userId);
+  const chart = options?.chart ?? await getOrComputeNatalChart(userId);
   if (!chart?.western || !chart.place || !chart.birthFingerprint) throw new Error("TIMING_CHART_INCOMPLETE");
   const reference = options?.referenceDate ?? new Date();
   const windowStart = new Intl.DateTimeFormat("en-CA", {
@@ -223,7 +224,7 @@ export async function getOrComputePersonalTiming(
     `INSERT INTO natal_timing_cache (
        user_id, horizon_days, window_start, window_end, engine_version,
        birth_fingerprint, claim_token, claim_at
-     ) VALUES ($1, $2, $3, $3::date + $2::integer, $4, $5, $6, NOW())
+     ) VALUES ($1, $2, $3, $3::date + $2::integer - 1, $4, $5, $6, NOW())
      ON CONFLICT (user_id, horizon_days, window_start, engine_version, birth_fingerprint)
      DO UPDATE SET claim_token = EXCLUDED.claim_token, claim_at = NOW()
      WHERE natal_timing_cache.claim_at IS NULL
@@ -238,6 +239,7 @@ export async function getOrComputePersonalTiming(
   try {
     const user = await getUserById(userId);
     if (!user?.birth_date) throw new Error("TIMING_BIRTH_DATE_MISSING");
+    if (await isStoredNatalChartStale(chart, user)) throw new Error("NATAL_PROFILE_CHANGED");
     const timing = await computePersonalTiming({
       natal: chart,
       birthDate: String(user.birth_date).slice(0, 10),
