@@ -9,6 +9,7 @@ import { MATRIX_CALCULATION_VERSION } from "./matrix-result";
 import type { MatrixReadingDocument } from "./matrix-reading-document";
 import { listMatrixZones, matrixZoneDefsFor } from "./matrix-zones";
 import type { DestinyMatrixResult } from "./destiny-matrix";
+import { matrixReadingStepsAreComplete } from "./matrix-prose-completeness";
 
 /** Rider–Waite majors 1–22 (22 = Шут). Engine / prompt / validator SSOT for names. */
 export function majorArcanaNameTable(): ReadonlyArray<{ number: number; name: string }> {
@@ -217,7 +218,7 @@ export function matrixMissingSections(text: string, toolId?: string, calculation
 export function isCompleteMatrixReading(text: string, toolId?: string, calculationVersion?: string): boolean {
   const t = (text || "").trim();
   if (t.length < 2200) return false;
-  return matrixMissingSections(t, toolId, calculationVersion).length === 0;
+  return matrixMissingSections(t, toolId, calculationVersion).length === 0 && matrixReadingStepsAreComplete(t);
 }
 
 /**
