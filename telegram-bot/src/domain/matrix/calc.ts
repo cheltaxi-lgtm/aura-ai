@@ -37,33 +37,33 @@ function reduceToArcanaNumber(n: number): number {
 }
 
 /** Same accept/reject set as site `parseBirthDate` — impossible dates must not render. */
-function parseBirthDate(raw: string): { day: number; month: number; year: number } | null {
-  const s = raw.trim();
+function parseBirthDate(raw: string, calendar = false): { day: number; month: number; year: number } | null {
+  const s = calendar ? raw : raw.trim();
   let day: number;
   let month: number;
   let year: number;
 
-  const iso = /^(\d{4})-(\d{1,2})-(\d{1,2})$/.exec(s);
+  const iso = (calendar ? /^(\d{4})-(\d{2})-(\d{2})$/ : /^(\d{4})-(\d{1,2})-(\d{1,2})$/).exec(s);
   if (iso) {
     year = Number(iso[1]);
     month = Number(iso[2]);
     day = Number(iso[3]);
   } else {
-    const dmy = /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/.exec(s);
+    const dmy = (calendar ? /^(\d{2})\.(\d{2})\.(\d{4})$/ : /^(\d{1,2})[./](\d{1,2})[./](\d{4})$/).exec(s);
     if (!dmy) return null;
     day = Number(dmy[1]);
     month = Number(dmy[2]);
     year = Number(dmy[3]);
   }
 
-  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > 2100) {
+  if (month < 1 || month > 12 || day < 1 || day > 31 || year < 1900 || year > (calendar ? 9999 : 2100)) {
     return null;
   }
-  const probe = new Date(year, month - 1, day);
+  const probe = new Date(Date.UTC(year, month - 1, day));
   if (
-    probe.getFullYear() !== year ||
-    probe.getMonth() !== month - 1 ||
-    probe.getDate() !== day
+    probe.getUTCFullYear() !== year ||
+    probe.getUTCMonth() !== month - 1 ||
+    probe.getUTCDate() !== day
   ) {
     return null;
   }
@@ -81,10 +81,10 @@ function yearsBetween(
   birth: { day: number; month: number; year: number },
   asOf: Date
 ): number {
-  let age = asOf.getFullYear() - birth.year;
+  let age = asOf.getUTCFullYear() - birth.year;
   const beforeBirthday =
-    asOf.getMonth() + 1 < birth.month ||
-    (asOf.getMonth() + 1 === birth.month && asOf.getDate() < birth.day);
+    asOf.getUTCMonth() + 1 < birth.month ||
+    (asOf.getUTCMonth() + 1 === birth.month && asOf.getUTCDate() < birth.day);
   if (beforeBirthday) age -= 1;
   return Math.max(0, age);
 }
@@ -134,7 +134,8 @@ export function buildLocalMatrixDiagram(
 ): MatrixDiagramInput | null {
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
-  const asOf = options?.asOfDate ? parseBirthDate(options.asOfDate) : null;
+  const asOf = options?.asOfDate ? parseBirthDate(options.asOfDate, true) : null;
+  if (options?.asOfDate != null && !asOf) return null;
 
   const a = reduceToArcanaNumber(parsed.day);
   const b = reduceToArcanaNumber(parsed.month);
@@ -153,7 +154,7 @@ export function buildLocalMatrixDiagram(
   const paternal = reduceToArcanaNumber(c + g);
   const maternal = reduceToArcanaNumber(b + c);
   const today = asOf ?? moscowToday();
-  const now = new Date(today.year, today.month - 1, today.day);
+  const now = new Date(Date.UTC(today.year, today.month - 1, today.day));
   const year = today.year;
   const month = today.month;
   const yearArcana = reduceToArcanaNumber(a + b + sumDigits(year));

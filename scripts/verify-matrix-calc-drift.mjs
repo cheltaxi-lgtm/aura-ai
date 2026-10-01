@@ -56,6 +56,14 @@ const parseProbes = [
 ];
 
 let failed = 0;
+for (const asOfDate of ["2026-02-30", "", "2026-2-3", "03/02/2026", "9999-12-31", "2200-01-01"]) {
+  const site = destinyMatrix("1990-08-15", { asOfDate });
+  const bot = buildLocalMatrixDiagram("1990-08-15", null, { asOfDate });
+  if (Boolean(site) !== Boolean(bot)) {
+    console.error("FAIL explicit calendar parity", { asOfDate, site: Boolean(site), bot: Boolean(bot) });
+    failed++;
+  }
+}
 
 for (const birth of fixtures) {
   const site = destinyMatrix(birth, {

@@ -5,6 +5,7 @@ const rollbackChargeMock = vi.fn();
 
 vi.mock("@/lib/db", () => ({
   query: (...args: unknown[]) => queryMock(...args),
+  queryClient: (_client: unknown, ...args: unknown[]) => queryMock(...args),
   withTransaction: async (fn: (client: { query: typeof queryMock }) => unknown) =>
     fn({ query: queryMock }),
 }));
@@ -41,7 +42,7 @@ describe("report job retry budget", () => {
 
   it("never marks a job refunded when ledger restoration failed",async()=>{
     rollbackChargeMock.mockResolvedValue({balance:0,refunded:false});
-    queryMock.mockImplementation(async(sql:string)=>({rows:sql.includes("FROM async_jobs")?[CHARGED_RUNNING_JOB]:sql.includes("FROM rune_transactions")?[{amount:100,action_type:"HD_REPORT"}]:[]}));
+    queryMock.mockImplementation(async(sql:string)=>({rows:sql.includes("FROM async_jobs")?[{ ...CHARGED_RUNNING_JOB, status: "failed" }]:sql.includes("FROM rune_transactions")?[{amount:100,action_type:"HD_REPORT"}]:[]}));
     expect(await refundChargedAsyncJobIfNeeded("job-1")).toBe(false);
     expect(rollbackChargeMock).toHaveBeenCalledWith(expect.objectContaining({transactionId:"tx-1"}));
     expect(queryMock.mock.calls.some(([sql])=>String(sql).includes("SET billing_state = 'refunded'"))).toBe(false);
@@ -109,6 +110,7 @@ describe("report job retry budget", () => {
       if (sql.startsWith("SELECT attempt_count")) {
         return { rows: [{ attempt_count: REPORT_JOB_MAX_ATTEMPTS }] };
       }
+      if (sql.includes("FROM async_jobs") && sql.includes("FOR UPDATE")) return { rows: [{ ...CHARGED_RUNNING_JOB, status: "failed" }] };
       if (sql.includes("FROM async_jobs") && sql.includes("WHERE id = $1")) {
         return { rows: [CHARGED_RUNNING_JOB] };
       }
@@ -158,6 +160,7 @@ describe("report job retry budget", () => {
       if (sql.startsWith("SELECT retry_429_count")) {
         return { rows: [{ retry_429_count: REPORT_JOB_MAX_PROVIDER_RESCHEDULES }] };
       }
+      if (sql.includes("FROM async_jobs") && sql.includes("FOR UPDATE")) return { rows: [{ ...CHARGED_RUNNING_JOB, status: "failed" }] };
       if (sql.includes("FROM async_jobs") && sql.includes("WHERE id = $1")) {
         return { rows: [CHARGED_RUNNING_JOB] };
       }
@@ -216,6 +219,7 @@ describe("report job retry budget", () => {
         return { rows: [{ id: "job-1", error_message: "qa", regen_attempts: 1 }] };
       }
       if (sql.includes("SET status = 'failed'")) return { rowCount: 1 };
+      if (sql.includes("FROM async_jobs") && sql.includes("FOR UPDATE")) return { rows: [{ ...CHARGED_RUNNING_JOB, status: "failed" }] };
       if (sql.includes("FROM async_jobs") && sql.includes("WHERE id = $1")) {
         return { rows: [CHARGED_RUNNING_JOB] };
       }

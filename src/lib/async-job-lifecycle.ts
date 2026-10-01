@@ -1,4 +1,5 @@
 import type { NextRequest } from "next/server";
+import { randomUUID } from "node:crypto";
 
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import {
@@ -14,13 +15,15 @@ import {
   REPORT_JOB_MAX_ATTEMPTS,
   retryOrFailReportJob,
   updateAsyncJobProgress,
+  asyncJobAttemptMatches,
+  type AsyncJobRow,
 } from "@/lib/async-jobs";
 import {
   isReportJobKind,
   isReportJobRetryEnabled,
 } from "@/lib/async-report-flags";
-import { getAsyncJobIdFromRequest } from "@/lib/async-job-worker-auth";
-import { query } from "@/lib/db";
+import { getAsyncJobIdFromRequest, getAsyncJobAttemptFromRequest } from "@/lib/async-job-worker-auth";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import type { RuneActionType } from "@/lib/rune-costs";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
@@ -39,6 +42,8 @@ export function makeWorkerProgressReporter(
 ): ((p: { done: number; total: number; label: string }) => void) | undefined {
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return undefined;
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  if (!attempt) return undefined;
   let lastWrite = 0;
   return (p) => {
     const now = Date.now();
@@ -48,7 +53,7 @@ export function makeWorkerProgressReporter(
       done: p.done,
       total: p.total,
       label: p.label,
-    }).catch(() => undefined);
+    }, attempt).catch(() => undefined);
   };
 }
 
@@ -59,14 +64,39 @@ export async function trackWorkerJobCharged(
 ): Promise<void> {
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId || !transactionId) return;
-  await markAsyncJobCharged(jobId, transactionId);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  if (attempt) await markAsyncJobCharged(jobId, transactionId, attempt);
 }
 
 /** After rollbackCharge on a worker-driven paid route. */
 export async function trackWorkerJobRefunded(request: NextRequest): Promise<void> {
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return;
-  await markAsyncJobRefunded(jobId);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  if (attempt) await markAsyncJobRefunded(jobId, attempt);
+}
+
+/** Lock the attempt across ledger refund and job binding. A delivered Matrix
+ * receipt or a superseded attempt can never refund the current purchase. */
+export async function refundWorkerJobCharge(request: NextRequest, params: Parameters<typeof BillingService.rollbackChargeEx>[0]): Promise<{ balance: number; refunded: boolean }> {
+  const jobId = getAsyncJobIdFromRequest(request);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  return withTransaction(async client => {
+    if (jobId) {
+      const { rows } = await queryClient<AsyncJobRow>(client, `SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE`, [jobId]);
+      if (!rows[0] || rows[0].user_id !== params.userId || !attempt || !asyncJobAttemptMatches(rows[0], attempt) || rows[0].charge_transaction_id !== params.transactionId) {
+        return { balance: await getRuneBalance(params.userId, client), refunded: false };
+      }
+    }
+    if (params.transactionId) {
+      const saved = await queryClient(client, `SELECT id FROM numerology_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1`, [params.userId, params.transactionId]);
+      if (saved.rows.length) return { balance: await getRuneBalance(params.userId, client), refunded: false };
+    }
+    const outcome = await BillingService.rollbackChargeEx({ ...params, client });
+    if (params.cost > 0 && !outcome.refunded) throw new Error("reading_refund_failed");
+    if (jobId && attempt && outcome.refunded) await markAsyncJobRefunded(jobId, attempt, client);
+    return outcome;
+  });
 }
 
 /**
@@ -97,7 +127,9 @@ export async function trackWorkerJobCompleted(
 ): Promise<void> {
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return;
-  await completeAsyncJob(jobId, result);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  if (!attempt) return;
+  await completeAsyncJob(jobId, result, attempt);
 }
 
 /**
@@ -113,12 +145,16 @@ export async function trackWorkerJobFailed(
 ): Promise<void> {
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return;
-  await releaseAsyncJobSaveClaim(jobId);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  if (!attempt) return;
+  const current = await getAsyncJobById(jobId);
+  if (!current || !asyncJobAttemptMatches(current, attempt)) return;
+  await releaseAsyncJobSaveClaim(jobId, attempt);
   const errorCode = options?.errorCode ?? "generation_failed";
-  if (isReportJobRetryEnabled() && isRetryableReportErrorCode(errorCode)) {
+  if (!options?.refunded && current.billing_state !== "refunded" && isReportJobRetryEnabled() && isRetryableReportErrorCode(errorCode)) {
     const job = await getAsyncJobById(jobId);
     if (job && job.status === "running" && isReportJobKind(job.kind)) {
-      const outcome = await retryOrFailReportJob({ jobId, message, errorCode });
+      const outcome = await retryOrFailReportJob({ jobId, message, errorCode, attempt });
       if (outcome === "requeued") {
         console.warn(
           `[async-jobs] report auto-retry job=${jobId} kind=${job.kind} code=${errorCode} attempt=${job.attempt_count}`
@@ -128,9 +164,9 @@ export async function trackWorkerJobFailed(
     }
   }
   if (options?.refunded) {
-    await markAsyncJobRefunded(jobId);
+    await markAsyncJobRefunded(jobId, attempt);
   }
-  await failAsyncJob(jobId, message, errorCode);
+  await failAsyncJob(jobId, message, errorCode, { attempt });
 }
 
 export async function trackWorkerJobNeedsRegeneration(
@@ -139,15 +175,20 @@ export async function trackWorkerJobNeedsRegeneration(
 ): Promise<void> {
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return;
-  await markAsyncJobNeedsRegeneration(jobId, message);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  if (attempt) await markAsyncJobNeedsRegeneration(jobId, message, attempt);
 }
 
 async function billingChargeFromExistingTransaction(
   userId: string,
   transactionId: string,
-  fallbackAction: RuneActionType
+  fallbackAction: RuneActionType,
+  client?: PoolClient
 ): Promise<BillingChargeResult | null> {
-  const { rows } = await query<{ amount: number; action_type: string | null }>(
+  const execute = client
+    ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) => queryClient<T>(client, text, params)
+    : query;
+  const { rows } = await execute<{ amount: number; action_type: string | null }>(
     `SELECT ABS(amount) AS amount, action_type
      FROM rune_transactions
      WHERE id = $1 AND user_id = $2 AND amount < 0
@@ -156,7 +197,7 @@ async function billingChargeFromExistingTransaction(
   );
   const ledger = rows[0];
   if (!ledger) return null;
-  const newBalance = await getRuneBalance(userId);
+  const newBalance = await getRuneBalance(userId, client);
   return {
     spentRunes: ledger.amount,
     wasFreeQuestion: false,
@@ -175,7 +216,8 @@ export async function beginWorkerJobSave(request: NextRequest): Promise<boolean>
   const jobId = getAsyncJobIdFromRequest(request);
   if (!jobId) return true;
   if (request.signal.aborted) return false;
-  return claimAsyncJobForSave(jobId);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  return attempt ? claimAsyncJobForSave(jobId, attempt) : false;
 }
 
 /** Request-free save barrier for an in-process worker runner. */
@@ -221,12 +263,14 @@ export async function chargeRuneActionForWorkerJob(input: {
   action: RuneActionType;
 }): Promise<BillingChargeResult> {
   const jobId = getAsyncJobIdFromRequest(input.request);
+  const attempt = getAsyncJobAttemptFromRequest(input.request);
   if (jobId) {
     const job = await getAsyncJobById(jobId);
+    if (!job || job.user_id !== input.userId || !attempt || !asyncJobAttemptMatches(job, attempt)) throw new Error("stale_async_job_attempt");
     if (
       job &&
       job.user_id === input.userId &&
-      job.status === "running" &&
+      attempt && asyncJobAttemptMatches(job, attempt) &&
       job.billing_state === "charged" &&
       job.charge_transaction_id
     ) {
@@ -252,11 +296,28 @@ export async function chargeRuneActionForWorkerJob(input: {
     };
   }
 
+  if (jobId) {
+    return withTransaction(async client => {
+      const { rows } = await queryClient<AsyncJobRow>(client, `SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE`, [jobId]);
+      const job = rows[0];
+      if (!job || job.user_id !== input.userId || !attempt || !asyncJobAttemptMatches(job, attempt) || !["unbilled", "charged"].includes(job.billing_state)) throw new Error("stale_async_job_attempt");
+      if (job.charge_transaction_id) {
+        const reused = await billingChargeFromExistingTransaction(input.userId, job.charge_transaction_id, input.action, client);
+        if (reused) return reused;
+      }
+      const charged = await BillingService.chargeRuneAction({ userId: input.userId,
+        action: input.action, idempotencyKey: `async:${jobId}:${input.action}`, client });
+      if (charged.transactionId) await markAsyncJobCharged(jobId, charged.transactionId, attempt, client);
+      return charged;
+    });
+  }
   const charge = await BillingService.chargeRuneAction({
     userId: input.userId,
     action: input.action,
+    // Synchronous reads have no durable operation bound to caller keys. A fresh
+    // server purchase prevents reusing a cheaper or refunded transaction.
+    idempotencyKey: `reading:${randomUUID()}`,
   });
-  await trackWorkerJobCharged(input.request, charge.transactionId);
   return charge;
 }
 

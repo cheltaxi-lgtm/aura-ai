@@ -8,6 +8,7 @@ import {
   majorArcanaNameTable,
   matrixDocumentMatchesEngine,
   matrixReadingMatchesEngine,
+  matrixProseMatchesRoles,
 } from "@/lib/numerology/matrix-completeness";
 import {
   headingLineForZone,
@@ -27,6 +28,68 @@ function skeletonReading(matrix: ReturnType<typeof destinyMatrix>): string {
 }
 
 describe("matrix arcana name table (Marseille for Matrix, RW for Tarot)", () => {
+  it("recognizes declined titles without consuming the rest of a sentence or ordinal numbers", () => {
+    const matrix = destinyMatrix("1988-03-03")!;
+    const raw = "После 18 — Луны стоит 8 — Справедливость, поэтому проверь условия. Переход к 8 — Справедливости потребует ясных решений. 10-й аркан задаёт другой ритм.";
+    const fixed = canonicalizeArcanaNamesInText(raw);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${raw}`, matrix)).toBe(true);
+    expect(fixed).toBe(raw);
+    expect(canonicalizeArcanaNamesInText(fixed)).toBe(fixed);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${fixed}`, matrix)).toBe(true);
+    expect(canonicalizeArcanaNamesInText("11 — Справедливостью поддержи границы.")).toBe("11 — Сила поддержи границы.");
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nДни с 5 по 7 — проверь условия и сохрани договорённости.`, matrix)).toBe(true);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nАркан (7 — «Безымянный»).`, matrix)).toBe(false);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nАркан 7 — Безымянный.`, matrix)).toBe(false);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nАркан (20 — «Судьба»).`, matrix)).toBe(false);
+  });
+  it("rejects a wrong money-zone number inside an explicitly labelled comparison", () => {
+    const matrix = destinyMatrix("1988-03-03")!;
+    expect(matrix.money.number).toBe(18);
+    expect(matrixProseMatchesRoles("В отличие от зоны денег, где 10-й аркан связан с обменом, здесь он помогает поддерживать ритм.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("В отличие от зоны денег, где 18-й аркан связан с обменом, здесь он помогает поддерживать ритм.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В зоне денег важно проверить условия за 10 дней.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В зоне денег, где 10% дохода идёт в резерв, проверь свой бюджет.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В денежной зоне 10 минут в неделю посвяти сверке бюджета.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В зоне денег — 10 дней наблюдения.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В отличие от зоны денег, где стоит 10-й аркан.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("Денежная зона — 10. Следи за расходами.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("В зоне денег, где стоит 10. Следи за расходами.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("В зоне денег, где стоит 18. Следи за расходами.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В зоне денег — 10.5 процента дохода идёт в резерв.", matrix)).toBe(true);
+    expect(matrix.comfort.number).toBe(10);
+    expect(matrixProseMatchesRoles("Для зоны комфорта, где стоит 22-й аркан, важен отдых.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("Для зоны комфорта, где стоит 10-й аркан, важен отдых.", matrix)).toBe(true);
+  });
+  it("distinguishes ordinal arcana assertions from day and step instructions", () => {
+    const matrix = destinyMatrix("1988-03-03")!;
+    for (const raw of ["Аркан 8-й — Сила.", "8-й аркан — Сила.", "Энергия 8 — сила связана с волей и выдержкой."]) {
+      expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${raw}`, matrix)).toBe(false);
+      const fixed = canonicalizeArcanaNamesInText(raw);
+      expect(fixed).toContain("Справедливость");
+      expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${fixed}`, matrix)).toBe(true);
+    }
+    const longUnknown = "Аркан 8 — Безымянный архетип помогает вам сохранять спокойствие в долгих переговорах.";
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${longUnknown}`, matrix)).toBe(false);
+    for (const plan of ["День 8 — сила привычки помогает сохранить ритм.", "Шаг 20 — мир с близкими важнее спора.", "Дни 1–8 — Сила привычки помогает сохранить ритм.", "День №8 — Сила привычки помогает сохранить ритм.", "Шаг №20 — Мир с близкими важнее спора.", "День: 8 — Сила привычки."]) {
+      expect(canonicalizeArcanaNamesInText(plan)).toBe(plan);
+      expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${plan}`, matrix)).toBe(true);
+    }
+  });
+  it("checks long prose and normalizes flexible whitespace without deleting the continuation", () => {
+    const matrix = destinyMatrix("1990-05-15")!;
+    const long = "8 — Сила поможет принять справедливое решение в денежном канале.";
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${long}`, matrix)).toBe(false);
+    const fixed = canonicalizeArcanaNamesInText(long);
+    expect(fixed).toBe("8 — Справедливость поможет принять справедливое решение в денежном канале.");
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${fixed}`, matrix)).toBe(true);
+    expect(canonicalizeArcanaNamesInText("10 — Колесо  Судьбы. 2 — Верховная   Жрица.")).toBe("10 — Колесо Фортуны. 2 — Жрица.");
+  });
+  it("preserves complete actions and surrounding punctuation while correcting only an arcana title", () => {
+    const raw = "2) Перед оплатой проверь бюджет — ресурс 4 — Император поможет удержать границы.\n3) Так ты экологично проживёшь 12 — Повешенный.\n4) Используй 8 — «Сила», сохраняя спокойствие.";
+    const fixed = canonicalizeArcanaNamesInText(raw);
+    expect(fixed).toBe("2) Перед оплатой проверь бюджет — ресурс 4 — Император поможет удержать границы.\n3) Так ты экологично проживёшь 12 — Повешенный.\n4) Используй 8 — «Справедливость», сохраняя спокойствие.");
+    expect(canonicalizeArcanaNamesInText(fixed)).toBe(fixed);
+  });
   it("keeps Tarot deck on Rider–Waite while Matrix uses 8 Justice / 11 Strength", () => {
     const table = majorArcanaNameTable();
     expect(table).toHaveLength(22);

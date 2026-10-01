@@ -391,6 +391,8 @@ export function encodeNumerologSpreadId(toolId: NumerologToolId): string {
 export function decodeNumerologSpreadId(
   spreadId?: string | null
 ): NumerologToolId | null {
+  // Telegram and older paid Matrix sessions stored the tool ID without a prefix.
+  if (spreadId === "destiny_matrix" || spreadId === "child_matrix") return spreadId;
   if (!spreadId?.startsWith(NUMEROLOG_SPREAD_ID_PREFIX)) return null;
   const id = spreadId.slice(NUMEROLOG_SPREAD_ID_PREFIX.length);
   return isNumerologSessionToolId(id) ? id : null;

@@ -35,7 +35,7 @@ export const MATRIX_SUBJECT_KINDS: MatrixSubjectKind[] = [
 ];
 
 const SUBJECT_COLS = `
-  id, kind, display_name, birth_date, birth_time, birth_city, created_at, updated_at
+  id, kind, display_name, birth_date::text AS birth_date, birth_time, birth_city, created_at, updated_at
 `;
 
 export function isMatrixSubjectKind(v: string): v is MatrixSubjectKind {
@@ -112,7 +112,7 @@ export async function ensureSelfSubject(userId: string): Promise<MatrixSubject |
   return withTransaction(async (client) => {
     const profile = await queryClient<{ birth_date: Date | string | null; name: string | null }>(
       client,
-      `SELECT birth_date, name FROM users WHERE id = $1 FOR UPDATE`,
+      `SELECT birth_date::text AS birth_date, name FROM users WHERE id = $1 FOR UPDATE`,
       [userId]
     );
     const user = profile.rows[0];
@@ -258,6 +258,9 @@ export async function deleteMatrixSubject(
        WHERE user_id = $1 AND context_data->>'reportId' = ANY($2::text[])`,
       [userId, reports.rows.map(row => row.id)]
     ) : { rows: [] };
+    await queryClient(client,
+      `DELETE FROM matrix_guest_pending WHERE claimed_user_id = $1 AND claimed_subject_id = $2::uuid`,
+      [userId, subjectId.trim()]);
     const removed = await queryClient(
       client,
       `DELETE FROM matrix_subjects WHERE user_id = $1 AND id = $2::uuid`,

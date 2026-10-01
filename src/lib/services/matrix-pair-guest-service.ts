@@ -285,8 +285,6 @@ export async function claimGuestMatrixPairPending(opts: {
         `UPDATE users SET
            birth_date = $2::date,
            zodiac = $3,
-           birth_time = NULL,
-           birth_city = NULL,
            astro_meta = COALESCE(astro_meta, '{}'::jsonb) || $4::jsonb
          WHERE id = $1`,
         [opts.profileUserId, dateA, zodiac, JSON.stringify(nextMeta)]

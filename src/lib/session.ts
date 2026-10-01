@@ -963,7 +963,7 @@ export async function listConsultationSessions(
            COALESCE(s.message_count, 0)::int AS message_count,
            sm.topic_summary, sm.key_cards, sm.prediction,
            n.subject_id AS matrix_subject_id,
-           n.birth_date AS matrix_birth_date_raw,
+           n.birth_date::text AS matrix_birth_date_raw,
            n.calculation_version AS matrix_calculation_version,
            n.structured_data AS matrix_structured_data,
            ms.display_name AS matrix_subject_name,

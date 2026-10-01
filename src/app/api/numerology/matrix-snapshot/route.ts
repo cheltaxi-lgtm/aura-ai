@@ -3,6 +3,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { ensureDb } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
+import { matrixToStructuredData } from "@/lib/numerology/destiny-matrix";
+import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
 import { isMatrixSubjectKind } from "@/lib/services/matrix-subject-service";
 import {
   getOwnedMatrixSnapshot,
@@ -94,12 +96,17 @@ export async function GET(request: NextRequest) {
   if (!persisted) {
     return NextResponse.json({ error: "not_found" }, { status: 404 });
   }
+  const matrix = resolveMatrixForEngine({ birthDate: persisted.birthDate, snapshot: persisted.snapshot });
+  if (!matrix) {
+    // POST recovers an invalid cache under the owned subject lock.
+    return NextResponse.json({ error: "invalid_matrix_snapshot" }, { status: 404 });
+  }
   return NextResponse.json({
     ok: true,
     subjectId: persisted.subjectId,
     birthDate: persisted.birthDate,
     asOfDate: persisted.asOfDate,
     calculationVersion: persisted.calculationVersion,
-    snapshot: persisted.snapshot,
+    snapshot: matrixToStructuredData(matrix, persisted.birthDate),
   });
 }

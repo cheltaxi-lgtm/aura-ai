@@ -315,7 +315,7 @@ export async function GET(request: NextRequest) {
         structured_data: Record<string, unknown> | null;
         created_at: Date | string;
       }>(
-        `SELECT n.subject_id, n.birth_date, s.display_name, s.kind,
+        `SELECT n.subject_id, n.birth_date::text AS birth_date, s.display_name, s.kind,
                 n.calculation_version, n.structured_data, n.created_at
          FROM numerology_report_history n
          LEFT JOIN matrix_subjects s ON s.id = n.subject_id

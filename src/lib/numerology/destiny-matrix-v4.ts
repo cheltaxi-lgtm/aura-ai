@@ -14,7 +14,7 @@ import {
 import { arcanaForNumber } from "./matrix-arcana-map";
 import { matrixCalendarDate } from "./matrix-calendar";
 import { resolveAsOf } from "./matrix-calendar-options";
-import { MATRIX_CHANNEL_DEFINITIONS } from "./matrix-channels";
+import { MATRIX_LABELS } from "./matrix-labels";
 import { reduceToArcanaDigitSum } from "./matrix-reducers";
 import {
   MATRIX_V4_CALCULATION_VERSION,
@@ -25,6 +25,16 @@ import {
   type DestinyMatrixPoint,
   type DestinyMatrixResult,
 } from "./matrix-result";
+
+// Purchased v4 snapshots use this topology. Live v5 lineage IDs must never
+// change replay of the earlier methodology.
+const V4_CHANNELS: Array<{ id: DestinyMatrixChannel["id"]; label: string; pointIds: string[] }> = [
+  { id: "love", label: MATRIX_LABELS.loveChannel, pointIds: ["body", "relationships", "comfort", "money"] },
+  { id: "money", label: MATRIX_LABELS.moneyChannel, pointIds: ["skySpirit", "comfort", "money", "earthTask"] },
+  { id: "male", label: MATRIX_LABELS.maleChannel, pointIds: ["body", "lineage.ga", "paternal", "roots"] },
+  { id: "female", label: MATRIX_LABELS.femaleChannel, pointIds: ["talents", "energy", "maternal"] },
+  { id: "skyEarth", label: MATRIX_LABELS.skyEarthChannel, pointIds: ["energy", "skySpirit", "comfort", "earthTask", "karma"] },
+];
 
 export function computeDestinyMatrixV4(
   birthDate: string,
@@ -129,12 +139,10 @@ export function computeDestinyMatrixV4(
     ageCurrent,
     ageNext,
     chronologicalAge,
-    channels: MATRIX_CHANNEL_DEFINITIONS.filter(
-      (def): def is typeof def & { id: DestinyMatrixChannel["id"] } => def.id !== "karmicTail"
-    ).map((def) => ({
+    channels: V4_CHANNELS.map((def) => ({
       id: def.id,
       label: def.label,
-      points: def.pointIds.map((id) => byId[id] ?? comfort),
+      points: def.pointIds.map((id) => byId[id]!),
     })),
     focusKey: focus.focusKey,
     focusLabel: focus.focusLabel,

@@ -24,12 +24,12 @@ export function resolveAsOf(options?: DestinyMatrixOptions): {
     const parsed = parseMatrixCalendarDay(options.asOfDate);
     if (!parsed || (options.asOfYear != null && options.asOfYear !== parsed.year) || (options.asOfMonth != null && options.asOfMonth !== parsed.month)) return null;
     if (parsed) {
-      date = new Date(parsed.year, parsed.month - 1, parsed.day);
+      date = new Date(Date.UTC(parsed.year, parsed.month - 1, parsed.day));
       year = parsed.year;
       month = parsed.month;
     }
   } else if (options?.asOfYear != null || options?.asOfMonth != null) {
-    date = new Date(year, month - 1, Math.min(28, today.day));
+    date = new Date(Date.UTC(year, month - 1, Math.min(28, today.day)));
   }
   return { year, month, date };
 }
@@ -43,6 +43,6 @@ export function parseMatrixCalendarDay(value: string): { year: number; month: nu
   const month = Number(match[2]);
   const day = Number(match[iso ? 3 : 1]);
   if (year < 1900 || year > 9999 || month < 1 || month > 12 || day < 1 || day > 31) return null;
-  const date = new Date(year, month - 1, day);
-  return date.getFullYear() === year && date.getMonth() + 1 === month && date.getDate() === day ? { year, month, day } : null;
+  const date = new Date(Date.UTC(year, month - 1, day));
+  return date.getUTCFullYear() === year && date.getUTCMonth() + 1 === month && date.getUTCDate() === day ? { year, month, day } : null;
 }

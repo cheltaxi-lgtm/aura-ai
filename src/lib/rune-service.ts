@@ -12,8 +12,11 @@ export interface AffordCheck {
   reason?: string;
 }
 
-export async function getRuneBalance(userId: string): Promise<number> {
-  const { rows } = await query<{ rune_balance: number }>(
+export async function getRuneBalance(userId: string, client?: PoolClient): Promise<number> {
+  const execute = client
+    ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) => queryClient<T>(client, text, params)
+    : query;
+  const { rows } = await execute<{ rune_balance: number }>(
     "SELECT rune_balance FROM users WHERE id = $1",
     [userId]
   );
@@ -76,7 +79,7 @@ export async function spendRunesAmount(
     : query;
 
   if (amount <= 0) {
-    const balance = await getRuneBalance(userId);
+    const balance = await getRuneBalance(userId, client);
     return { success: true, balanceAfter: balance, cost: 0 };
   }
 
@@ -192,15 +195,16 @@ export async function refundRunes(
   description: string,
   action?: RuneActionType,
   originalTransactionId?: string,
-  sessionIdToRestore?: string
+  sessionIdToRestore?: string,
+  transactionClient?: PoolClient
 ): Promise<number> {
   if (amount <= 0) {
-    return getRuneBalance(userId);
+    return getRuneBalance(userId, transactionClient);
   }
   if (!Number.isSafeInteger(amount)) throw new Error("invalid_refund_amount");
   if (!originalTransactionId) throw new Error("refund_source_transaction_required");
 
-  return withTransaction(async (client) => {
+  const executeRefund = async (client: PoolClient) => {
     const { rows: lockedUsers } = await queryClient<{ rune_balance: number }>(
       client,
       `SELECT rune_balance FROM users WHERE id = $1 FOR UPDATE`,
@@ -280,7 +284,8 @@ export async function refundRunes(
       if(restored>0) await recordJourneyEvent(userId,"bonus_refunded",originalTransactionId,{runes:restored},client);
     }
     return newBalance;
-  });
+  };
+  return transactionClient ? executeRefund(transactionClient) : withTransaction(executeRefund);
 }
 
 export async function addRunes(

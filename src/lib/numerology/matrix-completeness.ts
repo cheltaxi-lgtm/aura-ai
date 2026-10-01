@@ -21,28 +21,75 @@ export function majorArcanaNameTable(): ReadonlyArray<{ number: number; name: st
   return out;
 }
 
-const ARCANA_PAIR_RE =
-  /\b(\d{1,2})\s*([—–-])\s*([«"']?)([А-ЯЁA-Z][^\n,()»"']{1,40}?)(?=[,)\n»"']|$)/giu;
+const ARCANA_TITLE_PREFIXES = [...majorArcanaNameTable().map(row => row.name),
+  "Колесо Судьбы", "Правосудие", "Верховная Жрица", "Верховный Жрец"]
+  .sort((a, b) => b.length - a.length);
+// Case endings are title tokens too; never consume the following client prose.
+const ARCANA_INFLECTED_TITLE_PATTERNS: ReadonlyArray<readonly [string, string]> = [
+  ["Маг", "Маг(?:а|у|ом|е)"], ["Жрица", "Жриц(?:ы|е|у|ей|ею)"],
+  ["Императрица", "Императриц(?:ы|е|у|ей|ею)"], ["Император", "Император(?:а|у|ом|е)"],
+  ["Иерофант", "Иерофант(?:а|у|ом|е)"], ["Влюблённые", "Влюбл[её]нн(?:ых|ым|ыми)"],
+  ["Колесница", "Колесниц(?:ы|е|у|ей|ею)"], ["Справедливость", "Справедливост(?:и|ью)"],
+  ["Отшельник", "Отшельник(?:а|у|ом|е)"], ["Колесо Фортуны", "Колес(?:а|у|ом|е)\\s+Фортуны"],
+  ["Сила", "Сил(?:ы|е|у|ой|ою)"], ["Повешенный", "Повешенн(?:ого|ому|ым|ом)"],
+  ["Смерть", "Смерт(?:и|ью)"], ["Умеренность", "Умеренност(?:и|ью)"],
+  ["Дьявол", "Дьявол(?:а|у|ом|е)"], ["Башня", "Башн(?:и|е|ю|ей|ею)"],
+  ["Звезда", "Звезд(?:ы|е|у|ой|ою)"], ["Луна", "Лун(?:ы|е|у|ой|ою)"],
+  ["Солнце", "Солнц(?:а|у|ем)"], ["Суд", "Суд(?:а|у|ом|е)"],
+  ["Мир", "Мир(?:а|у|ом|е)"], ["Шут", "Шут(?:а|у|ом|е)"],
+  ["Колесо Судьбы", "Колес(?:а|у|ом|е)\\s+Судьбы"], ["Правосудие", "Правосуди(?:я|ю|ем|и)"],
+  ["Верховная Жрица", "Верховн(?:ой\\s+Жриц(?:ы|е|ей|ею)|ую\\s+Жрицу)"],
+  ["Верховный Жрец", "Верховн(?:ого\\s+Жреца|ому\\s+Жрецу|ым\\s+Жрецом|ом\\s+Жреце)"],
+];
+const ARCANA_TITLE_PATTERN = [...ARCANA_TITLE_PREFIXES.map(title =>
+  title.replace(/[.*+?^${}()|[\]\\]/g, "\\$&").replace(/ё/g, "[её]").replace(/\s+/g, String.raw`\s+`)),
+  ...ARCANA_INFLECTED_TITLE_PATTERNS.map(([, pattern]) => pattern)].join("|");
+const ARCANA_TITLE_PREFIX_RE = new RegExp(`^(?:${ARCANA_TITLE_PATTERN})(?!\\p{L})`, "iu");
+const ARCANA_PAIR_RE = new RegExp(
+  String.raw`\b(\d{1,2})(\s*(?:-\s*(?:й|я|е|го|му|м|х|ая|ой|ый|ом|ми|ти)(?!\p{L}))?\s*(?:аркан\p{L}*\s*)?)([—–-])\s*([«"']?)((?:${ARCANA_TITLE_PATTERN})(?!\p{L})|[А-ЯЁA-Z][\p{L}]+)`, "giu");
 
 function normArcanaName(s: string): string {
   return s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
 }
 
+function arcanaTitleMatches(name: string, canonical: string): boolean {
+  const title = normArcanaName(canonical);
+  if (name.startsWith(title) && !/\p{L}/u.test(name[title.length] ?? "")) return true;
+  const variants = ARCANA_INFLECTED_TITLE_PATTERNS.find(([title]) => normArcanaName(title) === normArcanaName(canonical))?.[1];
+  return Boolean(variants && new RegExp(`^(?:${variants})(?!\\p{L})`, "iu").test(name));
+}
+
+/** Shared interpretation for rewriting and validation. A plan's day/step number
+ * must never become an arcana just because its next word is «сила» or «мир». */
+function isArcanaAssertion(source: string, offset: number, full: string, bridge: string, quote: string, name: string): boolean {
+  const before = source.slice(Math.max(0, offset - 80), offset);
+  if (/(?:аркан\p{L}*|карт\p{L}*|числ\p{L}*|энерги\p{L}*)\s*(?:[:№]\s*)?$/iu.test(before) || /аркан\p{L}*/iu.test(bridge)) return true;
+  if (/(?:день|дни|дня|дней|недел\p{L}*|шаг\p{L}*|пункт\p{L}*|этап\p{L}*)\s*(?:[:№]\s*)?$/iu.test(before) || /\d\s*(?:[—–-]|по)\s*$/iu.test(before)) return false;
+  if (quote || source[offset + full.length] === ")") return true;
+  return ARCANA_TITLE_PREFIX_RE.test(name) && /^[А-ЯЁA-Z]/u.test(name);
+}
+
 /** Check explicit role→arcana assertions, allowing accurately labelled comparisons. */
 export function matrixProseMatchesRoles(text: string, matrix: DestinyMatrixResult): boolean {
   const roles: Array<[string, number]> = [
-    [String.raw`(?:денежн\p{L}*\s+канал\p{L}*|деньги|финансов\p{L}*\s+(?:канал|зона))`, matrix.money.number],
+    [String.raw`(?:денежн\p{L}*\s+(?:канал|зон)\p{L}*|зон\p{L}*\s+денег|деньги|финансов\p{L}*\s+(?:канал|зон)\p{L}*)`, matrix.money.number],
     [String.raw`(?:отношения|любовн\p{L}*\s+канал\p{L}*)`, matrix.relationships.number],
     [String.raw`(?:характер|точка\s+характера)`, matrix.body.number],
     [String.raw`(?:таланты|талант\p{L}*\s+канал\p{L}*)`, matrix.talents.number],
-    [String.raw`зона\s+комфорта`, matrix.comfort.number],
+    [String.raw`зон\p{L}*\s+комфорта`, matrix.comfort.number],
     [String.raw`(?:аркан\s+года|энергия\s+года)`, matrix.yearArcana.number],
     [String.raw`(?:аркан\s+месяца|энергия\s+месяца)`, matrix.monthArcana.number],
   ];
   const raw = text.replace(/\*\*/g, "");
   for (const [role, expected] of roles) {
-    const re = new RegExp(String.raw`(?:^|[^\p{L}])${role}\s*(?:(?:это|—|–|-|:|=|через|под\s+влиянием|соответствует)\s*)?(?:\(\s*)?(?:аркан\p{L}*\s*(?:№\s*)?)?(\d{1,2})(?!\d)`, "giu");
+    const re = new RegExp(String.raw`(?:^|[^\p{L}])${role}\s*(?:,\s*)?(?:(?:это|—|–|-|:|=|через|где(?:\s+(?:стоит|работает|действует))?|под\s+влиянием|соответствует)\s*)?(?:\(\s*)?(?:аркан\p{L}*\s*(?:№\s*)?)?(\d{1,2})(?!\d)`, "giu");
     for (const match of raw.matchAll(re)) {
+      const after = raw.slice((match.index ?? 0) + match[0].length);
+      if (/^\s*(?:%|процент\p{L}*|минут\p{L}*|час\p{L}*|дн(?:ей|я|и)|день|недел\p{L}*|рубл\p{L}*|[₽$€]|лет|год\p{L}*|раз\p{L}*)(?!\p{L})/iu.test(after)) continue;
+      const arcanaAfter = /^\s*(?:-\s*(?:й|я|го|му|м)\s*)?аркан\p{L}*/iu.test(after);
+      const namedAfter = new RegExp(String.raw`^\s*[—–-]\s*[«"']?(?:${ARCANA_TITLE_PATTERN})(?!\p{L})`, "iu").test(after);
+      const bareAssertion = /^\s*(?:[).;!?](?:\s|$)|\n|$)/u.test(after);
+      if (!/аркан\p{L}*/iu.test(match[0]) && !arcanaAfter && !namedAfter && !bareAssertion) continue;
       if (Number(match[1]) !== expected) return false;
     }
   }
@@ -59,15 +106,25 @@ export function canonicalizeArcanaNamesInText(
 ): string {
   return String(text || "").replace(
     ARCANA_PAIR_RE,
-    (_full, numStr: string, dash: string, openQuote: string, name: string) => {
+    (full, numStr: string, bridge: string, dash: string, openQuote: string, name: string, offset: number, source: string) => {
+      if (!isArcanaAssertion(source, offset, full, bridge, openQuote, name)) return full;
       const n = Number(numStr);
       const canon = getMatrixArcanaEntry(n, calculationVersion)?.title;
       if (!canon || n < 1 || n > 22) {
-        return `${numStr} ${dash} ${openQuote}${name}`;
+        return full;
       }
-      const close =
-        openQuote === "«" ? "»" : openQuote === '"' ? '"' : openQuote === "'" ? "'" : "";
-      return `${numStr} ${dash} ${openQuote}${canon}${close}`;
+      const numberAndDash = bridge.trim() ? `${numStr}${bridge}${dash} ` : `${numStr} ${dash} `;
+      const prefix = ARCANA_TITLE_PREFIX_RE.exec(name)?.[0];
+      // Only the title is replaceable. Everything after it is client prose,
+      // including the final punctuation of a numbered action.
+      if (prefix) {
+        // Retain correct Russian cases; names belonging to another card still normalize.
+        if (normArcanaName(prefix) !== normArcanaName(canon) && arcanaTitleMatches(normArcanaName(prefix), canon)) return full;
+        return `${numberAndDash}${openQuote}${canon}${name.slice(prefix.length)}`;
+      }
+      // Unknown names are safe to normalize only inside an explicit title.
+      if ((openQuote && /[»"']/u.test(source[offset + full.length] ?? "")) || source[offset + full.length] === ")") return `${numberAndDash}${openQuote}${canon}`;
+      return full;
     }
   );
 }
@@ -267,13 +324,14 @@ export function matrixReadingMatchesEngine(
 
   for (const m of t.matchAll(ARCANA_PAIR_RE)) {
     const n = Number(m[1]);
-    const name = normArcanaName(m[4] ?? "");
+    const name = normArcanaName(m[5] ?? "");
     if (n < 1 || n > 22 || !name) continue;
+    if (!isArcanaAssertion(t, m.index ?? 0, m[0], m[2], m[4], m[5])) continue;
     const tableName = getMatrixArcanaEntry(n, matrix.calculationVersion)?.title;
     if (!tableName) continue;
-    if (!name.startsWith(normArcanaName(tableName))) return false;
+    if (!arcanaTitleMatches(name, tableName)) return false;
     const engineName = expected.get(n);
-    if (engineName && !name.startsWith(normArcanaName(engineName))) return false;
+    if (engineName && !arcanaTitleMatches(name, engineName)) return false;
   }
 
   // Every required zone heading must carry the engine's number for that zone.

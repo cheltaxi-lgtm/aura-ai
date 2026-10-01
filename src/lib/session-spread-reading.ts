@@ -5,6 +5,7 @@ import { hasCompleteSpread, normalizeSpreadId } from "@/lib/spreads";
 import { isNumerologMaster } from "@/lib/numerolog/welcome";
 import {
   decodeNumerologSpreadId,
+  numerologComputedOnlyTool,
   numerologReadingCacheKey,
   numerologSpreadComplete,
 } from "@/lib/numerology/tools";
@@ -79,6 +80,30 @@ async function findHistoryMetaBySessionId(
   return null;
 }
 
+function computedNumerologTool(session: SessionRow, characterId: string) {
+  const tool = decodeNumerologSpreadId(session.spread_id);
+  return tool && isNumerologMaster(characterId) && numerologComputedOnlyTool(tool) ? tool : null;
+}
+
+/** Empty cards identify no person. Recover computed readings only within their
+ * owned session, preferring the durable report when secondary history failed. */
+async function findComputedReadingForSession(
+  profileUserId: string, characterId: string, session: SessionRow
+): Promise<StoredSpreadReadingMeta | null> {
+  const tool = computedNumerologTool(session, characterId);
+  if (!tool) return null;
+  const { rows } = await query<{ content: string }>(
+    `SELECT content FROM numerology_report_history
+     WHERE user_id=$1 AND session_id=$2 AND tool_id=$3
+     ORDER BY created_at DESC LIMIT 1`,
+    [profileUserId, session.id, tool]
+  );
+  const report = rows[0]?.content?.trim();
+  if (report && report.length >= MIN_STORED_READING_CHARS) return asMeta(report);
+  const history = await findHistoryMetaBySessionId(profileUserId, characterId, session.id);
+  return history ?? asMeta(await findSessionMemoryReading(profileUserId, session.id, characterId));
+}
+
 export async function findSpreadReadingForSession(
   profileUserId: string,
   characterId: string,
@@ -93,6 +118,9 @@ async function findSpreadReadingMetaForSession(
   characterId: string,
   session: SessionRow
 ): Promise<StoredSpreadReadingMeta | null> {
+  if (computedNumerologTool(session, characterId)) {
+    return findComputedReadingForSession(profileUserId, characterId, session);
+  }
   const sessionCards = session.cards ?? [];
   const spreadId = normalizeSpreadId(session.spread_id);
   const numerologToolId = decodeNumerologSpreadId(session.spread_id);
@@ -147,6 +175,9 @@ export async function findStoredSpreadReadingWithMeta(
   characterId: string,
   session: SessionRow
 ): Promise<StoredSpreadReadingMeta | null> {
+  if (computedNumerologTool(session, characterId)) {
+    return findComputedReadingForSession(profileUserId, characterId, session);
+  }
   const bySessionId = await findHistoryMetaBySessionId(
     profileUserId,
     characterId,

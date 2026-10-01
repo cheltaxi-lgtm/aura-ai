@@ -52,7 +52,7 @@ import {
 } from "@/lib/session";
 import { ensureSpreadReadingInChatMessages } from "@/lib/spread-reading-persist";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
-import { getRuneSettings } from "@/lib/rune-settings";
+import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import {
   isUsableMatrixReading,
   sanitizeReadingForClient,
@@ -236,7 +236,7 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     ? diagramForSavedReport(owned, subjectName || gate.resolved.name)
     : buildLiveMatrixDiagram(subjectBirthDate, subjectName || gate.resolved.name);
   const summaryOwnedUsable = Boolean(
-    owned?.content?.trim() && isUsableMatrixReading(owned.content, toolId)
+    owned?.content?.trim() && isUsableMatrixReading(owned.content, toolId, owned.calculationVersion)
   );
   const currentStructured = summary.matrix
     ? matrixToStructuredData(summary.matrix)
@@ -262,7 +262,7 @@ export async function botMatrixSummary(telegramUserId: number, subjectId?: strin
     subjectId: subject?.id ?? null,
     subjectKind: subject?.kind ?? null,
     subjectName: subjectName ?? null,
-    subject: subject ? { id: subject.id, kind: subject.kind, displayName: subject.displayName, birthDate: subject.birthDate } : null,
+    subject: subject ? { id: subject.id, kind: subject.kind, displayName: subject.displayName, birthDate: subjectBirthDate } : null,
     name: subjectName || gate.resolved.name || null,
     portrait: summary.portrait.slice(0, 900),
     moneyInsight: summary.moneyInsight.slice(0, 400),
@@ -340,7 +340,7 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
       message: "Отчёт не найден.",
     };
   }
-  if (!isUsableMatrixReading(report.content, report.toolId)) {
+  if (!isUsableMatrixReading(report.content, report.toolId, report.calculationVersion)) {
     return {
       ok: false as const,
       error: "not_found" as const,
@@ -359,7 +359,7 @@ export async function botMatrixGet(telegramUserId: number, reportId: string, _su
     subjectId: report.subjectId,
     subjectKind: subject?.kind ?? null,
     subjectName,
-    subject: subject ? { id: subject.id, kind: subject.kind, displayName: subject.displayName, birthDate: subject.birthDate } : null,
+    subject: subject ? { id: subject.id, kind: subject.kind, displayName: subject.displayName, birthDate: report.birthDate } : null,
     birthDate: report.birthDate,
     content: sanitizeReadingForClient(report.content) || report.content,
     sessionId: report.sessionId,
@@ -444,7 +444,7 @@ export async function botMatrixRun(
     ? await findOwnedMatrixReportBySubject(profileUserId, subject.id, { toolId })
     : await findOwnedMatrixReport(profileUserId, isoBirth, { toolId });
   const ownedUsable = Boolean(
-    owned?.content?.trim() && isUsableMatrixReading(owned.content, toolId)
+    owned?.content?.trim() && isUsableMatrixReading(owned.content, toolId, owned.calculationVersion)
   );
   const diagram = owned
     ? diagramForSavedReport(owned, subjectName)
@@ -469,11 +469,20 @@ export async function botMatrixRun(
     }
     await updateSessionChatMeta(sessionId, {
       characterKey: "numerolog",
-      intention: "destiny_matrix",
+      intention: toolId,
       spreadType: "new",
-      spreadId: "destiny_matrix",
+      spreadId: toolId,
       cards: [],
     });
+    await query(`UPDATE sessions SET numerolog_tool_params = COALESCE(numerolog_tool_params, '{}'::jsonb)
+      || $3::jsonb WHERE id = $1 AND user_id = $2`, [sessionId, profileUserId, JSON.stringify({
+      matrixSubjectId: owned.subjectId ?? subject?.id, matrixBirthDate: owned.birthDate,
+      subjectName, subjectKind: subject?.kind ?? "self", botMatrixReceipt: {
+        birthDate: owned.birthDate, subjectName, subjectIdentity,
+        structuredData: owned.structuredData, calculationVersion: owned.calculationVersion,
+        createdAt: owned.createdAt, content: owned.content,
+      },
+    })]);
     const safeOwned = sanitizeReadingForClient(owned.content) || owned.content;
     await ensureSpreadReadingInChatMessages({
       sessionId,
@@ -481,9 +490,9 @@ export async function botMatrixRun(
       characterId: "numerolog",
       reading: safeOwned,
       tarotCards: [],
-      intention: "destiny_matrix",
+      intention: toolId,
       spreadType: "new",
-      spreadId: "destiny_matrix",
+      spreadId: toolId,
       customQuestion: "Матрица судьбы",
     });
     await purgeMatrixConsultationSessions(profileUserId, []);
@@ -559,7 +568,7 @@ export async function botMatrixRun(
     try {
       billingCharge = await BillingService.chargeForSession({
         userId: profileUserId,
-        cost: tool.cost,
+        cost: runeCostFromSettings(runeSettings, chargeAction),
         actionType: chargeAction,
         description: `${subject?.kind === "child" ? "Детская" : "Полная"} матрица — разбор Эвелины`,
         idempotencyKey: `tg-matrix:${subject?.id ?? isoBirth}:${operationId}`,
@@ -618,7 +627,7 @@ export async function botMatrixRun(
     [boundSessionId, profileUserId]) : null;
     const saved = original?.rows[0];
     const frozen = saved?.receipt;
-    if (ownedAgain?.content?.trim() && isUsableMatrixReading(ownedAgain.content, toolId)) {
+    if (ownedAgain?.content?.trim() && isUsableMatrixReading(ownedAgain.content, toolId, ownedAgain.calculationVersion)) {
       const sessionId = ownedAgain.sessionId?.trim() || boundSessionId || "";
       const safeOwned = sanitizeReadingForClient(ownedAgain.content) || ownedAgain.content;
       return {
@@ -640,7 +649,7 @@ export async function botMatrixRun(
       };
     }
     if (boundSessionId) {
-      if (saved?.content?.trim() && isUsableMatrixReading(saved.content, toolId)) {
+      if (saved?.content?.trim() && isUsableMatrixReading(saved.content, toolId, frozen?.calculationVersion)) {
         const originalDiagram = frozen?.structuredData && frozen.birthDate && frozen.calculationVersion && frozen.createdAt
           ? diagramForSavedReport({ birthDate: frozen.birthDate, structuredData: frozen.structuredData,
               calculationVersion: frozen.calculationVersion, createdAt: frozen.createdAt }, frozen.subjectName)
@@ -698,9 +707,9 @@ export async function botMatrixRun(
   }
   await updateSessionChatMeta(session.id, {
     characterKey: "numerolog",
-    intention: "destiny_matrix",
+    intention: toolId,
     spreadType: "new",
-    spreadId: "destiny_matrix",
+    spreadId: toolId,
     cards: [],
   });
 
@@ -735,10 +744,11 @@ export async function botMatrixRun(
     // Preserve the original diagram and subject alongside the charge-bound
     // session; a later replacement updates the mutable report archive row.
     await query(`UPDATE sessions SET numerolog_tool_params = COALESCE(numerolog_tool_params, '{}'::jsonb)
-      || jsonb_build_object('botMatrixReceipt', $3::jsonb) WHERE id = $1 AND user_id = $2`,
+      || $4::jsonb || jsonb_build_object('botMatrixReceipt', $3::jsonb) WHERE id = $1 AND user_id = $2`,
     [session.id, profileUserId, JSON.stringify({ birthDate: isoBirth, subjectName, subjectIdentity,
       structuredData: ownedSnap.snapshot, calculationVersion: ownedSnap.calculationVersion ?? MATRIX_CALCULATION_VERSION,
-      createdAt: ownedSnap.asOfDate })]);
+      createdAt: ownedSnap.asOfDate }), JSON.stringify({ matrixSubjectId: subject?.id,
+      matrixBirthDate: isoBirth, subjectName, subjectKind: subject?.kind ?? "self" })]);
     const sessionResult = await generateNumerologSessionReading({
       toolId,
       userName: readerName,
@@ -762,7 +772,7 @@ export async function botMatrixRun(
       snapshot: ownedSnap.snapshot,
       asOfDate: ownedSnap.asOfDate,
     });
-    if (matrix && (!isUsableMatrixReading(reading, toolId) || !reading.trim())) {
+    if (matrix && (!isUsableMatrixReading(reading, toolId, ownedSnap.calculationVersion) || !reading.trim())) {
       const { buildMatrixAudience } = await import("@/lib/numerology/matrix-audience");
       reading = forceFillMissingSections(
         reading || "",
@@ -778,7 +788,7 @@ export async function botMatrixRun(
       );
       reading = sanitizeReadingForClient(reading) || reading;
     }
-    if (!isUsableMatrixReading(reading, toolId) || !reading.trim()) {
+    if (!isUsableMatrixReading(reading, toolId, ownedSnap.calculationVersion) || !reading.trim()) {
       throw new Error("matrix_prompt_leak_or_empty");
     }
     await query(`UPDATE sessions SET numerolog_tool_params = jsonb_set(numerolog_tool_params,
@@ -859,9 +869,9 @@ export async function botMatrixRun(
       characterId: "numerolog",
       reading,
       tarotCards: [],
-      intention: "destiny_matrix",
+      intention: toolId,
       spreadType: "new",
-      spreadId: "destiny_matrix",
+      spreadId: toolId,
       customQuestion: "Матрица судьбы",
     });
 

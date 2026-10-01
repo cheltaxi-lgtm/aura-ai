@@ -7,16 +7,7 @@ const SUBJECT_B = "22222222-2222-4222-8222-222222222222";
 const REPORT_A = "33333333-3333-4333-8333-333333333333";
 const JOB_A = "44444444-4444-4444-8444-444444444444";
 
-const FROZEN = {
-  asOf: { date: "2026-08-20", year: 2026, month: 8 },
-  comfort: { number: 12, arcanaName: "Повешенный" },
-  talents: { number: 20, arcanaName: "Суд" },
-  purpose: { number: 21, arcanaName: "Мир" },
-  version: "matrix-v5",
-  calculationVersion: "matrix-v5",
-  methodologyId: "zovus-matrix-22-v2",
-  rendererVersion: "matrix-svg-v6",
-};
+const FROZEN = matrixToStructuredData(destinyMatrix(DOB, { asOfDate: "2026-08-20" })!, DOB);
 
 async function confirmAge(page: Page) {
   await page.addInitScript(() => {
@@ -541,6 +532,25 @@ test("free matrix has a readable print document and browser PDF action on mobile
   await page.evaluate(() => { window.print = () => { document.body.dataset.printed = "yes"; }; });
   await page.getByRole("button", { name: "Печать / сохранить PDF", exact: true }).click();
   await expect(page.locator("body")).toHaveAttribute("data-printed", "yes");
+});
+
+test("reset discards a delayed saved subject calculation", async ({ page }) => {
+  await installMatrixBackend(page); await confirmAge(page);
+  let release!: () => void;
+  const delayed = new Promise<void>(resolve => { release = resolve; });
+  await page.route("**/api/profile", route => route.fulfill({ json: { profile: { name: "QA", birthDate: DOB } } }));
+  await page.route("**/api/numerology/matrix-subjects", route => route.fulfill({ json: { subjects: [{ id: SUBJECT_B, kind: "other", displayName: "Анна", birthDate: "1988-03-03" }], limit: 20 } }));
+  await page.route("**/api/numerology/matrix-snapshot**", async route => {
+    if (!new URL(route.request().url()).searchParams.has("subjectId")) return route.fulfill({ status: 404, json: {} });
+    await delayed;
+    return route.fulfill({ json: { birthDate: "1988-03-03", snapshot: matrixToStructuredData(destinyMatrix("1988-03-03", { asOfDate: "2024-01-01" })!, "1988-03-03") } });
+  });
+  await page.goto("/numerology/destiny-matrix");
+  await page.getByRole("button", { name: /^Анна/ }).click();
+  await page.getByRole("button", { name: "Ввести другую дату", exact: true }).click();
+  release();
+  await expect(page.locator('input[type="date"]').first()).toHaveValue("");
+  await expect(page.getByRole("link", { name: "Печатная версия расчёта", exact: true })).toHaveCount(0);
 });
 
 test("matrix points remain readable and selectable on narrow screens", async ({ page }) => {

@@ -452,7 +452,7 @@ export async function getCabinetSessions(
          sm.outcome_rating,
          COALESCE(sm.created_at, s.created_at) AS created_at,
          COALESCE(s.status, 'active') AS status,
-         n.birth_date AS matrix_birth_date,
+            n.birth_date::text AS matrix_birth_date,
          n.calculation_version AS matrix_calculation_version,
          n.structured_data AS matrix_structured_data,
          ms.display_name AS matrix_subject_name,

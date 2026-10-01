@@ -5,6 +5,8 @@ import {
   WORKER_JOB_HEADER,
   WORKER_SECRET_HEADER,
   WORKER_USER_HEADER,
+  WORKER_ATTEMPT_HEADER,
+  WORKER_ID_HEADER,
 } from "@/lib/async-job-worker-auth";
 
 import type { ReportJobRunResult } from "./types";
@@ -49,6 +51,8 @@ export async function runRouteHandlerInProcess(input: {
       [WORKER_SECRET_HEADER]: secret,
       [WORKER_USER_HEADER]: input.job.user_id,
       [WORKER_JOB_HEADER]: input.job.id,
+      [WORKER_ATTEMPT_HEADER]: String(input.job.attempt_count),
+      [WORKER_ID_HEADER]: input.job.worker_id ?? "",
     },
     body: JSON.stringify({ ...input.job.input, ...input.body, async: false }),
   });

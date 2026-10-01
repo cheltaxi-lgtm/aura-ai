@@ -1,5 +1,4 @@
 import { observeProductRequest } from "@/lib/activation-telemetry";
-import { refundReadingCharge } from "@/lib/services/reading-refund-service";
 import { matrixReportDisplayMetadata } from "@/lib/numerology/matrix-report-display";
 import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { matrixCompatibility } from "@/lib/numerology/matrix-compatibility";
@@ -16,6 +15,7 @@ import {
 } from "@/lib/require-auth";
 import {
   getAsyncJobIdFromRequest,
+  getAsyncJobAttemptFromRequest,
   getAsyncJobWorkerUserId,
   isAsyncJobWorkerConfigured,
 } from "@/lib/async-job-worker-auth";
@@ -26,6 +26,8 @@ import {
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobRefunded,
+  refundWorkerJobCharge,
+  shouldRefundBeforeWorkerFail,
 } from "@/lib/async-job-lifecycle";
 import { mergeAsyncJobPeriodMetadata } from "@/lib/async-jobs";
 import {
@@ -107,6 +109,7 @@ import {
   lookupOwnedMatrixReport,
   MATRIX_REPORT_TOOL_ID,
   saveMatrixReport,
+  getUserMatrixReportById,
   toIsoBirthDate as toIsoBirthDateShared,
 } from "@/lib/services/numerology-report-service";
 import {
@@ -459,6 +462,9 @@ async function handlePost(request: NextRequest) {
     }
 
     if (resolvedMatrixSubject) {
+      if (getAsyncJobIdFromRequest(request) && toIsoBirthDateShared(typeof rawBody.birthDate === "string" ? rawBody.birthDate : null) !== resolvedMatrixSubject.birthDate) {
+        return NextResponse.json({ error: "Дата рождения изменилась после запуска. Запустите новый расчёт.", code: "matrix_subject_date_mismatch" }, { status: 409 });
+      }
       birthDate = resolvedMatrixSubject.birthDate;
       // Date-only Matrix: never inherit Natal/HD time/place from the subject.
       if (resolvedMatrixSubject.kind !== "self") {
@@ -617,7 +623,7 @@ async function handlePost(request: NextRequest) {
   let refundConfirmed = false;
   let deliveredMatrixMetadata: Record<string, unknown> = {};
   async function rollbackReadingCharge(params: Parameters<typeof BillingService.rollbackCharge>[0]): Promise<number> {
-    const outcome = await refundReadingCharge(params, () => trackWorkerJobRefunded(request));
+    const outcome = await refundWorkerJobCharge(request, params);
     refundConfirmed = refundConfirmed || outcome.refunded;
     return outcome.balance;
   }
@@ -1251,7 +1257,7 @@ async function handlePost(request: NextRequest) {
               workerJobId &&
               (toolId === "destiny_matrix" || toolId === "child_matrix")
                 ? async (progress) => {
-                    await mergeAsyncJobPeriodMetadata(workerJobId, { progress });
+                    await mergeAsyncJobPeriodMetadata(workerJobId, { progress }, getAsyncJobAttemptFromRequest(request) ?? undefined);
                   }
                 : undefined,
           });
@@ -1269,7 +1275,7 @@ async function handlePost(request: NextRequest) {
           }
         } catch (genErr) {
           console.error("Numerolog session reading failed:", genErr);
-          if (billingCharge) {
+          if (billingCharge && await shouldRefundBeforeWorkerFail(request, "generation_failed")) {
             await rollbackReadingCharge({
               userId: authed.profileUserId,
               cost: billingCharge.spentRunes,
@@ -1396,6 +1402,7 @@ async function handlePost(request: NextRequest) {
               ? matrixToStructuredData(matrix)
               : { version: MATRIX_CALCULATION_VERSION };
             const saved = await saveMatrixReport({
+              ...(getAsyncJobIdFromRequest(request) && getAsyncJobAttemptFromRequest(request) ? { workerJob: { jobId: getAsyncJobIdFromRequest(request)!, attempt: getAsyncJobAttemptFromRequest(request)! } } : {}),
               userId: authed.profileUserId,
               birthDateRaw: birthDate,
               subjectId: resolvedMatrixSubject?.id,
@@ -1438,7 +1445,7 @@ async function handlePost(request: NextRequest) {
             const jobIdForRelease = getAsyncJobIdFromRequest(request);
             if (jobIdForRelease) {
               const { releaseAsyncJobSaveClaim } = await import("@/lib/async-jobs");
-              await releaseAsyncJobSaveClaim(jobIdForRelease).catch(() => undefined);
+              await releaseAsyncJobSaveClaim(jobIdForRelease, getAsyncJobAttemptFromRequest(request) ?? undefined).catch(() => undefined);
             }
             if (billingCharge) {
               await rollbackReadingCharge({
@@ -1457,11 +1464,13 @@ async function handlePost(request: NextRequest) {
 
         if (toolId === "matrix_compatibility" && birthDate && (await ensureDb())) {
           try {
+            if (!(await beginWorkerJobSave(request))) return { kind: "failed" as const };
             const partnerDate = toIsoBirthDateShared(numerologToolParams.partnerDate ?? "");
             const pairMatrix = matrixPairResult?.matrixA;
             const pairContent = (reading || "").trim();
             if (pairContent && partnerDate && matrixPairResult) {
               const savedPair = await saveMatrixReport({
+                ...(getAsyncJobIdFromRequest(request) && getAsyncJobAttemptFromRequest(request) ? { workerJob: { jobId: getAsyncJobIdFromRequest(request)!, attempt: getAsyncJobAttemptFromRequest(request)! } } : {}),
                 userId: authed.profileUserId,
                 birthDateRaw: birthDate,
                 subjectId: resolvedMatrixSubject?.id,
@@ -1481,6 +1490,7 @@ async function handlePost(request: NextRequest) {
                   numerologToolParams,
                 },
               });
+              deliveredMatrixMetadata = { ...matrixReportDisplayMetadata(savedPair.report), reportId: savedPair.report.id };
               if (savedPair.status === "already_saved") {
                 reading = savedPair.report.content;
                 if (billingCharge) {
@@ -1499,7 +1509,7 @@ async function handlePost(request: NextRequest) {
             const jobId = getAsyncJobIdFromRequest(request);
             if (jobId) {
               const { releaseAsyncJobSaveClaim } = await import("@/lib/async-jobs");
-              await releaseAsyncJobSaveClaim(jobId).catch(() => undefined);
+              await releaseAsyncJobSaveClaim(jobId, getAsyncJobAttemptFromRequest(request) ?? undefined).catch(() => undefined);
             }
             if (billingCharge) {
               await rollbackReadingCharge({ userId: authed.profileUserId, cost: billingCharge.spentRunes, wasFreeQuestion: false, actionType: billingCharge.actionType, transactionId: billingCharge.transactionId });
@@ -1541,8 +1551,12 @@ async function handlePost(request: NextRequest) {
               ...(isDailySpread ? { spreadType: "daily" } : {}),
             },
             isPaid,
+          }).catch(error => {
+            if (!deliveredMatrixMetadata.reportId) throw error;
+            console.warn("Matrix delivered; secondary history save failed:", error);
+            return null;
           });
-          historyId = entry.id;
+          historyId = entry?.id;
 
           if (!isNumerologMaster(characterId)) {
             void patchTripletInterpretation(authed.profileUserId, cardsKey, {
@@ -1896,6 +1910,17 @@ async function handlePost(request: NextRequest) {
     return NextResponse.json(successPayload);
   } catch (error) {
     console.error("Reading error:", error);
+    if (typeof deliveredMatrixMetadata.reportId === "string") {
+      const saved = await getUserMatrixReportById(authed.profileUserId, deliveredMatrixMetadata.reportId).catch(() => null);
+      if (saved) {
+        const payload = { ...matrixReportDisplayMetadata(saved), reading: saved.content,
+          reportId: saved.id, isPaid: true, matrixOwned: true,
+          matrixSubjectId: saved.subjectId, subjectKind: resolvedMatrixSubject?.kind,
+          subjectName: resolvedMatrixSubject?.displayName, createdAt: saved.createdAt };
+        await trackWorkerJobCompleted(request, payload).catch(() => undefined);
+        return NextResponse.json(payload);
+      }
+    }
     const { reportError } = await import("@/lib/error-report");
     reportError(error, { route: "reading", spentRunes });
     // CFA in catch can narrow billingCharge to never; snapshot via alias.
