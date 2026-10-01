@@ -8,6 +8,7 @@ import {
   majorArcanaNameTable,
   matrixDocumentMatchesEngine,
   matrixReadingMatchesEngine,
+  matrixProseMatchesRoles,
 } from "@/lib/numerology/matrix-completeness";
 import {
   headingLineForZone,
@@ -27,6 +28,27 @@ function skeletonReading(matrix: ReturnType<typeof destinyMatrix>): string {
 }
 
 describe("matrix arcana name table (Marseille for Matrix, RW for Tarot)", () => {
+  it("recognizes declined titles without consuming the rest of a sentence or ordinal numbers", () => {
+    const matrix = destinyMatrix("1988-03-03")!;
+    const raw = "После 18 — Луны стоит 8 — Справедливость, поэтому проверь условия. Переход к 8 — Справедливости потребует ясных решений. 10-й аркан задаёт другой ритм.";
+    const fixed = canonicalizeArcanaNamesInText(raw);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${raw}`, matrix)).toBe(true);
+    expect(fixed).toBe(raw);
+    expect(canonicalizeArcanaNamesInText(fixed)).toBe(fixed);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${fixed}`, matrix)).toBe(true);
+    expect(canonicalizeArcanaNamesInText("11 — Справедливостью поддержи границы.")).toBe("11 — Сила поддержи границы.");
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nДни с 5 по 7 — проверь условия и сохрани договорённости.`, matrix)).toBe(true);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nАркан (7 — «Безымянный»).`, matrix)).toBe(false);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nАркан 7 — Безымянный.`, matrix)).toBe(false);
+    expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\nАркан (20 — «Судьба»).`, matrix)).toBe(false);
+  });
+  it("rejects a wrong money-zone number inside an explicitly labelled comparison", () => {
+    const matrix = destinyMatrix("1988-03-03")!;
+    expect(matrix.money.number).toBe(18);
+    expect(matrixProseMatchesRoles("В отличие от зоны денег, где 10-й аркан связан с обменом, здесь он помогает поддерживать ритм.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("В отличие от зоны денег, где 18-й аркан связан с обменом, здесь он помогает поддерживать ритм.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В зоне денег важно проверить условия за 10 дней.", matrix)).toBe(true);
+  });
   it("checks long prose and normalizes flexible whitespace without deleting the continuation", () => {
     const matrix = destinyMatrix("1990-05-15")!;
     const long = "8 — Сила поможет принять справедливое решение в денежном канале.";

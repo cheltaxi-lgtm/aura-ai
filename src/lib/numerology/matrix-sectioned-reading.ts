@@ -26,6 +26,7 @@ import {
   isCompleteMatrixReading,
   matrixMissingSections,
   matrixProseMatchesRoles,
+  matrixReadingMatchesEngine,
 } from "./matrix-completeness";
 import {
   buildMatrixPlainFinale,
@@ -1056,7 +1057,7 @@ export async function generateFullMatrixSectionedReading(input: {
 
   // Engine titles win over LLM renames (Marseille swaps / synonyms).
   reading = canonicalizeArcanaNamesInText(reading, matrix.calculationVersion);
-  if (!isCompleteMatrixReading(reading, toolId, matrix.calculationVersion)) {
+  if (!isCompleteMatrixReading(reading, toolId, matrix.calculationVersion) || !matrixReadingMatchesEngine(reading, matrix, toolId)) {
     throw new MatrixQualityCanaryError(document.meta, toolId);
   }
 
