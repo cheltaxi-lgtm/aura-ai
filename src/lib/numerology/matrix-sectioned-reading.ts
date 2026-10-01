@@ -33,6 +33,7 @@ import {
   type MatrixPointRole,
 } from "./matrix-point-prompt";
 import { appendNumerologFinale } from "./numerolog-finale-client";
+import { matrixProseHasCompleteEnding, matrixStepsAreComplete } from "./matrix-prose-completeness";
 import {
   listMatrixZones,
   matrixZoneDefsFor,
@@ -365,18 +366,19 @@ async function llmOnce(
     try {
       let result = await run(budget);
       let text = (result.text || "").trim();
-      // Reasoning models often hit length with tiny content — one richer retry only for them.
-      if (
-        (!text || text.length < 120) &&
-        result.finishReason === "length" &&
-        isReasoningHeavyModel(model)
-      ) {
-        const richer = Math.max(budget, ZONE_MAX_TOKENS_REASONING);
+      // A long response can still end halfway through its final action or practice.
+      // Retry the whole block once; never save a provider-confirmed cutoff.
+      if (result.finishReason === "length") {
+        const richer = Math.max(budget * 2, isReasoningHeavyModel(model) ? ZONE_MAX_TOKENS_REASONING : budget + 600);
         console.warn(
           `[matrix-sectioned] llm retry richer zone=${label ?? "?"} model=${model} finish=${result.finishReason} len=${text.length} tokens=${richer} usage=${JSON.stringify(result.usage ?? {})}`
         );
         result = await run(richer);
         text = (result.text || "").trim();
+      }
+      if (result.finishReason === "length") {
+        console.warn(`[matrix-sectioned] llm reject truncated zone=${label ?? "?"} model=${model}`);
+        continue;
       }
       if (!text || text.length < 80) {
         console.warn(
@@ -469,13 +471,7 @@ function looksBrokenZoneLlm(text: string): boolean {
   ).join("\n").trim();
   if (/^[\-):*.•]+/u.test(body)) return true;
   if (body.length < 100) return true;
-  if (
-    body.length < 420 &&
-    !/Практика\s*:/i.test(body) &&
-    !/[.!?…)]\s*$/u.test(body)
-  ) {
-    return true;
-  }
+  if (!matrixProseHasCompleteEnding(body)) return true;
   return false;
 }
 
@@ -514,6 +510,10 @@ function normalizeZoneBlock(raw: string, zone: MatrixZoneInstance): string | nul
     console.warn(
       `[matrix-sectioned] zone reject broken label=${zone.label} len=${text.length} head=${text.slice(0, 80).replace(/\n/g, " ")}`
     );
+    return null;
+  }
+  if (zone.id === "steps" && !matrixStepsAreComplete(text, 4)) {
+    console.warn("[matrix-sectioned] steps reject incomplete actions");
     return null;
   }
   return text;
@@ -571,6 +571,7 @@ async function generateMatrixZoneLlm(
         ? "Шаги — действия для заказчика (на «ты»), опираясь на матрицу другого человека. Без markdown. Без других зон."
         : "Только «ты» к клиенту. Без markdown. Без других зон. Без «Простыми словами».",
       "Формат: первая строка точно «Шаги на 30 дней», затем 4–6 нумерованных шагов 1) 2) 3)…",
+      "Каждый шаг — 1–2 законченных предложения, до 250 символов. Заверши каждый шаг точкой. Все действия укладываются в дни 1–30; не добавляй пятую или шестую неделю.",
       "Названия арканов ниже — готовые строки движка. Запрещено переименовывать арканы.",
     ].join("\n");
     const user = [
@@ -593,7 +594,7 @@ async function generateMatrixZoneLlm(
         { role: "system", content: system },
         { role: "user", content: user },
       ],
-      600,
+      1200,
       zone.id
     );
     return raw ? normalizeZoneBlock(raw, zone) : null;

@@ -37,8 +37,6 @@ import {
   wipeUserMatrixReports,
 } from "@/lib/numerology/matrix-session-cleanup";
 import {
-  deleteOwnedMatrixReportsForBirth,
-  deleteOwnedMatrixReportsForSubject,
   findOwnedMatrixReport,
   findOwnedMatrixReportBySubject,
   getUserMatrixReportById,
@@ -512,7 +510,7 @@ export async function botMatrixRun(
     return { ok: false, error: "operation_required", message: "Откройте матрицу заново и подтвердите расчёт." };
   }
 
-  // Unusable text: drop only that calculation version, then regenerate.
+  // Unusable text is repaired free while its purchased artifact stays durable.
   // Explicit replace overwrites the current calculation version; rows for other
   // calculation versions remain in the archive.
   const regenerateAfterLeak = Boolean(owned?.content?.trim() && !ownedUsable && !replace);
@@ -688,20 +686,8 @@ export async function botMatrixRun(
   let persisted: Awaited<ReturnType<typeof saveMatrixReport>> | null = null;
   let resultSessionId = "";
   try {
-  // Cleanup belongs only to a newly accepted generation. A replay must retain
-  // its original session even when the current mutable report is unusable.
-  if (regenerateAfterLeak && owned) {
-    const subjectForWipe = subject ?? (await ensureSelfSubject(profileUserId));
-    const wiped = subjectForWipe?.id
-      ? await deleteOwnedMatrixReportsForSubject(profileUserId, subjectForWipe.id, {
-          toolId,
-          calculationVersion: owned.calculationVersion,
-        })
-      : await deleteOwnedMatrixReportsForBirth(profileUserId, isoBirth, {
-          calculationVersion: owned.calculationVersion,
-        });
-    await purgeMatrixConsultationSessions(profileUserId, wiped.sessionIds);
-  }
+  // Keep the owned paid artifact until a complete replacement is saved.
+  // A failed free repair must remain free on the next attempt too.
   const session = await createSession(undefined, profileUserId);
   resultSessionId = session.id;
   await bindBotChargeSession(billingCharge?.transactionId, session.id);
@@ -736,7 +722,10 @@ export async function botMatrixRun(
       `${numerologMemoryCtx.clientBlock}${numerologMemoryCtx.pastSessionsBlock}${numerologMemoryCtx.factsBlock}`.trim() ||
       undefined;
 
-    const ownedSnap = await ensureOwnedMatrixSnapshot({
+    const { matrixReportRepairFacts } = await import("@/lib/numerology/matrix-report-display");
+    const ownedSnap = regenerateAfterLeak && owned && !isLegacyMatrixCalculationVersion(owned.calculationVersion)
+      ? matrixReportRepairFacts(owned)
+      : await ensureOwnedMatrixSnapshot({
       userId: profileUserId,
       birthDate,
       displayName: subjectName,
@@ -816,8 +805,10 @@ export async function botMatrixRun(
           : {}),
       },
       subjectId: subject?.id,
-      // Overwrite is scoped to this calculation_version — older purchased rows stay.
-      overwrite: replace || regenerateAfterLeak,
+      calculationVersion: matrix?.calculationVersion ?? (regenerateAfterLeak ? owned?.calculationVersion : undefined),
+      // Explicit new orders overwrite; automatic repairs retain the paid receipt.
+      overwrite: replace,
+      repairUnusableReportId: regenerateAfterLeak && owned && !isLegacyMatrixCalculationVersion(owned.calculationVersion) ? owned.id : undefined,
     });
     persisted = saved;
 

@@ -62,6 +62,20 @@ describe("Matrix audit calculation fixes", () => {
     expect(result.matrix.chronologicalAge).toBe(35);
     expect(result.matrix.ageCurrent.age).toBe(35);
   });
+  it.each(["matrix-v3", "matrix-v4"])("keeps purchased %s throughout a historical yearly forecast", calculationVersion => {
+    const result = matrixYearForecast(DOB, new Date("2025-08-20T12:00:00Z"), calculationVersion)!;
+    expect(result.matrix.calculationVersion).toBe(calculationVersion);
+    expect(result.matrix.asOf.date).toBe("2025-08-20");
+    expect(result.matrix.talents.number).toBe(calculationVersion === "matrix-v4" ? 5 : 1);
+    if (calculationVersion === "matrix-v3") {
+      const divergence = matrixYearForecast("1990-08-01", new Date("2025-08-20T12:00:00Z"), calculationVersion)!;
+      expect(divergence.months[0]!.number).toBe(4); // 18 + 8 = 26; frozen v3 subtracts 22.
+    }
+    for (const month of result.months) {
+      const frozen = destinyMatrix(DOB, { calculationVersion, asOfYear: month.year, asOfMonth: month.month, asOfDate: `${month.year}-${String(month.month).padStart(2, "0")}-01` })!;
+      expect(month.number).toBe(frozen.monthArcana.number);
+    }
+  });
   it("uses the frozen v3 reducer for pair derived energies", () => {
     const pair = matrixCompatibility(DOB, "1988-03-03", { asOfDate: AS_OF, calculationVersion: "matrix-v3" })!;
     expect(pair.pairComfort).toBe(reduceToArcanaSubtract22(pair.matrixA.comfort.number + pair.matrixB.comfort.number));

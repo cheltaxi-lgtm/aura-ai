@@ -408,6 +408,8 @@ export async function saveMatrixReport(params: {
   subjectId?: string;
   /** When true, replace existing row for this birth date/version (new order). */
   overwrite?: boolean;
+  /** Server-selected paid artifact: repair in place, retaining its receipt and ID. */
+  repairUnusableReportId?: string;
 }): Promise<SaveMatrixReportResult> {
   const birthDate = toIsoBirthDate(params.birthDateRaw);
   if (!birthDate) {
@@ -429,7 +431,7 @@ export async function saveMatrixReport(params: {
   const partnerRaw = data?.partnerDate || data?.dateB || toolParams?.partnerDate;
   const scope = toolId === "matrix_compatibility" ? toIsoBirthDate(typeof partnerRaw === "string" ? partnerRaw : null) : "";
   if (scope === null) throw new Error("matrix_partner_date_required");
-  const structuredData = data ? { ...data, birthDate, ...(toolId === "matrix_compatibility" ? { partnerDate: scope } : {}) } : data;
+  const structuredData: Record<string, unknown> | null | undefined = data ? { ...data, birthDate, ...(toolId === "matrix_compatibility" ? { partnerDate: scope } : {}) } : data;
   let subjectId = params.subjectId?.trim() || null;
   if (subjectId && !UUID_RE.test(subjectId)) {
     throw new Error("matrix_subject_required");
@@ -454,6 +456,36 @@ export async function saveMatrixReport(params: {
     );
     if (!ownedSubject.rows[0] || formatBirthDate(ownedSubject.rows[0].birth_date) !== birthDate) {
       throw new Error("invalid_matrix_subject");
+    }
+
+    if (params.repairUnusableReportId) {
+      const prior = await queryClient<NumerologyReportHistoryRow>(client,
+        `SELECT ${SELECT_COLS} FROM numerology_report_history
+         WHERE id = $1::uuid AND user_id = $2 AND tool_id = $3 AND subject_id = $4::uuid
+           AND birth_date = $5::date AND calculation_version = $6 AND report_scope = $7
+         FOR UPDATE`,
+        [params.repairUnusableReportId, params.userId, toolId, subjectId, birthDate, calculationVersion, scope]
+      );
+      if (!prior.rows[0]) throw new Error("invalid_matrix_report_repair");
+      const { isUsableMatrixReading } = await import("@/lib/chat-reply-sanitize");
+      const previous = mapRow(prior.rows[0]);
+      if (isUsableMatrixReading(previous.content, toolId, calculationVersion)) {
+        return { status: "already_saved" as const, report: previous };
+      }
+      if (!isUsableMatrixReading(content, toolId, calculationVersion)) {
+        throw new Error("invalid_matrix_report_repair_content");
+      }
+      const repaired = await queryClient<NumerologyReportHistoryRow>(client,
+        `UPDATE numerology_report_history SET content = $3, structured_data = $4::jsonb,
+           methodology_id = $5, renderer_version = $6, as_of_date = $7::date,
+           session_id = $8, updated_at = NOW()
+         WHERE id = $1::uuid AND user_id = $2 RETURNING ${SELECT_COLS}`,
+        [previous.id, params.userId, content, structuredData ? JSON.stringify(structuredData) : null,
+          methodologyIdForCalculationVersion(calculationVersion), structuredData?.rendererVersion ?? null,
+          (structuredData?.asOf as { date?: string } | undefined)?.date ?? null, params.sessionId ?? null]
+      );
+      if (!repaired.rows[0]) throw new Error("matrix_report_repair_conflict");
+      return { status: "updated" as const, report: mapRow(repaired.rows[0]) };
     }
 
     if (overwrite) {

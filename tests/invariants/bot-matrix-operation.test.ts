@@ -43,6 +43,7 @@ vi.mock("@/lib/session", () => ({ createSession: m.createSession, getSession: vi
 vi.mock("@/lib/memory/build-memory-context", () => ({ buildMemoryContext: vi.fn(async () => ({ clientBlock: "", pastSessionsBlock: "", factsBlock: "" })) }));
 vi.mock("@/lib/services/numerology-service", () => ({ generateNumerologSessionReading: m.generate }));
 vi.mock("@/lib/services/matrix-snapshot-persist", () => ({ ensureOwnedMatrixSnapshot: vi.fn(async () => ({ snapshot: {}, asOfDate: "2026-09-05" })) }));
+vi.mock("@/lib/numerology/matrix-report-display", () => ({ matrixReportRepairFacts: vi.fn(() => ({ snapshot: { version: "test" }, calculationVersion: "test", asOfDate: "2026-09-05" })) }));
 vi.mock("@/lib/numerology/matrix-snapshot", () => ({ resolveMatrixForDisplay: vi.fn(() => null), resolveMatrixForEngine: vi.fn(() => null), resolveMatrixForDisplayDetailed: vi.fn() }));
 vi.mock("@/lib/numerology/destiny-matrix", () => ({
   DESTINY_MATRIX_DIAGRAM_SLOTS: [], destinyMatrix: vi.fn(() => null), matrixToStructuredData: vi.fn(), MATRIX_CALCULATION_VERSION: "test",
@@ -213,5 +214,18 @@ describe("Telegram matrix operation identity", () => {
     expect(await botMatrixRun(123, { replace: false, operationId: 'free-A' })).toMatchObject({ ok: false, error: 'operation_failed' });
     expect(m.wipe).not.toHaveBeenCalled();
     expect(m.generate).not.toHaveBeenCalled();
+  });
+  it("keeps an invalid paid report through a failed free repair and never charges the retry", async () => {
+    const broken = { ...report, content: "Broken paid reading" };
+    m.owned.mockResolvedValue(broken);
+    m.usable.mockImplementation((text: string) => text === "Full saved reading");
+    m.generate.mockRejectedValueOnce(new Error("provider cutoff"));
+    expect(await botMatrixRun(123, { replace: false, subjectId: subject.id, operationId: "repair-failed" })).toMatchObject({ ok: false });
+    expect(m.wipe).not.toHaveBeenCalled();
+    expect(m.save).not.toHaveBeenCalled();
+    expect(await botMatrixRun(123, { replace: false, subjectId: subject.id, operationId: "repair-retry" })).toMatchObject({ ok: true, charged: 0 });
+    expect(m.charge).not.toHaveBeenCalled();
+    expect(m.wipe).not.toHaveBeenCalled();
+    expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ repairUnusableReportId: report.id, overwrite: false }));
   });
 });

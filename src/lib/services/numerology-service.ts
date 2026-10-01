@@ -495,7 +495,9 @@ export async function generateNumerologSessionReading(input: {
 
   const forecastContext =
     input.toolId === "matrix_year_forecast" && input.birthDate
-      ? input.matrixYearResult ?? matrixYearForecast(input.birthDate)
+      ? input.matrixYearResult ?? matrixYearForecast(input.birthDate,
+          input.asOfDate ? new Date(input.asOfDate + "T12:00:00Z") : undefined,
+          (input.matrixSnapshot?.calculationVersion ?? input.matrixSnapshot?.version) as string | undefined)
       : null;
   const message = [
     buildNumerologToolMessage(input.toolId, input.toolParams),

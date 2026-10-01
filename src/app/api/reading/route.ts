@@ -101,8 +101,6 @@ import {
 import { resolveMatrixForEngine } from "@/lib/numerology/matrix-snapshot";
 import { ensureOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
 import {
-  deleteOwnedMatrixReportsForSubject,
-  deleteOwnedMatrixReportsForBirth,
   findUsableOwnedMatrixReportBySubject,
   findUsableOwnedMatrixReport,
   lookupOwnedMatrixReportBySubject,
@@ -507,7 +505,7 @@ async function handlePost(request: NextRequest) {
     }
   }
 
-  const matrixYearResult = requestNumerologToolId === "matrix_year_forecast" && birthDate ? matrixYearForecast(birthDate) : null;
+  let matrixYearResult = requestNumerologToolId === "matrix_year_forecast" && birthDate ? matrixYearForecast(birthDate) : null;
   if (matrixYearResult) {
     matrixSnapshot = matrixToStructuredData(matrixYearResult.matrix);
     matrixAsOfDate = matrixYearResult.matrix.asOf.date;
@@ -988,6 +986,7 @@ async function handlePost(request: NextRequest) {
         // Buy-once Full Matrix: reopen usable saved AI report for THIS birth date only.
         // forceRegenerate / unusable (leaked) content must not short-circuit.
         let matrixRegenerateAfterLeak = false;
+        let matrixReportRepairId: string | undefined;
         if (isMatrixBuyOnceTool && !forceRegenerate && (await ensureDb())) {
           const isoBirth =
             toIsoBirthDateShared(birthDate) ??
@@ -1072,8 +1071,8 @@ async function handlePost(request: NextRequest) {
                 : {}),
             };
           }
-          // Bad/leaked owned report: wipe once, then regenerate free (bot parity).
-          // Always subject-scoped — birth-date wipe used to erase other people too.
+          // Retain the paid artifact through generation failures so every retry
+          // can still prove ownership and rebuild without a second charge.
           if (lookup.unusable && lookup.report && lookup.legacyVersion) {
             // Retired reducer: the text still reads fine, only its numbers are stale.
             // Keep the paid artifact (unique key includes the version, so v3 inserts
@@ -1085,24 +1084,14 @@ async function handlePost(request: NextRequest) {
             }
           } else if (lookup.unusable && lookup.report) {
             matrixRegenerateAfterLeak = true;
-            const subjectForWipe =
-              resolvedMatrixSubject ??
-              (await ensureSelfSubject(authed.profileUserId).catch(() => null));
-            const wiped = subjectForWipe
-              ? await deleteOwnedMatrixReportsForSubject(
-                  authed.profileUserId,
-                  subjectForWipe.id,
-                  { toolId, calculationVersion: lookup.report.calculationVersion }
-                )
-              : await deleteOwnedMatrixReportsForBirth(
-                  authed.profileUserId,
-                  isoBirth ?? birthDate,
-                  { toolId, calculationVersion: lookup.report.calculationVersion }
-                );
-            await purgeMatrixConsultationSessions(
-              authed.profileUserId,
-              wiped.sessionIds
-            );
+            matrixReportRepairId = lookup.report.id;
+            const { matrixReportRepairFacts } = await import("@/lib/numerology/matrix-report-display");
+            const repairFacts = matrixReportRepairFacts(lookup.report);
+            matrixSnapshot = repairFacts.snapshot;
+            matrixAsOfDate = repairFacts.asOfDate;
+            if (toolId === "matrix_year_forecast") {
+              matrixYearResult = matrixYearForecast(birthDate, new Date(repairFacts.asOfDate + "T12:00:00Z"), repairFacts.calculationVersion);
+            }
           }
         }
 
@@ -1419,6 +1408,7 @@ async function handlePost(request: NextRequest) {
               sessionId,
               // Buy-once reuse returns already_saved; forceRegenerate must overwrite.
               overwrite: forceRegenerate,
+              repairUnusableReportId: matrixReportRepairId,
               structuredData: {
                 ...structuredBase,
                 ...(matrixDocumentForSave
