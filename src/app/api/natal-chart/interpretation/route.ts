@@ -1,3 +1,8 @@
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
+import { getReportWorkerJobFromRequest } from "@/lib/async-job-worker-auth";
+import { natalBirthTimeError } from "@/lib/natal/time";
+import { natalChartJobIdentity, natalQueuedChartMatches } from "@/lib/natal/job-identity";
+import { getUserById } from "@/lib/users";
 import { NextRequest, NextResponse } from "next/server";
 import {
   profileAuthFailureResponse,
@@ -18,11 +23,9 @@ import {
   saveCurrentNatalInterpretation,
 } from "@/lib/services/natal-chart-service";
 import {
-  BillingService,
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
-import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import type { NatalTradition } from "@/lib/natal/types";
@@ -37,7 +40,7 @@ import {
   shouldRefundBeforeWorkerFail,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
-  trackWorkerJobRefunded,
+  refundWorkerJobCharge,
 } from "@/lib/natal/async-job-lifecycle";
 import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
@@ -82,7 +85,11 @@ export async function POST(request: NextRequest) {
     aiDataUseAcknowledged?: unknown;
     async?: unknown;
     forceRegenerate?: unknown;
+    chartIdentity?: unknown;
   };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Некорректный запрос." }, { status: 400 });
+  const recovered = await recoverSavedWorkerReport(ctx.profileUserId, getReportWorkerJobFromRequest(request));
+  if (recovered) return NextResponse.json(recovered);
   const forceRegenerate = body.forceRegenerate === true;
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
@@ -91,17 +98,7 @@ export async function POST(request: NextRequest) {
     );
   }
   // Prefer async queue when worker is configured; otherwise generate inline.
-  if (body.async === true && isAsyncJobWorkerConfigured()) {
-    return enqueueNatalAsyncJob({
-      userId: ctx.profileUserId,
-      kind: "natal_interpretation",
-      payload: {
-        tradition: body.tradition,
-        aiDataUseAcknowledged: true,
-        ...(forceRegenerate ? { forceRegenerate: true } : {}),
-      },
-    });
-  }
+
   const tradition: NatalTradition =
     body.tradition === "vedic" ? "vedic" : body.tradition === "western" ? "western" : "western";
 
@@ -109,6 +106,8 @@ export async function POST(request: NextRequest) {
   try {
     chart = await getOrComputeNatalChart(ctx.profileUserId);
   } catch (error) {
+    const timeError = natalBirthTimeError(error);
+    if (timeError) return NextResponse.json({ error: timeError }, { status: 400 });
     if (isInvalidBirthDateError(error)) {
       return NextResponse.json(
         { error: "Проверьте дату рождения в профиле." },
@@ -126,6 +125,20 @@ export async function POST(request: NextRequest) {
       { error: `Расчёт «${tradition === "western" ? "Западная" : "Ведическая"}» недоступен.` },
       { status: 400 }
     );
+  }
+
+  if (workerUserId && !natalQueuedChartMatches(body.chartIdentity, chart)) return NextResponse.json({ error: "Карта изменилась после заказа. Повторите заказ для текущей карты.", code: "chart_changed" }, { status: 409 });
+  if (body.async === true && isAsyncJobWorkerConfigured()) {
+    return enqueueNatalAsyncJob({
+      userId: ctx.profileUserId,
+      kind: "natal_interpretation",
+      payload: {
+        tradition,
+        chartIdentity: natalChartJobIdentity(chart),
+        aiDataUseAcknowledged: true,
+        ...(forceRegenerate ? { forceRegenerate: true } : {}),
+      },
+    });
   }
 
   const expectedBirthFingerprint = chart.birthFingerprint;
@@ -172,6 +185,7 @@ export async function POST(request: NextRequest) {
   if (claim.status === "cached") {
     const payload = {
       interpretation: claim.interpretation,
+      reportId: claim.reportId,
       report: claim.structuredData,
       evidence: claim.evidenceRefs,
       tradition,
@@ -225,10 +239,10 @@ ${evidenceIds.join("\n")}`),
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
+  let durablePayload: Record<string, unknown> | undefined;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
-    rollbackAttempted = true;
-    await BillingService.rollbackCharge({
+    const outcome = await refundWorkerJobCharge(request, {
       userId: ctx.profileUserId,
       cost: charge.spentRunes,
       wasFreeQuestion: charge.wasFreeQuestion,
@@ -236,7 +250,7 @@ ${evidenceIds.join("\n")}`),
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
-    await trackWorkerJobRefunded(request);
+    rollbackAttempted = outcome.refunded;
   };
 
   try {
@@ -273,13 +287,13 @@ ${evidenceIds.join("\n")}`),
       await trackWorkerJobFailed(
         request,
         refundNow
-          ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена."
+          ? (rollbackAttempted ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена." : "Модель не смогла создать проверяемый отчёт.")
           : "Модель не смогла создать проверяемый отчёт. Повторяем попытку.",
-        { refunded: refundNow, errorCode: "invalid_model_report" }
+        { refunded: rollbackAttempted, errorCode: "invalid_model_report" }
       );
       return NextResponse.json(
         refundNow
-          ? { error: "Модель не смогла создать проверяемый отчёт. Оплата возвращена.", refunded: true }
+          ? { error: (rollbackAttempted ? "Модель не смогла создать проверяемый отчёт. Оплата возвращена." : "Модель не смогла создать проверяемый отчёт."), refunded: rollbackAttempted }
           : { error: "Модель не смогла создать проверяемый отчёт. Повторяем попытку.", refunded: false },
         { status: 502 }
       );
@@ -293,13 +307,13 @@ ${evidenceIds.join("\n")}`),
       // job terminally instead of leaving it running until the reaper.
       await trackWorkerJobFailed(
         request,
-        "Генерация была отменена по таймауту. Оплата возвращена.",
-        { refunded: true, errorCode: "generation_claim_lost" }
+        (rollbackAttempted ? "Генерация была отменена по таймауту. Оплата возвращена." : "Генерация была отменена по таймауту."),
+        { refunded: rollbackAttempted, errorCode: "generation_claim_lost" }
       );
       return NextResponse.json(
         {
-          error: "Генерация была отменена по таймауту. Оплата возвращена.",
-          refunded: true,
+          error: (rollbackAttempted ? "Генерация была отменена по таймауту. Оплата возвращена." : "Генерация была отменена по таймауту."),
+          refunded: rollbackAttempted,
         },
         { status: 409 }
       );
@@ -316,6 +330,7 @@ ${evidenceIds.join("\n")}`),
       claimToken: claim.token,
       runeCost: charge.spentRunes,
       chargeTransactionId: charge.transactionId,
+      workerJob: getReportWorkerJobFromRequest(request),
       structuredData: report as unknown as Record<string, unknown>,
       evidenceRefs: evidence,
     });
@@ -323,13 +338,13 @@ ${evidenceIds.join("\n")}`),
       await rollback();
       await trackWorkerJobFailed(
         request,
-        "Натальная карта изменилась. Оплата возвращена, попробуйте снова.",
-        { refunded: true, errorCode: "chart_stale" }
+        (rollbackAttempted ? "Натальная карта изменилась. Оплата возвращена, попробуйте снова." : "Натальная карта изменилась. попробуйте снова."),
+        { refunded: rollbackAttempted, errorCode: "chart_stale" }
       );
       return NextResponse.json(
         {
-          error: "Натальная карта изменилась. Оплата возвращена, попробуйте снова.",
-          refunded: true,
+          error: (rollbackAttempted ? "Натальная карта изменилась. Оплата возвращена, попробуйте снова." : "Натальная карта изменилась. попробуйте снова."),
+          refunded: rollbackAttempted,
         },
         { status: 409 }
       );
@@ -342,7 +357,7 @@ ${evidenceIds.join("\n")}`),
         evidence: saved.report.evidenceRefs,
         tradition,
         cached: true,
-        refunded: true,
+        refunded: rollbackAttempted,
       };
       await trackWorkerJobCompleted(request, payload);
       return NextResponse.json(payload);
@@ -356,9 +371,15 @@ ${evidenceIds.join("\n")}`),
       runeBalance: charge.newBalance,
       reportId: saved.report.id,
     };
+    durablePayload = payload;
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (error) {
+    if (durablePayload) {
+      // The receipt already exists. Return it; a later worker/reaper recovers delivery.
+      console.warn("[natal-chart] completed receipt awaiting job delivery recovery");
+      return NextResponse.json(durablePayload);
+    }
     if (error instanceof InsufficientFundsError) {
       await trackWorkerJobFailed(request, "Недостаточно рун для этого действия.", {
         errorCode: "insufficient_runes",
@@ -382,7 +403,7 @@ ${evidenceIds.join("\n")}`),
         console.warn("[natal-chart] billing rollback failed");
       });
     }
-    const refunded = refundNow && rollbackAttempted;
+    const refunded = rollbackAttempted;
     console.warn("[natal-chart] interpretation failed");
     await trackWorkerJobFailed(
       request,

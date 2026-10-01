@@ -10,6 +10,7 @@ const eslintConfig = [
       ".next-visual-review/**",
       ".cursor/**",
       "tmp/**",
+      "test-artifacts/**",
       "node_modules/**",
       "scripts/**/*.mjs",
       "mobile/android/app/build/**",

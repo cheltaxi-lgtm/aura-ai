@@ -1,3 +1,4 @@
+import { natalBirthTimeError } from "@/lib/natal/time";
 import { NextRequest, NextResponse } from "next/server";
 import {
   profileAuthFailureResponse,
@@ -22,6 +23,9 @@ function toClientNatalChart(chart: NatalChartRecord) {
 }
 
 function natalCalculationError(error: unknown) {
+  const timeError = natalBirthTimeError(error);
+  if (timeError) return NextResponse.json({ error: timeError }, { status: 400 });
+  if (error instanceof Error && error.message === "NATAL_PROFILE_CHANGED") return NextResponse.json({ error: "Данные рождения изменились. Повторите расчёт." }, { status: 409 });
   if (error instanceof Error && error.message === "INVALID_BIRTH_DATE") {
     return NextResponse.json(
       { error: "Проверьте дату рождения в профиле." },

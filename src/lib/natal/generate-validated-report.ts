@@ -38,6 +38,8 @@ export type GenerateValidatedNatalReportParams = {
   evidenceIdsHint?: string[];
   repairHint?: string;
   clientName?: string;
+  /** Server budget shared by all repairs, continuations and section calls. */
+  deadlineAt?: number;
 };
 
 export type GenerateValidatedNatalReportResult =
@@ -124,10 +126,10 @@ function isSubstantiveReport(
   if (totalLength < minReport) return false;
   if (findNearDuplicateSections(report).length > 0) return false;
   return report.sections.every((section) =>
-    section.claims.some((claim) => {
+    section.claims.reduce((sum, claim) => sum + claim.text.trim().length, 0) >= minSection && section.claims.every((claim) => {
       const text = claim.text.trim();
       if (
-        text.length < minSection ||
+        text.length < 40 ||
         PLACEHOLDER_CLAIM_RE.test(text) ||
         NATAL_FLUFF_RE.test(text) ||
         !claim.evidenceIds.length
@@ -180,7 +182,7 @@ function replaceClientNameForms(text: string, clientName: string): string {
   let output = text;
   for (const variant of variants) {
     if (!variant || variant === russianName) continue;
-    output = output.replace(new RegExp(escapeRegExp(variant), "giu"), russianName);
+    output = output.replace(new RegExp(`(?<![\\p{L}\\p{N}])${escapeRegExp(variant)}(?![\\p{L}\\p{N}])`, "giu"), russianName);
   }
 
   // Any remaining mixed/Latin token that normalizes to the same given name.
@@ -279,14 +281,21 @@ async function requestNatalReportJson(
   const maxContinuationPasses = mode === "section" ? 2 : 4;
 
   for (let pass = 0; pass < maxContinuationPasses; pass++) {
-    const result = await completeChatDetailed({
+    const remaining = (params?.deadlineAt ?? Date.now() + timeoutMs) - Date.now();
+    if (remaining <= 0) break;
+    let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+    const call = completeChatDetailed({
       messages: thread,
       ...opts,
       modelOverride: model,
       temperature,
-      timeoutMs,
+      timeoutMs: Math.min(timeoutMs, remaining),
+      maxAttempts: 1,
       priority: "report",
     });
+    const result = await Promise.race([call, new Promise<{ text: null; finishReason: null }>(resolve => {
+      deadlineTimer = setTimeout(() => resolve({ text: null, finishReason: null }), remaining);
+    })]).finally(() => { if (deadlineTimer) clearTimeout(deadlineTimer); });
 
     const chunk = result.text?.trim() ?? "";
     if (!chunk) break;
@@ -737,7 +746,9 @@ async function timingTrioEditorialPass(
         };
       }),
     };
-    return isSubstantiveReport(merged, params) ? merged : null;
+    const sanitized = sanitizeNatalReport(merged, params);
+    const checked = validateCandidate(sanitized, params);
+    return checked.ok && isSubstantiveReport(checked.report, params) ? checked.report : null;
   } catch {
     return null;
   }
@@ -798,6 +809,7 @@ async function editorialPass(
 export async function generateValidatedNatalReport(
   params: GenerateValidatedNatalReportParams
 ): Promise<GenerateValidatedNatalReportResult> {
+  params = { ...params, deadlineAt: Math.min(params.deadlineAt ?? Infinity, Date.now() + 240_000) };
   const model = await getNatalModel();
   const maxRepairPasses =
     params.reportType === "forecast" ? MAX_REPAIR_PASSES_FORECAST : MAX_REPAIR_PASSES_DEFAULT;
@@ -813,7 +825,7 @@ export async function generateValidatedNatalReport(
   let validation: NatalReportValidation = { ok: false, errors: ["LLM не вернула JSON."] };
   let usedSectionWise = false;
   /** True when the current validation result came from evidence-grounded salvage. */
-  let acceptedViaSalvage = false;
+
 
   if (preferSectionWise) {
     const sectioned = await generateReportBySections(params, model);
@@ -851,13 +863,13 @@ export async function generateValidatedNatalReport(
     } else {
       try {
         validation = validateCandidate(parseCandidate(raw, params), params);
-        acceptedViaSalvage = false;
+
       } catch (error) {
         validation = {
           ok: false,
           errors: [error instanceof Error ? error.message : "Некорректный JSON."],
         };
-        acceptedViaSalvage = false;
+
       }
 
       for (let repairPass = 0; needsMoreWork() && repairPass < maxRepairPasses; repairPass += 1) {
@@ -884,13 +896,13 @@ export async function generateValidatedNatalReport(
         raw = repairedRaw;
         try {
           validation = validateCandidate(parseCandidate(raw, params), params);
-          acceptedViaSalvage = false;
+
         } catch (error) {
           validation = {
             ok: false,
             errors: [error instanceof Error ? error.message : "Некорректный JSON."],
           };
-          acceptedViaSalvage = false;
+
         }
       }
 
@@ -908,7 +920,7 @@ export async function generateValidatedNatalReport(
           );
           if (strict.ok && isSubstantiveReport(strict.report, params)) {
             validation = strict;
-            acceptedViaSalvage = false;
+
           }
         } catch {
           /* keep prior validation errors */
@@ -930,7 +942,7 @@ export async function generateValidatedNatalReport(
               `[natal-chart] ${params.reportType} accepted via evidence salvage (model=${model})`
             );
             validation = salvaged;
-            acceptedViaSalvage = true;
+
           }
         } catch {
           /* keep prior validation errors */
@@ -950,7 +962,7 @@ export async function generateValidatedNatalReport(
       raw = sectioned.raw;
       validation = sectioned.validation;
       usedSectionWise = true;
-      acceptedViaSalvage = false;
+
     } else if (sectioned?.raw && needsMoreWork()) {
       raw = sectioned.raw;
       try {
@@ -967,7 +979,7 @@ export async function generateValidatedNatalReport(
           );
           validation = salvaged;
           usedSectionWise = true;
-          acceptedViaSalvage = true;
+
         }
       } catch {
         /* keep prior validation errors */
@@ -993,7 +1005,7 @@ export async function generateValidatedNatalReport(
           `[natal-chart] ${params.reportType} accepted via final evidence salvage (model=${model})`
         );
         validation = salvaged;
-        acceptedViaSalvage = true;
+
       } else if (salvaged.ok) {
         console.warn(
           `[natal-chart] ${params.reportType} final salvage below substantive floor — failing closed (model=${model})`
@@ -1006,8 +1018,7 @@ export async function generateValidatedNatalReport(
 
   if (
     validation.ok &&
-    (isSubstantiveReport(validation.report, params) ||
-      (params.reportType === "forecast" && acceptedViaSalvage))
+    isSubstantiveReport(validation.report, params)
   ) {
     const sanitized = sanitizeNatalReport(validation.report, params);
     // Full-JSON editorial truncates long forecasts; for section-wise run a
@@ -1019,23 +1030,13 @@ export async function generateValidatedNatalReport(
       edited = await editorialPass(sanitized, params, model);
     }
     const finalReport = edited ?? sanitized;
-    // Last-chance dedupe: if trio still collides, salvage role-templates for those keys.
-    if (
-      params.reportType === "forecast" &&
-      findNearDuplicateSections(finalReport).length > 0
-    ) {
-      const salvaged = salvageNatalReport(
-        finalReport,
-        params.evidence,
-        params.tradition,
-        params.reportType,
-        params.horizonDays
-      );
-      if (salvaged.ok) {
-        return { ok: true, report: { ...salvaged.report, model }, raw };
-      }
+    const finalChecked = validateCandidate(finalReport, params);
+    if (finalChecked.ok && isSubstantiveReport(finalChecked.report, params)) {
+      return { ok: true, report: { ...finalChecked.report, model }, raw };
     }
-    return { ok: true, report: { ...finalReport, model }, raw };
+    validation = finalChecked.ok
+      ? { ok: false, errors: ["Итоговый текст после редактирования неполон или содержит повторы."] }
+      : finalChecked;
   }
 
   if (validation.ok) {

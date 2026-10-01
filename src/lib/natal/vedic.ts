@@ -345,21 +345,21 @@ export function validateNormalizedVimshottari(
   return [...new Set(warnings)];
 }
 
-function normalizeDasha(value: unknown, moonNakshatraLord?: string | null): VimshottariDasha | null {
+function normalizeDasha(value: unknown, moonNakshatraLord?: string | null, source: "engine" | "snapshot" = "engine", currentDate = new Date()): VimshottariDasha | null {
   const raw = record(value);
   if (!raw || !Array.isArray(raw.dashas)) return null;
   const birthLord = text(raw.birthLord);
   const rawProportionElapsed = finiteNumber(raw.proportionElapsed);
   // natalengine v1.6 documents and emits this field as a percentage (0..100).
   // The application-facing model uses a fraction (0..1).
-  const proportionElapsed = rawProportionElapsed == null ? null : rawProportionElapsed / 100;
+  const proportionElapsed = rawProportionElapsed == null ? null : source === "engine" ? rawProportionElapsed / 100 : rawProportionElapsed;
   const yearsRemaining = finiteNumber(raw.yearsRemaining);
   const totalCycleYears = finiteNumber(raw.totalCycleYears);
   const dashas = raw.dashas.map(normalizePeriod).filter((item): item is VimshottariPeriod => item !== null);
-  const current = normalizePeriod(raw.current);
+  const current = dashas.find(period => new Date(period.startDate) <= currentDate && currentDate < new Date(period.endDate)) ?? null;
   if (!birthLord || proportionElapsed == null || yearsRemaining == null || totalCycleYears == null || !dashas.length) return null;
   const normalized = { birthLord, proportionElapsed, yearsRemaining, totalCycleYears, dashas, current };
-  const validationWarnings = validateNormalizedVimshottari(normalized, { moonNakshatraLord });
+  const validationWarnings = validateNormalizedVimshottari(normalized, { moonNakshatraLord, currentDate });
   return {
     ...normalized,
     authoritative: validationWarnings.length === 0,
@@ -399,7 +399,7 @@ export function navamsaFromSiderealLongitude(longitude: number): NavamsaPosition
 
 export function normalizeVedicChart(
   payload: unknown,
-  options: { timeKnown: boolean; hasLocation: boolean }
+  options: { timeKnown: boolean; hasLocation: boolean; source?: "engine" | "snapshot"; currentDate?: Date }
 ): VedicChart | null {
   const raw = record(payload);
   const rawPositions = record(raw?.positions);
@@ -407,7 +407,7 @@ export function normalizeVedicChart(
   const rawMoonSign = record(raw?.moonSign);
   const moonRashi = normalizeRashi(rawMoonSign?.rashi);
   const moonNakshatra = normalizeNakshatra(rawMoonSign?.nakshatra);
-  const dasha = normalizeDasha(raw?.dasha, moonNakshatra?.lord);
+  let dasha = normalizeDasha(raw?.dasha, moonNakshatra?.lord, options.source ?? "engine", options.currentDate);
   const ayanamsaValue = finiteNumber(rawAyanamsa?.value);
   const ayanamsaFormatted = text(rawAyanamsa?.formatted);
   const ayanamsaSystem = text(rawAyanamsa?.system);
@@ -416,6 +416,26 @@ export function normalizeVedicChart(
     !raw || !rawPositions || !dasha || !moonRashi || !moonNakshatra ||
     ayanamsaValue == null || !ayanamsaFormatted || !ayanamsaSystem || julianDay == null
   ) return null;
+
+  if ((options.source ?? "engine") === "engine") {
+    // Engine period dates use host TZ and rounded months; use actual UT and a
+    // documented fixed 365.2425-day year for a deterministic Vimshottari cycle.
+    const birthLord = canonicalLord(moonNakshatra.lord);
+    if (!birthLord) return null;
+    const proportionElapsed = moonNakshatra.degreeInNakshatra / (360 / 27);
+    const yearsRemaining = VIMSHOTTARI_YEARS[birthLord] * (1 - proportionElapsed);
+    const startIndex = VIMSHOTTARI_LORDS.indexOf(birthLord as typeof VIMSHOTTARI_LORDS[number]);
+    let instant = (julianDay - 2440587.5) * 86_400_000;
+    const dashas = VIMSHOTTARI_LORDS.map((_, index) => {
+      const lord = VIMSHOTTARI_LORDS[(startIndex + index) % 9];
+      const years = index === 0 ? yearsRemaining : VIMSHOTTARI_YEARS[lord];
+      const startDate = new Date(instant).toISOString();
+      instant += years * DASHA_YEAR_MS;
+      return { lord, years, startDate, endDate: new Date(instant).toISOString(), isPartial: index === 0 };
+    });
+    dasha = normalizeDasha({ birthLord, proportionElapsed, yearsRemaining, totalCycleYears: 120, dashas }, moonNakshatra.lord, "snapshot", options.currentDate);
+    if (!dasha) return null;
+  }
 
   const hasExactLagna = options.timeKnown && options.hasLocation;
   const positions: Partial<Record<VedicGrahaKey, VedicPosition>> = {};

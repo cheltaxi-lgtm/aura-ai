@@ -1,11 +1,12 @@
+import { paidReportCanSave, lockReportWorkerSave, completeReportWorkerSave, lockReportDeletionJobs, clearDeletedReportDelivery, type ReportWorkerJob } from "./durable-report-receipt";
 import { createHash, randomBytes, randomUUID } from "crypto";
 
-import { query, queryClient, withTransaction } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { computeNatalChartRecord } from "@/lib/natal/compute";
 import { sanitizeSynastryForClient, computeSynastry } from "@/lib/natal/synastry";
 import type { CompatibilityEvidence, CompatibilityReport } from "@/lib/natal/compatibility-report";
 import type { NatalChartInput, NatalChartRecord } from "@/lib/natal/types";
-import { getOrComputeNatalChart } from "@/lib/services/natal-chart-service";
+import { getOrComputeNatalChart, isStoredNatalChartStale } from "@/lib/services/natal-chart-service";
 import { getUserById } from "@/lib/users";
 
 export type CompatibilityMode = "manual" | "invite";
@@ -66,7 +67,7 @@ function tokenHash(token: string): Buffer {
 
 function fingerprint(chart: NatalChartRecord): string {
   if (!chart.birthFingerprint) throw new Error("chart_fingerprint_missing");
-  return hash(chart.birthFingerprint);
+  return hash(JSON.stringify({ birthFingerprint: chart.birthFingerprint, engineVersion: chart.engineVersion, ephemeris: chart.western?.ephemeris ?? "unknown" }));
 }
 
 function pairFingerprint(a: string, b: string): string {
@@ -141,9 +142,11 @@ export async function listCompatibilityRecords(userId: string): Promise<Compatib
 
 export async function getCompatibilityRecord(
   id: string,
-  userId: string
+  userId: string,
+  client?: PoolClient
 ): Promise<CompatibilityRecord | null> {
-  const { rows } = await query<CompatibilityRow>(
+  const execute = client ? (sql: string, values: unknown[]) => queryClient<CompatibilityRow>(client, sql, values) : query<CompatibilityRow>;
+  const { rows } = await execute(
     `SELECT ${SELECT_FIELDS}
      FROM natal_compatibility_reports
      WHERE id = $1 AND (owner_user_id = $2 OR participant_user_id = $2)`,
@@ -152,7 +155,7 @@ export async function getCompatibilityRecord(
   const row = rows[0];
   if (!row) return null;
   if (row.canonical_report_id) {
-    return getCompatibilityRecord(row.canonical_report_id, userId);
+    return getCompatibilityRecord(row.canonical_report_id, userId, client);
   }
   return mapRow(row);
 }
@@ -205,7 +208,7 @@ export async function createManualCompatibility(params: {
   if (rows[0]) return { record: mapRow(rows[0]), reused: false };
   const existing = await query<CompatibilityRow>(
     `SELECT ${SELECT_FIELDS} FROM natal_compatibility_reports
-     WHERE owner_user_id = $1 AND pair_fingerprint = $2 AND status <> 'expired'
+     WHERE owner_user_id = $1 AND pair_fingerprint = $2 AND status <> 'expired' AND participant_user_id IS NULL AND participant_identity_id IS NULL
      ORDER BY created_at DESC LIMIT 1`,
     [params.ownerUserId, pairFp]
   );
@@ -248,7 +251,7 @@ export async function getInviteStatus(
   const { rows } = await query<CompatibilityRow>(
     `SELECT ${SELECT_FIELDS} FROM natal_compatibility_reports
      WHERE invite_token_hash = $1
-       AND (owner_user_id = $2 OR participant_user_id IS NULL OR participant_user_id = $2)
+       AND (owner_user_id = $2 OR participant_user_id = $2 OR (participant_user_id IS NULL AND status='pending' AND claimed_at IS NULL AND expires_at>NOW()))
      LIMIT 1`,
     [tokenHash(token), viewerUserId]
   );
@@ -276,10 +279,24 @@ export async function acceptCompatibilityInvite(params: {
   participantUserId: string;
   participantLabel?: string | null;
 }): Promise<{ record: CompatibilityRecord; reused: boolean }> {
-  const participantChart = await requireAccountChart(params.participantUserId);
+  const initial = (await query<CompatibilityRow>(
+    `SELECT ${SELECT_FIELDS} FROM natal_compatibility_reports WHERE invite_token_hash=$1`, [tokenHash(params.token)])).rows[0];
+  if (!initial) throw new Error("invite_not_found");
+  if (initial.owner_user_id === params.participantUserId) throw new Error("cannot_accept_own_invite");
+  if (initial.participant_user_id && initial.participant_user_id !== params.participantUserId) throw new Error("invite_already_claimed");
+  if (!initial.participant_user_id && !initial.canonical_report_id && (initial.status !== "pending" || initial.claimed_at)) throw new Error("invite_already_claimed");
+  const newAcceptance = !initial.participant_user_id && !initial.canonical_report_id;
+  // Calculations may start their own transaction; complete them before taking locks.
+  const ownerChart = newAcceptance ? await requireAccountChart(initial.owner_user_id) : null;
+  const participantChart = newAcceptance ? await requireAccountChart(params.participantUserId) : null;
   const participant = await getUserById(params.participantUserId);
 
   return withTransaction(async (client) => {
+    const ids = [initial.owner_user_id, params.participantUserId].sort();
+    const profiles = await queryClient<{ id: string; birth_date: string | null; birth_time: string | null; birth_city: string | null; astro_meta: unknown }>(client,
+      "SELECT id,birth_date::text,birth_time::text,birth_city,astro_meta FROM users WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE", [ids]);
+    const charts = await queryClient<{ user_id: string; chart_data: NatalChartRecord }>(client,
+      "SELECT user_id,chart_data FROM natal_charts WHERE user_id=ANY($1::uuid[]) ORDER BY user_id FOR UPDATE", [ids]);
     const selected = await queryClient<
       CompatibilityRow & { owner_fingerprint: string }
     >(
@@ -290,7 +307,7 @@ export async function acceptCompatibilityInvite(params: {
       [tokenHash(params.token)]
     );
     const invite = selected.rows[0];
-    if (!invite) throw new Error("invite_not_found");
+    if (!invite || invite.owner_user_id !== initial.owner_user_id) throw new Error("invite_not_found");
     if (invite.canonical_report_id) {
       const canonical = await queryClient<CompatibilityRow>(
         client,
@@ -319,7 +336,12 @@ export async function acceptCompatibilityInvite(params: {
       return { record: mapRow(invite), reused: true };
     }
 
-    const ownerChart = await requireAccountChart(invite.owner_user_id);
+    if (invite.status !== "pending" || invite.claimed_at) throw new Error("invite_already_claimed");
+    if (!ownerChart || !participantChart) throw new Error("invite_claim_conflict");
+    for (const [id, captured] of [[initial.owner_user_id, ownerChart], [params.participantUserId, participantChart]] as const) {
+      const profile = profiles.rows.find(row => row.id === id), current = charts.rows.find(row => row.user_id === id)?.chart_data;
+      if (!profile?.birth_date || !current || await isStoredNatalChartStale(current, profile) || fingerprint(current) !== fingerprint(captured)) throw new Error(id === initial.owner_user_id ? "owner_chart_changed" : "participant_chart_changed");
+    }
     const ownerFp = fingerprint(ownerChart);
     if (ownerFp !== invite.owner_fingerprint) throw new Error("owner_chart_changed");
     const partnerFp = fingerprint(participantChart);
@@ -328,28 +350,18 @@ export async function acceptCompatibilityInvite(params: {
       params.participantLabel,
       participant?.name ?? invite.partner_label
     );
+    // Serialize equivalent invitations before checking for a canonical report.
+    await queryClient(client, "SELECT pg_advisory_xact_lock(hashtextextended($1,0))", ["natal-pair:" + invite.owner_user_id + ":" + pairFp + ":" + params.participantUserId]);
     const duplicate = await queryClient<CompatibilityRow>(
       client,
       `SELECT ${SELECT_FIELDS} FROM natal_compatibility_reports
        WHERE owner_user_id = $1 AND pair_fingerprint = $2
          AND status <> 'expired' AND id <> $3
-       ORDER BY created_at DESC LIMIT 1`,
-      [invite.owner_user_id, pairFp, invite.id]
+         AND participant_user_id = $4
+       ORDER BY (participant_user_id=$4) DESC NULLS LAST, created_at DESC LIMIT 1 FOR UPDATE`,
+      [invite.owner_user_id, pairFp, invite.id, params.participantUserId]
     );
     if (duplicate.rows[0]) {
-      // Give the accepting participant durable access to the canonical row when
-      // it has no participant yet — otherwise their later GET by id/token 404s
-      // and only the one-shot accept body ever showed the result.
-      if (!duplicate.rows[0].participant_user_id) {
-        await queryClient(
-          client,
-          `UPDATE natal_compatibility_reports
-           SET participant_user_id = $2, updated_at = NOW()
-           WHERE id = $1 AND participant_user_id IS NULL`,
-          [duplicate.rows[0].id, params.participantUserId]
-        );
-        duplicate.rows[0].participant_user_id = params.participantUserId;
-      }
       await queryClient(
         client,
         `UPDATE natal_compatibility_reports
@@ -427,14 +439,15 @@ export async function compatibilityChartsAreCurrent(
     owner_fingerprint: string;
     partner_fingerprint: string | null;
     participant_user_id: string | null;
+    mode: CompatibilityMode;
   }>(
-    `SELECT owner_fingerprint, partner_fingerprint, participant_user_id
+    `SELECT owner_fingerprint, partner_fingerprint, participant_user_id, mode
      FROM natal_compatibility_reports
      WHERE id = $1 AND owner_user_id = $2`,
     [id, ownerUserId]
   );
   const record = rows[0];
-  if (!record) return false;
+  if (!record || (record.mode === "invite" && !record.participant_user_id)) return false;
   const owner = await requireAccountChart(ownerUserId);
   if (fingerprint(owner) !== record.owner_fingerprint) return false;
   if (!record.participant_user_id) return true;
@@ -450,8 +463,24 @@ export async function saveCompatibilityReport(params: {
   evidence: CompatibilityEvidence;
   runeCost: number;
   chargeTransactionId?: string;
+  workerJob?: ReportWorkerJob;
 }): Promise<CompatibilityRecord | null> {
-  const { rows } = await query<CompatibilityRow>(
+  return withTransaction(async client => {
+    if (!(await lockReportWorkerSave(client, params.ownerUserId, params.workerJob, params.chargeTransactionId))) return null;
+    if (!(await paidReportCanSave(client, params.chargeTransactionId))) return null;
+    const pair = (await queryClient<{ owner_user_id: string; participant_user_id: string | null; owner_fingerprint: string; partner_fingerprint: string | null; mode: CompatibilityMode }>(client,
+      "SELECT owner_user_id,participant_user_id,owner_fingerprint,partner_fingerprint,mode FROM natal_compatibility_reports WHERE id=$1 AND owner_user_id=$2", [params.id, params.ownerUserId])).rows[0];
+    if (!pair || (pair.mode === "invite" && !pair.participant_user_id)) return null;
+    const participants = [pair.owner_user_id, ...(pair.participant_user_id ? [pair.participant_user_id] : [])].sort();
+    const profiles = await queryClient<{ id: string; birth_date: string | null; birth_time: string | null; birth_city: string | null; astro_meta: unknown }>(client,
+      "SELECT id,birth_date::text,birth_time::text,birth_city,astro_meta FROM users WHERE id=ANY($1::uuid[]) ORDER BY id FOR UPDATE", [participants]);
+    const charts = await queryClient<{ user_id: string; chart_data: NatalChartRecord }>(client,
+      "SELECT user_id,chart_data FROM natal_charts WHERE user_id=ANY($1::uuid[]) ORDER BY user_id FOR UPDATE", [participants]);
+    for (const id of participants) {
+      const profile = profiles.rows.find(row => row.id === id), chart = charts.rows.find(row => row.user_id === id)?.chart_data;
+      if (!profile?.birth_date || !chart || await isStoredNatalChartStale(chart, profile) || fingerprint(chart) !== (id === pair.owner_user_id ? pair.owner_fingerprint : pair.partner_fingerprint)) return null;
+    }
+    const { rows } = await queryClient<CompatibilityRow>(client,
     `UPDATE natal_compatibility_reports
      SET report_data = $4::jsonb, evidence_refs = $5::jsonb,
          rune_cost = $6, charge_transaction_id = $7,
@@ -470,7 +499,10 @@ export async function saveCompatibilityReport(params: {
       params.chargeTransactionId ?? null,
     ]
   );
-  return rows[0] ? mapRow(rows[0]) : null;
+    const saved = rows[0] ? mapRow(rows[0]) : null;
+    if (saved) await completeReportWorkerSave(client, params.ownerUserId, params.workerJob, { record: saved, reportId: saved.id });
+    return saved;
+  });
 }
 
 export async function releaseCompatibilityClaim(
@@ -491,8 +523,10 @@ export async function deleteCompatibilityRecord(
   ownerUserId: string
 ): Promise<boolean> {
   return withTransaction(async (client) => {
+    await lockReportDeletionJobs(client, ownerUserId, id, "compatibility");
     const owned = await queryClient(client, "SELECT id FROM natal_compatibility_reports WHERE id=$1 AND owner_user_id=$2 FOR UPDATE", [id, ownerUserId]);
     if (!owned.rowCount) return false;
+    await clearDeletedReportDelivery(client, ownerUserId, id, "compatibility");
     await queryClient(
       client,
       `UPDATE private_report_shares

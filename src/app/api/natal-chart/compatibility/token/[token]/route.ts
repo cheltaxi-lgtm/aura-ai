@@ -51,7 +51,8 @@ export async function POST(request: NextRequest, { params }: RouteParams) {
   }
 
   try {
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await request.json().catch(() => null)) as Record<string, unknown>;
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     if (body.participantConsentAcknowledged !== true) {
       return NextResponse.json(
         { error: "participant_consent_required" },

@@ -1,3 +1,4 @@
+import { natalClaimFactErrors } from "./report-fidelity";
 import { toParagraphs } from "@/lib/format-paragraphs";
 import { normalizeClientTyAddress } from "@/lib/reading-quality-gate";
 import type { NatalEvidence } from "./evidence";
@@ -177,6 +178,7 @@ export function prepareNatalReportCandidate(
       byKey.set(key as NatalReportSectionKey, section);
     }
   }
+  if (sections.length > NATAL_REPORT_SECTION_KEYS.length || sections.some(item => { const section = record(item); return !section || !NATAL_REPORT_SECTION_KEYS.includes(section.key as NatalReportSectionKey); }) || byKey.size !== sections.length) return withDefaults;
   const normalizedSections = NATAL_REPORT_SECTION_KEYS.map((expectedKey) => {
     const existing = byKey.get(expectedKey);
     if (existing) return existing;
@@ -189,11 +191,11 @@ export function prepareNatalReportCandidate(
 
   return {
     ...root,
-    version: NATAL_REPORT_VERSION,
-    tradition: params.tradition,
-    reportType: params.reportType,
+    version: root.version ?? NATAL_REPORT_VERSION,
+    tradition: root.tradition ?? params.tradition,
+    reportType: root.reportType ?? params.reportType,
     sections: normalizedSections,
-    ...(params.reportType === "forecast" ? { horizonDays: params.horizonDays ?? root.horizonDays } : {}),
+    ...(params.reportType === "forecast" ? { horizonDays: root.horizonDays ?? params.horizonDays } : {}),
   };
 }
 
@@ -204,141 +206,28 @@ export function salvageNatalReport(
   expectedReportType: NatalReport["reportType"] = "interpretation",
   expectedHorizonDays?: NatalReport["horizonDays"]
 ): NatalReportValidation {
-  const root = record(value) ?? {};
-
-  const prepared = prepareNatalReportCandidate(root, {
-    tradition: expectedTradition,
-    reportType: expectedReportType,
-    horizonDays: expectedHorizonDays,
-    metadataDefaults: {
-      disclaimer:
-        typeof root.disclaimer === "string" && root.disclaimer.trim()
-          ? root.disclaimer
-          : "Символическая интерпретация не заменяет профессиональную консультацию.",
-      methodology:
-        typeof root.methodology === "string" && root.methodology.trim()
-          ? root.methodology
-          : "Выводы привязаны к рассчитанным астрологическим evidence.",
-    },
-  }) as Record<string, unknown>;
-
-  const validIds = new Set(evidence.map((item) => item.id));
-  const sections = Array.isArray(prepared.sections) ? prepared.sections : [];
-  const sectionsByKey = new Map<NatalReportSectionKey, Record<string, unknown>>();
-  for (const item of sections) {
-    const section = record(item);
-    if (!section) continue;
-    const key = section.key;
-    if (typeof key === "string" && NATAL_REPORT_SECTION_KEYS.includes(key as NatalReportSectionKey)) {
-      sectionsByKey.set(key as NatalReportSectionKey, section);
-    }
-  }
-  prepared.sections = NATAL_REPORT_SECTION_KEYS.map((expectedKey) => {
-    const rawSection = sectionsByKey.get(expectedKey) ?? record(sections[NATAL_REPORT_SECTION_KEYS.indexOf(expectedKey)]);
-    const rawClaims = Array.isArray(rawSection?.claims) ? rawSection.claims : [];
-    const firstClaim = record(rawClaims[0]);
-    const evidenceIds = coerceClaimEvidenceIds(
-      Array.isArray(firstClaim?.evidenceIds)
-        ? firstClaim.evidenceIds.filter((id): id is string => typeof id === "string")
-        : [],
-      expectedKey,
-      evidence,
-      expectedReportType,
-      validIds
-    );
-    const primaryId = evidenceIds[0] ?? evidence[0]?.id;
-    const item =
-      (primaryId ? evidence.find((entry) => entry.id === primaryId) : null) ?? evidence[0];
-    const rawText =
-      typeof firstClaim?.text === "string" && firstClaim.text.trim()
-        ? firstClaim.text.trim()
-        : "";
-    const keepRaw =
-      rawText &&
-      rawText.length >= 120 &&
-      !/Ключевой вывод по разделу/i.test(rawText) &&
-      !NATAL_FLUFF_RE.test(rawText);
-    const text =
-      keepRaw && item
-        ? rawText
-        : item
-          ? buildEvidenceGroundedClaimText(
-              item,
-              expectedKey,
-              expectedReportType,
-              expectedHorizonDays
-            )
-          : buildFallbackSectionText(expectedKey, expectedReportType, expectedHorizonDays);
-    return {
-      key: expectedKey,
-      title:
-        typeof rawSection?.title === "string" && rawSection.title.trim()
-          ? rawSection.title.trim()
-          : sectionTitle(expectedKey, expectedReportType),
-      claims: [{ text, evidenceIds: evidenceIds.length ? evidenceIds : primaryId ? [primaryId] : [] }],
-    };
+  // Repair citation spelling only. Never invent prose, discard later claims,
+  // or add an unrelated citation to make a paid report appear grounded.
+  const prepared = prepareNatalReportCandidate(value, {
+    tradition: expectedTradition, reportType: expectedReportType, horizonDays: expectedHorizonDays,
   });
-
-  // Collapse near-duplicates in the timing trio (and other pairs) into role-specific templates.
-  const draft = {
-    sections: prepared.sections as Array<{
-      key: NatalReportSectionKey;
-      claims: Array<{ text: string; evidenceIds: string[] }>;
-    }>,
-  };
-  const dupes = findNearDuplicateSections(draft, 0.62);
-  if (dupes.length) {
-    const forceKeys = new Set<NatalReportSectionKey>();
-    const timingTrioHit = dupes.some(
-      (pair) =>
-        (pair.a === "summary" || pair.a === "currentPeriod" || pair.a === "recommendations") &&
-        (pair.b === "summary" || pair.b === "currentPeriod" || pair.b === "recommendations")
-    );
-    if (timingTrioHit) {
-      // Identical timing essays → rebuild all three with role-specific templates.
-      forceKeys.add("summary");
-      forceKeys.add("currentPeriod");
-      forceKeys.add("recommendations");
-    }
-    for (const pair of dupes) {
-      forceKeys.add(pair.a);
-      forceKeys.add(pair.b);
-    }
-    prepared.sections = (prepared.sections as Array<Record<string, unknown>>).map((section) => {
-      const key = section.key as NatalReportSectionKey;
-      if (!forceKeys.has(key)) return section;
-      const evidenceIds = Array.isArray(section.claims)
-        ? ((record((section.claims as unknown[])[0])?.evidenceIds as string[] | undefined) ?? [])
-        : [];
-      const primaryId = evidenceIds[0] ?? evidence[0]?.id;
-      const item =
-        (primaryId ? evidence.find((entry) => entry.id === primaryId) : null) ?? evidence[0];
-      if (!item) return section;
-      return {
-        ...section,
-        claims: [
-          {
-            text: buildEvidenceGroundedClaimText(
-              item,
-              key,
-              expectedReportType,
-              expectedHorizonDays
-            ),
-            evidenceIds: evidenceIds.length ? evidenceIds : [item.id],
-          },
-        ],
-      };
-    });
-  }
-
-  return validateNatalReport(
-    prepared,
-    evidence,
-    expectedTradition,
-    expectedReportType,
-    expectedHorizonDays,
-    { coerceEvidence: true, skipCategoryRules: true }
-  );
+  const root = record(prepared);
+  if (!root) return { ok: false, errors: ["Нет текста модели для восстановления."] };
+  const ids = new Set(evidence.map(item => item.id));
+  const sections = Array.isArray(root.sections) ? root.sections : [];
+  root.sections = sections.map(item => {
+    const section = record(item);
+    if (!section) return item;
+    return { ...section, claims: (Array.isArray(section.claims) ? section.claims : []).map(itemClaim => {
+      const claim = record(itemClaim);
+      if (!claim) return itemClaim;
+      return { ...claim, evidenceIds: Array.isArray(claim.evidenceIds) ? claim.evidenceIds.map(id => {
+        if (typeof id !== "string") return id;
+        return ids.has(id) ? id : [...ids].find(known => known.toLowerCase() === id.trim().toLowerCase()) ?? id;
+      }) : claim.evidenceIds };
+    }) };
+  });
+  return validateNatalReport(root, evidence, expectedTradition, expectedReportType, expectedHorizonDays);
 }
 
 function buildFallbackSectionText(
@@ -524,13 +413,13 @@ export function validateNatalReport(
   if (!rootInput) return { ok: false, errors: ["Корень ответа должен быть JSON-объектом."] };
 
   const root: Record<string, unknown> = { ...rootInput };
-  if (options.coerceEvidence || root.version !== NATAL_REPORT_VERSION) {
+  if (options.coerceEvidence) {
     root.version = NATAL_REPORT_VERSION;
   }
-  if (options.coerceEvidence || root.tradition !== expectedTradition) {
+  if (options.coerceEvidence) {
     root.tradition = expectedTradition;
   }
-  if (options.coerceEvidence || root.reportType !== expectedReportType) {
+  if (options.coerceEvidence) {
     root.reportType = expectedReportType;
   }
   if (expectedReportType === "forecast" && options.coerceEvidence) {
@@ -559,10 +448,12 @@ export function validateNatalReport(
   const ids = new Set(evidence.map((item) => item.id));
   const evidenceById = new Map(evidence.map((item) => [item.id, item]));
   const sectionList = Array.isArray(root.sections) ? root.sections : [];
+  if (sectionList.length !== NATAL_REPORT_SECTION_KEYS.length) errors.push("Нужны ровно восемь разделов без повторов.");
   const sectionsByKey = new Map<string, Record<string, unknown>>();
   for (const item of sectionList) {
     const section = record(item);
     if (section && typeof section.key === "string") {
+      if (sectionsByKey.has(section.key)) errors.push("Повторяющийся раздел: " + section.key);
       sectionsByKey.set(section.key, section);
     }
   }
@@ -601,6 +492,7 @@ export function validateNatalReport(
         );
       }
       if (!text) errors.push(`${expectedKey}.claims[${claimIndex}]: text не может быть пустым.`);
+      for (const error of natalClaimFactErrors(text, evidence, evidence.filter(item => evidenceIds.includes(item.id)))) errors.push(`${expectedKey}.claims[${claimIndex}]: ${error}`);
       if (!evidenceIds.length) errors.push(`${expectedKey}.claims[${claimIndex}]: нужна минимум одна ссылка на evidence.`);
       const unknown = evidenceIds.filter((id) => !ids.has(id));
       if (!options.coerceEvidence && unknown.length) {

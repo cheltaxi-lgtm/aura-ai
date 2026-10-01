@@ -3,6 +3,8 @@ import ReadingJourney from "@/components/ReadingJourney";
 import RuneOrderPreview from "@/components/RuneOrderPreview";
 
 import Link from "next/link";
+import { createPortal } from "react-dom";
+import BirthTimeOccurrence from "./BirthTimeOccurrence";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   CheckCircle2,
@@ -49,6 +51,8 @@ type CompatibilityRecord = {
 };
 
 type ManualForm = {
+  place?: CitySuggestion;
+  birthTimeOccurrence?: "earlier" | "later";
   partnerLabel: string;
   birthDate: string;
   birthTime: string;
@@ -82,55 +86,8 @@ async function responseJson<T>(response: Response): Promise<T> {
 }
 
 async function waitForCompatibilityJob(jobId: string): Promise<Record<string, unknown>> {
-  const storageKey = "aura:compatibility-active-job";
-  const startedAtKey = "aura:compatibility-active-job-started";
-  let terminal = false;
-  window.localStorage.setItem(storageKey, jobId);
-  if (!window.localStorage.getItem(startedAtKey)) {
-    window.localStorage.setItem(startedAtKey, String(Date.now()));
-  }
-  try {
-    const startedAt = Number(window.localStorage.getItem(startedAtKey) || Date.now());
-    if (Number.isFinite(startedAt) && Date.now() - startedAt > 45 * 60_000) {
-      terminal = true;
-      throw new Error("Сохранённая генерация устарела. Запустите отчёт снова при необходимости.");
-    }
-    for (let attempt = 0; attempt < 180; attempt += 1) {
-      const response = await fetch(`/api/jobs/${encodeURIComponent(jobId)}`, {
-        credentials: "include",
-        cache: "no-store",
-      });
-      const job = await responseJson<{
-        status?: string;
-        result?: Record<string, unknown>;
-        error?: string;
-        refunded?: boolean;
-      }>(response);
-      if (response.status === 404) {
-        terminal = true;
-        throw new Error("Задача генерации не найдена. Запустите отчёт снова.");
-      }
-      if (!response.ok) throw new Error(job.error || "Не удалось проверить статус очереди.");
-      if (job.status === "completed") {
-        terminal = true;
-        return job.result ?? {};
-      }
-      if (job.status === "failed") {
-        terminal = true;
-        const fallback = job.refunded
-          ? "Отчёт не был создан. Оплата возвращена."
-          : "Отчёт не был создан. Если руны списались — проверьте баланс или поддержку.";
-        throw new Error(job.error || fallback);
-      }
-      await new Promise((resolve) => window.setTimeout(resolve, 2_000));
-    }
-    throw new Error("Отчёт ещё создаётся. Его статус сохранён, вернитесь к нему немного позже.");
-  } finally {
-    if (terminal) {
-      window.localStorage.removeItem(storageKey);
-      window.localStorage.removeItem(startedAtKey);
-    }
-  }
+  const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
+  return waitForAsyncJob({ jobId, storageKey: "aura:compatibility-active-job", startedAtKey: "aura:compatibility-active-job-started" });
 }
 
 function errorMessage(code?: string): string {
@@ -178,6 +135,8 @@ export default function NatalCompatibility() {
   const [citySelected, setCitySelected] = useState(false);
   const [cityLookupOpen, setCityLookupOpen] = useState(false);
   const [cityLookupLoading, setCityLookupLoading] = useState(false);
+  const [cityLookupError, setCityLookupError] = useState("");
+  const [activeCity, setActiveCity] = useState(-1);
 
   const inviteToken = useMemo(() => {
     if (typeof window === "undefined") return "";
@@ -256,6 +215,7 @@ export default function NatalCompatibility() {
       return;
     }
     const controller = new AbortController();
+    setCityLookupError(""); setActiveCity(-1);
     const timer = window.setTimeout(() => {
       setCityLookupLoading(true);
       void fetch(`/api/natal-chart/places?q=${encodeURIComponent(query)}`, {
@@ -270,14 +230,17 @@ export default function NatalCompatibility() {
           return data;
         }))
         .then((data) => {
+          if (controller.signal.aborted) return;
           setCitySuggestions((data.places ?? []).slice(0, 8));
           setCityLookupOpen(true);
         })
         .catch(() => {
+          if (controller.signal.aborted) return;
+          setCityLookupError("Не удалось загрузить города. Попробуйте ещё раз.");
           setCitySuggestions([]);
           setCityLookupOpen(true);
         })
-        .finally(() => setCityLookupLoading(false));
+        .finally(() => { if (!controller.signal.aborted) setCityLookupLoading(false); });
     }, 300);
     return () => {
       window.clearTimeout(timer);
@@ -286,7 +249,7 @@ export default function NatalCompatibility() {
   }, [manual.birthCity, citySelected]);
 
   const selectCity = (city: CitySuggestion) => {
-    setManual((value) => ({ ...value, birthCity: city.label }));
+    setManual((value) => ({ ...value, birthCity: city.label, place: city, birthTimeOccurrence: undefined }));
     setCitySelected(true);
     setCitySuggestions([]);
     setCityLookupOpen(false);
@@ -328,6 +291,8 @@ export default function NatalCompatibility() {
             birthTime: manual.birthTime,
             timeKnown: manual.timeKnown,
             birthCity: manual.birthCity,
+            place: manual.place,
+            birthTimeOccurrence: manual.birthTimeOccurrence,
           },
         }),
       });
@@ -534,14 +499,16 @@ export default function NatalCompatibility() {
 
   return (
     <div className="space-y-6 ym-hide-content ym-disable-keys">
-      {acceptedReport ? (
-        <div className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+      {acceptedReport ? createPortal(
+        <div data-report-accepted-overlay className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
           <ReportAcceptedScreen
+            modal
             accepted={acceptedReport.report}
             onStay={acceptedReport.resume}
           />
-        </div>
+        </div>, document.body
       ) : null}
+      <div inert={Boolean(acceptedReport)} className="space-y-6">
       <section className="overflow-hidden rounded-3xl border border-rose-300/15 bg-gradient-to-br from-rose-400/[0.08] via-black/25 to-violet-500/[0.08]">
         <div className="p-5 sm:p-7">
           <p className="text-[10px] uppercase tracking-[.2em] text-rose-200/55">
@@ -585,11 +552,11 @@ export default function NatalCompatibility() {
               </label>
               <div className="mt-4 flex flex-wrap gap-3">
                 <button type="button" disabled={busy !== null || !participantConsent} onClick={() => void acceptInvite()}
-                  className="btn-luxe btn-luxe--md btn-luxe--gold">
+                  className="transition-[transform,opacity] motion-reduce:transition-none btn-luxe btn-luxe--md btn-luxe--gold">
                   {busy === "accept" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <CheckCircle2 className="h-4 w-4" />}
                   Принять приглашение
                 </button>
-                <Link href="/cabinet" className="btn-luxe btn-luxe--md btn-luxe--ghost">
+                <Link href="/cabinet" className="transition-[transform,opacity] motion-reduce:transition-none btn-luxe btn-luxe--md btn-luxe--ghost">
                   Проверить данные профиля
                 </Link>
               </div>
@@ -625,28 +592,30 @@ export default function NatalCompatibility() {
               <Field label="Дата рождения">
                 <input type="date" className="ui-input w-full ym-hide-content ym-disable-keys" value={manual.birthDate}
                   max={new Date().toISOString().slice(0, 10)}
-                  onChange={(event) => setManual((value) => ({ ...value, birthDate: event.target.value }))} />
+                  onChange={(event) => setManual((value) => ({ ...value, birthDate: event.target.value, birthTimeOccurrence: undefined }))} />
               </Field>
               <Field label="Время рождения">
                 <input type="time" className="ui-input w-full ym-hide-content ym-disable-keys" value={manual.birthTime}
                   disabled={!manual.timeKnown}
-                  onChange={(event) => setManual((value) => ({ ...value, birthTime: event.target.value }))} />
+                  onChange={(event) => setManual((value) => ({ ...value, birthTime: event.target.value, birthTimeOccurrence: undefined }))} />
                 <label className="mt-2 flex min-h-11 cursor-pointer items-center gap-2 text-xs text-white/45">
                   <input type="checkbox" className="h-5 w-5 shrink-0" checked={!manual.timeKnown}
                     onChange={(event) => setManual((value) => ({
                       ...value,
                       timeKnown: !event.target.checked,
+                      birthTimeOccurrence: undefined,
                       birthTime: event.target.checked ? "" : value.birthTime,
                     }))} />
                   Время неизвестно
                 </label>
               </Field>
+              {manual.timeKnown ? <BirthTimeOccurrence value={manual.birthTimeOccurrence ?? ""} onChange={value => setManual(previous => ({ ...previous, birthTimeOccurrence: value || undefined }))} /> : null}
               <Field label="Город рождения">
                 <div className="relative">
                 <input className="ui-input w-full" value={manual.birthCity}
                   onChange={(event) => {
                     const birthCity = event.target.value;
-                    setManual((value) => ({ ...value, birthCity }));
+                    setManual((value) => ({ ...value, birthCity, place: undefined, birthTimeOccurrence: undefined }));
                     setCitySelected(false);
                     setCityLookupOpen(birthCity.trim().length >= 2);
                   }}
@@ -658,19 +627,26 @@ export default function NatalCompatibility() {
                   aria-autocomplete="list"
                   aria-expanded={cityLookupOpen}
                   aria-controls="compatibility-city-suggestions"
+                  aria-activedescendant={activeCity >= 0 ? `compatibility-city-${activeCity}` : undefined}
+                  onKeyDown={event => {
+                    if (event.key === "ArrowDown" || event.key === "ArrowUp") { event.preventDefault(); setCityLookupOpen(true); setActiveCity(current => citySuggestions.length ? (current + (event.key === "ArrowDown" ? 1 : -1) + citySuggestions.length) % citySuggestions.length : -1); }
+                    else if (event.key === "Enter" && cityLookupOpen && activeCity >= 0 && citySuggestions[activeCity]) { event.preventDefault(); selectCity(citySuggestions[activeCity]); }
+                    else if (event.key === "Escape") setCityLookupOpen(false);
+                  }}
                   placeholder="Начните вводить город по-русски или латиницей" />
                 {cityLookupOpen ? <div id="compatibility-city-suggestions" role="listbox"
                   className="lux-scroll absolute z-30 mt-1 max-h-60 w-full overflow-y-auto rounded-xl border border-white/15 bg-[#151019] p-1 shadow-2xl">
                   {cityLookupLoading ? <p className="px-3 py-2 text-xs text-white/45">Ищем города…</p> : null}
-                  {!cityLookupLoading && citySuggestions.map((city) => <button type="button" role="option"
+                  {!cityLookupLoading && citySuggestions.map((city, index) => <button type="button" role="option"
                     key={`${city.label}-${city.latitude}-${city.longitude}`}
-                    aria-selected={manual.birthCity === city.label}
+                    id={`compatibility-city-${index}`} aria-selected={activeCity === index}
                     onPointerDown={(event) => event.preventDefault()}
                     onClick={() => selectCity(city)}
-                    className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-white/75 transition hover:bg-rose-300/10 hover:text-rose-100">
+                    className="flex min-h-11 w-full items-center rounded-lg px-3 text-left text-sm text-white/75 transition-opacity motion-reduce:transition-none hover:bg-rose-300/10 hover:text-rose-100">
                     {city.label}
                   </button>)}
-                  {!cityLookupLoading && !citySuggestions.length ? <p className="px-3 py-2 text-xs leading-5 text-white/45">Город не найден. Попробуйте другое написание, например «Москва» или «Санкт-Петербург».</p> : null}
+                  {cityLookupError ? <p className="px-3 py-2 text-xs text-rose-200" role="alert">{cityLookupError}</p> : null}
+                  {!cityLookupError && !cityLookupLoading && !citySuggestions.length ? <p className="px-3 py-2 text-xs leading-5 text-white/45">Город не найден. Попробуйте другое написание, например «Москва» или «Санкт-Петербург».</p> : null}
                 </div> : null}
                 </div>
                 <p className={`mt-2 text-xs ${citySelected ? "text-emerald-200/65" : "text-white/40"}`}>
@@ -685,7 +661,7 @@ export default function NatalCompatibility() {
               </label>
               <div className="sm:col-span-2">
                 <button type="button" disabled={busy !== null} onClick={() => void createManual()}
-                  className="btn-luxe btn-luxe--md btn-luxe--gold">
+                  className="transition-[transform,opacity] motion-reduce:transition-none btn-luxe btn-luxe--md btn-luxe--gold">
                   {busy === "create" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Plus className="h-4 w-4" />}
                   Рассчитать совместимость
                 </button>
@@ -703,14 +679,14 @@ export default function NatalCompatibility() {
                   placeholder="Имя в приглашении" />
               </Field>
               <button type="button" disabled={busy !== null} onClick={() => void createInvite()}
-                className="btn-luxe btn-luxe--md btn-luxe--gold mt-4">
+                className="transition-[transform,opacity] motion-reduce:transition-none btn-luxe btn-luxe--md btn-luxe--gold mt-4">
                 {busy === "invite" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <UserPlus className="h-4 w-4" />}
                 Создать приглашение
               </button>
               {inviteUrl ? <div className="mt-4 flex flex-col gap-2 rounded-xl border border-emerald-300/15 bg-emerald-300/[0.04] p-4 sm:flex-row sm:items-center">
                 <input readOnly value={inviteUrl} className="ui-input min-w-0 flex-1 text-xs" />
                 <button type="button" onClick={() => void navigator.clipboard.writeText(inviteUrl)}
-                  className="btn-luxe btn-luxe--sm btn-luxe--ghost">
+                  className="transition-[transform,opacity] motion-reduce:transition-none btn-luxe btn-luxe--sm btn-luxe--ghost">
                   <Copy className="h-4 w-4" /> Копировать
                 </button>
               </div> : null}
@@ -748,7 +724,7 @@ export default function NatalCompatibility() {
                     aria-label={`Удалить совместимость ${record.ownerLabel} и ${record.partnerLabel}`}
                     disabled={busy !== null}
                     onClick={() => void remove(record)}
-                    className="absolute right-2 top-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-rose-200/70 transition hover:bg-rose-400/10 hover:text-rose-100 disabled:opacity-50"
+                    className="absolute right-2 top-2 inline-flex h-11 w-11 items-center justify-center rounded-lg text-rose-200/70 transition-opacity motion-reduce:transition-none hover:bg-rose-400/10 hover:text-rose-100 disabled:opacity-50"
                   >
                     <Trash2 className="h-4 w-4" aria-hidden />
                   </button>
@@ -767,6 +743,7 @@ export default function NatalCompatibility() {
         onGenerate={() => void generate(selected)}
         onDelete={() => void remove(selected)}
       /> : null}
+      </div>
     </div>
   );
 }
@@ -879,7 +856,7 @@ function CompatibilityViewer({
       </label>
       <RuneOrderPreview cost={cost} />
       <button type="button" disabled={busy !== null || !aiDataConsent} onClick={onGenerate}
-        className="btn-luxe btn-luxe--md btn-luxe--gold mt-4 disabled:opacity-50">
+        className="transition-[transform,opacity] motion-reduce:transition-none btn-luxe btn-luxe--md btn-luxe--gold mt-4 disabled:opacity-50">
         {busy === "generate" ? <Loader2 className="h-4 w-4 motion-safe:animate-spin" /> : <Sparkles className="h-4 w-4" />}
         Получить полный отчёт · {cost} ᚢ
       </button>

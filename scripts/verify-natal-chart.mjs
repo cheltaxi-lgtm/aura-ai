@@ -233,7 +233,7 @@ async function main() {
   const peakMillis = {
     mars: Date.parse("2026-01-02T06:00:00.000Z"),
     sun: Date.parse("2026-01-03T06:00:00.000Z"),
-    venus: Date.parse("2026-01-08T18:00:00.000Z"),
+    venus: Date.parse("2026-01-07T18:00:00.000Z"),
   };
   const fixtureSky = (at) => Object.fromEntries(
     Object.entries(peakMillis).map(([key, peak]) => [
@@ -262,9 +262,9 @@ async function main() {
   );
   const boundaryEvent = conjunctions.find((event) => event.planetKey === "venus");
   assert(
-    boundaryEvent?.windowEnd === "2026-01-08" &&
-      Date.parse(boundaryEvent.peakAtUtc) > Date.parse("2026-01-08T12:00:00.000Z"),
-    "horizon+1 sample closes an aspect crossing the final-day boundary"
+    boundaryEvent?.windowEnd === "2026-01-07" &&
+      Date.parse(boundaryEvent.peakAtUtc) > Date.parse("2026-01-07T12:00:00.000Z"),
+    "extra sample refines a peak inside the final seventh day"
   );
   const ingress = detectSignIngresses(
     { mars: { longitude: 30.1 } },
@@ -280,7 +280,7 @@ async function main() {
     timeKnown: true,
   });
 
-  assert(ny.western?.ephemeris === "celestine", "ny: celestine ephemeris");
+  assert(ny.western?.ephemeris === "astronomy-engine", "ny: celestine ephemeris");
   assert(typeof ny.western?.houseSystem === "string", "ny: house system label");
   assert(Array.isArray(ny.western?.houses) && ny.western.houses.length === 12, "ny: 12 house cusps");
   assert(Array.isArray(ny.western?.aspects) && ny.western.aspects.length > 0, "ny: aspects");
@@ -978,7 +978,7 @@ async function main() {
 
   const prompt = buildNatalPromptBlock(ny);
   assert(prompt.includes("Placidus") || prompt.includes("placidus"), "prompt mentions house system");
-  assert(prompt.includes("celestine"), "prompt mentions celestine");
+  assert(prompt.includes("astronomy-engine"), "prompt mentions celestine");
   const vedicPrompt = buildNatalPromptBlock(ny, "vedic");
   assert(vedicPrompt.includes("Накшатра Луны: Purva Bhadrapada"), "vedic prompt reads moonSign.nakshatra");
   assert(vedicPrompt.includes("Текущая махадаша: Mercury"), "vedic prompt reads current dasha lord");
@@ -1019,7 +1019,7 @@ async function main() {
   assert(presentedPositions.length >= 12, "workspace presents all western bodies and angles");
   assert(bigThree(ny.western, true).length === 3, "workspace derives Big Three");
   assert(aspectRows(ny.western).length === ny.western.aspects.length, "workspace preserves major and minor aspects");
-  assert(methodology(ny.western, ny.engineVersion).source === "celestine", "workspace exposes ephemeris source");
+  assert(methodology(ny.western, ny.engineVersion).source === "astronomy-engine", "workspace exposes precise planet ephemeris source");
   const unknownPositions = positionRows(ny.western, false);
   assert(
     unknownPositions.every((position) => position.house == null && position.key !== "rising" && position.key !== "midheaven"),

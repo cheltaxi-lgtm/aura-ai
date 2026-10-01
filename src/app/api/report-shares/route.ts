@@ -46,7 +46,7 @@ export async function POST(request: NextRequest) {
         body.reportKind !== "relationship" &&
         body.reportKind !== "compatibility"
       ) ||
-      typeof body.reportId !== "string") {
+      typeof body.reportId !== "string" || !/^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i.test(body.reportId)) {
     return NextResponse.json({ error: "invalid_request" }, { status: 400 });
   }
   const sections = allowedShareSections(body.reportKind, body.sections);
@@ -70,6 +70,7 @@ export async function POST(request: NextRequest) {
     );
     const report = rows[0];
     if (!report) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!report.structured_data && !["summary", "personality", "relationships", "career", "resources", "tensions", "currentPeriod", "recommendations"].every(key => sections.includes(key))) return NextResponse.json({ error: "У старого отчёта нет разметки разделов. Для его публикации выберите все разделы." }, { status: 400 });
     payload = sanitizeNatalReportShare({
       structuredData: report.structured_data, content: report.content,
       evidenceRefs: report.evidence_refs, sections,

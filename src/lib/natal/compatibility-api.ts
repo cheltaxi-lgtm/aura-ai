@@ -1,3 +1,4 @@
+import { validateNatalPlace } from "@/lib/services/natal-guest-service";
 import type { NatalChartInput } from "./types";
 
 export function parseCompatibilityLabel(value: unknown): string | undefined {
@@ -35,6 +36,8 @@ export function parseManualPartnerInput(value: unknown): NatalChartInput {
     birthCity,
     birthTime: timeKnown ? birthTime : null,
     timeKnown,
+    ...(input.place ? { place: validateNatalPlace(input.place as import("./types").NatalPlace) } : {}),
+    ...(input.birthTimeOccurrence === "earlier" || input.birthTimeOccurrence === "later" ? { birthTimeOccurrence: input.birthTimeOccurrence } : {}),
   };
 }
 

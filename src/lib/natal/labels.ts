@@ -35,6 +35,7 @@ export const TIMING_CATEGORY_LABELS: Record<TimingCategory, string> = {
 };
 
 export const TIMING_SOURCE_LABELS: Record<TimingSource, string> = {
+  "astronomy-transit": "Расчёт транзита",
   "celestine-transit": "Расчёт транзита",
   "celestine-solar-return": "Расчёт солнечного возвращения",
   "secondary-progression": "Вторичная прогрессия",

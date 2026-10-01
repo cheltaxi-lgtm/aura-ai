@@ -3,17 +3,17 @@ import { computeCelestinePositions, toCelestineBirthData } from "./celestine/ada
 import { formatHouseCusps, type HouseCusp } from "./houses";
 import { angularSeparation, houseForLongitude, mod360, signFromLongitude } from "./math";
 import { addDaysInTimezone } from "./sky";
-import { localDateStringInTimezone, parseBirthTimeToDecimal, resolveBirthUtcOffsetHours } from "./time";
+import { birthTimeLabel, localDateStringInTimezone, parseBirthTimeToDecimal, resolveBirthUtcOffsetHours } from "./time";
 import type { NatalChartRecord, NatalPlace } from "./types";
 
 // v3: unknown-time charts no longer emit ascendant-targeted transits.
-export const TIMING_ENGINE_VERSION = "timing-celestine-v3";
+export const TIMING_ENGINE_VERSION = "timing-astronomy-v4-calendar";
 export const TIMING_HORIZONS = [7, 30, 90, 365] as const;
 export type TimingHorizon = (typeof TIMING_HORIZONS)[number];
 export type TimingCategory =
   | "identity" | "emotions" | "relationships" | "career"
   | "growth" | "pressure" | "transformation";
-export type TimingSource = "celestine-transit" | "celestine-solar-return" | "secondary-progression";
+export type TimingSource = "astronomy-transit" | "celestine-transit" | "celestine-solar-return" | "secondary-progression";
 
 export interface TimingPosition {
   key: string;
@@ -147,9 +147,34 @@ function localIso(date: Date, timezone: string): string {
 }
 
 function localNoonUtc(date: string, place: NatalPlace): Date {
-  const offset = resolveBirthUtcOffsetHours(date, "12:00", place.timezone);
+  let offset: number;
+  try { offset = resolveBirthUtcOffsetHours(date, "12:00", place.timezone, "earlier"); }
+  catch (error) {
+    if (!(error instanceof Error) || error.message !== "NONEXISTENT_BIRTH_TIME") throw error;
+    // A calendar sampling anchor may fall in a historical skipped date. Use
+    // the first real local instant after that anchor, without altering birth input.
+    const target = date + "T12:00:00";
+    const center = Date.parse(date + "T12:00:00Z");
+    let lo = center - 48 * 3_600_000, hi = center + 48 * 3_600_000;
+    while (hi - lo > 1) {
+      const mid = Math.floor((lo + hi) / 2);
+      if (localIso(new Date(mid), place.timezone) < target) lo = mid; else hi = mid;
+    }
+    return new Date(hi);
+  }
   const [year, month, day] = date.split("-").map(Number);
   return new Date(Date.UTC(year, month - 1, day, 12) - offset * 3_600_000);
+}
+
+function localDateStartUtc(date: string, place: NatalPlace): number {
+  const center = localNoonUtc(date, place);
+  let lo = center.getTime() - 36 * 3_600_000, hi = center.getTime();
+  while (hi - lo > 1) {
+    const mid = Math.floor((lo + hi) / 2);
+    if (localDateStringInTimezone(place.timezone, new Date(mid)) < date) lo = mid;
+    else hi = mid;
+  }
+  return hi;
 }
 
 function positionsFromSky(
@@ -206,7 +231,8 @@ async function refineAspectPeak(
   planet: string,
   natalLongitude: number,
   angle: number,
-  skyProvider: TimingSkyProvider
+  skyProvider: TimingSkyProvider,
+  bounds: { start: number; end: number }
 ): Promise<{ at: Date; orb: number }> {
   const objective = async (millis: number) => {
     const at = new Date(millis);
@@ -215,8 +241,8 @@ async function refineAspectPeak(
       ? Math.abs(angularSeparation(body.longitude, natalLongitude) - angle)
       : Number.POSITIVE_INFINITY;
   };
-  let lo = around.getTime() - 18 * 3_600_000;
-  let hi = around.getTime() + 18 * 3_600_000;
+  let lo = Math.max(bounds.start, around.getTime() - 18 * 3_600_000);
+  let hi = Math.min(bounds.end - 1, around.getTime() + 18 * 3_600_000);
   // A transit aspect is locally unimodal over this bounded window. Ternary
   // refinement keeps long horizons affordable while narrowing the peak to
   // a window no wider than 30 minutes.
@@ -266,20 +292,26 @@ export async function computeTransitTimeline(params: {
   if (!natal.western || !natal.place) return [];
   const skyProvider = params.skyProvider ?? skyAtUtc;
   const start = localDateStringInTimezone(natal.place.timezone, params.referenceDate ?? new Date());
+  const endDate = addDaysInTimezone(natal.place.timezone, start, horizon);
   // The extra horizon+1 sample closes runs and detects boundaries crossing
   // the final requested local-calendar day.
-  const dates = Array.from({ length: horizon + 2 }, (_, day) => addDaysInTimezone(natal.place!.timezone, start, day));
+  const dates = Array.from({ length: horizon + 3 }, (_, day) => addDaysInTimezone(natal.place!.timezone, start, day - 1));
   const samples = await boundedMap(dates, 8, async (date) => {
     const at = localNoonUtc(date, natal.place!);
-    return { date, at, sky: await skyProvider(at, natal.place!) };
+    return { date: localDateStringInTimezone(natal.place!.timezone, at), at, sky: await skyProvider(at, natal.place!) };
   });
+  // Midnight may itself be skipped or repeated in some zones. Find the first
+  // actual instant belonging to each local date, rather than assuming 24h days.
+  const dateStart = (date: string) => localDateStartUtc(date, natal.place!);
+  const bounds = { start: dateStart(start), end: dateStart(endDate) };
+  const lastIncludedDate = localDateStringInTimezone(natal.place.timezone, new Date(bounds.end - 1));
   const natalBodies = NATAL_KEYS.flatMap((key) => {
     const longitude = bodyLongitude(natal.western!, key);
     return longitude == null ? [] : [{ key, longitude }];
   });
   const candidates = new Map<string, Array<{ index: number; orb: number; maxOrb: number; aspect: typeof ASPECTS[number] }>>();
 
-  for (let index = 0; index <= horizon + 1; index++) {
+  for (let index = 0; index < samples.length; index++) {
     for (const planet of TRANSIT_KEYS) {
       const body = samples[index].sky[planet];
       if (!body) continue;
@@ -302,11 +334,11 @@ export async function computeTransitTimeline(params: {
     let run: typeof entries = [];
     const flush = async () => {
       if (!run.length) return;
-      if (!run.some((entry) => entry.index <= horizon)) {
+      if (!run.some((entry) => entry.index >= 1 && entry.index <= horizon)) {
         run = [];
         return;
       }
-      const samplePeak = run.reduce((best, entry) => entry.orb < best.orb ? entry : best);
+      const samplePeak = run.filter(entry => entry.index >= 1 && entry.index <= horizon).reduce((best, entry) => entry.orb < best.orb ? entry : best);
       const natalLongitude = natalBodies.find((item) => item.key === target)!.longitude;
       const peak = await refineAspectPeak(
         samples[samplePeak.index].at,
@@ -314,17 +346,18 @@ export async function computeTransitTimeline(params: {
         planet,
         natalLongitude,
         samplePeak.aspect.angle,
-        skyProvider
+        skyProvider,
+        bounds
       );
       const date = localDateStringInTimezone(natal.place!.timezone, peak.at);
       events.push({
         id: `aspect:${planet}:${target}:${samplePeak.aspect.name}:${date}`,
         kind: "aspect", date, peakAtUtc: peak.at.toISOString(), peakAtLocal: localIso(peak.at, natal.place!.timezone),
-        windowStart: samples[run[0].index].date,
-        windowEnd: samples[Math.min(horizon, run[run.length - 1].index)].date,
+        windowStart: [start, samples[Math.max(1, run[0].index)].date].sort().at(-1)!,
+        windowEnd: [lastIncludedDate, samples[Math.min(horizon, run[run.length - 1].index)].date].sort()[0],
         planetKey: planet, targetKey: target, aspect: samplePeak.aspect.name,
         orb: Number(peak.orb.toFixed(3)), maxOrb: samplePeak.maxOrb,
-        category: categoryFor(planet, target), source: "celestine-transit",
+        category: categoryFor(planet, target), source: "astronomy-transit",
       });
       run = [];
     };
@@ -335,7 +368,7 @@ export async function computeTransitTimeline(params: {
     await flush();
   }
 
-  for (let index = 0; index <= horizon; index++) {
+  for (let index = 0; index < samples.length - 1; index++) {
     for (const planet of TRANSIT_KEYS) {
       const first = samples[index].sky[planet];
       const second = samples[index + 1].sky[planet];
@@ -350,22 +383,21 @@ export async function computeTransitTimeline(params: {
         peakAtUtc: peak.toISOString(), peakAtLocal: localIso(peak, natal.place.timezone),
         windowStart: date, windowEnd: date, planetKey: planet, sign: next.name,
         previousSign: previous.name, orb: 0, maxOrb: 0, category: categoryFor(planet),
-        source: "celestine-transit",
+        source: "astronomy-transit",
       });
     }
   }
-  return sortTimingEvents(events);
+  return sortTimingEvents(events.filter(event => event.date >= start && event.date < endDate &&
+    new Date(event.peakAtUtc).getTime() >= bounds.start && new Date(event.peakAtUtc).getTime() < bounds.end));
 }
 
-function birthInstant(birthDate: string, birthTime: string | null | undefined, place: NatalPlace): Date {
+function birthInstant(birthDate: string, birthTime: string | null | undefined, place: NatalPlace, occurrence?: "earlier" | "later"): Date {
   const decimal = parseBirthTimeToDecimal(birthTime) ?? 12;
-  const hour = Math.floor(decimal);
-  const minute = Math.floor((decimal - hour) * 60);
   const offset = resolveBirthUtcOffsetHours(
-    birthDate, `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`, place.timezone
+    birthDate, birthTimeLabel(decimal), place.timezone, occurrence
   );
   const [year, month, day] = birthDate.split("-").map(Number);
-  return new Date(Date.UTC(year, month - 1, day, hour, minute) - offset * 3_600_000);
+  return new Date(Date.UTC(year, month - 1, day) + Math.round(decimal * 3_600_000) - offset * 3_600_000);
 }
 
 export async function computeSolarReturn(params: {
@@ -471,7 +503,7 @@ export async function computeSecondaryProgressions(params: {
 }): Promise<SecondaryProgressionResult> {
   if (!params.natal.western || !params.natal.place) throw new Error("TIMING_CHART_INCOMPLETE");
   const target = params.targetDate ?? new Date();
-  const birth = birthInstant(params.birthDate, params.birthTime, params.natal.place);
+  const birth = birthInstant(params.birthDate, params.birthTime, params.natal.place, params.natal.birthTimeOccurrence);
   const mapped = progressedInstantForTarget(birth, target);
   const sky = skyAtUtc(mapped.progressedAtUtc, params.natal.place);
   const positions = positionsFromSky(sky, PROGRESSED_KEYS);
@@ -520,14 +552,17 @@ export async function computePersonalTiming(params: {
   const localYear = Number(start.slice(0, 4));
   const [events, solarReturn, progressions] = await Promise.all([
     computeTransitTimeline({ natal: params.natal, horizon: params.horizon, referenceDate: reference }),
-    computeSolarReturn({ natal: params.natal, birthDate: params.birthDate, year: localYear }),
+    (async () => {
+      const thisYear = await computeSolarReturn({ natal: params.natal, birthDate: params.birthDate, year: localYear });
+      return thisYear.exactAtLocal.slice(0, 10) >= start ? thisYear : computeSolarReturn({ natal: params.natal, birthDate: params.birthDate, year: localYear + 1 });
+    })(),
     computeSecondaryProgressions({
       natal: params.natal, birthDate: params.birthDate, birthTime: params.birthTime, targetDate: reference,
     }),
   ]);
   return {
     version: TIMING_ENGINE_VERSION, horizon: params.horizon, windowStart: start,
-    windowEnd: addDaysInTimezone(params.natal.place.timezone, start, params.horizon),
+    windowEnd: localDateStringInTimezone(params.natal.place.timezone, new Date(localDateStartUtc(addDaysInTimezone(params.natal.place.timezone, start, params.horizon), params.natal.place) - 1)),
     generatedAt: reference.toISOString(), timezone: params.natal.place.timezone,
     events, solarReturn, progressions,
   };

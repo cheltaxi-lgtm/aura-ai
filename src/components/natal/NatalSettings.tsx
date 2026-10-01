@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import BirthTimeOccurrence from "./BirthTimeOccurrence";
 import { useEffect, useState } from "react";
 import { Loader2, Settings } from "lucide-react";
 import { IMPORTANCE_PLANET_KEYS, russianPlanetLabel, TIMING_CATEGORY_LABELS } from "@/lib/natal/labels";
@@ -28,37 +29,57 @@ async function json<T>(response: Response): Promise<T> {
   return data;
 }
 
-export default function NatalSettings() {
+export default function NatalSettings({ onBirthTimeChanged }: { onBirthTimeChanged?: () => void }) {
+  const [occurrence, setOccurrence] = useState<"" | "earlier" | "later">("");
+  const [loading, setLoading] = useState(true);
+  const [retryId, setRetryId] = useState(0);
   const [ai, setAi] = useState<AiPreferences | null>(null);
   const [events, setEvents] = useState<EventPreferences | null>(null);
-  const [saving, setSaving] = useState<"ai" | "events" | null>(null);
+  const [saving, setSaving] = useState<"ai" | "events" | "birth" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
 
   useEffect(() => {
     const controller = new AbortController();
     setError("");
-    Promise.all([
+    setLoading(true);
+    Promise.allSettled([
       fetch("/api/natal-chart/ai-preferences", { credentials: "include", signal: controller.signal })
         .then(async (response) => {
           const data = await json<{ preferences?: AiPreferences; error?: string }>(response);
           if (!response.ok || !data.preferences) throw new Error(data.error || "Не удалось загрузить настройки ИИ");
-          return data.preferences;
+          if (!controller.signal.aborted) setAi(data.preferences);
         }),
       fetch("/api/natal-chart/event-preferences", { credentials: "include", signal: controller.signal })
         .then(async (response) => {
           const data = await json<{ preferences?: EventPreferences; error?: string }>(response);
           if (!response.ok || !data.preferences) throw new Error(data.error || "Не удалось загрузить уведомления");
-          return data.preferences;
+          if (!controller.signal.aborted) setEvents(data.preferences);
         }),
-    ]).then(([nextAi, nextEvents]) => {
-      setAi(nextAi);
-      setEvents(nextEvents);
-    }).catch((reason) => {
-      if ((reason as Error).name !== "AbortError") setError(reason instanceof Error ? reason.message : "Ошибка сети");
+      fetch("/api/natal-chart/birth-time", { credentials: "include", signal: controller.signal }).then(async response => {
+        const data = await json<{ occurrence: "earlier" | "later" | null; error?: string }>(response);
+        if (!response.ok) throw new Error(data.error || "Не удалось загрузить время рождения");
+        if (!controller.signal.aborted) setOccurrence(data.occurrence ?? "");
+      }),
+    ]).then(results => {
+      if (controller.signal.aborted) return;
+      const failures = results.filter((r): r is PromiseRejectedResult => r.status === "rejected");
+      setError(failures.map(r => r.reason instanceof Error ? r.reason.message : "Ошибка сети").join(". "));
+      setLoading(false);
     });
     return () => controller.abort();
-  }, []);
+  }, [retryId]);
+
+  const saveBirthTime = async (next: "" | "earlier" | "later") => {
+    setSaving("birth"); setError(""); setNotice("");
+    try {
+      const response = await fetch("/api/natal-chart/birth-time", { method: "PATCH", credentials: "include", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ occurrence: next || null }) });
+      const data = await json<{ error?: string }>(response);
+      if (!response.ok) throw new Error(data.error || "Не удалось сохранить время");
+      setOccurrence(next); setNotice("Вариант времени сохранён. Пересчитайте карту, чтобы применить его."); onBirthTimeChanged?.();
+    } catch (reason) { setError(reason instanceof Error ? reason.message : "Ошибка сети"); }
+    finally { setSaving(null); }
+  };
 
   const saveAi = async (patch: Partial<AiPreferences>) => {
     const previous = ai;
@@ -113,14 +134,15 @@ export default function NatalSettings() {
         <h2 className="mt-2 flex items-center gap-2 font-display text-xl font-semibold"><Settings className="h-5 w-5 text-amber-200" /> Настройки астрологии</h2>
       </header>
       <div className="space-y-6 p-5">
-        {error ? <p className="rounded-xl border border-rose-400/25 bg-rose-400/[0.07] p-3 text-sm text-rose-200" role="alert">{error}</p> : null}
+        {error ? <p className="rounded-xl border border-rose-400/25 bg-rose-400/[0.07] p-3 text-sm text-rose-200" role="alert">{error}<button type="button" className="ml-3 min-h-11 underline" onClick={() => setRetryId(id => id + 1)}>Повторить загрузку</button></p> : null}
         {notice ? <p className="rounded-xl border border-emerald-400/20 bg-emerald-400/[0.07] p-3 text-sm text-emerald-200/80" role="status">{notice}</p> : null}
-        {!ai || !events ? <p className="flex items-center gap-2 text-sm text-white/45" role="status"><Loader2 className="h-4 w-4 motion-safe:animate-spin" /> Загружаем настройки…</p> : null}
+        {loading ? <p className="flex items-center gap-2 text-sm text-white/45" role="status"><Loader2 className="h-4 w-4 motion-safe:animate-spin" /> Загружаем настройки…</p> : null}
         <section aria-labelledby="birth-data-title">
           <h3 id="birth-data-title" className="font-display text-lg text-amber-50">Данные рождения</h3>
           <p className="mt-2 text-xs leading-5 text-white/45">
             Дата, время и город определяют сам расчёт карты. Их изменение создаст новую версию карты.
           </p>
+          <BirthTimeOccurrence value={occurrence} disabled={loading || saving === "birth"} onChange={next => void saveBirthTime(next)} />
           <Link
             href="/cabinet?profile=1"
             className="mt-3 inline-flex min-h-11 items-center rounded-xl border border-amber-300/25 bg-amber-300/[0.06] px-4 text-sm text-amber-100"

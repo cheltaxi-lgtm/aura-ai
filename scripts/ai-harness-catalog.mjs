@@ -31,14 +31,7 @@ export const CHECKS = {
   "natal-unit": {
     title: "natal-unit",
     // Vitest 4 treats `natal-*.test.ts` as a literal filter (no files). Explicit paths work on Windows.
-    vitest: [
-      "tests/invariants/natal-forecast-depth.test.ts",
-      "tests/invariants/natal-forecast-memory.test.ts",
-      "tests/invariants/natal-forecast-salvage.test.ts",
-      "tests/invariants/natal-report-quality.test.ts",
-      "tests/invariants/natal-guest-continuity.test.ts",
-      "tests/invariants/natal-exact-report-ownership.test.ts",
-    ],
+    vitest: ["tests/invariants/natal"],
   },
   "e2e-natal": {
     title: "e2e-natal",

@@ -1,7 +1,8 @@
 /** MIT Celestine ephemeris — server-side only. */
 
-import { calculatePlanets, type BirthData, type ChartPlanet } from "celestine";
-import { resolveBirthUtcOffsetHours } from "../time";
+import { type BirthData, type ChartPlanet } from "celestine";
+import { computeNatalSky } from "../astronomy-sky";
+import { birthTimeLabel, resolveBirthUtcOffsetHours } from "../time";
 import type { NatalPlace } from "../types";
 
 export type SkyBody = {
@@ -22,12 +23,6 @@ const BODY_TO_KEY: Record<string, string> = {
   Pluto: "pluto",
 };
 
-const CHART_OPTIONS = {
-  includeAsteroids: false,
-  includeChiron: false,
-  includeLilith: false,
-  includeNodes: false,
-} as const;
 
 export function toCelestineBirthData(params: {
   birthDate: string;
@@ -63,9 +58,7 @@ export function toCelestineBirthDataAtLocalTime(
   place: NatalPlace,
   localHourDecimal: number
 ): BirthData {
-  const hour = Math.floor(localHourDecimal);
-  const minute = Math.floor((localHourDecimal - hour) * 60);
-  const timeLabel = `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`;
+  const timeLabel = birthTimeLabel(localHourDecimal);
   const utcOffset = resolveBirthUtcOffsetHours(birthDate, timeLabel, place.timezone);
   return toCelestineBirthData({
     birthDate,
@@ -90,6 +83,5 @@ export function mapPlanetsToSky(planets: ChartPlanet[]): Partial<Record<string, 
 }
 
 export function computeCelestinePositions(birth: BirthData): Partial<Record<string, SkyBody>> {
-  const planets = calculatePlanets(birth, CHART_OPTIONS);
-  return mapPlanetsToSky(planets);
+  return computeNatalSky(birth);
 }

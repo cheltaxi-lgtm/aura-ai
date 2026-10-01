@@ -18,17 +18,19 @@ export type NatalChartPayload = {
 export type VersionedPresentation = {
   birthFingerprint: string;
   engineVersion: string;
+  ephemeris?: string;
 };
 
 export function matchesCurrentChart(
   item: VersionedPresentation,
-  chart: Pick<NatalChartPayload, "birthFingerprint" | "engineVersion">
+  chart: Pick<NatalChartPayload, "birthFingerprint" | "engineVersion"> & Partial<Pick<NatalChartPayload, "western">>
 ): boolean {
   return Boolean(
     chart.birthFingerprint &&
     chart.engineVersion &&
     item.birthFingerprint === chart.birthFingerprint &&
-    item.engineVersion === chart.engineVersion
+    item.engineVersion === chart.engineVersion &&
+    (chart.western === undefined || item.ephemeris === String(chart.western?.ephemeris ?? "unknown"))
   );
 }
 
@@ -43,7 +45,7 @@ export type NatalInterpretationOwnershipReport = VersionedPresentation & {
  */
 export function natalInterpretationOwnsCurrentChart(
   reports: NatalInterpretationOwnershipReport[],
-  chart: Pick<NatalChartPayload, "birthFingerprint" | "engineVersion">
+  chart: Pick<NatalChartPayload, "birthFingerprint" | "engineVersion"> & Partial<Pick<NatalChartPayload, "western">>
 ): boolean {
   return reports.some(
     (report) =>
@@ -189,4 +191,19 @@ export function methodology(western: Record<string, unknown>, engineVersion?: st
     houses: typeof western.houseSystem === "string" ? western.houseSystem : null,
     zodiac: "тропический зодиак",
   };
+}
+
+/** Forecast windows contain local calendar days in the chart timezone. */
+export function natalForecastWindowIsCurrent(reportType: string, timezone: string, now = new Date()): boolean {
+  const [, rawHorizon, windowStart] = reportType.split(":");
+  const horizon = Number(rawHorizon);
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(windowStart ?? "") || ![7, 30, 90, 365].includes(horizon)) return false;
+  const start = Date.parse(`${windowStart}T00:00:00Z`);
+  if (!Number.isFinite(start) || new Date(start).toISOString().slice(0, 10) !== windowStart) return false;
+  try {
+    const parts = new Intl.DateTimeFormat("en-CA", { timeZone: timezone, year: "numeric", month: "2-digit", day: "2-digit" }).formatToParts(now);
+    const value = (type: string) => parts.find(part => part.type === type)?.value;
+    const today = Date.parse(`${value("year")}-${value("month")}-${value("day")}T00:00:00Z`);
+    return today >= start && today < start + horizon * 86_400_000;
+  } catch { return false; }
 }

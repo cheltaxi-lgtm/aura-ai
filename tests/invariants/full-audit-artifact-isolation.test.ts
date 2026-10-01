@@ -23,8 +23,8 @@ import {hasTestDb,installDbLifecycle} from './db/setup';
 
 describe.runIf(hasTestDb)('full audit artifact isolation',()=>{
  installDbLifecycle();
- async function user(){return (await query("INSERT INTO users(name,gender,zodiac) VALUES('Full audit QA','female','test') RETURNING id")).rows[0].id as string;}
- async function chart(id:string,cached=false){await query("INSERT INTO natal_charts(user_id,engine_version,chart_data) VALUES($1,'test-engine',$2)",[id,{birthFingerprint:'current',engineVersion:'test-engine',western:{ephemeris:'celestine'},...(cached?{interpretations:{western:'Old paid interpretation'}}:{})}]);}
+ async function user(){return (await query("INSERT INTO users(name,gender,zodiac,birth_date,birth_time,birth_city) VALUES('Full audit QA','female','test','1990-08-15','12:30','Moscow') RETURNING id")).rows[0].id as string;}
+ async function chart(id:string,cached=false){await query("INSERT INTO natal_charts(user_id,engine_version,chart_data) VALUES($1,'test-engine',$2)",[id,{birthFingerprint:'current',profileFingerprint:'1990-08-15|12:30|moscow',engineVersion:'test-engine',western:{ephemeris:'celestine'},...(cached?{interpretations:{western:'Old paid interpretation'}}:{})}]);}
  async function history(id:string,fingerprint='current',ephemeris='celestine'){return (await query("INSERT INTO natal_report_history(user_id,birth_fingerprint,engine_version,ephemeris,tradition,content) VALUES($1,$2,'test-engine',$3,'western','Old paid interpretation') RETURNING id",[id,fingerprint,ephemeris])).rows[0].id as string;}
  it('does not steal an active interpretation claim on retry',async()=>{
   const id=await user();await chart(id);const first=await claimNatalInterpretationResilient(id,'western','current','test-engine','celestine');expect(first.status).toBe('claimed');
@@ -35,11 +35,12 @@ describe.runIf(hasTestDb)('full audit artifact isolation',()=>{
   const claim=await claimNatalInterpretationResilient(id,'western','current','test-engine','celestine',options);expect(claim.status).toBe('claimed');if(claim.status!=='claimed')return;
   expect((await query('SELECT content FROM natal_report_history WHERE id=$1',[current])).rows[0].content).toBe('Old paid interpretation');
   const request={userId:id,tradition:'western' as const,interpretation:'New paid interpretation',expectedBirthFingerprint:'current',expectedEngineVersion:'test-engine',expectedEphemeris:'celestine',claimToken:claim.token,runeCost:30,forceRegenerate:true};
-  expect((await saveCurrentNatalInterpretation(request)).status).toBe('saved');
-  const regenerated=(await query('SELECT content,chart_snapshot FROM natal_report_history WHERE id=$1',[current])).rows[0];
+  const saved=await saveCurrentNatalInterpretation(request); expect(saved.status).toBe('saved'); if(saved.status==='stale') return; expect(saved.report.id).not.toBe(current);
+  expect((await query('SELECT content FROM natal_report_history WHERE id=$1',[current])).rows[0].content).toBe('Old paid interpretation');
+  const regenerated=(await query('SELECT content,chart_snapshot FROM natal_report_history WHERE id=$1',[saved.report.id])).rows[0];
   expect(regenerated.content).toBe('New paid interpretation');expect(regenerated.chart_snapshot.birthFingerprint).toBe('current');
   await query("UPDATE natal_charts SET chart_data = chart_data || $2::jsonb WHERE user_id=$1",[id,JSON.stringify({birthFingerprint:'changed'})]);
-  expect((await getNatalPrintRecord(id,current))?.chart_data).toMatchObject({birthFingerprint:'current'});
+  expect((await getNatalPrintRecord(id,saved.report.id))?.chart_data).toMatchObject({birthFingerprint:'current'});
   expect((await query('SELECT content FROM natal_report_history WHERE id=$1',[old])).rows[0].content).toBe('Old paid interpretation');
  });
  it('does not draw a different ephemeris chart under a historical natal report',async()=>{

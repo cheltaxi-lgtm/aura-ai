@@ -1,3 +1,4 @@
+import { natalBirthTimeError } from "@/lib/natal/time";
 import { NextRequest, NextResponse } from "next/server";
 
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -24,7 +25,8 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = (await request.json()) as Record<string, unknown>;
+    const body = (await request.json().catch(() => null)) as Record<string, unknown>;
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     if (body.partnerDataAuthorized !== true) {
       return NextResponse.json(
         { error: "partner_data_authorization_required" },
@@ -39,8 +41,10 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json(result, { status: result.reused ? 200 : 201 });
   } catch (error) {
+    const timeError = natalBirthTimeError(error);
+    if (timeError) return NextResponse.json({ error: timeError }, { status: 400 });
     const code = error instanceof Error ? error.message : "invalid_request";
-    if (code.startsWith("invalid_")) {
+    if (code.startsWith("invalid_") || code === "INVALID_PLACE" || code === "INVALID_BIRTH_TIME" || code === "INVALID_BIRTH_DATE") {
       return NextResponse.json({ error: code }, { status: 400 });
     }
     if (code === "chart_unavailable" || code === "partner_chart_unavailable") {

@@ -21,6 +21,7 @@ export type NatalGuestCalcInput = {
   birthTime?: string | null;
   timeKnown: boolean;
   place: NatalPlace;
+  birthTimeOccurrence?: "earlier" | "later";
 };
 
 type GuestRow = {
@@ -108,8 +109,8 @@ function normalizeBirthDate(raw: string): string {
 
 function normalizeBirthTime(raw: string | null | undefined, timeKnown: boolean): string | null {
   if (!timeKnown) return null;
-  const t = (raw ?? "").trim().slice(0, 5);
-  if (!/^([01]\d|2[0-3]):[0-5]\d$/.test(t)) {
+  const t = (raw ?? "").trim().replace(/^(\d{2}:\d{2}):00$/, "$1");
+  if (!/^([01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(t)) {
     throw new Error("INVALID_BIRTH_TIME");
   }
   return t;
@@ -124,7 +125,7 @@ function isValidIanaTimezone(timezone: string): boolean {
   }
 }
 
-function validatePlace(place: NatalPlace): NatalPlace {
+export function validateNatalPlace(place: NatalPlace): NatalPlace {
   if (
     !place ||
     typeof place.label !== "string" ||
@@ -165,8 +166,8 @@ function birthIdentityMatches(
   const gd = String(guest.birth_date).slice(0, 10);
   if (ud !== gd) return false;
 
-  const uTime = user.birth_time ? String(user.birth_time).slice(0, 5) : null;
-  const gTime = guest.time_known && guest.birth_time ? String(guest.birth_time).slice(0, 5) : null;
+  const uTime = user.birth_time ? String(user.birth_time).replace(/^(\d{2}:\d{2}):00$/, "$1") : null;
+  const gTime = guest.time_known && guest.birth_time ? String(guest.birth_time).replace(/^(\d{2}:\d{2}):00$/, "$1") : null;
   const uKnown = Boolean(uTime);
   if (uKnown !== guest.time_known) return false;
   if (uKnown && uTime !== gTime) return false;
@@ -206,7 +207,7 @@ export async function createGuestNatalChart(input: NatalGuestCalcInput): Promise
   const birthDate = normalizeBirthDate(input.birthDate);
   const timeKnown = Boolean(input.timeKnown);
   const birthTime = normalizeBirthTime(input.birthTime, timeKnown);
-  const place = validatePlace(input.place);
+  const place = validateNatalPlace(input.place);
 
   await sweepExpiredGuestNatal();
 
@@ -217,6 +218,7 @@ export async function createGuestNatalChart(input: NatalGuestCalcInput): Promise
     birthCity: place.label,
     timeKnown,
     place,
+    birthTimeOccurrence: input.birthTimeOccurrence,
   });
 
   // Persist authoritative timeKnown from engine (invalid time → false).
@@ -391,7 +393,8 @@ export async function claimGuestNatalChart(opts: {
           `SELECT chart_data FROM natal_charts WHERE user_id = $1`,
           [opts.profileUserId]
         );
-        const chart = stored.rows[0]?.chart_data ?? guest.chart_data;
+        const current = stored.rows[0]?.chart_data;
+        const chart = current?.birthFingerprint === guest.birth_fingerprint ? current : guest.chart_data;
         return {
           ok: true,
           status: "idempotent",
@@ -433,7 +436,10 @@ export async function claimGuestNatalChart(opts: {
     }
 
     const hasBirth = profileHasBirthData(user);
-    const matches = hasBirth ? birthIdentityMatches(user, guest) : false;
+    const existing = await queryClient<{ chart_data: NatalChartRecord }>(client, "SELECT chart_data FROM natal_charts WHERE user_id=$1 FOR UPDATE", [opts.profileUserId]);
+    const previousChart = existing.rows[0]?.chart_data;
+    const sameLocation = !previousChart?.place || (previousChart.place.latitude === guest.birth_lat && previousChart.place.longitude === guest.birth_lon && previousChart.place.timezone === guest.birth_tzid);
+    const matches = hasBirth ? birthIdentityMatches(user, guest) && sameLocation && (previousChart?.birthTimeOccurrence ?? undefined) === guest.chart_data.birthTimeOccurrence : false;
 
     if (hasBirth && !matches && !opts.confirmReplace) {
       return {
@@ -457,6 +463,11 @@ export async function claimGuestNatalChart(opts: {
       const nextMeta = {
         ...buildAstroMeta(birthDate),
         stubProfile: false,
+        natalBirthPlace: { profileFingerprint: buildBirthFingerprint({ birthDate, birthTime, birthCity: guest.place_label }), place: guest.chart_data.place },
+        natalBirthTime: guest.chart_data.birthTimeOccurrence ? {
+          occurrence: guest.chart_data.birthTimeOccurrence,
+          profileFingerprint: buildBirthFingerprint({ birthDate, birthTime, birthCity: guest.place_label }),
+        } : null,
       };
       await queryClient(
         client,

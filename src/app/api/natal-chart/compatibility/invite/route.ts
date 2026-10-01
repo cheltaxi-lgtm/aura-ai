@@ -19,7 +19,8 @@ export async function POST(request: NextRequest) {
   if (limited) return limited;
 
   try {
-    const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+    const body = (await request.json().catch(() => null)) as Record<string, unknown>;
+    if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid_request" }, { status: 400 });
     const result = await createCompatibilityInvite({
       ownerUserId: auth.profileUserId,
       ownerLabel: parseCompatibilityLabel(body.ownerLabel),

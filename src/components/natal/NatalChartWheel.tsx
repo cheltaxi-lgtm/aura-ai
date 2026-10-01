@@ -182,7 +182,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
 
   const selectBody = (body: WheelBody) => setSelection({
     kind: "body", id: body.key, title: BODY_NAMES[body.key] ?? body.key,
-    detail: `${body.sign ?? "Знак не указан"} · ${body.longitude.toFixed(2)}°${body.retrograde ? " · ретроградно" : ""}`,
+    detail: `${body.sign ?? "Знак не указан"} · ${(body.longitude % 30).toFixed(2)}° в знаке${body.retrograde ? " · ретроградно" : ""}`,
   });
 
   return (
@@ -193,7 +193,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           {(["all", "major", "minor"] as const).map((value) => (
             <button key={value} type="button" onClick={() => setNature(value)}
               aria-pressed={nature === value}
-              className={`rounded-full px-3 py-1.5 text-xs tracking-wide ${reducedMotion ? "" : "transition-colors"} ${nature === value ? "bg-amber-200/12 text-amber-100" : "text-white/40 hover:text-white/70"}`}>
+              className={`rounded-full px-3 py-1.5 text-xs tracking-wide ${reducedMotion ? "" : "transition-opacity motion-reduce:transition-none"} ${nature === value ? "bg-amber-200/12 text-amber-100" : "text-white/40 hover:text-white/70"}`}>
               {value === "all" ? "Все" : value === "major" ? "Основные" : "Дополнительные"}
             </button>
           ))}
@@ -312,7 +312,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           const highlighted = selected || related.has(body.key);
           const markerR = Math.max(9, size * (selected || highlighted ? .03 : .026));
           const action = () => selectBody(body);
-          return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${body.longitude.toFixed(1)} градусов`}
+          return <g key={body.key} role="button" tabIndex={0} aria-label={`${BODY_NAMES[body.key] ?? body.key}, ${(body.longitude % 30).toFixed(1)} градусов в знаке`}
             onClick={action} onKeyDown={(event) => keyboardSelect(event, action)}
             className={`cursor-pointer focus:outline-none focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200/70 ${reducedMotion ? "" : "transition-opacity"}`} opacity={selection?.kind === "body" && !highlighted ? .32 : 1}>
             <line x1={tick.x} y1={tick.y} x2={point.x} y2={point.y} stroke={body.color} strokeOpacity=".5" />
@@ -336,6 +336,12 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
             <p className="text-sm leading-6 text-white/45">Нажмите планету, ось или аспект</p>
           )}
         </section>
+        <div className="grid grid-cols-2 gap-2 sm:hidden" aria-label="Выбор планеты">
+          {bodies.map(body => <button key={body.key} type="button" onClick={() => selectBody(body)} aria-pressed={selection?.kind === "body" && selection.id === body.key}
+            className="min-h-11 rounded-xl border border-white/10 px-3 py-2 text-left text-xs text-white/75 focus-visible:outline focus-visible:outline-2 focus-visible:outline-amber-200">
+            {BODY_NAMES[body.key] ?? body.key} · {body.sign} {(body.longitude % 30).toFixed(2)}°
+          </button>)}
+        </div>
         <ul className="flex flex-wrap gap-x-5 gap-y-2.5 text-sm leading-5">
           {LEGEND_ORDER.map((type) => (
             <li key={type} className={`inline-flex items-center gap-2 ${isMajorAspect(type) ? "text-white/72" : "text-white/40"}`}>
@@ -358,7 +364,7 @@ export default function NatalChartWheel({ western, timeKnown, size = 600, summar
           </summary>
           <div className="border-t border-white/[0.06] px-4 py-4">
             <ul className="grid gap-x-10 gap-y-2 text-sm leading-7 text-white/58 sm:grid-cols-2">
-              {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {body.longitude.toFixed(2)}°{body.retrograde ? ", ретроградно" : ""}</li>)}
+              {bodies.map((body) => <li key={body.key}>{BODY_NAMES[body.key] ?? body.key}: {body.sign ?? "знак не указан"}, {(body.longitude % 30).toFixed(2)}° в знаке{body.retrograde ? ", ретроградно" : ""}</li>)}
               {timeKnown ? houses.map((house) => <li key={`text-${house.house}`}>{house.house} дом: куспид {house.longitude.toFixed(2)}°</li>) : <li>Дома и углы скрыты: точное время рождения неизвестно.</li>}
               {axisEnds.map((end) => <li key={`text-${end.id}`}>{end.title}: {end.longitude.toFixed(2)}°</li>)}
             </ul>

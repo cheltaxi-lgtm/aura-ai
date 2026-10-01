@@ -76,7 +76,7 @@ export async function trackWorkerJobRefunded(request: NextRequest): Promise<void
   if (attempt) await markAsyncJobRefunded(jobId, attempt);
 }
 
-/** Lock the attempt across ledger refund and job binding. A delivered Matrix
+/** Lock the attempt across ledger refund and job binding. A delivered paid
  * receipt or a superseded attempt can never refund the current purchase. */
 export async function refundWorkerJobCharge(request: NextRequest, params: Parameters<typeof BillingService.rollbackChargeEx>[0]): Promise<{ balance: number; refunded: boolean }> {
   const jobId = getAsyncJobIdFromRequest(request);
@@ -89,8 +89,10 @@ export async function refundWorkerJobCharge(request: NextRequest, params: Parame
       }
     }
     if (params.transactionId) {
-      const saved = await queryClient(client, `SELECT id FROM numerology_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1`, [params.userId, params.transactionId]);
-      if (saved.rows.length) return { balance: await getRuneBalance(params.userId, client), refunded: false };
+      const { durableReportResult, lockPaidReportReceipt } = await import('@/lib/services/durable-report-receipt');
+      await lockPaidReportReceipt(client, params.transactionId);
+      const saved = await durableReportResult(client, params.userId, params.transactionId);
+      if (saved) return { balance: await getRuneBalance(params.userId, client), refunded: false };
     }
     const outcome = await BillingService.rollbackChargeEx({ ...params, client });
     if (params.cost > 0 && !outcome.refunded) throw new Error("reading_refund_failed");

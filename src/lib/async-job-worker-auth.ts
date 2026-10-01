@@ -78,6 +78,12 @@ export function getAsyncJobAttemptFromRequest(request: NextRequest): AsyncJobAtt
     ? { attemptCount, workerId } : null;
 }
 
+export function getReportWorkerJobFromRequest(request: NextRequest): { jobId: string; attempt: AsyncJobAttempt } | undefined {
+  const jobId = getAsyncJobIdFromRequest(request);
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  return jobId && attempt ? { jobId, attempt } : undefined;
+}
+
 export function isAsyncJobWorkerConfigured(): boolean {
   return Boolean(process.env.ASYNC_JOB_WORKER_SECRET);
 }

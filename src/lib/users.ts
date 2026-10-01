@@ -296,7 +296,7 @@ export async function updateUserProfile(
     (birthDate ? buildAstroMeta(birthDate) : null) ??
     current.astro_meta;
   const currentMeta = (current.astro_meta ?? {}) as Record<string, unknown>;
-  const protectedAnchorKeys = ["guestIntroUsedAt", "introReadingConsumedAt", "lastDailyTripletDrawAt", "lastTripletDrawAt", "lastDailyReadingDate", "lastDailyReadingSpreadId"];
+  const protectedAnchorKeys = ["natalBirthTime", "natalBirthPlace", "guestIntroUsedAt", "introReadingConsumedAt", "lastDailyTripletDrawAt", "lastTripletDrawAt", "lastDailyReadingDate", "lastDailyReadingSpreadId"];
   const astroMeta = { ...currentMeta, ...(proposedAstroMeta ?? {}) } as Record<string, unknown>;
   for (const key of protectedAnchorKeys) delete astroMeta[key];
 

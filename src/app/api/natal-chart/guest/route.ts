@@ -11,6 +11,7 @@ import { isNatalChartEnabled } from "@/lib/settings";
 import { setNatalGuestClaimCookieOnResponse } from "@/lib/natal-guest-claim-cookie";
 import { createGuestNatalChart } from "@/lib/services/natal-guest-service";
 import type { NatalPlace } from "@/lib/natal";
+import { natalBirthTimeError } from "@/lib/natal/time";
 
 export const runtime = "nodejs";
 
@@ -44,6 +45,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   }
 
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "invalid_json" }, { status: 400 });
   const birthDate = typeof body.birthDate === "string" ? body.birthDate : "";
   const timeKnown = body.timeKnown === true;
   const birthTime =
@@ -66,6 +68,7 @@ export async function POST(request: NextRequest) {
       birthTime,
       timeKnown,
       place,
+      birthTimeOccurrence: body.birthTimeOccurrence === "earlier" || body.birthTimeOccurrence === "later" ? body.birthTimeOccurrence : undefined,
     });
 
     const response = NextResponse.json({
@@ -75,6 +78,8 @@ export async function POST(request: NextRequest) {
     setNatalGuestClaimCookieOnResponse(response, rawClaimToken, request);
     return response;
   } catch (err) {
+    const timeError = natalBirthTimeError(err);
+    if (timeError) return NextResponse.json({ error: timeError, code: err instanceof Error ? err.message : "invalid_birth_time" }, { status: 400 });
     const msg = err instanceof Error ? err.message : "error";
     if (msg === "INVALID_BIRTH_DATE") {
       return NextResponse.json({ error: "invalid_birth_date" }, { status: 400 });

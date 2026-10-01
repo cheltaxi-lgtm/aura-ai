@@ -17,6 +17,7 @@ export type NatalGuestFreeHighlight = {
 export type NatalGuestSafePayload = {
   artifactId: string;
   timeKnown: boolean;
+  birthTimeOccurrence?: "earlier" | "later";
   placeLabel: string;
   timezone: string;
   engineVersion: string;
@@ -76,14 +77,14 @@ function buildHighlights(
   const sunSign = signName(bodyFor(western, "sun"));
   if (sunSign) {
     out.push({
-      title: `Солнце в ${signLabel(sunSign)}`,
+      title: `Солнце · ${signLabel(sunSign)}`,
       text: "Ядро характера и способ проявлять себя — главный тон карты.",
     });
   }
   const moonSign = signName(bodyFor(western, "moon"));
   if (moonSign) {
     out.push({
-      title: `Луна в ${signLabel(moonSign)}`,
+      title: `Луна · ${signLabel(moonSign)}`,
       text: timeKnown
         ? "Эмоциональный ритм и то, что даёт ощущение опоры."
         : "Эмоциональный ритм (положение Луны чувствительно к точному времени).",
@@ -93,7 +94,7 @@ function buildHighlights(
     const risingSign = signName(bodyFor(western, "rising"));
     if (risingSign) {
       out.push({
-        title: `Асцендент в ${signLabel(risingSign)}`,
+        title: `Асцендент · ${signLabel(risingSign)}`,
         text: "Как вас считывают с первого взгляда и с чего начинается путь.",
       });
     }
@@ -111,7 +112,7 @@ function buildHighlights(
   const saturnSign = signName(saturn);
   if (saturnSign && out.length < 5) {
     out.push({
-      title: `Сатурн в ${signLabel(saturnSign)}`,
+      title: `Сатурн · ${signLabel(saturnSign)}`,
       text: "Зона дисциплины и долгосрочной ответственности.",
     });
   }
@@ -154,6 +155,7 @@ export function buildNatalGuestSafePayload(opts: {
   return {
     artifactId: opts.artifactId,
     timeKnown,
+    birthTimeOccurrence: timeKnown ? opts.chart.birthTimeOccurrence : undefined,
     placeLabel,
     timezone,
     engineVersion: opts.chart.engineVersion,

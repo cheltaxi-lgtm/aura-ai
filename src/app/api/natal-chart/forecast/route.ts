@@ -1,8 +1,12 @@
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
+import { getReportWorkerJobFromRequest } from "@/lib/async-job-worker-auth";
+import { natalBirthTimeError } from "@/lib/natal/time";
+import { natalChartJobIdentity, natalQueuedChartMatches } from "@/lib/natal/job-identity";
+import { getUserById } from "@/lib/users";
 import { NextRequest, NextResponse } from "next/server";
 
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import {
-  BillingService,
   InsufficientFundsError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
@@ -33,7 +37,6 @@ import {
 } from "@/lib/require-auth";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
 import { isNatalChartEnabled } from "@/lib/settings";
-import { getUserById } from "@/lib/users";
 import { normalizePersonDisplayName } from "@/lib/normalize-person-name";
 import { getAsyncJobWorkerUserId } from "@/lib/async-job-worker-auth";
 import {
@@ -42,7 +45,7 @@ import {
   shouldRefundBeforeWorkerFail,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
-  trackWorkerJobRefunded,
+  refundWorkerJobCharge,
 } from "@/lib/natal/async-job-lifecycle";
 import { enqueueNatalAsyncJob } from "@/lib/natal/async-job-route";
 
@@ -78,7 +81,11 @@ export async function POST(request: NextRequest) {
     aiDataUseAcknowledged?: unknown;
     async?: unknown;
     forceRegenerate?: unknown;
+    chartIdentity?: unknown;
   };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({ error: "Некорректный запрос." }, { status: 400 });
+  const recovered = await recoverSavedWorkerReport(auth.profileUserId, getReportWorkerJobFromRequest(request));
+  if (recovered) return NextResponse.json(recovered);
   const forceRegenerate = body.forceRegenerate === true;
   const horizon = parseTimingHorizon(String(body.horizon ?? ""));
   if (!horizon) {
@@ -90,25 +97,31 @@ export async function POST(request: NextRequest) {
       { status: 400 }
     );
   }
-  if (body.async === true && isAsyncJobWorkerConfigured()) {
-    return enqueueNatalAsyncJob({
-      userId: auth.profileUserId,
-      kind: "natal_forecast",
-      payload: {
-        horizon: body.horizon,
-        aiDataUseAcknowledged: true,
-        ...(forceRegenerate ? { forceRegenerate: true } : {}),
-      },
-    });
-  }
+
 
   let chart;
   let timing;
   try {
     chart = await getOrComputeNatalChart(auth.profileUserId);
-    timing = await getOrComputePersonalTiming(auth.profileUserId, horizon)
+    if (!chart?.western || !chart.birthFingerprint) throw new Error("TIMING_CHART_INCOMPLETE");
+    if (workerUserId && !natalQueuedChartMatches(body.chartIdentity, chart)) return NextResponse.json({ error: "Карта изменилась после заказа. Повторите заказ для текущей карты.", code: "chart_changed" }, { status: 409 });
+  if (body.async === true && isAsyncJobWorkerConfigured()) {
+    return enqueueNatalAsyncJob({
+      userId: auth.profileUserId,
+      kind: "natal_forecast",
+      payload: {
+        horizon,
+        chartIdentity: natalChartJobIdentity(chart),
+        aiDataUseAcknowledged: true,
+        ...(forceRegenerate ? { forceRegenerate: true } : {}),
+      },
+    });
+  }
+    timing = await getOrComputePersonalTiming(auth.profileUserId, horizon, { chart })
       .then((result) => result.timing);
-  } catch {
+  } catch (error) {
+    const timeError = natalBirthTimeError(error);
+    if (timeError) return NextResponse.json({ error: timeError }, { status: 400 });
     return NextResponse.json(
       { error: "Не удалось подготовить расчёт выбранного периода." },
       { status: 422 }
@@ -207,10 +220,10 @@ ${timingEvidenceIds.join("\n")}`),
 
   let charge: BillingChargeResult | undefined;
   let rollbackAttempted = false;
+  let durablePayload: Record<string, unknown> | undefined;
   const rollback = async () => {
     if (!charge || rollbackAttempted) return;
-    rollbackAttempted = true;
-    await BillingService.rollbackCharge({
+    const outcome = await refundWorkerJobCharge(request, {
       userId: auth.profileUserId,
       cost: charge.spentRunes,
       wasFreeQuestion: charge.wasFreeQuestion,
@@ -218,7 +231,7 @@ ${timingEvidenceIds.join("\n")}`),
       actionType: charge.actionType,
       slotReserved: charge.slotReserved,
     });
-    await trackWorkerJobRefunded(request);
+    rollbackAttempted = outcome.refunded;
   };
 
   try {
@@ -259,13 +272,13 @@ ${timingEvidenceIds.join("\n")}`),
       await trackWorkerJobFailed(
         request,
         refundNow
-          ? "Не удалось получить AI-прогноз. Оплата возвращена."
+          ? (rollbackAttempted ? "Не удалось получить AI-прогноз. Оплата возвращена." : "Не удалось получить AI-прогноз.")
           : "Не удалось получить AI-прогноз. Повторяем попытку.",
-        { refunded: refundNow, errorCode: "invalid_model_report" }
+        { refunded: rollbackAttempted, errorCode: "invalid_model_report" }
       );
       return NextResponse.json(
         refundNow
-          ? { error: "Не удалось получить AI-прогноз. Оплата возвращена.", refunded: true }
+          ? { error: (rollbackAttempted ? "Не удалось получить AI-прогноз. Оплата возвращена." : "Не удалось получить AI-прогноз."), refunded: rollbackAttempted }
           : { error: "Не удалось получить AI-прогноз. Повторяем попытку.", refunded: false },
         { status: 502 }
       );
@@ -278,13 +291,13 @@ ${timingEvidenceIds.join("\n")}`),
       // job terminally instead of leaving it running until the reaper.
       await trackWorkerJobFailed(
         request,
-        "Генерация была отменена по таймауту. Оплата возвращена.",
-        { refunded: true, errorCode: "generation_claim_lost" }
+        (rollbackAttempted ? "Генерация была отменена по таймауту. Оплата возвращена." : "Генерация была отменена по таймауту."),
+        { refunded: rollbackAttempted, errorCode: "generation_claim_lost" }
       );
       return NextResponse.json(
         {
-          error: "Генерация была отменена по таймауту. Оплата возвращена.",
-          refunded: true,
+          error: (rollbackAttempted ? "Генерация была отменена по таймауту. Оплата возвращена." : "Генерация была отменена по таймауту."),
+          refunded: rollbackAttempted,
         },
         { status: 409 }
       );
@@ -300,6 +313,7 @@ ${timingEvidenceIds.join("\n")}`),
       claimToken: claim.token,
       runeCost: charge.spentRunes,
       chargeTransactionId: charge.transactionId,
+      workerJob: getReportWorkerJobFromRequest(request),
       structuredData: report as unknown as Record<string, unknown>,
       evidenceRefs: evidence,
       reportType,
@@ -309,11 +323,11 @@ ${timingEvidenceIds.join("\n")}`),
       await rollback();
       await trackWorkerJobFailed(
         request,
-        "Карта изменилась. Оплата возвращена, попробуйте снова.",
-        { refunded: true, errorCode: "chart_stale" }
+        (rollbackAttempted ? "Карта изменилась. Оплата возвращена, попробуйте снова." : "Карта изменилась. попробуйте снова."),
+        { refunded: rollbackAttempted, errorCode: "chart_stale" }
       );
       return NextResponse.json(
-        { error: "Карта изменилась. Оплата возвращена, попробуйте снова.", refunded: true },
+        { error: (rollbackAttempted ? "Карта изменилась. Оплата возвращена, попробуйте снова." : "Карта изменилась. попробуйте снова."), refunded: rollbackAttempted },
         { status: 409 }
       );
     }
@@ -328,9 +342,15 @@ ${timingEvidenceIds.join("\n")}`),
       runeBalance: saved.status === "saved" ? charge.newBalance : undefined,
       refunded: saved.status === "already_saved",
     };
+    durablePayload = payload;
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (error) {
+    if (durablePayload) {
+      // The receipt already exists. Return it; a later worker/reaper recovers delivery.
+      console.warn("[natal-chart] completed receipt awaiting job delivery recovery");
+      return NextResponse.json(durablePayload);
+    }
     if (error instanceof InsufficientFundsError) {
       await trackWorkerJobFailed(request, "insufficient", { errorCode: "insufficient" });
       return NextResponse.json(
@@ -344,7 +364,7 @@ ${timingEvidenceIds.join("\n")}`),
     if (refundNow) {
       await rollback().catch(() => console.warn("[natal-chart] forecast rollback failed"));
     }
-    const refunded = refundNow && rollbackAttempted;
+    const refunded = rollbackAttempted;
     console.warn("[natal-chart] forecast generation failed");
     await trackWorkerJobFailed(request, "Ошибка генерации прогноза.", {
       refunded,

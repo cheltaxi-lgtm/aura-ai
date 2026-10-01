@@ -51,6 +51,7 @@ const NATAL_INTERPRETATION: PaidJobKindConfig = {
       "natal_interpretation",
       payload.tradition,
       payload.engineVersion,
+      payload.chartIdentity,
       payload.forceRegenerate === true,
     ]),
 };
@@ -75,6 +76,7 @@ const NATAL_FORECAST: PaidJobKindConfig = {
       payload.tradition,
       payload.horizon,
       payload.engineVersion,
+      payload.chartIdentity,
       payload.forceRegenerate === true,
     ]),
 };

@@ -1,3 +1,4 @@
+import { ASPECT_NAMES, SIGN_RU } from "./presentation";
 import { angularSeparation, signFromLongitude } from "./math";
 import { listFacts } from "@/lib/memory/user-facts";
 import { getSkyForLocalDate, addDaysInTimezone } from "./sky";
@@ -104,7 +105,7 @@ function detectAspectHits(
         kind: "aspect_hit",
         date: dateStr,
         orb: Number(orb.toFixed(2)),
-        note: `Транзит ${tLabel} ${rule.name} к натальному ${natal.label} (орб ${orb.toFixed(1)}°)`,
+        note: `Транзит ${tLabel} ${ASPECT_NAMES[rule.name] ?? rule.name} к натальному ${natal.label} (орб ${orb.toFixed(1)}°)`,
         methodology: DEEP_TRANSIT_METHODOLOGY,
       });
       break;
@@ -136,7 +137,7 @@ export function detectSignIngresses(
       transitSign: endSign,
       kind: "sign_change",
       date: dateStr,
-      note: `Транзит ${label}: вход в ${endSign} (из ${startSign})`,
+      note: `Транзит ${label}: вход в ${SIGN_RU[endSign] ?? endSign} (из ${SIGN_RU[startSign] ?? startSign})`,
       methodology: DEEP_TRANSIT_METHODOLOGY,
     });
   }
