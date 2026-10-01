@@ -6,7 +6,8 @@ import { query } from "@/lib/db";
 import { ensureMinimalConsumerProfile, updateUserProfile } from "@/lib/users";
 import { ensureSelfSubject, upsertMatrixSubject, deleteMatrixSubject } from "@/lib/services/matrix-subject-service";
 import { PRICING } from "@/lib/config/pricing";
-import { createSession } from "@/lib/session";
+import { createSession, getSession, updateSessionChatMeta } from "@/lib/session";
+import { findSpreadReadingForSession, findStoredSpreadReadingWithMeta } from "@/lib/session-spread-reading";
 import { createHistoryEntry } from "@/lib/users";
 import { getOwnedMatrixSnapshot, persistOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
 import { findOwnedMatrixReportBySubject, matrixReportVersion, saveMatrixReport } from "@/lib/services/numerology-report-service";
@@ -57,6 +58,22 @@ describe.runIf(hasTestDb)("matrix audit persisted identities", () => {
     const subject = (await ensureSelfSubject(user.id))!;
     return { user, subject };
   }
+  it.each(["child_matrix", "destiny_matrix"] as const)("never restores another person's %s through empty cards", async toolId => {
+    const { user, subject } = await seed();
+    const session = await createSession(undefined, user.id);
+    await updateSessionChatMeta(session.id, { characterKey: "numerolog", intention: toolId, spreadId: toolId, spreadType: "new", cards: [] });
+    const foreignText = "Отчёт другого человека. ".repeat(15);
+    await createHistoryEntry({ userId: user.id, title: "Other person", characterName: "numerolog", isPaid: true,
+      contextData: { type: "reading", reading: foreignText, numerologToolId: toolId, tarotCards: [], sessionId: crypto.randomUUID() } });
+    const storedSession = (await getSession(session.id))!;
+    expect(await findStoredSpreadReadingWithMeta(user.id, "numerolog", storedSession)).toBeNull();
+    expect(await findSpreadReadingForSession(user.id, "numerolog", storedSession)).toBeNull();
+    const ownText = "Отчёт выбранного человека. ".repeat(15);
+    await saveMatrixReport({ userId: user.id, subjectId: subject.id, toolId, birthDateRaw: subject.birthDate,
+      sessionId: session.id, content: ownText, runeCost: 0 });
+    expect((await findStoredSpreadReadingWithMeta(user.id, "numerolog", storedSession))?.reading).toBe(ownText.trim());
+    expect(await findSpreadReadingForSession(user.id, "numerolog", storedSession)).toBe(ownText.trim());
+  });
   it("deletes a claimed guest child and its pending personal data", async () => {
     const { user } = await seed();
     const guest = await createGuestMatrixPending({ birthDate: "2015-02-03", subjectKind: "child" });
