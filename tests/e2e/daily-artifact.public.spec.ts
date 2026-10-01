@@ -392,6 +392,7 @@ test.describe("daily artifact + landing copy", () => {
     await expect(switcher).toBeChecked();
     await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toHaveCount(0);
     await switcher.uncheck();
+    await contact.getByText("Настроить письма и Telegram", { exact: true }).click();
     await expect(contact.getByRole("button", { name: "Включить письмо о раскладе" })).toBeVisible();
   });
 
