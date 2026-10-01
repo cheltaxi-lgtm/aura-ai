@@ -5,7 +5,7 @@ import RuneOrderPreview from "@/components/RuneOrderPreview";
 import Link from "next/link";
 import { createPortal } from "react-dom";
 import BirthTimeOccurrence from "./BirthTimeOccurrence";
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   CheckCircle2,
   Copy,
@@ -85,9 +85,9 @@ async function responseJson<T>(response: Response): Promise<T> {
   return (await response.json().catch(() => ({}))) as T;
 }
 
-async function waitForCompatibilityJob(jobId: string): Promise<Record<string, unknown>> {
+async function waitForCompatibilityJob(jobId: string, signal?: AbortSignal): Promise<Record<string, unknown>> {
   const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
-  return waitForAsyncJob({ jobId, storageKey: "aura:compatibility-active-job", startedAtKey: "aura:compatibility-active-job-started" });
+  return waitForAsyncJob({ jobId, signal, storageKey: "aura:compatibility-active-job", startedAtKey: "aura:compatibility-active-job-started" });
 }
 
 function errorMessage(code?: string): string {
@@ -114,6 +114,7 @@ export default function NatalCompatibility() {
   const { openPaywall, showRateLimit } = usePaywall();
   const { cost } = useRuneConfig();
   const [records, setRecords] = useState<CompatibilityRecord[]>([]);
+  const recordsRequest = useRef(0);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [mode, setMode] = useState<"manual" | "invite">("manual");
   const [manual, setManual] = useState<ManualForm>(EMPTY_MANUAL);
@@ -124,7 +125,7 @@ export default function NatalCompatibility() {
   const [participantLabel, setParticipantLabel] = useState("");
   const [participantConsent, setParticipantConsent] = useState(false);
   const [loading, setLoading] = useState(true);
-  const [busy, setBusy] = useState<"create" | "invite" | "accept" | "generate" | "delete" | null>(null);
+  const [busy, setBusy] = useState<"create" | "invite" | "accept" | "generate" | "delete" | "restore" | null>(null);
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [acceptedReport, setAcceptedReport] = useState<{
@@ -157,10 +158,12 @@ export default function NatalCompatibility() {
   }, []);
 
   const loadRecords = useCallback(async () => {
+    const requestId = ++recordsRequest.current;
     setLoading(true);
     try {
       const response = await fetch("/api/natal-chart/compatibility", { credentials: "include" });
       const data = await responseJson<{ compatibility?: CompatibilityRecord[]; error?: string }>(response);
+      if (requestId !== recordsRequest.current) return;
       if (!response.ok) throw new Error(data.error);
       const next = data.compatibility ?? [];
       setRecords(next);
@@ -181,15 +184,32 @@ export default function NatalCompatibility() {
           null
       );
     } catch (reason) {
-      setError(errorMessage(reason instanceof Error ? reason.message : undefined));
+      if (requestId === recordsRequest.current) setError(errorMessage(reason instanceof Error ? reason.message : undefined));
     } finally {
-      setLoading(false);
+      if (requestId === recordsRequest.current) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
     void loadRecords();
   }, [loadRecords]);
+
+  useEffect(() => {
+    let jobId: string | null;
+    try { jobId = localStorage.getItem("aura:compatibility-active-job"); } catch { return; }
+    if (!jobId) return;
+    const controller = new AbortController();
+    setBusy("restore");
+    void waitForCompatibilityJob(jobId, controller.signal).then(async result => {
+      if (controller.signal.aborted) return;
+      const record = result.record as CompatibilityRecord | undefined;
+      if (record?.id) selectCompatibility(record.id);
+      await loadRecords();
+      if (!controller.signal.aborted) setNotice("Полный отчёт совместимости готов.");
+    }).catch(reason => { if (!controller.signal.aborted) setError(errorMessage(reason instanceof Error ? reason.message : undefined)); })
+      .finally(() => { if (!controller.signal.aborted) setBusy(null); });
+    return () => controller.abort();
+  }, [loadRecords, selectCompatibility]);
 
   useEffect(() => {
     if (!inviteToken) return;
@@ -391,12 +411,12 @@ export default function NatalCompatibility() {
     }
   };
 
-  const generate = async (record: CompatibilityRecord, opts?: { forceWait?: boolean }) => {
+  const generate = async (record: CompatibilityRecord, opts?: { forceWait?: boolean; resumeJobId?: string }) => {
     setBusy("generate");
     setError("");
     setNotice("");
     try {
-      const response = await fetch(
+      const response = opts?.resumeJobId ? Response.json({ jobId: opts.resumeJobId }, { status: 202 }) : await fetch(
         `/api/natal-chart/compatibility/${encodeURIComponent(record.id)}/generate`,
         {
           method: "POST",
@@ -416,13 +436,14 @@ export default function NatalCompatibility() {
       let settledOk = response.ok;
       let settledStatus = response.status;
       if (response.status === 202 && data.jobId) {
+        try { window.localStorage.setItem("aura:compatibility-active-job", data.jobId); window.localStorage.setItem("aura:compatibility-active-job-started", String(Date.now())); } catch { /* Polling works without storage. */ }
         const accepted = parseAcceptedAsyncReport(data);
         if (accepted && !opts?.forceWait) {
           setAcceptedReport({
             report: accepted,
             resume: () => {
               setAcceptedReport(null);
-              void generate(record, { forceWait: true });
+              void generate(record, { forceWait: true, resumeJobId: accepted.jobId });
             },
           });
           return;
@@ -500,7 +521,7 @@ export default function NatalCompatibility() {
   return (
     <div className="space-y-6 ym-hide-content ym-disable-keys">
       {acceptedReport ? createPortal(
-        <div data-report-accepted-overlay className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+        <div data-report-accepted-overlay className="fixed inset-0 z-[6000] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
           <ReportAcceptedScreen
             modal
             accepted={acceptedReport.report}

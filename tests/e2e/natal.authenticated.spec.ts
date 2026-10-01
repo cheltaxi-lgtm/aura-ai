@@ -130,15 +130,7 @@ async function installNatalMocks(page: Page) {
           positions: [{ key: "sun", longitude: 12.5, sign: "Aries", degree: 12.5, retrograde: false, house: 1 }],
           method: "Тестовая методология.",
           resolutionSeconds: 1,
-          houses: {
-            system: "Placidus",
-            cusps: Array.from({ length: 12 }, (_, index) => ({
-              house: index + 1, longitude: index * 30, sign: "Aries", degree: 0,
-            })),
-            ascendant: { key: "rising", longitude: 0, sign: "Aries", degree: 0, retrograde: false },
-            midheaven: { key: "midheaven", longitude: 270, sign: "Capricorn", degree: 0, retrograde: false },
-            warnings: [],
-          },
+          houses: null,
         },
         progressions: null,
       } } });
@@ -404,7 +396,12 @@ test('accepted mobile forecast resumes the same purchase once with blocked stora
   await expect(dialog).toBeVisible();
   expect(await dialog.evaluate(element => element.getBoundingClientRect().top)).toBeGreaterThanOrEqual(0);
   await expect(page.locator('[inert]').first()).toBeAttached();
-  await page.screenshot({ path: 'test-artifacts/natal-accepted-mobile.png', fullPage: true });
+  expect(await dialog.evaluate(element => {
+    const title = element.querySelector('h2')!;
+    const rect = title.getBoundingClientRect();
+    return element.contains(document.elementFromPoint(rect.x + rect.width / 2, rect.y + rect.height / 2));
+  })).toBe(true);
+  await page.screenshot({ path: 'test-artifacts/natal-accepted-mobile.png', fullPage: false });
   await dialog.getByRole('button', { name: 'Дождаться здесь' }).click();
   await expect(dialog).toHaveCount(0);
   await expect(page.getByText(forecast.content, { exact: true })).toBeVisible();
@@ -435,4 +432,68 @@ test('changed calculation clears a previous current report', async ({ page }) =>
   await expect(page.getByRole('status').filter({ hasText: 'Новая карта построена' })).toBeVisible();
   await expect(page.getByText(reports[0].content, { exact: true })).toHaveCount(0);
   await expect(page.getByRole('button', { name: /Подтвердить и получить отчёт/ })).toBeVisible();
+});
+
+test('settings retain available preferences and recover one failed endpoint', async ({ page }) => {
+  let attempts = 0;
+  let failing = true;
+  await page.route('**/api/natal-chart/birth-time', route => {
+    attempts++;
+    return route.fulfill(failing ? { status: 503, json: { error: 'Временный отказ времени рождения' } } : { json: { occurrence: 'later' } });
+  });
+  await page.getByRole('button', { name: 'Настройки', exact: true }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Временный отказ времени рождения' })).toBeVisible();
+  await expect(page.getByLabel('События включены')).toBeVisible();
+  await expect(page.getByLabel('Разрешить натальный контекст в обычном чате с Shri Raj')).toBeVisible();
+  const priorAttempts = attempts;
+  failing = false;
+  await page.getByRole('button', { name: 'Повторить загрузку' }).click();
+  await expect(page.getByRole('alert').filter({ hasText: 'Временный отказ времени рождения' })).toHaveCount(0);
+  expect(attempts).toBeGreaterThan(priorAttempts);
+});
+
+const compatibilityFixture = {
+  id: '11111111-1111-4111-8111-111111111111', ownerUserId: 'e2e-profile', participantUserId: null,
+  mode: 'manual', status: 'ready', ownerLabel: 'E2E', partnerLabel: 'Алексей', synastry: null,
+  report: null, evidence: null, runeCost: null, expiresAt: '2099-08-14T12:00:00.000Z', completedAt: null, createdAt: '2026-07-14T12:00:00.000Z',
+};
+const completedCompatibility = { ...compatibilityFixture, status: 'completed', report: { version: '1.0', disclaimer: 'Сохранённая проверка', sections: [{ key: 'summary', title: 'Итог', claims: [{ text: 'Точный сохранённый отчёт совместимости.', evidenceIds: [] }] }] } };
+
+test('compatibility accepted screen resumes one purchase and keeps exact archive after refresh', async ({ page }) => {
+  let purchases = 0, completed = false;
+  await page.route('**/api/natal-chart/compatibility', route => route.fulfill({ json: { compatibility: [completed ? completedCompatibility : compatibilityFixture] } }));
+  await page.route('**/api/natal-chart/compatibility/*/generate', route => {
+    purchases++;
+    return route.fulfill({ status: 202, json: { jobId: 'compatibility-completed', waitPolicy: 'background_notified', destination: '/cabinet/astrology?tab=compatibility', productTitle: 'Совместимость', etaRangeSec: { min: 60, max: 180 } } });
+  });
+  await page.route('**/api/jobs/compatibility-completed', route => { completed = true; return route.fulfill({ json: { status: 'completed', result: { record: completedCompatibility } } }); });
+  await page.getByRole('button', { name: 'Совместимость', exact: true }).click();
+  await page.getByLabel(/Подтверждаю передачу только рассчитанных аспектов/).check();
+  await page.getByRole('button', { name: /Получить полный отчёт/ }).click();
+  await page.getByRole('dialog', { name: 'Отчёт принят в работу' }).getByRole('button', { name: 'Дождаться здесь' }).click();
+  await expect(page.getByText('Точный сохранённый отчёт совместимости.', { exact: true })).toBeVisible();
+  await expect(page).toHaveURL(/compatibility=11111111/);
+  await page.reload();
+  await expect(page.getByText('Точный сохранённый отчёт совместимости.', { exact: true })).toBeVisible();
+  expect(purchases).toBe(1);
+});
+
+test('compatibility restoration ignores an older list response', async ({ page }) => {
+  let reads = 0;
+  let releaseOld!: () => void;
+  const holdOld = new Promise<void>(resolve => { releaseOld = resolve; });
+  await page.route('**/api/natal-chart/compatibility', async route => {
+    if (++reads === 1) { await holdOld; return route.fulfill({ json: { compatibility: [compatibilityFixture] } }); }
+    return route.fulfill({ json: { compatibility: [completedCompatibility] } });
+  });
+  await page.route('**/api/jobs/compatibility-restored', route => route.fulfill({ json: { status: 'completed', result: { record: completedCompatibility } } }));
+  await page.evaluate(() => { localStorage.setItem('aura:compatibility-active-job', 'compatibility-restored'); localStorage.setItem('aura:compatibility-active-job-started', String(Date.now())); });
+  await page.getByRole('button', { name: 'Совместимость', exact: true }).click();
+  await expect(page.getByText('Точный сохранённый отчёт совместимости.', { exact: true })).toBeVisible();
+  const oldResponse = page.waitForResponse(response => new URL(response.url()).pathname === '/api/natal-chart/compatibility');
+  releaseOld(); await oldResponse;
+  await expect(page.getByText('Точный сохранённый отчёт совместимости.', { exact: true })).toBeVisible();
+  await page.reload();
+  await expect(page).toHaveURL(/compatibility=11111111/);
+  await expect(page.getByText('Точный сохранённый отчёт совместимости.', { exact: true })).toBeVisible();
 });

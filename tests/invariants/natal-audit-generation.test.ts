@@ -1,6 +1,8 @@
 import { NATAL_REPORT_VERSION, NATAL_REPORT_SECTION_KEYS, prepareNatalReportCandidate, validateNatalReport } from "@/lib/natal/report";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { NatalEvidence } from "@/lib/natal/evidence";
+import { buildNatalEvidence } from "@/lib/natal/evidence";
+import type { NatalChartRecord } from "@/lib/natal/types";
 import { natalClaimFactErrors } from "@/lib/natal/report-fidelity";
 import { generateValidatedNatalReport } from "@/lib/natal/generate-validated-report";
 const mock = vi.hoisted(() => ({ text: "", pending: false }));
@@ -20,14 +22,43 @@ describe("Natal factual fidelity and fail-closed generation", () => {
     const natal = factor("Близнецы · 10.00°");
     const ingress = factor("Солнце: Дева → Весы · пик 2026-09-23", { id: "ne.timing.transit.sun", type: "transit", tradition: "timing", label: "Текущий транзит" });
     expect(natalClaimFactErrors("Транзитное Солнце в Весах", [natal, ingress], [ingress])).toEqual([]);
+    expect(natalClaimFactErrors("Солнце находится в Весах", [natal, ingress], [ingress])).toEqual([]);
+    expect(natalClaimFactErrors("Натальное Солнце находится в Весах", [natal, ingress], [ingress]).length).toBeGreaterThan(0);
+    expect(natalClaimFactErrors("Солнце находится в Весах в натальной карте.", [natal, ingress], [ingress]).length).toBeGreaterThan(0);
+    for (const suffix of ["натальной карты", "на момент рождения", "в карте рождения"]) expect(natalClaimFactErrors("Солнце в Весах " + suffix, [natal, ingress], [ingress]).length).toBeGreaterThan(0);
+    const venus = factor("Рак · 10.00°", { id: "ne.western.position.venus", label: "Венера" });
+    expect(natalClaimFactErrors("Натальная Венера в Раке, а транзитное Солнце в Весах.", [natal, venus, ingress], [ingress])).toEqual([]);
+    expect(natalClaimFactErrors("Транзиты этого месяца. Натальное Солнце находится в Весах.", [natal, ingress], [ingress]).length).toBeGreaterThan(0);
+    expect(natalClaimFactErrors("Солнце находится в Весах", [natal, ingress], [natal]).length).toBeGreaterThan(0);
+    expect(natalClaimFactErrors("Солнце находится в Деве", [natal, ingress], [ingress]).length).toBeGreaterThan(0);
     expect(natalClaimFactErrors("Транзитное Солнце во Льве", [natal, ingress], [ingress]).length).toBeGreaterThan(0);
     const aspect = factor("Луна · Соединение · Солнце · пик 2026-09-23", { id: "ne.timing.transit.moon", type: "transit", tradition: "timing" });
+    expect(natalClaimFactErrors("Луна в соединении с Солнцем", [natal, aspect], [aspect])).toEqual([]);
+    expect(natalClaimFactErrors("Транзитная Луна в соединении к натальному Солнцу", [natal, aspect], [aspect])).toEqual([]);
+    expect(natalClaimFactErrors("По сравнению с натальным Солнцем транзитная Луна в соединении с Солнцем", [natal, aspect], [aspect])).toEqual([]);
+    expect(natalClaimFactErrors("Транзитное Солнце в соединении с Луной", [natal, aspect], [aspect]).length).toBeGreaterThan(0);
+    expect(natalClaimFactErrors("Натальная Луна в соединении с Солнцем", [natal, aspect], [aspect]).length).toBeGreaterThan(0);
+    expect(natalClaimFactErrors("Луна в соединении с Солнцем", [natal, aspect], [natal]).length).toBeGreaterThan(0);
     expect(natalClaimFactErrors("Транзитная Луна в оппозиции к Солнцу", [aspect]).length).toBeGreaterThan(0);
   });
   it("checks ISO, numeric and Russian calendar dates against cited factors", () => {
     const evidence = [factor("Солнце · пик 2026-10-03", { type: "transit", tradition: "timing" })];
     for (const text of ["пик 2099-10-03", "пик 03.10.2099", "пик 3 октября 2099 года"]) expect(natalClaimFactErrors(text, evidence).length).toBeGreaterThan(0);
     expect(natalClaimFactErrors("пик 3 октября 2026 года", evidence)).toEqual([]);
+  });
+  it("grounds the first report without a timing cache from structured deep transits", () => {
+    const chart: NatalChartRecord = { userId: "fixture", timeKnown: true, place: null, western: null, vedic: null, computedAt: null, engineVersion: "fixture", warnings: [], transits: [
+      { kind: "aspect_hit", planet: "Марс", planetKey: "mars", targetKey: "sun", aspect: "trine", date: "2026-10-01", note: "Транзит Марс Трин к натальному Солнце (орб 0.5°)" },
+      { kind: "sign_change", planet: "Марс", planetKey: "mars", previousSign: "Gemini", transitSign: "Cancer", date: "2026-10-02", note: "Транзит Марс: вход в Рак (из Близнецы)" },
+    ] };
+    const evidence = buildNatalEvidence(chart, { tradition: "western", timing: null });
+    const aspect = evidence.filter(item => item.value.includes("Трин"));
+    const ingress = evidence.filter(item => item.value.includes("→"));
+    expect(aspect).toHaveLength(1); expect(ingress).toHaveLength(1);
+    expect(natalClaimFactErrors("Транзитный Марс в трине к натальному Солнцу", evidence, aspect)).toEqual([]);
+    expect(natalClaimFactErrors("Транзитное Солнце в трине с Марсом", evidence, aspect).length).toBeGreaterThan(0);
+    expect(natalClaimFactErrors("Транзитный Марс в Раке, пик 2026-10-02", evidence, ingress)).toEqual([]);
+    expect(natalClaimFactErrors("Транзитный Марс в Близнецах", evidence, ingress).length).toBeGreaterThan(0);
   });
   it("parses degree minutes and seconds and recognizes inflected Gemini", () => {
     const evidence = [factor("Kanya (Дева) · 29°50′00″", { label: "Будха (Меркурий)", tradition: "vedic" })];

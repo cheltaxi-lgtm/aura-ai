@@ -103,7 +103,7 @@ export default function ReportAcceptedScreen({
           <Check className="h-5 w-5 text-emerald-300" />
         </span>
         <div>
-          <p className="text-lg font-semibold text-white">Отчёт принят в работу</p>
+          <h2 className="text-lg font-semibold text-white">Отчёт принят в работу</h2>
           <p className="text-sm text-white/60">{title}</p>
         </div>
       </div>

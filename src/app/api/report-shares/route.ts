@@ -57,6 +57,8 @@ export async function POST(request: NextRequest) {
   const days = Number.isFinite(body.expiresInDays)
     ? Math.min(Math.max(Math.floor(body.expiresInDays ?? 7), 1), 90) : 7;
   return withTransaction(async (client) => {
+  // Match report writers/deletion: owner first, then the source receipt.
+  await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR KEY SHARE", [auth.profileUserId]);
   let payload: Record<string, unknown>;
   if (body.reportKind === "natal") {
     const { rows } = await queryClient<{

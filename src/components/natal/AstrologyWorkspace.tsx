@@ -784,7 +784,7 @@ export default function AstrologyWorkspace() {
     <main className="relative text-white">
       <div className="pointer-events-none fixed inset-0 bg-[radial-gradient(circle_at_18%_0%,rgba(245,158,11,.12),transparent_34%),radial-gradient(circle_at_82%_18%,rgba(124,58,237,.11),transparent_30%)]" />
       {acceptedReport ? createPortal(
-        <div data-report-accepted-overlay className="fixed inset-0 z-[200] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
+        <div data-report-accepted-overlay className="fixed inset-0 z-[6000] flex items-start justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
           <ReportAcceptedScreen
             modal
             accepted={acceptedReport.report}

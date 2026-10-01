@@ -245,7 +245,11 @@ export function buildNatalEvidence(
       category: "timing",
       type: "transit",
       label: "Текущий транзит",
-      value: transit.note,
+      value: transit.kind === "sign_change" && transit.planetKey && transit.transitSign
+        ? `${russianPlanetLabel(transit.planetKey)}: ${transit.previousSign ? signLabel(transit.previousSign) : "знак не указан"} → ${signLabel(transit.transitSign)}${transit.date ? ` · пик ${transit.date}` : ""}`
+        : transit.kind === "aspect_hit" && transit.planetKey && transit.targetKey && transit.aspect
+          ? `${russianPlanetLabel(transit.planetKey)} · ${ASPECT_NAMES[transit.aspect] ?? "аспект не указан"} · ${russianPlanetLabel(transit.targetKey)}${transit.date ? ` · пик ${transit.date}` : ""}`
+          : transit.note,
       sourcePath: `transits.${index}`,
       confidence: "medium",
       uncertainty: "Краткий транзитный контекст.",
