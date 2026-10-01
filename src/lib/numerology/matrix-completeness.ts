@@ -63,8 +63,8 @@ function arcanaTitleMatches(name: string, canonical: string): boolean {
  * must never become an arcana just because its next word is «сила» or «мир». */
 function isArcanaAssertion(source: string, offset: number, full: string, bridge: string, quote: string, name: string): boolean {
   const before = source.slice(Math.max(0, offset - 80), offset);
-  if (/(?:аркан\p{L}*|карт\p{L}*|числ\p{L}*)\s*(?:№\s*)?$/iu.test(before) || /аркан\p{L}*/iu.test(bridge)) return true;
-  if (/(?:день|дни|дня|дней|недел\p{L}*|шаг\p{L}*|пункт\p{L}*|этап\p{L}*)\s*$/iu.test(before) || /\d\s*(?:[—–-]|по)\s*$/iu.test(before)) return false;
+  if (/(?:аркан\p{L}*|карт\p{L}*|числ\p{L}*|энерги\p{L}*)\s*(?:[:№]\s*)?$/iu.test(before) || /аркан\p{L}*/iu.test(bridge)) return true;
+  if (/(?:день|дни|дня|дней|недел\p{L}*|шаг\p{L}*|пункт\p{L}*|этап\p{L}*)\s*(?:[:№]\s*)?$/iu.test(before) || /\d\s*(?:[—–-]|по)\s*$/iu.test(before)) return false;
   if (quote || source[offset + full.length] === ")") return true;
   return ARCANA_TITLE_PREFIX_RE.test(name) && /^[А-ЯЁA-Z]/u.test(name);
 }
@@ -76,7 +76,7 @@ export function matrixProseMatchesRoles(text: string, matrix: DestinyMatrixResul
     [String.raw`(?:отношения|любовн\p{L}*\s+канал\p{L}*)`, matrix.relationships.number],
     [String.raw`(?:характер|точка\s+характера)`, matrix.body.number],
     [String.raw`(?:таланты|талант\p{L}*\s+канал\p{L}*)`, matrix.talents.number],
-    [String.raw`зона\s+комфорта`, matrix.comfort.number],
+    [String.raw`зон\p{L}*\s+комфорта`, matrix.comfort.number],
     [String.raw`(?:аркан\s+года|энергия\s+года)`, matrix.yearArcana.number],
     [String.raw`(?:аркан\s+месяца|энергия\s+месяца)`, matrix.monthArcana.number],
   ];
@@ -88,7 +88,7 @@ export function matrixProseMatchesRoles(text: string, matrix: DestinyMatrixResul
       if (/^\s*(?:%|процент\p{L}*|минут\p{L}*|час\p{L}*|дн(?:ей|я|и)|день|недел\p{L}*|рубл\p{L}*|[₽$€]|лет|год\p{L}*|раз\p{L}*)(?!\p{L})/iu.test(after)) continue;
       const arcanaAfter = /^\s*(?:-\s*(?:й|я|го|му|м)\s*)?аркан\p{L}*/iu.test(after);
       const namedAfter = new RegExp(String.raw`^\s*[—–-]\s*[«"']?(?:${ARCANA_TITLE_PATTERN})(?!\p{L})`, "iu").test(after);
-      const bareAssertion = /^\s*[).;]?\s*(?:\n|$)/u.test(after);
+      const bareAssertion = /^\s*(?:[).;!?](?:\s|$)|\n|$)/u.test(after);
       if (!/аркан\p{L}*/iu.test(match[0]) && !arcanaAfter && !namedAfter && !bareAssertion) continue;
       if (Number(match[1]) !== expected) return false;
     }

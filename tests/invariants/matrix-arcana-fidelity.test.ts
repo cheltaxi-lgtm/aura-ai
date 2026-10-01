@@ -52,10 +52,17 @@ describe("matrix arcana name table (Marseille for Matrix, RW for Tarot)", () => 
     expect(matrixProseMatchesRoles("В денежной зоне 10 минут в неделю посвяти сверке бюджета.", matrix)).toBe(true);
     expect(matrixProseMatchesRoles("В зоне денег — 10 дней наблюдения.", matrix)).toBe(true);
     expect(matrixProseMatchesRoles("В отличие от зоны денег, где стоит 10-й аркан.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("Денежная зона — 10. Следи за расходами.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("В зоне денег, где стоит 10. Следи за расходами.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("В зоне денег, где стоит 18. Следи за расходами.", matrix)).toBe(true);
+    expect(matrixProseMatchesRoles("В зоне денег — 10.5 процента дохода идёт в резерв.", matrix)).toBe(true);
+    expect(matrix.comfort.number).toBe(10);
+    expect(matrixProseMatchesRoles("Для зоны комфорта, где стоит 22-й аркан, важен отдых.", matrix)).toBe(false);
+    expect(matrixProseMatchesRoles("Для зоны комфорта, где стоит 10-й аркан, важен отдых.", matrix)).toBe(true);
   });
   it("distinguishes ordinal arcana assertions from day and step instructions", () => {
     const matrix = destinyMatrix("1988-03-03")!;
-    for (const raw of ["Аркан 8-й — Сила.", "8-й аркан — Сила."]) {
+    for (const raw of ["Аркан 8-й — Сила.", "8-й аркан — Сила.", "Энергия 8 — сила связана с волей и выдержкой."]) {
       expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${raw}`, matrix)).toBe(false);
       const fixed = canonicalizeArcanaNamesInText(raw);
       expect(fixed).toContain("Справедливость");
@@ -63,7 +70,7 @@ describe("matrix arcana name table (Marseille for Matrix, RW for Tarot)", () => 
     }
     const longUnknown = "Аркан 8 — Безымянный архетип помогает вам сохранять спокойствие в долгих переговорах.";
     expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${longUnknown}`, matrix)).toBe(false);
-    for (const plan of ["День 8 — сила привычки помогает сохранить ритм.", "Шаг 20 — мир с близкими важнее спора.", "Дни 1–8 — Сила привычки помогает сохранить ритм."]) {
+    for (const plan of ["День 8 — сила привычки помогает сохранить ритм.", "Шаг 20 — мир с близкими важнее спора.", "Дни 1–8 — Сила привычки помогает сохранить ритм.", "День №8 — Сила привычки помогает сохранить ритм.", "Шаг №20 — Мир с близкими важнее спора.", "День: 8 — Сила привычки."]) {
       expect(canonicalizeArcanaNamesInText(plan)).toBe(plan);
       expect(matrixReadingMatchesEngine(`${skeletonReading(matrix)}\n${plan}`, matrix)).toBe(true);
     }
