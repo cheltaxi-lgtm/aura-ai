@@ -46,7 +46,7 @@ const ARCANA_TITLE_PATTERN = [...ARCANA_TITLE_PREFIXES.map(title =>
   ...ARCANA_INFLECTED_TITLE_PATTERNS.map(([, pattern]) => pattern)].join("|");
 const ARCANA_TITLE_PREFIX_RE = new RegExp(`^(?:${ARCANA_TITLE_PATTERN})(?!\\p{L})`, "iu");
 const ARCANA_PAIR_RE = new RegExp(
-  String.raw`\b(\d{1,2})\s*([—–-])(?!\s*(?:й|я|е|го|му|м|х|ая|ой|ый|ом|ми|ти)(?!\p{L}))\s*([«"']?)((?:${ARCANA_TITLE_PATTERN})(?!\p{L})|[А-ЯЁA-Z][^\n,().!?;:»"']{1,40}?(?=[,.!?;:)\n»"']|$))`, "giu");
+  String.raw`\b(\d{1,2})(\s*(?:-\s*(?:й|я|е|го|му|м|х|ая|ой|ый|ом|ми|ти)(?!\p{L}))?\s*(?:аркан\p{L}*\s*)?)([—–-])\s*([«"']?)((?:${ARCANA_TITLE_PATTERN})(?!\p{L})|[А-ЯЁA-Z][\p{L}]+)`, "giu");
 
 function normArcanaName(s: string): string {
   return s.toLowerCase().replace(/ё/g, "е").replace(/\s+/g, " ").trim();
@@ -57,6 +57,16 @@ function arcanaTitleMatches(name: string, canonical: string): boolean {
   if (name.startsWith(title) && !/\p{L}/u.test(name[title.length] ?? "")) return true;
   const variants = ARCANA_INFLECTED_TITLE_PATTERNS.find(([title]) => normArcanaName(title) === normArcanaName(canonical))?.[1];
   return Boolean(variants && new RegExp(`^(?:${variants})(?!\\p{L})`, "iu").test(name));
+}
+
+/** Shared interpretation for rewriting and validation. A plan's day/step number
+ * must never become an arcana just because its next word is «сила» or «мир». */
+function isArcanaAssertion(source: string, offset: number, full: string, bridge: string, quote: string, name: string): boolean {
+  const before = source.slice(Math.max(0, offset - 80), offset);
+  if (/(?:аркан\p{L}*|карт\p{L}*|числ\p{L}*)\s*(?:№\s*)?$/iu.test(before) || /аркан\p{L}*/iu.test(bridge)) return true;
+  if (/(?:день|дни|дня|дней|недел\p{L}*|шаг\p{L}*|пункт\p{L}*|этап\p{L}*)\s*$/iu.test(before) || /\d\s*(?:[—–-]|по)\s*$/iu.test(before)) return false;
+  if (quote || source[offset + full.length] === ")") return true;
+  return ARCANA_TITLE_PREFIX_RE.test(name) && /^[А-ЯЁA-Z]/u.test(name);
 }
 
 /** Check explicit role→arcana assertions, allowing accurately labelled comparisons. */
@@ -72,8 +82,14 @@ export function matrixProseMatchesRoles(text: string, matrix: DestinyMatrixResul
   ];
   const raw = text.replace(/\*\*/g, "");
   for (const [role, expected] of roles) {
-    const re = new RegExp(String.raw`(?:^|[^\p{L}])${role}\s*(?:,\s*)?(?:(?:это|—|–|-|:|=|через|где|под\s+влиянием|соответствует)\s*)?(?:\(\s*)?(?:аркан\p{L}*\s*(?:№\s*)?)?(\d{1,2})(?!\d)`, "giu");
+    const re = new RegExp(String.raw`(?:^|[^\p{L}])${role}\s*(?:,\s*)?(?:(?:это|—|–|-|:|=|через|где(?:\s+(?:стоит|работает|действует))?|под\s+влиянием|соответствует)\s*)?(?:\(\s*)?(?:аркан\p{L}*\s*(?:№\s*)?)?(\d{1,2})(?!\d)`, "giu");
     for (const match of raw.matchAll(re)) {
+      const after = raw.slice((match.index ?? 0) + match[0].length);
+      if (/^\s*(?:%|процент\p{L}*|минут\p{L}*|час\p{L}*|дн(?:ей|я|и)|день|недел\p{L}*|рубл\p{L}*|[₽$€]|лет|год\p{L}*|раз\p{L}*)(?!\p{L})/iu.test(after)) continue;
+      const arcanaAfter = /^\s*(?:-\s*(?:й|я|го|му|м)\s*)?аркан\p{L}*/iu.test(after);
+      const namedAfter = new RegExp(String.raw`^\s*[—–-]\s*[«"']?(?:${ARCANA_TITLE_PATTERN})(?!\p{L})`, "iu").test(after);
+      const bareAssertion = /^\s*[).;]?\s*(?:\n|$)/u.test(after);
+      if (!/аркан\p{L}*/iu.test(match[0]) && !arcanaAfter && !namedAfter && !bareAssertion) continue;
       if (Number(match[1]) !== expected) return false;
     }
   }
@@ -90,22 +106,24 @@ export function canonicalizeArcanaNamesInText(
 ): string {
   return String(text || "").replace(
     ARCANA_PAIR_RE,
-    (full, numStr: string, dash: string, openQuote: string, name: string, offset: number, source: string) => {
+    (full, numStr: string, bridge: string, dash: string, openQuote: string, name: string, offset: number, source: string) => {
+      if (!isArcanaAssertion(source, offset, full, bridge, openQuote, name)) return full;
       const n = Number(numStr);
       const canon = getMatrixArcanaEntry(n, calculationVersion)?.title;
       if (!canon || n < 1 || n > 22) {
-        return `${numStr} ${dash} ${openQuote}${name}`;
+        return full;
       }
+      const numberAndDash = bridge.trim() ? `${numStr}${bridge}${dash} ` : `${numStr} ${dash} `;
       const prefix = ARCANA_TITLE_PREFIX_RE.exec(name)?.[0];
       // Only the title is replaceable. Everything after it is client prose,
       // including the final punctuation of a numbered action.
       if (prefix) {
         // Retain correct Russian cases; names belonging to another card still normalize.
         if (normArcanaName(prefix) !== normArcanaName(canon) && arcanaTitleMatches(normArcanaName(prefix), canon)) return full;
-        return `${numStr} ${dash} ${openQuote}${canon}${name.slice(prefix.length)}`;
+        return `${numberAndDash}${openQuote}${canon}${name.slice(prefix.length)}`;
       }
       // Unknown names are safe to normalize only inside an explicit title.
-      if (openQuote || source[offset + full.length] === ")") return `${numStr} ${dash} ${openQuote}${canon}`;
+      if ((openQuote && /[»"']/u.test(source[offset + full.length] ?? "")) || source[offset + full.length] === ")") return `${numberAndDash}${openQuote}${canon}`;
       return full;
     }
   );
@@ -306,11 +324,9 @@ export function matrixReadingMatchesEngine(
 
   for (const m of t.matchAll(ARCANA_PAIR_RE)) {
     const n = Number(m[1]);
-    const name = normArcanaName(m[4] ?? "");
+    const name = normArcanaName(m[5] ?? "");
     if (n < 1 || n > 22 || !name) continue;
-    // A day/step number followed by ordinary prose is not an arcana assertion.
-    const explicitArcana = /(?:аркан\p{L}*|карт\p{L}*)\s*(?:№\s*)?$/iu.test(t.slice(Math.max(0, (m.index ?? 0) - 40), m.index));
-    if (!ARCANA_TITLE_PREFIX_RE.test(m[4]) && !m[3] && !explicitArcana && t[(m.index ?? 0) + m[0].length] !== ")") continue;
+    if (!isArcanaAssertion(t, m.index ?? 0, m[0], m[2], m[4], m[5])) continue;
     const tableName = getMatrixArcanaEntry(n, matrix.calculationVersion)?.title;
     if (!tableName) continue;
     if (!arcanaTitleMatches(name, tableName)) return false;
