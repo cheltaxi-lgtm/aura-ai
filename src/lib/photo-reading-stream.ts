@@ -1,6 +1,11 @@
 import { createChatResponseStream } from "@/lib/chat-stream";
 import { photoInterpretationMaxTokens } from "@/lib/photo-reading-prompts";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
+import { assessPhotoInterpretation, normalizePhotoInterpretation } from "@/lib/photo-reading-quality";
+import type { AiFailureCode } from "@/lib/ai-generation-contract";
+import { MAX_PHOTO_CARDS } from "@/lib/photo-reading-constants";
+
+export { hasPhotoInterpretationDepth, normalizePhotoInterpretation } from "@/lib/photo-reading-quality";
 
 function buildPhotoInterpretationUserBlock(params: {
   spreadSummary: string;
@@ -15,55 +20,11 @@ function buildPhotoInterpretationUserBlock(params: {
   return [
     params.spreadSummary,
     questionLine,
-    `Дай полную персональную расшифровку всех ${n} символов: отдельный развёрнутый абзац по каждой позиции, затем финальный блок выводов. Без удержания и без короткого «тизера».`,
+    `Дай полную персональную расшифровку всех ${n} символов: отдельный развёрнутый абзац по каждой позиции, затем финальный блок выводов. Разделяй абзацы пустой строкой. Без удержания и без короткого «тизера».`,
+    "Если название карты указано неточно или содержит варианты, прямо скажи в её отдельном абзаце, что карта не определена точно. Трактуй только достоверно распознанные признаки, не выбирай один вариант как факт.",
   ]
     .filter(Boolean)
     .join("\n\n");
-}
-
-export function normalizePhotoInterpretation(text: string): string {
-  return text
-    .replace(/^\s*#{1,6}\s*/gmu, "")
-    .replace(/\*{1,3}/gu, "")
-    .replace(/_{2,3}/gu, "")
-    .trim();
-}
-
-function normalizeForCoverage(value: string): string {
-  return value.toLocaleLowerCase("ru-RU").replace(/ё/gu, "е").replace(/[^\p{L}\p{N}]+/gu, " ");
-}
-
-function namesSameCard(paragraph: string, name: string): boolean {
-  const words = normalizeForCoverage(name).trim().split(/\s+/u).filter(Boolean);
-  const textWords = normalizeForCoverage(paragraph).trim().split(/\s+/u).filter(Boolean);
-  if (!words.length) return false;
-  // Compare every word of the card name in sequence. Longer stems tolerate
-  // Russian inflection; short names require exact words (Суд != Судьба).
-  return textWords.some((_, start) => words.every((word, offset) =>
-    word.length <= 3
-      ? textWords[start + offset] === word
-      : textWords[start + offset]?.startsWith(word.slice(0, 4))
-  ));
-}
-
-export function hasPhotoInterpretationDepth(text: string, cardCount: number, spreadSummary: string): boolean {
-  const trimmed = normalizePhotoInterpretation(text);
-  const paragraphs = trimmed.split(/\n\s*\n/u).filter(Boolean);
-  if (trimmed.length < Math.max(200, cardCount * 90) || paragraphs.length < cardCount + 1) return false;
-  const listedCards = Array.from(spreadSummary.matchAll(/^\d+\.\s+(.+)$/gmu), (match) =>
-    Array.from(match[1].matchAll(/«([^»]+)»/gu), (name) => name[1])
-  );
-  if (listedCards.length !== cardCount) return false;
-  const usedParagraphs = new Set<number>();
-  return listedCards.every((alternatives) => {
-    const index = paragraphs.findIndex((paragraph, paragraphIndex) =>
-      !usedParagraphs.has(paragraphIndex) && paragraph.length >= 70 &&
-      alternatives.some((name) => namesSameCard(paragraph, name))
-    );
-    if (index < 0) return false;
-    usedParagraphs.add(index);
-    return true;
-  });
 }
 
 /** Non-stream JSON path for durable worker / async poll clients. */
@@ -76,6 +37,8 @@ export async function createPhotoInterpretationJson(params: {
 }): Promise<{
   reply: string;
   llmFailed: boolean;
+  failureCode?: AiFailureCode;
+  failureDetail?: string;
   provenance?: import("@/lib/ai-generation-contract").AiProvenance;
 }> {
   const n = Math.max(1, params.cardCount ?? 1);
@@ -96,22 +59,27 @@ export async function createPhotoInterpretationJson(params: {
   const { generateValidatedAiText } = await import("@/lib/validated-ai-generation");
   const outcome = await generateValidatedAiText({
     messages,
+    modelFamily: "paid",
+    validatorVersion: "photo-coverage-v2",
     inputParts: [params.userName, params.spreadSummary, params.question ?? "", n],
     maxTokens: photoInterpretationMaxTokens(n),
     temperature: 0.65,
     timeoutMs: 120_000,
     validate: (text) => {
-      return hasPhotoInterpretationDepth(text, n, params.spreadSummary)
+      const assessment = assessPhotoInterpretation(text, n, params.spreadSummary);
+      return assessment.ok
         ? { ok: true }
-        : { ok: false, code: "validation_failed", detail: "insufficient_card_depth" };
+        : { ok: false, code: "validation_failed", detail: assessment.detail };
     },
-    buildRepairMessages: (failedText) => [
+    buildRepairMessages: (failedText, detail) => [
       ...messages,
       { role: "assistant", content: failedText },
       {
         role: "user",
         content:
-          "Перепиши целиком: первая фраза отвечает на вопрос; отдельный содержательный абзац по каждой позиции с названием символа; в конце общий вывод без повтора. Только чистый текст, без Markdown, звёздочек и заголовков.",
+          "Перепиши целиком: первая фраза отвечает на вопрос; отдельный содержательный абзац по каждой позиции с названием символа; в конце общий вывод без повтора. Разделяй абзацы пустой строкой. Неопределённые карты называй неопределёнными и не приписывай им точное название. Только чистый текст, без Markdown, звёздочек и заголовков." +
+          (/^missing_card_positions:[\d,]+$/u.test(detail ?? "")
+            ? ` Не хватает отдельного разбора позиций: ${detail!.split(":")[1]}.` : ""),
       },
     ],
   });
@@ -125,7 +93,17 @@ export async function createPhotoInterpretationJson(params: {
     return { reply, llmFailed: false, provenance: outcome.provenance };
   }
   // Fail-closed: never substitute template prose for a failed photo reading.
-  return { reply: "", llmFailed: true };
+  // Only fixed validator categories/position numbers may enter logs or job errors.
+  // Provider detail can contain sensitive material and must never be forwarded.
+  const detail = outcome.detail ?? "";
+  const positions = /^missing_card_positions:([\d,]+)$/u.exec(detail)?.[1].split(",");
+  const safePositions = positions && positions.length <= Math.min(n, MAX_PHOTO_CARDS) &&
+    positions.every(value => /^[1-9]\d?$/u.test(value) && Number(value) <= Math.min(n, MAX_PHOTO_CARDS));
+  const failureDetail = outcome.code === "validation_failed" &&
+    (/^(?:insufficient_length|insufficient_paragraphs|invalid_spread_summary)$/u.test(detail) || safePositions)
+    ? detail : undefined;
+  console.warn("[photo-reading] generation rejected", { code: outcome.code, detail: failureDetail, cardCount: n });
+  return { reply: "", llmFailed: true, failureCode: outcome.code, failureDetail };
 }
 
 export async function createPhotoInterpretationStream(params: {
@@ -155,7 +133,11 @@ export async function createPhotoInterpretationStream(params: {
     maxTokens: photoInterpretationMaxTokens(n),
     onComplete: async (meta) => {
       const normalized = normalizePhotoInterpretation(meta.reply);
-      const llmFailed = meta.llmFailed || !hasPhotoInterpretationDepth(normalized, n, params.spreadSummary);
+      const assessment = assessPhotoInterpretation(normalized, n, params.spreadSummary);
+      const llmFailed = meta.llmFailed || !assessment.ok;
+      if (llmFailed) {
+        console.warn("[photo-reading] stream rejected", {code: meta.llmFailed ? "generation_failed" : "validation_failed", detail: assessment.detail, cardCount: n});
+      }
       // Fail-closed: never substitute template prose for a failed photo reading.
       const reply = llmFailed ? "" : normalized;
       const extras = await params.onComplete({ reply, llmFailed });

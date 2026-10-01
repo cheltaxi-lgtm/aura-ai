@@ -49,6 +49,20 @@ describe.skipIf(!hasTestDb)("activation evidence and Telegram consumer access",(
     await expect(ensureBotOfferAccount({...input(),ageConfirmedAt:""})).rejects.toThrow("CONSENT_TIMESTAMPS_REQUIRED");
   });
 
+  it("distinguishes a failed job from processing, and prioritizes a genuinely saved result", async () => {
+    const account = await ensureBotOfferAccount(input());
+    const job = randomUUID();
+    await query("INSERT INTO async_jobs(id,user_id,kind,input,status) VALUES($1,$2,'photo_reading','{}','failed')", [job, account.profileUserId]);
+    expect((await getUserActivationContext(account.profileUserId!))?.stage).toBe("failed");
+    expect((await listUserAccounts()).find(row => row.id === account.accountId)?.activation_stage).toBe("failed");
+    await query("UPDATE async_jobs SET status='pending' WHERE id=$1", [job]);
+    expect((await getUserActivationContext(account.profileUserId!))?.stage).toBe("processing");
+    await query("UPDATE async_jobs SET status='needs_regeneration' WHERE id=$1", [job]);
+    expect((await getUserActivationContext(account.profileUserId!))?.stage).toBe("processing");
+    await createHistoryEntry({userId: account.profileUserId!, characterName: "veronika", contextData: {reading: "Saved result"}});
+    expect((await getUserActivationContext(account.profileUserId!))?.stage).toBe("result_ready");
+  });
+
   it("shows full non-chat results as ready while keeping chat count zero",async()=>{
     const account=await ensureBotOfferAccount(input());
     await createHistoryEntry({userId:account.profileUserId!,characterName:"veronika",contextData:{type:"aura_reading",report:"Saved full report"}});

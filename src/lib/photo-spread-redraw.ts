@@ -8,6 +8,7 @@ import { getDeckImagePath, DECK_BACK_PATHS } from "@/data/decks";
 import { getSymbolDescription } from "@/data/descriptions";
 import { resolveAuraArtForDetected } from "@/lib/photo-card-resolve";
 import { formatReversedCardName, parseCardOrientation } from "@/lib/card-orientation";
+import { isUncertainPhotoCardName } from "@/lib/photo-reading-quality";
 import {
   MAX_PHOTO_CARD_NAME_LENGTH,
   MAX_PHOTO_CARDS,
@@ -314,8 +315,10 @@ export function buildSpreadSummaryForLlm(spread: RedrawSpread): string {
         ? `«${c.originalName}» (на фото) → Zovus: «${c.name}»`
         : `«${c.name}»`;
     const meaning = c.shortMeaning?.trim() ? ` — ${c.shortMeaning.trim()}` : "";
+    const uncertain = isUncertainPhotoCardName(c.originalName) || isUncertainPhotoCardName(c.name);
     return `${i + 1}. ${c.position}: ${label}${c.reversed ? " (перевёрнутая)" : ""}${meaning}${
-      c.placeholder ? " [нет арта Zovus — трактуй по названию с фото]" : ""
+      uncertain ? " [карта не определена точно — сохрани неопределённость, трактуй только достоверные признаки]" :
+        c.placeholder ? " [нет арта Zovus — трактуй по названию с фото]" : ""
     }`;
   });
   return [

@@ -45,6 +45,10 @@ export function activationStageSql(profileId: string): string {
   return `CASE
     WHEN ${profileId} IS NULL THEN 'profile_missing'
     WHEN ${savedProductResultSql(profileId)} THEN 'result_ready'
+    WHEN EXISTS(SELECT 1 FROM async_jobs j WHERE j.user_id=${profileId}
+      AND j.status IN ('pending','running','needs_regeneration')) THEN 'processing'
+    WHEN (SELECT j.status FROM async_jobs j WHERE j.user_id=${profileId}
+      ORDER BY j.created_at DESC,j.id DESC LIMIT 1)='failed' THEN 'failed'
     WHEN EXISTS(SELECT 1 FROM async_jobs j WHERE j.user_id=${profileId})
       OR EXISTS(SELECT 1 FROM spread_metrics m WHERE m.user_id=${profileId}
         AND ((m.source='activation_funnel' AND m.event='request_attempted')
