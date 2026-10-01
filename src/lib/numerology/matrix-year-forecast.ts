@@ -14,7 +14,7 @@ function asOfFor(year: number, month: number, day = 1): { asOfYear: number; asOf
   };
 }
 
-export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
+export function matrixYearForecast(birthDate: string, fromDate = new Date(), calculationVersion?: string): {
   matrix: DestinyMatrixResult;
   yearArcana: { number: number; title: string };
   months: Array<{
@@ -32,15 +32,15 @@ export function matrixYearForecast(birthDate: string, fromDate = new Date()): {
   cautionMonths: number[];
 } | null {
   const start = matrixCalendarYmd(fromDate);
-  const initial = destinyMatrix(birthDate, asOfFor(start.year, start.month, start.day));
+  const initial = destinyMatrix(birthDate, { ...asOfFor(start.year, start.month, start.day), calculationVersion });
   if (!initial) return null;
 
   const months = Array.from({ length: 12 }, (_, index) => {
     const cur = addMatrixCalendarMonths(start.year, start.month, index);
     const prev = addMatrixCalendarMonths(start.year, start.month, index - 1);
-    const matrix = destinyMatrix(birthDate, asOfFor(cur.year, cur.month))!;
-    const previous = destinyMatrix(birthDate, asOfFor(prev.year, prev.month, new Date(Date.UTC(prev.year, prev.month, 0)).getUTCDate()));
-    const monthEnd = destinyMatrix(birthDate, asOfFor(cur.year, cur.month, new Date(Date.UTC(cur.year, cur.month, 0)).getUTCDate()))!;
+    const matrix = destinyMatrix(birthDate, { ...asOfFor(cur.year, cur.month), calculationVersion })!;
+    const previous = destinyMatrix(birthDate, { ...asOfFor(prev.year, prev.month, new Date(Date.UTC(prev.year, prev.month, 0)).getUTCDate()), calculationVersion });
+    const monthEnd = destinyMatrix(birthDate, { ...asOfFor(cur.year, cur.month, new Date(Date.UTC(cur.year, cur.month, 0)).getUTCDate()), calculationVersion })!;
     const number = reduceToArcanaNumber(matrix.yearArcana.number + cur.month);
     const point = arcanaForNumber(number, matrix.calculationVersion);
     const ageTransition = Boolean(previous && previous.ageCurrent.age !== monthEnd.ageCurrent.age);

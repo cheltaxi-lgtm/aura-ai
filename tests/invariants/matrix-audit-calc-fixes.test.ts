@@ -62,6 +62,16 @@ describe("Matrix audit calculation fixes", () => {
     expect(result.matrix.chronologicalAge).toBe(35);
     expect(result.matrix.ageCurrent.age).toBe(35);
   });
+  it("keeps the purchased version throughout a historical yearly forecast", () => {
+    const result = matrixYearForecast(DOB, new Date("2025-08-20T12:00:00Z"), "matrix-v4")!;
+    expect(result.matrix.calculationVersion).toBe("matrix-v4");
+    expect(result.matrix.asOf.date).toBe("2025-08-20");
+    expect(result.matrix.talents.number).toBe(5);
+    for (const month of result.months) {
+      const frozen = destinyMatrix(DOB, { calculationVersion: "matrix-v4", asOfYear: month.year, asOfMonth: month.month, asOfDate: `${month.year}-${String(month.month).padStart(2, "0")}-01` })!;
+      expect(month.number).toBe(reduceToArcanaSubtract22(frozen.yearArcana.number + month.month));
+    }
+  });
   it("uses the frozen v3 reducer for pair derived energies", () => {
     const pair = matrixCompatibility(DOB, "1988-03-03", { asOfDate: AS_OF, calculationVersion: "matrix-v3" })!;
     expect(pair.pairComfort).toBe(reduceToArcanaSubtract22(pair.matrixA.comfort.number + pair.matrixB.comfort.number));

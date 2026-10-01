@@ -16,9 +16,14 @@ vi.mock("@/lib/llm", () => ({ completeChatDetailed: async (input: { messages: Ar
 } }));
 import { generateFullMatrixSectionedReading } from "@/lib/numerology/matrix-sectioned-reading";
 import { isCompleteMatrixReading } from "@/lib/numerology/matrix-completeness";
+import { matrixReportRepairFacts } from "@/lib/numerology/matrix-report-display";
 
 beforeEach(() => { state.mode = "retry"; state.stepCalls = 0; state.budgets = []; });
 describe("Matrix report cutoffs", () => {
+  it("recovers metadata-only report facts from the purchased calendar rather than today's date", () => {
+    const facts = matrixReportRepairFacts({ birthDate: "1990-08-15", calculationVersion: "matrix-v4", structuredData: null, createdAt: "2025-01-02T23:30:00Z" });
+    expect(facts.calculationVersion).toBe("matrix-v4"); expect(facts.asOfDate).toBe("2025-01-03");
+  });
   it("checks every action independently of a complete finale", () => {
     expect(matrixStepsAreComplete(steps)).toBe(true);
     const cut = steps.replace(/6\)[\s\S]+$/, "6) На 28–30 - й день подготовься к");
