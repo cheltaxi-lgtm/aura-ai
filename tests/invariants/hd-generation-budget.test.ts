@@ -90,6 +90,24 @@ describe("HD bounded provider generation",()=>{
     expect(repair).toHaveLength(HD_PIPELINE_BATCHES.length+1);
     expect(repair.at(-1)![0].messages.at(-1).content).toContain("## Бизнес и работа\nКаждый раздел");
   });
+  it("repairs the actual phase, constituent-gate and listed-endpoint defects before delivery",async()=>{
+    const defects=new Map([
+      ["Периоды и темы жизни","Период примерно от 30 до 50 лет связан с четвёртой линией — Оппортунистом."],
+      ["Инкарнационный крест","Ворота 30 и 29 образуют канал Сияния между Эмоциональным и Корневым центрами."],
+      ["Девять центров","G-центр определён. Каналы 13–33 и 23–43 связывают его с Горловым через устойчивые темы памяти."],
+    ]);
+    const injected=new Set<string>();
+    mocked.mutate=(title,body)=>{if(defects.has(title)&&!injected.has(title)){injected.add(title);return body+"\n"+defects.get(title);}return body;};
+    const deadlineAt=Date.now()+120_000,beforeRequest=vi.fn(async()=>{});
+    const result=await generateHdReportSectional({chart,clientName:"Светлана",maxSectionRetries:1,deadlineAt,beforeRequest});
+    expect(result.needsRegeneration).toBe(false);expect(result.quality.findings).toEqual([]);
+    for(const defect of defects.values())expect(result.text).not.toContain(defect);
+    const repair=mocked.complete.mock.calls.filter(([opts])=>opts.messages.at(-1).content.includes("Напиши ТОЛЬКО")).slice(HD_PIPELINE_BATCHES.length);
+    expect(repair).toHaveLength(3);
+    const headings=repair.flatMap(([opts])=>opts.messages.at(-1).content.split("Напиши ТОЛЬКО эти разделы с точными заголовками:\n")[1].split("\nКаждый раздел")[0].split("\n"));
+    expect(new Set(headings)).toEqual(new Set([...defects.keys()].map(title=>`## ${title}`)));
+    for(const [opts] of mocked.complete.mock.calls)expect(opts).toMatchObject({deadlineAt,beforeRequest,maxAttempts:1});
+  });
   it("does not call a provider after an expired deadline",async()=>{
     const r=await generateHdReportSectional({chart,clientName:"Светлана",deadlineAt:Date.now()-1});
     expect(mocked.complete).not.toHaveBeenCalled(); expect(r.needsRegeneration).toBe(true);

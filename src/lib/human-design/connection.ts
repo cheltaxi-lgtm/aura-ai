@@ -133,7 +133,7 @@ function bondSummary(kind: HdChannelBondKind, name: string, labelA: string, labe
     case "electromagnetic":
       return `«${name}» — электромагнетика: канал собирается только вместе (химия и притяжение).`;
     case "companionship":
-      return `«${name}» — companionship: канал есть у обоих (общая сила и общие слепые зоны).`;
+      return `«${name}» — общий канал: канал есть у обоих (общая сила и общие слепые зоны).`;
     case "dominanceA":
       return `«${name}» — доминантность ${labelA}: канал полностью у ${labelA}.`;
     case "dominanceB":

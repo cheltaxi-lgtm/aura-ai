@@ -43,14 +43,115 @@ const CENTER_MENTIONS: Record<string, RegExp> = {
   ajna: /аджн[\p{L}]*/iu,
   throat: /горлов[\p{L}]*|горл[аоуе](?!\p{L})/iu,
   g: /(?<!\p{L})(?:g|джи)(?:[\s-]*центр[\p{L}]*)?(?!\p{L})/iu,
-  heart: /(?<!\p{L})эго(?!\p{L})|сердечн[\p{L}]*|центр[\p{L}]*\s+воли/iu,
+  heart: /(?<!\p{L})эго(?!\p{L})|сердечн[\p{L}]*|(?<!\p{L})центр[\p{L}]*\s+воли/iu,
   spleen: /селез[её]н[\p{L}]*/iu,
   sacral: /сакрал[\p{L}]*/iu,
-  solar: /солнечн[\p{L}]*\s+сплетени[\p{L}]*|эмоциональн[\p{L}]*\s+центр[\p{L}]*/iu,
+  solar: /(?<!\p{L})(?:солнечн[\p{L}]*\s+сплетени[\p{L}]*|эмоциональн[\p{L}]*\s+центр[\p{L}]*)/iu,
   root: /корнев[\p{L}]*|(?<!\p{L})кор(?:ень|ня|ню|нем)(?!\p{L})/iu,
 };
 const SHINGLE_OVERLAP_RATIO = 0.10;
 const FOCUS_ANSWER_TITLE = "Ответ на ваш запрос";
+
+function channelForPair(a: number, b: number) {
+  return a !== b ? CHANNELS.find(c => c.gates.includes(a) && c.gates.includes(b)) : undefined;
+}
+
+/** Gate subjects also claim a channel, even when the following channel ID is correct. */
+function gatePairFormingChannel(clause: string): { a: number; b: number; index: number } | null {
+  const formed = /(?<!\p{L})(?:образу[\p{L}]*|формиру[\p{L}]*|составля[\p{L}]*|созда[\p{L}]*|соединя[\p{L}]*\s+в)\s+(?:(?:полн|определ[её]нн|активн)[\p{L}]*\s+)?канал[\p{L}]*/iu.exec(clause);
+  if (!formed || isPersonalFactNegated(clause, formed.index)) return null;
+  const subject = clause.slice(Math.max(0, formed.index - 220), formed.index).split(/,\s*(?:а|но)\s+|\s+(?:при\s+этом|тогда\s+как)\s+/iu).at(-1)!;
+  if (/(?:нельзя|не\s+(?:следует|нужно))\s+(?:считать|назвать|называть)\s*$/iu.test(subject)) return null;
+  const gates = [...subject.matchAll(/(?<!\p{L})ворот[\p{L}]*\s+(\d{1,2})(?!\d)(?:\s*(?:и|[,/—–-])\s*(?:ворот[\p{L}]*\s+)?(\d{1,2})(?!\d))?/giu)].flatMap(m=>m[2] ? [Number(m[1]),Number(m[2])] : [Number(m[1])]);
+  return gates.length === 2 ? {a:gates[0]!,b:gates[1]!,index:formed.index} : null;
+}
+
+function namedChannelPairs(clause: string): Array<{a:number;b:number;index:number;end:number}> {
+  const pairs = new Map<number,{a:number;b:number;index:number;end:number}>();
+  const pair = /^(\d{1,2})\s*[—–-]\s*(\d{1,2})(?!\d)/u;
+  let consumedThrough=-1;
+  for (const label of clause.matchAll(/(?<!\p{L})канал[\p{L}]*/giu)) {
+    if(label.index!<consumedThrough)continue;
+    let cursor=label.index!+label[0].length;
+    const prefix=/^\s*(?:(?:у\s+вас|карты)\s+)?(?:(?:«[^»\n]{1,70}»|"[^"\n]{1,70}")\s*[—–:-]?\s*)?/u.exec(clause.slice(cursor))![0];
+    cursor+=prefix.length;
+    let current=pair.exec(clause.slice(cursor));
+    while(current){
+      const end=cursor+current[0].length;
+      pairs.set(cursor,{a:Number(current[1]),b:Number(current[2]),index:cursor,end});
+      consumedThrough=end;
+      const separator=/^\s*(?:(?:\([^()\n]{0,90}\)|«[^»\n]{1,70}»)\s*)?(?:,\s*(?:и\s+)?|и\s+)(?:канал[\p{L}]*\s+)?/iu.exec(clause.slice(end));
+      if(!separator)break;
+      cursor=end+separator[0].length;
+      current=pair.exec(clause.slice(cursor));
+    }
+  }
+  return [...pairs.values()].sort((a,b)=>a.index-b.index);
+}
+
+function centerMentions(clause: string): Array<{key: string; index: number; end: number}> {
+  const mentions = Object.entries(CENTER_MENTIONS).flatMap(([key,re]) => [...clause.matchAll(new RegExp(`(?<!\\p{L})(?:${re.source})`,"giu"))].map(m => ({key,index:m.index!,end:m.index!+m[0].length})));
+  for (const m of clause.matchAll(/(?<!\p{L})эмоциональн[\p{L}]*(?=\s+и\s+(?:корнев|сакрал|горлов|селез[её]н|сердечн|теменн)[\p{L}]*\s+центр[\p{L}]*)/giu)) mentions.push({key:"solar",index:m.index!,end:m.index!+m[0].length});
+  return mentions.sort((a,b) => a.index-b.index);
+}
+
+/** A list of direct channels cannot assign every channel to the same wrong pair. */
+function wrongChannelClaims(clause: string, prior: string): string[] {
+  if (!/канал[\p{L}]*/iu.test(clause)) return [];
+  const bad: string[] = [];
+  const formed = gatePairFormingChannel(clause);
+  if (formed && !channelForPair(formed.a,formed.b)) bad.push(`invalid_channel_constituent_gates:${[formed.a,formed.b].sort((a,b)=>a-b).join("-")}`);
+  const ids = namedChannelPairs(clause);
+  for (const id of ids) {
+    const prefix=clause.slice(Math.max(0,id.index-100),id.index);
+    const tail=clause.slice(id.end,id.end+70);
+    const negated = /(?:не\s+(?:образу|формиру|составля|созда)[\p{L}]*\s+канал[\p{L}]*\s*|не\s+канал[\p{L}]*\s*)$/iu.test(prefix)
+      || /^\s*[»"”]?\s*(?:не\s+(?:существу[\p{L}]*|явля[\p{L}]*|образу[\p{L}]*)|[—–-]\s*(?:ошибк|несуществующ)[\p{L}]*)/iu.test(tail);
+    if (!channelForPair(id.a,id.b) && !negated && !isPersonalFactNegated(clause,id.index)) bad.push(`invalid_channel_pair:${id.a}-${id.b}`);
+  }
+  if (formed) {
+    const named = ids.find(id => id.index > formed.index);
+    if (named && [formed.a,formed.b].sort((a,b)=>a-b).join("-") !== [named.a,named.b].sort((a,b)=>a-b).join("-")) bad.push(`wrong_channel_constituent_gates:${formed.a}-${formed.b}_vs_${named.a}-${named.b}`);
+  }
+  if (!ids.length) return bad;
+  const connection = /соедин[еёяи][\p{L}]*|связыва[\p{L}]*|связа[\p{L}]*|между/iu.exec(clause);
+  if (!connection || /(?:цепочк|опосредован|косвенн|промежуточн)/iu.test(clause) || isPersonalFactNegated(clause,connection.index) || /нельзя\s+(?:считать|назвать|называть)\s*$/iu.test(clause.slice(0,connection.index))) return bad;
+  const mentions = centerMentions(clause);
+  const before = mentions.filter(m => m.end <= connection.index);
+  const after = mentions.filter(m => m.index >= connection.index+connection[0].length);
+  const channelIsSubject = ids.every(id => id.index < connection.index) && (!before.length || before.at(-1)!.end <= ids[0]!.index);
+  let endpoints = (channelIsSubject || !before.length) ? after.slice(0,2)
+    : after.length ? [before.at(-1)!,after[0]!] : before.slice(-2);
+  if (channelIsSubject && endpoints.length === 1 && /^(?:\s*(?:его|е[её]|их|этот\s+центр))[\s,]/iu.test(clause.slice(connection.index+connection[0].length))) {
+    const antecedents = centerMentions(prior);
+    if (new Set(antecedents.map(m=>m.key)).size === 1) endpoints = [antecedents[0]!,endpoints[0]!];
+  }
+  // More than two explicit centers can describe a network with different links.
+  if (endpoints.length !== 2 || (ids.length > 1 && new Set(mentions.map(m=>m.key)).size > 2)) return bad;
+  for (const id of ids) {
+    const ch = channelForPair(id.a,id.b);
+    if (ch && endpoints.some(c => !ch.centers.includes(c.key as typeof ch.centers[number]))) bad.push(`wrong_channel_endpoints:${id.a}-${id.b}`);
+  }
+  return [...new Set(bad)];
+}
+
+/** The other profile line remains lifelong; it does not own a sixth-line age phase. */
+function wrongSixthLinePhaseOwner(text: string): boolean {
+  const line = String.raw`(?:перв[\p{L}]*|втор[\p{L}]*|трет[\p{L}]*|четв[её]рт[\p{L}]*|пят[\p{L}]*|[1-5](?:-?[аяойюе]+)?)\s+лини[\p{L}]*`;
+  const ages = String.raw`(?:от\s+)?30\s*(?:[—–-]|до|и)\s*50|после\s+(?:примерно\s+|около\s+)?50`;
+  for (const sentence of text.split(/[.!?;\n]/u)) {
+    if (!/(?:фаз|период|этап)/iu.test(sentence)) continue;
+    const age = new RegExp(ages,"iu").exec(sentence);
+    if (!age) continue;
+    const tail = sentence.slice(age.index+age[0].length,age.index+age[0].length+160);
+    const direct = new RegExp(String.raw`^(?:(?!,\s*(?:но|а)|\s+при\s+этом)[\s\p{L}«»():—–-]){0,70}(?:связан[\p{L}]*\s+с|принадлеж[\p{L}]*|(?:это|—|–|-)\s*(?:фаза\s+)?)\s*${line}`,"iu").exec(tail);
+    if (direct && !/(?:не\s+(?:связан|принадлеж|явля)|не\s+фаза|не\s+является)/iu.test(direct[0])) return true;
+    const prefix = sentence.slice(Math.max(0,age.index-100),age.index);
+    if (new RegExp(`${line}\\s+(?:проход[\\p{L}]*|вступа[\\p{L}]*|имеет)\\s+(?:возрастн[\\p{L}]*\\s+)?(?:фаз[\\p{L}]*|период[\\p{L}]*)\\s*$`,"iu").test(prefix)) return true;
+    if (new RegExp(`(?:фаз[\\p{L}]*|период[\\p{L}]*|этап[\\p{L}]*)\\s+${line}\\s+(?:длит[\\p{L}]*|продолжа[\\p{L}]*|начина[\\p{L}]*|занима[\\p{L}]*)\\s+(?:(?:примерно|около|с|от)\\s+)*$`,"iu").test(prefix)) return true;
+  }
+  return false;
+}
 
 /** Only explicit connected-group assertions; advice about interaction is not a graph claim. */
 function wrongDefinitionGroups(text: string, contract: HdLockedContract): string[] {
@@ -68,7 +169,7 @@ function wrongDefinitionGroups(text: string, contract: HdLockedContract): string
       if (/^\s*(?:не\s+(?:включает|объединяет|содержит|соединяет|входят)|нельзя\s+(?:объединить|отнести|включить))/iu.test(list)) continue;
       const centers = Object.entries(CENTER_MENTIONS).filter(([key, re]) => re.test(list)
         || (key === "head" && /головн[\p{L}]*/iu.test(list))
-        || (key === "solar" && /эмоциональн[\p{L}]*(?=[^.!?\n]{0,70}центр|\s*(?:,|$|через|и\s+(?:сакрал|корнев|горлов|эго|g-|селез)))/iu.test(list))).map(([key]) => key);
+        || (key === "solar" && /(?<!\p{L})эмоциональн[\p{L}]*(?=[^.!?\n]{0,70}центр|\s*(?:,|$|через|и\s+(?:сакрал|корнев|горлов|эго|g-|селез)))/iu.test(list))).map(([key]) => key);
       if (centers.length < 2) continue;
       const component = contract.definitionComponents.find(c => centers.every(center => c.includes(center as typeof c[number])));
       if (!component) bad.push(`wrong_definition_group:${centers.join(",")}`);
@@ -329,7 +430,7 @@ export function validateHdReportText(
 
   const sections = splitSections(body);
   for (const section of sections) {
-    if (/(?<![\p{L}])(?:dominance[AB]|compromise[AB]|aOnly|bOnly)(?![\p{L}])/u.test(section.body)) findings.push({rule:"V5",detail:"internal_connection_label",sectionTitles:[section.title]});
+    if (/(?<![\p{L}])(?:dominance[AB]|compromise[AB]|aOnly|bOnly|companionship)(?![\p{L}])/u.test(section.body)) findings.push({rule:"V5",detail:"internal_connection_label",sectionTitles:[section.title]});
     if (opts?.connectionContract && (titleKey(section.title) === "доминантность и компромисс" || /доминантн[\p{L}]*|компромиссн[\p{L}]*\s+канал/iu.test(section.body))) {
       for (const detail of wrongConnectionCounts(section.body,opts.connectionContract)) findings.push({rule:"V4",detail,sectionTitles:[section.title]});
     }
@@ -338,28 +439,13 @@ export function validateHdReportText(
     const clause = sentence[0];
     for (const gate of clause.matchAll(/(?<!\p{L})канал\s+(\d{1,2})(?!\d)/giu)) {
       const tail = clause.slice(gate.index!+gate[0].length);
-      const quotedNegation = /(?<!\p{L})не\s*[«“"]\s*$/iu.test(clause.slice(0,gate.index));
+      const quotedNegation = /(?<!\p{L})не\s*[«“"]\s*$/iu.test(clause.slice(Math.max(0,gate.index!-60),gate.index));
       if (!/^\s*(?:[–—/-]\s*\d{1,2}(?!\d)|и\s+\d{1,2}(?!\d))/iu.test(tail) && !quotedNegation && !isPersonalFactNegated(clause,gate.index!)) {
         findings.push({rule:"V4",detail:`single_gate_called_channel:${gate[1]}`,sectionTitles:[s.title]});
       }
     }
-    if (!/канал[\p{L}]*/iu.test(clause)) continue;
-    const connection = /соедин[еёяи][\p{L}]*|связыва[\p{L}]*|связа[\p{L}]*|между/iu.exec(clause);
-    if (!connection || /(?:цепочк|опосредован|косвенн|промежуточн)/iu.test(clause) || isPersonalFactNegated(clause,connection.index) || /нельзя\s+(?:считать|назвать|называть)\s*$/iu.test(clause.slice(0,connection.index))) continue;
-    const ids = [...clause.matchAll(/(?<!\d)(\d{1,2})\s*[–-]\s*(\d{1,2})(?!\d)/gu)];
-    if (ids.length !== 1) continue;
-    const id = ids[0]!;
-    const ch = CHANNELS.find(c => c.gates.includes(Number(id[1])) && c.gates.includes(Number(id[2])));
-    if (!ch) continue;
-    const mentions = Object.entries(CENTER_MENTIONS).flatMap(([key,re]) => [...clause.matchAll(new RegExp(re.source,"giu"))].map(m => ({key,index:m.index!,end:m.index!+m[0].length}))).sort((a,b) => a.index-b.index);
-    const before = mentions.filter(m => m.end <= connection.index);
-    const after = mentions.filter(m => m.index >= connection.index+connection[0].length);
-    const channelIsSubject = id.index! < connection.index && (!before.length || before.at(-1)!.end <= id.index!);
-    const pair = (channelIsSubject || !before.length) ? after.slice(0,2)
-      : after.length ? [before.at(-1)!,after[0]!] : before.slice(-2);
-    if (pair.length === 2 && pair.some(c => !ch.centers.includes(c.key as typeof ch.centers[number]))) {
-      findings.push({rule:"V4",detail:`wrong_channel_endpoints:${id[1]}-${id[2]}`,sectionTitles:[s.title]});
-    }
+    const prior = s.body.slice(Math.max(0,sentence.index!-256),sentence.index).split(/\n\s*\n/u).at(-1) ?? "";
+    for (const detail of wrongChannelClaims(clause,prior)) findings.push({rule:"V4",detail,sectionTitles:[s.title]});
   }
   const titleCounts = new Map<string, number>();
   for (const s of sections) {
@@ -555,6 +641,7 @@ export function validateHdReportText(
     for (const s of sections) {
       const add = (detail: string, rule: HdQualityRuleId = "V4") => findings.push({ rule, detail, sectionTitles: [s.title] });
       for (const detail of wrongDefinitionGroups(s.body, contract)) add(detail);
+      if (wrongSixthLinePhaseOwner(s.body)) add("wrong_sixth_line_phase_owner","V10");
       if (!contract.profile.split("/").includes("6")) {
         const personalSix = /(?:у\s+вас\s+(?:(?:есть|присутствует)\s+)?|ваш[\p{L}]*\s+профил[\p{L}]*\s+(?:имеет|содержит|включает|есть)\s+)шест[\p{L}]*\s+лини[\p{L}]*|шест[\p{L}]*\s+лини[\p{L}]*\s+(?:ваш[\p{L}]*|условн[\p{L}]*|данн[\p{L}]*|этого)\s+профил[\p{L}]*/giu;
         if (personalFactHits(s.body,personalSix)) add("sixth_line_phase_without_sixth_profile","V10");
