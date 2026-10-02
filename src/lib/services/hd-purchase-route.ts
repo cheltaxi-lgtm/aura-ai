@@ -115,7 +115,7 @@ export async function handleHdPurchase(request: NextRequest, kind: HdGenerationG
       const nameA = typeof names?.[0] === "string" ? names[0] : subjectName(a), nameB = typeof names?.[1] === "string" ? names[1] : subjectName(b);
       const frozenRelation = typeof purchase.context.relation === "string" ? purchase.context.relation as HdConnectionRelation : relation;
       text = await completeHdCompositeReport({systemPrompt:await wrapSystemPrompt(buildHdCompositeReportSystemPrompt(nameA,nameB,connectionRelationPromptHint(frozenRelation))),
-        evidence:formatHdConnectionEvidence(a.chart,b.chart,{a:nameA,b:nameB}),nameA,nameB,deadlineAt,beforeRequest});
+        evidence:formatHdConnectionEvidence(a.chart,b.chart,{a:nameA,b:nameB}),charts:{a:a.chart,b:b.chart},nameA,nameB,deadlineAt,beforeRequest});
     }
     if (!text || defective || isHardRejectedLlmOutput(text)) {
       const errorCode = "invalid_model_output";

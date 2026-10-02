@@ -47,6 +47,8 @@ export type HdLockedContract = {
   openCentersRu: string[];
   definedChannels: string[];
   definedChannelKeys: string[];
+  /** Connected components of the defined-channel graph, not groups of motors. */
+  definitionComponents: HdCenterKey[][];
   motorCentersDefinedRu: string[];
   hangingGateNumbers: number[];
   hangingGatesRu: string;
@@ -158,6 +160,18 @@ export function buildHdLockedContract(
   const crossAngleRu = CROSS_ANGLE_NAMES_RU[chart.cross.angle];
   const crossRu = crossNameRu(chart);
   const crossGateNumbers = [...chart.cross.gates];
+  const definitionComponents: HdCenterKey[][] = [];
+  const remaining = new Set(chart.definedCenters);
+  for (const center of chart.definedCenters) {
+    if (!remaining.delete(center)) continue;
+    const component = [center];
+    for (let i = 0; i < component.length; i++) {
+      for (const channel of chart.channels.filter(c => c.defined && c.centers.includes(component[i]!))) {
+        for (const neighbor of channel.centers) if (remaining.delete(neighbor)) component.push(neighbor);
+      }
+    }
+    definitionComponents.push(component);
+  }
   const motorPaths: string[] = [];
   for (const motor of chart.definedCenters.filter(c => MOTOR.has(c))) {
     const queue: {center: HdCenterKey; seen: HdCenterKey[]; text: string}[] = [{center:motor,seen:[motor],text:CENTER_NAMES_RU[motor]}];
@@ -193,6 +207,9 @@ export function buildHdLockedContract(
     `Висячие ворота (единый список): ${hangingGatesRu}.`,
     `Определённые каналы:`,
     ...definedChannels.map((l) => `- ${l}`),
+    `Группы связанных определённых центров: ${definitionComponents.length}. Это компоненты связности только по определённым каналам.`,
+    ...definitionComponents.map((centers, i) => `- Группа ${i + 1}: ${centers.map(c => CENTER_NAMES_RU[c]).join(", ")}; каналы: ${chart.channels.filter(c => c.defined && c.centers.every(center => centers.includes(center))).map(c => c.key).join(", ") || "нет"}.`),
+    "В разделе «Определённость и самодостаточность» используй именно эти группы целиком. Не переноси центр в другую группу: соединённые определённым каналом центры всегда принадлежат одной группе. При неизвестном времени это группы условной карты, а не подтверждённая определённость человека.",
     `Пути от определённых моторов к Горловому через определённые каналы: ${motorPaths.join("; ") || "нет"}.`,
     "Каждый канал соединяет только ДВА центра, указанных рядом с ним. Путь через промежуточные центры — цепочка каналов, а не прямой канал. В объяснении типа используй только указанную цепочку; не заменяй её другим каналом.",
     "Ворота обозначаются одним числом, канал — парой ворот. Не называй одиночные ворота каналом: например, ворота 6 — это ворота Трения, а не «канал 6».",
@@ -228,6 +245,7 @@ export function buildHdLockedContract(
     openCentersRu,
     definedChannels,
     definedChannelKeys,
+    definitionComponents,
     motorCentersDefinedRu,
     hangingGateNumbers: hang,
     hangingGatesRu,

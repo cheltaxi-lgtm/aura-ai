@@ -5,6 +5,7 @@ import { stripHdMetaLeak } from "./prompt";
 import { validateHdReportText, hdSectionMinimumChars } from "@/lib/hd-report-quality/validator";
 import { buildHdLockedContract, type HdLockedContract } from "@/lib/hd-report-pipeline/contract";
 import type { HdChart } from "./types";
+import { buildHdConnectionReportContract, type HdConnectionReportContract } from "./connection";
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
@@ -123,6 +124,34 @@ function buildExpandPrompt(thin: string[]): string {
   );
 }
 
+/** Factual repairs retain section order and replace the unheaded introduction too. */
+function replaceHdFactualSections(original: string, rewrite: string, titles: string[]): string {
+  const parse = (text: string) => {
+    const pieces = text.split(/^##(?!#)\s+/m);
+    const intro = pieces.shift()!.trim();
+    const sections = pieces.map(piece => {
+      const newline = piece.indexOf("\n");
+      return { title: normalizeHdHeadingTitle(newline < 0 ? piece : piece.slice(0,newline)), body: newline < 0 ? "" : piece.slice(newline+1).trim() };
+    });
+    return { intro, sections };
+  };
+  const before = parse(original), after = parse(rewrite);
+  const replacements = new Map(after.sections.filter(s => titles.includes(s.title)).map(s => [s.title,s]));
+  if (titles.includes("Вступление") && after.intro) replacements.set("Вступление",{title:"Вступление",body:after.intro});
+  const introReplacement = replacements.get("Вступление");
+  const intro = introReplacement?.body ?? before.intro;
+  const handled = new Set<string>(introReplacement ? ["Вступление"] : []);
+  const result = before.sections.flatMap(section => {
+    if (introReplacement && section.title === "Вступление") return [];
+    const replacement = replacements.get(section.title);
+    if (replacement) handled.add(section.title);
+    return [replacement ?? section];
+  });
+  for (const section of after.sections) if (!handled.has(section.title)) result.push(section);
+  const extraIntro = after.intro && !titles.includes("Вступление") ? after.intro : "";
+  return [intro,extraIntro,...result.map(s => `## ${s.title}\n${s.body}`)].filter(Boolean).join("\n\n");
+}
+
 /**
  * Shared multi-pass generator: high token budget + continue until all
  * required ## sections exist or passes are exhausted.
@@ -135,6 +164,7 @@ async function completeSectionedReport(opts: {
   continueMaxTokens: number;
   deadlineAt: number;
   contract?: HdLockedContract;
+  connectionContract?: HdConnectionReportContract;
   beforeRequest?: () => Promise<void>;
 }): Promise<string | null> {
   const system: ChatMessage = { role: "system", content: opts.systemPrompt };
@@ -143,6 +173,7 @@ async function completeSectionedReport(opts: {
 
   let combined = "";
   let lastTruncated = true;
+  let repairTitles: string[] = [];
   // 6 passes: stochastic near-threshold rejects (thin 3/16 after 4 passes)
   // refund a paying user; two extra expand passes usually fix the last stubs.
   const maxPasses = 6;
@@ -159,6 +190,7 @@ async function completeSectionedReport(opts: {
             {
               role: "user",
               content: (() => {
+                if (repairTitles.length) return `Исправь фактические противоречия исходным расчётным данным. ${buildExpandPrompt(repairTitles)}`;
                 const missing = missingHdReportSections(combined, opts.required);
                 if (missing.length) return buildContinuePrompt(missing);
                 // Measure thin on the deduped view: the first regex hit in the
@@ -213,7 +245,12 @@ async function completeSectionedReport(opts: {
 
     // Strip meta-leak immediately so a "plan + promise to continue" chunk
     // can never satisfy the required-sections check by listing headings.
-    combined = stripHdMetaLeak(combined ? `${combined.trim()}\n\n${chunk}` : chunk);
+    // A factual repair replaces its old section even when the correct prose is shorter.
+    // Longest-wins deduplication is only appropriate for expanding thin stubs.
+    combined = stripHdMetaLeak(repairTitles.length
+      ? replaceHdFactualSections(combined,chunk,repairTitles)
+      : combined ? `${combined.trim()}\n\n${chunk}` : chunk);
+    repairTitles = [];
 
     const missing = missingHdReportSections(combined, opts.required);
     const thin = missing.length === 0 ? thinHdReportSections(dedupeHdSections(combined), opts.required) : [];
@@ -228,10 +265,11 @@ async function completeSectionedReport(opts: {
     });
     if (!lastTruncated && missing.length === 0 && thin.length === 0) {
       const candidate = dedupeHdSections(combined);
-      const quality = validateHdReportText(candidate, { contract: opts.contract, requiredSections: opts.required, requireFocusAnswer: false });
+      const quality = validateHdReportText(candidate, { contract: opts.contract, connectionContract: opts.connectionContract, requiredSections: opts.required, requireFocusAnswer: false });
       if (quality.ok) return candidate;
       // Replace the defective sections instead of returning structurally complete but false prose.
       const titles = [...new Set(quality.findings.flatMap(f => f.sectionTitles ?? []))];
+      repairTitles = titles;
       if (titles.length) seedUser.content += `\nИсправь следующие разделы при продолжении: ${titles.join(", ")}. Не нарушай исходные расчётные данные.`;
     }
   }
@@ -245,7 +283,7 @@ async function completeSectionedReport(opts: {
   // sections or too many stubs → reject (the route refunds / resumes free).
   const missingFinal = missingHdReportSections(finalText, opts.required);
   const thinFinal = thinHdReportSections(finalText, opts.required);
-  const quality = validateHdReportText(finalText, { contract: opts.contract, requiredSections: opts.required, requireFocusAnswer: false });
+  const quality = validateHdReportText(finalText, { contract: opts.contract, connectionContract: opts.connectionContract, requiredSections: opts.required, requireFocusAnswer: false });
   if (lastTruncated || missingFinal.length > 0 || thinFinal.length > 0 || !quality.ok) {
     console.warn("[hd-generate] reject: gate", {
       missing: missingFinal,
@@ -312,6 +350,7 @@ export async function completeHdCompositeReport(opts: {
   evidence: string;
   nameA: string;
   nameB: string;
+  charts: { a: HdChart; b: HdChart };
   deadlineAt?: number;
   beforeRequest?: () => Promise<void>;
 }): Promise<string | null> {
@@ -329,5 +368,6 @@ export async function completeHdCompositeReport(opts: {
     continueMaxTokens: 8_000,
     deadlineAt: Math.min(opts.deadlineAt ?? Infinity, Date.now() + 540_000),
     beforeRequest: opts.beforeRequest,
+    connectionContract: buildHdConnectionReportContract(opts.charts.a, opts.charts.b, { a: opts.nameA, b: opts.nameB }),
   });
 }

@@ -50,6 +50,21 @@ export interface HdChannelBond {
   summary: string;
 }
 
+export interface HdConnectionReportContract {
+  dominance: { name: string; channelKeys: string[] }[];
+  dominanceCount: number;
+  compromiseCount: number;
+}
+
+export function buildHdConnectionReportContract(chartA: HdChart, chartB: HdChart, names: {a: string; b: string}): HdConnectionReportContract {
+  const connection = analyzeHdConnection(chartA, chartB, names);
+  return {
+    dominance: [{ name: names.a, channelKeys: connection.dominanceA.map(c => c.key) }, { name: names.b, channelKeys: connection.dominanceB.map(c => c.key) }],
+    dominanceCount: connection.dominanceA.length + connection.dominanceB.length,
+    compromiseCount: connection.compromise.length,
+  };
+}
+
 export interface HdCenterBond {
   center: HdCenterKey;
   nameRu: string;
@@ -409,17 +424,19 @@ export function formatHdConnectionEvidence(
   if (!conn.companionship.length) lines.push("- нет");
   else for (const c of conn.companionship) lines.push(`- ${c.key} «${c.nameRu}»`);
   lines.push("ДОМИНАНТНОСТЬ КАНАЛОВ:");
+  lines.push(`Доминантные каналы: ${names.a} — ${conn.dominanceA.length}; ${names.b} — ${conn.dominanceB.length}. Всего — ${conn.dominanceA.length + conn.dominanceB.length}. Компромиссных каналов — ${conn.compromise.length}.`);
+  lines.push("Сохрани эти количества и принадлежность каналов в разделе «Доминантность и компромисс». Используй имена людей, не служебные обозначения сторон.");
   for (const c of [...conn.dominanceA, ...conn.dominanceB]) {
-    lines.push(`- ${c.key} «${c.nameRu}» (${c.kind})`);
+    lines.push(`- ${c.key}: ${c.summary}`);
   }
   if (!conn.dominanceA.length && !conn.dominanceB.length) lines.push("- нет");
   lines.push("КОМПРОМИСС:");
   if (!conn.compromise.length) lines.push("- нет");
-  else for (const c of conn.compromise) lines.push(`- ${c.key} «${c.nameRu}» (${c.kind})`);
+  else for (const c of conn.compromise) lines.push(`- ${c.key}: ${c.summary}`);
   lines.push("");
   lines.push("ЦЕНТРЫ:");
   for (const c of conn.centers) {
-    lines.push(`- ${c.nameRu}: ${c.kind}`);
+    lines.push(`- ${c.summary}`);
   }
   lines.push("");
   lines.push("СООТВЕТСТВИЯ:");

@@ -7,6 +7,7 @@ import {
   HD_TYPE_NAMES_RU,
 } from "./dictionaries";
 import type { HdLockedContract } from "@/lib/hd-report-pipeline/contract";
+import type { HdConnectionReportContract } from "@/lib/human-design/connection";
 import { HD_REPORT_REQUIRED_SECTIONS } from "@/lib/human-design/packages";
 import { AUTHORITY_NAMES_RU, CENTER_NAMES_RU, CHANNELS, CROSS_NAMES_RU, DEFINITION_NAMES_RU, TYPE_META } from "@/lib/human-design/constants";
 
@@ -50,6 +51,79 @@ const CENTER_MENTIONS: Record<string, RegExp> = {
 };
 const SHINGLE_OVERLAP_RATIO = 0.10;
 const FOCUS_ANSWER_TITLE = "Ответ на ваш запрос";
+
+/** Only explicit connected-group assertions; advice about interaction is not a graph claim. */
+function wrongDefinitionGroups(text: string, contract: HdLockedContract): string[] {
+  const bad: string[] = [];
+  const marker = /(?:(?:одна|другая|первая|вторая|третья|четв[её]ртая|единая|эта|данная)\s+(?:часть|группа|блок|компонента)|(?:группа|блок|компонента)\s+\d+|(?:в\s+одну|в\s+одной)\s+групп[\p{L}]*|(?:группа|блок)\s+(?:включает|объединяет|содержит|состоит))/giu;
+  for (const sentence of text.split(/[.!?;\n]/u)) {
+    const markers = [...sentence.matchAll(marker)];
+    for (let i = 0; i < markers.length; i++) {
+      const match = markers[i]!;
+      const before = sentence.slice(Math.max(0,match.index!-160), match.index);
+      if (/(?:у\s+)?(?:друг[\p{L}]*|ин[\p{L}]*)\s+(?:людей|человек[\p{L}]*)[^,]{0,30}$/iu.test(before) || isPersonalFactNegated(sentence, match.index!)) continue;
+      const claim = sentence.slice(match.index, markers[i + 1]?.index ?? sentence.length)
+        .split(/,\s*(?:а|но)\s+|\s+(?:и\s+)?(?:взаимодейств[\p{L}]*|контактир[\p{L}]*|обменива[\p{L}]*|сравнива[\p{L}]*|сопоставля[\p{L}]*)\s+/iu)[0]!;
+      const list = claim.slice(match[0].length);
+      if (/^\s*(?:не\s+(?:включает|объединяет|содержит|соединяет|входят)|нельзя\s+(?:объединить|отнести|включить))/iu.test(list)) continue;
+      const centers = Object.entries(CENTER_MENTIONS).filter(([key, re]) => re.test(list)
+        || (key === "head" && /головн[\p{L}]*/iu.test(list))
+        || (key === "solar" && /эмоциональн[\p{L}]*(?=[^.!?\n]{0,70}центр|\s*(?:,|$|через|и\s+(?:сакрал|корнев|горлов|эго|g-|селез)))/iu.test(list))).map(([key]) => key);
+      if (centers.length < 2) continue;
+      const component = contract.definitionComponents.find(c => centers.every(center => c.includes(center as typeof c[number])));
+      if (!component) bad.push(`wrong_definition_group:${centers.join(",")}`);
+      else for (const pair of list.matchAll(/(?<!\d)(\d{1,2})\s*[—–-]\s*(\d{1,2})(?!\d)/gu)) {
+        const channel = CHANNELS.find(c => c.gates.includes(Number(pair[1])) && c.gates.includes(Number(pair[2])));
+        if (channel && !channel.centers.every(c => component.includes(c))) bad.push(`wrong_definition_group_channel:${pair[1]}-${pair[2]}`);
+      }
+    }
+  }
+  return [...new Set(bad)];
+}
+
+const COUNT_WORDS: Record<string, number> = {нет:0,ноль:0,один:1,одна:1,одно:1,два:2,две:2,три:3,четыре:4,пять:5,шесть:6,семь:7,восемь:8,девять:9,десять:10};
+const COUNT_PATTERN = `(?<![\\p{L}\\d/—–-])(?:\\d{1,2}|${Object.keys(COUNT_WORDS).join("|")})(?![\\p{L}\\d/]|\\s*[—–-]\\s*\\d)`;
+function countValue(raw: string): number { return COUNT_WORDS[raw.toLowerCase()] ?? Number(raw); }
+function escaped(raw: string): string { return raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
+function personNamePattern(name: string): string {
+  if (/^[А-Яа-яЁё]{4,}$/u.test(name)) {
+    const stem = name.replace(/(?:ий|[аяйь])$/iu, "");
+    return `${escaped(stem)}[\\p{L}]*`;
+  }
+  return escaped(name);
+}
+function wrongConnectionCounts(text: string, contract: HdConnectionReportContract): string[] {
+  const bad: string[] = [];
+  const patterns = contract.dominance.map(p => personNamePattern(p.name));
+  for (let i = 0; i < contract.dominance.length; i++) {
+    const person = contract.dominance[i]!;
+    // Identical/overlapping names cannot identify a person safely in free prose.
+    if (patterns.some((p,j) => j !== i && (new RegExp(`^${p}$`,"iu").test(person.name) || new RegExp(`^${patterns[i]}$`,"iu").test(contract.dominance[j]!.name)))) continue;
+    const name = `(?<!\\p{L})${patterns[i]}(?!\\p{L})`;
+    const claims = [
+      new RegExp(`${name}\\s*[—–:]\\s*(${COUNT_PATTERN})`, "giu"),
+      new RegExp(`(?:у|для)\\s+${name}\\s+(?:(?:есть|насчитывается|определены|выделяются)\\s+)?(${COUNT_PATTERN})\\s+(?:доминантн[\\p{L}]*\\s+)?канал[\\p{L}]*`, "giu"),
+      new RegExp(`(${COUNT_PATTERN})\\s+(?:(?:доминантн[\\p{L}]*\\s+)?канал[\\p{L}]*\\s+)?(?:принадлеж[\\p{L}]*|относ[\\p{L}]*\\s+к)\\s+${name}`, "giu"),
+    ];
+    for (const re of claims) for (const match of text.matchAll(re)) {
+      const countIndex = match.index! + match[0].indexOf(match[1]!);
+      if (/\d\s*[—–/\-]\s*$/u.test(text.slice(Math.max(0,countIndex-20),countIndex))) continue;
+      const tail = text.slice(countIndex+match[1]!.length,countIndex+match[1]!.length+100);
+      // A person's total defined/shared channels is a different statistic.
+      // Preserve explicit "defined dominance channels" as a dominance claim.
+      const qualified = /^\s+(?:определ[её]нн|полн|личн|индивидуальн|собственн|общ|активн)[\p{L}]*\s+канал[\p{L}]*/iu.exec(tail);
+      if (qualified && !/^\s+доминантн/iu.test(tail.slice(qualified[0].length))) continue;
+      if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== person.channelKeys.length) bad.push(`wrong_connection_dominance_count:${person.name}:${match[1]}_vs_${person.channelKeys.length}`);
+    }
+  }
+  for (const match of text.matchAll(new RegExp(`(?:всего|суммарно)\\s*(?:[—–:]\\s*)?(${COUNT_PATTERN})\\s+доминантн[\\p{L}]*\\s+канал[\\p{L}]*`,"giu"))) {
+    if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== contract.dominanceCount) bad.push(`wrong_connection_dominance_total:${match[1]}_vs_${contract.dominanceCount}`);
+  }
+  for (const match of text.matchAll(new RegExp(`компромиссн[\\p{L}]*\\s+канал[\\p{L}]*\\s*(?:[—–:]\\s*)?(${COUNT_PATTERN})`,"giu"))) {
+    if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== contract.compromiseCount) bad.push(`wrong_connection_compromise_count:${match[1]}_vs_${contract.compromiseCount}`);
+  }
+  return [...new Set(bad)];
+}
 
 function titleKey(title: string): string {
   return title.trim().replace(/[.!?…:]+$/u, "").trim().toLowerCase();
@@ -197,6 +271,7 @@ export type HdValidateOpts = {
   engineTypeRu?: string | null;
   motorCount?: number | null;
   contract?: HdLockedContract | null;
+  connectionContract?: HdConnectionReportContract | null;
   requireFocusAnswer?: boolean;
   scope?: "report" | "section";
   requiredSections?: readonly string[];
@@ -249,6 +324,12 @@ export function validateHdReportText(
   }
 
   const sections = splitSections(body);
+  for (const section of sections) {
+    if (/(?<![\p{L}])(?:dominance[AB]|compromise[AB]|aOnly|bOnly)(?![\p{L}])/u.test(section.body)) findings.push({rule:"V5",detail:"internal_connection_label",sectionTitles:[section.title]});
+    if (opts?.connectionContract && (titleKey(section.title) === "доминантность и компромисс" || /доминантн[\p{L}]*|компромиссн[\p{L}]*\s+канал/iu.test(section.body))) {
+      for (const detail of wrongConnectionCounts(section.body,opts.connectionContract)) findings.push({rule:"V4",detail,sectionTitles:[section.title]});
+    }
+  }
   for (const s of sections) for (const sentence of s.body.matchAll(/[^.!?;\n]+/gu)) {
     const clause = sentence[0];
     for (const gate of clause.matchAll(/(?<!\p{L})канал\s+(\d{1,2})(?!\d)/giu)) {
@@ -469,6 +550,7 @@ export function validateHdReportText(
   if (contract) {
     for (const s of sections) {
       const add = (detail: string, rule: HdQualityRuleId = "V4") => findings.push({ rule, detail, sectionTitles: [s.title] });
+      for (const detail of wrongDefinitionGroups(s.body, contract)) add(detail);
       if (!contract.profile.split("/").includes("6")) {
         const personalSix = /(?:у\s+вас\s+(?:(?:есть|присутствует)\s+)?|ваш[\p{L}]*\s+профил[\p{L}]*\s+(?:имеет|содержит|включает|есть)\s+)шест[\p{L}]*\s+лини[\p{L}]*|шест[\p{L}]*\s+лини[\p{L}]*\s+(?:ваш[\p{L}]*|условн[\p{L}]*|данн[\p{L}]*|этого)\s+профил[\p{L}]*/giu;
         if (personalFactHits(s.body,personalSix)) add("sixth_line_phase_without_sixth_profile","V10");

@@ -4,6 +4,8 @@ import { calculateHdChart } from "@/lib/human-design/calculate";
 import { buildHdLockedContract } from "@/lib/hd-report-pipeline/contract";
 import { validateHdReportText } from "@/lib/hd-report-quality/validator";
 import { HD_PIPELINE_BATCHES } from "@/lib/hd-report-pipeline/sections";
+import { HD_COMPOSITE_REQUIRED_SECTIONS } from "@/lib/human-design/packages";
+import { completeHdCompositeReport, completeHdFullReport } from "@/lib/human-design/report-generate";
 
 const mocked=vi.hoisted(()=>({complete:vi.fn(),mutate:(title:string,body:string)=>body,finish:"stop" as string|null}));
 vi.mock("@/lib/llm",()=>({completeChatDetailed:mocked.complete,isHardRejectedLlmOutput:()=>false}));
@@ -33,6 +35,32 @@ beforeEach(()=>{
 });
 
 describe("HD bounded provider generation",()=>{
+  it("replaces a longer factually wrong composite section with a shorter correct rewrite",async()=>{
+    const partner=calculateHdChart({birthDate:"1990-05-15",birthTime:"14:30",timezone:"Asia/Yekaterinburg"});
+    const fill=(index:number)=>Array.from({length:90},(_,word)=>`ситуация${index}пример${word}`).join(" ");
+    const title="Доминантность и компромисс",index=HD_COMPOSITE_REQUIRED_SECTIONS.indexOf(title);
+    const correct=fill(index)+"\nДоминантные каналы: Алексей — 3; Анна — 4. Всего семь доминантных каналов. Компромиссных каналов — 0.";
+    const bad=fill(index)+"\nАлексей — 4; Анна — 3.\n"+Array.from({length:30},(_,word)=>`длиннаяошибка${word}`).join(" ");
+    const initial=fill(99)+"\n\n"+HD_COMPOSITE_REQUIRED_SECTIONS.map((t,i)=>`## ${t}\n${t===title?bad:fill(i)}`).join("\n\n");
+    mocked.complete.mockReset().mockResolvedValueOnce({text:initial,finishReason:"stop"}).mockResolvedValueOnce({text:`## ${title}\n${correct}`,finishReason:"stop"});
+    const guard=vi.fn(async()=>{}),deadlineAt=Date.now()+90_000;
+    const result=await completeHdCompositeReport({systemPrompt:"Полный разбор пары",evidence:"Расчётные данные",nameA:"Алексей",nameB:"Анна",charts:{a:chart,b:partner},deadlineAt,beforeRequest:guard});
+    expect(result).not.toBeNull();expect(result).toContain(correct);expect(result).not.toContain("Алексей — 4; Анна — 3");
+    expect(result!.match(/## Доминантность и компромисс/gu)).toHaveLength(1);
+    expect(result!.indexOf(`## ${title}`)).toBeLessThan(result!.indexOf(`## ${HD_COMPOSITE_REQUIRED_SECTIONS[index+1]}`));
+    expect(mocked.complete).toHaveBeenCalledTimes(2);
+    expect(mocked.complete.mock.calls[1]![0].messages.at(-1).content).toContain(`## ${title}`);
+    expect(mocked.complete.mock.calls[1]![0]).toMatchObject({deadlineAt,maxAttempts:1,beforeRequest:guard});
+  });
+  it("repairs the unheaded introduction without retaining the wrong longer preamble",async()=>{
+    const intro=good.split(/^## /m)[0]!;
+    const initial="Одна группа включает Эго и Сакральный центры. "+Array.from({length:25},(_,i)=>`ошибочнаяфраза${i}`).join(" ")+"\n"+good;
+    mocked.complete.mockReset().mockResolvedValueOnce({text:initial,finishReason:"stop"}).mockResolvedValueOnce({text:`## Вступление\n${intro}`,finishReason:"stop"});
+    const result=await completeHdFullReport({systemPrompt:"Полный разбор",evidence:"Расчётные данные",clientName:"Светлана",chart});
+    expect(result).not.toBeNull();expect(result).toMatch(/^Светлана/u);expect(result).not.toContain("Одна группа включает Эго и Сакральный");
+    expect(result).not.toContain("## Вступление");expect(mocked.complete).toHaveBeenCalledTimes(2);
+    expect(mocked.complete.mock.calls[1]![0].messages.at(-1).content).toContain("## Вступление");
+  });
   it("passes substantive text in 12 batches + editor, with one shared deadline and lease guard",async()=>{
     const before=vi.fn(async()=>{}),deadlineAt=Date.now()+120_000;
     const r=await generateHdReportSectional({chart,clientName:"Светлана",deadlineAt,beforeRequest:before});
