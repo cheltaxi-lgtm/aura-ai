@@ -8,7 +8,7 @@ import {
 } from "./dictionaries";
 import type { HdLockedContract } from "@/lib/hd-report-pipeline/contract";
 import { HD_REPORT_REQUIRED_SECTIONS } from "@/lib/human-design/packages";
-import { AUTHORITY_NAMES_RU, CENTER_NAMES_RU, CROSS_NAMES_RU, DEFINITION_NAMES_RU, TYPE_META } from "@/lib/human-design/constants";
+import { AUTHORITY_NAMES_RU, CENTER_NAMES_RU, CHANNELS, CROSS_NAMES_RU, DEFINITION_NAMES_RU, TYPE_META } from "@/lib/human-design/constants";
 
 export type HdQualityRuleId =
   | "V1"
@@ -37,6 +37,17 @@ export type HdQualityResult = {
 };
 
 const MIN_REPORT_CHARS = 12_000;
+const CENTER_MENTIONS: Record<string, RegExp> = {
+  head: /теменн[\p{L}]*|голов[аыуе](?!\p{L})/iu,
+  ajna: /аджн[\p{L}]*/iu,
+  throat: /горлов[\p{L}]*|горл[аоуе](?!\p{L})/iu,
+  g: /(?<!\p{L})(?:g|джи)(?:[\s-]*центр[\p{L}]*)?(?!\p{L})/iu,
+  heart: /(?<!\p{L})эго(?!\p{L})|сердечн[\p{L}]*|центр[\p{L}]*\s+воли/iu,
+  spleen: /селез[её]н[\p{L}]*/iu,
+  sacral: /сакрал[\p{L}]*/iu,
+  solar: /солнечн[\p{L}]*\s+сплетени[\p{L}]*|эмоциональн[\p{L}]*\s+центр[\p{L}]*/iu,
+  root: /корнев[\p{L}]*|(?<!\p{L})кор(?:ень|ня|ню|нем)(?!\p{L})/iu,
+};
 const SHINGLE_OVERLAP_RATIO = 0.10;
 const FOCUS_ANSWER_TITLE = "Ответ на ваш запрос";
 
@@ -238,6 +249,26 @@ export function validateHdReportText(
   }
 
   const sections = splitSections(body);
+  for (const s of sections) for (const sentence of s.body.matchAll(/[^.!?;\n]+/gu)) {
+    const clause = sentence[0];
+    if (!/канал[\p{L}]*/iu.test(clause)) continue;
+    const connection = /соедин[еёяи][\p{L}]*|связыва[\p{L}]*|связа[\p{L}]*|между/iu.exec(clause);
+    if (!connection || /(?:цепочк|опосредован|косвенн|промежуточн)/iu.test(clause) || isPersonalFactNegated(clause,connection.index) || /нельзя\s+(?:считать|назвать|называть)\s*$/iu.test(clause.slice(0,connection.index))) continue;
+    const ids = [...clause.matchAll(/(?<!\d)(\d{1,2})\s*[–-]\s*(\d{1,2})(?!\d)/gu)];
+    if (ids.length !== 1) continue;
+    const id = ids[0]!;
+    const ch = CHANNELS.find(c => c.gates.includes(Number(id[1])) && c.gates.includes(Number(id[2])));
+    if (!ch) continue;
+    const mentions = Object.entries(CENTER_MENTIONS).flatMap(([key,re]) => [...clause.matchAll(new RegExp(re.source,"giu"))].map(m => ({key,index:m.index!,end:m.index!+m[0].length}))).sort((a,b) => a.index-b.index);
+    const before = mentions.filter(m => m.end <= connection.index);
+    const after = mentions.filter(m => m.index >= connection.index+connection[0].length);
+    const channelIsSubject = id.index! < connection.index && (!before.length || before.at(-1)!.end <= id.index!);
+    const pair = (channelIsSubject || !before.length) ? after.slice(0,2)
+      : after.length ? [before.at(-1)!,after[0]!] : before.slice(-2);
+    if (pair.length === 2 && pair.some(c => !ch.centers.includes(c.key as typeof ch.centers[number]))) {
+      findings.push({rule:"V4",detail:`wrong_channel_endpoints:${id[1]}-${id[2]}`,sectionTitles:[s.title]});
+    }
+  }
   const titleCounts = new Map<string, number>();
   for (const s of sections) {
     const key = titleKey(s.title);
@@ -431,6 +462,18 @@ export function validateHdReportText(
   if (contract) {
     for (const s of sections) {
       const add = (detail: string, rule: HdQualityRuleId = "V4") => findings.push({ rule, detail, sectionTitles: [s.title] });
+      if (!contract.profile.split("/").includes("6")) {
+        const personalSix = /(?:у\s+вас\s+(?:(?:есть|присутствует)\s+)?|ваш[\p{L}]*\s+профил[\p{L}]*\s+(?:имеет|содержит|включает|есть)\s+)шест[\p{L}]*\s+лини[\p{L}]*|шест[\p{L}]*\s+лини[\p{L}]*\s+(?:ваш[\p{L}]*|условн[\p{L}]*|данн[\p{L}]*|этого)\s+профил[\p{L}]*/giu;
+        if (personalFactHits(s.body,personalSix)) add("sixth_line_phase_without_sixth_profile","V10");
+        if (/шест[\p{L}]*\s+лини[\p{L}]*/iu.test(s.body)) {
+          for (const current of s.body.matchAll(/(?:сейчас|в\s+настоящее\s+время|на\s+данном\s+этапе)[^.!?\n]{0,180}/giu)) {
+            const sixthPhase = /на\s+крыш[\p{L}]*|ролев[\p{L}]*\s+модел[\p{L}]*|30\s*[–-]\s*50|(?:до|после)\s+(?:30|50)/iu;
+            const prior = s.body.slice(Math.max(0,current.index!-400),current.index);
+            const refersToSixth = sixthPhase.test(current[0]) || (/(?:эт[\p{L}]*|данн[\p{L}]*)\s+диапазон[\p{L}]*/iu.test(current[0]) && sixthPhase.test(prior));
+            if (refersToSixth && !/(?<!\p{L})не\s+(?:находит|входит|пребыв|явля|относ|в\s+фаз|на\s+крыш)/iu.test(current[0])) add("current_sixth_line_phase_without_sixth_profile","V10");
+          }
+        }
+      }
       if (contract.profile.split("/").includes("6") && contract.ageYears != null) {
         const current = String.raw`(?:сейчас|в\s+настоящее\s+время|на\s+данном\s+этапе)[,\s]*(?:(?:вы\s+(?:находитесь|живёте|пребываете)|у\s+вас)\s+)?(?:в\s+)?(?:фаз[\p{L}]*|период[\p{L}]*)\s+`;
         if (contract.ageYears < 48 && new RegExp(current + String.raw`ролев[\p{L}]*\s+модел[\p{L}]*`,"iu").test(s.body)) add("false_current_profile_phase:after50","V10");

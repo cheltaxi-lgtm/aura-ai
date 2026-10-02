@@ -75,6 +75,39 @@ describe("HD deep audit calculation regressions", () => {
 
 describe("HD deep audit report quality regressions", () => {
   const quality=(text:string,scope:"report"|"section"="section")=>validateHdReportText(text,{contract,scope,requireFocusAnswer:scope==="report"});
+  it("provides the actual indirect motor path and rejects invented direct channel endpoints",()=>{
+    expect(contract.contractBlock).toContain("Эго (Сердце) —[26-44]→ Селезёночный —[16-48]→ Горловой");
+    for(const claim of [
+      "В карте есть один моторный центр — Эго, соединённый с Горловым через канал 25–51.",
+      "Канал 25–51 соединяет Эго и Горловой центр.",
+      "Канал 51–25 связывает Сердечный и Горловой центры.",
+      "Канал 25–51 находится между G-центром и Горловым.",
+    ]) expect(quality(`## Тип и его особенности\n${claim}`).findings.some(f=>f.detail.startsWith("wrong_channel_endpoints:"))).toBe(true);
+    for(const claim of [
+      "Канал 25–51 соединяет Эго и G-центр.",
+      "Канал 25–51 соединяет Эго и G-центр, а Горловой участвует в выражении через другие каналы.",
+      "Канал 25–51 не соединяет Эго с Горлом.",
+      "Канал 25–51 нельзя считать соединением Эго и Горла.",
+      "Эго связан с Горловым через цепочку каналов 26–44 и 16–48.",
+    ]) expect(quality(`## Тип и его особенности\n${claim}`).findings.some(f=>f.detail.startsWith("wrong_channel_endpoints:"))).toBe(false);
+  });
+  it("does not assign sixth-line age phases to a known or conditional profile without six",()=>{
+    const unknown=calculateHdChart({birthDate:"1988-07-07",birthTime:null,timezone:"Asia/Yekaterinburg"});
+    expect(unknown.profile).toBe("1/3");
+    const ownContract=buildHdLockedContract(unknown);
+    expect(ownContract.contractBlock).toContain("Профиль НЕ содержит шестую линию");
+    for(const timeKnown of [false,true]) {
+      const q=(text:string)=>validateHdReportText(`## Периоды и темы жизни\n${text}`,{contract:{...ownContract,timeKnown},scope:"section"});
+      expect(q("У шестой линии условного профиля обычно рассматривают три широкие фазы. Сейчас, в 38 лет, Ольга находится внутри этого диапазона 30–50.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(true);
+      expect(q("Ваш профиль имеет шестую линию. Вы на крыше.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(true);
+      expect(q("У людей с шестой линией бывает период на крыше. Сейчас вы находитесь в фазе 30–50.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(true);
+      expect(q("У людей с шестой линией бывает период на крыше. Сейчас вы не находитесь на крыше: в Вашем профиле 1/3 шестой линии нет.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(false);
+      expect(q("Профиль 1/3 отличается от профиля с шестой линией. Ваш путь строится через исследование и проверку опытом.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(false);
+      expect(q("Профиль 1/3 отличается от профиля с шестой линией. Сейчас Вы в фазе исследования новых возможностей через первую линию.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(false);
+      expect(q("У людей с шестой линией существуют три возрастные фазы. Сейчас речь идёт о фазе накопления опыта первой линии Вашего профиля 1/3.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(false);
+      expect(q("У шестой линии фаза 30–50 называется наблюдением. Сейчас Вы находитесь внутри этого диапазона.").findings.some(f=>f.detail.includes("without_sixth_profile"))).toBe(true);
+    }
+  });
   it("keeps each planet's CTB local and does not call an undefined center defined",()=>{
     for(const [side,activations] of [["Личности",chart.personality],["Дизайна",chart.designActivations]] as const){
       const sun=activations.find(a=>a.body==="sun")!,moon=activations.find(a=>a.body==="moon")!;

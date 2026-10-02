@@ -158,12 +158,26 @@ export function buildHdLockedContract(
   const crossAngleRu = CROSS_ANGLE_NAMES_RU[chart.cross.angle];
   const crossRu = crossNameRu(chart);
   const crossGateNumbers = [...chart.cross.gates];
+  const motorPaths: string[] = [];
+  for (const motor of chart.definedCenters.filter(c => MOTOR.has(c))) {
+    const queue: {center: HdCenterKey; seen: HdCenterKey[]; text: string}[] = [{center:motor,seen:[motor],text:CENTER_NAMES_RU[motor]}];
+    while (queue.length) {
+      const path = queue.shift()!;
+      if (path.center === "throat") { motorPaths.push(path.text); break; }
+      for (const ch of chart.channels.filter(c => c.defined && c.centers.includes(path.center))) {
+        const next = ch.centers.find(c => c !== path.center)!;
+        if (!path.seen.includes(next)) queue.push({center:next,seen:[...path.seen,next],text:`${path.text} —[${ch.key}]→ ${CENTER_NAMES_RU[next]}`});
+      }
+    }
+  }
 
   const contractBlock = [
     chart.timeKnown ? "КОНТРАКТ СОГЛАСОВАННОСТИ (данные движка — НЕ пересчитывай):" : "КОНТРАКТ УСЛОВНОЙ КАРТЫ: время неизвестно. Значения ниже относятся к условному моменту, а не к подтверждённой карте человека. Во вступлении и в разделах о нестабильных параметрах явно указывай ограничение. Не выдавай Variables и точную среду за определённые.",
     formatHdBirthIdentity(chart, opts),
     `Дата разбора = ${referenceDate}. Возраст на эту дату = ${ageYears ?? "не установлен"}.`,
-    "Возрастные фазы шестой линии — приблизительные ориентиры около 30 и 50 лет. Не называй фазу после 50 текущей у человека младше 48 и не называй фазу 30–50 текущей после 52. Не обещай конкретные события в заданном возрасте.",
+    chart.profile.split("/").includes("6")
+      ? "Профиль содержит шестую линию. Её возрастные фазы — приблизительные ориентиры около 30 и 50 лет. Не называй фазу после 50 текущей у человека младше 48 и не называй фазу 30–50 текущей после 52. Не обещай конкретные события в заданном возрасте."
+      : "Профиль НЕ содержит шестую линию. Не приписывай этому человеку её фазы до 30 / 30–50 / после 50, жизнь «на крыше» или стадию Ролевой модели. При неизвестном времени нельзя придумывать иной возможный профиль с шестой линией. Описывай накопление опыта через фактические линии профиля без возрастного расписания.",
     `Тип = ${meta.nameRu}.`,
     `Стратегия = ${meta.strategyRu}.`,
     `Авторитет = ${AUTHORITY_NAMES_RU[chart.authority]}.`,
@@ -179,6 +193,8 @@ export function buildHdLockedContract(
     `Висячие ворота (единый список): ${hangingGatesRu}.`,
     `Определённые каналы:`,
     ...definedChannels.map((l) => `- ${l}`),
+    `Пути от определённых моторов к Горловому через определённые каналы: ${motorPaths.join("; ") || "нет"}.`,
+    "Каждый канал соединяет только ДВА центра, указанных рядом с ним. Путь через промежуточные центры — цепочка каналов, а не прямой канал. В объяснении типа используй только указанную цепочку; не заменяй её другим каналом.",
     "Запрещено выводить тип/стратегию/авторитет/профиль/угол креста заново.",
     "Запрещено писать неверное число моторных центров.",
     "Не называй висящими ворота из определённых каналов или из креста, если их нет в списке висячих.",
