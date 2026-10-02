@@ -1,6 +1,18 @@
-import { beforeAll, beforeEach, afterAll, describe, expect, it, vi } from "vitest";
+import { beforeAll, beforeEach, afterAll, afterEach, describe, expect, it, vi } from "vitest";
 import { NextRequest } from "next/server";
 const mocks = vi.hoisted(() => ({ generate: vi.fn(), history: vi.fn() }));
+// The route returns before lifetime counters finish. Keep those real writes,
+// but drain them before the next fixture TRUNCATE can invert their FK locks.
+const lifetimeWrites = vi.hoisted(() => new Set<Promise<void>>());
+vi.mock("@/lib/user-lifetime-stats", async importOriginal => {
+  const actual = await importOriginal<typeof import("@/lib/user-lifetime-stats")>();
+  const track = (work: Promise<void>) => { lifetimeWrites.add(work); return work; };
+  return {
+    ...actual,
+    recordLifetimeSessionActivity: (...args: Parameters<typeof actual.recordLifetimeSessionActivity>) => track(actual.recordLifetimeSessionActivity(...args)),
+    recordLifetimeOrphanMemory: (...args: Parameters<typeof actual.recordLifetimeOrphanMemory>) => track(actual.recordLifetimeOrphanMemory(...args)),
+  };
+});
 vi.mock("@/lib/services/numerology-service", () => ({ generateNumerologSessionReading: mocks.generate }));
 vi.mock("@/lib/users", async importOriginal => ({ ...await importOriginal<typeof import("@/lib/users")>(), createHistoryEntry: mocks.history }));
 vi.mock("@/lib/memory/request-capture", () => ({ captureMemoryGenerationForRequest: async () => null }));
@@ -24,6 +36,10 @@ describe.runIf(hasTestDb)("Matrix reading route failure recovery", () => {
     vi.stubEnv("REPORT_JOB_RETRY_ENABLED", "true");
   });
   afterAll(() => vi.unstubAllEnvs());
+  afterEach(async () => {
+    try { await Promise.all(lifetimeWrites); }
+    finally { lifetimeWrites.clear(); }
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.history.mockRejectedValue(new Error("injected_secondary_history_failure"));
