@@ -420,7 +420,7 @@ export function formatHdConnectionEvidence(
   lines.push("ЭЛЕКТРОМАГНЕТИКА:");
   if (!conn.electromagnetic.length) lines.push("- нет");
   else for (const c of conn.electromagnetic) lines.push(`- ${c.key} «${c.nameRu}»`);
-  lines.push("COMPANIONSHIP (общие каналы):");
+  lines.push("ОБЩИЕ КАНАЛЫ:");
   if (!conn.companionship.length) lines.push("- нет");
   else for (const c of conn.companionship) lines.push(`- ${c.key} «${c.nameRu}»`);
   lines.push("ДОМИНАНТНОСТЬ КАНАЛОВ:");

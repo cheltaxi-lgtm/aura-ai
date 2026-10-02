@@ -444,7 +444,7 @@ export function validateHdReportText(
 
   const sections = splitSections(body);
   for (const section of sections) {
-    if (/(?<![\p{L}])(?:dominance[AB]|compromise[AB]|aOnly|bOnly|companionship)(?![\p{L}])/u.test(section.body)) findings.push({rule:"V5",detail:"internal_connection_label",sectionTitles:[section.title]});
+    if (/(?<![\p{L}])(?:dominance[AB]|compromise[AB]|aOnly|bOnly|companionship)(?![\p{L}])/iu.test(section.body)) findings.push({rule:"V5",detail:"internal_connection_label",sectionTitles:[section.title]});
     if (opts?.connectionContract && (titleKey(section.title) === "доминантность и компромисс" || /(?<!\p{L})(?:доминантн[\p{L}]*|компромиссн[\p{L}]*\s+канал)/iu.test(section.body))) {
       for (const detail of wrongConnectionCounts(section.body,opts.connectionContract)) findings.push({rule:"V4",detail,sectionTitles:[section.title]});
     }

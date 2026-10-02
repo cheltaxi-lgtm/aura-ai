@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { calculateHdChart } from "@/lib/human-design/calculate";
 import { buildHdLockedContract } from "@/lib/hd-report-pipeline/contract";
 import { validateHdReportText } from "@/lib/hd-report-quality/validator";
+import { buildHdCompositeReportSystemPrompt } from "@/lib/human-design/prompt";
 
 const chart=calculateHdChart({birthDate:"1987-04-03",birthTime:"14:00",timezone:"Asia/Yekaterinburg"});
 const contract=buildHdLockedContract(chart,{referenceDate:"2026-10-02"});
@@ -94,8 +95,13 @@ describe("HD actual consumer phase and channel claims",()=>{
   ])("allows different network links, negation and indirect channel chains: %s",text=>{
     expect(findings(text,"Девять центров").filter(f=>f.detail.startsWith("wrong_channel_endpoints:"))).toEqual([]);
   });
-  it("rejects an internal companionship label and gives the affected section",()=>{
-    expect(findings("Общих каналов companionship в этой связи нет.","Общие каналы и язык близости")).toContainEqual({rule:"V5",detail:"internal_connection_label",sectionTitles:["Общие каналы и язык близости"]});
+  it.each(["companionship","COMPANIONSHIP","Companionship"])("rejects an internal connection label in any case and gives the affected section: %s",label=>{
+    expect(findings(`Общих каналов ${label} в этой связи нет.`,"Общие каналы и язык близости")).toContainEqual({rule:"V5",detail:"internal_connection_label",sectionTitles:["Общие каналы и язык близости"]});
+  });
+  it("does not seed forbidden internal connection labels in the system prompt",()=>{
+    const prompt=buildHdCompositeReportSystemPrompt("Алексей","Анна","Партнёрство");
+    expect(prompt).not.toMatch(/dominance[AB]|compromise[AB]|aOnly|bOnly|companionship/iu);
+    expect(prompt).toContain("Называй механики связи по-русски");
   });
   it("locks the three phase themes and cross/channel distinction in the prompt",()=>{
     expect(contract.contractBlock).toContain("ВСЕ три возрастные фазы принадлежат шестой линии");

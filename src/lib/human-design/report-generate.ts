@@ -279,7 +279,7 @@ async function completeSectionedReport(opts: {
       const candidate = dedupeHdSections(combined);
       const quality = validateHdReportText(candidate, { contract: opts.contract, connectionContract: opts.connectionContract, requiredSections: opts.required, requireFocusAnswer: false });
       if (quality.ok) return candidate;
-      console.warn("[hd-generate] quality rejected",{pass,findings:diagnostic(quality.findings)});
+      console.warn("[hd-generate] quality rejected",JSON.stringify({pass,findings:diagnostic(quality.findings)}));
       // Replace the defective sections instead of returning structurally complete but false prose.
       // A global defect has no section attribution; rewrite the report rather
       // than repeatedly appending a continuation to a complete bad draft.
@@ -303,12 +303,12 @@ async function completeSectionedReport(opts: {
   const thinFinal = thinHdReportSections(finalText, opts.required);
   const quality = validateHdReportText(finalText, { contract: opts.contract, connectionContract: opts.connectionContract, requiredSections: opts.required, requireFocusAnswer: false });
   if (lastTruncated || missingFinal.length > 0 || thinFinal.length > 0 || !quality.ok) {
-    console.warn("[hd-generate] reject: gate", {
+    console.warn("[hd-generate] reject: gate", JSON.stringify({
       missing: missingFinal,
       thin: thinFinal,
       truncated:lastTruncated,
       findings:diagnostic(quality.findings),
-    });
+    }));
     return null;
   }
   return finalText;

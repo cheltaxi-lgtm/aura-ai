@@ -6,6 +6,8 @@ import { validateHdReportText } from "@/lib/hd-report-quality/validator";
 import { HD_PIPELINE_BATCHES } from "@/lib/hd-report-pipeline/sections";
 import { HD_COMPOSITE_REQUIRED_SECTIONS } from "@/lib/human-design/packages";
 import { completeHdCompositeReport, completeHdFullReport } from "@/lib/human-design/report-generate";
+import { formatHdConnectionEvidence } from "@/lib/human-design/connection";
+import { buildHdCompositeReportSystemPrompt } from "@/lib/human-design/prompt";
 
 const mocked=vi.hoisted(()=>({complete:vi.fn(),mutate:(title:string,body:string)=>body,finish:"stop" as string|null}));
 vi.mock("@/lib/llm",()=>({completeChatDetailed:mocked.complete,isHardRejectedLlmOutput:()=>false}));
@@ -67,10 +69,25 @@ describe("HD bounded provider generation",()=>{
       expect(feedback).toContain("junk:unmatched_emphasis");expect(feedback).toContain("## Вступление");
       for(const title of HD_COMPOSITE_REQUIRED_SECTIONS)expect(feedback).toContain(`## ${title}`);
       expect(mocked.complete.mock.calls[1]![0]).toMatchObject({deadlineAt,maxAttempts:1,beforeRequest:guard,maxTokens:12_000});
-      const warnings=JSON.stringify(warn.mock.calls);
+      const warnings=warn.mock.calls.map(args=>args.map(arg=>typeof arg==="string"?arg:JSON.stringify(arg)).join(" ")).join("\n");
       expect(warnings).toContain("[hd-generate] quality rejected");expect(warnings).toContain('"kind":"junk"');
+      expect(warnings).not.toContain("[Array]");
       expect(warnings).not.toContain("PrivateOwner");expect(warnings).not.toContain("Приватная дата рождения");expect(warnings).not.toContain("ситуация99пример");
     }finally{warn.mockRestore();}
+  });
+  it("repairs a leaked uppercase connection label without seeding it in either prompt",async()=>{
+    const partner=calculateHdChart({birthDate:"1990-05-15",birthTime:"14:30",timezone:"Asia/Yekaterinburg"});
+    const fill=(index:number)=>Array.from({length:90},(_,word)=>`ситуация${index}пример${word}`).join(" ");
+    const title="Общие каналы и язык близости",index=HD_COMPOSITE_REQUIRED_SECTIONS.indexOf(title);
+    const correct=fill(99)+"\n\n"+HD_COMPOSITE_REQUIRED_SECTIONS.map((heading,i)=>`## ${heading}\n${fill(i)}`).join("\n\n");
+    const initial=correct.replace(`## ${title}\n`,`## ${title}\nCOMPANIONSHIP — служебный термин.\n`);
+    mocked.complete.mockReset().mockResolvedValueOnce({text:initial,finishReason:"stop"}).mockResolvedValueOnce({text:`## ${title}\n${fill(index)}`,finishReason:"stop"});
+    const result=await completeHdCompositeReport({systemPrompt:buildHdCompositeReportSystemPrompt("Алексей","Анна","Партнёрство"),evidence:formatHdConnectionEvidence(chart,partner,{a:"Алексей",b:"Анна"}),nameA:"Алексей",nameB:"Анна",charts:{a:chart,b:partner}});
+    expect(result).toBe(correct);expect(mocked.complete).toHaveBeenCalledTimes(2);
+    const initialMessages=mocked.complete.mock.calls[0]![0].messages;
+    expect(initialMessages.map((message:{content:string})=>message.content).join("\n")).not.toMatch(/dominance[AB]|compromise[AB]|aOnly|bOnly|companionship/iu);
+    expect(mocked.complete.mock.calls[1]![0].messages.at(-1).content).toContain("internal_connection_label");
+    expect(mocked.complete.mock.calls[1]![0].messages.at(-1).content).toContain(`## ${title}`);
   });
   it("repairs the unheaded introduction without retaining the wrong longer preamble",async()=>{
     const intro=good.split(/^## /m)[0]!;

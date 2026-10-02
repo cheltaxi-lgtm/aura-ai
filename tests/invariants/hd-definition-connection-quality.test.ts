@@ -58,7 +58,8 @@ describe("HD saved graph and connection prose consistency",()=>{
     expect(connection.dominance.map(p=>[p.name,p.channelKeys.length])).toEqual([["Алексей",3],["Анна",4]]);
     const evidence=formatHdConnectionEvidence(a,b,{a:"Алексей",b:"Анна"});
     expect(evidence).toContain("Доминантные каналы: Алексей — 3; Анна — 4. Всего — 7. Компромиссных каналов — 0.");
-    expect(evidence).not.toMatch(/dominance[AB]|compromise[AB]|aOnly|bOnly/u);
+    expect(evidence).not.toMatch(/dominance[AB]|compromise[AB]|aOnly|bOnly|companionship/iu);
+    expect(evidence).toContain("ОБЩИЕ КАНАЛЫ:");
     expect(counts("Семь доминантных каналов. Четыре относятся к dominanceA и три — к dominanceB.").some(f=>f.detail==="internal_connection_label")).toBe(true);
     const intro=validateHdReportText("Доминантные каналы: Алексей — 4; Анна — 3.",{connectionContract:connection,scope:"section"});
     expect(intro.findings.some(f=>f.detail.startsWith("wrong_connection_dominance_count:") && f.sectionTitles?.includes("Вступление"))).toBe(true);
