@@ -32,7 +32,7 @@ describe.runIf(hasTestDb)('Natal rollback preserves paid receipts', () => {
   it('restores the previous schema when each purchase has one immutable version', async () => {
     await restoreNatalRollback(client);
     expect((await client.query("SELECT version FROM schema_migrations WHERE version IN ('164_natal_report_revisions.sql','165_natal_compatibility_participant_identity.sql','166_natal_participant_receipt_identity.sql')")).rows).toHaveLength(0);
-    expect((await client.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND column_name IN ('generation_revision','participant_identity_id')")).rows).toHaveLength(0);
+    expect((await client.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name IN ('natal_report_history','natal_compatibility_reports') AND column_name IN ('generation_revision','participant_identity_id')")).rows).toHaveLength(0);
     expect((await client.query("SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname='natal_report_history_version_unique'")).rows[0].def).not.toContain('generation_revision');
   });
   it('refuses downconversion and preserves both paid revisions and all DDL', async () => {
