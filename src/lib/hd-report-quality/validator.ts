@@ -231,6 +231,13 @@ function wrongConnectionCounts(text: string, contract: HdConnectionReportContrac
   for (const match of text.matchAll(new RegExp(`(?:всего|суммарно)${COUNT_LABEL_SEPARATOR}(${COUNT_VALUE_PATTERN})\\s+доминантн[\\p{L}]*\\s+канал[\\p{L}]*`,"giu"))) {
     if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== contract.dominanceCount) bad.push(`wrong_connection_dominance_total:${match[1]}_vs_${contract.dominanceCount}`);
   }
+  // The canonical evidence summary uses a bare "Всего — 7" after the
+  // dominance label. Its nearest statistic label owns that abbreviated total.
+  for (const match of text.matchAll(new RegExp(`(?<!\\p{L})(?:всего|суммарно)${COUNT_LABEL_SEPARATOR}(${COUNT_VALUE_PATTERN})(?=\\s*(?:[.!?;,\\n]|$))`,"giu"))) {
+    const context=text.slice(Math.max(0,match.index!-256),match.index);
+    const labels=[...context.matchAll(/(?<!\p{L})(?:(?:доминантн|компромиссн|общ|полн|определ[её]нн|электромагнитн)[\p{L}]*\s+канал[\p{L}]*|компромисс[\p{L}]*|(?:индивидуальн|личн|собственн)[\p{L}]*\s+карт[\p{L}]*|(?:центр|ворот|профил)[\p{L}]*)(?:\s*\([^()\n]{0,90}\))?\s*[:—–]/giu)];
+    if (labels.length && /^доминантн/iu.test(labels.at(-1)![0]) && !isPersonalFactNegated(text,match.index!) && countValue(match[1]!)!==contract.dominanceCount) bad.push(`wrong_connection_dominance_total:${match[1]}_vs_${contract.dominanceCount}`);
+  }
   for (const match of text.matchAll(new RegExp(`(?<!\\p{L})компромиссн[\\p{L}]*\\s+канал[\\p{L}]*${COUNT_LABEL_SEPARATOR}(${COUNT_VALUE_PATTERN})`,"giu"))) {
     if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== contract.compromiseCount) bad.push(`wrong_connection_compromise_count:${match[1]}_vs_${contract.compromiseCount}`);
   }
