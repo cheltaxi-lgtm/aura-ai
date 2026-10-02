@@ -32,7 +32,8 @@ import type { ProCaseType, ProReportBlock } from "@/modules/pro/domain/types";
 import { proQuery } from "@/modules/pro/db";
 import { isProAiEnabled } from "@/modules/pro/config";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
-import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import { acceptedReportExtras, enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import { enqueueProHdGeneration } from "@/modules/pro/db/hd-generation";
 import { generateProPremiumReport } from "@/modules/pro/ai/generate-premium";
 import { refineProReportBlock } from "@/modules/pro/ai/refine-block";
 import {
@@ -119,7 +120,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
   const prac = await requireProPractitioner();
   if (!prac.ok) return prac.response;
   const { id } = await ctx.params;
-  const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
+  const body = (await req.json().catch(() => null)) as Record<string, unknown>;
+  if(!body||typeof body!=="object"||Array.isArray(body))return NextResponse.json({error:"bad_payload"},{status:400});
   const action = String(body.action || "");
 
   if (action === "input") {
@@ -190,7 +192,12 @@ export async function PATCH(req: Request, ctx: Ctx) {
 
   if (action === "purge") {
     const c = await getCase(prac.ctx.account.id, id);
-    if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (!c) {
+      // A separate Pro DELETE may already have committed while main cleanup
+      // rolled back. Retrying still settles this owner's matching job copies.
+      await hardDeleteCase(prac.ctx.account.id,id);
+      return NextResponse.json({ error: "not_found" }, { status: 404 });
+    }
     await revokeAllDeliveriesForCase(
       prac.ctx.account.id,
       id,
@@ -217,6 +224,21 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const client = await getClient(prac.ctx.account.id, c.client_id);
     let payload = { ...(input?.payload || {}) };
     const isBirth = c.type === "natal" || c.type === "matrix" || c.type === "hd";
+
+    if (c.type === "hd") {
+      if (!isProAiEnabled() || !isAsyncJobWorkerConfigured()) return NextResponse.json({error:"generation_unavailable",message:"Генерация временно недоступна. Попробуйте позже."},{status:503});
+      if (!client) return NextResponse.json({error:"client_not_found"},{status:404});
+      payload = await prepareBirthPayload("hd",payload);
+      if (!(payload.chartFacts as {ok?:boolean}|undefined)?.ok) return NextResponse.json({error:"birth_data_required",message:"Сохраните данные рождения"},{status:400});
+      try {
+        const queued=await enqueueProHdGeneration({userId:prac.ctx.profileUserId,accountId:prac.ctx.account.id,caseId:id,expectedPayload:input?.payload??{},payload});
+        return NextResponse.json({ok:true,async:true,status:"generating",jobId:queued.jobId,pollUrl:`/api/jobs/${queued.jobId}`,charge:queued.charge,deduped:queued.deduped,...acceptedReportExtras("pro_premium_report",{caseId:id,caseType:"hd"})},{status:202});
+      } catch(error) {
+        if(error instanceof InsufficientFundsError)return insufficientFundsResponse(error);
+        const status=error instanceof ProTrialExceededError?402:(error as {status?:number}).status??500;
+        return NextResponse.json({error:error instanceof Error?error.message:"generation_failed"},{status});
+      }
+    }
 
     if (isBirth) {
       const facts = payload.chartFacts as { ok?: boolean } | undefined;
@@ -413,8 +435,8 @@ export async function PATCH(req: Request, ctx: Ctx) {
     }
     const c = await getCase(prac.ctx.account.id, id);
     if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    if (c.status === "archived") {
-      return NextResponse.json({ error: "case_archived" }, { status: 409 });
+    if (c.status === "archived" || c.status === "generating") {
+      return NextResponse.json({ error: c.status === "archived" ? "case_archived" : "generation_in_progress" }, { status: 409 });
     }
     if (!isProAiEnabled()) {
       return NextResponse.json({ error: "pro_ai_disabled" }, { status: 503 });
@@ -431,6 +453,19 @@ export async function PATCH(req: Request, ctx: Ctx) {
       );
     }
     const client = await getClient(prac.ctx.account.id, c.client_id);
+
+    if(c.type==="hd") {
+      if(!client)return NextResponse.json({error:"client_not_found"},{status:404});
+      if(!isAsyncJobWorkerConfigured())return NextResponse.json({error:"generation_unavailable"},{status:503});
+      const input=await getCaseInput(id);
+      try {
+        const queued=await enqueueProHdGeneration({userId:prac.ctx.profileUserId,accountId:prac.ctx.account.id,caseId:id,expectedPayload:input?.payload??{},payload:input?.payload??{},refinement:{versionId:latest.id,blockIndex,instruction:instruction.slice(0,500)}});
+        return NextResponse.json({ok:true,async:true,status:"generating",jobId:queued.jobId,pollUrl:`/api/jobs/${queued.jobId}`,charge:queued.charge,...acceptedReportExtras("pro_premium_report",{caseId:id,caseType:"hd"})},{status:202});
+      }catch(error){
+        if(error instanceof InsufficientFundsError)return insufficientFundsResponse(error);
+        return NextResponse.json({error:error instanceof Error?error.message:"generation_failed"},{status:error instanceof ProTrialExceededError?402:(error as {status?:number}).status??500});
+      }
+    }
 
     const idem = `pro-refine-${id}-${latest.id}-${blockIndex}-${Date.now()}`;
     let charge;

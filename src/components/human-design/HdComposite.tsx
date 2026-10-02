@@ -23,13 +23,13 @@ import HdGenerating from "./HdGenerating";
 import ReportExportActions from "@/components/reports/ReportExportActions";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import {
-  parseAcceptedAsyncReport,
   type AcceptedAsyncReport,
 } from "@/lib/client/wait-for-async-job";
 import HdJourney, { type HdJourneyStep } from "./HdJourney";
 import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
 import { hdChartChipLabel } from "./hd-labels";
+import { useHdAsyncDelivery } from "./useHdAsyncDelivery";
 import { useHdReportWait } from "./useHdReportWait";
 
 interface Props {
@@ -100,6 +100,7 @@ function HdCompositeContent({ base, partner }: Props) {
   const [ack, setAck] = useState(false);
   const [openSection, setOpenSection] = useState<string | null>("harmony");
   const [uiGenerating, setUiGenerating] = useState(false);
+  const stateEpoch = useRef(0);
   const [acceptedReport, setAcceptedReport] = useState<AcceptedAsyncReport | null>(null);
   const [loadFailed, setLoadFailed] = useState(false);
   const postInFlightRef = useRef(false);
@@ -143,6 +144,7 @@ function HdCompositeContent({ base, partner }: Props) {
 
     let cancelled = false;
     const load = async () => {
+      const epoch=stateEpoch.current;
       setLoadFailed(false);
       try {
         const qs = new URLSearchParams({
@@ -152,7 +154,7 @@ function HdCompositeContent({ base, partner }: Props) {
         const res = await fetch(`/api/human-design/composite-report?${qs}`, {
           credentials: "include",
         });
-        if (cancelled) return;
+        if (cancelled || epoch !== stateEpoch.current) return;
         if (!res.ok) {
           // 401/404 simply mean "no report yet" — not an error surface.
           if (res.status >= 500) setLoadFailed(true);
@@ -167,7 +169,7 @@ function HdCompositeContent({ base, partner }: Props) {
             createdAt?: string;
           };
         };
-        if (cancelled) return;
+        if (cancelled || epoch !== stateEpoch.current) return;
         if (
           data.report?.status === "done" &&
           typeof data.report.reportText === "string" &&
@@ -215,6 +217,14 @@ function HdCompositeContent({ base, partner }: Props) {
     };
   }, [base.id, partner.id, startWait, stopWait]);
 
+  const watchJob = useHdAsyncDelivery({
+    storageKey: `aura:hd-composite-job:${base.id}:${partner.id}`, enabled: true,
+    onAccepted: setAcceptedReport,
+    onWaiting: ts => { stateEpoch.current++; setUiGenerating(true); setBusy(false); startWait({startedAt:ts}); },
+    onDone: result => { stopWait(); setBusy(false); setUiGenerating(false); if(result.deleted===true){setReport(null);setReportId(null);setError("Карта или разбор удалены.");return;} const r=result.report as {id?:string;status?:string;reportText?:string}|undefined; if(r?.status==="done" && r.reportText) {setReport(sanitizeHdCompositeReportText(r.reportText)); if(r.id)setReportId(r.id); setResumeFree(false); stopWait(); setBusy(false); setUiGenerating(false);} },
+    onError: (msg,terminal) => {setError(msg); if(terminal){ stopWait(); setBusy(false); setUiGenerating(false); void loadRef.current?.();} },
+  });
+
   const highlightChannels = useMemo(() => {
     if (focus === "electro") return conn.electromagneticKeys;
     if (focus === "harmony") {
@@ -247,6 +257,7 @@ function HdCompositeContent({ base, partner }: Props) {
         return;
       }
     }
+    stateEpoch.current++;
     setBusy(true);
     setUiGenerating(true);
     setError(null);
@@ -308,37 +319,7 @@ function HdCompositeContent({ base, partner }: Props) {
         setBusy(false);
         setUiGenerating(true);
         startWait({ baselineText: null });
-        const accepted = parseAcceptedAsyncReport(data);
-        if (accepted) setAcceptedReport(accepted);
-        const jobId = typeof data.jobId === "string" ? data.jobId : null;
-        if (jobId) {
-          void (async () => {
-            try {
-              const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
-              const result = await waitForAsyncJob({
-                jobId,
-                signal: lifetime.current?.signal,
-                storageKey: `aura:hd-composite-job:${base.id}:${partner.id}`,
-                maxAgeMs: 20 * 60_000,
-                pollIntervalMs: 2500,
-              });
-              if (!mounted.current) return;
-              const r = result?.report as
-                | { id?: string; status?: string; reportText?: string | null }
-                | undefined;
-              if (r?.status === "done" && typeof r.reportText === "string" && r.reportText.trim()) {
-                setReport(sanitizeHdCompositeReportText(r.reportText));
-                if (typeof r.id === "string") setReportId(r.id);
-                setResumeFree(false);
-                stopWait();
-                setBusy(false);
-                setUiGenerating(false);
-              }
-            } catch {
-              // Entity poll in useHdReportWait continues.
-            }
-          })();
-        }
+        watchJob(data);
         return;
       }
       if (data.report?.status === "done" && data.report.reportText) {

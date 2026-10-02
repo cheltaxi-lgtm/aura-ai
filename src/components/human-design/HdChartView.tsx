@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type {
   HdBodyKey,
   HdCenterKey,
@@ -32,6 +32,7 @@ export interface HdChartPayload {
   placeName?: string | null;
   birthDate?: string | null;
   birthTime?: string | null;
+  birthTimeOccurrence?: "earlier" | "later";
   timeUnknown?: boolean;
   subjectKind?: "self" | "other";
   subjectName?: string | null;
@@ -79,6 +80,9 @@ export default function HdChartView({
   const [insightStartedAt, setInsightStartedAt] = useState<number | null>(null);
   const [insightError, setInsightError] = useState<string | null>(null);
   const [llmAck, setLlmAck] = useState(false);
+  const chartEpoch = useRef(0);
+  const insightRequest = useRef<AbortController | null>(null);
+  const transitsRequest = useRef<AbortController | null>(null);
   const { cost, formatRunesWithRub, ready } = useRuneConfig();
   const askCost = cost("HD_ASK");
   const askPrice = ready ? formatRunesWithRub(askCost) : `${askCost} ᚢ`;
@@ -86,6 +90,11 @@ export default function HdChartView({
   // Defense in depth: callers key this component by chart id, but overlays
   // must never survive a chart switch even if a parent forgets the key.
   useEffect(() => {
+    chartEpoch.current++;
+    insightRequest.current?.abort();
+    insightRequest.current = null;
+    transitsRequest.current?.abort();
+    transitsRequest.current = null;
     setInsight(null);
     setInsightError(null);
     setInsightLoading(null);
@@ -93,12 +102,15 @@ export default function HdChartView({
     setTransits(null);
     setTransitsAt(null);
     setTransitsError(null);
+    setTransitsLoading(false);
     setLlmAck(false);
     setShowShareCard(false);
     setCopied(false);
+    return () => { chartEpoch.current++; insightRequest.current?.abort(); transitsRequest.current?.abort(); };
   }, [payload.id]);
 
   const toggleTransits = useCallback(async () => {
+    if (transitsRequest.current) return;
     if (transits) {
       setTransits(null);
       setTransitsAt(null);
@@ -107,29 +119,35 @@ export default function HdChartView({
     }
     setTransitsLoading(true);
     setTransitsError(null);
+    const epoch = chartEpoch.current;
+    const controller = new AbortController();
+    transitsRequest.current = controller;
     try {
-      const res = await fetch("/api/human-design/transits");
+      const res = await fetch("/api/human-design/transits", { signal: controller.signal });
       if (!res.ok) throw new Error();
       const data = (await res.json()) as {
         at: string;
         activations: { body: HdBodyKey; gate: number }[];
       };
+      if (epoch !== chartEpoch.current || controller.signal.aborted) return;
       const map = new Map<number, HdBodyKey>();
       for (const a of data.activations) map.set(a.gate, a.body);
       setTransits(map);
       setTransitsAt(data.at);
     } catch {
+      if (epoch !== chartEpoch.current || controller.signal.aborted) return;
       setTransits(null);
       setTransitsAt(null);
       setTransitsError("Не удалось загрузить транзиты. Попробуйте позже.");
     } finally {
-      setTransitsLoading(false);
+      if (transitsRequest.current === controller) transitsRequest.current = null;
+      if (epoch === chartEpoch.current) setTransitsLoading(false);
     }
   }, [transits]);
 
   const askCenterInsight = useCallback(
     async (center: HdCenterKey) => {
-      if (insightLoading) return;
+      if (insightLoading || insightRequest.current) return;
       let acknowledged = llmAck;
       if (!acknowledged) {
         acknowledged = window.confirm(
@@ -141,10 +159,14 @@ export default function HdChartView({
       setInsightLoading(center);
       setInsightStartedAt(Date.now());
       setInsightError(null);
+      const epoch = chartEpoch.current;
+      const controller = new AbortController();
+      insightRequest.current = controller;
       try {
         const res = await fetch("/api/human-design/center-insight", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
+          signal: controller.signal,
           body: JSON.stringify({
             chartId: payload.id,
             center,
@@ -156,6 +178,7 @@ export default function HdChartView({
           error?: string;
           message?: string;
         };
+        if (epoch !== chartEpoch.current || controller.signal.aborted) return;
         if (res.status === 401) {
           setInsightError("Войдите в аккаунт, чтобы получить разбор центра от Эвелины.");
           return;
@@ -170,10 +193,11 @@ export default function HdChartView({
         }
         setInsight({ center, text: data.answer });
       } catch {
+        if (epoch !== chartEpoch.current || controller.signal.aborted) return;
         setInsightError("Сеть недоступна. Попробуйте позже.");
       } finally {
-        setInsightLoading(null);
-        setInsightStartedAt(null);
+        if (insightRequest.current === controller) insightRequest.current = null;
+        if (epoch === chartEpoch.current) { setInsightLoading(null); setInsightStartedAt(null); }
       }
     },
     [askPrice, insightLoading, llmAck, payload.id]
@@ -199,7 +223,7 @@ export default function HdChartView({
   const crossLabel = crossNameRu(chart);
 
   return (
-    <div className="space-y-5 ym-hide-content ym-disable-keys">
+    <div data-hd-print-chart className="space-y-5 ym-hide-content ym-disable-keys">
       {/* Compact identity — not six lookalike cards stacking the viewport */}
       <div className="hd-summary">
         <p className="hd-summary__title">
@@ -211,6 +235,9 @@ export default function HdChartView({
         <p className="hd-summary__line">
           {chart.profile}
           {profileLabel ? ` · ${profileLabel}` : ""}
+          {stability && !stability.profileStable ? (
+            <span className="hd-summary__flag"> · время</span>
+          ) : null}
           {" · "}
           {AUTHORITY_NAMES_RU[chart.authority]}
           {stability && !stability.authorityStable ? (
@@ -230,14 +257,14 @@ export default function HdChartView({
 
       {payload.timeUnknown && (
         <p className="rounded-2xl border border-amber-500/20 bg-amber-500/5 px-4 py-3 text-xs leading-relaxed text-amber-100/80">
-          Время рождения не указано — расчёт выполнен на 12:00.
+          Время рождения не указано — показана условная карта{"birth" in chart && chart.birth?.time ? ` на ${chart.birth.time}` : ""}.
           {stability?.typeStable && stability?.authorityStable && stability?.profileStable
             ? " Тип, авторитет и профиль стабильны в течение всего дня, результат надёжен."
-            : " Некоторые параметры могут меняться в течение дня — они отмечены словом «время» выше."}
+            : " Некоторые параметры могут меняться в течение дня; для подтверждения уточните время рождения."}
         </p>
       )}
 
-      <section className="rounded-2xl border border-aura-gold/20 bg-aura-gold/[0.06] p-4" aria-labelledby={`hd-start-${payload.id}`}>
+      <section className="hd-print-hidden rounded-2xl border border-aura-gold/20 bg-aura-gold/[0.06] p-4" aria-labelledby={`hd-start-${payload.id}`}>
         <p className="text-[11px] uppercase tracking-[0.14em] text-aura-gold/75">С чего начать</p>
         <h2 id={`hd-start-${payload.id}`} className="mt-2 font-display text-lg text-white">
           Ваш практический ориентир
@@ -245,11 +272,11 @@ export default function HdChartView({
         <dl className="mt-3 grid gap-3 sm:grid-cols-2">
           <div>
             <dt className="text-xs text-white/45">Как двигаться</dt>
-            <dd className="mt-1 text-sm leading-relaxed text-white/80">{typeMeta.strategyRu}</dd>
+            <dd className="mt-1 text-sm leading-relaxed text-white/80">{typeMeta.strategyRu}{payload.timeUnknown && !stability?.typeStable ? " · условный ориентир, уточните время рождения" : ""}</dd>
           </div>
           <div>
             <dt className="text-xs text-white/45">На что опираться в решениях</dt>
-            <dd className="mt-1 text-sm leading-relaxed text-white/80">{AUTHORITY_NAMES_RU[chart.authority]}</dd>
+            <dd className="mt-1 text-sm leading-relaxed text-white/80">{AUTHORITY_NAMES_RU[chart.authority]}{payload.timeUnknown && !stability?.authorityStable ? " · условный ориентир, уточните время рождения" : ""}</dd>
           </div>
         </dl>
         <p className="mt-3 text-xs leading-relaxed text-white/50">
@@ -270,7 +297,7 @@ export default function HdChartView({
 
       {/* Print gets a light static bodygraph — the dark interactive stage
           loses its background on paper and pale channels turn invisible. */}
-      <div className="hidden print:block">
+      <div className="hd-static-print hidden print:block">
         <div className="mx-auto max-w-md">
           <HdStaticBodygraph
             chart={chart}
@@ -285,7 +312,7 @@ export default function HdChartView({
       <div className="hd-facts hidden print:grid">
         <div className="hd-fact">
           <p className="hd-fact__label">Тип</p>
-          <p className="hd-fact__value">{typeMeta.nameRu}</p>
+          <p className="hd-fact__value">{typeMeta.nameRu}{stability && !stability.typeStable ? " · условно" : ""}</p>
         </div>
         <div className="hd-fact">
           <p className="hd-fact__label">Стратегия</p>
@@ -293,12 +320,12 @@ export default function HdChartView({
         </div>
         <div className="hd-fact">
           <p className="hd-fact__label">Авторитет</p>
-          <p className="hd-fact__value">{AUTHORITY_NAMES_RU[chart.authority]}</p>
+          <p className="hd-fact__value">{AUTHORITY_NAMES_RU[chart.authority]}{stability && !stability.authorityStable ? " · условно" : ""}</p>
         </div>
         <div className="hd-fact">
           <p className="hd-fact__label">Профиль</p>
           <p className="hd-fact__value">
-            {chart.profile} · {profileLabel}
+            {chart.profile} · {profileLabel}{stability && !stability.profileStable ? " · условно" : ""}
           </p>
         </div>
         <div className="hd-fact">

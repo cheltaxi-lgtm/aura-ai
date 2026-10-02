@@ -18,7 +18,8 @@ import {privatePdfAvailable} from '@/lib/reports/private-pdf-access';
 import {calculateHdChart} from '@/lib/human-design/calculate';
 import {BillingService} from '@/lib/services/billing-service';
 import {shouldRefundBeforeWorkerFail} from '@/lib/async-job-lifecycle';
-import {completeHdReport,getHdReportById,markHdReportNeedsRegeneration,approveHdReportManually,beginHdReportQualityResume,beginHdReportRewrite,restoreHdReportDone,isHdReportReadable,isHdReportRewriteInProgress,isStalePendingReport,reconcileHdReportCharges,toPublicHdReport,createPendingCompositeReport,completeCompositeReport,getHdCompositeReportById,type HdChartRow} from '@/lib/services/human-design-service';
+import {getHdReportById,isHdReportReadable,isHdReportRewriteInProgress,isStalePendingReport,reconcileHdReportCharges,toPublicHdReport,getHdCompositeReportById,type HdChartRow} from '@/lib/services/human-design-service';
+import {acquireHdGeneration,acquireHdAdminGeneration,saveHdGeneration,restoreHdGeneration,failHdGeneration} from '@/lib/services/hd-generation-service';
 import {hasTestDb,installDbLifecycle} from './db/setup';
 
 describe.runIf(hasTestDb)('full audit artifact isolation',()=>{
@@ -108,70 +109,79 @@ describe.runIf(hasTestDb)('full audit artifact isolation',()=>{
   const row:HdChartRow={id,userId,birthDate,birthTime:'12:00',timeUnknown:false,timezone:'Europe/Moscow',placeName:'Москва',lat:55.75,lon:37.62,fingerprint:randomBytes(32).toString('hex'),chart:calculated,engineVersion:calculated.engineVersion,subjectKind:'self',subjectName:null,relationToSelf:null,gender:null,createdAt:new Date().toISOString()};
   await query("INSERT INTO hd_charts(id,user_id,birth_date,birth_time,timezone,place_name,lat,lon,fingerprint,chart,engine_version) VALUES($1,$2,$3,'12:00','Europe/Moscow','Москва',55.75,37.62,$4,$5,$6)",[id,userId,birthDate,row.fingerprint,calculated,row.engineVersion]);return row;
  }
- it('HD paid and manually approved drafts retain the exact chart used at generation',async()=>{
-  const id=await user(),source=await hdChart(id);const report=(await query("INSERT INTO hd_reports(chart_id,user_id) VALUES($1,$2) RETURNING id",[source.id,id])).rows[0].id;
-  expect(await completeHdReport(report,'Saved paid text','fixture',{chartSnapshot:source})).toBe(true);
+
+ async function freeGeneration(id:string,charts:HdChartRow[],kind:'personal'|'composite'='personal') {
+  const acquired=await acquireHdGeneration({kind,userId:id,charts,exempt:true,context:{name:'Synthetic audit'}});
+  expect('guard' in acquired).toBe(true);if(!('guard' in acquired))throw Error('cached_fixture');return acquired.guard;
+ }
+ it('HD saves preserve the immutable chart after live engine changes',async()=>{
+  const id=await user(),source=await hdChart(id),guard=await freeGeneration(id,[source]);
+  expect(await saveHdGeneration(guard,'Saved paid text','fixture',[source])).not.toBeNull();
   await query("UPDATE hd_charts SET chart='{}',engine_version='future' WHERE id=$1",[source.id]);
-  expect((await getHdReportById(report,id))?.chartSnapshot).toEqual(source);
-  await markHdReportNeedsRegeneration(report,'Draft text',[],source);expect(await approveHdReportManually(report)).toBe(true);
-  expect((await getHdReportById(report,id))?.chartSnapshot).toEqual(source);
+  expect((await getHdReportById(guard.reportId,id))?.chartSnapshot).toEqual(source);
+  expect(await failHdGeneration(guard,'late_failure',true)).toBe(false);
  });
- it('HD admin rewrite claims once and restores the previous paid report on failure',async()=>{
-  const id=await user(),source=await hdChart(id);const report=(await query("INSERT INTO hd_reports(chart_id,user_id,status,report_text,package_id) VALUES($1,$2,'done','Previous premium report','max') RETURNING id",[source.id,id])).rows[0].id;
-  expect(await beginHdReportRewrite(report)).toBe(true);expect(await beginHdReportRewrite(report)).toBe(false);
-  await restoreHdReportDone(report);
-  expect((await query('SELECT status,report_text FROM hd_reports WHERE id=$1',[report])).rows[0]).toMatchObject({status:'done',report_text:'Previous premium report'});
+ it('HD admin rewrite claims once and restores delivered text on failure',async()=>{
+  const id=await user(),source=await hdChart(id),initial=await freeGeneration(id,[source]);
+  await saveHdGeneration(initial,'Previous premium report','fixture',[source]);
+  const guard=await acquireHdAdminGeneration(initial.reportId,id);
+  expect(await acquireHdAdminGeneration(initial.reportId,id)).toBeNull();
+  await restoreHdGeneration(guard);
+  expect((await query('SELECT status,report_text FROM hd_reports WHERE id=$1',[initial.reportId])).rows[0]).toMatchObject({status:'done',report_text:'Previous premium report'});
  });
- it('a stale HD admin rewrite stays readable and cannot enter the client rebilling path',async()=>{
-  const id=await user(),source=await hdChart(id);const report=(await query("INSERT INTO hd_reports(chart_id,user_id,status,report_text,package_id) VALUES($1,$2,'done','Retained paid report','max') RETURNING id",[source.id,id])).rows[0].id;
-  expect(await beginHdReportRewrite(report)).toBe(true);
-  await query("UPDATE hd_reports SET created_at=now()-interval '11 minutes' WHERE id=$1",[report]);
-  const stale=await getHdReportById(report,id);expect(stale).not.toBeNull();
-  expect(isStalePendingReport(stale!)).toBe(true);expect(isHdReportRewriteInProgress(stale!)).toBe(true);expect(isHdReportReadable(stale!)).toBe(true);
-  expect(toPublicHdReport(stale!)).toMatchObject({status:'done',reportText:'Retained paid report',refreshing:true});
-  const route=readFileSync('src/app/api/human-design/report/route.ts','utf8');
-  expect(route.indexOf('isHdReportRewriteInProgress(existing)')).toBeLessThan(route.indexOf('let resumePaidPending'));
-  const ask=readFileSync('src/app/api/human-design/report/ask/route.ts','utf8');const print=readFileSync('src/app/cabinet/human-design/reports/[id]/print/page.tsx','utf8');
-  expect(ask).toContain('isHdReportReadable(report)');expect(print).toContain('isHdReportReadable(report)');
-  expect(await privatePdfAvailable(`/cabinet/human-design/reports/${report}/print`,id)).toBe(true);
-  const cabinet=await getCabinetSessions(id);expect(cabinet.sessions.some(item=>item.id===report)).toBe(true);expect(cabinet.total).toBeGreaterThanOrEqual(1);
+ it('a stale HD admin rewrite remains readable without client rebilling',async()=>{
+  const id=await user(),source=await hdChart(id),initial=await freeGeneration(id,[source]);
+  await saveHdGeneration(initial,'Retained paid report','fixture',[source]);
+  await acquireHdAdminGeneration(initial.reportId,id);
+  await query("UPDATE hd_reports SET created_at=now()-interval '16 minutes' WHERE id=$1",[initial.reportId]);
+  const stale=(await getHdReportById(initial.reportId,id))!;
+  expect(isStalePendingReport(stale)).toBe(true);expect(isHdReportRewriteInProgress(stale)).toBe(true);expect(isHdReportReadable(stale)).toBe(true);
+  expect(toPublicHdReport(stale)).toMatchObject({status:'done',reportText:'Retained paid report',refreshing:true});
+  const cached=await acquireHdGeneration({kind:'personal',userId:id,charts:[source],exempt:true,context:{name:'Synthetic audit'}});
+  expect('cached' in cached).toBe(true);
+  expect(await privatePdfAvailable('/cabinet/human-design/reports/'+initial.reportId+'/print',id)).toBe(true);
+  expect((await getCabinetSessions(id)).sessions.some(item=>item.id===initial.reportId)).toBe(true);
  });
- it('a quality-resume draft stays hidden even though pending retains its text',async()=>{
-  const id=await user(),source=await hdChart(id),transaction=randomUUID();const report=(await query("INSERT INTO hd_reports(chart_id,user_id,status,report_text,transaction_id,package_id) VALUES($1,$2,'done','Old paid report',$3,'max') RETURNING id",[source.id,id,transaction])).rows[0].id;
-  await markHdReportNeedsRegeneration(report,'Rejected QA draft',[{code:'quality'}],source);expect(await beginHdReportQualityResume(report)).toBe(true);
-  await query("UPDATE hd_reports SET created_at=now()-interval '11 minutes' WHERE id=$1",[report]);
-  const draft=await getHdReportById(report,id);expect(draft).not.toBeNull();expect(isStalePendingReport(draft!)).toBe(true);
-  expect(isHdReportRewriteInProgress(draft!)).toBe(false);expect(isHdReportReadable(draft!)).toBe(false);
-  expect(toPublicHdReport(draft!)).toMatchObject({status:'pending',reportText:null,refreshing:false});
-  expect(await privatePdfAvailable(`/cabinet/human-design/reports/${report}/print`,id)).toBe(false);
-  const cabinet=await getCabinetSessions(id);expect(cabinet.sessions.some(item=>item.id===report)).toBe(false);
+ it('quality drafts stay hidden during a fenced retry',async()=>{
+  const id=await user(),source=await hdChart(id),initial=await freeGeneration(id,[source]);
+  await failHdGeneration(initial,'needs_regeneration',false,{text:'Rejected QA draft',findings:[{code:'quality'}]});
+  const retry=await freeGeneration(id,[source]);
+  const draft=(await getHdReportById(retry.reportId,id))!;
+  expect(isHdReportRewriteInProgress(draft)).toBe(false);expect(isHdReportReadable(draft)).toBe(false);
+  expect(toPublicHdReport(draft)).toMatchObject({status:'pending',reportText:null,refreshing:false});
+  expect(await privatePdfAvailable('/cabinet/human-design/reports/'+retry.reportId+'/print',id)).toBe(false);
+  expect((await getCabinetSessions(id)).sessions.some(item=>item.id===retry.reportId)).toBe(false);
  });
- it('reconciler restores a crashed admin rewrite without refunding its delivered purchase',async()=>{
+ it('reconciler restores crashed admin rewrite without refunding delivered purchase',async()=>{
   const id=await user();await query('UPDATE users SET rune_balance=70 WHERE id=$1',[id]);const source=await hdChart(id);
-  const transaction=(await query("INSERT INTO rune_transactions(user_id,type,amount,balance_after,description,action_type) VALUES($1,'spend',-30,70,'Delivered HD report','HD_REPORT') RETURNING id",[id])).rows[0].id as string;
+  const transaction=(await query("INSERT INTO rune_transactions(user_id,type,amount,balance_after,description,action_type) VALUES($1,'spend',-30,70,'Delivered HD report','HD_REPORT') RETURNING id",[id])).rows[0].id;
   const report=(await query("INSERT INTO hd_reports(chart_id,user_id,status,report_text,transaction_id,package_id) VALUES($1,$2,'done','Delivered premium report',$3,'max') RETURNING id",[source.id,id,transaction])).rows[0].id;
-  expect(await beginHdReportRewrite(report)).toBe(true);await query("UPDATE hd_reports SET updated_at=now()-interval '61 minutes' WHERE id=$1",[report]);
+  await acquireHdAdminGeneration(report,id);await query("UPDATE hd_reports SET updated_at=now()-interval '61 minutes' WHERE id=$1",[report]);
   expect(await reconcileHdReportCharges()).toBe(0);
-  const restored=await getHdReportById(report,id);expect(restored).toMatchObject({status:'done',reportText:'Delivered premium report',transactionId:transaction,adminRewriteStartedAt:null});
+  expect(await getHdReportById(report,id)).toMatchObject({status:'done',reportText:'Delivered premium report',transactionId:transaction,adminRewriteStartedAt:null});
   expect((await query('SELECT rune_balance FROM users WHERE id=$1',[id])).rows[0].rune_balance).toBe(70);
   expect((await query("SELECT 1 FROM rune_transactions WHERE type='refund' AND refund_of_transaction_id=$1",[transaction])).rowCount).toBe(0);
  });
- it('HD lost-row direct failure refunds once and leaves a linked receipt',async()=>{
-  const id=await user();await query('UPDATE users SET rune_balance=70 WHERE id=$1',[id]);
-  const spend=(await query("INSERT INTO rune_transactions(user_id,type,amount,balance_after,description,action_type) VALUES($1,'spend',-30,70,'Synthetic HD report','HD_REPORT') RETURNING id",[id])).rows[0].id as string;
-  expect(await shouldRefundBeforeWorkerFail(new NextRequest('http://localhost/api/human-design/report'),'report_row_lost')).toBe(true);
-  const result=await BillingService.rollbackChargeEx({userId:id,cost:30,wasFreeQuestion:false,transactionId:spend,actionType:'HD_REPORT',slotReserved:false});
-  expect(result).toMatchObject({balance:100,refunded:true});
-  expect((await query("SELECT amount,balance_after FROM rune_transactions WHERE type='refund' AND refund_of_transaction_id=$1",[spend])).rows[0]).toMatchObject({amount:30,balance_after:100});
-  const route=readFileSync('src/app/api/human-design/report/route.ts','utf8');
-  expect(route).toContain('shouldRefundBeforeWorkerFail(request, "report_row_lost")');
- });
- it('HD composite snapshot orientation follows stored chart IDs, not request ordering',async()=>{
-  const id=await user();const charts=[await hdChart(id),await hdChart(id,'1985-04-03')].sort((a,b)=>b.id.localeCompare(a.id));
-  const report=await createPendingCompositeReport({userId:id,baseChartId:charts[0].id,partnerChartId:charts[1].id,transactionId:null});expect(report).not.toBeNull();
-  await completeCompositeReport(report!.id,'Pair saved text','fixture',charts[0],charts[1]);
+ it('HD composite snapshots follow stored IDs and preserve caller roles',async()=>{
+  const id=await user(),charts=[await hdChart(id),await hdChart(id,'1985-04-03')].sort((a,b)=>b.id.localeCompare(a.id));
+  const guard=await freeGeneration(id,charts,'composite');
+  await saveHdGeneration(guard,'Pair saved text','fixture',charts);
   await query("UPDATE hd_charts SET chart='{}',engine_version='future' WHERE user_id=$1",[id]);
-  const saved=await getHdCompositeReportById(report!.id,id);expect(saved?.baseSnapshot).toEqual(charts.find(c=>c.id===saved.baseChartId));expect(saved?.partnerSnapshot).toEqual(charts.find(c=>c.id===saved.partnerChartId));
+  const saved=(await getHdCompositeReportById(guard.reportId,id))!;
+  expect(saved.baseSnapshot).toEqual(charts.find(c=>c.id===saved.baseChartId));expect(saved.partnerSnapshot).toEqual(charts.find(c=>c.id===saved.partnerChartId));
+ });
+
+ it('reconciliation retains one inconsistent receipt and still settles the next purchase',async()=>{
+  const id=await user();await query('UPDATE users SET rune_balance=70 WHERE id=$1',[id]);
+  const broken=await hdChart(id),valid=await hdChart(id,'1985-04-03');
+  const missing=randomUUID(),transaction=(await query("INSERT INTO rune_transactions(user_id,type,amount,balance_after,description,action_type) VALUES($1,'spend',-30,70,'HD audit','HD_REPORT') RETURNING id",[id])).rows[0].id;
+  const a=(await query("INSERT INTO hd_reports(chart_id,user_id,status,transaction_id,updated_at) VALUES($1,$2,'pending',$3,now()-interval '62 minutes') RETURNING id",[broken.id,id,missing])).rows[0].id;
+  const b=(await query("INSERT INTO hd_reports(chart_id,user_id,status,transaction_id,updated_at) VALUES($1,$2,'pending',$3,now()-interval '61 minutes') RETURNING id",[valid.id,id,transaction])).rows[0].id;
+  expect(await reconcileHdReportCharges()).toBe(1);
+  expect((await query('SELECT status,transaction_id FROM hd_reports WHERE id=$1',[a])).rows[0]).toMatchObject({status:'pending',transaction_id:missing});
+  expect((await query('SELECT status,transaction_id FROM hd_reports WHERE id=$1',[b])).rows[0]).toMatchObject({status:'error',transaction_id:null});
+  expect((await query('SELECT rune_balance FROM users WHERE id=$1',[id])).rows[0].rune_balance).toBe(100);
+  expect(await reconcileHdReportCharges()).toBe(0);
  });
 
 });

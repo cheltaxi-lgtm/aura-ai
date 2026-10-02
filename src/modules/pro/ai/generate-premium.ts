@@ -21,6 +21,10 @@ import type {
 } from "@/lib/numerology/matrix-reading-document";
 import { calculateHdChart } from "@/lib/human-design/calculate";
 import { hdReportTextToPrintSections } from "@/lib/human-design/packages";
+import { buildHdLockedContract } from "@/lib/hd-report-pipeline/contract";
+import { validateHdReportText } from "@/lib/hd-report-quality/validator";
+import type { HdTokenUsage } from "@/lib/hd-report-pipeline/cost";
+import type { HdChart } from "@/lib/human-design/types";
 import { generateHdReportSectional } from "@/lib/hd-report-pipeline/generate";
 import { isHdSectionalReportEnabled } from "@/lib/hd-report-pipeline/flags";
 import { completeHdFullReport } from "@/lib/human-design/report-generate";
@@ -68,6 +72,14 @@ function toProBlock(
         ? polishProReportTitle(extras.eyebrow)
         : extras?.eyebrow ?? null,
   };
+}
+
+export type ProHdTelemetry = { modelId: string; usage: HdTokenUsage; llmCalls: number; costRub: number | null };
+type ProHdRuntime = { deadlineAt?: number; beforeRequest?: () => Promise<void> };
+function toHdProBlock(id:string,title:string,body:string,extras?:Partial<ProReportBlock>):ProReportBlock {
+  // HD has already passed its stricter factual/content gate. Formatting must
+  // preserve that text instead of inserting practitioner editorial markers.
+  return {id,title:polishProReportTitle(title),body:polishProReportPlainText(body),ai_confidence:0.75,...extras};
 }
 
 /** Shared Pro delivery voice: address the chart owner as «Вы». */
@@ -432,11 +444,13 @@ async function generateHd(
   payload: Record<string, unknown>,
   clientAlias: string,
   focusQuestion?: string | null,
-  onProgress?: (p: { done: number; total: number; label: string }) => void
+  onProgress?: (p: { done: number; total: number; label: string }) => void,
+  runtime?: ProHdRuntime
 ): Promise<{
   blocks: ProReportBlock[];
   snapshot: ProChartSnapshot;
   uncertaintyMarks?: { blockId: string; note: string }[];
+  aiTelemetry?: ProHdTelemetry;
 }> {
   const enriched = await enrichBirthPlace(payload);
   const n = normalizeBirthFields(enriched);
@@ -454,6 +468,7 @@ async function generateHd(
   const chart = calculateHdChart({
     birthDate: n.birthDate,
     birthTime: n.timeKnown ? n.birthTime ?? null : null,
+    birthTimeOccurrence:n.birthTimeOccurrence,
     timezone: tz,
   });
   const facts = computeHdFacts({
@@ -470,6 +485,7 @@ async function generateHd(
   const generated = isHdSectionalReportEnabled()
     ? await generateHdReportSectional({
         chart,
+        deadlineAt:runtime?.deadlineAt, beforeRequest:runtime?.beforeRequest, tone:"professional",
         clientName: clientAlias,
         aboutOther: false,
         focusQuestion: focus || null,
@@ -483,7 +499,9 @@ async function generateHd(
     const text = await completeHdFullReport({
       systemPrompt:
         `${buildHdReportSystemPrompt(clientAlias, "personal", { aboutOther: false })}\n\n${proVoice}`,
+      deadlineAt:runtime?.deadlineAt, beforeRequest:runtime?.beforeRequest,
       evidence: formatHdEvidence(chart, birthEvidenceOpts),
+      chart,
       clientName: clientAlias,
       aboutOther: false,
       focusQuestion: focus || null,
@@ -493,7 +511,7 @@ async function generateHd(
     }
     const sections = hdReportTextToPrintSections(text);
     const blocks: ProReportBlock[] = sections.map((s, i) =>
-      toProBlock(
+      toHdProBlock(
         s.key || `h-${i + 1}`,
         s.title,
         s.claims.map((c) => c.text).join("\n\n"),
@@ -512,32 +530,15 @@ async function generateHd(
     void facts;
     return { blocks, snapshot };
   }
-  // Soft-accept only cosmetic meta/md (V1/V11/V12). Everything else hard-fails.
-  const SOFT_HD_QUALITY = new Set(["V1", "V11", "V12"]);
-  if (!generated.text) {
-    throw Object.assign(new Error("hd_generation_failed"), {
-      status: 502,
-      qualityFindings: generated.quality.findings,
-    });
-  }
-  if (generated.needsRegeneration) {
-    const hard = generated.quality.findings.filter(
-      (f) => !SOFT_HD_QUALITY.has(f.rule)
-    );
-    if (hard.length) {
-      throw Object.assign(new Error("hd_quality_needs_regeneration"), {
-        status: 502,
-        qualityFindings: generated.quality.findings,
-      });
-    }
-    console.warn("[pro-premium] hd soft-accept after cosmetic quality findings", {
-      findings: generated.quality.findings.slice(0, 12),
+  if (!generated.text || generated.needsRegeneration || !generated.quality.ok) {
+    throw Object.assign(new Error("hd_quality_needs_regeneration"), {
+      status: 502, qualityFindings: generated.quality.findings,
     });
   }
   const text = generated.text;
   const sections = hdReportTextToPrintSections(text);
   const blocks: ProReportBlock[] = sections.map((s, i) =>
-    toProBlock(
+    toHdProBlock(
       s.key || `h-${i + 1}`,
       s.title,
       s.claims.map((c) => c.text).join("\n\n"),
@@ -560,6 +561,7 @@ async function generateHd(
   return {
     blocks,
     snapshot,
+    aiTelemetry:{modelId:generated.modelId,usage:generated.usage,llmCalls:generated.llmCalls,costRub:generated.costRub},
     uncertaintyMarks: generated.needsRegeneration
       ? generated.quality.findings.map((f) => ({
           blockId: "report",
@@ -575,10 +577,13 @@ export async function generateProPremiumReport(input: {
   clientAlias: string;
   question?: string | null;
   onProgress?: (p: { done: number; total: number; label: string }) => void;
+  deadlineAt?: number;
+  beforeRequest?: () => Promise<void>;
 }): Promise<{
   blocks: ProReportBlock[];
   snapshot: ProChartSnapshot;
   uncertaintyMarks: { blockId: string; note: string }[];
+  aiTelemetry?: ProHdTelemetry;
 }> {
   if (input.type !== "natal" && input.type !== "matrix" && input.type !== "hd") {
     throw Object.assign(new Error("unsupported_practice"), { status: 400 });
@@ -589,13 +594,14 @@ export async function generateProPremiumReport(input: {
     blocks: ProReportBlock[];
     snapshot: ProChartSnapshot;
     uncertaintyMarks?: { blockId: string; note: string }[];
+    aiTelemetry?: ProHdTelemetry;
   };
   if (input.type === "natal") {
     result = await generateNatal(input.payload, input.clientAlias, focus);
   } else if (input.type === "matrix") {
     result = await generateMatrix(input.payload, input.clientAlias, focus);
   } else {
-    result = await generateHd(input.payload, input.clientAlias, focus, input.onProgress);
+    result = await generateHd(input.payload, input.clientAlias, focus, input.onProgress, input);
   }
 
   const blocks = normalizeProPremiumBlocks(result.blocks, {
@@ -603,6 +609,13 @@ export async function generateProPremiumReport(input: {
     focus,
     caseType: input.type,
   });
+
+  if (input.type === "hd") {
+    const hd = result.snapshot.hdChart as unknown as HdChart;
+    const finalText = blocks.map(b=>`## ${b.title}\n${b.body}${b.practice?`\n\nПрактика: ${b.practice}`:""}`).join("\n\n");
+    const quality = validateHdReportText(finalText,{contract:buildHdLockedContract(hd)});
+    if (!quality.ok) throw Object.assign(new Error("hd_quality_needs_regeneration"),{status:502,qualityFindings:quality.findings});
+  }
 
   const fromConfidence = blocks
     .filter((b) => (b.ai_confidence ?? 1) < 0.5)
@@ -620,5 +633,6 @@ export async function generateProPremiumReport(input: {
     blocks,
     snapshot: result.snapshot,
     uncertaintyMarks,
+    aiTelemetry:result.aiTelemetry,
   };
 }

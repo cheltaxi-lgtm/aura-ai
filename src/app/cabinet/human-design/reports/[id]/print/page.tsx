@@ -68,15 +68,21 @@ export default async function HdReportPrintPage({
   const definedChannels = chart.chart.channels.filter((ch) => ch.defined);
   const vars = variableSummary(chart.chart);
   const hang = hangingGates(chart.chart);
+  const knownTime = chart.chart.timeKnown;
+  const uncertainty = "Время рождения неизвестно. Ниже условная карта; нестабильные характеристики не подтверждены. Переменные, color/tone/base и точная среда не определены.";
+  const variablesText = knownTime
+    ? vars.variables.map(v => `${v.label}: ${v.direction === "left" ? "←" : "→"}, тон ${v.activation.tone} (${v.source})`).join(" · ")
+    : "Не определены без точного времени рождения.";
+  const confidence = knownTime ? "high" as const : "low" as const;
 
   const activationLines = [
     ...chart.chart.personality.map(
       (a) =>
-        `Личность · ${a.body}: ${a.gate}.${a.line}.${a.color}.${a.tone}.${a.base} «${GATE_NAMES_RU[a.gate] ?? ""}»`
+        `Личность · ${a.body}: ${a.gate}.${a.line}${knownTime ? `.${a.color}.${a.tone}.${a.base}` : " (условно)"} «${GATE_NAMES_RU[a.gate] ?? ""}»`
     ),
     ...chart.chart.designActivations.map(
       (a) =>
-        `Дизайн · ${a.body}: ${a.gate}.${a.line}.${a.color}.${a.tone}.${a.base} «${GATE_NAMES_RU[a.gate] ?? ""}»`
+        `Дизайн · ${a.body}: ${a.gate}.${a.line}${knownTime ? `.${a.color}.${a.tone}.${a.base}` : " (условно)"} «${GATE_NAMES_RU[a.gate] ?? ""}»`
     ),
   ];
 
@@ -88,6 +94,7 @@ export default async function HdReportPrintPage({
         {
           text:
             `**Zovus · Дизайн Человека**\n\n` +
+            (knownTime ? "" : `${uncertainty}\n\n`) +
             `Тип: ${typeMeta.nameRu}. Стратегия: ${typeMeta.strategyRu}. ` +
             `Авторитет: ${AUTHORITY_NAMES_RU[chart.chart.authority]}. ` +
             `Профиль: ${chart.chart.profile} «${PROFILE_NAMES_RU[chart.chart.profile] ?? ""}». ` +
@@ -113,6 +120,7 @@ export default async function HdReportPrintPage({
       title="Zovus · Дизайн Человека — полный разбор"
       meta={[
         { label: "Карта и текст отчёта", value: chartNotice },
+        ...(!knownTime ? [{ label: "Точность карты", value: uncertainty }] : []),
         {
           label: "Данные рождения",
           value: `${chart.birthDate.split("-").reverse().join(".")} · ${
@@ -130,22 +138,22 @@ export default async function HdReportPrintPage({
           value: DEFINITION_NAMES_RU[chart.chart.definition] ?? chart.chart.definition,
         },
         {
-          label: "Переменные (Солнце)",
-          value: `Л ${vars.personalitySun.gate}.${vars.personalitySun.line} c${vars.personalitySun.color}/t${vars.personalitySun.tone}/b${vars.personalitySun.base} · Д ${vars.designSun.gate}.${vars.designSun.line} c${vars.designSun.color}/t${vars.designSun.tone}/b${vars.designSun.base}`,
+          label: "Четыре переменные",
+          value: variablesText,
         },
         { label: "Дата отчёта", value: new Date(report.createdAt).toLocaleString("ru-RU") },
       ]}
       visual={<HdStaticBodygraph chart={chart.chart} theme="light" idPrefix="hd-report-print" className="w-full max-w-sm" />}
       sections={coverSections}
       legacyContent={coverSections.length > 1 ? null : cleaned}
-      methodology="Отчёт Zovus построен строго по рассчитанным данным карты Дизайна Человека: точные эфемериды, истинный лунный узел, 88° солярной дуги. В приложении — активации с color/tone/base, висящие ворота и переменные. Текст — символическая интерпретация Эвелины на основе этих данных."
+      methodology={`Отчёт Zovus построен по сохранённой карте Дизайна Человека: эфемериды, истинный лунный узел, 88° солярной дуги. ${knownTime ? "В приложении — активации с color/tone/base, висящие ворота и четыре переменные." : uncertainty} Текст — символическая интерпретация Эвелины на основе этих данных.`}
       disclaimer="Разбор не заменяет профессиональную консультацию и не является медицинским, юридическим или финансовым советом."
       evidence={[
         {
           id: "type",
           label: "Тип / стратегия / подпись / ложное «я»",
           value: `${typeMeta.nameRu} · ${typeMeta.strategyRu} · ${typeMeta.signatureRu} · ${typeMeta.notSelfRu}`,
-          confidence: "high",
+          confidence,
         },
         {
           id: "centers-defined",
@@ -153,7 +161,7 @@ export default async function HdReportPrintPage({
           value: chart.chart.definedCenters.length
             ? chart.chart.definedCenters.map((c) => CENTER_NAMES_RU[c]).join(", ")
             : "нет",
-          confidence: "high",
+          confidence,
         },
         {
           id: "centers-open",
@@ -161,7 +169,7 @@ export default async function HdReportPrintPage({
           value: openCenters.length
             ? openCenters.map((c) => CENTER_NAMES_RU[c]).join(", ")
             : "нет",
-          confidence: "high",
+          confidence,
         },
         {
           id: "channels",
@@ -169,7 +177,7 @@ export default async function HdReportPrintPage({
           value: definedChannels.length
             ? definedChannels.map((ch) => ch.key).join(", ")
             : "нет",
-          confidence: "high",
+          confidence,
         },
         {
           id: "hanging",
@@ -177,19 +185,19 @@ export default async function HdReportPrintPage({
           value: hang.length
             ? hang.map((g) => `${g} «${GATE_NAMES_RU[g] ?? ""}»`).join(", ")
             : "нет",
-          confidence: "high",
+          confidence,
         },
         {
           id: "variables",
           label: "Переменные · подсказки",
-          value: `${vars.cognitionHint} ${vars.environmentHint}`,
-          confidence: "medium",
+          value: variablesText,
+          confidence: knownTime ? "medium" : "low",
         },
         {
           id: "activations",
-          label: "Активации (gate.line.color.tone.base)",
+          label: knownTime ? "Активации (gate.line.color.tone.base)" : "Условные активации (gate.line)",
           value: activationLines.join(" · "),
-          confidence: "high",
+          confidence,
         },
         {
           id: "engine",

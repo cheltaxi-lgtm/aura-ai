@@ -7,6 +7,8 @@ import {
   HD_TYPE_NAMES_RU,
 } from "./dictionaries";
 import type { HdLockedContract } from "@/lib/hd-report-pipeline/contract";
+import { HD_REPORT_REQUIRED_SECTIONS } from "@/lib/human-design/packages";
+import { AUTHORITY_NAMES_RU, CENTER_NAMES_RU, CROSS_NAMES_RU, DEFINITION_NAMES_RU, TYPE_META } from "@/lib/human-design/constants";
 
 export type HdQualityRuleId =
   | "V1"
@@ -25,6 +27,8 @@ export type HdQualityRuleId =
 export type HdQualityFinding = {
   rule: HdQualityRuleId;
   detail: string;
+  /** Canonical titles containing the defect; used to repair only affected sections. */
+  sectionTitles?: string[];
 };
 
 export type HdQualityResult = {
@@ -32,10 +36,25 @@ export type HdQualityResult = {
   findings: HdQualityFinding[];
 };
 
-const MIN_SECTION_CHARS = 120;
-const MIN_REPORT_CHARS = 3500;
+const MIN_REPORT_CHARS = 12_000;
 const SHINGLE_OVERLAP_RATIO = 0.10;
 const FOCUS_ANSWER_TITLE = "Ответ на ваш запрос";
+
+function titleKey(title: string): string {
+  return title.trim().replace(/[.!?…:]+$/u, "").trim().toLowerCase();
+}
+
+export function hdSectionMinimumChars(title: string): number {
+  const key = titleKey(title);
+  if (key === "вступление") return 200;
+  if (key === "девять центров") return 1800;
+  if (["тип и его особенности", "стратегия", "авторитет", "ложное «я»", "подпись"].includes(key)) return 400;
+  return 600;
+}
+
+function plainText(text: string): string {
+  return text.replace(/^#+\s*/gm, "").replace(/[*_`]/g, "").replace(/\s+/g, " ").trim();
+}
 
 function splitSections(text: string): Array<{ title: string; body: string }> {
   const cleaned = text.replace(/\r\n/g, "\n").trim();
@@ -44,7 +63,7 @@ function splitSections(text: string): Array<{ title: string; body: string }> {
   chunks.forEach((chunk, index) => {
     const trimmed = chunk.trim();
     if (!trimmed) return;
-    if (index === 0 && chunks.length > 1) {
+    if (index === 0 && !cleaned.startsWith("##")) {
       out.push({ title: "Вступление", body: trimmed });
       return;
     }
@@ -91,7 +110,8 @@ export function isHdQualityContrastContext(
   text: string,
   matchIndex: number
 ): boolean {
-  const before = text.slice(Math.max(0, matchIndex - 96), matchIndex);
+  // A comparison in a preceding sentence must not excuse later incorrect advice.
+  const before = text.slice(Math.max(0, matchIndex - 160), matchIndex).split(/[.!?;\n]/u).at(-1) ?? "";
   // Avoid \\b — with Unicode it misses Cyrillic «Не ждите…».
   if (/(?:^|[^\p{L}])не\s+$/iu.test(before)) return true;
   if (
@@ -131,6 +151,30 @@ export function regexHitsOutsideContrast(text: string, re: RegExp): boolean {
   return false;
 }
 
+/** Personal facts only ignore immediate negation, never a preceding comparison. */
+function isPersonalFactNegated(text:string,index:number):boolean {
+  const before=text.slice(Math.max(0,index-60),index);
+  return /(?:^|[^\p{L}])(?:не|не нужно|не надо|не следует|не\s+(?:относит[\p{L}]*\s+к|явля[\p{L}]*|имеет))\s+$/iu.test(before);
+}
+function personalFactIgnored(text:string,index:number,match:string):boolean {
+  const before=text.slice(Math.max(0,index-60),index);
+  const explicit=/(?:^|[^\p{L}])(?:вы|ваш[\p{L}]*|у\s+вас)(?!\p{L})/iu.test(match)||/(?:ваш[\p{L}]*|у\s+вас)\s+(?:(?:внутренн|основн|личн)[\p{L}]*\s+)?$/iu.test(before);
+  return explicit?isPersonalFactNegated(text,index):isHdQualityContrastContext(text,index);
+}
+function personalFactHits(text:string,re:RegExp):boolean {
+  for(const m of text.matchAll(new RegExp(re.source,re.flags.includes("g")?re.flags:re.flags+"g"))) {
+    if(!personalFactIgnored(text,m.index!,m[0]))return true;
+  }
+  return false;
+}
+
+function hdCrossAnglePattern(angle:string):string {
+  if (/угол$/iu.test(angle)) return String.raw`${angle.split(" ")[0]!.slice(0,-2)}[\p{L}]*\s+уг(?:ол|л)[\p{L}]*`;
+  if (angle.endsWith("ый")) return String.raw`${angle.slice(0,-2)}[\p{L}]*`;
+  if (/джукстапозиция/iu.test(angle)) return String.raw`дж[ау]кстапозиц[\p{L}]*`;
+  return angle.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+}
+
 /** Age constructions near HD mechanics (gates/channels/planets). */
 const AGE_NEAR_MECHANICS =
   /(?:в\s+\d{1,2}\s+лет|\d{1,2}\s*[–-]\s*\d{1,2}\s+год)[^.!?\n]{0,80}(?:ворот|канал|солнц|лун|сатурн|юпитер|уран|нептун|плутон|меркур|венер|марс)/iu;
@@ -143,6 +187,8 @@ export type HdValidateOpts = {
   motorCount?: number | null;
   contract?: HdLockedContract | null;
   requireFocusAnswer?: boolean;
+  scope?: "report" | "section";
+  requiredSections?: readonly string[];
 };
 
 export function validateHdReportText(
@@ -150,8 +196,11 @@ export function validateHdReportText(
   opts?: HdValidateOpts
 ): HdQualityResult {
   const findings: HdQualityFinding[] = [];
-  const body = String(text || "");
+  // Inline emphasis cannot conceal a factual assertion from the checks.
+  const rawBody = String(text || "");
+  const body = rawBody.replace(/[*_`]/g, "");
   const contract = opts?.contract ?? null;
+  const wholeReport = opts?.scope !== "section";
 
   for (const re of HD_META_PHRASE_PATTERNS) {
     if (re.test(body)) {
@@ -191,11 +240,11 @@ export function validateHdReportText(
   const sections = splitSections(body);
   const titleCounts = new Map<string, number>();
   for (const s of sections) {
-    const key = s.title.trim().toLowerCase();
+    const key = titleKey(s.title);
     titleCounts.set(key, (titleCounts.get(key) || 0) + 1);
   }
   for (const [title, n] of titleCounts) {
-    if (n > 1) findings.push({ rule: "V2", detail: `duplicate_title:${title}×${n}` });
+    if (n > 1) findings.push({ rule: "V2", detail: `duplicate_title:${title}×${n}`, sectionTitles: sections.filter(s => titleKey(s.title) === title).map(s => s.title) });
   }
   const shingleSets = sections.map((s) => shingles(`${s.title} ${s.body}`));
   for (let i = 0; i < shingleSets.length; i++) {
@@ -205,6 +254,7 @@ export function validateHdReportText(
         findings.push({
           rule: "V2",
           detail: `shingle_overlap:${sections[i]!.title}↔${sections[j]!.title}:${r.toFixed(2)}`,
+          sectionTitles: [sections[i]!.title, sections[j]!.title],
         });
       }
     }
@@ -219,17 +269,18 @@ export function validateHdReportText(
 
   const engineType = opts?.engineTypeRu?.trim() || contract?.typeRu;
   if (engineType) {
-    if (!new RegExp(engineType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(body)) {
-      findings.push({ rule: "V4", detail: `missing_engine_type:${engineType}` });
+    const typeBody = sections.find(s => titleKey(s.title) === "тип и его особенности")?.body ?? body;
+    if (wholeReport && !new RegExp(engineType.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "i").test(typeBody)) {
+      findings.push({ rule: "V4", detail: `missing_engine_type:${engineType}`, sectionTitles: ["Тип и его особенности"] });
     }
     for (const other of HD_TYPE_NAMES_RU) {
       if (other.toLowerCase() === engineType.toLowerCase()) continue;
       // Affirmative identity only: «Вы — Проектор». Skip «не Генератор» / «словно вы Генератор».
       const re = new RegExp(
-        `(?<![\\p{L}])вы\\s*[—–-]\\s*${other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`,
+        `(?<![\\p{L}])(?:вы|ваш\\s+тип|тип\\s+(?:карты|человека))\\s*(?:[—–-]|это|:)??\\s*${other.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?![\\p{L}])`,
         "iu"
       );
-      if (re.test(body)) {
+      if (personalFactHits(body, re)) {
         findings.push({ rule: "V4", detail: `wrong_type_asserted:${other}` });
       }
     }
@@ -250,30 +301,48 @@ export function validateHdReportText(
   }
 
   for (const re of HD_TECH_JUNK_PATTERNS) {
-    if (re.test(body)) {
+    if (re.test(rawBody)) {
       findings.push({ rule: "V5", detail: `junk:${re.source}` });
       break;
     }
   }
 
-  if (body.trim().length < MIN_REPORT_CHARS) {
-    findings.push({ rule: "V6", detail: `report_too_short:${body.trim().length}` });
+  const emphasisText = rawBody.replace(/^\s*(?:\*\s*){3,}\s*$/gm, "").replace(/^\s*\*\s+/gm, "");
+  if ((emphasisText.match(/(?<!\\)\*/g)?.length ?? 0) % 2 && /(?<!\\)\*\s*$/m.test(emphasisText)) {
+    findings.push({ rule: "V5", detail: "junk:unmatched_emphasis" });
+  }
+
+  if (wholeReport && plainText(body).length < MIN_REPORT_CHARS) {
+    findings.push({ rule: "V6", detail: `report_too_short:${plainText(body).length}` });
   }
   for (const s of sections) {
-    if (s.title !== "Запрос" && s.body.trim().length < MIN_SECTION_CHARS) {
+    const chars = plainText(s.body).length;
+    if (s.title !== "Запрос" && chars < hdSectionMinimumChars(s.title)) {
       findings.push({
         rule: "V6",
-        detail: `section_too_short:${s.title}:${s.body.trim().length}`,
+        detail: `section_too_short:${s.title}:${chars}`,
+        sectionTitles: [s.title],
       });
     }
+    const words = plainText(s.body).toLowerCase().match(/[\p{L}\p{N}]+/gu) ?? [];
+    if (words.length >= 40 && (new Set(words).size < 20 || shingles(s.body).size / (words.length - 7) < 0.35)) {
+      findings.push({ rule: "V2", detail: `repetitive_filler:${s.title}`, sectionTitles: [s.title] });
+    }
   }
-  const requireFocus = opts?.requireFocusAnswer !== false;
+  if (wholeReport) {
+    for (const title of opts?.requiredSections ?? ["Вступление",...HD_REPORT_REQUIRED_SECTIONS]) {
+      if (!sections.some(s => titleKey(s.title) === titleKey(title))) {
+        findings.push({ rule: "V6", detail: `missing_section:${title}`, sectionTitles: [title] });
+      }
+    }
+  }
+  const requireFocus = wholeReport && opts?.requireFocusAnswer !== false;
   if (requireFocus) {
     const hasAnswer = sections.some(
       (s) => s.title.trim().toLowerCase() === FOCUS_ANSWER_TITLE.toLowerCase()
     );
     if (!hasAnswer) {
-      findings.push({ rule: "V6", detail: "missing_focus_answer_section" });
+      findings.push({ rule: "V6", detail: "missing_focus_answer_section", sectionTitles: [FOCUS_ANSWER_TITLE] });
     }
   }
 
@@ -281,9 +350,9 @@ export function validateHdReportText(
   if (contract) {
     const aliases = contract.crossAngleAliases.map((a) => a.toLowerCase());
     const hasOwnAngle = aliases.some((a) =>
-      body.toLowerCase().includes(a.toLowerCase())
+      new RegExp(hdCrossAnglePattern(a),"iu").test(body)
     );
-    if (!hasOwnAngle && /крест|угол/i.test(body)) {
+    if (wholeReport && !hasOwnAngle && /крест|угол/i.test(body)) {
       findings.push({
         rule: "V7",
         detail: `missing_cross_angle:${contract.crossAngleRu}`,
@@ -292,11 +361,19 @@ export function validateHdReportText(
     for (const ang of HD_CROSS_ANGLE_ALL) {
       const isOwn = aliases.some((a) => a.toLowerCase() === ang.toLowerCase());
       if (isOwn) continue;
-      const angRe = new RegExp(
-        ang.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-        "iu"
-      );
-      if (regexHitsOutsideContrast(body, angRe)) {
+      const anglePattern = hdCrossAnglePattern(ang);
+      const assertion = new RegExp(String.raw`(?:(?:ваш[\p{L}]*|у\s+вас)\s+(?:инкарнационн[\p{L}]*\s+)?(?:крест|угол)\s*(?:(?:[—–:]|это|является|имеет|относится\s+к)\s*)?(?:не\s+)?)?(?<!\p{L})(${anglePattern})`, "giu");
+      const wrong = [...body.matchAll(assertion)].some(m => {
+        const index = m.index! + m[0].length - m[1]!.length;
+        const after = body.slice(index + m[1]!.length, index + m[1]!.length + 100);
+        const before = body.slice(Math.max(0,index-100),index);
+        const personal = /(?:^|[^\p{L}])(?:ваш[\p{L}]*|у\s+вас)(?!\p{L})/iu.test(m[0]);
+        const other = /^\s*(?:(?:инкарнационн[\p{L}]*\s+)?(?:крест|угол)[\p{L}]*\s+)?(?:у\s+)?(?:друг|ин|чуж)[\p{L}]*\s+(?:человек|люд|партн)[\p{L}]*/iu.test(after)
+          || /(?:друг|ин|чуж)[\p{L}]*\s+(?:человек|люд|партн)[\p{L}]*[^.!?;\n,]{0,35}$/iu.test(before);
+        if (!personal && other) return false;
+        return !isPersonalFactNegated(body,index) && !personalFactIgnored(body,m.index!,m[0]);
+      });
+      if (wrong) {
         findings.push({ rule: "V7", detail: `wrong_cross_angle:${ang}` });
       }
     }
@@ -317,13 +394,12 @@ export function validateHdReportText(
 
     // Mentions of "висяч" + gate number not in hang list
     const hangMentions = body.matchAll(
-      /висяч\w*[^.\n]{0,60}?ворот[аы]?\s*(\d{1,2})|ворот[аы]?\s*(\d{1,2})[^.\n]{0,40}висяч/giu
+      /ви(?:сяч|сящ)[\p{L}]*[^.\n]{0,60}?ворот[аы]?\s*([\d\s,и–-]+)|ворот[аы]?\s*([\d\s,и–-]+)[^.\n]{0,40}ви(?:сяч|сящ)/giu
     );
     for (const m of hangMentions) {
-      const num = Number(m[1] || m[2]);
-      if (!Number.isFinite(num)) continue;
-      if (!hangSet.has(num)) {
-        findings.push({ rule: "V8", detail: `false_hanging_gate:${num}` });
+      for (const value of (m[1] || m[2] || "").match(/\d{1,2}/g) ?? []) {
+        const num = Number(value);
+        if (!hangSet.has(num)) findings.push({ rule: "V8", detail: `false_hanging_gate:${num}` });
       }
     }
     // Claim hanging for a defined-channel gate
@@ -347,6 +423,106 @@ export function validateHdReportText(
         findings.push({ rule: "V9", detail: `foreign_strategy:${re.source}` });
         break;
       }
+    }
+  }
+
+  // Validate explicit personal assertions against the saved chart. Comparisons
+  // and negations are allowed, but do not excuse a later unrelated assertion.
+  if (contract) {
+    for (const s of sections) {
+      const add = (detail: string, rule: HdQualityRuleId = "V4") => findings.push({ rule, detail, sectionTitles: [s.title] });
+      if (contract.profile.split("/").includes("6") && contract.ageYears != null) {
+        const current = String.raw`(?:сейчас|в\s+настоящее\s+время|на\s+данном\s+этапе)[,\s]*(?:(?:вы\s+(?:находитесь|живёте|пребываете)|у\s+вас)\s+)?(?:в\s+)?(?:фаз[\p{L}]*|период[\p{L}]*)\s+`;
+        if (contract.ageYears < 48 && new RegExp(current + String.raw`ролев[\p{L}]*\s+модел[\p{L}]*`,"iu").test(s.body)) add("false_current_profile_phase:after50","V10");
+        if (contract.ageYears >= 52 && new RegExp(current + String.raw`(?:[«"]?на\s+крыш[\p{L}]*|30\s*[–-]\s*50)`,"iu").test(s.body)) add("false_current_profile_phase:roof","V10");
+      }
+      for(const [field,label,expected,values] of [
+        ["signature","(?:ваш[\\p{L}]*\\s+)?подпись",contract.signatureRu,Object.values(TYPE_META).map(v=>v.signatureRu)],
+        ["notSelf","(?:ваш[\\p{L}]*\\s+)?(?:ложн[\\p{L}]*\\s*[«\"]?я[»\"]?|не[—–-]я)",contract.notSelfRu,Object.values(TYPE_META).map(v=>v.notSelfRu)],
+        ["definition","(?:ваш[\\p{L}]*\\s+)?определ[её]нность",contract.definitionRu,Object.values(DEFINITION_NAMES_RU)]
+      ] as const) {
+        for(const value of new Set(values)) {
+          if(value.toLowerCase()===expected.toLowerCase())continue;
+          const literal=value.replace(/[.*+?^${}()|[\]\\]/g,"\\$&");
+          if(personalFactHits(s.body,new RegExp(`${label}\\s*(?:[—–:]|это)\\s*[«\"]?${literal}(?!\\p{L})`,"giu")))add(`wrong_${field}:${value}`);
+        }
+      }
+      for(const [label,key] of [["двойная","Раздвоённая определённость"],["тройная","Тройная раздвоённость"],["четверная","Четверная раздвоённость"]] as const) {
+        if(contract.definitionRu!==key&&personalFactHits(s.body,new RegExp(`определ[её]нность\\s*[—–:]\\s*${label}(?!\\p{L})`,"giu")))add(`wrong_definition:${label}`);
+      }
+      for (const m of s.body.matchAll(/(?:ваш[\p{L}]*\s+профил[\p{L}]*|профил[\p{L}]*\s*(?:карты|человека)?\s*(?:[—–:]|это))\s*(?:(?:[—–:]|это|является|составляет|указан|равен)\s*)?(\d)\s*\/\s*(\d)/giu)) {
+        if (`${m[1]}/${m[2]}` !== contract.profile && !isPersonalFactNegated(s.body, m.index!)) add(`wrong_profile:${m[1]}/${m[2]}`);
+      }
+      for (const [key, name] of Object.entries(AUTHORITY_NAMES_RU)) {
+        if (key === contract.authorityKey) continue;
+        const first = name.split(/[\s(]/)[0]!;
+        const stem = first.length <= 3 ? first : first.slice(0, -2);
+        const re = new RegExp(`(?:(?:ваш[\\p{L}]*\\s+)?авторитет[\\p{L}]*\\s*(?:[—–:]|это|является|указан|составляет)\\s*${stem}[\\p{L}]*|(?:у\\s+вас\\s+|ваш[\\p{L}]*\\s+)?${stem}[\\p{L}]*\\s+(?:внутренн[\\p{L}]*\\s+)?авторитет)`, "giu");
+        if (personalFactHits(s.body, re)) add(`wrong_authority:${key}`);
+      }
+      for (const [key, name] of Object.entries(CENTER_NAMES_RU)) {
+        const first = name.split(/[\s(]/)[0]!;
+        const stem = first.length <= 3 ? first : first.slice(0, -2);
+        const label = key === "solar" ? String.raw`солнечн[\p{L}]*(?:\s+сплетени[\p{L}]*)?` : String.raw`${stem}[\p{L}]*`;
+        const subject = String.raw`(?:(?:ваш[\p{L}]*|у\s+вас)\s+(?:центр[\p{L}]*\s+)?)?${label}`;
+        if (contract.definedCenterKeys.includes(key as typeof contract.definedCenterKeys[number])) {
+          const opposite=new RegExp(String.raw`(?:открыт[\p{L}]*\s+(?:центр\s+)?${label}|${subject}(?:\s+центр)?\s+(?:(?:является|указан|считается)\s+)?(?:у\s+вас\s+)?(?:открыт[\p{L}]*|неопредел[её]н[\p{L}]*|не\s+определ[её]н[\p{L}]*))`,"giu");
+          if(personalFactHits(s.body,opposite))add(`false_open_center:${key}`);
+        } else {
+          const re = new RegExp(String.raw`(?<![\p{L}])(?:определ[её]н[\p{L}]*\s+(?:центр\s+)?${label}|${subject}(?:\s+центр)?\s+(?:(?:является|указан|считается)\s+)?(?:у\s+вас\s+)?определ[её]н[\p{L}]*)`,"giu");
+          if (personalFactHits(s.body, re)) add(`false_defined_center:${key}`);
+        }
+      }
+      const planetStems:Record<string,string>={sun:"солнц[\\p{L}]*",earth:"земл[\\p{L}]*",moon:"лун[\\p{L}]*",northNode:"северн[\\p{L}]*\\s+(?:лунн[\\p{L}]*\\s+)?уз[её]л[\\p{L}]*",southNode:"южн[\\p{L}]*\\s+(?:лунн[\\p{L}]*\\s+)?уз[её]л[\\p{L}]*",mercury:"меркур[\\p{L}]*",venus:"венер[\\p{L}]*",mars:"марс[\\p{L}]*",jupiter:"юпитер[\\p{L}]*",saturn:"сатурн[\\p{L}]*",uranus:"уран[\\p{L}]*",neptune:"нептун[\\p{L}]*",pluto:"плутон[\\p{L}]*"};
+      const prose=s.body.replace(/\*\*/g,"");
+      for(const [side,sideStem] of [["personality","личност[\\p{L}]*"],["design","дизайн[\\p{L}]*"]] as const) {
+        for(const activation of contract.activations[side]) {
+          const planet=planetStems[activation.body];
+          const re=new RegExp(`(?<!\\p{L})(?:${planet}\\s+${sideStem}|${sideStem}\\s*[:—–-]?\\s*${planet})((?:(?!\\.(?!\\d))[^\\n!?]){0,160})`,"giu");
+          for(const match of prose.matchAll(re)) {
+            if(personalFactIgnored(prose,match.index!,match[0]))continue;
+            // A following planet owns its own line/color/tone/base.
+            const nextPlanet=new RegExp(`(?<!\\p{L})(?:${Object.values(planetStems).join("|")})`,"iu").exec(match[1]!);
+            const tail=match[1]!.slice(0,nextPlanet?.index??match[1]!.length).split(";")[0]!;
+            const gate=/(?:ворот[\p{L}]*\s*[:—–-]?\s*)(\d{1,2})(?:\.(\d)(?:\.(\d)(?:\.(\d)(?:\.(\d))?)?)?)?/iu.exec(tail)
+              ?? /^\s*[:—–-]?\s*(\d{1,2})\.(\d)(?:\.(\d)(?:\.(\d)(?:\.(\d))?)?)?/u.exec(tail);
+            if(gate && Number(gate[1])!==activation.gate)add(`wrong_activation:${side}:${activation.body}:gate`);
+            for(const [field,label,index] of [["line","лини[\\p{L}]*",2],["color","цвет[\\p{L}]*",3],["tone","тон[\\p{L}]*",4],["base","баз[\\p{L}]*",5]] as const) {
+              const explicit=new RegExp(`${label}\\s*[:—–-]?\\s*(\\d+)`,"iu").exec(tail);
+              const value=explicit?.[1]??gate?.[index];
+              if(value!==undefined && (Number(value)!==activation[field] || (!contract.timeKnown&&field!=="line")))add(`wrong_activation:${side}:${activation.body}:${field}`);
+            }
+          }
+        }
+      }
+      for (const m of s.body.matchAll(/(?:(?:ваш[\p{L}]*|определ[её]н[\p{L}]*|активн[\p{L}]*)\s+канал[\p{L}]*|канал[\p{L}]*\s*(?:у\s+вас|карты)?)\s*(\d{1,2})\s*[–-]\s*(\d{1,2})/giu)) {
+        const nums = [Number(m[1]), Number(m[2])].sort((a,b) => a-b);
+        if (!contract.definedChannelKeys.some(k => k.split("-").map(Number).sort((a,b) => a-b).join("-") === nums.join("-")) && !isPersonalFactNegated(s.body, m.index!)) add(`false_defined_channel:${nums.join("-")}`);
+      }
+      for (const m of s.body.matchAll(/(?:ваш[\p{L}]*\s+)?(?:инкарнационн[\p{L}]*\s+)?крест\s*(?:[—–:]|это)?\s*[^.\n«"]{0,80}[«"]([^»"\n]+)[»"]/giu)) {
+        if (!contract.crossNameRu.toLowerCase().includes(m[1]!.toLowerCase()) && !isPersonalFactNegated(s.body, m.index!)) add(`wrong_cross_name:${m[1]}`, "V7");
+      }
+      for (const m of s.body.matchAll(/ваш[\p{L}]*\s+(?:инкарнационн[\p{L}]*\s+)?крест\s*(?:[—–:]|это|является)?\s*([^.!?\n]+)/giu)) {
+        const clause=m[1]!.toLowerCase();
+        for(const name of new Set(Object.values(CROSS_NAMES_RU).flat())) {
+          const canonical=name.toLowerCase();
+          if(clause.includes(canonical)&&canonical!==contract.crossNameRu.toLowerCase()&&!isPersonalFactNegated(s.body,m.index!))add(`wrong_cross_name:${name}`,"V7");
+        }
+      }
+      if (!contract.timeKnown && ((titleKey(s.title) === "вступление") || (titleKey(s.title) === "профиль" && !contract.stableFields.profile) || (titleKey(s.title) === "тип и его особенности" && !contract.stableFields.type) || (titleKey(s.title) === "авторитет" && !contract.stableFields.authority) || titleKey(s.title) === "переменные и среда")) {
+        if (!/неизвестн[\p{L}]*\s+врем|врем[\p{L}]*\s+(?:рождения\s+)?неизвест|условн|нельзя\s+(?:точно\s+)?(?:определ|подтверд)|не\s+подтвержден/iu.test(s.body)) add("missing_unknown_time_qualification");
+      }
+    }
+    const centers = sections.find(s => titleKey(s.title) === "девять центров");
+    if (centers) for (const [key, name] of Object.entries(CENTER_NAMES_RU)) {
+      const first = name.split(/[\s(]/)[0]!;
+        const stem = first.length <= 3 ? first : first.slice(0, -2);
+      if (!new RegExp(stem, "iu").test(centers.body)) findings.push({ rule: "V6", detail: `missing_center:${key}`, sectionTitles: [centers.title] });
+    }
+    const channels = sections.find(s => titleKey(s.title) === "каналы");
+    if (channels) for (const key of contract.definedChannelKeys) {
+      const [a,b] = key.split("-");
+      if (!new RegExp(`(?:${a}\\s*[–-]\\s*${b}|${b}\\s*[–-]\\s*${a})(?!\\d)`, "u").test(channels.body)) findings.push({ rule: "V6", detail: `missing_defined_channel:${key}`, sectionTitles: [channels.title] });
     }
   }
 

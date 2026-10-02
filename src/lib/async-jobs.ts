@@ -88,7 +88,7 @@ export async function createAsyncJob(input: {
   actionType?: string;
 }): Promise<string> {
   const memoryCaptureGeneration = await captureMemoryGeneration(input.userId);
-  const { rows } = await query<{ id: string }>(
+  const insert = (run: typeof query) => run<{ id: string }>(
     `INSERT INTO async_jobs (user_id, kind, input, period_metadata, dedupe_key, action_type, provenance)
      VALUES ($1, $2, $3::jsonb, $4::jsonb, $5, $6, $7::jsonb)
      RETURNING id`,
@@ -102,6 +102,21 @@ export async function createAsyncJob(input: {
       JSON.stringify({ memoryCaptureGeneration }),
     ]
   );
+  const { rows } = input.kind === "hd_report" || input.kind === "hd_composite_report"
+    ? await withTransaction(async client => {
+      await queryClient(client,"SELECT pg_advisory_xact_lock(hashtextextended('hd-purchase:'||$1::text,0))",[input.userId]);
+      const user=(await queryClient(client,"SELECT erasure_requested_at FROM users WHERE id=$1 FOR UPDATE",[input.userId])).rows[0];
+      if(!user||user.erasure_requested_at)throw new Error("account_inactive");
+      const ids=(input.kind==="hd_report"?[input.payload.chartId]:[input.payload.baseChartId,input.payload.partnerChartId]);
+      if(ids.some(id=>typeof id!=="string"||!/^[0-9a-f-]{36}$/i.test(id)))throw new Error("invalid_hd_source");
+      const owned=await queryClient(client,"SELECT id FROM hd_charts WHERE id=ANY($1::uuid[]) AND user_id=$2 ORDER BY id FOR SHARE",[ids,input.userId]);
+      if(owned.rows.length!==new Set(ids).size)throw new Error("source_changed_or_deleted");
+      if(input.dedupeKey) {
+        const existing=await queryClient<{id:string}>(client,"SELECT id FROM async_jobs WHERE user_id=$1 AND kind=$2 AND dedupe_key=$3 AND status IN ('pending','running') AND expires_at>now() LIMIT 1",[input.userId,input.kind,input.dedupeKey]);
+        if(existing.rows.length)return existing;
+      }
+      return insert((sql,params)=>queryClient(client,sql,params));
+    }) : await insert(query);
   const jobId = rows[0]!.id;
   const product = input.kind === "photo_reading" ? "photo" : input.kind;
   await recordProductActivity(input.userId, "request_started", jobId, { product })
@@ -610,15 +625,36 @@ export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<bool
   return withTransaction(async client => {
     const { rows } = await queryClient<AsyncJobRow>(client, 'SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE', [jobId]);
     const job = rows[0];
-    if (!job || job.billing_state !== 'charged' || !job.charge_transaction_id || !['failed','needs_regeneration'].includes(job.status)) return false;
+    if (!job || !['failed','needs_regeneration'].includes(job.status)) return false;
+    if(job.kind==='pro_premium_report'&&job.input.caseType==='hd') {
+      const { getProHdReceipt }=await import('@/modules/pro/db/hd-generation');
+      const receipt=await getProHdReceipt(job.user_id,{jobId:job.id});
+      if(receipt){
+        await queryClient(client,`UPDATE async_jobs SET status='completed',billing_state='completed',result=$2::jsonb,
+          input=input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'refinement',error_message=NULL,error_code=NULL,
+          worker_id=NULL,locked_at=NULL,completed_at=NOW(),updated_at=NOW() WHERE id=$1`,[jobId,JSON.stringify(receipt)]);
+        const active=(await queryClient(client,"SELECT id FROM users WHERE id=$1 AND erasure_requested_at IS NULL",[job.user_id])).rows.length>0;
+        if(active)await recordJourneyEvent(job.user_id,'first_result','first',{product:job.kind},client);
+        return false;
+      }
+    }
+    if(job.billing_state!=='charged'||!job.charge_transaction_id)return false;
     // A crash after durable save is delivery recovery, never a refundable failure.
-    const { durableReportResult, lockPaidReportReceipt } = await import('@/lib/services/durable-report-receipt');
+    const { durableReportResult, lockPaidReportReceipt, hdJobOwnsReceipt } = await import('@/lib/services/durable-report-receipt');
     await lockPaidReportReceipt(client, job.charge_transaction_id);
     const result = await durableReportResult(client, job.user_id, job.charge_transaction_id);
     if (result) {
       await queryClient(client, `UPDATE async_jobs SET status='completed',billing_state='completed',result=$2::jsonb,
         error_message=NULL,error_code=NULL,worker_id=NULL,locked_at=NULL,completed_at=NOW(),updated_at=NOW() WHERE id=$1`, [jobId,JSON.stringify(result)]);
-      await recordJourneyEvent(job.user_id,'first_result','first',{product:job.kind},client);
+      const active = (await queryClient(client,"SELECT id FROM users WHERE id=$1 AND erasure_requested_at IS NULL",[job.user_id])).rows.length > 0;
+      if(active)await recordJourneyEvent(job.user_id,'first_result','first',{product:job.kind},client);
+      return false;
+    }
+    if (!(await hdJobOwnsReceipt(client,job))) {
+      // Billing responsibility moved to another fenced generation. This old
+      // terminal attempt neither owns the held charge nor may return it.
+      await queryClient(client,`UPDATE async_jobs SET billing_state='unbilled',charge_transaction_id=NULL,
+        period_metadata=COALESCE(period_metadata,'{}'::jsonb)||jsonb_build_object('charge_transferred',true),updated_at=now() WHERE id=$1`,[jobId]);
       return false;
     }
     const ledger = await queryClient<{amount:number;action_type:string|null}>(client,
@@ -626,7 +662,16 @@ export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<bool
     if (!ledger.rows[0]) return false;
     const rollback=await BillingService.rollbackChargeEx({ userId:job.user_id,cost:ledger.rows[0].amount,
       wasFreeQuestion:false,transactionId:job.charge_transaction_id,actionType:ledger.rows[0].action_type??undefined,client });
-    if (rollback.refunded) await markAsyncJobRefunded(jobId,undefined,client);
+    if (rollback.refunded) {
+      if (job.kind === "hd_report" || job.kind === "hd_composite_report") {
+        const table = job.kind === "hd_report" ? "hd_reports" : "hd_composite_reports";
+        await queryClient(client, `UPDATE ${table} SET status='error',error='generation_failed',transaction_id=NULL,
+          generation_revision=gen_random_uuid(),updated_at=now()
+          WHERE user_id=$1 AND transaction_id::text=$2 AND generation_revision=$3::uuid AND status IN ('pending','error','needs_regeneration')`,
+          [job.user_id,job.charge_transaction_id,job.period_metadata?.hd_generation_revision ?? null]);
+      }
+      await markAsyncJobRefunded(jobId,undefined,client);
+    }
     return rollback.refunded;
   });
 }
@@ -972,7 +1017,7 @@ export async function reapNeedsRegenerationAsyncJobs(input: {
     if (rowCount !== 1) continue;
     failed += 1;
     const latest = await getAsyncJobById(row.id);
-    if (latest?.billing_state === "charged" && latest.charge_transaction_id) {
+    if (latest && (latest.billing_state === "charged" && latest.charge_transaction_id || latest.kind === "pro_premium_report" && latest.input.caseType === "hd")) {
       try {
         await refundChargedAsyncJobIfNeeded(row.id);
       } catch (error) {
@@ -1012,7 +1057,7 @@ export async function failAsyncJobAndRefundIfCharged(
 
   let refunded = false;
   const latest = await getAsyncJobById(jobId);
-  if (latest?.billing_state === "charged" && latest.charge_transaction_id) {
+  if (latest && (latest.billing_state === "charged" && latest.charge_transaction_id || latest.kind === "pro_premium_report" && latest.input.caseType === "hd")) {
     try {
       refunded = await refundChargedAsyncJobIfNeeded(jobId);
     } catch (error) {

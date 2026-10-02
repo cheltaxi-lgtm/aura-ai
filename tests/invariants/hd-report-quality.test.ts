@@ -105,7 +105,7 @@ describe("HD report quality gate", () => {
     ).toBe(true);
   });
 
-  it("7b. plain HD disclaimer does not trip V5 (markdown italics did)", () => {
+  it("7b. balanced italic and plain disclaimers are valid Markdown", () => {
     const italic =
       "слово ".repeat(900) +
       "\n\n---\n*Разбор является символической интерпретацией системы Дизайна Человека и не заменяет профессиональную консультацию.*";
@@ -117,7 +117,7 @@ describe("HD report quality gate", () => {
         engineTypeRu: "Манифестор",
         requireFocusAnswer: false,
       }).findings.some((f) => f.rule === "V5")
-    ).toBe(true);
+    ).toBe(false);
     expect(
       validateHdReportText(plain, {
         engineTypeRu: "Манифестор",

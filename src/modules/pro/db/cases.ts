@@ -1,4 +1,4 @@
-import { proQuery } from "../db";
+import { proQuery, getProPool } from "../db";
 import type { ProCaseStatus, ProCaseType, ProReportBlock } from "../domain/types";
 import { PRO_MVP_CASE_TYPES } from "../domain/types";
 import { getProMaxCasesPerDay } from "../config";
@@ -14,7 +14,7 @@ export type ProCaseRow = {
   practitioner_context: string | null;
   layout_id: string | null;
   ai_cost_runes: number;
-  ai_cost_rub: number;
+  ai_cost_rub: number | null;
   delivered_at: Date | null;
   created_at: Date;
   updated_at: Date;
@@ -134,27 +134,19 @@ export async function setCaseInput(
   payload: Record<string, unknown>,
   source: "manual" | "vision" | "transcript" | "voice" = "manual"
 ): Promise<ProCaseRow | null> {
-  const c = await getCase(accountId, caseId);
-  if (!c) return null;
-  await proQuery(
-    `INSERT INTO pro.case_inputs (case_id, payload, source)
-     VALUES ($1, $2::jsonb, $3)
-     ON CONFLICT (case_id) DO UPDATE SET payload = EXCLUDED.payload, source = EXCLUDED.source`,
-    [caseId, JSON.stringify(payload), source]
-  );
-  // Never clobber generating / terminal delivery states — enqueue + worker
-  // both call setCaseInput to stash jobId/snapshot mid-flight.
-  const { rows } = await proQuery<ProCaseRow>(
-    `UPDATE pro.cases
-     SET status = CASE
-           WHEN status IN ('generating', 'delivered', 'archived') THEN status
-           ELSE 'input_ready'
-         END,
-         updated_at = NOW()
-     WHERE id = $1 AND account_id = $2 RETURNING *`,
-    [caseId, accountId]
-  );
-  return rows[0] ?? null;
+  const client = await getProPool().connect();
+  try {
+    await client.query("BEGIN");
+    const c=(await client.query<ProCaseRow>("SELECT * FROM pro.cases WHERE id=$1 AND account_id=$2 FOR UPDATE",[caseId,accountId])).rows[0];
+    if(!c){await client.query("COMMIT");return null;}
+    await client.query("INSERT INTO pro.case_inputs(case_id,payload,source) VALUES($1,$2::jsonb,$3) ON CONFLICT(case_id) DO UPDATE SET payload=EXCLUDED.payload,source=EXCLUDED.source",[caseId,JSON.stringify(payload),source]);
+    const {rows}=await client.query<ProCaseRow>(`UPDATE pro.cases SET status=CASE
+      WHEN status IN ('delivered','archived') THEN status
+      WHEN status='generating' AND type<>'hd' THEN status
+      ELSE 'input_ready' END,updated_at=now() WHERE id=$1 AND account_id=$2 RETURNING *`,[caseId,accountId]);
+    await client.query("COMMIT");
+    return rows[0]??null;
+  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }
 
 export async function getCaseInput(
@@ -190,56 +182,21 @@ export async function addVersion(
     status?: ProCaseStatus;
     aiCostRunes?: number;
     /** Estimated AI spend (RUB) for telemetry; accumulated on the case row. */
-    aiCostRub?: number;
+    aiCostRub?: number | null;
   }
 ): Promise<ProCaseVersionRow> {
-  const c = await getCase(accountId, caseId);
-  if (!c) throw Object.assign(new Error("case_not_found"), { status: 404 });
-  // MAX+1 races with concurrent writers; UNIQUE(case_id, version) is the
-  // real guard, so retry on conflict instead of holding a transaction open.
-  let rows: ProCaseVersionRow[] | null = null;
-  for (let attempt = 0; attempt < 3 && !rows; attempt++) {
-    const { rows: vmax } = await proQuery<{ m: number | null }>(
-      `SELECT MAX(version) AS m FROM pro.case_versions WHERE case_id = $1`,
-      [caseId]
-    );
-    const next = Number(vmax[0]?.m || 0) + 1;
-    try {
-      const res = await proQuery<ProCaseVersionRow>(
-        `INSERT INTO pro.case_versions
-           (case_id, version, source, blocks, uncertainty_marks, author_user_id)
-         VALUES ($1, $2, $3, $4::jsonb, $5::jsonb, $6)
-         RETURNING *`,
-        [
-          caseId,
-          next,
-          input.source,
-          JSON.stringify(input.blocks),
-          JSON.stringify(input.uncertaintyMarks ?? []),
-          input.authorUserId ?? null,
-        ]
-      );
-      rows = res.rows;
-    } catch (e) {
-      if ((e as { code?: string }).code === "23505") continue;
-      throw e;
-    }
-  }
-  if (!rows) throw Object.assign(new Error("version_conflict"), { status: 409 });
-  const status =
-    input.status ?? (input.source === "human" ? "edited" : "draft");
-  await proQuery(
-    `UPDATE pro.cases SET status = $3, ai_cost_runes = ai_cost_runes + $4,
-       ai_cost_rub = ai_cost_rub + $5, updated_at = NOW()
-     WHERE id = $1 AND account_id = $2`,
-    [caseId, accountId, status, input.aiCostRunes ?? 0, input.aiCostRub ?? 0]
-  );
-  const row = rows[0]!;
-  return {
-    ...row,
-    blocks: (Array.isArray(row.blocks) ? row.blocks : []) as ProReportBlock[],
-    uncertainty_marks: Array.isArray(row.uncertainty_marks) ? row.uncertainty_marks : [],
-  };
+  const client=await getProPool().connect();
+  try {
+    await client.query("BEGIN");
+    const c=(await client.query<ProCaseRow>("SELECT * FROM pro.cases WHERE id=$1 AND account_id=$2 FOR UPDATE",[caseId,accountId])).rows[0];
+    if(!c)throw Object.assign(new Error("case_not_found"),{status:404});
+    if(c.status==='archived')throw Object.assign(new Error("case_archived"),{status:409});
+    const next=Number((await client.query("SELECT COALESCE(MAX(version),0)+1 AS n FROM pro.case_versions WHERE case_id=$1",[caseId])).rows[0].n);
+    const row=(await client.query<ProCaseVersionRow>("INSERT INTO pro.case_versions(case_id,version,source,blocks,uncertainty_marks,author_user_id) VALUES($1,$2,$3,$4::jsonb,$5::jsonb,$6) RETURNING *",[caseId,next,input.source,JSON.stringify(input.blocks),JSON.stringify(input.uncertaintyMarks??[]),input.authorUserId??null])).rows[0];
+    await client.query("UPDATE pro.cases SET status=$3,ai_cost_runes=ai_cost_runes+$4,ai_cost_rub=CASE WHEN $5::numeric IS NULL THEN NULL ELSE ai_cost_rub+$5 END,updated_at=now() WHERE id=$1 AND account_id=$2",[caseId,accountId,input.status??(input.source==='human'?'edited':'draft'),input.aiCostRunes??0,input.aiCostRub===undefined?0:input.aiCostRub]);
+    await client.query("COMMIT");
+    return {...row,blocks:Array.isArray(row.blocks)?row.blocks:[],uncertainty_marks:Array.isArray(row.uncertainty_marks)?row.uncertainty_marks:[]};
+  }catch(error){await client.query("ROLLBACK");throw error;}finally{client.release();}
 }
 
 export async function markDelivered(
@@ -287,6 +244,11 @@ export async function hardDeleteCase(
   accountId: string | number,
   caseId: string | number
 ): Promise<boolean> {
+  const c=(await proQuery("SELECT type FROM pro.cases WHERE id=$1 AND account_id=$2",[caseId,accountId])).rows[0];
+  if(!c||c.type==="hd") {
+    const { purgeProHdCase }=await import("./hd-purge");
+    return purgeProHdCase(accountId,caseId);
+  }
   const { rowCount } = await proQuery(
     `DELETE FROM pro.cases WHERE id = $1 AND account_id = $2`,
     [caseId, accountId]

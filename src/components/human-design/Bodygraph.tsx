@@ -509,9 +509,12 @@ export default function Bodygraph({
     if (!svg) return;
     const inner = svg.innerHTML;
     const name = subjectName?.trim() || "Моя карта";
-    const facts = `${TYPE_META[chart.type].nameRu} · Профиль ${chart.profile} · ${AUTHORITY_NAMES_RU[chart.authority]}`;
+    const facts = chart.isConnection ? "Карта связи — объединённый бодиграф двух людей" : !chart.timeKnown
+      ? "Условная карта: время рождения неизвестно"
+      : `${TYPE_META[chart.type].nameRu} · Профиль ${chart.profile} · ${AUTHORITY_NAMES_RU[chart.authority]}`;
 
     const column = (side: "p" | "d", x: number): string => {
+      if (chart.isConnection) return "";
       const byBody = side === "p" ? personalityByBody : designByBody;
       const title = side === "p" ? "ЛИЧНОСТЬ" : "ДИЗАЙН";
       const color = side === "p" ? COLOR_P : COLOR_D;
@@ -600,6 +603,7 @@ export default function Bodygraph({
   );
 
   const renderActivationColumn = (side: "p" | "d") => {
+    if (chart.isConnection) return null;
     const map = side === "p" ? personalityByBody : designByBody;
     return (
       <div className={`hd-bodygraph__activations hd-bodygraph__activations--${side}`}>
@@ -786,9 +790,9 @@ export default function Bodygraph({
                 );
               })}
               {(["d", "p"] as const).map((side) =>
-                planetMarkers(side).map((m) => (
+                planetMarkers(side).map((m, index) => (
                   <text
-                    key={`${side}-${m.body}`}
+                    key={`${side}-${m.body}-${index}`}
                     x={m.x}
                     y={m.y + 3}
                     textAnchor="middle"
@@ -857,8 +861,8 @@ export default function Bodygraph({
                     strokeWidth={width}
                     opacity={opacity}
                     className={cls}
-                    initial={reduceMotion ? false : { pathLength: 0 }}
-                    animate={{ pathLength: 1 }}
+                    initial={reduceMotion ? false : { opacity: 0 }}
+                    animate={{ opacity: 1 }}
                     transition={{ duration: 0.5, delay, ease: "easeOut" }}
                   />
                 );
@@ -1094,7 +1098,8 @@ export default function Bodygraph({
                           fill="none"
                           stroke="rgba(106,168,160,0.95)"
                           strokeWidth={1.5}
-                          animate={reduceMotion ? undefined : { r: [10, 13, 10], opacity: [0.9, 0.4, 0.9] }}
+                          style={{ transformOrigin: `${anchor.lx}px ${anchor.ly}px` }}
+                          animate={reduceMotion ? undefined : { scale: [10 / 11, 13 / 11, 10 / 11], opacity: [0.9, 0.4, 0.9] }}
                           transition={reduceMotion ? undefined : { duration: 2.4, repeat: Infinity, ease: "easeInOut" }}
                         />
                       )}

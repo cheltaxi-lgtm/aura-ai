@@ -1,5 +1,8 @@
+import { createHash } from "node:crypto";
+import { queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { chargeForSession, rollbackChargeEx, InsufficientFundsError } from "@/lib/services/billing-service";
 import { getRuneBalance } from "@/lib/rune-service";
+import { reconcileProHdReservations } from "./hd-reservations";
 import { proQuery } from "../db";
 import { getProBillingMode, isProTrialEnforced } from "../config";
 import { proRuneCost, type ProPricedAction } from "../pricing";
@@ -31,7 +34,14 @@ export type ProTrialState = {
   blockReason: "expired" | "runes_exhausted" | null;
 };
 
-export async function getProTrialState(accountId: string | number): Promise<ProTrialState | null> {
+export async function getProTrialState(accountId: string | number, lockedMain?:PoolClient): Promise<ProTrialState | null> {
+  const owner=(await proQuery("SELECT user_id FROM pro.accounts WHERE id=$1 AND deleted_at IS NULL",[accountId])).rows[0];
+  if(!owner)return null;
+  if(!lockedMain)return withTransaction(async main=>{
+    await queryClient(main,"SELECT pg_advisory_xact_lock(hashtextextended('pro-hd:'||$1::text,0))",[owner.user_id]);
+    return getProTrialState(accountId,main);
+  });
+  await reconcileProHdReservations(lockedMain,owner.user_id,accountId);
   const { rows } = await proQuery<{
     tier: string;
     limits: Record<string, unknown> | null;
@@ -75,9 +85,9 @@ export async function getProTrialState(accountId: string | number): Promise<ProT
 /** Throws ProTrialExceededError when an enforced trial account may not spend. */
 async function assertTrialAllowsCharge(
   accountId: string | number,
-  runes: number
+  runes: number, main:PoolClient
 ): Promise<void> {
-  const state = await getProTrialState(accountId);
+  const state = await getProTrialState(accountId,main);
   if (!state || state.tier !== "free_trial") return;
   if (state.blockReason === "expired") throw new ProTrialExceededError("expired");
   if (
@@ -96,6 +106,29 @@ export async function chargeProAction(input: {
   idempotencyKey: string;
   description?: string;
 }): Promise<ProChargeResult> {
+  return withTransaction(async main=>{
+    // All Pro actions share HD's purchase serialization and trial budget.
+    await queryClient(main,"SELECT pg_advisory_xact_lock(hashtextextended('pro-hd:'||$1::text,0))",[input.userId]);
+    const user=(await queryClient(main,"SELECT erasure_requested_at FROM users WHERE id=$1 FOR UPDATE",[input.userId])).rows[0];
+    if(!user||user.erasure_requested_at)throw new Error("account_inactive");
+    const owner=(await proQuery("SELECT id FROM pro.accounts WHERE id=$1 AND user_id=$2 AND deleted_at IS NULL AND status='active'",[input.accountId,input.userId])).rows[0];
+    if(!owner)throw Object.assign(new Error("pro_account_inactive"),{status:403});
+    await reconcileProHdReservations(main,input.userId,input.accountId);
+    // Fixed-size, tenant/action/case-scoped keys never fall back to a shared
+    // automatic time bucket and cannot collide across practitioners.
+    const idempotencyKey="pro-action:"+createHash("sha256").update(JSON.stringify([String(input.accountId),input.action,String(input.caseId??""),input.idempotencyKey])).digest("hex");
+    return chargeProActionLocked({...input,idempotencyKey},main);
+  });
+}
+
+async function chargeProActionLocked(input: {
+  accountId: string | number;
+  userId: string;
+  action: ProPricedAction;
+  caseId?: string | number | null;
+  idempotencyKey: string;
+  description?: string;
+}, main:PoolClient): Promise<ProChargeResult> {
   const runes = proRuneCost(input.action);
   const mode = getProBillingMode();
   const shadow = mode !== "live";
@@ -103,24 +136,31 @@ export async function chargeProAction(input: {
   const existing = await proQuery<{
     runes: number;
     ledger_txn_ref: string | null;
-    shadow: boolean;
+    shadow: boolean; account_id:string; action:string; case_id:string|null;
   }>(
-    `SELECT runes, ledger_txn_ref, shadow FROM pro.usage_log WHERE idempotency_key = $1`,
+    `SELECT runes, ledger_txn_ref, shadow,account_id,action,case_id FROM pro.usage_log WHERE idempotency_key = $1`,
     [input.idempotencyKey]
   );
-  if (existing.rows[0]) {
-    const bal = shadow ? null : await getRuneBalance(input.userId);
+  let prior: typeof existing.rows[number] | undefined=existing.rows[0];
+  if(prior&&(String(prior.account_id)!==String(input.accountId)||prior.action!==input.action||String(prior.case_id??"")!==String(input.caseId??"")))throw Object.assign(new Error("pro_idempotency_conflict"),{status:409});
+  if(prior&&!prior.shadow&&prior.ledger_txn_ref){
+    const spend=(await queryClient(main,"SELECT id,EXISTS(SELECT 1 FROM rune_transactions r WHERE r.refund_of_transaction_id=t.id) AS refunded FROM rune_transactions t WHERE id=$1 AND user_id=$2 AND type='spend'",[prior.ledger_txn_ref,input.userId])).rows[0];
+    if(spend?.refunded)throw Object.assign(new Error("pro_idempotency_refunded"),{status:409});
+    if(!spend){await proQuery("DELETE FROM pro.usage_log WHERE idempotency_key=$1 AND account_id=$2",[input.idempotencyKey,input.accountId]);prior=undefined;}
+  }
+  if (prior) {
+    const bal = shadow ? null : await getRuneBalance(input.userId,main);
     return {
-      shadow: existing.rows[0].shadow,
-      runes: existing.rows[0].runes,
-      ledgerTxnRef: existing.rows[0].ledger_txn_ref,
+      shadow: prior.shadow,
+      runes: prior.runes,
+      ledgerTxnRef: prior.ledger_txn_ref,
       newBalance: bal,
       deduplicated: true,
     };
   }
 
   if (runes <= 0) {
-    if (isProTrialEnforced()) await assertTrialAllowsCharge(input.accountId, 0);
+    if (isProTrialEnforced()) await assertTrialAllowsCharge(input.accountId, 0,main);
     await proQuery(
       `INSERT INTO pro.usage_log (account_id, action, case_id, runes, idempotency_key, shadow)
        VALUES ($1, $2, $3, 0, $4, $5)
@@ -131,12 +171,12 @@ export async function chargeProAction(input: {
       shadow,
       runes: 0,
       ledgerTxnRef: null,
-      newBalance: shadow ? null : await getRuneBalance(input.userId),
+      newBalance: shadow ? null : await getRuneBalance(input.userId,main),
       deduplicated: false,
     };
   }
 
-  if (isProTrialEnforced()) await assertTrialAllowsCharge(input.accountId, runes);
+  if (isProTrialEnforced()) await assertTrialAllowsCharge(input.accountId, runes,main);
 
   if (shadow) {
     await proQuery(
@@ -156,6 +196,7 @@ export async function chargeProAction(input: {
 
   try {
     const charged = await chargeForSession({
+      client:main,
       userId: input.userId,
       cost: runes,
       actionType: `pro_${input.action}`,

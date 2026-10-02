@@ -80,6 +80,11 @@ rollback_on_failure() {
     fi
     if [ "$TREE_MOVED" -eq 1 ]; then
       systemctl stop aura-ai-async-jobs zovus-telegram-bot aura-ai || true
+      if [ "$MIGRATIONS_STARTED" -eq 1 ] && ! timeout 25s /usr/bin/node "$APP_DIR/hosting/restore-hd-rollback.mjs" "$APP_DIR" "$PREVIOUS" > "$SNAPSHOT/hd-rollback.log" 2>&1; then
+        echo "NEEDS_FORWARD_RECOVERY: HD purchases and identities retained; incompatible old code was not restored. Snapshot: $SNAPSHOT" >&2
+        systemctl restart aura-ai aura-ai-async-jobs zovus-telegram-bot || true
+        exit "$code"
+      fi
       if [ "$MIGRATIONS_STARTED" -eq 1 ] && ! timeout 25s /usr/bin/node "$APP_DIR/hosting/restore-natal-rollback.mjs" "$APP_DIR" "$PREVIOUS" > "$SNAPSHOT/natal-rollback.log" 2>&1; then
         echo "NEEDS_FORWARD_RECOVERY: paid Natal revisions retained; incompatible old code was not restored. Snapshot: $SNAPSHOT" >&2
         systemctl restart aura-ai aura-ai-async-jobs zovus-telegram-bot || true
@@ -248,6 +253,7 @@ npm ci
 [ -f data/geonames/cities.min.json ] || npm run build:geonames
 MIGRATIONS_STARTED=1
 npm run migrate
+node scripts/migrate-pro-hd.mjs
 # Export PRO_* (and core) for Next middleware/build so kill-switch matches .env.local.
 if [ -f "$APP_DIR/.env.local" ]; then
   while IFS= read -r line || [ -n "$line" ]; do

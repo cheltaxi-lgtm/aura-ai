@@ -1,5 +1,6 @@
 import { createHash } from "crypto";
 import type { HdCalcInput } from "./types";
+import { resolveBirthUtcOffsetHours } from "@/lib/natal/time";
 
 export interface HdChartIdentity extends HdCalcInput {
   placeName: string;
@@ -15,9 +16,10 @@ function roundCoord(value: number): number {
 function normalizeBirthTime(value: string | null): string {
   const trimmed = value?.trim() ?? "";
   if (!trimmed) return "unknown";
-  const match = /^(\d{1,2}):(\d{2})$/.exec(trimmed);
+  const match = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(trimmed);
   if (!match) return trimmed; // invalid input is rejected upstream anyway
-  return `${match[1]!.padStart(2, "0")}:${match[2]}`;
+  const seconds = match[3] && match[3] !== "00" ? `:${match[3]}` : "";
+  return `${match[1]!.padStart(2, "0")}:${match[2]}${seconds}`;
 }
 
 /**
@@ -55,5 +57,19 @@ export function hdFingerprint(identity: HdChartIdentity): string {
     roundCoord(identity.lat).toFixed(4),
     roundCoord(identity.lon).toFixed(4),
   ].join("|");
-  return createHash("sha256").update(`hd:v1:${canonical}`).digest("hex");
+  const canonicalOccurrence = canonicalHdTimeOccurrence(identity);
+  const occurrence = canonicalOccurrence ? `|${canonicalOccurrence}` : "";
+  return createHash("sha256").update(`hd:v1:${canonical}${occurrence}`).digest("hex");
+}
+
+export function canonicalHdTimeOccurrence(identity: HdCalcInput): "earlier" | "later" | undefined {
+  if (!identity.birthTime?.trim() || !identity.birthTimeOccurrence) return undefined;
+  try {
+    const first=resolveBirthUtcOffsetHours(identity.birthDate,identity.birthTime,identity.timezone,"earlier");
+    const second=resolveBirthUtcOffsetHours(identity.birthDate,identity.birthTime,identity.timezone,"later");
+    return first===second ? undefined : identity.birthTimeOccurrence;
+  } catch {
+    // The calculator owns validation and translation of nonexistent inputs.
+    return identity.birthTimeOccurrence;
+  }
 }

@@ -1,41 +1,25 @@
 import { getModelUsdPerToken, usdToRubRate } from "@/lib/openrouter-pricing";
 import { expectedHdSectionalLlmCalls } from "./sections";
 
-/**
- * Offline fallback only — live rates come from the OpenRouter catalog via
- * resolveCostRubFromUsage. Used when the catalog is unreachable.
- */
-export const HD_MODEL_RUB_PER_1K: Record<
-  string,
-  { input: number; output: number }
-> = {
-  // DeepSeek V3 on OpenRouter ≈ $0.27/M in, $1.10/M out → ~₽25/$ → rough RUB/1k
-  "deepseek/deepseek-chat-v3-0324": { input: 0.007, output: 0.028 },
-  "moonshotai/kimi-k2.5": { input: 0.015, output: 0.06 },
-};
-
 export type HdTokenUsage = {
   promptTokens: number;
   completionTokens: number;
+  /** False when any actual provider call omitted complete token usage. */
+  complete?: boolean;
 };
 
 export function estimateCostRubFromUsage(
   usage: HdTokenUsage,
-  modelId: string
-): number {
-  const rates =
-    HD_MODEL_RUB_PER_1K[modelId] ??
-    HD_MODEL_RUB_PER_1K["deepseek/deepseek-chat-v3-0324"]!;
-  const rub =
-    (usage.promptTokens / 1000) * rates.input +
-    (usage.completionTokens / 1000) * rates.output;
-  return Math.round(rub * 100) / 100;
+  _modelId: string
+): number | null {
+  if (usage.complete === false) return null;
+  // An unavailable price is not zero and cannot be guessed from another model.
+  return usage.promptTokens === 0 && usage.completionTokens === 0 ? 0 : null;
 }
 
 export type HdCostBreakdown = {
-  rub: number;
-  /** Where the rates came from — "static" means the catalog was unreachable. */
-  source: "openrouter" | "static";
+  rub: number | null;
+  source: "openrouter" | "unavailable";
 };
 
 /**
@@ -46,6 +30,7 @@ export async function resolveCostRubFromUsage(
   usage: HdTokenUsage,
   modelId: string
 ): Promise<HdCostBreakdown> {
+  if (usage.complete === false) return {rub:null,source:"unavailable"};
   const live = await getModelUsdPerToken(modelId);
   if (live) {
     const usd =
@@ -55,7 +40,7 @@ export async function resolveCostRubFromUsage(
       source: "openrouter",
     };
   }
-  return { rub: estimateCostRubFromUsage(usage, modelId), source: "static" };
+  return { rub: estimateCostRubFromUsage(usage, modelId), source: "unavailable" };
 }
 
 /** Legacy estimate when usage is unavailable. */
@@ -66,7 +51,7 @@ export function estimateHdSectionalReportCostRub(opts?: {
   llmCalls: number;
   estimatedInputTokens: number;
   estimatedOutputTokens: number;
-  estimatedRub: number;
+  estimatedRub: number | null;
   modelNote: string;
 } {
   const llmCalls = expectedHdSectionalLlmCalls();

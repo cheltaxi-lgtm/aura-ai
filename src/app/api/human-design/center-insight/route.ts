@@ -5,7 +5,7 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { completeChat, isHardRejectedLlmOutput, isOpenRouterConfigured, type ChatMessage } from "@/lib/llm";
+import { completeChatDetailed, isHardRejectedLlmOutput, isOpenRouterConfigured, type ChatMessage } from "@/lib/llm";
 import { getHdModel } from "@/lib/ai-model";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
@@ -16,7 +16,8 @@ import {
   ensureSufficientRunes,
   InsufficientFundsError,
 } from "@/lib/services/billing-service";
-import { withTransaction } from "@/lib/db";
+import { withTransaction, queryClient } from "@/lib/db";
+import { assertActiveHdSource, lockActiveHdUser } from "@/lib/services/hd-generation-service";
 import {
   getHdCenterInsight,
   getHdChartById,
@@ -73,6 +74,7 @@ export async function POST(request: NextRequest) {
     center?: unknown;
     aiDataUseAcknowledged?: unknown;
   };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({error:"Некорректный запрос."},{status:400});
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных данных карты внешней языковой модели." },
@@ -127,7 +129,7 @@ export async function POST(request: NextRequest) {
   const evidence = formatHdEvidence(chart.chart, {
     placeLabel: chart.placeName,
   });
-  const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));
+  const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName,{aboutOther:chart.subjectKind === "other"}));
 
   const messages: ChatMessage[] = [
     { role: "system", content: systemPrompt },
@@ -136,7 +138,7 @@ export async function POST(request: NextRequest) {
       role: "user",
       content:
         `Дай глубокий, но компактный разбор центра «${centerName}» в этой карте. ` +
-        `Центр ${defined ? "ОПРЕДЕЛЁН" : "ОТКРЫТ"}. ` +
+        `В ${chart.chart.timeKnown ? "точной" : "условной"} карте центр ${defined ? "ОПРЕДЕЛЁН" : "ОТКРЫТ"}. ${chart.chart.timeKnown ? "" : "Время рождения неизвестно: этот статус и связанные советы условны, явно оговори это. "}` +
         "Объясни: что это значит в жизни человека, сильные стороны, теневая сторона и один практичный совет. " +
         "До 180 слов, без заголовков, живым языком.",
     },
@@ -152,15 +154,20 @@ export async function POST(request: NextRequest) {
     // the authoritative charge happens only after a valid answer exists.
     await ensureSufficientRunes({ userId, action: "HD_ASK", exempt });
 
-    const answer = await completeChat({
+    const completion = await completeChatDetailed({
       messages,
       maxTokens: 700,
       temperature: 0.7,
       modelOverride: await getHdModel(),
       timeoutMs: 90_000,
+      maxAttempts:1,
+      skipTemperatureRetry:true,
+      deadlineAt:Date.now()+95_000,
+      beforeRequest:()=>assertActiveHdSource(userId,{chartId:chart.id}),
     });
 
-    if (!answer || isHardRejectedLlmOutput(answer)) {
+    const answer = completion.text;
+    if (!answer || completion.finishReason !== "stop" || isHardRejectedLlmOutput(answer)) {
       return NextResponse.json(
         { error: "Модель не смогла ответить. Оплата не списывалась." },
         { status: 502 }
@@ -177,7 +184,12 @@ export async function POST(request: NextRequest) {
     // Charge + persist atomically: a paid insight is stored before the
     // response leaves, so a lost HTTP response never loses the purchase.
     const { charge, insight } = await withTransaction(async (client) => {
-      const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client });
+      await lockActiveHdUser(client,userId);
+      const owned=await queryClient(client,"SELECT id FROM hd_charts WHERE id=$1 AND user_id=$2 FOR SHARE",[chart.id,userId]);
+      if (!owned.rows.length) throw new Error("source_changed_or_deleted");
+      const prior=await getHdCenterInsight(chart.id,userId,center,client);
+      if (prior) throw new HdInsightExistsError();
+      const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client,idempotencyKey:`hd-center:${chart.id}:${center}:${chart.engineVersion}` });
       const row = await insertHdCenterInsight(
         {
           chartId: chart.id,

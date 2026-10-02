@@ -5,13 +5,15 @@ import {
 } from "@/lib/require-auth";
 import { isHumanDesignEnabled } from "@/lib/settings";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
-import { completeChat, isHardRejectedLlmOutput, isOpenRouterConfigured, type ChatMessage } from "@/lib/llm";
+import { completeChatDetailed, isHardRejectedLlmOutput, isOpenRouterConfigured, type ChatMessage } from "@/lib/llm";
 import { getHdModel } from "@/lib/ai-model";
 import { wrapSystemPrompt } from "@/lib/prompt-policy";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { getRuneSettings } from "@/lib/rune-settings";
 import { isRuneBillingActive } from "@/lib/rune-service";
-import { withTransaction } from "@/lib/db";
+import { withTransaction, queryClient } from "@/lib/db";
+import { randomUUID } from "node:crypto";
+import { assertActiveHdSource, lockActiveHdUser } from "@/lib/services/hd-generation-service";
 import {
   chargeRuneAction,
   ensureSufficientRunes,
@@ -62,6 +64,7 @@ export async function POST(request: NextRequest) {
     question?: unknown;
     aiDataUseAcknowledged?: unknown;
   };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({error:"Некорректный запрос."},{status:400});
   if (body.aiDataUseAcknowledged !== true) {
     return NextResponse.json(
       { error: "Подтвердите передачу рассчитанных данных карты внешней языковой модели." },
@@ -86,11 +89,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Генерация временно недоступна." }, { status: 503 });
   }
 
-  const clientName = normalizePersonDisplayName(profileRow.name) || null;
+  const aboutOther = chart?.subjectKind === "other";
+  const clientName = normalizePersonDisplayName(aboutOther ? chart.subjectName : profileRow.name) || null;
   const evidence = chart
     ? formatHdEvidence(chart.chart, { placeLabel: chart.placeName })
     : "Исторический снимок карты не сохранён. Отвечай только по тексту оплаченного разбора, не добавляй расчётные данные современной карты.";
-  const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName));
+  const systemPrompt = await wrapSystemPrompt(buildHdAskSystemPrompt(clientName,{aboutOther}));
 
   // Cap prompt history: every ask re-sends evidence + full report text, so
   // each extra message pair is pure token cost on a per-question price.
@@ -119,15 +123,20 @@ export async function POST(request: NextRequest) {
       await ensureSufficientRunes({ userId, action: "HD_ASK", exempt });
     }
 
-    const answer = await completeChat({
+    const completion = await completeChatDetailed({
       messages,
       maxTokens: 2000,
       temperature: 0.7,
       modelOverride: await getHdModel(),
       timeoutMs: 90_000,
+      maxAttempts:1,
+      skipTemperatureRetry:true,
+      deadlineAt:Date.now()+95_000,
+      beforeRequest:()=>assertActiveHdSource(userId,{reportId:report.id,revision:report.generationRevision}),
     });
 
-    if (!answer || isHardRejectedLlmOutput(answer)) {
+    const answer = completion.text;
+    if (!answer || completion.finishReason !== "stop" || isHardRejectedLlmOutput(answer)) {
       return NextResponse.json(
         { error: "Модель не смогла ответить. Оплата не списывалась." },
         { status: 502 }
@@ -144,13 +153,16 @@ export async function POST(request: NextRequest) {
       );
     }
     const result = await withTransaction(async (client) => {
+      await lockActiveHdUser(client,userId);
+      const current=await queryClient(client,"SELECT id FROM hd_reports WHERE id=$1 AND user_id=$2 AND generation_revision=$3 AND (status='done' OR admin_rewrite_started_at IS NOT NULL) FOR UPDATE",[report.id,userId,report.generationRevision]);
+      if (!current.rows.length) throw new Error("source_changed_or_deleted");
       let includedAsksRemaining: number | null = null;
       let runeBalance: number | undefined;
       if (!exempt) {
         includedAsksRemaining = await consumeHdReportIncludedAsk(report.id, client);
       }
       if (includedAsksRemaining === null) {
-        const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client });
+        const c = await chargeRuneAction({ userId, action: "HD_ASK", exempt, client, idempotencyKey:`hd-ask:${report.id}:${randomUUID()}` });
         runeBalance = c.newBalance;
       }
       await appendHdReportMessage(report.id, "user", question, client);

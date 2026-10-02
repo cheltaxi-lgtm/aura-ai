@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { HdConnectionRelation } from "@/lib/human-design";
 import { inferGenderFromFirstName } from "@/lib/russian-name-gender";
+import BirthTimeOccurrence from "@/components/natal/BirthTimeOccurrence";
 import HdComposite from "./HdComposite";
 import HdRelationPicker from "./HdRelationPicker";
 import type { HdChartPayload } from "./HdChartView";
@@ -20,6 +21,8 @@ interface PersonState {
   name: string;
   birthDate: string;
   birthTime: string;
+  birthTimeOccurrence:""|"earlier"|"later";
+  version:number;
   timeUnknown: boolean;
   placeQuery: string;
   place: PlaceSuggestion | null;
@@ -43,6 +46,7 @@ const EMPTY: PersonState = {
   name: "",
   birthDate: "",
   birthTime: "",
+  birthTimeOccurrence:"",version:0,
   timeUnknown: false,
   placeQuery: "",
   place: null,
@@ -70,6 +74,8 @@ function PersonForm({
   onCompute: () => void;
 }) {
   const boxRef = useRef<HTMLDivElement>(null);
+  const placesAbort=useRef<AbortController|null>(null);
+  const placesEpoch=useRef(0);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   useEffect(() => {
@@ -93,6 +99,8 @@ function PersonForm({
   const searchPlaces = useCallback(
     (q: string) => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
+      placesAbort.current?.abort();
+      const epoch=++placesEpoch.current;
       if (q.trim().length < 2) {
         onChange({
           suggestions: [],
@@ -104,12 +112,14 @@ function PersonForm({
       }
       onChange({ placesLoading: true, placesSearched: false, placesError: false });
       debounceRef.current = setTimeout(() => {
-        fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`)
+        const controller=new AbortController();placesAbort.current=controller;
+        fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`,{signal:controller.signal})
           .then((r) => {
             if (!r.ok) throw new Error("places_failed");
             return r.json();
           })
           .then((d) => {
+            if(controller.signal.aborted||epoch!==placesEpoch.current)return;
             onChange({
               suggestions: Array.isArray(d?.places) ? d.places : [],
               placesOpen: true,
@@ -118,20 +128,23 @@ function PersonForm({
               placesError: false,
             });
           })
-          .catch(() =>
+          .catch(() => {
+            if(controller.signal.aborted||epoch!==placesEpoch.current)return;
             onChange({
               suggestions: [],
               placesOpen: true,
               placesSearched: true,
               placesLoading: false,
               placesError: true,
-            })
-          );
+            });
+          });
       }, 250);
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     []
   );
+
+  useEffect(()=>()=>{placesEpoch.current++;placesAbort.current?.abort();if(debounceRef.current)clearTimeout(debounceRef.current);},[]);
 
   return (
     <div className="hd-panel">
@@ -158,7 +171,7 @@ function PersonForm({
             id={`${idPrefix}-date`}
             type="date"
             value={state.birthDate}
-            onChange={(e) => onChange({ birthDate: e.target.value })}
+            onChange={(e) => onChange({ birthDate: e.target.value,birthTimeOccurrence:"" })}
             className="hd-field__input ym-hide-content ym-disable-keys"
             min="1900-01-01"
             max={localTodayIso()}
@@ -170,7 +183,8 @@ function PersonForm({
             id={`${idPrefix}-time`}
             type="time"
             value={state.birthTime}
-            onChange={(e) => onChange({ birthTime: e.target.value })}
+            step={1}
+            onChange={(e) => onChange({ birthTime: e.target.value,birthTimeOccurrence:"" })}
             className="hd-field__input ym-hide-content ym-disable-keys"
             disabled={state.timeUnknown}
           />
@@ -178,7 +192,7 @@ function PersonForm({
             <input
               type="checkbox"
               checked={state.timeUnknown}
-              onChange={(e) => onChange({ timeUnknown: e.target.checked })}
+              onChange={(e) => onChange({ timeUnknown: e.target.checked,birthTimeOccurrence:"" })}
               className="h-5 w-5 shrink-0 accent-amber-500"
             />
             Не знаю время
@@ -191,7 +205,7 @@ function PersonForm({
             type="text"
             value={state.placeQuery}
             onChange={(e) => {
-              onChange({ placeQuery: e.target.value, place: null });
+              onChange({ placeQuery: e.target.value, place: null,birthTimeOccurrence:"" });
               searchPlaces(e.target.value);
             }}
             onFocus={() => state.suggestions.length && onChange({ placesOpen: true })}
@@ -217,9 +231,10 @@ function PersonForm({
                     key={`${s.label}-${s.latitude}`}
                     type="button"
                     className="hd-places__item"
-                    onClick={() =>
-                      onChange({ place: s, placeQuery: s.label, placesOpen: false })
-                    }
+                    onClick={() => {
+                      placesEpoch.current++;placesAbort.current?.abort();if(debounceRef.current)clearTimeout(debounceRef.current);
+                      onChange({ place: s, placeQuery: s.label, placesOpen: false,placesLoading:false,birthTimeOccurrence:"" });
+                    }}
                   >
                     {s.label}
                     <small>{s.timezone}</small>
@@ -230,6 +245,7 @@ function PersonForm({
         </div>
       </div>
 
+      <BirthTimeOccurrence value={state.birthTimeOccurrence} onChange={birthTimeOccurrence=>onChange({birthTimeOccurrence})} disabled={state.timeUnknown}/>
       {state.error && <p role="alert" className="mt-3 text-sm text-red-300">{state.error}</p>}
 
       <button
@@ -305,6 +321,7 @@ export default function HdCompatibilityCalculator() {
           body: JSON.stringify({
             birthDate: state.birthDate,
             birthTime: state.timeUnknown ? null : state.birthTime,
+            birthTimeOccurrence:state.timeUnknown?null:state.birthTimeOccurrence||null,
             timezone: state.place.timezone,
             placeName: state.place.label,
             lat: state.place.latitude,
@@ -339,12 +356,16 @@ export default function HdCompatibilityCalculator() {
     []
   );
 
+  const inFlightA=useRef(false),inFlightB=useRef(false);
+  const dirtyPatch=(prev:PersonState,p:Partial<PersonState>):PersonState=>{const dirty=["name","birthDate","birthTime","birthTimeOccurrence","timeUnknown","placeQuery","place"].some(k=>k in p);return {...prev,...p,...(dirty?{chart:null,loading:false,version:prev.version+1}:{})};};
   const computeA = useCallback(async () => {
-    await compute(a, (p) => setA((prev) => ({ ...prev, ...p })));
+    if(inFlightA.current)return;inFlightA.current=true;
+    try{await compute(a, (p) => setA((prev) => prev.version===a.version?({ ...prev, ...p }):prev));}finally{inFlightA.current=false;}
   }, [a, compute]);
 
   const computeB = useCallback(async () => {
-    await compute(b, (p) => setB((prev) => ({ ...prev, ...p })), relation);
+    if(inFlightB.current)return;inFlightB.current=true;
+    try{await compute(b, (p) => setB((prev) => prev.version===b.version?({ ...prev, ...p }):prev), relation);}finally{inFlightB.current=false;}
   }, [b, compute, relation]);
 
   const both = a.chart && b.chart;
@@ -355,8 +376,8 @@ export default function HdCompatibilityCalculator() {
   return (
     <div className="space-y-6 ym-hide-content ym-disable-keys">
       <div className="grid gap-5 lg:grid-cols-2">
-        <PersonForm title="Первый человек" idPrefix="hd-compat-a" state={a} onChange={(p) => setA((prev) => ({ ...prev, ...p }))} onCompute={() => void computeA()} />
-        <PersonForm title="Второй человек" idPrefix="hd-compat-b" state={b} onChange={(p) => setB((prev) => ({ ...prev, ...p }))} onCompute={() => void computeB()} />
+        <PersonForm title="Первый человек" idPrefix="hd-compat-a" state={a} onChange={(p) => setA((prev) => dirtyPatch(prev,p))} onCompute={() => void computeA()} />
+        <PersonForm title="Второй человек" idPrefix="hd-compat-b" state={b} onChange={(p) => setB((prev) => dirtyPatch(prev,p))} onCompute={() => void computeB()} />
       </div>
 
       <div className="hd-panel">

@@ -25,6 +25,7 @@ import CrossProductNextSteps from "@/components/CrossProductNextSteps";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { trackSeoEvent } from "@/lib/seo/metrika";
 import { formatBirthPlaceLabel } from "@/lib/place-presentation";
+import BirthTimeOccurrence from "@/components/natal/BirthTimeOccurrence";
 
 interface PlaceSuggestion {
   label: string;
@@ -92,6 +93,7 @@ export default function HdCalculator({
   const [genderTouched, setGenderTouched] = useState(false);
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
+  const [birthTimeOccurrence, setBirthTimeOccurrence] = useState<"" | "earlier" | "later">("");
   const [timeUnknown, setTimeUnknown] = useState(false);
   const [placeQuery, setPlaceQuery] = useState("");
   const [place, setPlace] = useState<PlaceSuggestion | null>(null);
@@ -114,9 +116,21 @@ export default function HdCalculator({
   const [showConnection, setShowConnection] = useState(false);
   const placeBoxRef = useRef<HTMLDivElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const placeAbortRef = useRef<AbortController | null>(null);
+  const placeSequenceRef = useRef(0);
+  const formEpoch = useRef(0);
+  const selectionEpoch = useRef(0);
+  const mineEpoch = useRef(0);
+  const submitInFlight = useRef(false);
+  const [activePlace, setActivePlace] = useState(-1);
   const prefillDoneRef = useRef(false);
   const prefilledRef = useRef(false);
   const claimStartedRef = useRef(false);
+  useEffect(() => () => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    placeAbortRef.current?.abort();
+    placeSequenceRef.current++;
+  }, []);
 
   useEffect(() => {
     fetch("/api/auth/me")
@@ -144,10 +158,12 @@ export default function HdCalculator({
   // Logged-in visitors see their existing charts above the form.
   useEffect(() => {
     if (!accountReady) return;
+    const epoch = mineEpoch.current;
+    let cancelled = false;
     fetch("/api/human-design/mine")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (!Array.isArray(d?.charts)) return;
+        if (cancelled || epoch !== mineEpoch.current || !Array.isArray(d?.charts)) return;
         const list = d.charts as HdChartPayload[];
         // Prefer owner payload over a public fingerprint restore (no birth PII).
         setResult((prev) => {
@@ -164,28 +180,32 @@ export default function HdCalculator({
         setMine(list);
       })
       .catch(() => undefined);
+    return () => { cancelled = true; };
   }, [accountReady]);
 
   // Prefill birth data from the cabinet profile + natal chart place (self only).
   useEffect(() => {
     if (!birthProfileReady || subjectKind !== "self" || prefillDoneRef.current) return;
     prefillDoneRef.current = true;
+    const epoch = formEpoch.current;
+    let cancelled = false;
     fetch("/api/human-design/prefill")
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
         const p = d?.prefill;
-        if (!p) return;
+        if (!p || cancelled || epoch !== formEpoch.current) return;
         prefilledRef.current = true;
         if (typeof p.birthDate === "string" && p.birthDate) setBirthDate(p.birthDate);
         if (p.timeKnown === false) {
           setBirthTime("");
           setTimeUnknown(true);
         } else if (typeof p.birthTime === "string" && p.birthTime) {
-          setBirthTime(p.birthTime.slice(0, 5));
+          setBirthTime(p.birthTime);
           setTimeUnknown(false);
         } else {
           setTimeUnknown(true);
         }
+        setBirthTimeOccurrence(p.birthTimeOccurrence === "earlier" || p.birthTimeOccurrence === "later" ? p.birthTimeOccurrence : "");
         if (p.place && typeof p.place.label === "string") {
           setPlace(p.place);
           setPlaceQuery(p.place.label);
@@ -196,11 +216,14 @@ export default function HdCalculator({
         }
       })
       .catch(() => undefined);
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [birthProfileReady, subjectKind]);
 
   const switchSubject = (kind: "self" | "other") => {
+    formEpoch.current++;
     setSubjectKind(kind);
+    setBirthTimeOccurrence("");
     setError(null);
     if (kind === "other" && prefilledRef.current) {
       // The form holds MY birth data — it must not leak into another person's chart.
@@ -237,6 +260,8 @@ export default function HdCalculator({
         window.alert("Не удалось удалить карту. Попробуйте ещё раз.");
         return;
       }
+      mineEpoch.current++;
+      selectionEpoch.current++;
       setMine((prev) => {
         const remaining = prev.filter((c) => c.id !== chart.id);
         if (result?.id === chart.id) {
@@ -259,12 +284,15 @@ export default function HdCalculator({
     if (initialChart) return;
     const stored = readStoredFingerprint();
     if (!stored) return;
+    const epoch = selectionEpoch.current;
+    let cancelled = false;
     fetch(`/api/human-design/chart?fingerprint=${encodeURIComponent(stored)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (d?.chart) setResult(d.chart as HdChartPayload);
+        if (!cancelled && epoch === selectionEpoch.current && d?.chart) setResult(prev => prev ?? d.chart as HdChartPayload);
       })
       .catch(() => undefined);
+    return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
@@ -284,12 +312,15 @@ export default function HdCalculator({
         });
         const stored = readStoredFingerprint();
         if (stored && claimed.includes(stored)) clearStoredFingerprint();
+        const mineAtStart = mineEpoch.current;
+        const selectionAtStart = selectionEpoch.current;
         const response = await fetch("/api/human-design/mine", { cache: "no-store" });
         const data = response.ok ? await response.json() : null;
         const owned = Array.isArray(data?.charts) ? (data.charts as HdChartPayload[]) : [];
-        if (owned.length) {
+        if (owned.length && mineAtStart === mineEpoch.current) {
           setMine(owned);
           setResult((current) => {
+            if (selectionAtStart !== selectionEpoch.current) return current;
             const targetFingerprint = current?.fingerprint ?? pendingFingerprint;
             return (
               owned.find(
@@ -345,6 +376,10 @@ export default function HdCalculator({
 
   const searchPlaces = useCallback((q: string) => {
     if (debounceRef.current) clearTimeout(debounceRef.current);
+    placeAbortRef.current?.abort();
+    const sequence = ++placeSequenceRef.current;
+    const controller = new AbortController();
+    placeAbortRef.current = controller;
     if (q.trim().length < 2) {
       setSuggestions([]);
       setPlacesSearched(false);
@@ -352,32 +387,44 @@ export default function HdCalculator({
       setPlacesError(false);
       return;
     }
+    setActivePlace(-1);
     setPlacesLoading(true);
     setPlacesSearched(false);
     setPlacesError(false);
     debounceRef.current = setTimeout(() => {
-      fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`)
+      fetch(`/api/human-design/places?q=${encodeURIComponent(q.trim())}`, { signal: controller.signal })
         .then((r) => {
           if (!r.ok) throw new Error("places_failed");
           return r.json();
         })
         .then((d) => {
+          if (sequence !== placeSequenceRef.current || controller.signal.aborted) return;
           setSuggestions(Array.isArray(d?.places) ? d.places : []);
           setPlacesOpen(true);
           setPlacesSearched(true);
           setPlacesError(false);
         })
         .catch(() => {
+          if (sequence !== placeSequenceRef.current || controller.signal.aborted) return;
           setSuggestions([]);
           setPlacesOpen(true);
           setPlacesSearched(true);
           setPlacesError(true);
         })
-        .finally(() => setPlacesLoading(false));
+        .finally(() => { if (sequence === placeSequenceRef.current) setPlacesLoading(false); });
     }, 250);
   }, []);
 
+  const selectPlace = (s: PlaceSuggestion) => {
+    formEpoch.current++;
+    setPlace(s); setBirthTimeOccurrence("");
+    placeAbortRef.current?.abort(); placeSequenceRef.current++;
+    setPlaceQuery(formatBirthPlaceLabel(s.label));
+    setPlacesLoading(false); setPlacesOpen(false); setActivePlace(-1);
+  };
+
   const submit = useCallback(async () => {
+    if (submitInFlight.current) return;
     setPlacesOpen(false);
     setError(null);
     if (subjectKind === "other" && !subjectName.trim()) {
@@ -396,6 +443,9 @@ export default function HdCalculator({
       setError("Выберите место рождения из списка.");
       return;
     }
+    submitInFlight.current = true;
+    const selection = ++selectionEpoch.current;
+    const form = formEpoch.current;
     setLoading(true);
     trackSeoEvent("hd_calc_start");
     trackProductFunnel("free_start", { product: "human_design", source: "hd_calc" });
@@ -408,6 +458,7 @@ export default function HdCalculator({
         body: JSON.stringify({
           birthDate,
           birthTime: timeUnknown ? null : birthTime,
+          ...(birthTimeOccurrence && !timeUnknown ? { birthTimeOccurrence } : {}),
           timezone: place.timezone,
           placeName: place.label,
           lat: place.latitude,
@@ -420,11 +471,13 @@ export default function HdCalculator({
         }),
       });
       const data = await res.json().catch(() => ({}));
+      if (selection !== selectionEpoch.current || form !== formEpoch.current) return;
       if (!res.ok) {
         setError(hdApiErrorMessage(data, "Не удалось рассчитать карту."));
         return;
       }
       const payload = data.chart as HdChartPayload;
+      mineEpoch.current++;
       setResult(payload);
       setMine((prev) => {
         const next = prev.some((c) => c.id === payload.id)
@@ -443,13 +496,16 @@ export default function HdCalculator({
       onChartCreated?.(payload);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
+      if (selection !== selectionEpoch.current || form !== formEpoch.current) return;
       setError("Сеть недоступна. Попробуйте ещё раз.");
     } finally {
+      submitInFlight.current = false;
       setLoading(false);
     }
   }, [
     birthDate,
     birthTime,
+    birthTimeOccurrence,
     place,
     timeUnknown,
     subjectKind,
@@ -475,6 +531,7 @@ export default function HdCalculator({
             type="button"
             onClick={() => {
               setShowConnection(false);
+              selectionEpoch.current++;
               setResult(c);
               window.scrollTo({ top: 0, behavior: "smooth" });
             }}
@@ -570,6 +627,7 @@ export default function HdCalculator({
                 type="button"
                 onClick={() => {
                   setShowConnection(false);
+                  selectionEpoch.current++;
                   setResult(null);
                   setSubjectKind("self");
                   // Deliberate reset — stop resurrecting this chart on revisit.
@@ -584,7 +642,8 @@ export default function HdCalculator({
               type="button"
               onClick={() => {
                 setShowConnection(false);
-                setResult(null);
+                selectionEpoch.current++;
+                  setResult(null);
                 // Deliberate reset — stop resurrecting this chart on revisit.
                 clearStoredFingerprint();
               }}
@@ -611,7 +670,8 @@ export default function HdCalculator({
                   onClick={() => {
                     clearStoredFingerprint();
                     setClaimError(null);
-                    setResult(null);
+                    selectionEpoch.current++;
+                  setResult(null);
                   }}
                   className="btn-luxe btn-luxe--md btn-luxe--gold"
                 >
@@ -632,7 +692,7 @@ export default function HdCalculator({
             }
             loginReturnTo={returnTo}
           />
-          <CrossProductNextSteps context="human_design" readingId={authenticated ? result.id : undefined} />
+          <div className="hd-print-hidden"><CrossProductNextSteps context="human_design" readingId={authenticated ? result.id : undefined} /></div>
         </HdChartSlot>
       </div>
     );
@@ -711,7 +771,7 @@ export default function HdCalculator({
             id="hd-date"
             type="date"
             value={birthDate}
-            onChange={(e) => setBirthDate(e.target.value)}
+            onChange={(e) => { formEpoch.current++; setBirthDate(e.target.value); setBirthTimeOccurrence(""); }}
             className="hd-field__input ym-hide-content ym-disable-keys"
             min="1900-01-01"
             max={localTodayIso()}
@@ -730,7 +790,7 @@ export default function HdCalculator({
             id="hd-time"
             type="time"
             value={birthTime}
-            onChange={(e) => setBirthTime(e.target.value)}
+            onChange={(e) => { formEpoch.current++; setBirthTime(e.target.value); setBirthTimeOccurrence(""); }}
             className="hd-field__input ym-hide-content ym-disable-keys"
             disabled={timeUnknown}
           />
@@ -738,11 +798,12 @@ export default function HdCalculator({
             <input
               type="checkbox"
               checked={timeUnknown}
-              onChange={(e) => setTimeUnknown(e.target.checked)}
+              onChange={(e) => { formEpoch.current++; setTimeUnknown(e.target.checked); setBirthTimeOccurrence(""); }}
               className="h-5 w-5 shrink-0 accent-amber-500"
             />
             Не знаю время рождения
           </label>
+          {!timeUnknown && <BirthTimeOccurrence value={birthTimeOccurrence} onChange={v => { formEpoch.current++; setBirthTimeOccurrence(v); }} disabled={loading} />}
         </div>
 
         <div className="hd-field relative sm:col-span-2" ref={placeBoxRef}>
@@ -750,19 +811,36 @@ export default function HdCalculator({
           <input
             id="hd-place"
             type="text"
+            role="combobox"
+            aria-expanded={placesOpen}
+            aria-controls="hd-place-options"
+            aria-autocomplete="list"
+            aria-activedescendant={placesOpen && activePlace >= 0 ? `hd-place-${activePlace}` : undefined}
             value={placeQuery}
             onChange={(e) => {
+              formEpoch.current++;
               setPlaceQuery(e.target.value);
               setPlace(null);
+              setBirthTimeOccurrence("");
               searchPlaces(e.target.value);
             }}
             onFocus={() => suggestions.length && setPlacesOpen(true)}
+            onKeyDown={e => {
+              if (e.key === "Escape") { setPlacesOpen(false); return; }
+              if (!suggestions.length || placesLoading) return;
+              if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+                e.preventDefault(); setPlacesOpen(true);
+                setActivePlace(i => e.key === "ArrowDown" ? (i + 1) % suggestions.length : (i <= 0 ? suggestions.length - 1 : i - 1));
+              } else if (e.key === "Enter" && placesOpen && activePlace >= 0) {
+                e.preventDefault(); selectPlace(suggestions[activePlace]!);
+              }
+            }}
             placeholder="Начните вводить город…"
             className="hd-field__input ym-hide-content ym-disable-keys"
             autoComplete="off"
           />
           {placesOpen && (placesLoading || placesSearched) && (
-            <div className="hd-places" role="listbox" aria-label="Варианты места рождения">
+            <div id="hd-place-options" className="hd-places" role="listbox" aria-label="Варианты места рождения">
               {placesLoading && (
                 <p className="hd-places__empty">Ищем города…</p>
               )}
@@ -774,18 +852,15 @@ export default function HdCalculator({
                 </p>
               )}
               {!placesLoading &&
-                suggestions.map((s) => (
+                suggestions.map((s, index) => (
                   <button
                     key={`${s.label}-${s.latitude}`}
                     type="button"
+                    id={`hd-place-${index}`}
                     role="option"
-                    aria-selected={place?.label === s.label}
-                    className="hd-places__item"
-                    onClick={() => {
-                      setPlace(s);
-                      setPlaceQuery(formatBirthPlaceLabel(s.label));
-                      setPlacesOpen(false);
-                    }}
+                    aria-selected={activePlace === index}
+                    className={`hd-places__item ${activePlace === index ? "bg-amber-300/15" : ""}`}
+                    onClick={() => selectPlace(s)}
                   >
                     {formatBirthPlaceLabel(s.label)}
                   </button>

@@ -14,7 +14,6 @@ import ReportExportActions from "@/components/reports/ReportExportActions";
 import RuneOrderPreview from "@/components/RuneOrderPreview";
 import ReportAcceptedScreen from "@/components/reports/ReportAcceptedScreen";
 import {
-  parseAcceptedAsyncReport,
   type AcceptedAsyncReport,
 } from "@/lib/client/wait-for-async-job";
 import HdFoundationBrief from "./HdFoundationBrief";
@@ -22,6 +21,7 @@ import HdGenerating from "./HdGenerating";
 import HdJourney, { type HdJourneyStep } from "./HdJourney";
 import HdReportSections from "./HdReportSections";
 import { hdApiErrorMessage } from "./hd-errors";
+import { useHdAsyncDelivery } from "./useHdAsyncDelivery";
 import { useHdReportWait } from "./useHdReportWait";
 import { trackProductFunnel } from "@/lib/seo/product-funnel";
 import { FREE_TO_PAID, freeToPaidFunnelState } from "@/lib/free-to-paid-conversion";
@@ -91,6 +91,8 @@ function HdReportPanelContent({
   /** «Отчёт принят» envelope when background delivery is enabled. */
   const [acceptedReport, setAcceptedReport] = useState<AcceptedAsyncReport | null>(null);
   const dialogEndRef = useRef<HTMLDivElement>(null);
+  const stateEpoch = useRef(0);
+  const dialogEpoch = useRef(0);
   const postInFlightRef = useRef(false);
   const askInFlightRef = useRef(false);
 
@@ -133,6 +135,14 @@ function HdReportPanelContent({
     stopWait();
   }, [chartId, stopWait]);
 
+  const watchJob = useHdAsyncDelivery({
+    storageKey: `aura:hd-report-job:${chartId}`, enabled: profileReady,
+    onAccepted: setAcceptedReport,
+    onWaiting: ts => { stateEpoch.current++; setUiGenerating(true); setLoading(false); startWait({startedAt:ts}); },
+    onDone: result => { const r=result.report as HdReport|undefined; stopWait(); setUiGenerating(false); setLoading(false); if(r?.status==="done" && r.reportText) { applyDoneReport(r); setDedupeNotice(result.deduped===true); } else { setError("Отчёт больше недоступен."); setLoadNonce(n=>n+1); } },
+    onError: (msg,terminal) => { setError(msg); if(terminal) { stopWait(); setUiGenerating(false); setLoading(false); setLoadNonce(n=>n+1); } },
+  });
+
   /** Silently resume a stale paid pending report on the server (no charge). */
   const resumePendingGeneration = useCallback(async () => {
     if (!mounted.current || postInFlightRef.current) return;
@@ -151,6 +161,7 @@ function HdReportPanelContent({
       });
       const data = await res.json().catch(() => ({}));
       if (!mounted.current) return;
+      if (res.status === 202 && data.jobId) { watchJob(data); return; }
       if (res.status === 402) {
         // Never actually charged — fall back to the normal purchase CTA.
         stopWait();
@@ -168,11 +179,12 @@ function HdReportPanelContent({
     } finally {
       postInFlightRef.current = false;
     }
-  }, [applyDoneReport, chartId, stopWait]);
+  }, [applyDoneReport, chartId, stopWait, watchJob]);
 
   useEffect(() => {
     if (!profileReady) return;
     let cancelled = false;
+    const epoch=stateEpoch.current;
     setLoadError(null);
     fetch(`/api/human-design/report?chartId=${encodeURIComponent(chartId)}`)
       .then((r) => {
@@ -180,7 +192,7 @@ function HdReportPanelContent({
         return r.json();
       })
       .then((d) => {
-        if (cancelled) return;
+        if (cancelled || epoch !== stateEpoch.current) return;
         if (d?.report?.status === "done") {
           applyDoneReport(d.report as HdReport);
           return;
@@ -209,7 +221,7 @@ function HdReportPanelContent({
         }
       })
       .catch(() => {
-        if (!cancelled) {
+        if (!cancelled && epoch === stateEpoch.current) {
           setLoadError("Не удалось загрузить разбор. Проверьте сеть.");
         }
       });
@@ -222,10 +234,11 @@ function HdReportPanelContent({
   useEffect(() => {
     if (!profileReady || !reportId) return;
     let cancelled = false;
+    const epoch=dialogEpoch.current;
     fetch(`/api/human-design/report/ask?reportId=${encodeURIComponent(reportId)}`)
       .then((r) => (r.ok ? r.json() : null))
       .then((d) => {
-        if (cancelled || !Array.isArray(d?.messages)) return;
+        if (cancelled || epoch !== dialogEpoch.current || !Array.isArray(d?.messages)) return;
         const restored = d.messages
           .filter((m: unknown): m is { role: "user" | "assistant"; content: string } =>
             Boolean(
@@ -265,6 +278,7 @@ function HdReportPanelContent({
       source: "hd_report",
       state: freeToPaidFunnelState(Boolean(report?.status === "done" && report.reportText)),
     });
+    stateEpoch.current++;
     setLoading(true);
     setUiGenerating(true);
     setError(null);
@@ -300,32 +314,7 @@ function HdReportPanelContent({
         setUiGenerating(true);
         // Background delivery: replace the wait screen with «Отчёт принят».
         // The wait machinery keeps running — «дождаться здесь» just hides this.
-        const accepted = parseAcceptedAsyncReport(data);
-        if (accepted) setAcceptedReport(accepted);
-        const jobId = typeof data.jobId === "string" ? data.jobId : null;
-        if (jobId) {
-          void (async () => {
-            try {
-              const { waitForAsyncJob } = await import("@/lib/client/wait-for-async-job");
-              const result = await waitForAsyncJob({
-                jobId,
-                signal: lifetime.current?.signal,
-                storageKey: `aura:hd-report-job:${chartId}`,
-                maxAgeMs: 20 * 60_000,
-                pollIntervalMs: 2500,
-              });
-              if (!mounted.current) return;
-              const r = result?.report as HdReport | undefined;
-              if (r?.status === "done" && r.reportText) {
-                applyDoneReport(r);
-                setDedupeNotice(result.deduped === true);
-                stopWait();
-              }
-            } catch {
-              // Entity poll in useHdReportWait continues.
-            }
-          })();
-        }
+        watchJob(data);
         return;
       }
       // Another tab / resume already generating — keep polling.
@@ -372,6 +361,7 @@ function HdReportPanelContent({
     stopWait,
     uiGenerating,
     waiting,
+    watchJob,
   ]);
 
   const recoverAskFromHistory = useCallback(
@@ -410,6 +400,7 @@ function HdReportPanelContent({
     const q = question.trim();
     if (!q || !report || askInFlightRef.current) return;
     askInFlightRef.current = true;
+    dialogEpoch.current++;
     setAsking(true);
     setError(null);
     setDialog((prev) => [...prev, { role: "user", content: q }]);
@@ -552,7 +543,7 @@ function HdReportPanelContent({
             <HdFoundationBrief chart={chart} />
           </div>
         )}
-        <div className="hd-panel">
+        <div className="hd-panel hd-print-hidden">
           <p className="hd-panel__title">{FREE_TO_PAID.human_design.buyLabel}</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
             {FREE_TO_PAID.human_design.buyHint}
@@ -612,7 +603,7 @@ function HdReportPanelContent({
             <HdFoundationBrief chart={chart} />
           </div>
         )}
-        <div className="hd-panel">
+        <div className="hd-panel hd-print-hidden">
           <p className="hd-panel__title">Завершите создание профиля</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
             Бодиграф уже готов. Укажите основные данные профиля, чтобы закрепить карту за аккаунтом
@@ -665,7 +656,7 @@ function HdReportPanelContent({
             <HdFoundationBrief chart={chart} />
           </div>
         )}
-        <div className="hd-panel">
+        <div className="hd-panel hd-print-hidden">
           <p className="hd-panel__title">{FREE_TO_PAID.human_design.buyLabel}</p>
           <p className="mt-2 text-sm leading-relaxed text-white/60">
             {FREE_TO_PAID.human_design.buyHint}

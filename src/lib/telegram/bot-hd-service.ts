@@ -14,6 +14,7 @@ import {
   type HdActivation,
 } from "@/lib/human-design";
 import { isHumanDesignEnabled } from "@/lib/settings";
+import { birthFingerprintsMatch, buildBirthFingerprint, birthTimeOccurrenceFromProfile, natalPlaceFromProfile } from "@/lib/natal/types";
 
 function siteBase(): string {
   return (process.env.NEXT_PUBLIC_SITE_URL || "https://zovus.ru").replace(/\/$/, "");
@@ -24,32 +25,34 @@ interface NatalPlaceRow {
   birth_lat: number | null;
   birth_lon: number | null;
   birth_tzid: string | null;
+  time_known: boolean;
+  profile_fingerprint: string | null;
 }
 
 async function resolveHdIdentity(profileUserId: string) {
   const user = await getUserById(profileUserId);
   if (!user?.birth_date) return null;
   const { rows } = await query<NatalPlaceRow>(
-    `SELECT birth_place_label, birth_lat, birth_lon, birth_tzid
+    `SELECT birth_place_label, birth_lat, birth_lon, birth_tzid, time_known,
+       chart_data->>'profileFingerprint' AS profile_fingerprint
      FROM natal_charts WHERE user_id = $1`,
     [profileUserId]
   );
-  const natal = rows[0];
-  if (
-    !natal?.birth_place_label ||
-    natal.birth_lat === null ||
-    natal.birth_lon === null ||
-    !natal.birth_tzid
-  ) {
-    return null;
-  }
+  const fingerprint = buildBirthFingerprint({ birthDate: String(user.birth_date).slice(0, 10), birthTime: user.birth_time, birthCity: user.birth_city, birthTimeOccurrence:birthTimeOccurrenceFromProfile(user) });
+  const natal = rows[0] && birthFingerprintsMatch(rows[0].profile_fingerprint ?? undefined, fingerprint) ? rows[0] : undefined;
+  const selected = natalPlaceFromProfile(user);
+  const place = selected ?? (natal?.birth_place_label && natal.birth_lat !== null && natal.birth_lon !== null && natal.birth_tzid
+    ? { label: natal.birth_place_label, latitude: natal.birth_lat, longitude: natal.birth_lon, timezone: natal.birth_tzid } : null);
+  if (!place) return null;
+  const timeKnown = natal ? Boolean(natal.time_known) : Boolean(user.birth_time);
   return {
     birthDate: user.birth_date,
-    birthTime: user.birth_time ?? null,
-    timezone: natal.birth_tzid,
-    placeName: natal.birth_place_label,
-    lat: natal.birth_lat,
-    lon: natal.birth_lon,
+    birthTime: timeKnown ? user.birth_time ?? null : null,
+    birthTimeOccurrence: timeKnown ? birthTimeOccurrenceFromProfile(user) : undefined,
+    timezone: place.timezone,
+    placeName: place.label,
+    lat: place.latitude,
+    lon: place.longitude,
   };
 }
 
@@ -105,10 +108,10 @@ export async function botHdSummary(telegramUserId: number) {
   return {
     ok: true as const,
     hd: {
-      type: typeMeta.nameRu,
-      strategy: typeMeta.strategyRu,
-      authority: AUTHORITY_NAMES_RU[c.authority],
-      profile: `${c.profile} · ${PROFILE_NAMES_RU[c.profile] ?? ""}`,
+      type: `${typeMeta.nameRu}${!c.timeKnown && !c.stability?.typeStable ? " (условно)" : ""}`,
+      strategy: `${typeMeta.strategyRu}${!c.timeKnown && !c.stability?.typeStable ? " (условно)" : ""}`,
+      authority: `${AUTHORITY_NAMES_RU[c.authority]}${!c.timeKnown && !c.stability?.authorityStable ? " (условно)" : ""}`,
+      profile: `${c.profile} · ${PROFILE_NAMES_RU[c.profile] ?? ""}${!c.timeKnown && !c.stability?.profileStable ? " (условно)" : ""}`,
       definedCenters: c.definedCenters.length,
       activeGates: c.activeGates.length,
       timeKnown: chartRow.timeUnknown === false,
@@ -134,7 +137,7 @@ export async function botHdDailyDigest(telegramUserId: number): Promise<string[]
   const ownGates = new Set(own.chart.activeGates);
   const hits: { body: string; gate: number }[] = [];
   for (const t of transits) {
-    if (ownGates.has(t.gate)) hits.push({ body: t.body, gate: t.gate });
+    if (own.chart.timeKnown && ownGates.has(t.gate)) hits.push({ body: t.body, gate: t.gate });
   }
 
   const sun = transits.find((t: HdActivation) => t.body === "sun");

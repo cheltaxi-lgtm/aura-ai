@@ -30,6 +30,7 @@ export async function completeReportWorkerSave(client: PoolClient, userId: strin
   result: Record<string, unknown>): Promise<void> {
   if (!worker) return;
   const done = await queryClient<{ kind: string }>(client, `UPDATE async_jobs SET status='completed',billing_state='completed',
+    input=CASE WHEN kind='pro_premium_report' AND input->>'caseType'='hd' THEN input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'refinement' ELSE input END,
     result=$2::jsonb,error_message=NULL,error_code=NULL,completed_at=NOW(),updated_at=NOW(),worker_id=NULL,locked_at=NULL
     WHERE id=$1 AND user_id=$3 AND status='running' AND worker_id=$4 AND attempt_count=$5 RETURNING kind`,
     [worker.jobId,JSON.stringify(result),userId,worker.attempt.workerId,worker.attempt.attemptCount]);
@@ -69,6 +70,12 @@ export async function paidReportCanSave(client: PoolClient, transactionId?: stri
 
 /** A saved receipt is the authority even if the worker crashed before delivery. */
 export async function durableReportResult(client: PoolClient, userId: string, transactionId: string): Promise<Record<string, unknown> | null> {
+  const spend = (await queryClient<{action_type:string|null}>(client,"SELECT action_type FROM rune_transactions WHERE id=$1 AND user_id=$2",[transactionId,userId])).rows[0];
+  if(spend?.action_type?.startsWith("pro_")) {
+    const { getProHdReceipt } = await import("@/modules/pro/db/hd-generation");
+    const receipt=await getProHdReceipt(userId,{transactionId});
+    if(receipt)return receipt;
+  }
   const natal = await queryClient<{ id: string; content: string; structured_data: unknown; evidence_refs: unknown; tradition: string; report_type: string }>(client,
     "SELECT id, content, structured_data, evidence_refs, tradition, report_type FROM natal_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1", [userId, transactionId]);
   const report = natal.rows[0];
@@ -86,6 +93,22 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
     if (!record) throw new Error("compatibility_delivery_recovery_missing");
     return { record, reportId: record.id };
   }
+  const hd = await queryClient<{id:string}>(client,`SELECT id FROM hd_reports WHERE user_id=$1 AND transaction_id::text=$2
+    AND (status='done' OR (status='pending' AND admin_rewrite_started_at IS NOT NULL)) AND length(trim(report_text))>0 LIMIT 1`,[userId,transactionId]);
+  if (hd.rows[0]) {
+    const { getHdReportById, toPublicHdReport } = await import("./human-design-service");
+    const record = await getHdReportById(hd.rows[0].id,userId,client);
+    if (!record) throw new Error("hd_delivery_recovery_missing");
+    return { report:toPublicHdReport(record),reportId:record.id };
+  }
+  const composite = await queryClient<{id:string}>(client,`SELECT id FROM hd_composite_reports WHERE user_id=$1 AND transaction_id::text=$2
+    AND status IN ('done','pending') AND length(trim(report_text))>0 LIMIT 1`,[userId,transactionId]);
+  if (composite.rows[0]) {
+    const { getHdCompositeReportById, toPublicHdCompositeReport } = await import("./human-design-service");
+    const record = await getHdCompositeReportById(composite.rows[0].id,userId,client);
+    if (!record) throw new Error("hd_composite_delivery_recovery_missing");
+    return { report:toPublicHdCompositeReport(record),reportId:record.id };
+  }
   const matrix = await queryClient<{ id: string }>(client,
     "SELECT id FROM numerology_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1", [userId, transactionId]);
   if (!matrix.rows[0]) return null;
@@ -95,4 +118,13 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
   if (!saved) throw new Error("matrix_delivery_recovery_missing");
   return { ...matrixReportDisplayMetadata(saved), reading: saved.content, reportId: saved.id,
     isPaid: true, matrixOwned: true, matrixSubjectId: saved.subjectId, createdAt: saved.createdAt };
+}
+
+/** A terminal old HD job must not refund a receipt acquired by a newer generation. */
+export async function hdJobOwnsReceipt(client: PoolClient, job: AsyncJobRow): Promise<boolean> {
+  if (job.kind !== "hd_report" && job.kind !== "hd_composite_report") return true;
+  const table = job.kind === "hd_report" ? "hd_reports" : "hd_composite_reports";
+  const row = (await queryClient<{generation_revision:string}>(client,`SELECT generation_revision FROM ${table} WHERE user_id=$1 AND transaction_id::text=$2 LIMIT 1`,[job.user_id,job.charge_transaction_id])).rows[0];
+  if (!row) return true;
+  return typeof job.period_metadata?.hd_generation_revision === "string" && row.generation_revision === job.period_metadata.hd_generation_revision;
 }

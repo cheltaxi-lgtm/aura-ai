@@ -295,10 +295,7 @@ const HD_REPORT: PaidJobKindConfig = {
   kind: "hd_report",
   runeAction: "HD_REPORT",
   maxActivePerUser: 1,
-  // Sectional generate: ~23 LLM calls (route maxDuration 800s).
-  // Charge lives on the hd_reports row (not the job), so a worker HTTP
-  // timeout fails the job cosmetically while the route completes — the
-  // client polls the report entity, and stale-resume covers a true crash.
+  // Generation has a 720s absolute budget; receipt and job billing commit together.
   timeoutMs: 800_000,
   waitPolicy: "background_notified",
   etaRangeSec: { min: 180, max: 600 },

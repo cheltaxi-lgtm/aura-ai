@@ -271,7 +271,9 @@ async function callChatCompletions(
   timeoutMs = 90000,
   maxAttempts = MAX_LLM_ATTEMPTS,
   extractOpts?: CompletionExtractOptions,
-  pool?: LlmPool
+  pool?: LlmPool,
+  deadlineAt?: number,
+  beforeRequest?: () => Promise<void>
 ): Promise<string | null> {
   const result = await callChatCompletionsDetailed(
     url,
@@ -280,7 +282,9 @@ async function callChatCompletions(
     timeoutMs,
     maxAttempts,
     extractOpts,
-    pool
+    pool,
+    deadlineAt,
+    beforeRequest
   );
   return result.text;
 }
@@ -298,7 +302,9 @@ async function callChatCompletionsDetailed(
   timeoutMs = 90000,
   maxAttempts = MAX_LLM_ATTEMPTS,
   extractOpts?: CompletionExtractOptions,
-  pool?: LlmPool
+  pool?: LlmPool,
+  deadlineAt?: number,
+  beforeRequest?: () => Promise<void>
 ): Promise<ChatCompletionResult> {
   const isOpenRouter = url.includes("openrouter.ai");
   const model = String(body.model ?? "");
@@ -312,8 +318,12 @@ async function callChatCompletionsDetailed(
     `complete:${model}`,
     async () => {
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
+      if (deadlineAt !== undefined && deadlineAt <= Date.now()) return { text: null, finishReason: "deadline" };
+      await beforeRequest?.();
+      if (deadlineAt !== undefined && deadlineAt <= Date.now()) return { text: null, finishReason: "deadline" };
       const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeoutMs);
+      const remaining = deadlineAt === undefined ? timeoutMs : Math.min(timeoutMs, Math.max(1, deadlineAt - Date.now()));
+      const timer = setTimeout(() => controller.abort(), remaining);
       try {
         const response = await (isOpenRouter ? openRouterFetch : fetch)(url, {
           method: "POST",
@@ -334,7 +344,7 @@ async function callChatCompletionsDetailed(
                 `LLM 429 backoff ${backoff}ms attempt=${attempt + 1}/${maxAttempts} model=${model}`
               );
             }
-            await new Promise((r) => setTimeout(r, backoff));
+            await new Promise((r) => setTimeout(r, deadlineAt === undefined ? backoff : Math.min(backoff, Math.max(0, deadlineAt - Date.now()))));
             continue;
           }
           console.warn("LLM request failed:", url, response.status, errText);
@@ -383,7 +393,8 @@ async function callChatCompletionsDetailed(
         return { text: null, finishReason, usage };
       } catch (error) {
         if (attempt < maxAttempts - 1) {
-          await new Promise((r) => setTimeout(r, retryDelayMs(attempt)));
+          const delay = retryDelayMs(attempt);
+          await new Promise((r) => setTimeout(r, deadlineAt === undefined ? delay : Math.min(delay, Math.max(0, deadlineAt - Date.now()))));
           continue;
         }
         console.warn("LLM request error:", error);
@@ -393,7 +404,7 @@ async function callChatCompletionsDetailed(
       }
     }
     return { text: null, finishReason: null };
-  }, pool);
+  }, pool, deadlineAt);
 
   return result ?? { text: null, finishReason: null };
 }
@@ -441,6 +452,10 @@ export type CompleteChatOptions = {
   isPaid?: boolean;
   timeoutMs?: number;
   maxAttempts?: number;
+  /** Absolute budget includes queue wait, provider calls and retries. */
+  deadlineAt?: number;
+  /** Check durable attempt / account activity immediately before transmission. */
+  beforeRequest?: () => Promise<void>;
   skipTemperatureRetry?: boolean;
   /** Use reasoning field when content is empty (structured outputs only). */
   allowReasoningFallback?: boolean;
@@ -509,7 +524,9 @@ async function completeChatInternal(
         effectiveTimeoutMs,
         maxAttempts,
         extractOpts,
-        pool
+        pool,
+        params.deadlineAt,
+        params.beforeRequest
       ),
       { structuredJson: jsonObject, skipDegenerateCheck }
     );
@@ -573,7 +590,9 @@ export async function completeChatDetailed(params: CompleteChatOptions): Promise
       effectiveTimeoutMs,
       maxAttempts,
       extractOpts,
-      pool
+      pool,
+      params.deadlineAt,
+      params.beforeRequest
     );
 
   if (!isOpenRouterConfigured()) return { text: null, finishReason: null };

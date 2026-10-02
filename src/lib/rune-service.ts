@@ -205,9 +205,9 @@ export async function refundRunes(
   if (!originalTransactionId) throw new Error("refund_source_transaction_required");
 
   const executeRefund = async (client: PoolClient) => {
-    const { rows: lockedUsers } = await queryClient<{ rune_balance: number }>(
+    const { rows: lockedUsers } = await queryClient<{ rune_balance: number; erasure_requested_at: unknown }>(
       client,
-      `SELECT rune_balance FROM users WHERE id = $1 FOR UPDATE`,
+      `SELECT rune_balance,erasure_requested_at FROM users WHERE id = $1 FOR UPDATE`,
       [userId]
     );
     const currentBalance = lockedUsers[0]?.rune_balance;
@@ -278,7 +278,7 @@ export async function refundRunes(
     }
 
     if(sessionIdToRestore) await queryClient(client,"UPDATE sessions SET free_questions_used=GREATEST(0,free_questions_used-1),updated_at=NOW() WHERE id=$1 AND user_id=$2",[sessionIdToRestore,userId]);
-    if (isFirstExperienceEnabled() && originalTransactionId) {
+    if (isFirstExperienceEnabled() && originalTransactionId && !lockedUsers[0]?.erasure_requested_at) {
       const gift=await queryClient<{runes:string}>(client,"SELECT metadata->>'runes' AS runes FROM spread_metrics WHERE user_id=$1 AND event='bonus_spent' AND idempotency_key=$2",[userId,originalTransactionId]);
       const restored=Math.min(amount,Number(gift.rows[0]?.runes??0));
       if(restored>0) await recordJourneyEvent(userId,"bonus_refunded",originalTransactionId,{runes:restored},client);

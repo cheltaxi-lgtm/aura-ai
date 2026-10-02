@@ -16,7 +16,7 @@ describe("HD birth identity in evidence/contract", () => {
     const birth = formatHdBirthIdentity(chart, { placeLabel: place });
     expect(birth).toMatch(/1984-03-07/);
     expect(birth).toMatch(/23:55/);
-    expect(birth).toMatch(/ТОЧНОЕ/);
+    expect(birth).toMatch(/точное местное время/i);
     expect(birth).toMatch(/Europe\/Berlin/);
     expect(birth).toMatch(/Potsdam/);
     expect(birth).not.toMatch(/неизвестно \(в расчёте использовано 12:00/);

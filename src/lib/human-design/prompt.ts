@@ -48,6 +48,9 @@ function crossNameRu(chart: HdChart): string {
 }
 
 export function formatHdFactLine(chart: HdChart): string {
+  if (!chart.timeKnown) {
+    return "Дизайн Человека: время рождения неизвестно. Карта рассчитана на условный момент; тип, авторитет, профиль, центры, каналы и Variables нельзя считать подтверждёнными персональными фактами без точного времени.";
+  }
   const typeMeta = TYPE_META[chart.type];
   const profileName = PROFILE_NAMES_RU[chart.profile] ?? chart.profile;
   const definition = DEFINITION_NAMES_RU[chart.definition] ?? chart.definition;
@@ -63,6 +66,7 @@ export function formatHdFactLine(chart: HdChart): string {
 export function formatHdChatSummary(chart: HdChart): string {
   const typeMeta = TYPE_META[chart.type];
   const lines: string[] = [];
+  if (!chart.timeKnown) lines.push("Время рождения неизвестно. Ниже характеристики условной карты; нестабильные поля нельзя считать подтверждёнными, Variables и малые ячейки не определены.");
   lines.push(`Тип: ${typeMeta.nameRu} — стратегия «${typeMeta.strategyRu}»`);
   lines.push(`Авторитет: ${AUTHORITY_NAMES_RU[chart.authority]}`);
   lines.push(
@@ -91,6 +95,8 @@ export function formatHdChatSummary(chart: HdChart): string {
 }
 
 export type HdEvidenceOpts = {
+  /** UTC report date for age context; never the birth chart instant. */
+  referenceDate?: string;
   /** Human-readable birth place (HD engine only needs timezone; place is for LLM context). */
   placeLabel?: string | null;
 };
@@ -108,11 +114,11 @@ export function formatHdBirthIdentity(
   }
   if (chart.timeKnown && chart.birth?.time) {
     lines.push(
-      `Время: ${chart.birth.time} (ТОЧНОЕ местное — расчёт НЕ на 12:00)`
+      `Время: ${chart.birth.time} (точное местное время из данных рождения${chart.birth.timeOccurrence ? `; ${chart.birth.timeOccurrence === "earlier" ? "первое" : "второе"} наступление при переводе часов` : ""})`
     );
   } else {
     lines.push(
-      `Время: неизвестно (в расчёте использовано 12:00 местное; учитывай instability)`
+      `Время: неизвестно (условная карта на ${chart.birth?.time ?? "12:00"} местное; все нестабильные характеристики только условные, не подтверждённые)`
     );
   }
   if (chart.timezone) {
@@ -136,6 +142,8 @@ export function formatHdEvidence(
 ): string {
   const typeMeta = TYPE_META[chart.type];
   const lines: string[] = [];
+
+  if (!chart.timeKnown) lines.push("Время рождения неизвестно. Все данные ниже относятся к условной карте; только явно проверенные стабильные поля подтверждены для всего дня. Variables, color/tone/base и точная среда не определены.");
 
   lines.push(formatHdBirthIdentity(chart, opts));
   lines.push("");
@@ -194,7 +202,7 @@ export function formatHdEvidence(
 
   if (!chart.timeKnown && chart.stability) {
     lines.push("");
-    lines.push("ВАЖНО — время рождения неизвестно, расчёт на 12:00:");
+    lines.push(`ВАЖНО — время рождения неизвестно, условный расчёт на ${chart.birth?.time ?? "12:00"}:`);
     lines.push(
       `- Тип стабилен в течение всего дня: ${chart.stability.typeStable ? "да" : "НЕТ — не делай однозначных выводов о типе"}`
     );
@@ -202,7 +210,7 @@ export function formatHdEvidence(
       `- Авторитет стабилен: ${chart.stability.authorityStable ? "да" : "НЕТ — говори о возможных вариантах"}`
     );
     lines.push(
-      `- Профиль стабилен: ${chart.stability.profileStable ? "да" : "НЕТ — не утверждай профиль, опиши оба возможных"}`
+      `- Профиль стабилен: ${chart.stability.profileStable ? "да" : "НЕТ — профиль условной карты не подтверждён; возможные значения не перечислены движком, не придумывай их"}`
     );
   }
 
@@ -262,14 +270,15 @@ ${formatRequiredSectionList(HD_REPORT_REQUIRED_SECTIONS)}
 ${clientName ? `Имя ${aboutOther ? "человека карты" : "клиента"}: «${clientName}» — только кириллица.` : ""}`;
 }
 
-export function buildHdAskSystemPrompt(clientName: string | null): string {
-  return `Ты — Эвелина, ИИ-наставник Zovus. Отвечаешь на вопрос клиента в контексте его карты Дизайна Человека и уже написанного тобой разбора.
+export function buildHdAskSystemPrompt(clientName: string | null, opts?: {aboutOther?:boolean}): string {
+  const address = opts?.aboutOther ? `Карта относится к другому человеку${clientName ? ` по имени ${clientName}` : ""}. Говори о нём в третьем лице; читатель — владелец аккаунта, не приписывай ему эту карту.` : `Карта принадлежит читателю${clientName ? ` по имени ${clientName}` : ""}. Обращайся на «Вы».`;
+  return `Ты — Эвелина, ИИ-наставник Zovus. Отвечаешь на вопрос читателя о карте Дизайна Человека и уже написанном разборе. ${address}
 
 Правила:
 1) Опирайся СТРОГО на РАСЧЁТНЫЕ ДАННЫЕ и текст разбора ниже. Нельзя выдумывать новые ворота, каналы или центры.
-2) Отвечай тепло, по существу вопроса, 2–6 абзацами. Связывай ответ с типом, стратегией, авторитетом и профилем клиента.
+2) Отвечай тепло, по существу вопроса, 2–6 абзацами. Связывай ответ с типом, стратегией, авторитетом и профилем человека этой карты.
 3) Не давай медицинских, юридических и финансовых советов. Не предсказывай события и сроки.
-${clientName ? `Имя клиента: «${clientName}» — обращайся по имени, только кириллица.` : ""}`;
+${clientName ? `Имя человека карты: «${clientName}» — только кириллица.` : ""}`;
 }
 
 /** Premium Connection Chart report — full single purchase. */

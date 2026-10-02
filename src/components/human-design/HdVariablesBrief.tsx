@@ -37,44 +37,31 @@ export default function HdVariablesBrief({
   }
 
   const v = variableSummary(chart);
+  if (!chart.timeKnown) return (
+    <div className="hd-variables">
+      <p className="hd-panel__title">Переменные</p>
+      <p className="mt-2 text-sm text-white/60">Для четырёх стрелок и среды нужно точное время рождения. По условному времени эти показатели не определяются.</p>
+    </div>
+  );
 
   return (
     <div className="hd-variables">
-      <p className="hd-panel__title">Переменные · среда</p>
+      <p className="hd-panel__title">Четыре стрелки · переменные</p>
       <p className="mt-1.5 text-xs text-white/45">
-        Бесплатно · по color / tone / base Солнца (упрощённо)
+        Направление по тону Солнца и лунных узлов
       </p>
       <dl className="hd-foundation__grid mt-3">
-        <div>
-          <dt>Личность · Солнце</dt>
+        {v.variables.map(item => <div key={item.key}>
+          <dt>{item.label} · {item.direction === "left" ? "← влево" : "→ вправо"}</dt>
           <dd>
             <strong>
-              {v.personalitySun.gate}.{v.personalitySun.line} · цвет {v.personalitySun.color} · тон{" "}
-              {v.personalitySun.tone} · база {v.personalitySun.base}
+              {item.activation.gate}.{item.activation.line} · цвет {item.activation.color} · тон {item.activation.tone}
             </strong>
-            <span>{GATE_NAMES_RU[v.personalitySun.gate] ?? ""}</span>
+            <span>{item.source}</span>
           </dd>
-        </div>
-        <div>
-          <dt>Дизайн · Солнце</dt>
-          <dd>
-            <strong>
-              {v.designSun.gate}.{v.designSun.line} · цвет {v.designSun.color} · тон{" "}
-              {v.designSun.tone} · база {v.designSun.base}
-            </strong>
-            <span>{GATE_NAMES_RU[v.designSun.gate] ?? ""}</span>
-          </dd>
-        </div>
+        </div>)}
       </dl>
       <div className="hd-foundation__centers">
-        <p>
-          <span>Познание</span>
-          {v.cognitionHint}
-        </p>
-        <p>
-          <span>Среда</span>
-          {v.environmentHint}
-        </p>
         {hang.length > 0 && (
           <p>
             <span>Висящие ворота</span>

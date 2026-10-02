@@ -18,6 +18,7 @@ import { formatHdEvidence } from "@/lib/human-design/prompt";
 export type ProBirthPayload = {
   birthDate?: string | null;
   birthTime?: string | null;
+  birthTimeOccurrence?: "earlier" | "later";
   birthPlace?: string | null;
   birthCity?: string | null;
   latitude?: number | null;
@@ -47,6 +48,7 @@ export function normalizeBirthFields(
   return {
     birthDate: str(payload.birthDate),
     birthTime: str(payload.birthTime),
+    birthTimeOccurrence:payload.birthTimeOccurrence === "earlier" || payload.birthTimeOccurrence === "later" ? payload.birthTimeOccurrence : undefined,
     birthPlace: str(payload.birthPlace) || str(payload.birthCity),
     birthCity: str(payload.birthCity) || str(payload.birthPlace),
     latitude: num(payload.latitude) ?? num(payload.birthLat),
@@ -342,6 +344,7 @@ export function computeHdFacts(payload: Record<string, unknown>): Record<string,
     const chart = calculateHdChart({
       birthDate: n.birthDate,
       birthTime: n.timeKnown ? n.birthTime ?? null : null,
+      birthTimeOccurrence:n.birthTimeOccurrence,
       timezone: tz,
     });
     const placeLabel = n.birthPlace || n.birthCity || null;

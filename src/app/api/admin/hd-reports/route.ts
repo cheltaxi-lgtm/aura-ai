@@ -8,18 +8,13 @@ import { HD_PIPELINE_SECTIONS } from "@/lib/hd-report-pipeline/sections";
 import { validateHdReportText } from "@/lib/hd-report-quality/validator";
 import { isOpenRouterConfigured } from "@/lib/llm";
 import {
-  approveHdReportManually,
-  beginHdReportQualityResume,
-  beginHdReportRewrite,
-  completeHdReport,
-  failHdReport,
   getHdChartById,
   getHdReportAdminDetail,
   HD_UUID_RE,
   listHdReportsForAdminQa,
-  markHdReportNeedsRegeneration,
-  restoreHdReportDone,
 } from "@/lib/services/human-design-service";
+
+import { acquireHdAdminGeneration, assertHdGenerationCurrent, restoreHdGeneration, saveHdGeneration } from '@/lib/services/hd-generation-service';
 
 export const maxDuration = 800;
 
@@ -54,14 +49,26 @@ export async function POST(req: NextRequest) {
     reportId?: string;
     sectionTitle?: string;
   };
+  if (!body || typeof body !== 'object' || Array.isArray(body)) return NextResponse.json({error:'bad_request'},{status:400});
   const reportId = typeof body.reportId === "string" ? body.reportId : "";
   if (!HD_UUID_RE.test(reportId)) {
     return NextResponse.json({ error: "bad_id" }, { status: 400 });
   }
 
   if (body.action === "approve") {
-    const ok = await approveHdReportManually(reportId);
-    return NextResponse.json({ ok });
+    const row = await getHdReportAdminDetail(reportId);
+    if (!row || row.status !== "needs_regeneration" || !row.reportText || !row.chartSnapshot) return NextResponse.json({ ok: false }, { status: 409 });
+    const quality = validateHdReportText(row.reportText, { contract: buildHdLockedContract(row.chartSnapshot.chart) });
+    if (!quality.ok) return NextResponse.json({ ok: false, qualityFindings: quality.findings }, { status: 409 });
+    const guard = await acquireHdAdminGeneration(reportId, row.userId).catch(() => null);
+    if (!guard) return NextResponse.json({ ok: false }, { status: 409 });
+    try {
+      const saved = await saveHdGeneration(guard, row.reportText, row.model ?? "manual", [row.chartSnapshot]);
+      return NextResponse.json({ ok: Boolean(saved) }, { status: saved ? 200 : 409 });
+    } catch {
+      await restoreHdGeneration(guard);
+      return NextResponse.json({ ok: false }, { status: 409 });
+    }
   }
 
   if (body.action === "regenerate" || body.action === "regenerate_section") {
@@ -80,18 +87,16 @@ export async function POST(req: NextRequest) {
         ? [sectionTitle]
         : null;
 
-    if (body.action === "regenerate_section" && !sectionTitle) {
+    if (body.action === "regenerate_section" && (!sectionTitle || !HD_PIPELINE_SECTIONS.some(t => t === sectionTitle))) {
       return NextResponse.json({ error: "section_required" }, { status: 400 });
     }
 
     const chartRow = body.action === "regenerate_section" ? row.chartSnapshot : await getHdChartById(row.chartId);
     if (!chartRow) return NextResponse.json({ error: "chart_missing" }, { status: 404 });
 
-    const rewritingDoneReport = row.status === "done";
-    const claimed = rewritingDoneReport
-      ? await beginHdReportRewrite(reportId).catch(() => false)
-      : await beginHdReportQualityResume(reportId).catch(() => false);
-    if (!claimed) {
+    const guard = await acquireHdAdminGeneration(reportId,row.userId).catch(() => null);
+    const claimed=Boolean(guard);
+    if (!claimed || !guard) {
       return NextResponse.json(
         { error: "report_state_changed", message: "Статус отчёта уже изменился. Обновите список и повторите попытку." },
         { status: 409 }
@@ -118,73 +123,28 @@ export async function POST(req: NextRequest) {
           maxSectionRetries: 2,
           onlyTitles,
           priorText: onlyTitles ? row.reportText : null,
+          beforeRequest: () => assertHdGenerationCurrent(guard),
+          gender:chartRow.gender,
         });
 
-        if (!generated.text) {
-          if (rewritingDoneReport) {
-            await restoreHdReportDone(reportId).catch(() => undefined);
-          } else {
-            await failHdReport(reportId, "generation_failed").catch(() => undefined);
-          }
+        if (!generated.text || generated.needsRegeneration) {
+          await restoreHdGeneration(guard);
           return;
         }
-
-        if (generated.needsRegeneration) {
-          if (rewritingDoneReport) {
-            await restoreHdReportDone(reportId);
-          } else {
-            await markHdReportNeedsRegeneration(
-              reportId,
-              sanitizeHdReportText(generated.text),
-              generated.quality.findings,
-              chartRow
-            );
-          }
-          return;
-        }
-
-        const saved = await completeHdReport(
-          reportId,
-          sanitizeHdReportText(generated.text),
-          generated.modelId || "openrouter",
-          {
-            chartSnapshot: chartRow,
-            costRub: generated.costRub,
-            llmCalls: generated.llmCalls,
-            tokenUsage: generated.usage,
-            qualityFindings: [],
-          }
-        );
-        if (!saved && rewritingDoneReport) {
-          await restoreHdReportDone(reportId).catch(() => undefined);
-        }
+        const saved = await saveHdGeneration(guard,sanitizeHdReportText(generated.text),generated.modelId,[chartRow],
+          {costRub:generated.costRub,usage:generated.usage,calls:generated.llmCalls});
+        if (!saved) await restoreHdGeneration(guard);
       } catch (e) {
         console.error("[admin/hd-reports] regenerate failed", e);
-        if (rewritingDoneReport) {
-          await restoreHdReportDone(reportId).catch(() => undefined);
-        } else {
-          await failHdReport(reportId, "generation_exception").catch(() => undefined);
-        }
+        await restoreHdGeneration(guard).catch(() => undefined);
       }
     });
-    return NextResponse.json({ ok: true, started: true }, { status: 202 });
+    return NextResponse.json({ok:true,started:true},{status:202});
   }
-
   if (body.action === "validate") {
     const row = await getHdReportAdminDetail(reportId);
-    if (!row?.reportText) return NextResponse.json({ error: "no_text" }, { status: 404 });
-    const chartRow = row.chartSnapshot;
-    const contract = chartRow
-      ? buildHdLockedContract(chartRow.chart, { placeLabel: chartRow.placeName })
-      : null;
-    const quality = validateHdReportText(row.reportText, {
-      engineTypeRu: contract?.typeRu ?? null,
-      motorCount: contract?.motorCentersDefinedRu.length ?? null,
-      contract,
-      requireFocusAnswer: true,
-    });
-    return NextResponse.json({ quality });
+    if (!row?.reportText) return NextResponse.json({error:"no_text"},{status:404});
+    return NextResponse.json({quality:validateHdReportText(row.reportText,{contract:row.chartSnapshot ? buildHdLockedContract(row.chartSnapshot.chart) : null})});
   }
-
-  return NextResponse.json({ error: "unknown_action" }, { status: 400 });
+  return NextResponse.json({error:"unknown_action"},{status:400});
 }

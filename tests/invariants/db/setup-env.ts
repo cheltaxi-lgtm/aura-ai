@@ -46,6 +46,7 @@ const filePrimary =
   readEnvFile(".env.local").DATABASE_URL ||
   readEnvFile(".env").DATABASE_URL ||
   "";
+const filePrimaryPro=readEnvFile(".env.local").PRO_DATABASE_URL||readEnvFile(".env").PRO_DATABASE_URL||"";
 process.env.DATABASE_URL_PRIMARY_SNAPSHOT = filePrimary;
 
 // TEST_DATABASE_URL: shell/CI wins; else .env.test*
@@ -84,8 +85,12 @@ if (testUrl) {
       "Refusing TEST_DATABASE_URL: must not equal DATABASE_URL (would hit the primary DB)"
     );
   }
+  if(filePrimaryPro.trim()&&testUrl===filePrimaryPro.trim())throw new Error("Refusing TEST_DATABASE_URL: must not equal the primary Pro database");
   // Product code reads DATABASE_URL via getPool().
   process.env.DATABASE_URL = testUrl;
+  // Pro owns a separate pool and prefers this URL. Test suites must never
+  // inherit a production Pro connection from the shell or project env files.
+  process.env.PRO_DATABASE_URL = testUrl;
 }
 
 export const hasTestDb = Boolean(testUrl);

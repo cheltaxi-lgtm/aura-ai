@@ -1,3 +1,5 @@
+import { withTransaction } from "@/lib/db";
+import { lockActiveHdUser } from "@/lib/services/hd-generation-service";
 import { proQuery } from "../db";
 import { detectCrisis, filterPractitionerOutput } from "../safety";
 import { getProDialogModeMax, isProAiEnabled } from "../config";
@@ -76,8 +78,15 @@ export async function clientAskOnDelivery(input: {
   /** Client-generated idempotency key: retries must reuse it. */
   clientMsgId?: string | null;
 }): Promise<{ status: string; message?: string }> {
+  // Each write and every queued/retried provider request rechecks the owner.
+  // Locks are released before model work so an erasure request can advance.
+  const guardedQuery:typeof proQuery=(sql,params)=>withTransaction(async main=>{
+    await lockActiveHdUser(main,input.userIdForBilling);
+    return proQuery(sql,params);
+  });
+  const beforeRequest=()=>withTransaction(async main=>{await lockActiveHdUser(main,input.userIdForBilling);});
   const crisis = detectCrisis(input.question);
-  const { rows: threads } = await proQuery<{
+  const { rows: threads } = await guardedQuery<{
     id: string;
     questions_used: number;
     status: string;
@@ -96,7 +105,7 @@ export async function clientAskOnDelivery(input: {
 
   // Idempotent insert first: a retry with the same client_msg_id is a no-op.
   const clientMsgId = input.clientMsgId?.slice(0, 64) || null;
-  const { rows: insertedMsg } = await proQuery<{ id: string }>(
+  const { rows: insertedMsg } = await guardedQuery<{ id: string }>(
     `INSERT INTO pro.thread_messages
        (thread_id, author, body, moderation_state, safety_flags, sent_at, client_msg_id)
      VALUES ($1, 'client', $2, 'auto', $3, NOW(), $4)
@@ -110,7 +119,7 @@ export async function clientAskOnDelivery(input: {
   }
 
   // CAS quota: concurrent questions cannot both pass the limit.
-  const { rows: cas } = await proQuery<{ questions_used: number }>(
+  const { rows: cas } = await guardedQuery<{ questions_used: number }>(
     `UPDATE pro.client_threads
      SET questions_used = questions_used + 1
      WHERE id = $1 AND status = 'open' AND questions_used < $2
@@ -118,17 +127,17 @@ export async function clientAskOnDelivery(input: {
     [thread.id, input.dialogQuota]
   );
   if (!cas[0]) {
-    await proQuery(`DELETE FROM pro.thread_messages WHERE id = $1`, [insertedMsg[0].id]);
+    await guardedQuery(`DELETE FROM pro.thread_messages WHERE id = $1`, [insertedMsg[0].id]);
     return { status: "quota_exceeded" };
   }
   const questionNumber = cas[0].questions_used;
 
   if (crisis.crisis) {
-    await proQuery(
+    await guardedQuery(
       `UPDATE pro.client_threads SET status = 'escalated' WHERE id = $1`,
       [thread.id]
     );
-    await proQuery(
+    await guardedQuery(
       `INSERT INTO pro.thread_messages (thread_id, author, body, moderation_state, sent_at)
        VALUES ($1, 'system', $2, 'auto', NOW())`,
       [
@@ -146,9 +155,9 @@ export async function clientAskOnDelivery(input: {
   const maxMode = getProDialogModeMax();
   if (input.dialogMode === "c" && maxMode === "c" && isProAiEnabled()) {
     // Direct AI — still filter; rare until S4.
-    const draft = await draftDialogAnswer(input.question);
+    const draft = await draftDialogAnswer(input.question,beforeRequest);
     const filtered = filterPractitionerOutput(draft);
-    await proQuery(
+    await guardedQuery(
       `INSERT INTO pro.thread_messages (thread_id, author, body, moderation_state, safety_flags, sent_at)
        VALUES ($1, 'ai_direct', $2, 'auto', $3, NOW())`,
       [thread.id, filtered.text, filtered.blocked]
@@ -167,10 +176,10 @@ export async function clientAskOnDelivery(input: {
   });
   try {
     const draft = isProAiEnabled()
-      ? await draftDialogAnswer(input.question)
+      ? await draftDialogAnswer(input.question,beforeRequest)
       : `Черновик ответа (AI выключен): кратко и бережно отреагируйте на вопрос клиента «${input.question.slice(0, 200)}».`;
     const filtered = filterPractitionerOutput(draft);
-    await proQuery(
+    await guardedQuery(
       `INSERT INTO pro.thread_messages
          (thread_id, author, body, moderation_state, safety_flags, ai_cost_runes)
        VALUES ($1, 'ai_draft', $2, 'pending', $3, $4)`,
@@ -189,7 +198,7 @@ export async function clientAskOnDelivery(input: {
   }
 }
 
-async function draftDialogAnswer(question: string): Promise<string> {
+async function draftDialogAnswer(question: string,beforeRequest:()=>Promise<void>): Promise<string> {
   const result = await generateValidatedAiText({
     messages: [
       {
@@ -200,6 +209,7 @@ async function draftDialogAnswer(question: string): Promise<string> {
       { role: "user", content: question.slice(0, 2000) },
     ],
     inputParts: ["pro-dialog", question.slice(0, 200)],
+    chatOptions:{beforeRequest},
     modelFamily: "paid",
     jsonObject: true,
     maxTokens: 600,

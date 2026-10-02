@@ -43,44 +43,35 @@ function findBody(
   return list.find((a) => a.body === body);
 }
 
-/**
- * Simplified Variable arrows from Sun color (1–3 left / 4–6 right) —
- * enough for product UI without claiming full PHS certification language.
- */
-/** Owner-only: needs color/tone/base (stripped from public share payloads). */
+/** Owner-only: arrows derive from Tone, not Color. Design Sun/Earth gives
+ * determination, Design Nodes environment, Personality Nodes perspective,
+ * and Personality Sun/Earth motivation. Unknown-time charts cannot establish
+ * these small cells; callers must present them as unavailable. */
 export function variableSummary(chart: HdChart): {
-  personalitySun: { gate: number; line: number; color: number; tone: number; base: number };
-  designSun: { gate: number; line: number; color: number; tone: number; base: number };
+  personalitySun: HdActivation;
+  designSun: HdActivation;
+  variables: Array<{ key: string; label: string; source: string; activation: HdActivation; direction: "left" | "right" }>;
   cognitionHint: string;
   environmentHint: string;
 } {
-  const pSun = findBody(chart.personality, "sun") as HdActivation | undefined;
-  const dSun = findBody(chart.designActivations, "sun") as HdActivation | undefined;
-  const p = {
-    gate: pSun?.gate ?? 0,
-    line: pSun?.line ?? 0,
-    color: pSun?.color ?? 1,
-    tone: pSun?.tone ?? 1,
-    base: pSun?.base ?? 1,
+  const activation = (side: HdActivation[], body: string) => {
+    const found = findBody(side, body) as HdActivation | undefined;
+    if (!found || !Number.isInteger(found.tone) || found.tone < 1 || found.tone > 6) throw new Error("HD_VARIABLE_ACTIVATION_MISSING");
+    return found;
   };
-  const d = {
-    gate: dSun?.gate ?? 0,
-    line: dSun?.line ?? 0,
-    color: dSun?.color ?? 1,
-    tone: dSun?.tone ?? 1,
-    base: dSun?.base ?? 1,
-  };
-  const pLeft = p.color <= 3;
-  const dLeft = d.color <= 3;
+  const p = activation(chart.personality, "sun"), d = activation(chart.designActivations, "sun");
+  const variables = [
+    { key: "determination", label: "Усвоение", source: "Дизайн · Солнце/Земля", activation: d },
+    { key: "environment", label: "Среда", source: "Дизайн · лунные узлы", activation: activation(chart.designActivations, "northNode") },
+    { key: "perspective", label: "Перспектива", source: "Личность · лунные узлы", activation: activation(chart.personality, "northNode") },
+    { key: "motivation", label: "Мотивация", source: "Личность · Солнце/Земля", activation: p },
+  ].map(v => ({ ...v, direction: v.activation.tone <= 3 ? "left" as const : "right" as const }));
   return {
     personalitySun: p,
     designSun: d,
-    cognitionHint: pLeft
-      ? "Сознательная стрелка чаще «влево»: опора на активное исследование и стратегию."
-      : "Сознательная стрелка чаще «вправо»: опора на восприятие и ожидание правильного момента.",
-    environmentHint: dLeft
-      ? "Бессознательная стрелка чаще «влево»: телу комфортнее в более активной, стимулирующей среде."
-      : "Бессознательная стрелка чаще «вправо»: телу комфортнее в спокойной, поддерживающей среде.",
+    variables,
+    cognitionHint: `Мотивация: стрелка ${variables[3]!.direction === "left" ? "влево" : "вправо"}, тон ${p.tone}.`,
+    environmentHint: `Среда: стрелка ${variables[1]!.direction === "left" ? "влево" : "вправо"}, тон ${variables[1]!.activation.tone}.`,
   };
 }
 
@@ -100,9 +91,11 @@ export function formatExtrasForEvidence(chart: HdChart): string {
     `Только Личность: ${split.personalityOnly.join(", ") || "нет"} · Только Дизайн: ${split.designOnly.join(", ") || "нет"} · Оба: ${split.both.length}`
   );
   lines.push(
-    `Переменные (упрощённо по цвету Солнца): Личность ${v.personalitySun.gate}.${v.personalitySun.line} цвет ${v.personalitySun.color}/тон ${v.personalitySun.tone}/база ${v.personalitySun.base}; Дизайн ${v.designSun.gate}.${v.designSun.line} цвет ${v.designSun.color}/тон ${v.designSun.tone}/база ${v.designSun.base}`
+    chart.timeKnown ? "Переменные: направление по тону 1–3 влево, 4–6 вправо." : "Время рождения неизвестно: Variables, color/tone/base и точная среда не определены. Не выдавай условные малые ячейки за персональные характеристики."
   );
-  lines.push(`Подсказка познания: ${v.cognitionHint}`);
+  if (!chart.timeKnown) return lines.join("\n");
+  for (const item of v.variables) lines.push(`${item.label} (${item.source}): ${item.activation.gate}.${item.activation.line}, цвет ${item.activation.color}, тон ${item.activation.tone}, направление ${item.direction === "left" ? "влево" : "вправо"}.`);
+  lines.push(`Подсказка мотивации: ${v.cognitionHint}`);
   lines.push(`Подсказка среды: ${v.environmentHint}`);
   lines.push(
     "Активации с color/tone/base (Личность):"

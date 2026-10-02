@@ -50,7 +50,6 @@ export const HD_TECH_JUNK_PATTERNS: RegExp[] = [
   /\bNaN\b/,
   /(?<![А-Яа-яA-Za-z])null(?![А-Яа-яA-Za-z])/i,
   /at\s+\w+\s+\([^)]+\.ts:\d+/i,
-  /\*\s*$/m,
 ];
 
 /** Escaped markdown leaks: "1\.", "\-", "\*" at line start. */
@@ -72,4 +71,9 @@ export const HD_CROSS_ANGLE_ALL = [
   "Правый угол",
   "Левый угол",
   "Джукстапозиция",
+  "Прямоугольный",
+  "Правоугольный",
+  "Левоугольный",
+  "Джакстапозиционный",
+  "Джукстапозиционный",
 ] as const;

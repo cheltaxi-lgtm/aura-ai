@@ -25,7 +25,7 @@ import {
   VALID_PROFILES,
   crossAngleFromProfile,
 } from "./constants";
-import { normalizeHdTimezone } from "./fingerprint";
+import { normalizeHdTimezone, canonicalHdTimeOccurrence } from "./fingerprint";
 import {
   hdLongitudesAt,
   julianDateFromUnixMs,
@@ -131,7 +131,6 @@ export function solveDesignJd(birthJd: number, birthSunLongitude: number): numbe
     throw new Error("HD_DESIGN_BRACKET_FAILED");
   }
 
-  const ARCSEC = 1 / 3600;
   let best = (lo + hi) / 2;
   let bestErr = Math.abs(f(best));
   for (let i = 0; i < 100; i++) {
@@ -142,7 +141,9 @@ export function solveDesignJd(birthJd: number, birthSunLongitude: number): numbe
       best = mid;
       bestErr = err;
     }
-    if (err < ARCSEC) return mid;
+    // One solar arcsecond can shift Design Moon by an entire base or line.
+    // Date/ephemeris input resolves milliseconds; refine the time bracket to it.
+    if ((hi - lo) * 86_400_000 <= 1) return best;
     if (fMid < 0) lo = mid;
     else hi = mid;
   }
@@ -396,6 +397,7 @@ function parseInput(input: HdCalcInput): {
   day: number;
   hour: number;
   minute: number;
+  second: number;
   timeLabel: string;
 } {
   const dateMatch = /^(\d{4})-(\d{2})-(\d{2})$/.exec(input.birthDate.trim());
@@ -417,11 +419,12 @@ function parseInput(input: HdCalcInput): {
   if (day > daysInMonth) throw new Error("HD_INVALID_BIRTH_DATE");
 
   const timeRaw = input.birthTime?.trim() || "12:00";
-  const timeMatch = /^(\d{1,2}):(\d{2})$/.exec(timeRaw);
+  const timeMatch = /^(\d{1,2}):(\d{2})(?::(\d{2}))?$/.exec(timeRaw);
   if (!timeMatch) throw new Error("HD_INVALID_BIRTH_TIME");
   const hour = Number(timeMatch[1]);
   const minute = Number(timeMatch[2]);
-  if (hour > 23 || minute > 59) throw new Error("HD_INVALID_BIRTH_TIME");
+  const second = Number(timeMatch[3] ?? 0);
+  if (hour > 23 || minute > 59 || second > 59) throw new Error("HD_INVALID_BIRTH_TIME");
 
   try {
     new Intl.DateTimeFormat("en-US", { timeZone: input.timezone });
@@ -435,25 +438,119 @@ function parseInput(input: HdCalcInput): {
     day,
     hour,
     minute,
-    timeLabel: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}`,
+    second,
+    timeLabel: `${String(hour).padStart(2, "0")}:${String(minute).padStart(2, "0")}${second ? `:${String(second).padStart(2, "0")}` : ""}`,
   };
 }
 
-function minutesToTimeLabel(minutes: number): string {
-  return `${String(Math.floor(minutes / 60)).padStart(2, "0")}:${String(minutes % 60).padStart(2, "0")}`;
-}
-
 function birthUtcMs(input: HdCalcInput, timeLabel: string): number {
-  const { year, month, day, hour, minute } = parseInput({
+  const { year, month, day, hour, minute, second } = parseInput({
     ...input,
     birthTime: timeLabel,
   });
   // Rebuild the date from parsed parts — a raw untrimmed birthDate would
   // otherwise reach the tz resolver and throw a non-HD error.
   const dateLabel = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-  const offsetHours = resolveBirthUtcOffsetHours(dateLabel, timeLabel, input.timezone);
+  const offsetHours = resolveBirthUtcOffsetHours(dateLabel, timeLabel, input.timezone, input.birthTimeOccurrence);
   if (!Number.isFinite(offsetHours)) throw new Error("HD_INVALID_TIMEZONE");
-  return Date.UTC(year, month - 1, day, hour, minute) - offsetHours * 3_600_000;
+  return Date.UTC(year, month - 1, day, hour, minute, second) - offsetHours * 3_600_000;
+}
+
+/** UTC extent of the actual local birth day, including both repeated hours.
+ * Calendar-date bisection also handles midnight gaps and historical offsets
+ * containing seconds, without inventing nonexistent wall-clock times. */
+function unknownBirthDay(input: HdCalcInput): { start: number; end: number; representative: number; timeLabel: string } {
+  const parsed = parseInput(input);
+  const dateLabel = `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`;
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: input.timezone, year: "numeric", month: "2-digit", day: "2-digit",
+    hour: "2-digit", minute: "2-digit", second: "2-digit", hourCycle: "h23",
+  });
+  const partsAt = (ms: number) => fmt.formatToParts(new Date(ms));
+  const part = (parts: Intl.DateTimeFormatPart[], name: string) => parts.find(p => p.type === name)?.value ?? "";
+  const isDay = (ms: number) => {
+    const p = partsAt(ms);
+    return `${part(p, "year")}-${part(p, "month")}-${part(p, "day")}` === dateLabel;
+  };
+  const anchor = Date.UTC(parsed.year, parsed.month - 1, parsed.day);
+  const matching: number[] = [];
+  // Some midnight rollbacks (St John's) briefly enter this date, return to
+  // yesterday, then enter it again. Include both midnight occurrences; the
+  // enclosing extent is conservative even when it contains that short gap.
+  for (const occurrence of ["earlier", "later"] as const) {
+    for (const timeLabel of ["00:00", "23:59:59"]) {
+      try { matching.push(birthUtcMs({ ...input, birthTimeOccurrence: occurrence }, timeLabel)); }
+      catch (error) { if (!(error instanceof Error) || error.message !== "NONEXISTENT_BIRTH_TIME") throw error; }
+    }
+  }
+  for (let hours = -48; hours <= 48; hours++) {
+    const at = anchor + hours * 3_600_000;
+    if (isDay(at)) matching.push(at);
+  }
+  matching.sort((a, b) => a - b);
+  if (!matching.length) throw new Error("HD_NONEXISTENT_BIRTH_DATE");
+  let outside = matching[0]! - 3_600_000, inside = matching[0]!;
+  while (inside - outside > 1) {
+    const mid = Math.floor((inside + outside) / 2);
+    if (isDay(mid)) inside = mid; else outside = mid;
+  }
+  const start = inside;
+  inside = matching.at(-1)!; outside = inside + 3_600_000;
+  while (outside - inside > 1) {
+    const mid = Math.floor((inside + outside) / 2);
+    if (isDay(mid)) inside = mid; else outside = mid;
+  }
+  const end = inside;
+  let representative: number;
+  try { representative = birthUtcMs({ ...input, birthTimeOccurrence: "earlier" }, "12:00"); }
+  catch (error) {
+    if (!(error instanceof Error) || error.message !== "NONEXISTENT_BIRTH_TIME") throw error;
+    representative = Math.floor((start + end) / 2);
+  }
+  const p = partsAt(representative);
+  const second = part(p, "second");
+  const timeLabel = `${part(p, "hour")}:${part(p, "minute")}${second !== "00" ? `:${second}` : ""}`;
+  return { start, end, representative, timeLabel };
+}
+
+function mechanicsForGates(gates: Set<number>): { type: HdTypeKey; authority: HdAuthorityKey } {
+  const channels = buildChannelStates(gates);
+  const centers = definedCentersFrom(channels);
+  const graph = definedGraph(channels);
+  const motorToThroat = graph.has("throat") && MOTOR_CENTERS.some(m => graph.has(m) && reaches(graph, m, "throat"));
+  const type = computeType(centers, motorToThroat);
+  return { type, authority: computeAuthority(centers, graph, type) };
+}
+
+function unknownTimeStability(start: number, end: number, core: CoreResult): HdTimeStability {
+  let typeStable = true, authorityStable = true, profileStable = true;
+  // Generous travel bound: Personality Moon < 0.75°/h, Design solar-speed
+  // ratio < 1.1; every other supported body is slower. ±1°/h includes
+  // retrograde turns that endpoint differences alone cannot detect.
+  const MAX_TRAVEL_DEG_PER_HOUR = 1;
+  let left = computeCore(start);
+  for (let from = start; from < end && (typeStable || authorityStable || profileStable);) {
+    const to = Math.min(end, from + 30 * 60_000);
+    const right = computeCore(to);
+    const mid = computeCore(Math.floor((from + to) / 2));
+    const guaranteed = new Set<number>(), possible = new Set<number>();
+    const radius = (to - from) / 7_200_000 * MAX_TRAVEL_DEG_PER_HOUR + 1e-7;
+    for (const a of [...mid.personality, ...mid.designActivations]) {
+      const adjusted = normalize360(a.longitude - GATE_WHEEL_OFFSET);
+      const lo = Math.floor((adjusted - radius) / GATE_SIZE_DEG);
+      const hi = Math.floor((adjusted + radius) / GATE_SIZE_DEG);
+      if (lo === hi) guaranteed.add(a.gate);
+      for (let cell = lo; cell <= hi; cell++) possible.add(GATE_ORDER[(cell % 64 + 64) % 64]!);
+    }
+    const min = mechanicsForGates(guaranteed), max = mechanicsForGates(possible);
+    if (min.type !== core.type || max.type !== core.type || left.type !== core.type || right.type !== core.type) typeStable = false;
+    if (min.authority !== core.authority || max.authority !== core.authority || left.authority !== core.authority || right.authority !== core.authority) authorityStable = false;
+    // Both Suns move monotonically: endpoint lines bound the whole interval.
+    if (left.profile !== core.profile || right.profile !== core.profile) profileStable = false;
+    left = right;
+    from = to;
+  }
+  return { typeStable, authorityStable, profileStable };
 }
 
 /** Current sky: HD activations for all bodies at the given moment (transits). */
@@ -464,46 +561,23 @@ export function computeTransits(atMs: number = Date.now()): HdActivation[] {
 }
 
 export function calculateHdChart(input: HdCalcInput): HdChart {
+  if (input.birthTimeOccurrence !== undefined && input.birthTimeOccurrence !== "earlier" && input.birthTimeOccurrence !== "later") throw new Error("INVALID_BIRTH_TIME_OCCURRENCE");
   // Canonical IANA casing so stored chart.timezone matches fingerprint / dedupe.
   const normalized: HdCalcInput = {
     ...input,
     timezone: normalizeHdTimezone(input.timezone),
   };
   const parsed = parseInput(normalized);
-  const utcMs = birthUtcMs(normalized, parsed.timeLabel);
+  normalized.birthTimeOccurrence=canonicalHdTimeOccurrence(normalized);
+  const timeKnown = Boolean(normalized.birthTime?.trim());
+  const day = timeKnown ? null : unknownBirthDay(normalized);
+  const utcMs = day?.representative ?? birthUtcMs(normalized, parsed.timeLabel);
   const core = computeCore(utcMs);
   // Whitespace-only time must behave as "time unknown", not as a known noon.
-  const timeKnown = Boolean(normalized.birthTime?.trim());
 
   let stability: HdTimeStability | undefined;
   if (!timeKnown) {
-    // Hourly probes across the whole day, compared as a CHAIN (each probe vs
-    // the previous one; noon is a chain link). Any single gate-boundary
-    // crossing flips a link, so no type/authority/profile change can hide
-    // between probes: the fastest body (Moon, ≤ ~0.65°/h even at perigee)
-    // needs ≥ 8.7 h per 5.625° gate, and slower bodies need days.
-    let typeStable = true;
-    let authorityStable = true;
-    let profileStable = true;
-    let prev = computeCore(birthUtcMs(normalized, "00:00"));
-    for (
-      let minutes = 60;
-      minutes < 24 * 60 && (typeStable || authorityStable || profileStable);
-      minutes += 60
-    ) {
-      const probe = computeCore(birthUtcMs(normalized, minutesToTimeLabel(minutes)));
-      if (probe.type !== prev.type) typeStable = false;
-      if (probe.authority !== prev.authority) authorityStable = false;
-      if (probe.profile !== prev.profile) profileStable = false;
-      prev = probe;
-    }
-    if (typeStable || authorityStable || profileStable) {
-      const dayEnd = computeCore(birthUtcMs(normalized, "23:59"));
-      if (dayEnd.type !== prev.type) typeStable = false;
-      if (dayEnd.authority !== prev.authority) authorityStable = false;
-      if (dayEnd.profile !== prev.profile) profileStable = false;
-    }
-    stability = { typeStable, authorityStable, profileStable };
+    stability = unknownTimeStability(day!.start, day!.end, core);
   }
 
   return {
@@ -511,9 +585,10 @@ export function calculateHdChart(input: HdCalcInput): HdChart {
     timeKnown,
     timezone: normalized.timezone,
     birth: {
-      date: input.birthDate,
-      time: parsed.timeLabel,
+      date: input.birthDate.trim(),
+      time: day?.timeLabel ?? parsed.timeLabel,
       utcIso: new Date(utcMs).toISOString(),
+      ...(timeKnown && normalized.birthTimeOccurrence ? { timeOccurrence: normalized.birthTimeOccurrence } : {}),
     },
     design: {
       utcIso: new Date(unixMsFromJulianDate(core.designJd)).toISOString(),

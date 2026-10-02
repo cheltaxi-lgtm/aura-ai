@@ -170,7 +170,7 @@ export default function ReportAcceptedScreen({
       <div className="mt-5 flex items-start gap-2.5 rounded-2xl border border-amber-200/15 bg-amber-300/[0.06] p-4">
         <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0 text-amber-200" />
         <p className="text-xs leading-relaxed text-amber-100/80">
-          Руны списаны один раз. Если расчёт не завершится, руны вернутся на баланс
+          Повторного списания за этот расчёт не будет. Если он не завершится, списанные руны вернутся на баланс
           автоматически — повторного списания не будет ни при каком сценарии.
         </p>
       </div>

@@ -14,6 +14,7 @@ import {
 } from "./cost";
 import {
   validateHdReportText,
+  hdSectionMinimumChars,
   type HdQualityFinding,
   type HdQualityResult,
 } from "@/lib/hd-report-quality/validator";
@@ -22,6 +23,10 @@ export type HdSectionalGenerateOpts = {
   chart: HdChart;
   clientName: string | null;
   aboutOther?: boolean;
+  gender?: "male" | "female" | null;
+  tone?: "personal" | "professional";
+  deadlineAt?: number;
+  beforeRequest?: () => Promise<void>;
   focusQuestion?: string | null;
   extraSystem?: string | null;
   /** Birth place label for LLM (engine uses timezone only). */
@@ -56,12 +61,12 @@ export type HdSectionalGenerateResult = {
   llmCalls: number;
   needsRegeneration: boolean;
   usage: HdTokenUsage;
-  costRub: number;
+  costRub: number | null;
   modelId: string;
   durationMs: number;
 };
 
-type SectionDraft = { title: string; body: string; thesis: string };
+type SectionDraft = { title: string; body: string; thesis: string; truncated?: boolean };
 
 /**
  * Batches run in concurrent waves. Wave N sees theses of waves < N so the
@@ -72,6 +77,13 @@ function hdPipelineConcurrency(): number {
   const raw = Number(process.env.HD_PIPELINE_CONCURRENCY);
   if (Number.isFinite(raw) && raw >= 1) return Math.min(6, Math.floor(raw));
   return 6;
+}
+
+async function inWaves<T, R>(items: T[], run: (item: T) => Promise<R>): Promise<R[]> {
+  const out: R[] = [];
+  const concurrency = hdPipelineConcurrency();
+  for (let i = 0; i < items.length; i += concurrency) out.push(...await Promise.all(items.slice(i, i + concurrency).map(run)));
+  return out;
 }
 
 /** Full-report LLM editor: off by default (AbortError + no-op on long outputs). */
@@ -88,13 +100,6 @@ function hdPipelineLlmEditorEnabled(): boolean {
 const HD_SECTION_TARGET_CHARS_MIN = 1800;
 const HD_SECTION_TARGET_CHARS_MAX = 2600;
 
-/** Below this a section is treated as broken and regenerated once inside the batch. */
-function hdThinSectionChars(): number {
-  const raw = Number(process.env.HD_MIN_SECTION_CHARS);
-  if (Number.isFinite(raw) && raw >= 40) return Math.floor(raw);
-  return 700;
-}
-
 function thesisOf(body: string): string {
   const plain = body.replace(/\s+/g, " ").trim();
   if (plain.length <= 280) return plain;
@@ -105,7 +110,9 @@ function buildSystemPrompt(
   contract: HdLockedContract,
   clientName: string | null,
   aboutOther: boolean,
-  extraSystem?: string | null
+  extraSystem?: string | null,
+  gender?: "male" | "female" | null,
+  tone?: "personal" | "professional"
 ): string {
   const address = aboutOther
     ? `Пиши о человеке по имени «${clientName ?? "этот человек"}» в третьем лице для читателя.`
@@ -113,6 +120,8 @@ function buildSystemPrompt(
   return [
     "Ты — Эвелина, ИИ-наставник Zovus. Пишешь разделы премиальной расшифровки Дизайна Человека.",
     address,
+    gender ? `Пол человека: ${gender === "female" ? "женский" : "мужской"}. Согласуй формы обращения.` : "Пол не указан: используй нейтральные формы, не выдумывай его.",
+    tone === "professional" ? "Текст для практика: объясняй механику и ограничения, сохраняй понятные бытовые примеры." : "Объясняй понятным языком для читателя без подготовки.",
     "",
     contract.contractBlock,
     "",
@@ -127,6 +136,7 @@ function buildSystemPrompt(
     "Завершай каждый раздел (кроме Вступления) отдельной строкой ровно: `Практика: <одно конкретное действие>`.",
     "Допустимый синоним хвоста — `Что делать:`; предпочтительно `Практика:`.",
     "Не повторяй тезисы из уже готовых разделов.",
+    "В разделе «Девять центров» раскрой все девять центров и их фактическую определённость. В «Каналы» — каждый определённый канал карты, без добавления неактивных. В «Планеты и узлы» — все 13 объектов: Солнце, Земля, Луна, северный и южный узлы, Меркурий, Венера, Марс, Юпитер, Сатурн, Уран, Нептун, Плутон; различай Личность и Дизайн.",
     extraSystem?.trim() || "",
   ]
     .filter(Boolean)
@@ -136,9 +146,12 @@ function buildSystemPrompt(
 async function llmOnce(
   messages: ChatMessage[],
   maxTokens: number,
-  modelOverride: string
-): Promise<{ text: string; calls: number; usage: HdTokenUsage }> {
-  const emptyUsage = { promptTokens: 0, completionTokens: 0 };
+  modelOverride: string,
+  deadlineAt: number,
+  beforeRequest?: () => Promise<void>
+): Promise<{ text: string; calls: number; usage: HdTokenUsage; truncated: boolean }> {
+  const emptyUsage = { promptTokens: 0, completionTokens: 0, complete:true };
+  if (Date.now() >= deadlineAt) return { text: "", calls: 0, usage: emptyUsage, truncated: true };
   // Always pass hdModel — isPaid alone resolves paidModel (DeepSeek), which
   // ignores the admin HD picker and fails the sectional quality gate.
   let result = await completeChatDetailed({
@@ -150,14 +163,19 @@ async function llmOnce(
     skipTemperatureRetry: true,
     skipDegenerateCheck: true,
     priority: "report",
+    maxAttempts: 1,
+    deadlineAt,
+    beforeRequest,
   });
   let text = (result.text || "").trim();
   let calls = 1;
+  const completeUsage=(value:typeof result.usage)=>Number.isFinite(value?.promptTokens)&&Number.isFinite(value?.completionTokens);
   let usage: HdTokenUsage = {
+    complete:completeUsage(result.usage),
     promptTokens: result.usage?.promptTokens ?? 0,
     completionTokens: result.usage?.completionTokens ?? 0,
   };
-  if (!text) {
+  if (!text && Date.now() < deadlineAt) {
     result = await completeChatDetailed({
       messages,
       maxTokens,
@@ -167,17 +185,22 @@ async function llmOnce(
       skipTemperatureRetry: true,
       skipDegenerateCheck: true,
       priority: "report",
+      maxAttempts: 1,
+      deadlineAt,
+      beforeRequest,
     });
     text = (result.text || "").trim();
     calls = 2;
     usage = {
+      complete:usage.complete !== false && completeUsage(result.usage),
       promptTokens: usage.promptTokens + (result.usage?.promptTokens ?? 0),
       completionTokens:
         usage.completionTokens + (result.usage?.completionTokens ?? 0),
     };
   }
-  if (!text) return { text: "", calls, usage: usage.promptTokens ? usage : emptyUsage };
-  return { text, calls, usage };
+  const truncated = result.finishReason !== "stop" || !text;
+  if (!text) return { text: "", calls, usage, truncated };
+  return { text, calls, usage, truncated };
 }
 
 function normalizeTitleKey(raw: string): string {
@@ -309,8 +332,10 @@ function parsePriorText(text: string): SectionDraft[] {
 async function editorPass(
   fullText: string,
   contract: HdLockedContract,
-  modelOverride: string
-): Promise<{ text: string; calls: number; usage: HdTokenUsage }> {
+  modelOverride: string,
+  deadlineAt: number,
+  beforeRequest?: () => Promise<void>
+): Promise<{ text: string; calls: number; usage: HdTokenUsage; truncated: boolean }> {
   const system = [
     "Ты редактор премиальных отчётов Дизайна Человека.",
     "Удали мета-фразы, повторы, служебные пометки, почини опечатки и экранирование markdown.",
@@ -319,7 +344,7 @@ async function editorPass(
     `Канон: Тип=${contract.typeRu}; Угол креста=${contract.crossAngleRu}; Крест=«${contract.crossNameRu}».`,
     HD_PIPELINE_BANS,
   ].join("\n");
-  const { text, calls, usage } = await llmOnce(
+  const { text, calls, usage, truncated } = await llmOnce(
     [
       { role: "system", content: system },
       {
@@ -328,9 +353,11 @@ async function editorPass(
       },
     ],
     12_000,
-    modelOverride
+    modelOverride,
+    deadlineAt,
+    beforeRequest
   );
-  return { text: text || fullText, calls, usage };
+  return { text: text || fullText, calls, usage, truncated };
 }
 
 function sectionTitlesHitByFindings(
@@ -340,6 +367,7 @@ function sectionTitlesHitByFindings(
 ): Set<string> {
   const hit = new Set<string>();
   for (const f of findings) {
+    for (const title of f.sectionTitles ?? []) hit.add(title.toLowerCase());
     if (f.rule === "V2" && f.detail.startsWith("duplicate_title:")) {
       const title = f.detail.slice("duplicate_title:".length).split("×")[0];
       if (title) hit.add(title.toLowerCase());
@@ -366,6 +394,7 @@ function sectionTitlesHitByFindings(
     const local = validateHdReportText(
       s.title === "Вступление" ? s.body : `## ${s.title}\n${s.body}`,
       {
+        scope: "section",
         requireFocusAnswer: false,
         engineTypeRu: contract.typeRu,
         motorCount: contract.motorCentersDefinedRu.length,
@@ -374,7 +403,7 @@ function sectionTitlesHitByFindings(
     );
     if (
       local.findings.some((x) =>
-        ["V1", "V3", "V4", "V5", "V7", "V8", "V9", "V10", "V11", "V12"].includes(
+        ["V1", "V2", "V3", "V4", "V5", "V6", "V7", "V8", "V9", "V10", "V11", "V12"].includes(
           x.rule
         )
       )
@@ -394,6 +423,8 @@ async function generateBatch(opts: {
   prior: SectionDraft[];
   maxTokens: number;
   modelOverride: string;
+  deadlineAt: number;
+  beforeRequest?: () => Promise<void>;
 }): Promise<{ drafts: SectionDraft[]; calls: number; usage: HdTokenUsage }> {
   const priorBlock =
     opts.prior.length === 0
@@ -430,15 +461,19 @@ async function generateBatch(opts: {
     .filter(Boolean)
     .join("\n");
 
-  const { text, calls, usage } = await llmOnce(
+  const { text, calls, usage, truncated } = await llmOnce(
     [
       { role: "system", content: opts.system },
       { role: "user", content: user },
     ],
     opts.maxTokens,
-    opts.modelOverride
+    opts.modelOverride,
+    opts.deadlineAt,
+    opts.beforeRequest
   );
-  return { drafts: parseBatchOutput(opts.titles, text), calls, usage };
+  const drafts = parseBatchOutput(opts.titles, text);
+  if (truncated && drafts.length) drafts[drafts.length - 1]!.truncated = true;
+  return { drafts, calls, usage };
 }
 
 /**
@@ -448,6 +483,7 @@ export async function generateHdReportSectional(
   opts: HdSectionalGenerateOpts
 ): Promise<HdSectionalGenerateResult> {
   const started = Date.now();
+  const deadlineAt = Math.min(opts.deadlineAt ?? Infinity, started + 720_000);
   const birthOpts = { placeLabel: opts.placeLabel ?? null };
   const contract = buildHdLockedContract(opts.chart, birthOpts);
   const evidence = formatHdEvidence(opts.chart, birthOpts);
@@ -456,15 +492,18 @@ export async function generateHdReportSectional(
     contract,
     opts.clientName,
     aboutOther,
-    opts.extraSystem
+    opts.extraSystem,
+    opts.gender,
+    opts.tone
   );
   const focus = opts.focusQuestion?.trim() || "";
   const maxRetries = Math.max(0, opts.maxSectionRetries ?? 2);
   const modelId = await getHdModel();
 
   let llmCalls = 0;
-  const usageTotal: HdTokenUsage = { promptTokens: 0, completionTokens: 0 };
+  const usageTotal: HdTokenUsage = { promptTokens: 0, completionTokens: 0, complete:true };
   const addUsage = (u: HdTokenUsage) => {
+    if(u.complete === false) usageTotal.complete = false;
     usageTotal.promptTokens += u.promptTokens;
     usageTotal.completionTokens += u.completionTokens;
   };
@@ -522,29 +561,32 @@ export async function generateHdReportSectional(
       prior,
       maxTokens: batch.maxTokens,
       modelOverride: modelId,
+      deadlineAt,
+      beforeRequest: opts.beforeRequest,
     });
     llmCalls += calls;
     addUsage(usage);
 
     // Retry thin titles once inside the batch
-    const thinChars = hdThinSectionChars();
-    const thin = drafts.filter((d) => d.body.length < thinChars);
-    if (thin.length) {
+    const thin = drafts.filter((d) => d.truncated || d.body.length < hdSectionMinimumChars(d.title));
+    if (thin.length && Date.now() < deadlineAt) {
       const again = await generateBatch({
         system,
         evidence,
         contract,
         titles: thin.map((t) => t.title) as readonly HdPipelineSectionTitle[],
         focus,
-        prior: [...prior, ...drafts.filter((d) => d.body.length >= thinChars)],
+        prior: [...prior, ...drafts.filter((d) => !thin.includes(d))],
         maxTokens: batch.maxTokens,
         modelOverride: modelId,
+        deadlineAt,
+        beforeRequest: opts.beforeRequest,
       });
       llmCalls += again.calls;
       addUsage(again.usage);
       drafts = drafts.map((d) => {
         const replacement = again.drafts.find((x) => x.title === d.title);
-        if (replacement && replacement.body.length > d.body.length) return replacement;
+        if (replacement && !replacement.truncated && (d.truncated || replacement.body.length > d.body.length)) return replacement;
         return d;
       });
     }
@@ -599,8 +641,8 @@ export async function generateHdReportSectional(
   })).filter((entry) => entry.thinTitles.length > 0);
   if (fillBatches.length) {
     const priorSnapshot = [...sections];
-    const filled = await Promise.all(
-      fillBatches.map(async ({ batch, thinTitles }) => {
+    const filled = await inWaves(
+      fillBatches, async ({ batch, thinTitles }) => {
         const prior = priorSnapshot.filter(
           (s) => !thinTitles.includes(s.title as HdPipelineSectionTitle)
         );
@@ -613,11 +655,13 @@ export async function generateHdReportSectional(
           prior,
           maxTokens: batch.maxTokens,
           modelOverride: modelId,
+          deadlineAt,
+          beforeRequest: opts.beforeRequest,
         });
         llmCalls += calls;
         addUsage(usage);
         return drafts;
-      })
+      }
     );
     for (const drafts of filled) {
       for (const d of drafts) {
@@ -649,7 +693,7 @@ export async function generateHdReportSectional(
     if (!hdPipelineLlmEditorEnabled()) {
       return sanitizeHdGeneratedText(raw);
     }
-    const edited = await editorPass(raw, contract, modelId);
+    const edited = await editorPass(raw, contract, modelId, deadlineAt, opts.beforeRequest);
     llmCalls += edited.calls;
     addUsage(edited.usage);
     // Prefer edited text only if it keeps all required ## titles.
@@ -659,7 +703,7 @@ export async function generateHdReportSectional(
         t !== "Вступление" &&
         !editedClean.toLowerCase().includes(`## ${t}`.toLowerCase())
     );
-    return missingAfterEdit.length === 0
+    return !edited.truncated && missingAfterEdit.length === 0 && validateHdReportText(editedClean, { contract }).ok
       ? editedClean
       : sanitizeHdGeneratedText(raw);
   };
@@ -668,16 +712,22 @@ export async function generateHdReportSectional(
   combined = await applyEditorOrSanitize(combined);
   const editorMs = Date.now() - editorStarted;
 
-  let quality = validateHdReportText(combined, {
+  const validate = (text: string): HdQualityResult => {
+    const result = validateHdReportText(text, {
     engineTypeRu: contract.typeRu,
     motorCount: contract.motorCentersDefinedRu.length,
     contract,
     requireFocusAnswer: true,
-  });
+    });
+    for (const s of sections) if (s.truncated) result.findings.push({ rule: "V6", detail: `provider_truncated:${s.title}`, sectionTitles: [s.title] });
+    result.ok = result.findings.length === 0;
+    return result;
+  };
+  let quality = validate(combined);
 
   let round = 0;
   const retryStarted = Date.now();
-  while (!quality.ok && round < maxRetries) {
+  while (!quality.ok && round < maxRetries && Date.now() < deadlineAt) {
     round++;
     const bad = sectionTitlesHitByFindings(sections, quality.findings, contract);
     if (bad.size === 0) break;
@@ -686,8 +736,8 @@ export async function generateHdReportSectional(
       titles: batch.titles.filter((t) => bad.has(t.toLowerCase())),
     })).filter((entry) => entry.titles.length > 0);
     const priorSnapshot = [...sections];
-    const retried = await Promise.all(
-      retryBatches.map(async ({ batch, titles }) => {
+    const retried = await inWaves(
+      retryBatches, async ({ batch, titles }) => {
         const prior = priorSnapshot.filter(
           (s) => !titles.includes(s.title as HdPipelineSectionTitle)
         );
@@ -700,11 +750,13 @@ export async function generateHdReportSectional(
           prior,
           maxTokens: batch.maxTokens,
           modelOverride: modelId,
+          deadlineAt,
+          beforeRequest: opts.beforeRequest,
         });
         llmCalls += calls;
         addUsage(usage);
         return drafts;
-      })
+      }
     );
     for (const drafts of retried) {
       for (const d of drafts) {
@@ -713,12 +765,7 @@ export async function generateHdReportSectional(
       }
     }
     combined = await applyEditorOrSanitize(glue(sections));
-    quality = validateHdReportText(combined, {
-      engineTypeRu: contract.typeRu,
-      motorCount: contract.motorCentersDefinedRu.length,
-      contract,
-      requireFocusAnswer: true,
-    });
+    quality = validate(combined);
   }
   const retryMs = Date.now() - retryStarted;
 

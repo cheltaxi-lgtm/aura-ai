@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import dynamic from "next/dynamic";
+import BirthTimeOccurrence from "@/components/natal/BirthTimeOccurrence";
 import ProShell from "@/modules/pro/ui/ProShell";
 import {
   parseAcceptedAsyncReport,
@@ -63,6 +64,7 @@ export default function ProCasePage() {
 
   const [birthDate, setBirthDate] = useState("");
   const [birthTime, setBirthTime] = useState("");
+  const [birthTimeOccurrence,setBirthTimeOccurrence]=useState<""|"earlier"|"later">("");
   const [timeKnown, setTimeKnown] = useState(true);
   const [birthPlace, setBirthPlace] = useState("");
   const [placeHits, setPlaceHits] = useState<PlaceHit[]>([]);
@@ -71,6 +73,9 @@ export default function ProCasePage() {
   const [reviewConfirmOpen, setReviewConfirmOpen] = useState(false);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [refiningIdx, setRefiningIdx] = useState<number | null>(null);
+
+  const generationRequest = useRef<AbortController | null>(null);
+  useEffect(() => () => { generationRequest.current?.abort(); generationRequest.current = null; }, [params.id]);
 
   const deliverStorageKey = `pro-case-deliver-url-${params.id}`;
 
@@ -87,9 +92,10 @@ export default function ProCasePage() {
     return () => window.clearInterval(timer);
   }, [generating]);
 
-  async function load() {
-    const res = await fetch(`/api/pro/cases/${params.id}`, { credentials: "include" });
+  async function load(signal?: AbortSignal) {
+    const res = await fetch(`/api/pro/cases/${params.id}`, { credentials: "include", signal });
     const json = await res.json().catch(() => ({}));
+    if (signal?.aborted) return;
     if (!res.ok) {
       setLoadError(
         res.status === 404
@@ -154,9 +160,13 @@ export default function ProCasePage() {
           : placeMatchesClient
             ? cl.birth_tz
             : undefined;
+      setBirthTimeOccurrence(p.birthTimeOccurrence === "earlier" || p.birthTimeOccurrence === "later" ? p.birthTimeOccurrence : "");
       if (birthDateVal) setBirthDate(birthDateVal);
-      if (birthTimeVal) {
-        setBirthTime(String(birthTimeVal).slice(0, 5));
+      if (p.timeKnown === false) {
+        setBirthTime("");
+        setTimeKnown(false);
+      } else if (birthTimeVal) {
+        setBirthTime(String(birthTimeVal));
         setTimeKnown(true);
       } else if (typeof p.timeKnown === "boolean") {
         setTimeKnown(p.timeKnown);
@@ -190,12 +200,12 @@ export default function ProCasePage() {
   useEffect(() => {
     if (!data) return;
     if (generating || busy) return;
-    if ((data.versions || []).length > 0) return;
     const jobId = data.input?.payload?.premiumJobId;
     if (typeof jobId !== "string" || !jobId) return;
     // Only resume when status stayed generating (setCaseInput preserves it).
     if (data.case?.status !== "generating") return;
     let cancelled = false;
+    const controller = new AbortController();
     const caseType = String(data.case?.type || "");
     const etaHint =
       caseType === "hd"
@@ -208,8 +218,10 @@ export default function ProCasePage() {
       try {
         await waitForAsyncJob({
           jobId,
+          signal: controller.signal,
           storageKey: `pro-case-job-${params.id}`,
-          maxAttempts: 400,
+          maxAgeMs: 60 * 60_000,
+          maxAttempts: 1440,
           pollIntervalMs: 2500,
         });
         if (cancelled) return;
@@ -227,6 +239,7 @@ export default function ProCasePage() {
     })();
     return () => {
       cancelled = true;
+      controller.abort();
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [data?.case?.id, data?.case?.status, data?.input?.payload?.premiumJobId, data?.versions?.length]);
@@ -374,6 +387,7 @@ export default function ProCasePage() {
     return {
       birthDate: birthDate || undefined,
       birthTime: timeKnown && birthTime ? birthTime : null,
+      birthTimeOccurrence:timeKnown && birthTimeOccurrence ? birthTimeOccurrence : null,
       timeKnown: timeKnown && Boolean(birthTime),
       birthPlace: selectedPlace?.label || birthPlace || undefined,
       birthCity: selectedPlace?.label || birthPlace || undefined,
@@ -387,58 +401,39 @@ export default function ProCasePage() {
   }
 
   async function generate() {
-    setMsg(null);
-    setBusy(true);
-    setGenerating(true);
-    const res = await fetch(`/api/pro/cases/${params.id}`, {
-      method: "PATCH",
-      credentials: "include",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        action: "generate",
-        idempotencyKey: `ui-${params.id}-gen-${Date.now()}`,
-      }),
-    });
-    const json = await res.json();
-    if (!res.ok) {
-      setBusy(false);
-      setGenerating(false);
-      setMsg(json.message || json.error || "Ошибка генерации");
-      return;
-    }
-    if (json.async && json.jobId) {
-      const caseType = String(data?.case?.type || "");
-      const etaHint =
-        caseType === "hd"
-          ? " Обычно 6–12 минут — можно оставить вкладку открытой."
-          : " Обычно 2–5 минут.";
-      setMsg(`Мастер готовит премиум-отчёт…${etaHint}`);
-      // Background delivery: «Отчёт принят» overlay; wait continues underneath.
-      const accepted = parseAcceptedAsyncReport(json);
-      if (accepted) setAcceptedReport(accepted);
-      try {
-        // HD sectional ≈ 6–12 min; 400 × 2.5s ≈ 16.6 min ceiling.
-        await waitForAsyncJob({
-          jobId: json.jobId,
-          storageKey: `pro-case-job-${params.id}`,
-          maxAttempts: 400,
-          pollIntervalMs: 2500,
-        });
-        setMsg("Отчёт готов");
-      } catch (e) {
-        setMsg(e instanceof Error ? e.message : "Генерация не завершилась");
+    if (generationRequest.current && !generationRequest.current.signal.aborted) return;
+    const controller = new AbortController();
+    generationRequest.current = controller;
+    setMsg(null); setBusy(true); setGenerating(true);
+    try {
+      const res = await fetch(`/api/pro/cases/${params.id}`, {
+        method: "PATCH", credentials: "include", signal: controller.signal,
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ action: "generate", idempotencyKey: `ui-${params.id}-gen-${Date.now()}` }),
+      });
+      const json = await res.json();
+      if (controller.signal.aborted) return;
+      if (!res.ok) { setMsg(json.message || json.error || "Ошибка генерации"); return; }
+      if (json.async && json.jobId) {
+        const etaHint = data?.case?.type === "hd" ? " Обычно 6–12 минут." : " Обычно 2–5 минут.";
+        setMsg(`Мастер готовит премиум-отчёт…${etaHint}`);
+        const accepted = parseAcceptedAsyncReport(json);
+        if (accepted) setAcceptedReport(accepted);
+        await waitForAsyncJob({ jobId: json.jobId, storageKey: `pro-case-job-${params.id}`,
+          signal: controller.signal, maxAgeMs: 60 * 60_000, maxAttempts: 1440, pollIntervalMs: 2500 });
       }
-      setAcceptedReport(null);
-      await load();
-      setBusy(false);
-      setGenerating(false);
-      return;
+      if (controller.signal.aborted) return;
+      if (json.version?.blocks) setBlocks(json.version.blocks);
+      await load(controller.signal);
+      if (!controller.signal.aborted) setMsg("Отчёт готов");
+    } catch (e) {
+      if (!controller.signal.aborted) setMsg(e instanceof Error ? e.message : "Генерация не завершилась");
+    } finally {
+      if (!controller.signal.aborted) {
+        setAcceptedReport(null); setBusy(false); setGenerating(false);
+        if (generationRequest.current === controller) generationRequest.current = null;
+      }
     }
-    if (json.version?.blocks) setBlocks(json.version.blocks);
-    await load();
-    setBusy(false);
-    setGenerating(false);
-    setMsg("Отчёт готов");
   }
 
   if (!data) {
@@ -534,7 +529,7 @@ export default function ProCasePage() {
                 type="date"
                 className="mt-1 w-full rounded border border-[#c9a24a]/30 bg-black/30 px-3 py-2 ym-hide-content ym-disable-keys"
                 value={birthDate}
-                onChange={(e) => setBirthDate(e.target.value)}
+                onChange={(e) => {setBirthDate(e.target.value);setBirthTimeOccurrence("");}}
               />
             </label>
             {c.type !== "matrix" ? (
@@ -545,7 +540,8 @@ export default function ProCasePage() {
                   className="mt-1 w-full rounded border border-[#c9a24a]/30 bg-black/30 px-3 py-2 ym-hide-content ym-disable-keys"
                   value={birthTime}
                   disabled={!timeKnown}
-                  onChange={(e) => setBirthTime(e.target.value)}
+                  step={1}
+                  onChange={(e) => {setBirthTime(e.target.value);setBirthTimeOccurrence("");}}
                 />
               </label>
             ) : null}
@@ -555,11 +551,12 @@ export default function ProCasePage() {
               <input
                 type="checkbox"
                 checked={timeKnown}
-                onChange={(e) => setTimeKnown(e.target.checked)}
+                onChange={(e) => {setTimeKnown(e.target.checked);setBirthTimeOccurrence("");}}
               />
               Время рождения известно
             </label>
           ) : null}
+          {c.type === "hd" ? <BirthTimeOccurrence value={birthTimeOccurrence} onChange={setBirthTimeOccurrence} disabled={!timeKnown}/> : null}
           {c.type !== "matrix" ? (
             <>
               <label className="block text-sm text-gray-300">
@@ -569,7 +566,7 @@ export default function ProCasePage() {
                   value={birthPlace}
                   onChange={(e) => {
                     setBirthPlace(e.target.value);
-                    setSelectedPlace(null);
+                    setSelectedPlace(null);setBirthTimeOccurrence("");
                   }}
                   placeholder="Начните вводить город…"
                   autoComplete="off"
@@ -583,7 +580,7 @@ export default function ProCasePage() {
                         type="button"
                         className="w-full px-3 py-2 text-left text-gray-200 hover:bg-[#c9a24a]/10"
                         onClick={() => {
-                          setSelectedPlace(p);
+                          setSelectedPlace(p);setBirthTimeOccurrence("");
                           setBirthPlace(p.label);
                           setPlaceHits([]);
                         }}
@@ -889,7 +886,7 @@ export default function ProCasePage() {
           void (async () => {
             try {
               const json = await patch("refine_block", { blockIndex: idx, instruction });
-              if (json?.ok) setMsg("Секция переписана — проверьте и примите отчёт");
+              if (json?.ok) setMsg(json.async ? "Секция переписывается…" : "Секция переписана — проверьте и примите отчёт");
             } finally {
               setRefiningIdx(null);
             }

@@ -265,6 +265,10 @@ export function analyzeHdConnection(
   ];
   const mergedChart: HdChart = {
     ...chartA,
+    isConnection:true,
+    timeKnown:chartA.timeKnown && chartB.timeKnown,
+    personality:[...chartA.personality,...chartB.personality],
+    designActivations:[...chartA.designActivations,...chartB.designActivations],
     activeGates: [...unionGates].sort((x, y) => x - y),
     channels: mergedChannels,
     definedCenters,
@@ -347,10 +351,10 @@ export function analyzeHdConnection(
     authorityB: chartB.authority,
     profileA: chartA.profile,
     profileB: chartB.profile,
-    headline,
+    headline: chartA.timeKnown && chartB.timeKnown ? headline : `Условная карта связи: время рождения неизвестно. ${headline}`,
     harmonyNotes,
     frictionNotes,
-    decisionNote: decisionNoteFor(
+    decisionNote: !chartA.timeKnown || !chartB.timeKnown ? "Время рождения одной из карт неизвестно: выводы о совместных решениях, каналах и центрах относятся к условным моментам. Уточните время перед персональными выводами." : decisionNoteFor(
       chartA.type,
       chartB.type,
       chartA.authority,
@@ -381,6 +385,7 @@ export function formatHdConnectionEvidence(
     HD_CONNECTION_RELATIONS.find((r) => r.id === relation)?.label ?? "пара / связь";
 
   const lines: string[] = [];
+  if (!chartA.timeKnown || !chartB.timeKnown) lines.push("ОГРАНИЧЕНИЕ: время рождения хотя бы одного человека неизвестно. Все сочетания каналов, центров, профилей и авторитетов ниже относятся к условным картам. Не утверждай их как подтверждённые свойства пары и не придумывай альтернативы.");
   lines.push(`СЦЕНАРИЙ СВЯЗИ: ${rel}`);
   lines.push(`ЗАГОЛОВОК МЕХАНИКИ: ${conn.headline}`);
   lines.push("");

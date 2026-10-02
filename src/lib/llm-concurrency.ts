@@ -75,7 +75,8 @@ class LlmConcurrencyGate {
     };
   }
 
-  async acquire(label: string): Promise<ReleaseFn | null> {
+  async acquire(label: string, deadlineAt?: number): Promise<ReleaseFn | null> {
+    if (deadlineAt !== undefined && deadlineAt <= Date.now()) return null;
     if (this.active < this.max) {
       this.active++;
       return this.makeRelease();
@@ -94,7 +95,7 @@ class LlmConcurrencyGate {
             `LLM queue timeout (${label}), wait=${Date.now() - entry.enqueuedAt}ms queued=${this.queue.length}`
           );
           resolve(null);
-        }, this.queueTimeoutMs),
+        }, Math.min(this.queueTimeoutMs, deadlineAt === undefined ? this.queueTimeoutMs : Math.max(1, deadlineAt - Date.now()))),
       };
       this.queue.push(entry);
     });
@@ -145,11 +146,13 @@ export function getLlmConcurrencyStats() {
 export async function withLlmSlot<T>(
   label: string,
   fn: () => Promise<T>,
-  pool?: LlmPool
+  pool?: LlmPool,
+  deadlineAt?: number
 ): Promise<T | null> {
-  const release = await resolveGate(pool).acquire(label);
+  const release = await resolveGate(pool).acquire(label, deadlineAt);
   if (!release) return null;
   try {
+    if (deadlineAt !== undefined && deadlineAt <= Date.now()) return null;
     return await fn();
   } finally {
     release();

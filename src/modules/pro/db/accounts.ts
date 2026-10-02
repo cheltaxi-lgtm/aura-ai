@@ -1,3 +1,5 @@
+import { withTransaction } from "@/lib/db";
+import { lockActiveHdUser } from "@/lib/services/hd-generation-service";
 import { proQuery } from "../db";
 import { isProAllowlistedUser } from "../config";
 import { proFreeTrialDays, proFreeTrialRunes } from "../pricing";
@@ -52,6 +54,8 @@ export async function applyForProAccount(input: {
   specializations?: string[];
   bio?: string | null;
 }): Promise<{ account: ProAccountRow; created: boolean }> {
+  return withTransaction(async main=>{
+  await lockActiveHdUser(main,input.userId);
   const existing = await getAccountByUserId(input.userId);
   if (existing) return { account: existing, created: false };
 
@@ -117,6 +121,7 @@ export async function applyForProAccount(input: {
     }
   }
   throw new Error("pro_brand_slug_collision");
+  });
 }
 
 function randomSuffix(): string {

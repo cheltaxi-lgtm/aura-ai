@@ -18,7 +18,7 @@ import { isAiDeliveryKindEnabled } from "@/lib/settings";
  * is on: the client shows "Отчёт принят" and lets the user leave instead of
  * blocking on the wait screen. Absent otherwise — old clients unaffected.
  */
-function acceptedReportExtras(
+export function acceptedReportExtras(
   kind: AsyncJobKind,
   payload: Record<string, unknown>
 ): Record<string, unknown> {

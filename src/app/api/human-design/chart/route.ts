@@ -14,6 +14,7 @@ import {
   getHdChartByFingerprint,
   getOrComputeHdChart,
   HdInputError,
+  HD_UUID_RE,
   HdRateLimitError,
   mapHdRelationToSelf,
   mapHdGender,
@@ -53,11 +54,22 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "rate_limit" }, { status: 429 });
   }
 
-  const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  const rawBody: unknown = await request.json().catch(() => null);
+  if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) {
+    return NextResponse.json({ error: "Некорректные данные карты." }, { status: 400 });
+  }
+  const body = rawBody as Record<string, unknown>;
+  if ((body.birthTime != null && typeof body.birthTime !== "string") ||
+      (body.birthTimeOccurrence != null && body.birthTimeOccurrence !== "earlier" && body.birthTimeOccurrence !== "later") ||
+      typeof body.lat !== "number" || typeof body.lon !== "number" || !Number.isFinite(body.lat) || !Number.isFinite(body.lon)) {
+    return NextResponse.json({error:"Некорректное время или координаты рождения."},{status:400});
+  }
   const birthTimeRaw = typeof body.birthTime === "string" ? body.birthTime.trim() : "";
   const identity: HdChartIdentity = {
     birthDate: typeof body.birthDate === "string" ? body.birthDate.trim() : "",
     birthTime: birthTimeRaw || null,
+    ...(body.birthTimeOccurrence === "earlier" || body.birthTimeOccurrence === "later"
+      ? { birthTimeOccurrence: body.birthTimeOccurrence } : {}),
     timezone: typeof body.timezone === "string" ? body.timezone : "",
     placeName: typeof body.placeName === "string" ? body.placeName : "",
     lat: Number(body.lat),
@@ -168,6 +180,7 @@ export async function PATCH(request: NextRequest) {
   if (rateLimited) return rateLimited;
 
   const body = (await request.json().catch(() => ({}))) as Record<string, unknown>;
+  if (!body || typeof body !== "object" || Array.isArray(body)) return NextResponse.json({error:"Некорректный запрос."},{status:400});
   const chartId = typeof body.chartId === "string" ? body.chartId : "";
   const hasRelation = typeof body.relationToSelf === "string";
   const hasGender = Object.prototype.hasOwnProperty.call(body, "gender");
@@ -218,7 +231,7 @@ export async function DELETE(request: NextRequest) {
   if (rateLimited) return rateLimited;
 
   const id = request.nextUrl.searchParams.get("id") ?? "";
-  if (!/^[0-9a-f-]{36}$/i.test(id)) {
+  if (!HD_UUID_RE.test(id)) {
     return NextResponse.json({ error: "Некорректный идентификатор карты." }, { status: 400 });
   }
 

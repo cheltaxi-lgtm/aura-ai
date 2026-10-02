@@ -34,13 +34,19 @@ describe("HD report cost: live OpenRouter pricing", () => {
   beforeEach(() => {
     vi.resetModules();
     openRouterFetchMock.mockReset();
-    delete process.env.OPENROUTER_USD_RUB;
+    process.env.OPENROUTER_USD_RUB = "90";
   });
 
   afterEach(() => {
-    delete process.env.OPENROUTER_USD_RUB;
+    process.env.OPENROUTER_USD_RUB = "90";
   });
 
+  it("does not present incomplete provider usage as zero or a partial actual cost",async()=>{
+    openRouterFetchMock.mockResolvedValue(catalogResponse(CATALOG));
+    const {resolveCostRubFromUsage}=await import("@/lib/hd-report-pipeline/cost");
+    for(const usage of [{promptTokens:0,completionTokens:0,complete:false},{promptTokens:10,completionTokens:20,complete:false}])expect(await resolveCostRubFromUsage(usage,"openai/gpt-5.6-luna")).toEqual({rub:null,source:"unavailable"});
+    expect(openRouterFetchMock).not.toHaveBeenCalled();
+  });
   it("prices a report from the live catalog", async () => {
     openRouterFetchMock.mockResolvedValue(catalogResponse(CATALOG));
     const { resolveCostRubFromUsage } = await import("@/lib/hd-report-pipeline/cost");
@@ -91,7 +97,7 @@ describe("HD report cost: live OpenRouter pricing", () => {
     expect(cost.rub).toBeCloseTo(1.98, 2);
   });
 
-  it("falls back to the static table when the catalog is unreachable", async () => {
+  it("keeps cost unavailable when the catalog is unreachable", async () => {
     openRouterFetchMock.mockRejectedValue(new Error("proxy down"));
     const { resolveCostRubFromUsage } = await import("@/lib/hd-report-pipeline/cost");
 
@@ -100,12 +106,11 @@ describe("HD report cost: live OpenRouter pricing", () => {
       "deepseek/deepseek-chat-v3-0324"
     );
 
-    // Static RUB/1k table: 70 * 0.007 + 25 * 0.028 = 1.19 ₽
-    expect(cost.source).toBe("static");
-    expect(cost.rub).toBeCloseTo(1.19, 2);
+    expect(cost.source).toBe("unavailable");
+    expect(cost.rub).toBeNull();
   });
 
-  it("falls back for a model missing from the catalog", async () => {
+  it("keeps cost unavailable for a model missing from the catalog", async () => {
     openRouterFetchMock.mockResolvedValue(catalogResponse(CATALOG));
     const { resolveCostRubFromUsage } = await import("@/lib/hd-report-pipeline/cost");
 
@@ -114,6 +119,7 @@ describe("HD report cost: live OpenRouter pricing", () => {
       "broken/no-pricing"
     );
 
-    expect(cost.source).toBe("static");
+    expect(cost.source).toBe("unavailable");
+    expect(cost.rub).toBeNull();
   });
 });

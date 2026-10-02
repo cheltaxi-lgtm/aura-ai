@@ -1,3 +1,4 @@
+import { query } from "@/lib/db";
 import { proQuery } from "../db";
 import { mintProToken, hashProToken } from "../tokens";
 import { getProDialogModeMax, isProDeliveryEnabled } from "../config";
@@ -185,12 +186,13 @@ export async function resolveDeliveryByRawToken(raw: string): Promise<{
     ProDeliveryRow & {
       account_id: string;
       client_id: string;
-      case_status: string;
+      case_status: string; owner_user_id:string;
     }
   >(
-    `SELECT d.*, c.account_id, c.client_id, c.status AS case_status
+    `SELECT d.*, c.account_id, c.client_id, c.status AS case_status, a.user_id AS owner_user_id
      FROM pro.deliveries d
      JOIN pro.cases c ON c.id = d.case_id
+     JOIN pro.accounts a ON a.id=c.account_id AND a.deleted_at IS NULL
      WHERE d.token_hash = $1
      LIMIT 1`,
     [hash]
@@ -198,6 +200,9 @@ export async function resolveDeliveryByRawToken(raw: string): Promise<{
   const row = rows[0];
   if (!row) return null;
   if (row.revoked_at) return null;
+  // Public capabilities are revoked as soon as erasure is accepted, even if
+  // the external bot is unavailable and durable deletion is still retrying.
+  if(!(await query("SELECT id FROM users WHERE id=$1 AND erasure_requested_at IS NULL",[row.owner_user_id])).rows.length)return null;
   // Archived cases must not serve mini-landings even if revoke was missed.
   if (row.case_status === "archived") return null;
   if (row.ttl_expires_at && new Date(row.ttl_expires_at).getTime() < Date.now()) {

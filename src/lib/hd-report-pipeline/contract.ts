@@ -1,4 +1,4 @@
-import type { HdChart } from "@/lib/human-design/types";
+import type { HdChart, HdActivation } from "@/lib/human-design/types";
 import {
   AUTHORITY_NAMES_RU,
   CENTER_NAMES_RU,
@@ -14,10 +14,18 @@ import {
   formatHdBirthIdentity,
   type HdEvidenceOpts,
 } from "@/lib/human-design/prompt";
-import type { HdTypeKey } from "@/lib/human-design/types";
+import type { HdTypeKey, HdAuthorityKey, HdCenterKey } from "@/lib/human-design/types";
 
 export type HdLockedContract = {
+  ageYears: number | null;
+  referenceDate: string;
   typeKey: HdTypeKey;
+  authorityKey: HdAuthorityKey;
+  definedCenterKeys: HdCenterKey[];
+  activeGateNumbers: number[];
+  activations: {personality:HdActivation[];design:HdActivation[]};
+  timeKnown: boolean;
+  stableFields: { type: boolean; authority: boolean; profile: boolean };
   typeRu: string;
   strategyRu: string;
   /** Keywords that MUST appear for this type's strategy advice. */
@@ -110,9 +118,9 @@ function crossNameRu(chart: HdChart): string {
 
 function angleAliases(angle: string, angleRu: string): string[] {
   const base = [angleRu];
-  if (angle === "right") base.push("Правый угол", "прямой угол");
-  if (angle === "left") base.push("Левый угол");
-  if (angle === "juxtaposition") base.push("Джукстапозиция", "Juxtaposition");
+  if (angle === "right") base.push("Правый угол", "прямой угол", "Прямоугольный", "Правоугольный");
+  if (angle === "left") base.push("Левый угол", "Левоугольный");
+  if (angle === "juxtaposition") base.push("Джукстапозиция", "Juxtaposition", "Джакстапозиционный", "Джукстапозиционный");
   return base;
 }
 
@@ -120,6 +128,10 @@ export function buildHdLockedContract(
   chart: HdChart,
   opts?: HdEvidenceOpts
 ): HdLockedContract {
+  const referenceDate = opts?.referenceDate ?? new Date().toISOString().slice(0,10);
+  const date = chart.birth?.date;
+  const ageYears = date && /^\d{4}-\d{2}-\d{2}$/.test(date) && /^\d{4}-\d{2}-\d{2}$/.test(referenceDate)
+    ? Number(referenceDate.slice(0,4))-Number(date.slice(0,4))-(referenceDate.slice(5)<date.slice(5)?1:0) : null;
   const meta = TYPE_META[chart.type];
   const strat = STRATEGY_BY_TYPE[chart.type];
   const definedChannels = chart.channels
@@ -148,8 +160,10 @@ export function buildHdLockedContract(
   const crossGateNumbers = [...chart.cross.gates];
 
   const contractBlock = [
-    "КОНТРАКТ СОГЛАСОВАННОСТИ (данные движка — НЕ пересчитывай и НЕ оспаривай):",
+    chart.timeKnown ? "КОНТРАКТ СОГЛАСОВАННОСТИ (данные движка — НЕ пересчитывай):" : "КОНТРАКТ УСЛОВНОЙ КАРТЫ: время неизвестно. Значения ниже относятся к условному моменту, а не к подтверждённой карте человека. Во вступлении и в разделах о нестабильных параметрах явно указывай ограничение. Не выдавай Variables и точную среду за определённые.",
     formatHdBirthIdentity(chart, opts),
+    `Дата разбора = ${referenceDate}. Возраст на эту дату = ${ageYears ?? "не установлен"}.`,
+    "Возрастные фазы шестой линии — приблизительные ориентиры около 30 и 50 лет. Не называй фазу после 50 текущей у человека младше 48 и не называй фазу 30–50 текущей после 52. Не обещай конкретные события в заданном возрасте.",
     `Тип = ${meta.nameRu}.`,
     `Стратегия = ${meta.strategyRu}.`,
     `Авторитет = ${AUTHORITY_NAMES_RU[chart.authority]}.`,
@@ -171,7 +185,14 @@ export function buildHdLockedContract(
   ].join("\n");
 
   return {
+    ageYears, referenceDate,
     typeKey: chart.type,
+    authorityKey: chart.authority,
+    definedCenterKeys: [...chart.definedCenters],
+    activeGateNumbers: [...chart.activeGates],
+    activations:{personality:chart.personality.map(a=>({...a})),design:chart.designActivations.map(a=>({...a}))},
+    timeKnown: chart.timeKnown,
+    stableFields: { type: chart.timeKnown || Boolean(chart.stability?.typeStable), authority: chart.timeKnown || Boolean(chart.stability?.authorityStable), profile: chart.timeKnown || Boolean(chart.stability?.profileStable) },
     typeRu: meta.nameRu,
     strategyRu: meta.strategyRu,
     strategyKeywords: strat.keywords,

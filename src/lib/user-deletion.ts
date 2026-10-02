@@ -26,6 +26,12 @@ export async function deleteUserAccountInTransaction(
   accountId: string,
   profileUserId: string
 ): Promise<DeleteUserAccountResult> {
+    // Paid report writers hold job → user → source. Erasure follows the same
+    // order, so a worker cannot resurrect data or deadlock cascade deletion.
+    await client.query("SELECT id FROM async_jobs WHERE user_id=$1 ORDER BY id FOR UPDATE",[profileUserId]);
+    await client.query("SELECT id FROM users WHERE id=$1 FOR UPDATE",[profileUserId]);
+    const { eraseProAccountData } = await import("@/modules/pro/db/account-erasure");
+    await eraseProAccountData(profileUserId);
     const run = async (text: string, params?: unknown[]) => {
       const result = await client.query(text, params);
       return result.rowCount ?? 0;

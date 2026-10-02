@@ -2,15 +2,15 @@ import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import { getHdModel } from "@/lib/ai-model";
 import { HD_COMPOSITE_REQUIRED_SECTIONS, HD_REPORT_REQUIRED_SECTIONS } from "./packages";
 import { stripHdMetaLeak } from "./prompt";
+import { validateHdReportText, hdSectionMinimumChars } from "@/lib/hd-report-quality/validator";
+import { buildHdLockedContract, type HdLockedContract } from "@/lib/hd-report-pipeline/contract";
+import type { HdChart } from "./types";
 
 function escapeRe(s: string): string {
   return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Min body length (chars) for a required ## section to count as written. */
-const MIN_SECTION_BODY_CHARS = 160;
-/** How many thin sections we tolerate after all passes before rejecting. */
-const MAX_THIN_AFTER_PASSES = 5;
 
 /** Title may be followed by whitespace, EOL, or light punctuation (incl. `:`). */
 const HD_HEADING_TAIL = "(?:\\s|$|[.!?…:])";
@@ -52,7 +52,7 @@ function thinHdReportSections(text: string, required: readonly string[]): string
       const sectionBody = (nextHeading === -1 ? rest : rest.slice(0, nextHeading)).trim();
       bestLen = Math.max(bestLen, sectionBody.length);
     }
-    return matched && bestLen < MIN_SECTION_BODY_CHARS;
+    return matched && bestLen < hdSectionMinimumChars(title);
   });
 }
 
@@ -133,17 +133,22 @@ async function completeSectionedReport(opts: {
   required: readonly string[];
   pass0MaxTokens: number;
   continueMaxTokens: number;
+  deadlineAt: number;
+  contract?: HdLockedContract;
+  beforeRequest?: () => Promise<void>;
 }): Promise<string | null> {
   const system: ChatMessage = { role: "system", content: opts.systemPrompt };
   const seedUser: ChatMessage = { role: "user", content: opts.seedUserText };
   const hdModel = await getHdModel();
 
   let combined = "";
+  let lastTruncated = true;
   // 6 passes: stochastic near-threshold rejects (thin 3/16 after 4 passes)
   // refund a paying user; two extra expand passes usually fix the last stubs.
   const maxPasses = 6;
 
   for (let pass = 0; pass < maxPasses; pass++) {
+    if (Date.now() >= opts.deadlineAt) break;
     const messages: ChatMessage[] =
       pass === 0
         ? [system, seedUser]
@@ -179,9 +184,12 @@ async function completeSectionedReport(opts: {
       skipTemperatureRetry: true,
       skipDegenerateCheck: true,
       priority: "report",
+      maxAttempts: 1,
+      deadlineAt: opts.deadlineAt,
+      beforeRequest: opts.beforeRequest,
     });
     let chunk = (result.text || "").trim();
-    if (!chunk) {
+    if (!chunk && Date.now() < opts.deadlineAt) {
       console.warn("[hd-generate] empty chunk, retrying pass", { pass });
       result = await completeChatDetailed({
         messages,
@@ -192,6 +200,9 @@ async function completeSectionedReport(opts: {
         skipTemperatureRetry: true,
         skipDegenerateCheck: true,
         priority: "report",
+        maxAttempts: 1,
+        deadlineAt: opts.deadlineAt,
+        beforeRequest: opts.beforeRequest,
       });
       chunk = (result.text || "").trim();
     }
@@ -207,6 +218,7 @@ async function completeSectionedReport(opts: {
     const missing = missingHdReportSections(combined, opts.required);
     const thin = missing.length === 0 ? thinHdReportSections(dedupeHdSections(combined), opts.required) : [];
     const hitLength = result.finishReason === "length";
+    lastTruncated = result.finishReason !== "stop";
     console.warn("[hd-generate] pass done", {
       pass,
       chunkLen: chunk.length,
@@ -214,8 +226,13 @@ async function completeSectionedReport(opts: {
       missing: missing.length,
       thin: thin.length,
     });
-    if (!hitLength && missing.length === 0 && thin.length === 0) {
-      return dedupeHdSections(combined);
+    if (!lastTruncated && missing.length === 0 && thin.length === 0) {
+      const candidate = dedupeHdSections(combined);
+      const quality = validateHdReportText(candidate, { contract: opts.contract, requiredSections: opts.required, requireFocusAnswer: false });
+      if (quality.ok) return candidate;
+      // Replace the defective sections instead of returning structurally complete but false prose.
+      const titles = [...new Set(quality.findings.flatMap(f => f.sectionTitles ?? []))];
+      if (titles.length) seedUser.content += `\nИсправь следующие разделы при продолжении: ${titles.join(", ")}. Не нарушай исходные расчётные данные.`;
     }
   }
 
@@ -228,7 +245,8 @@ async function completeSectionedReport(opts: {
   // sections or too many stubs → reject (the route refunds / resumes free).
   const missingFinal = missingHdReportSections(finalText, opts.required);
   const thinFinal = thinHdReportSections(finalText, opts.required);
-  if (missingFinal.length > 0 || thinFinal.length > MAX_THIN_AFTER_PASSES) {
+  const quality = validateHdReportText(finalText, { contract: opts.contract, requiredSections: opts.required, requireFocusAnswer: false });
+  if (lastTruncated || missingFinal.length > 0 || thinFinal.length > 0 || !quality.ok) {
     console.warn("[hd-generate] reject: gate", {
       missing: missingFinal,
       thin: thinFinal,
@@ -249,6 +267,9 @@ export async function completeHdFullReport(opts: {
   aboutOther?: boolean;
   /** Practitioner / client focus question — weave through the whole report. */
   focusQuestion?: string | null;
+  chart?: HdChart;
+  deadlineAt?: number;
+  beforeRequest?: () => Promise<void>;
 }): Promise<string | null> {
   const who = opts.clientName ?? "клиента";
   const focus = opts.focusQuestion?.trim() || "";
@@ -276,6 +297,9 @@ export async function completeHdFullReport(opts: {
     required: HD_REPORT_REQUIRED_SECTIONS,
     pass0MaxTokens: 12_000,
     continueMaxTokens: 8_000,
+    deadlineAt: Math.min(opts.deadlineAt ?? Infinity, Date.now() + 720_000),
+    contract: opts.chart ? buildHdLockedContract(opts.chart) : undefined,
+    beforeRequest: opts.beforeRequest,
   });
 }
 
@@ -288,6 +312,8 @@ export async function completeHdCompositeReport(opts: {
   evidence: string;
   nameA: string;
   nameB: string;
+  deadlineAt?: number;
+  beforeRequest?: () => Promise<void>;
 }): Promise<string | null> {
   const seedUserText =
     `РАСЧЁТНЫЕ ДАННЫЕ И МЕХАНИКА СВЯЗИ:\n${opts.evidence}\n\n` +
@@ -301,5 +327,7 @@ export async function completeHdCompositeReport(opts: {
     required: HD_COMPOSITE_REQUIRED_SECTIONS,
     pass0MaxTokens: 12_000,
     continueMaxTokens: 8_000,
+    deadlineAt: Math.min(opts.deadlineAt ?? Infinity, Date.now() + 540_000),
+    beforeRequest: opts.beforeRequest,
   });
 }

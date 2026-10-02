@@ -1,5 +1,5 @@
 import { createHash, randomBytes } from "node:crypto";
-import { query, queryClient, type PoolClient } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { checkRateLimit, rateLimitKey } from "@/lib/rate-limit";
 import { refundRunes } from "@/lib/rune-service";
 import {
@@ -16,6 +16,7 @@ import {
 } from "@/lib/human-design";
 import {
   hdFingerprint,
+  canonicalHdTimeOccurrence,
   normalizeHdTimezone,
   type HdChartIdentity,
 } from "@/lib/human-design/fingerprint";
@@ -94,6 +95,7 @@ export type HdReportToneId = "personal" | "child" | "work";
 export type HdReportStatus = "pending" | "done" | "error" | "needs_regeneration";
 
 export interface HdReportRow {
+  generationRevision: string;
   adminRewriteStartedAt: string | null;
   chartSnapshot: HdChartRow | null;
   id: string;
@@ -171,6 +173,7 @@ interface HdChartDbRow {
 }
 
 interface HdReportDbRow {
+  generation_revision: string;
   admin_rewrite_started_at?: string | Date | null;
   chart_snapshot?: HdChartRow | null;
   id: string;
@@ -237,6 +240,7 @@ function mapReportRow(row: HdReportDbRow): HdReportRow {
       ? row.status
       : "error";
   return {
+    generationRevision: row.generation_revision,
     adminRewriteStartedAt: row.admin_rewrite_started_at
       ? toIso(row.admin_rewrite_started_at)
       : null,
@@ -276,7 +280,7 @@ export class HdRateLimitError extends Error {
 export const HD_UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
-const TIME_RE = /^([01]\d|2[0-3]):[0-5]\d$/;
+const TIME_RE = /^(?:[01]?\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/;
 
 export function validateHdInput(identity: HdChartIdentity): void {
   if (!DATE_RE.test(identity.birthDate)) {
@@ -315,6 +319,9 @@ export function validateHdInput(identity: HdChartIdentity): void {
   if (identity.birthTime !== null && !TIME_RE.test(identity.birthTime)) {
     throw new HdInputError("Некорректное время рождения.");
   }
+  if (identity.birthTimeOccurrence !== undefined && identity.birthTimeOccurrence !== "earlier" && identity.birthTimeOccurrence !== "later") {
+    throw new HdInputError("Выберите первое или второе наступление времени рождения.");
+  }
   if (!identity.placeName.trim() || identity.placeName.length > 200) {
     throw new HdInputError("Укажите место рождения.");
   }
@@ -342,10 +349,20 @@ function computeChartOrThrow(identity: HdChartIdentity): HdChart {
     birthDate: identity.birthDate,
     birthTime: identity.birthTime,
     timezone: identity.timezone,
+    birthTimeOccurrence: identity.birthTimeOccurrence,
   };
   try {
     return calculateHdChart(calcInput);
   } catch (error) {
+    if (error instanceof Error && error.message === "AMBIGUOUS_BIRTH_TIME") {
+      throw new HdInputError("Это время повторялось при переводе часов. Выберите первое или второе наступление времени.");
+    }
+    if (error instanceof Error && error.message === "NONEXISTENT_BIRTH_TIME") {
+      throw new HdInputError("Такого местного времени не было из-за перевода часов. Проверьте время и место рождения.");
+    }
+    if (error instanceof Error && error.message === "HD_NONEXISTENT_BIRTH_DATE") {
+      throw new HdInputError("Такой местной даты не было из-за смены часового пояса. Проверьте дату и место рождения.");
+    }
     if (error instanceof Error && error.message.startsWith("HD_")) {
       throw new HdInputError("Проверьте дату, время и часовой пояс рождения.");
     }
@@ -353,21 +370,44 @@ function computeChartOrThrow(identity: HdChartIdentity): HdChart {
   }
 }
 
+
+// Every owned-chart mutation uses the same user-first erasure fence. Memory
+// cleanup runs after commit so it cannot wait on a user row held here.
+type HdChartWriteContext = { client: PoolClient; forget: { userId: string; chartId: string }[] };
+function chartQuery<T extends import("pg").QueryResultRow = import("pg").QueryResultRow>(ctx: HdChartWriteContext | undefined, sql: string, params?: unknown[]) {
+  return ctx ? queryClient<T>(ctx.client, sql, params) : query<T>(sql, params);
+}
+async function withActiveChartUser<T>(userId: string, fn: (ctx: HdChartWriteContext) => Promise<T>): Promise<T> {
+  const forget: HdChartWriteContext["forget"] = [];
+  const result = await withTransaction(async client => {
+    const user = (await queryClient<{erasure_requested_at:unknown}>(client,"SELECT erasure_requested_at FROM users WHERE id=$1 FOR UPDATE",[userId])).rows[0];
+    if (!user || user.erasure_requested_at) throw new HdInputError("Аккаунт недоступен.");
+    return fn({ client, forget });
+  });
+  if (forget.length) {
+    const { forgetHdChartFact } = await import("@/lib/human-design/memory");
+    for (const item of forget) await forgetHdChartFact(item.userId,item.chartId);
+  }
+  return result;
+}
+
 /** Recompute in place when the stored chart predates the current engine. */
-async function refreshChartIfEngineStale(row: HdChartDbRow): Promise<HdChartDbRow> {
+async function refreshChartIfEngineStale(row: HdChartDbRow, ctx?: HdChartWriteContext): Promise<HdChartDbRow> {
   if (row.engine_version === HD_ENGINE_VERSION) return row;
+  if (row.user_id && !ctx) return withActiveChartUser(row.user_id, c => refreshChartIfEngineStale(row,c));
   try {
     const timezone = normalizeHdTimezone(row.timezone);
     const chart = calculateHdChart({
       birthDate: toIsoDate(row.birth_date),
       birthTime: row.birth_time,
       timezone,
+      birthTimeOccurrence: row.chart.birth?.timeOccurrence,
     });
-    const updated = await query<HdChartDbRow>(
+    const updated = await chartQuery<HdChartDbRow>(ctx,
       `UPDATE hd_charts
        SET chart = $2, engine_version = $3, timezone = $4, updated_at = now()
-       WHERE id = $1 RETURNING *`,
-      [row.id, JSON.stringify(chart), HD_ENGINE_VERSION, timezone]
+       WHERE id = $1 AND engine_version = $5 AND user_id IS NOT DISTINCT FROM $6::uuid RETURNING *`,
+      [row.id, JSON.stringify(chart), HD_ENGINE_VERSION, timezone, row.engine_version, row.user_id]
     );
     return updated.rows[0] ?? row;
   } catch {
@@ -382,9 +422,10 @@ async function refreshChartIfEngineStale(row: HdChartDbRow): Promise<HdChartDbRo
  */
 async function demoteOtherSelfCharts(
   userId: string,
-  keepChartId: string
+  keepChartId: string,
+  ctx?: HdChartWriteContext
 ): Promise<void> {
-  const { rows } = await query<{ id: string }>(
+  const { rows } = await chartQuery<{ id: string }>(ctx,
     `UPDATE hd_charts
      SET subject_kind = 'other',
          subject_name = COALESCE(
@@ -400,6 +441,11 @@ async function demoteOtherSelfCharts(
     [userId, keepChartId]
   );
   if (rows.length === 0) return;
+  if (ctx) {
+    await queryClient(ctx.client,"INSERT INTO user_memory_source_suppressions(user_id,source_entity_id) SELECT $1,unnest($2::uuid[]) ON CONFLICT DO NOTHING",[userId,rows.map(r=>r.id)]);
+    ctx.forget.push(...rows.map(r=>({userId,chartId:r.id})));
+    return;
+  }
   const { forgetHdChartFact } = await import("@/lib/human-design/memory");
   for (const row of rows) {
     await forgetHdChartFact(userId, row.id);
@@ -417,7 +463,8 @@ async function relabelOwnedChart(
   subjectKind: "self" | "other",
   subjectName: string | null,
   relationToSelf?: HdConnectionRelation | null,
-  gender?: BinaryGender | null
+  gender?: BinaryGender | null,
+  ctx?: HdChartWriteContext
 ): Promise<HdChartDbRow> {
   const currentKind = row.subject_kind === "other" ? "other" : "self";
   let nextKind = subjectKind;
@@ -449,7 +496,7 @@ async function relabelOwnedChart(
     return row;
   }
 
-  await query(
+  await chartQuery(ctx,
     `UPDATE hd_charts
      SET subject_kind = $2, subject_name = $3, relation_to_self = $4, gender = $5, updated_at = now()
      WHERE id = $1`,
@@ -467,10 +514,11 @@ async function relabelOwnedChart(
 /** After any path that yields an owned `self` row, enforce the single-self invariant. */
 async function finalizeOwnedSelfChart(
   userId: string,
-  row: HdChartDbRow
+  row: HdChartDbRow,
+  ctx?: HdChartWriteContext
 ): Promise<HdChartDbRow> {
   if (row.subject_kind === "other") return row;
-  await demoteOtherSelfCharts(userId, row.id);
+  await demoteOtherSelfCharts(userId, row.id, ctx);
   return row;
 }
 /**
@@ -478,13 +526,18 @@ async function finalizeOwnedSelfChart(
  * given fingerprint; guests share the anonymous pool row. A logged-in caller
  * holding the pool row's claim token adopts it instead of duplicating.
  */
-export async function getOrComputeHdChart(
+export async function getOrComputeHdChart(identity: HdChartIdentity,userId: string | null,subject?: HdSubject,claimToken?: string | null): Promise<HdChartComputeResult> {
+  return userId ? withActiveChartUser(userId,ctx=>getOrComputeHdChartLocked(identity,userId,subject,claimToken,ctx)) : getOrComputeHdChartLocked(identity,userId,subject,claimToken);
+}
+async function getOrComputeHdChartLocked(
   identity: HdChartIdentity,
   userId: string | null,
   subject?: HdSubject,
-  claimToken?: string | null
+  claimToken?: string | null,
+  ctx?: HdChartWriteContext
 ): Promise<HdChartComputeResult> {
   validateHdInput(identity);
+  identity = {...identity,birthTimeOccurrence:canonicalHdTimeOccurrence(identity)};
   const fingerprint = hdFingerprint(identity);
   const subjectKind = subject?.kind === "other" ? "other" : "self";
   // Normalize at the storage boundary: first name only, no symbols — the value
@@ -502,16 +555,16 @@ export async function getOrComputeHdChart(
       : undefined;
   const ownerKey = userId ?? GUEST_OWNER_KEY;
 
-  const own = await query<HdChartDbRow>(
+  const own = await chartQuery<HdChartDbRow>(ctx,
     "SELECT * FROM hd_charts WHERE fingerprint = $1 AND owner_key = $2",
     [fingerprint, ownerKey]
   );
   if (own.rows[0]) {
-    let row = await refreshChartIfEngineStale(own.rows[0]);
+    let row = await refreshChartIfEngineStale(own.rows[0],ctx);
     if (userId && subject) {
-      row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf, gender);
+      row = await relabelOwnedChart(row, subjectKind, subjectName, relationToSelf, gender, ctx);
     }
-    if (userId) row = await finalizeOwnedSelfChart(userId, row);
+    if (userId) row = await finalizeOwnedSelfChart(userId, row, ctx);
     if (!userId && subject) {
       // Shared guest pool: the stored subject may belong to ANOTHER visitor.
       // Never persist or echo it — answer with the caller's own request only.
@@ -534,7 +587,8 @@ export async function getOrComputeHdChart(
     const claimTokenHash = hashHdClaimToken(claimToken);
     let adoptedRows: HdChartDbRow[] = [];
     try {
-      const adopted = await query<HdChartDbRow>(
+      if (ctx) await queryClient(ctx.client,"SAVEPOINT hd_adopt");
+      const adopted = await chartQuery<HdChartDbRow>(ctx,
         `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
          WHERE fingerprint = $1 AND user_id IS NULL
            AND claim_token = $3
@@ -542,43 +596,47 @@ export async function getOrComputeHdChart(
         [fingerprint, userId, claimTokenHash]
       );
       adoptedRows = adopted.rows;
+      if (ctx) await queryClient(ctx.client,"RELEASE SAVEPOINT hd_adopt");
     } catch (error) {
       // Adopt flips owner_key (generated from user_id): a concurrent own-row
       // insert for the same fingerprint makes this UPDATE hit the unique
       // index. The own row now exists — fall through and read it.
       if ((error as { code?: string })?.code !== "23505") throw error;
-      const own2 = await query<HdChartDbRow>(
+      if (ctx) await queryClient(ctx.client,"ROLLBACK TO SAVEPOINT hd_adopt");
+      const own2 = await chartQuery<HdChartDbRow>(ctx,
         "SELECT * FROM hd_charts WHERE fingerprint = $1 AND owner_key = $2",
         [fingerprint, ownerKey]
       );
       if (own2.rows[0]) {
-        let row = await refreshChartIfEngineStale(own2.rows[0]);
+        let row = await refreshChartIfEngineStale(own2.rows[0],ctx);
         if (subject) {
           row = await relabelOwnedChart(
             row,
             subjectKind,
             subjectName,
             relationToSelf,
-            gender
+            gender,
+            ctx
           );
         }
-        row = await finalizeOwnedSelfChart(userId, row);
+        row = await finalizeOwnedSelfChart(userId, row, ctx);
         return { row: mapChartRow(row), claimToken: null };
       }
       throw error;
     }
     if (adoptedRows[0]) {
-      let row = await refreshChartIfEngineStale(adoptedRows[0]);
+      let row = await refreshChartIfEngineStale(adoptedRows[0],ctx);
       if (subject) {
         row = await relabelOwnedChart(
           row,
           subjectKind,
           subjectName,
           relationToSelf,
-          gender
+          gender,
+          ctx
         );
       }
-      row = await finalizeOwnedSelfChart(userId, row);
+      row = await finalizeOwnedSelfChart(userId, row, ctx);
       return { row: mapChartRow(row), claimToken: null };
     }
   }
@@ -586,7 +644,7 @@ export async function getOrComputeHdChart(
   // The chart is deterministic: reuse a sibling row's JSON when the engine
   // matches instead of recomputing identical ephemerides.
   let chart: HdChart | null = null;
-  const sibling = await query<{ chart: HdChart; engine_version: string }>(
+  const sibling = await chartQuery<{ chart: HdChart; engine_version: string }>(ctx,
     "SELECT chart, engine_version FROM hd_charts WHERE fingerprint = $1 LIMIT 1",
     [fingerprint]
   );
@@ -615,7 +673,7 @@ export async function getOrComputeHdChart(
 
   const newClaimToken = userId ? null : randomBytes(24).toString("hex");
   const newClaimTokenHash = newClaimToken ? hashHdClaimToken(newClaimToken) : null;
-  const inserted = await query<HdChartDbRow>(
+  const inserted = await chartQuery<HdChartDbRow>(ctx,
     `INSERT INTO hd_charts (
        user_id, birth_date, birth_time, time_unknown, timezone,
        place_name, lat, lon, fingerprint, chart, engine_version,
@@ -655,11 +713,16 @@ export async function getOrComputeHdChart(
       subjectKind,
       subjectName,
       relationToSelf,
-      gender
+      gender,
+      ctx
     );
   }
-  if (userId) row = await finalizeOwnedSelfChart(userId, row);
-  return { row: mapChartRow(row), claimToken: granted ? newClaimToken : null };
+  if (userId) row = await finalizeOwnedSelfChart(userId, row, ctx);
+  const mapped = mapChartRow(row);
+  return {
+    row: !userId ? { ...mapped, subjectKind, subjectName, relationToSelf, gender: gender ?? null } : mapped,
+    claimToken: granted ? newClaimToken : null,
+  };
 }
 
 /** Owner / creator wire shape: birth inputs needed to restore form + chips. */
@@ -670,6 +733,7 @@ export function toOwnerHdChartPayload(row: HdChartRow) {
     placeName: row.placeName,
     birthDate: row.birthDate,
     birthTime: row.birthTime,
+    birthTimeOccurrence: row.chart.birth?.timeOccurrence,
     timeUnknown: row.timeUnknown,
     subjectKind: row.subjectKind,
     subjectName: row.subjectName,
@@ -683,13 +747,14 @@ export function toOwnerHdChartPayload(row: HdChartRow) {
  * Update relation / gender on an owned other-person chart.
  * Callers: chart PATCH (relation and/or gender).
  */
-export async function updateHdChartMetaForUser(
+async function updateHdChartMetaLocked(
   chartId: string,
   userId: string,
   patch: {
     relationToSelf?: HdConnectionRelation | null;
     gender?: BinaryGender | null;
-  }
+  },
+  ctx: HdChartWriteContext
 ): Promise<HdChartRow | null> {
   if (!HD_UUID_RE.test(chartId)) return null;
   const hasRelation = patch.relationToSelf !== undefined;
@@ -701,7 +766,7 @@ export async function updateHdChartMetaForUser(
   const gender = hasGender ? mapHdGender(patch.gender) : null;
 
   if (hasRelation && hasGender) {
-    const { rows } = await query<HdChartDbRow>(
+    const { rows } = await chartQuery<HdChartDbRow>(ctx,
       `UPDATE hd_charts
        SET relation_to_self = $3, gender = $4, updated_at = now()
        WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
@@ -711,7 +776,7 @@ export async function updateHdChartMetaForUser(
     return rows[0] ? mapChartRow(rows[0]) : null;
   }
   if (hasRelation) {
-    const { rows } = await query<HdChartDbRow>(
+    const { rows } = await chartQuery<HdChartDbRow>(ctx,
       `UPDATE hd_charts
        SET relation_to_self = $3, updated_at = now()
        WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
@@ -720,7 +785,7 @@ export async function updateHdChartMetaForUser(
     );
     return rows[0] ? mapChartRow(rows[0]) : null;
   }
-  const { rows } = await query<HdChartDbRow>(
+  const { rows } = await chartQuery<HdChartDbRow>(ctx,
     `UPDATE hd_charts
      SET gender = $3, updated_at = now()
      WHERE id = $1 AND user_id = $2 AND subject_kind = 'other'
@@ -728,6 +793,11 @@ export async function updateHdChartMetaForUser(
     [chartId, userId, gender]
   );
   return rows[0] ? mapChartRow(rows[0]) : null;
+}
+
+
+export async function updateHdChartMetaForUser(chartId:string,userId:string,patch:{relationToSelf?:HdConnectionRelation|null;gender?:BinaryGender|null}):Promise<HdChartRow|null> {
+  return withActiveChartUser(userId,ctx=>updateHdChartMetaLocked(chartId,userId,patch,ctx));
 }
 
 /** @deprecated Prefer {@link updateHdChartMetaForUser}. */
@@ -813,8 +883,8 @@ export async function getHdChartById(id: string): Promise<HdChartRow | null> {
  * profile birth date (common after a destructive relabel), restore the
  * personal label. Idempotent.
  */
-async function healDemotedSelfHdChart(userId: string): Promise<void> {
-  const hasSelf = await query<{ id: string }>(
+async function healDemotedSelfHdChart(userId: string, ctx: HdChartWriteContext): Promise<void> {
+  const hasSelf = await chartQuery<{ id: string }>(ctx,
     `SELECT id FROM hd_charts
      WHERE user_id = $1 AND COALESCE(subject_kind, 'self') <> 'other'
      LIMIT 1`,
@@ -822,7 +892,7 @@ async function healDemotedSelfHdChart(userId: string): Promise<void> {
   );
   if (hasSelf.rows[0]) return;
 
-  const profile = await query<{ birth_date: string }>(
+  const profile = await chartQuery<{ birth_date: string }>(ctx,
     `SELECT birth_date::text AS birth_date FROM users WHERE id = $1 LIMIT 1`,
     [userId]
   );
@@ -830,7 +900,7 @@ async function healDemotedSelfHdChart(userId: string): Promise<void> {
   if (!birthDate) return;
 
   // Prefer the oldest matching chart — usually the original personal one.
-  const candidate = await query<{ id: string }>(
+  const candidate = await chartQuery<{ id: string }>(ctx,
     `SELECT id FROM hd_charts
      WHERE user_id = $1 AND subject_kind = 'other' AND birth_date::text = $2
      ORDER BY created_at ASC
@@ -839,7 +909,7 @@ async function healDemotedSelfHdChart(userId: string): Promise<void> {
   );
   if (!candidate.rows[0]) return;
 
-  await query(
+  await chartQuery(ctx,
     `UPDATE hd_charts
      SET subject_kind = 'self', subject_name = NULL, relation_to_self = NULL,
          gender = NULL, updated_at = now()
@@ -852,8 +922,8 @@ async function healDemotedSelfHdChart(userId: string): Promise<void> {
  * Collapse multiple `self` rows: keep the chart matching profile birth date
  * (else the oldest personal chart), demote the rest to `other`.
  */
-async function healMultiSelfHdChart(userId: string): Promise<void> {
-  const selfs = await query<{ id: string; birth_date: string }>(
+async function healMultiSelfHdChart(userId: string, ctx: HdChartWriteContext): Promise<void> {
+  const selfs = await chartQuery<{ id: string; birth_date: string }>(ctx,
     `SELECT id, birth_date::text AS birth_date
      FROM hd_charts
      WHERE user_id = $1 AND COALESCE(subject_kind, 'self') <> 'other'
@@ -862,7 +932,7 @@ async function healMultiSelfHdChart(userId: string): Promise<void> {
   );
   if (selfs.rows.length <= 1) return;
 
-  const profile = await query<{ birth_date: string }>(
+  const profile = await chartQuery<{ birth_date: string }>(ctx,
     `SELECT birth_date::text AS birth_date FROM users WHERE id = $1 LIMIT 1`,
     [userId]
   );
@@ -871,21 +941,23 @@ async function healMultiSelfHdChart(userId: string): Promise<void> {
     (birthDate
       ? selfs.rows.find((r) => r.birth_date.slice(0, 10) === birthDate)
       : null) ?? selfs.rows[0]!;
-  await demoteOtherSelfCharts(userId, keep.id);
+  await demoteOtherSelfCharts(userId, keep.id,ctx);
 }
 
 export async function listHdChartsForUser(userId: string): Promise<HdChartRow[]> {
-  await healDemotedSelfHdChart(userId);
-  await healMultiSelfHdChart(userId);
-  const { rows } = await query<HdChartDbRow>(
+  return withActiveChartUser(userId,async ctx=>{
+  await healDemotedSelfHdChart(userId,ctx);
+  await healMultiSelfHdChart(userId,ctx);
+  const { rows } = await chartQuery<HdChartDbRow>(ctx,
     "SELECT * FROM hd_charts WHERE user_id = $1 ORDER BY created_at DESC LIMIT 50",
     [userId]
   );
   const refreshed: HdChartRow[] = [];
   for (const row of rows) {
-    refreshed.push(mapChartRow(await refreshChartIfEngineStale(row)));
+    refreshed.push(mapChartRow(await refreshChartIfEngineStale(row,ctx)));
   }
   return refreshed;
+  });
 }
 /** Attach a guest chart to a freshly registered/logged-in account. */
 /**
@@ -906,7 +978,8 @@ export async function deleteHdChartForUser(
   );
   const row = found.rows[0];
   if (!row) return null;
-  await query("DELETE FROM hd_charts WHERE id = $1 AND user_id = $2", [row.id, userId]);
+  const { deleteHdChartAndReceipts } = await import("./hd-receipt-recovery");
+  if (!(await deleteHdChartAndReceipts(row.id,userId))) return null;
   return mapChartRow(row);
 }
 
@@ -922,7 +995,8 @@ export async function claimHdChart(
   claimToken?: string | null
 ): Promise<boolean> {
   if (!/^[0-9a-f]{64}$/.test(fingerprint)) return false;
-  const own = await query(
+  return withActiveChartUser(userId,async ctx=>{
+  const own = await chartQuery(ctx,
     "SELECT 1 FROM hd_charts WHERE fingerprint = $1 AND user_id = $2 LIMIT 1",
     [fingerprint, userId]
   );
@@ -930,15 +1004,17 @@ export async function claimHdChart(
   if (!claimToken || !/^[0-9a-f]{48}$/.test(claimToken)) return false;
   const claimTokenHash = hashHdClaimToken(claimToken);
   try {
-    const result = await query(
+    await queryClient(ctx.client,"SAVEPOINT hd_claim");
+    const result = await chartQuery(ctx,
       `UPDATE hd_charts SET user_id = $2, claim_token = NULL, updated_at = now()
        WHERE fingerprint = $1 AND user_id IS NULL
          AND claim_token = $3`,
       [fingerprint, userId, claimTokenHash]
     );
+    await queryClient(ctx.client,"RELEASE SAVEPOINT hd_claim");
     if ((result.rowCount ?? 0) > 0) {
       // Guest rows are usually `self`; claiming must not leave two personal charts.
-      await healMultiSelfHdChart(userId);
+      await healMultiSelfHdChart(userId,ctx);
       return true;
     }
     return false;
@@ -946,16 +1022,18 @@ export async function claimHdChart(
     // Concurrent own-row insert for the same fingerprint can trip unique
     // (fingerprint, owner_key) when this UPDATE flips the generated owner_key.
     if ((error as { code?: string })?.code !== "23505") throw error;
-    const again = await query(
+    await queryClient(ctx.client,"ROLLBACK TO SAVEPOINT hd_claim");
+    const again = await chartQuery(ctx,
       "SELECT 1 FROM hd_charts WHERE fingerprint = $1 AND user_id = $2 LIMIT 1",
       [fingerprint, userId]
     );
     if (again.rows[0]) {
-      await healMultiSelfHdChart(userId);
+      await healMultiSelfHdChart(userId,ctx);
       return true;
     }
     throw error;
   }
+  });
 }
 
 export async function getHdReportForChart(
@@ -971,76 +1049,21 @@ export async function getHdReportForChart(
 
 export async function getHdReportById(
   reportId: string,
-  userId: string
-): Promise<HdReportRow | null> {
-  const { rows } = await query<HdReportDbRow>(
-    "SELECT * FROM hd_reports WHERE id = $1 AND user_id = $2",
-    [reportId, userId]
-  );
-  return rows[0] ? mapReportRow(rows[0]) : null;
-}
-
-/**
- * Insert the pending report row. The unique chart_id index is the idempotency
- * key: returns null when a report already exists (caller must not charge).
- */
-export async function createPendingHdReport(
-  params: {
-    chartId: string;
-    userId: string;
-    transactionId: string | null;
-    packageId?: "depth" | "max";
-    includedAsksRemaining?: number;
-    reportTone?: HdReportToneId;
-  },
+  userId: string,
   client?: PoolClient
 ): Promise<HdReportRow | null> {
-  // Personal report is always the full SKU.
-  const packageId = "max";
-  const includedAsks = Math.max(
-    5,
-    Math.floor(params.includedAsksRemaining ?? 5)
-  );
-  const reportTone = mapReportTone(params.reportTone);
-  const sql = `INSERT INTO hd_reports (
-       chart_id, user_id, status, transaction_id, package_id, included_asks_remaining, report_tone
-     ) VALUES ($1, $2, 'pending', $3, $4, $5, $6)
-     ON CONFLICT (chart_id) DO NOTHING
-     RETURNING *`;
-  const params_ = [
-    params.chartId,
-    params.userId,
-    params.transactionId,
-    packageId,
-    includedAsks,
-    reportTone,
-  ];
-  const { rows } = client
-    ? await queryClient<HdReportDbRow>(client, sql, params_)
-    : await query<HdReportDbRow>(sql, params_);
+  const sql = "SELECT * FROM hd_reports WHERE id = $1 AND user_id = $2";
+  const { rows } = client ? await queryClient<HdReportDbRow>(client,sql,[reportId,userId]) : await query<HdReportDbRow>(sql,[reportId,userId]);
   return rows[0] ? mapReportRow(rows[0]) : null;
-}
-
-export async function updateHdReportTone(
-  reportId: string,
-  tone: HdReportToneId
-): Promise<void> {
-  await query(
-    `UPDATE hd_reports SET report_tone = $2, updated_at = now() WHERE id = $1`,
-    [reportId, mapReportTone(tone)]
-  );
 }
 
 export async function getHdCompositeReportById(
   reportId: string,
-  userId: string
+  userId: string,
+  client?: PoolClient
 ): Promise<HdCompositeReportRow | null> {
-  const { rows } = await query<HdCompositeReportDbRow>(
-    `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at, base_snapshot, partner_snapshot
-     FROM hd_composite_reports
-     WHERE id = $1 AND user_id = $2`,
-    [reportId, userId]
-  );
+  const sql = "SELECT * FROM hd_composite_reports WHERE id=$1 AND user_id=$2";
+  const { rows } = client ? await queryClient<HdCompositeReportDbRow>(client,sql,[reportId,userId]) : await query<HdCompositeReportDbRow>(sql,[reportId,userId]);
   return rows[0] ? mapCompositeRow(rows[0]) : null;
 }
 
@@ -1075,235 +1098,6 @@ export function isStalePendingReport(report: HdReportRow): boolean {
     report.status === "pending" &&
     Date.now() - new Date(report.createdAt).getTime() > STALE_PENDING_MS
   );
-}
-
-/**
- * Double-billing guard: the SAME mechanics (birth date + time + timezone)
- * entered as a separate chart row must not be sold twice. Reports bake the
- * subject name into the text, so a dedupe hit also requires the same
- * subject kind and (case-insensitive) name. Returns the newest matching
- * done report (or its retained text during an admin rewrite); the caller
- * serves it cached WITHOUT charging again.
- */
-export async function findDuplicateDoneHdReport(params: {
-  userId: string;
-  excludeChartId: string;
-  birthDate: string;
-  birthTime: string;
-  timezone: string;
-  subjectKind: "self" | "other";
-  subjectName: string | null;
-}): Promise<HdReportRow | null> {
-  const timezone = normalizeHdTimezone(params.timezone);
-  const { rows } = await query<HdReportDbRow>(
-    `SELECT r.id, r.chart_id, r.user_id, r.status, r.report_text, r.model,
-            r.transaction_id, r.error, r.package_id, r.included_asks_remaining,
-            r.report_tone, r.created_at, r.chart_snapshot, r.admin_rewrite_started_at
-     FROM hd_reports r
-     JOIN hd_charts c ON c.id = r.chart_id
-     WHERE r.user_id = $1
-       AND (r.status = 'done' OR (r.status = 'pending' AND r.admin_rewrite_started_at IS NOT NULL))
-       AND r.report_text IS NOT NULL
-       AND r.chart_id <> $2
-       AND c.chart->'birth'->>'date' = $3
-       AND c.chart->'birth'->>'time' = $4
-       AND lower(c.chart->>'timezone') = lower($5)
-       AND c.subject_kind = $6
-       AND lower(COALESCE(c.subject_name, '')) = lower(COALESCE($7, ''))
-     ORDER BY r.created_at DESC
-     LIMIT 1`,
-    [
-      params.userId,
-      params.excludeChartId,
-      params.birthDate,
-      params.birthTime,
-      timezone,
-      params.subjectKind,
-      params.subjectName,
-    ]
-  );
-  return rows[0] ? mapReportRow(rows[0]) : null;
-}
-
-export async function deleteHdReportRow(reportId: string): Promise<void> {
-  await query("DELETE FROM hd_reports WHERE id = $1", [reportId]);
-}
-
-export async function attachHdReportTransaction(
-  reportId: string,
-  transactionId: string | null,
-  client?: PoolClient
-): Promise<void> {
-  const run = client ? queryClient.bind(null, client) : query;
-  await run("UPDATE hd_reports SET transaction_id = $2, updated_at = now() WHERE id = $1", [
-    reportId,
-    transactionId,
-  ]);
-}
-
-/**
- * CAS-lock a stale pending report for resume: resets its age so a concurrent
- * request sees a fresh pending and backs off with 409. Returns false when the
- * row was already resumed/completed by someone else.
- */
-export async function lockStalePendingReportForResume(reportId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE hd_reports SET created_at = now(), updated_at = now()
-     WHERE id = $1 AND status = 'pending'
-       AND created_at < now() - make_interval(secs => $2)`,
-    [reportId, STALE_PENDING_MS / 1000]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/**
- * Worker requeue takeover: claim a pending row even if it is still "fresh".
- * Client path must keep using lockStalePendingReportForResume (age gate).
- */
-export async function lockPendingReportForWorkerResume(reportId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE hd_reports SET created_at = now(), updated_at = now()
-     WHERE id = $1 AND status = 'pending'`,
-    [reportId]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/** Returns false when the row is gone (e.g. deleted by a watchdog requeue race). */
-export async function completeHdReport(
-  reportId: string,
-  reportText: string,
-  model: string,
-  meta: {
-    chartSnapshot: HdChartRow;
-    costRub?: number | null;
-    llmCalls?: number | null;
-    tokenUsage?: unknown;
-    qualityFindings?: unknown;
-  }
-): Promise<boolean> {
-  const { rowCount } = await query(
-    `UPDATE hd_reports
-     SET status = 'done',
-         report_text = $2,
-         chart_snapshot = $8::jsonb,
-         model = $3,
-         cost_rub = COALESCE($4, cost_rub),
-         llm_calls = COALESCE($5, llm_calls),
-         token_usage = COALESCE($6::jsonb, token_usage),
-         quality_findings = COALESCE($7::jsonb, quality_findings),
-         admin_rewrite_started_at = NULL,
-         error = NULL,
-         updated_at = now()
-     WHERE id = $1 AND status IN ('pending', 'needs_regeneration', 'error')`,
-    [
-      reportId,
-      reportText,
-      model,
-      meta?.costRub ?? null,
-      meta?.llmCalls ?? null,
-      meta?.tokenUsage != null ? JSON.stringify(meta.tokenUsage) : null,
-      meta?.qualityFindings != null ? JSON.stringify(meta.qualityFindings) : null,
-      JSON.stringify(meta.chartSnapshot),
-    ]
-  );
-  return (rowCount ?? 0) > 0;
-}
-
-/** Free rewrite of an already-paid done report (keeps text until success). */
-export async function beginHdReportRewrite(reportId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE hd_reports
-     SET status = 'pending',
-         admin_rewrite_started_at = now(),
-         package_id = 'max',
-         included_asks_remaining = GREATEST(included_asks_remaining, 5),
-         updated_at = now(),
-         created_at = now()
-     WHERE id = $1 AND status = 'done' AND length(trim(report_text)) > 0`,
-    [reportId]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/** Restore a failed rewrite back to done (keeps previous report_text). */
-export async function restoreHdReportDone(reportId: string): Promise<void> {
-  await query(
-    `UPDATE hd_reports
-     SET status = 'done',
-         admin_rewrite_started_at = NULL,
-         error = NULL,
-         updated_at = now()
-     WHERE id = $1
-       AND status IN ('pending', 'error')
-       AND report_text IS NOT NULL`,
-    [reportId]
-  );
-}
-
-/** @deprecated use beginHdReportRewrite */
-export const beginHdReportUpgrade = beginHdReportRewrite;
-/** @deprecated use restoreHdReportDone */
-export const restoreHdReportDepthAfterFailedUpgrade = restoreHdReportDone;
-
-export async function failHdReport(reportId: string, error: string): Promise<void> {
-  await query(
-    `UPDATE hd_reports SET status = 'error', error = $2, updated_at = now()
-     WHERE id = $1 AND admin_rewrite_started_at IS NULL`,
-    [reportId, error.slice(0, 500)]
-  );
-}
-
-/** Quality gate failed after retries — keep charge, hide from client until approve/regen. */
-export async function markHdReportNeedsRegeneration(
-  reportId: string,
-  draftText: string,
-  findings: unknown,
-  chartSnapshot: HdChartRow
-): Promise<void> {
-  await query(
-    `UPDATE hd_reports
-     SET status = 'needs_regeneration',
-         admin_rewrite_started_at = NULL,
-         report_text = $2,
-         chart_snapshot = $4::jsonb,
-         error = 'needs_regeneration',
-         quality_findings = $3::jsonb,
-         quality_updated_at = now(),
-         updated_at = now()
-     WHERE id = $1 AND admin_rewrite_started_at IS NULL`,
-    [reportId, draftText, JSON.stringify(findings ?? []), JSON.stringify(chartSnapshot)]
-  );
-}
-
-export async function approveHdReportManually(reportId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE hd_reports
-     SET status = 'done',
-         error = NULL,
-         quality_findings = NULL,
-         quality_updated_at = now(),
-         updated_at = now()
-     WHERE id = $1 AND status = 'needs_regeneration' AND report_text IS NOT NULL`,
-    [reportId]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/** Relock a needs_regeneration / error row for free resume (no new charge). */
-export async function beginHdReportQualityResume(reportId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE hd_reports
-     SET status = 'pending',
-         admin_rewrite_started_at = NULL,
-         created_at = now(),
-         updated_at = now()
-     WHERE id = $1
-       AND status IN ('needs_regeneration', 'error')
-       AND transaction_id IS NOT NULL`,
-    [reportId]
-  );
-  return (result.rowCount ?? 0) > 0;
 }
 
 export async function listHdReportsForAdminQa(limit = 50): Promise<
@@ -1356,6 +1150,7 @@ export async function getHdReportAdminDetail(reportId: string): Promise<HdReport
 }
 
 export interface HdCompositeReportRow {
+  generationRevision: string;
   baseSnapshot: HdChartRow | null;
   partnerSnapshot: HdChartRow | null;
   id: string;
@@ -1380,6 +1175,7 @@ export function toPublicHdCompositeReport(row: HdCompositeReportRow) {
 }
 
 interface HdCompositeReportDbRow {
+  generation_revision: string;
   base_snapshot?: HdChartRow | null;
   partner_snapshot?: HdChartRow | null;
   id: string;
@@ -1393,6 +1189,7 @@ interface HdCompositeReportDbRow {
 
 function mapCompositeRow(r: HdCompositeReportDbRow): HdCompositeReportRow {
   return {
+    generationRevision: r.generation_revision,
     id: r.id,
     baseChartId: r.base_chart_id,
     baseSnapshot: r.base_snapshot ?? null,
@@ -1415,69 +1212,6 @@ export function normalizeCompositePair(
     : [partnerChartId, baseChartId];
 }
 
-/**
- * Double-billing guard for connection reports: a pair whose BOTH sides have
- * the same mechanics (date + time + timezone) as an already-paid pair is the
- * same product — serve the existing text cached instead of charging again.
- * Pair storage is canonically sorted, so matching is direction-independent.
- * Subject names are baked into the text → compared per side like for
- * personal reports.
- */
-export async function findDuplicateDoneCompositeReport(params: {
-  userId: string;
-  excludeBaseChartId: string;
-  excludePartnerChartId: string;
-  base: { birthDate: string; birthTime: string; timezone: string; subjectName: string | null };
-  partner: { birthDate: string; birthTime: string; timezone: string; subjectName: string | null };
-}): Promise<HdCompositeReportRow | null> {
-  const baseTz = normalizeHdTimezone(params.base.timezone);
-  const partnerTz = normalizeHdTimezone(params.partner.timezone);
-  const { rows } = await query<HdCompositeReportDbRow>(
-    `SELECT r.id, r.base_chart_id, r.partner_chart_id, r.status, r.report_text,
-            r.transaction_id, r.created_at, r.base_snapshot, r.partner_snapshot
-     FROM hd_composite_reports r
-     JOIN hd_charts cb ON cb.id = r.base_chart_id
-     JOIN hd_charts cp ON cp.id = r.partner_chart_id
-     WHERE r.user_id = $1
-       AND r.status = 'done'
-       AND r.report_text IS NOT NULL
-       AND NOT (r.base_chart_id = $2 AND r.partner_chart_id = $3)
-       AND (
-         (
-           cb.chart->'birth'->>'date' = $4 AND cb.chart->'birth'->>'time' = $5
-           AND lower(cb.chart->>'timezone') = lower($6)
-           AND lower(COALESCE(cb.subject_name, '')) = lower(COALESCE($7, ''))
-           AND cp.chart->'birth'->>'date' = $8 AND cp.chart->'birth'->>'time' = $9
-           AND lower(cp.chart->>'timezone') = lower($10)
-           AND lower(COALESCE(cp.subject_name, '')) = lower(COALESCE($11, ''))
-         ) OR (
-           cb.chart->'birth'->>'date' = $8 AND cb.chart->'birth'->>'time' = $9
-           AND lower(cb.chart->>'timezone') = lower($10)
-           AND lower(COALESCE(cb.subject_name, '')) = lower(COALESCE($11, ''))
-           AND cp.chart->'birth'->>'date' = $4 AND cp.chart->'birth'->>'time' = $5
-           AND lower(cp.chart->>'timezone') = lower($6)
-           AND lower(COALESCE(cp.subject_name, '')) = lower(COALESCE($7, ''))
-         )
-       )
-     ORDER BY r.created_at DESC
-     LIMIT 1`,
-    [
-      params.userId,
-      params.excludeBaseChartId,
-      params.excludePartnerChartId,
-      params.base.birthDate,
-      params.base.birthTime,
-      baseTz,
-      params.base.subjectName,
-      params.partner.birthDate,
-      params.partner.birthTime,
-      partnerTz,
-      params.partner.subjectName,
-    ]
-  );
-  return rows[0] ? mapCompositeRow(rows[0]) : null;
-}
-
 export async function getHdCompositeReport(
   baseChartId: string,
   partnerChartId: string,
@@ -1485,7 +1219,7 @@ export async function getHdCompositeReport(
 ): Promise<HdCompositeReportRow | null> {
   // Match either orientation — legacy rows may predate canonical ordering.
   const { rows } = await query<HdCompositeReportDbRow>(
-    `SELECT id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at, base_snapshot, partner_snapshot
+    `SELECT *
      FROM hd_composite_reports
      WHERE user_id = $3
        AND (
@@ -1499,63 +1233,11 @@ export async function getHdCompositeReport(
   return rows[0] ? mapCompositeRow(rows[0]) : null;
 }
 
-/** Idempotency via UNIQUE(base_chart_id, partner_chart_id, user_id): null = already exists. */
-export async function createPendingCompositeReport(
-  params: {
-    baseChartId: string;
-    partnerChartId: string;
-    userId: string;
-    transactionId: string | null;
-  },
-  client?: PoolClient
-): Promise<HdCompositeReportRow | null> {
-  const [baseChartId, partnerChartId] = normalizeCompositePair(
-    params.baseChartId,
-    params.partnerChartId
-  );
-  const sql = `INSERT INTO hd_composite_reports (base_chart_id, partner_chart_id, user_id, status, transaction_id)
-     VALUES ($1, $2, $3, 'pending', $4)
-     ON CONFLICT (base_chart_id, partner_chart_id, user_id) DO NOTHING
-     RETURNING id, base_chart_id, partner_chart_id, status, report_text, transaction_id, created_at, base_snapshot, partner_snapshot`;
-  const params_ = [baseChartId, partnerChartId, params.userId, params.transactionId];
-  const { rows } = client
-    ? await queryClient<HdCompositeReportDbRow>(client, sql, params_)
-    : await query<HdCompositeReportDbRow>(sql, params_);
-  return rows[0] ? mapCompositeRow(rows[0]) : null;
-}
-
 export function isStalePendingComposite(report: HdCompositeReportRow): boolean {
   return (
     report.status === "pending" &&
     Date.now() - new Date(report.createdAt).getTime() > STALE_PENDING_MS
   );
-}
-
-export async function deleteCompositeReportRow(reportId: string): Promise<void> {
-  await query("DELETE FROM hd_composite_reports WHERE id = $1", [reportId]);
-}
-
-export async function attachCompositeReportTransaction(
-  reportId: string,
-  transactionId: string | null,
-  client?: PoolClient
-): Promise<void> {
-  const run = client ? queryClient.bind(null, client) : query;
-  await run(
-    "UPDATE hd_composite_reports SET transaction_id = $2, updated_at = now() WHERE id = $1",
-    [reportId, transactionId]
-  );
-}
-
-/** CAS-lock a stale pending composite for resume (see lockStalePendingReportForResume). */
-export async function lockStalePendingCompositeForResume(reportId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE hd_composite_reports SET created_at = now(), updated_at = now()
-     WHERE id = $1 AND status = 'pending'
-       AND created_at < now() - make_interval(secs => $2)`,
-    [reportId, STALE_PENDING_MS / 1000]
-  );
-  return (result.rowCount ?? 0) > 0;
 }
 
 /**
@@ -1585,50 +1267,6 @@ export async function sweepGuestPoolHdCharts(
     if (n < batchSize) break;
   }
   return total;
-}
-
-export async function completeCompositeReport(
-  reportId: string,
-  reportText: string,
-  model: string,
-  base: HdChartRow,
-  partner: HdChartRow
-): Promise<boolean> {
-  const { rowCount } = await query(
-    `UPDATE hd_composite_reports SET status = 'done', report_text = $2, model = $3,
-       base_snapshot = CASE WHEN base_chart_id = $4 THEN $5::jsonb ELSE $6::jsonb END,
-       partner_snapshot = CASE WHEN partner_chart_id = $4 THEN $5::jsonb ELSE $6::jsonb END,
-       updated_at = now()
-     WHERE id = $1 AND ((base_chart_id = $4 AND partner_chart_id = $7) OR (partner_chart_id = $4 AND base_chart_id = $7))`,
-    [reportId, reportText, model, base.id, JSON.stringify(base), JSON.stringify(partner), partner.id]
-  );
-  return (rowCount ?? 0) > 0;
-}
-
-/** Mark a done composite as pending rewrite without wiping the previous text. */
-export async function beginCompositeReportRewrite(reportId: string): Promise<boolean> {
-  const result = await query(
-    `UPDATE hd_composite_reports SET status = 'pending', updated_at = now(), created_at = now()
-     WHERE id = $1 AND status = 'done'`,
-    [reportId]
-  );
-  return (result.rowCount ?? 0) > 0;
-}
-
-/** Restore a failed rewrite back to done (keeps the previous report_text). */
-export async function restoreCompositeReportDone(reportId: string): Promise<void> {
-  await query(
-    `UPDATE hd_composite_reports SET status = 'done', error = NULL, updated_at = now()
-     WHERE id = $1 AND status = 'pending' AND report_text IS NOT NULL`,
-    [reportId]
-  );
-}
-
-export async function failCompositeReport(reportId: string, error: string): Promise<void> {
-  await query(
-    `UPDATE hd_composite_reports SET status = 'error', error = $2, updated_at = now() WHERE id = $1`,
-    [reportId, error.slice(0, 500)]
-  );
 }
 
 export interface HdReportMessage {
@@ -1684,45 +1322,6 @@ export async function hasRuneRefundForTransaction(transactionId: string): Promis
   return rows.length > 0;
 }
 
-/** Refund landed → the pending row must never be resumable again. */
-export async function markHdReportChargeRefunded(reportId: string): Promise<void> {
-  await query(
-    `UPDATE hd_reports
-     SET status = 'error', error = 'charge_refunded', transaction_id = NULL, updated_at = now()
-     WHERE id = $1 AND status = 'pending' AND admin_rewrite_started_at IS NULL`,
-    [reportId]
-  );
-}
-
-export async function markCompositeReportChargeRefunded(reportId: string): Promise<void> {
-  await query(
-    `UPDATE hd_composite_reports
-     SET status = 'error', error = 'charge_refunded', transaction_id = NULL, updated_at = now()
-     WHERE id = $1 AND status = 'pending'`,
-    [reportId]
-  );
-}
-
-/**
- * Undo the CAS-lock age reset after a failed resume so the user can retry
- * immediately instead of waiting out a fresh 10-minute stale window.
- */
-export async function releaseStalePendingReportLock(reportId: string): Promise<void> {
-  await query(
-    `UPDATE hd_reports SET created_at = now() - make_interval(secs => $2), updated_at = now()
-     WHERE id = $1 AND status = 'pending' AND admin_rewrite_started_at IS NULL`,
-    [reportId, STALE_PENDING_MS / 1000 + 1]
-  );
-}
-
-export async function releaseStalePendingCompositeLock(reportId: string): Promise<void> {
-  await query(
-    `UPDATE hd_composite_reports SET created_at = now() - make_interval(secs => $2), updated_at = now()
-     WHERE id = $1 AND status = 'pending'`,
-    [reportId, STALE_PENDING_MS / 1000 + 1]
-  );
-}
-
 /**
  * Reconciler for crashed purchases: rows stuck pending/error with a charge
  * attached and no refund recorded. Refunds the original amount (read from
@@ -1731,65 +1330,8 @@ export async function releaseStalePendingCompositeLock(reportId: string): Promis
  * may still be in flight or the user may be about to resume.
  */
 export async function reconcileHdReportCharges(limit = 50): Promise<number> {
-  let refunded = 0;
-  // A crashed admin rewrite already has a delivered paid report. Restore the
-  // retained version after the maximum rewrite window; refunding it would turn
-  // a successful historical purchase into a hidden error row.
-  await query(
-    `UPDATE hd_reports
-     SET status = 'done', admin_rewrite_started_at = NULL, error = NULL, updated_at = now()
-     WHERE status IN ('pending', 'error')
-       AND admin_rewrite_started_at IS NOT NULL
-       AND length(trim(report_text)) > 0
-       AND updated_at < now() - interval '1 hour'`
-  );
-  for (const table of ["hd_reports", "hd_composite_reports"] as const) {
-    // Identical shape in both tables; the table name cannot be parameterized.
-    // transaction_id is UUID in hd_reports but TEXT in hd_composite_reports —
-    // compare as text to keep one code path (and never throw on a bad cast).
-    const { rows } = await query<{
-      id: string;
-      user_id: string;
-      transaction_id: string;
-      amount: number;
-    }>(
-      `SELECT r.id, r.user_id, r.transaction_id, ABS(t.amount) AS amount
-       FROM ${table} r
-       JOIN rune_transactions t ON t.id::text = r.transaction_id::text AND t.type = 'spend'
-       WHERE r.status IN ('pending', 'error')
-         AND r.transaction_id IS NOT NULL
-         ${table === "hd_reports" ? "AND r.admin_rewrite_started_at IS NULL" : ""}
-         AND r.updated_at < now() - interval '1 hour'
-         AND NOT EXISTS (
-           SELECT 1 FROM rune_transactions rf
-           WHERE rf.type = 'refund' AND rf.refund_of_transaction_id::text = r.transaction_id::text
-         )
-       ORDER BY r.updated_at
-       LIMIT $1`,
-      [limit]
-    );
-    for (const row of rows) {
-      try {
-        await refundRunes(
-          row.user_id,
-          row.amount,
-          "Возврат: разбор не был создан",
-          table === "hd_reports" ? "HD_REPORT" : "HD_COMPOSITE_REPORT",
-          row.transaction_id
-        );
-        await query(
-          `UPDATE ${table}
-           SET status = 'error', error = 'charge_refunded_reconcile', transaction_id = NULL, updated_at = now()
-           WHERE id = $1`,
-          [row.id]
-        );
-        refunded += 1;
-      } catch (error) {
-        console.warn(`[human-design] reconcile failed for ${table}:${row.id}`, error);
-      }
-    }
-  }
-  return refunded;
+  const { reconcileHdReceipts } = await import("./hd-receipt-recovery");
+  return reconcileHdReceipts(limit);
 }
 
 /* ------------------------------------------------------------------ *
@@ -1827,14 +1369,11 @@ function mapInsightRow(row: HdCenterInsightDbRow): HdCenterInsightRow {
 export async function getHdCenterInsight(
   chartId: string,
   userId: string,
-  center: string
+  center: string, client?:PoolClient
 ): Promise<HdCenterInsightRow | null> {
-  const { rows } = await query<HdCenterInsightDbRow>(
-    `SELECT id, chart_id, center, insight_text, created_at
-     FROM hd_center_insights
-     WHERE chart_id = $1 AND user_id = $2 AND center = $3`,
-    [chartId, userId, center]
-  );
+  const sql=`SELECT id, chart_id, center, insight_text, created_at FROM hd_center_insights WHERE chart_id=$1 AND user_id=$2 AND center=$3`;
+  const params=[chartId,userId,center];
+  const {rows}=client?await queryClient<HdCenterInsightDbRow>(client,sql,params):await query<HdCenterInsightDbRow>(sql,params);
   return rows[0] ? mapInsightRow(rows[0]) : null;
 }
 

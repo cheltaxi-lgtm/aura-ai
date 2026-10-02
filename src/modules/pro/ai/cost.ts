@@ -18,7 +18,7 @@ const PROMPT_REREAD_MULTIPLIER = 2;
 
 export async function estimateProReportCostRub(
   blocks: ProReportBlock[]
-): Promise<number> {
+): Promise<number | null> {
   const chars = blocks.reduce(
     (n, b) => n + (b.body?.length ?? 0) + (b.practice?.length ?? 0),
     0
@@ -37,7 +37,7 @@ export async function estimateProReportCostRub(
 /** Single-block refine ≈ one section out + the section re-read as input. */
 export async function estimateProRefineCostRub(
   block: ProReportBlock
-): Promise<number> {
+): Promise<number | null> {
   const chars = (block.body?.length ?? 0) + (block.practice?.length ?? 0);
   const completionTokens = Math.max(1, Math.ceil(chars / 3.5));
   const promptTokens = 1500 + completionTokens;

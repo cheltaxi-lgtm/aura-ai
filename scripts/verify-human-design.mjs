@@ -559,8 +559,10 @@ const TYPE_NAME_MAP = {
 {
   const src = (p) => readFileSync(new URL(p, import.meta.url), "utf8");
   const serviceSrc = src("../src/lib/services/human-design-service.ts");
-  const reportRoute = src("../src/app/api/human-design/report/route.ts");
-  const compositeRoute = src("../src/app/api/human-design/composite-report/route.ts");
+  const purchase = src("../src/lib/services/hd-purchase-route.ts");
+  const generation = src("../src/lib/services/hd-generation-service.ts");
+  const reportRoute = src("../src/app/api/human-design/report/route.ts") + purchase;
+  const compositeRoute = src("../src/app/api/human-design/composite-report/route.ts") + purchase;
   const registry = src("../src/lib/async-job-registry.ts");
   const workerShared = src("../src/lib/async-job-worker-auth-shared.ts");
   const jobsActive = src("../src/app/api/jobs/active/route.ts");
@@ -604,16 +606,13 @@ const TYPE_NAME_MAP = {
     "guardrail: HD report routes use hard rejects only (not chat degenerate)"
   );
   assert(
-    reportRoute.includes("if (!resumePaidPending)") &&
-      compositeRoute.includes("if (!resumePaidPending)") &&
-      /if \(!resumePaidPending\)[\s\S]*?ensureSufficientRunes/.test(reportRoute) &&
-      /if \(!resumePaidPending\)[\s\S]*?ensureSufficientRunes/.test(compositeRoute),
-    "guardrail: async enqueue skips balance precheck on paid resume"
+    purchase.includes("if (!held && !duplicate) await ensureSufficientRunes"),
+    "guardrail: async enqueue skips balance precheck for held receipt or completed duplicate"
   );
   assert(
-    registry.includes("timeoutMs: 600_000") &&
+    /const HD_REPORT:[\s\S]*?timeoutMs:\s*800_000/.test(registry) &&
       /hd_composite_report[\s\S]*?timeoutMs:\s*600_000/.test(registry),
-    "guardrail: composite async job timeout matches personal (600s)"
+    "guardrail: HD worker deadlines exceed provider budgets (personal800s/composite600s)"
   );
   assert(
     compositeRoute.includes("maxDuration = 600"),
@@ -642,11 +641,11 @@ const TYPE_NAME_MAP = {
 
   // Double-billing guards wired into both purchase routes.
   assert(
-    reportRoute.includes("findDuplicateDoneHdReport"),
+    reportRoute.includes("acquireHdGeneration") && generation.includes("semantic_identity=$2") && generation.includes("hdPurchaseIdentity"),
     "guardrail: personal report route dedupes identical mechanics"
   );
   assert(
-    compositeRoute.includes("findDuplicateDoneCompositeReport"),
+    compositeRoute.includes("acquireHdGeneration") && generation.includes("semantic_identity=$2") && generation.includes("chartOrder"),
     "guardrail: composite route dedupes identical mechanics"
   );
 
@@ -697,11 +696,11 @@ const TYPE_NAME_MAP = {
       `guardrail: ${name} route enqueues async job`
     );
     assert(
-      routeSrc.includes("beginWorkerJobSave"),
+      routeSrc.includes("saveHdGeneration") && generation.includes("lockReportWorkerSave") && generation.includes("completeReportWorkerSave"),
       `guardrail: ${name} route claims save before persist`
     );
     assert(
-      routeSrc.includes("trackWorkerJobCompleted") && routeSrc.includes("trackWorkerJobFailed"),
+      routeSrc.includes("failHdGeneration") && generation.includes("markAsyncJobRefunded") && generation.includes("generation_revision"),
       `guardrail: ${name} route tracks job lifecycle`
     );
     assert(

@@ -25,7 +25,10 @@ const ok = (name, cond, detail = "") => {
 ok("headline", conn.headline.length > 8, conn.headline);
 ok("merged gates", conn.mergedChart.activeGates.length >= Math.max(a.activeGates.length, b.activeGates.length));
 ok("centers 9", conn.centers.length === 9);
-ok("decision", /авторитет/i.test(conn.decisionNote));
+ok("unknown time decision is conditional", /Время рождения.*неизвестно.*условным/.test(conn.decisionNote));
+const exact = analyzeHdConnection(b,b);
+ok("exact decision names authority", /авторитет/i.test(exact.decisionNote));
+ok("merged chart identified as connection", conn.mergedChart.isConnection === true && conn.mergedChart.timeKnown === false);
 ok("electro set matches", conn.electromagneticKeys.size === conn.electromagnetic.length);
 ok("partner-only gates", conn.partnerOnlyGates.size === conn.bOnlyGates.length);
 ok(

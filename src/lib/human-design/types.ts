@@ -5,7 +5,7 @@
  * Design moment at exactly 88°00'00" of solar arc before birth.
  */
 
-export const HD_ENGINE_VERSION = "hd-v1-astronomy-engine-truenode-arc88";
+export const HD_ENGINE_VERSION = "hd-v2-astronomy-engine-osculating-node-exact-arc88";
 
 export type HdBodyKey =
   | "sun"
@@ -83,9 +83,10 @@ export interface HdChannelState {
 
 export interface HdTimeStability {
   /**
-   * Type/authority/profile unchanged across the whole birth day, probed
-   * hourly (00:00…23:00 + 23:59 local) with adjacent-link comparison — a
-   * single gate-boundary crossing anywhere in the day flips the flag.
+   * Conservative certification across the full local calendar day (including
+   * clock changes). False means stability is not certified, not necessarily
+   * that a change was observed. Brief changes between sampled instants are
+   * bounded with possible/guaranteed gates and monotone graph mechanics.
    */
   typeStable: boolean;
   authorityStable: boolean;
@@ -93,6 +94,8 @@ export interface HdTimeStability {
 }
 
 export interface HdChart {
+  /** A union bodygraph has no individual type, authority or planetary columns. */
+  isConnection?: true;
   engineVersion: string;
   timeKnown: boolean;
   /** Omitted on public share payloads (birth PII). */
@@ -103,6 +106,7 @@ export interface HdChart {
     /** Local time actually used (12:00 when unknown). */
     time: string;
     utcIso: string;
+    timeOccurrence?: "earlier" | "later";
   };
   design: {
     utcIso: string;
@@ -134,10 +138,12 @@ export interface HdChart {
 export interface HdCalcInput {
   /** YYYY-MM-DD, local to `timezone`. */
   birthDate: string;
-  /** "HH:MM" (24h) or null when unknown → 12:00 local + stability probe. */
+  /** "HH:MM[:SS]" (24h) or null when unknown → representative local time. */
   birthTime: string | null;
   /** IANA timezone id, e.g. "Europe/Moscow". */
   timezone: string;
+  /** Required when the known wall-clock time occurred twice. */
+  birthTimeOccurrence?: "earlier" | "later";
 }
 
 /**
