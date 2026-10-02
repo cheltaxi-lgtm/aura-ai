@@ -61,6 +61,14 @@ describe("HD saved graph and connection prose consistency",()=>{
   it("still rejects an explicit wrong count of defined dominance channels",()=>{
     expect(counts("Алексей — 4 определённых доминантных канала.").some(f=>f.detail.startsWith("wrong_connection_dominance_count:"))).toBe(true);
     expect(counts("Алексей — 4 определённых канала доминантности.").some(f=>f.detail.startsWith("wrong_connection_dominance_count:"))).toBe(true);
+    expect(counts("Доминантные каналы: Алексей — 4 полных канала; Анна — 3 полных канала.").some(f=>f.detail.startsWith("wrong_connection_dominance_count:"))).toBe(true);
+    expect(counts("Доминантные каналы: Алексей — 3 полных канала; Анна — 4 полных канала.")).toEqual([]);
+    expect(counts("Доминантные каналы: Алексей — 3; Анна — 4; Индивидуальная карта Алексея — 3 определённых канала, индивидуальная карта Анны — 4 определённых канала.")).toEqual([]);
+    for (const separator of ["\n","\n\n- "]) {
+      expect(counts(`Доминантные каналы:${separator}Алексей — 4 полных канала; Анна — 3 полных канала.`).some(f=>f.detail.startsWith("wrong_connection_dominance_count:"))).toBe(true);
+      expect(counts(`Доминантные каналы:${separator}Алексей — 3 полных канала; Анна — 4 полных канала.`)).toEqual([]);
+      expect(counts(`Доминантные каналы:${separator}Алексей — 3; Анна — 4.\nИндивидуальная карта Алексея — 3 определённых канала, индивидуальная карта Анны — 4 определённых канала.`)).toEqual([]);
+    }
   });
   it.each([
     "Алексей — 4; Анна — 3.",

@@ -112,7 +112,11 @@ function wrongConnectionCounts(text: string, contract: HdConnectionReportContrac
       // A person's total defined/shared channels is a different statistic.
       // Preserve explicit "defined dominance channels" as a dominance claim.
       const qualified = /^\s+(?:определ[её]нн|полн|личн|индивидуальн|собственн|общ|активн)[\p{L}]*\s+канал[\p{L}]*/iu.exec(tail);
-      if (qualified && !/^\s+доминантн/iu.test(tail.slice(qualified[0].length))) continue;
+      // A statistic label also owns its Markdown list across line breaks.
+      const context = text.slice(Math.max(0,match.index!-256),match.index);
+      const labels = [...context.matchAll(/доминантн[\p{L}]*\s+канал[\p{L}]*\s*[:—–]|(?:индивидуальн|личн|собственн)[\p{L}]*\s+карт[\p{L}]*/giu)];
+      const dominanceList = labels.length > 0 && /^доминантн/iu.test(labels.at(-1)![0]);
+      if (qualified && !dominanceList && !/^\s+доминантн/iu.test(tail.slice(qualified[0].length))) continue;
       if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== person.channelKeys.length) bad.push(`wrong_connection_dominance_count:${person.name}:${match[1]}_vs_${person.channelKeys.length}`);
     }
   }
