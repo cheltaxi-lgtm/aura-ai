@@ -75,6 +75,13 @@ describe("HD deep audit calculation regressions", () => {
 
 describe("HD deep audit report quality regressions", () => {
   const quality=(text:string,scope:"report"|"section"="section")=>validateHdReportText(text,{contract,scope,requireFocusAnswer:scope==="report"});
+  it("distinguishes a single gate from a channel without rejecting valid pairs",()=>{
+    expect(contract.contractBlock).toContain("Ворота обозначаются одним числом, канал — парой ворот");
+    expect(quality("## Отношения\nКанал 6 представлен как висячие ворота Трения.").findings.some(f=>f.detail==="single_gate_called_channel:6"&&f.sectionTitles?.includes("Отношения"))).toBe(true);
+    for(const claim of ["Ворота 6 — висячие ворота Трения.","Канал 6–59 соединяет Сакральный и эмоциональный центры.","Канал 6/59 описывает близость.","Канал 6 и 59 описывает близость.","Это не канал 6, а ворота 6.","Ворота 6 — это ворота Трения, а не «канал 6».",'Ворота 6 — это ворота Трения, а не "канал 6".']) {
+      expect(quality(`## Отношения\n${claim}`).findings.some(f=>f.detail.startsWith("single_gate_called_channel:"))).toBe(false);
+    }
+  });
   it("provides the actual indirect motor path and rejects invented direct channel endpoints",()=>{
     expect(contract.contractBlock).toContain("Эго (Сердце) —[26-44]→ Селезёночный —[16-48]→ Горловой");
     for(const claim of [

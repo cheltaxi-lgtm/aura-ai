@@ -251,6 +251,13 @@ export function validateHdReportText(
   const sections = splitSections(body);
   for (const s of sections) for (const sentence of s.body.matchAll(/[^.!?;\n]+/gu)) {
     const clause = sentence[0];
+    for (const gate of clause.matchAll(/(?<!\p{L})канал\s+(\d{1,2})(?!\d)/giu)) {
+      const tail = clause.slice(gate.index!+gate[0].length);
+      const quotedNegation = /(?<!\p{L})не\s*[«“"]\s*$/iu.test(clause.slice(0,gate.index));
+      if (!/^\s*(?:[–—/-]\s*\d{1,2}(?!\d)|и\s+\d{1,2}(?!\d))/iu.test(tail) && !quotedNegation && !isPersonalFactNegated(clause,gate.index!)) {
+        findings.push({rule:"V4",detail:`single_gate_called_channel:${gate[1]}`,sectionTitles:[s.title]});
+      }
+    }
     if (!/канал[\p{L}]*/iu.test(clause)) continue;
     const connection = /соедин[еёяи][\p{L}]*|связыва[\p{L}]*|связа[\p{L}]*|между/iu.exec(clause);
     if (!connection || /(?:цепочк|опосредован|косвенн|промежуточн)/iu.test(clause) || isPersonalFactNegated(clause,connection.index) || /нельзя\s+(?:считать|назвать|называть)\s*$/iu.test(clause.slice(0,connection.index))) continue;
