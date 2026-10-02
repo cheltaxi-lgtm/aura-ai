@@ -10,6 +10,13 @@ function findings(text: string, title="Периоды и темы жизни") {
 }
 
 describe("HD actual consumer phase and channel claims",()=>{
+  it.each(["13–33","13—33","13-33","13/33","13 и 33"])("checks saved channel ownership in every supported notation: %s",pair=>{
+    expect(findings(`Ваш определённый канал ${pair} соединяет G-центр с Горловым.`,"Бизнес и работа").some(f=>f.detail==="false_defined_channel:13-33")).toBe(true);
+  });
+  it.each(["16–48, 25–51, 26–44","16—48, 25—51, 26—44","16/48, 25/51, 26/44","16 и 48, 25 и 51, 26 и 44"])("accepts all saved channels in supported notation: %s",pairs=>{
+    const result=validateHdReportText(`## Каналы\nВаши каналы ${pairs}.`,{contract,scope:"section"});
+    expect(result.findings.filter(f=>/false_defined_channel|missing_defined_channel/.test(f.detail))).toEqual([]);
+  });
   it.each([
     "Период примерно от 30 до 50 лет связан с четвёртой линией — Оппортунистом. Сейчас, в 39 лет, это основная линза развития.",
     "Вторая фаза 30–50 — четвёртая линия.",
@@ -40,6 +47,20 @@ describe("HD actual consumer phase and channel claims",()=>{
   });
   it("checks constituent gate identity against an explicit channel",()=>{
     expect(findings("Ворота 13 и 33 образуют канал 30–41.","Автоматические реакции").some(f=>f.detail.startsWith("wrong_channel_constituent_gates:"))).toBe(true);
+  });
+  it.each(["Канал 29/30 описывает близость.","Канал 29 и 30 описывает близость."])("rejects nonexistent channel pairs in every supported notation: %s",text=>{
+    expect(findings(text,"Каналы").some(f=>f.detail==="invalid_channel_pair:29-30")).toBe(true);
+  });
+  it.each(["Канал 25/51 соединяет Эго и Горловой.","Канал 25 и 51 соединяет Эго и Горловой."])("checks endpoints in every supported notation: %s",text=>{
+    expect(findings(text,"Каналы").some(f=>f.detail==="wrong_channel_endpoints:25-51")).toBe(true);
+  });
+  it.each([
+    "Канал 6/59 соединяет Сакральный и Эмоциональный центры.",
+    "Канал 6 и 59 соединяет Сакральный и Эмоциональный центры.",
+    "Канал 25/51 соединяет Эго и G-центр.",
+    "Канал 25 и 51 соединяет Эго и G-центр.",
+  ])("allows correct pairs and endpoints in every supported notation: %s",text=>{
+    expect(findings(text,"Каналы").filter(f=>/invalid_channel|wrong_channel_endpoints/.test(f.detail))).toEqual([]);
   });
   it.each([
     "Ворота 30 и 41 образуют канал 30–41 между Эмоциональным и Корневым центрами.",

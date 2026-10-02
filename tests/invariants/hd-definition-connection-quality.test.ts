@@ -43,6 +43,17 @@ describe("HD saved graph and connection prose consistency",()=>{
     expect(groups("ин".repeat(12_000)+" Одна группа включает Эмоциональный, Сакральный и Корневой центры.").length).toBeGreaterThan(0);
     expect(performance.now()-started).toBeLessThan(1000);
   });
+  it.each(["Всего","Компромиссных каналов"])("bounds malformed count labels with long whitespace: %s",label=>{
+    const started=performance.now();
+    expect(counts(label+" ".repeat(32_000)+"невозможно")).toEqual([]);
+    expect(performance.now()-started).toBeLessThan(1000);
+  });
+  it.each(["Доминантность и компромисс","Отношения"])("bounds repeated compromise stems in any section: %s",title=>{
+    const started=performance.now();
+    const result=validateHdReportText(`## ${title}\n${"компромиссн".repeat(4000)}x`,{connectionContract:connection,scope:"section"});
+    expect(result.findings.filter(f=>f.detail.startsWith("wrong_connection_"))).toEqual([]);
+    expect(performance.now()-started).toBeLessThan(1000);
+  });
   it("binds dominance channel ownership and human names to actual saved chart order",()=>{
     expect(connection.dominance.map(p=>[p.name,p.channelKeys.length])).toEqual([["Алексей",3],["Анна",4]]);
     const evidence=formatHdConnectionEvidence(a,b,{a:"Алексей",b:"Анна"});
@@ -72,16 +83,28 @@ describe("HD saved graph and connection prose consistency",()=>{
   });
   it.each([
     "Алексей — 4; Анна — 3.",
+    "Алексей —4 доминантных канала. Анна —3 доминантных канала.",
+    "Доминантные каналы:\n- Алексей —4\n- Анна —3.",
     "У Алексея четыре доминантных канала. У Анны три доминантных канала.",
     "Четыре относятся к Алексею, три относятся к Анне.",
     "Всего восемь доминантных каналов.",
+    "Всего—восемь доминантных каналов.",
     "Компромиссных каналов — два.",
+    "Компромиссных каналов—два.",
   ])("rejects swapped and fabricated connection counts: %s",claim=>{expect(counts(claim).length).toBeGreaterThan(0);});
   it.each([
     "Доминантные каналы: Алексей — 3; Анна — 4. Всего семь доминантных каналов. Компромиссных каналов — 0.",
     "У Алексея три доминантных канала. У Анны четыре доминантных канала.",
     "Три относятся к Алексею, четыре относятся к Анне.",
+    "Всего—семь доминантных каналов. Компромиссных каналов—0.",
     "Алексей — 4/6. Анна — 6/2. Канал 16–48 принадлежит Алексею.",
     "Канал 16 – 48 принадлежит Алексею. Канал 25 - 51 принадлежит Алексею.",
+    "Алексей — 4 / 6. Анна — 6 / 2.",
+    "Алексей — 39 лет. Анна — 36 лет.",
+    "Алексей — 39-летний Манифестор. Анна — 36-летняя женщина.",
+    "Алексей — 03.04.1987. Анна — 15.05.1990.",
+    "Алексей — 1 моторный центр. Анна — 2 моторных центра.",
+    "Алексей — 4-я линия. Анна — 6-я линия.",
+    "Алексей — 3 апреля. Анна — 15 мая.",
   ])("accepts correct named counts without confusing profiles or channel numbers: %s",claim=>{expect(counts(claim)).toEqual([]);});
 });

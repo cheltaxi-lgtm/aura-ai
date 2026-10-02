@@ -50,7 +50,27 @@ describe("HD bounded provider generation",()=>{
     expect(result!.indexOf(`## ${title}`)).toBeLessThan(result!.indexOf(`## ${HD_COMPOSITE_REQUIRED_SECTIONS[index+1]}`));
     expect(mocked.complete).toHaveBeenCalledTimes(2);
     expect(mocked.complete.mock.calls[1]![0].messages.at(-1).content).toContain(`## ${title}`);
+    expect(mocked.complete.mock.calls[1]![0].messages.at(-1).content).toContain("wrong_connection_dominance_count:Алексей:4_vs_3");
     expect(mocked.complete.mock.calls[1]![0]).toMatchObject({deadlineAt,maxAttempts:1,beforeRequest:guard});
+  });
+  it.each(["\n*","\n\n## Дополнительное заключение\n*"])("rewrites global quality defects with explicit feedback and privacy-safe durable diagnostics: %s",async suffix=>{
+    const partner=calculateHdChart({birthDate:"1990-05-15",birthTime:"14:30",timezone:"Asia/Yekaterinburg"});
+    const fill=(index:number)=>Array.from({length:90},(_,word)=>`ситуация${index}пример${word}`).join(" ");
+    const correct=fill(99)+"\n\n"+HD_COMPOSITE_REQUIRED_SECTIONS.map((title,index)=>`## ${title}\n${fill(index)}`).join("\n\n");
+    const warn=vi.spyOn(console,"warn").mockImplementation(()=>{});
+    try{
+      mocked.complete.mockReset().mockResolvedValueOnce({text:correct+suffix,finishReason:"stop"}).mockResolvedValueOnce({text:correct,finishReason:"stop"});
+      const guard=vi.fn(async()=>{}),deadlineAt=Date.now()+90_000;
+      const result=await completeHdCompositeReport({systemPrompt:"Полный разбор пары",evidence:"Приватная дата рождения",nameA:"PrivateOwnerAlpha",nameB:"PrivateOwnerBeta",charts:{a:chart,b:partner},deadlineAt,beforeRequest:guard});
+      expect(result).toBe(correct);expect(mocked.complete).toHaveBeenCalledTimes(2);
+      const feedback=mocked.complete.mock.calls[1]![0].messages.at(-1).content;
+      expect(feedback).toContain("junk:unmatched_emphasis");expect(feedback).toContain("## Вступление");
+      for(const title of HD_COMPOSITE_REQUIRED_SECTIONS)expect(feedback).toContain(`## ${title}`);
+      expect(mocked.complete.mock.calls[1]![0]).toMatchObject({deadlineAt,maxAttempts:1,beforeRequest:guard,maxTokens:12_000});
+      const warnings=JSON.stringify(warn.mock.calls);
+      expect(warnings).toContain("[hd-generate] quality rejected");expect(warnings).toContain('"kind":"junk"');
+      expect(warnings).not.toContain("PrivateOwner");expect(warnings).not.toContain("Приватная дата рождения");expect(warnings).not.toContain("ситуация99пример");
+    }finally{warn.mockRestore();}
   });
   it("repairs the unheaded introduction without retaining the wrong longer preamble",async()=>{
     const intro=good.split(/^## /m)[0]!;

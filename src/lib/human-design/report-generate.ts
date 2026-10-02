@@ -2,7 +2,7 @@ import { completeChatDetailed, type ChatMessage } from "@/lib/llm";
 import { getHdModel } from "@/lib/ai-model";
 import { HD_COMPOSITE_REQUIRED_SECTIONS, HD_REPORT_REQUIRED_SECTIONS } from "./packages";
 import { stripHdMetaLeak } from "./prompt";
-import { validateHdReportText, hdSectionMinimumChars } from "@/lib/hd-report-quality/validator";
+import { validateHdReportText, hdSectionMinimumChars, type HdQualityFinding } from "@/lib/hd-report-quality/validator";
 import { buildHdLockedContract, type HdLockedContract } from "@/lib/hd-report-pipeline/contract";
 import type { HdChart } from "./types";
 import { buildHdConnectionReportContract, type HdConnectionReportContract } from "./connection";
@@ -174,6 +174,15 @@ async function completeSectionedReport(opts: {
   let combined = "";
   let lastTruncated = true;
   let repairTitles: string[] = [];
+  let repairFindings: HdQualityFinding[] = [];
+  let fullRewrite = false;
+  const allowedTitles = new Set(["Вступление",...opts.required]);
+  // Durable diagnostics contain rule codes and canonical sections, never prose,
+  // subject names, birth identity or a copy of the provider response.
+  const diagnostic = (findings: HdQualityFinding[]) => findings.slice(0,24).map(f=>({
+    rule:f.rule,kind:/^[a-z_]+/u.exec(f.detail)?.[0] ?? "unknown",
+    sections:(f.sectionTitles ?? []).filter(title=>allowedTitles.has(title)),
+  }));
   // 6 passes: stochastic near-threshold rejects (thin 3/16 after 4 passes)
   // refund a paying user; two extra expand passes usually fix the last stubs.
   const maxPasses = 6;
@@ -190,7 +199,7 @@ async function completeSectionedReport(opts: {
             {
               role: "user",
               content: (() => {
-                if (repairTitles.length) return `Исправь фактические противоречия исходным расчётным данным. ${buildExpandPrompt(repairTitles)}`;
+                if (repairTitles.length) return `${fullRewrite ? "Перепиши разбор целиком, удалив ошибочные дополнительные разделы. " : ""}Исправь перечисленные нарушения проверки: ${repairFindings.slice(0,24).map(f=>`${f.rule}: ${f.detail.slice(0,500)}`).join("; ")}. Для фактов следуй исходным расчётным данным; для служебных слов и разметки убери дефект; для повторов напиши разные объяснения. ${buildExpandPrompt(repairTitles)}`;
                 const missing = missingHdReportSections(combined, opts.required);
                 if (missing.length) return buildContinuePrompt(missing);
                 // Measure thin on the deduped view: the first regex hit in the
@@ -207,9 +216,10 @@ async function completeSectionedReport(opts: {
     // mid-draft and the whole report is lost. Retry the pass once on empty.
     // skipDegenerateCheck: HD practices / parallel day blocks trip chat spam
     // heuristics (repeated lines, numbered density). Product gate below owns quality.
+    const maxTokens = pass === 0 || fullRewrite ? opts.pass0MaxTokens : opts.continueMaxTokens;
     let result = await completeChatDetailed({
       messages,
-      maxTokens: pass === 0 ? opts.pass0MaxTokens : opts.continueMaxTokens,
+      maxTokens,
       temperature: 0.62,
       modelOverride: hdModel,
       timeoutMs: 300_000,
@@ -225,7 +235,7 @@ async function completeSectionedReport(opts: {
       console.warn("[hd-generate] empty chunk, retrying pass", { pass });
       result = await completeChatDetailed({
         messages,
-        maxTokens: pass === 0 ? opts.pass0MaxTokens : opts.continueMaxTokens,
+        maxTokens,
         temperature: 0.62,
         modelOverride: hdModel,
         timeoutMs: 300_000,
@@ -247,10 +257,12 @@ async function completeSectionedReport(opts: {
     // can never satisfy the required-sections check by listing headings.
     // A factual repair replaces its old section even when the correct prose is shorter.
     // Longest-wins deduplication is only appropriate for expanding thin stubs.
-    combined = stripHdMetaLeak(repairTitles.length
+    combined = stripHdMetaLeak(fullRewrite ? chunk : repairTitles.length
       ? replaceHdFactualSections(combined,chunk,repairTitles)
       : combined ? `${combined.trim()}\n\n${chunk}` : chunk);
     repairTitles = [];
+    repairFindings = [];
+    fullRewrite = false;
 
     const missing = missingHdReportSections(combined, opts.required);
     const thin = missing.length === 0 ? thinHdReportSections(dedupeHdSections(combined), opts.required) : [];
@@ -267,9 +279,15 @@ async function completeSectionedReport(opts: {
       const candidate = dedupeHdSections(combined);
       const quality = validateHdReportText(candidate, { contract: opts.contract, connectionContract: opts.connectionContract, requiredSections: opts.required, requireFocusAnswer: false });
       if (quality.ok) return candidate;
+      console.warn("[hd-generate] quality rejected",{pass,findings:diagnostic(quality.findings)});
       // Replace the defective sections instead of returning structurally complete but false prose.
-      const titles = [...new Set(quality.findings.flatMap(f => f.sectionTitles ?? []))];
+      // A global defect has no section attribution; rewrite the report rather
+      // than repeatedly appending a continuation to a complete bad draft.
+      const global = quality.findings.some(f=>!f.sectionTitles?.length);
+      fullRewrite = global;
+      const titles = global ? [...allowedTitles] : [...new Set(quality.findings.flatMap(f => f.sectionTitles ?? []))];
       repairTitles = titles;
+      repairFindings = quality.findings;
       if (titles.length) seedUser.content += `\nИсправь следующие разделы при продолжении: ${titles.join(", ")}. Не нарушай исходные расчётные данные.`;
     }
   }
@@ -288,6 +306,8 @@ async function completeSectionedReport(opts: {
     console.warn("[hd-generate] reject: gate", {
       missing: missingFinal,
       thin: thinFinal,
+      truncated:lastTruncated,
+      findings:diagnostic(quality.findings),
     });
     return null;
   }

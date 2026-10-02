@@ -51,6 +51,7 @@ const CENTER_MENTIONS: Record<string, RegExp> = {
 };
 const SHINGLE_OVERLAP_RATIO = 0.10;
 const FOCUS_ANSWER_TITLE = "Ответ на ваш запрос";
+const CHANNEL_PAIR_SEPARATOR = String.raw`(?:[—–/-]\s*|и\s+)`;
 
 function channelForPair(a: number, b: number) {
   return a !== b ? CHANNELS.find(c => c.gates.includes(a) && c.gates.includes(b)) : undefined;
@@ -68,7 +69,7 @@ function gatePairFormingChannel(clause: string): { a: number; b: number; index: 
 
 function namedChannelPairs(clause: string): Array<{a:number;b:number;index:number;end:number}> {
   const pairs = new Map<number,{a:number;b:number;index:number;end:number}>();
-  const pair = /^(\d{1,2})\s*[—–-]\s*(\d{1,2})(?!\d)/u;
+  const pair = new RegExp(`^(\\d{1,2})\\s*${CHANNEL_PAIR_SEPARATOR}(\\d{1,2})(?!\\d)`,"iu");
   let consumedThrough=-1;
   for (const label of clause.matchAll(/(?<!\p{L})канал[\p{L}]*/giu)) {
     if(label.index!<consumedThrough)continue;
@@ -173,7 +174,7 @@ function wrongDefinitionGroups(text: string, contract: HdLockedContract): string
       if (centers.length < 2) continue;
       const component = contract.definitionComponents.find(c => centers.every(center => c.includes(center as typeof c[number])));
       if (!component) bad.push(`wrong_definition_group:${centers.join(",")}`);
-      else for (const pair of list.matchAll(/(?<!\d)(\d{1,2})\s*[—–-]\s*(\d{1,2})(?!\d)/gu)) {
+      else for (const pair of list.matchAll(new RegExp(`(?<!\\d)(\\d{1,2})\\s*${CHANNEL_PAIR_SEPARATOR}(\\d{1,2})(?!\\d)`,"giu"))) {
         const channel = CHANNELS.find(c => c.gates.includes(Number(pair[1])) && c.gates.includes(Number(pair[2])));
         if (channel && !channel.centers.every(c => component.includes(c))) bad.push(`wrong_definition_group_channel:${pair[1]}-${pair[2]}`);
       }
@@ -183,7 +184,9 @@ function wrongDefinitionGroups(text: string, contract: HdLockedContract): string
 }
 
 const COUNT_WORDS: Record<string, number> = {нет:0,ноль:0,один:1,одна:1,одно:1,два:2,две:2,три:3,четыре:4,пять:5,шесть:6,семь:7,восемь:8,девять:9,десять:10};
-const COUNT_PATTERN = `(?<![\\p{L}\\d/—–-])(?:\\d{1,2}|${Object.keys(COUNT_WORDS).join("|")})(?![\\p{L}\\d/]|\\s*[—–-]\\s*\\d)`;
+const COUNT_VALUE_PATTERN = `(?:\\d{1,2}|${Object.keys(COUNT_WORDS).join("|")})(?![\\p{L}\\d/]|\\s*[—–/-]\\s*\\d)`;
+const COUNT_PATTERN = `(?<![\\p{L}\\d/—–-])${COUNT_VALUE_PATTERN}`;
+const COUNT_LABEL_SEPARATOR = String.raw`(?:\s*[—–:]\s*|\s+)`;
 function countValue(raw: string): number { return COUNT_WORDS[raw.toLowerCase()] ?? Number(raw); }
 function escaped(raw: string): string { return raw.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"); }
 function personNamePattern(name: string): string {
@@ -202,7 +205,7 @@ function wrongConnectionCounts(text: string, contract: HdConnectionReportContrac
     if (patterns.some((p,j) => j !== i && (new RegExp(`^${p}$`,"iu").test(person.name) || new RegExp(`^${patterns[i]}$`,"iu").test(contract.dominance[j]!.name)))) continue;
     const name = `(?<!\\p{L})${patterns[i]}(?!\\p{L})`;
     const claims = [
-      new RegExp(`${name}\\s*[—–:]\\s*(${COUNT_PATTERN})`, "giu"),
+      new RegExp(`${name}\\s*[—–:]\\s*(${COUNT_VALUE_PATTERN})`, "giu"),
       new RegExp(`(?:у|для)\\s+${name}\\s+(?:(?:есть|насчитывается|определены|выделяются)\\s+)?(${COUNT_PATTERN})\\s+(?:доминантн[\\p{L}]*\\s+)?канал[\\p{L}]*`, "giu"),
       new RegExp(`(${COUNT_PATTERN})\\s+(?:(?:доминантн[\\p{L}]*\\s+)?канал[\\p{L}]*\\s+)?(?:принадлеж[\\p{L}]*|относ[\\p{L}]*\\s+к)\\s+${name}`, "giu"),
     ];
@@ -210,6 +213,10 @@ function wrongConnectionCounts(text: string, contract: HdConnectionReportContrac
       const countIndex = match.index! + match[0].indexOf(match[1]!);
       if (/\d\s*[—–/\-]\s*$/u.test(text.slice(Math.max(0,countIndex-20),countIndex))) continue;
       const tail = text.slice(countIndex+match[1]!.length,countIndex+match[1]!.length+100);
+      if (/^\s*\.\d{1,2}\.\d{4}(?!\d)/u.test(tail) || /^\s*[—–-]\s*(?:летн|годовал)[\p{L}]*/iu.test(tail)) continue;
+      // Named ages, profile lines and center/gate totals have their own units.
+      // They remain personal facts even inside a dominance discussion.
+      if (/^\s*(?:-[аяойюе]+)?\s+(?:(?:определ[её]нн|открыт|моторн|активн|полн)[\p{L}]*\s+)?(?:лет|год[\p{L}]*|месяц[\p{L}]*|дн[\p{L}]*|лини[\p{L}]*|центр[\p{L}]*|ворот[\p{L}]*|январ[\p{L}]*|феврал[\p{L}]*|март[\p{L}]*|апрел[\p{L}]*|ма[йя]|июн[\p{L}]*|июл[\p{L}]*|август[\p{L}]*|сентябр[\p{L}]*|октябр[\p{L}]*|ноябр[\p{L}]*|декабр[\p{L}]*)(?!\p{L})/iu.test(tail)) continue;
       // A person's total defined/shared channels is a different statistic.
       // Preserve explicit "defined dominance channels" as a dominance claim.
       const qualified = /^\s+(?:определ[её]нн|полн|личн|индивидуальн|собственн|общ|активн)[\p{L}]*\s+канал[\p{L}]*/iu.exec(tail);
@@ -221,10 +228,10 @@ function wrongConnectionCounts(text: string, contract: HdConnectionReportContrac
       if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== person.channelKeys.length) bad.push(`wrong_connection_dominance_count:${person.name}:${match[1]}_vs_${person.channelKeys.length}`);
     }
   }
-  for (const match of text.matchAll(new RegExp(`(?:всего|суммарно)\\s*(?:[—–:]\\s*)?(${COUNT_PATTERN})\\s+доминантн[\\p{L}]*\\s+канал[\\p{L}]*`,"giu"))) {
+  for (const match of text.matchAll(new RegExp(`(?:всего|суммарно)${COUNT_LABEL_SEPARATOR}(${COUNT_VALUE_PATTERN})\\s+доминантн[\\p{L}]*\\s+канал[\\p{L}]*`,"giu"))) {
     if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== contract.dominanceCount) bad.push(`wrong_connection_dominance_total:${match[1]}_vs_${contract.dominanceCount}`);
   }
-  for (const match of text.matchAll(new RegExp(`компромиссн[\\p{L}]*\\s+канал[\\p{L}]*\\s*(?:[—–:]\\s*)?(${COUNT_PATTERN})`,"giu"))) {
+  for (const match of text.matchAll(new RegExp(`(?<!\\p{L})компромиссн[\\p{L}]*\\s+канал[\\p{L}]*${COUNT_LABEL_SEPARATOR}(${COUNT_VALUE_PATTERN})`,"giu"))) {
     if (!isPersonalFactNegated(text,match.index!) && countValue(match[1]!) !== contract.compromiseCount) bad.push(`wrong_connection_compromise_count:${match[1]}_vs_${contract.compromiseCount}`);
   }
   return [...new Set(bad)];
@@ -431,7 +438,7 @@ export function validateHdReportText(
   const sections = splitSections(body);
   for (const section of sections) {
     if (/(?<![\p{L}])(?:dominance[AB]|compromise[AB]|aOnly|bOnly|companionship)(?![\p{L}])/u.test(section.body)) findings.push({rule:"V5",detail:"internal_connection_label",sectionTitles:[section.title]});
-    if (opts?.connectionContract && (titleKey(section.title) === "доминантность и компромисс" || /доминантн[\p{L}]*|компромиссн[\p{L}]*\s+канал/iu.test(section.body))) {
+    if (opts?.connectionContract && (titleKey(section.title) === "доминантность и компромисс" || /(?<!\p{L})(?:доминантн[\p{L}]*|компромиссн[\p{L}]*\s+канал)/iu.test(section.body))) {
       for (const detail of wrongConnectionCounts(section.body,opts.connectionContract)) findings.push({rule:"V4",detail,sectionTitles:[section.title]});
     }
   }
@@ -718,7 +725,7 @@ export function validateHdReportText(
           }
         }
       }
-      for (const m of s.body.matchAll(/(?:(?:ваш[\p{L}]*|определ[её]н[\p{L}]*|активн[\p{L}]*)\s+канал[\p{L}]*|канал[\p{L}]*\s*(?:у\s+вас|карты)?)\s*(\d{1,2})\s*[–-]\s*(\d{1,2})/giu)) {
+      for (const m of s.body.matchAll(new RegExp(String.raw`(?:(?:ваш[\p{L}]*|определ[её]н[\p{L}]*|активн[\p{L}]*)\s+канал[\p{L}]*|канал[\p{L}]*\s*(?:у\s+вас|карты)?)\s*(\d{1,2})\s*${CHANNEL_PAIR_SEPARATOR}(\d{1,2})(?!\d)`,"giu"))) {
         const nums = [Number(m[1]), Number(m[2])].sort((a,b) => a-b);
         if (!contract.definedChannelKeys.some(k => k.split("-").map(Number).sort((a,b) => a-b).join("-") === nums.join("-")) && !isPersonalFactNegated(s.body, m.index!)) add(`false_defined_channel:${nums.join("-")}`);
       }
@@ -745,7 +752,7 @@ export function validateHdReportText(
     const channels = sections.find(s => titleKey(s.title) === "каналы");
     if (channels) for (const key of contract.definedChannelKeys) {
       const [a,b] = key.split("-");
-      if (!new RegExp(`(?:${a}\\s*[–-]\\s*${b}|${b}\\s*[–-]\\s*${a})(?!\\d)`, "u").test(channels.body)) findings.push({ rule: "V6", detail: `missing_defined_channel:${key}`, sectionTitles: [channels.title] });
+      if (!new RegExp(`(?<!\\d)(?:${a}\\s*${CHANNEL_PAIR_SEPARATOR}${b}|${b}\\s*${CHANNEL_PAIR_SEPARATOR}${a})(?!\\d)`, "iu").test(channels.body)) findings.push({ rule: "V6", detail: `missing_defined_channel:${key}`, sectionTitles: [channels.title] });
     }
   }
 
