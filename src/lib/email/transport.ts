@@ -4,6 +4,7 @@ import {
   resolveMailTransportMode,
   type MailTransportMode,
 } from "@/lib/email/mail-config";
+import { normalizeSingleMailbox } from "@/lib/email/mailbox";
 
 export interface RawEmailPayload {
   to: string;
@@ -88,6 +89,10 @@ export async function deliverEmail(
   payload: RawEmailPayload,
   preferred?: MailTransportMode
 ): Promise<{ ok: boolean; provider: MailTransportMode | "none"; error?: string }> {
+  const to = normalizeSingleMailbox(payload.to);
+  const replyTo = payload.replyTo === undefined ? undefined : normalizeSingleMailbox(payload.replyTo);
+  if (!to || replyTo === null) return { ok: false, provider: "none", error: "invalid_mailbox" };
+  payload = { ...payload, to, replyTo };
   const from = getMailFromAddress();
   const mode = preferred && preferred !== "none" ? preferred : resolveMailTransportMode();
 

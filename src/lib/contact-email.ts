@@ -3,6 +3,7 @@ import { SignJWT, jwtVerify } from "jose";
 import { query, queryClient, withTransaction } from "@/lib/db";
 import { getSiteUrl, isDeliverableUserEmail } from "@/lib/email/mail-config";
 import { sendEmail } from "@/lib/email/send";
+import { normalizeSingleMailbox } from "@/lib/email/mailbox";
 import { getAccountDeliverableEmail } from "@/lib/reminder-contacts";
 import { getAccountDailyCardsReminder, getProfileUserIdForAccount } from "@/lib/accounts";
 import { getNotificationPrefs } from "@/lib/daily-reminder-service";
@@ -15,10 +16,8 @@ function signingKey(): Uint8Array {
 }
 
 export function normalizeContactEmail(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const email = raw.trim().toLowerCase();
-  if (email.length > 254 || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return null;
-  return isDeliverableUserEmail(email) ? email : null;
+  const email = normalizeSingleMailbox(raw);
+  return email && isDeliverableUserEmail(email) ? email : null;
 }
 
 export async function getContactEmailStatus(accountId: string): Promise<{

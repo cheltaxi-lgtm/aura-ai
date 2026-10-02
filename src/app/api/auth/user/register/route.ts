@@ -3,6 +3,8 @@ import { ensureDb, queryClient, withTransaction } from "@/lib/db";
 import { findUserByEmail } from "@/lib/accounts";
 import { validateDisplayName, validatePasswordLength } from "@/lib/auth-policy";
 import { hashPassword, setAuthCookie, normalizeAuthEmail } from "@/lib/auth";
+import { normalizeSingleMailbox } from "@/lib/email/mailbox";
+import { isDeliverableUserEmail } from "@/lib/email/mail-config";
 import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
@@ -74,6 +76,10 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Некорректный главный вопрос" }, { status: 400 });
     }
 
+    const mailbox = normalizeSingleMailbox(rawEmail);
+    if (!mailbox || !isDeliverableUserEmail(mailbox)) return NextResponse.json({ error: "Укажите корректный email" }, { status: 400 });
+    // Preserve the same account key used by login/reset; IDN ASCII conversion
+    // belongs to delivery, not to the identity of an existing account.
     const email = normalizeAuthEmail(String(rawEmail));
 
     const captchaBlock = await enforceRecaptchaScope("register", recaptchaToken, request);

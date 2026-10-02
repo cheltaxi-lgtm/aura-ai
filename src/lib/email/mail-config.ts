@@ -1,4 +1,5 @@
 /** Service mailboxes and transport settings for zovus.ru */
+import { normalizeSingleMailbox } from "@/lib/email/mailbox";
 
 export type MailTransportMode = "resend" | "smtp" | "none";
 
@@ -56,8 +57,8 @@ export function getSiteUrl(): string {
 }
 
 export function isDeliverableUserEmail(email: string): boolean {
-  const normalized = email.trim().toLowerCase();
-  if (!normalized.includes("@")) return false;
+  const normalized = normalizeSingleMailbox(email);
+  if (!normalized) return false;
   return (
     !normalized.endsWith("@oauth.zovus.local") &&
     !normalized.endsWith("@telegram.zovus.local")
@@ -69,8 +70,8 @@ export function pickDeliverableEmail(
   ...candidates: Array<string | null | undefined>
 ): string | null {
   for (const raw of candidates) {
-    if (typeof raw !== "string") continue;
-    const normalized = raw.trim().toLowerCase();
+    const normalized = normalizeSingleMailbox(raw);
+    if (!normalized) continue;
     if (isDeliverableUserEmail(normalized)) return normalized;
   }
   return null;
