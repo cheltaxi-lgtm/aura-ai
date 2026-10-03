@@ -2,8 +2,8 @@ import { angularSeparation } from "./math";
 import { computeCompositeChart, sanitizeCompositeChart, type CompositeChart } from "./composite";
 import type { NatalChartRecord } from "./types";
 
-// 2.1: unknown-time charts exclude the technical-noon ascendant from aspects/wheel.
-export const SYNASTRY_VERSION = "2.1" as const;
+// 2.2: scores and dimensions use the same persisted, symmetric top-16 evidence.
+export const SYNASTRY_VERSION = "2.2" as const;
 export type SynastryDimensionKey =
   | "communication"
   | "emotional"
@@ -115,7 +115,15 @@ function bodyLongitude(western: Record<string, unknown>, key: string): number | 
       : (western.planets as Record<string, unknown> | undefined)?.[key];
   if (!body || typeof body !== "object") return null;
   const lon = (body as { longitude?: number }).longitude;
-  return typeof lon === "number" ? lon : null;
+  return typeof lon === "number" && Number.isFinite(lon) ? lon : null;
+}
+
+function symmetricAspectKey(hit: SynastryCrossAspect): string {
+  return [hit.aspect, ...[hit.bodyAKey, hit.bodyBKey].sort()].join(":");
+}
+
+function compareAspects(a: SynastryCrossAspect, b: SynastryCrossAspect): number {
+  return a.orb - b.orb || symmetricAspectKey(a).localeCompare(symmetricAspectKey(b));
 }
 
 function collectBodies(western: Record<string, unknown>, timeKnown = true) {
@@ -150,14 +158,14 @@ export function computeCrossAspects(
           aspect: rule.name,
           orb: Number(orb.toFixed(2)),
           label: `${a.label} — ${ASPECT_LABELS[rule.name] ?? rule.name} — ${b.label} (орб ${orb.toFixed(1)}°)`,
-          strength: Number(Math.max(0, 1 - orb / rule.orb).toFixed(3)),
+          strength: Number(Math.max(0, 1 - Number(orb.toFixed(2)) / rule.orb).toFixed(3)),
         });
         break;
       }
     }
   }
 
-  return hits.sort((x, y) => x.orb - y.orb);
+  return hits.sort(compareAspects);
 }
 
 function scoreFromAspects(aspects: SynastryCrossAspect[]): number {
@@ -188,7 +196,7 @@ export function computeSynastryDimensions(
   >).map(([key, definition]) => {
     const relevant = aspects
       .filter((hit) => definition.pairs.some((pair) => pairMatches(hit, pair)))
-      .sort((a, b) => b.strength - a.strength || a.id.localeCompare(b.id))
+      .sort((a, b) => b.strength - a.strength || symmetricAspectKey(a).localeCompare(symmetricAspectKey(b)))
       .slice(0, 6);
     let value = 50;
     for (const hit of relevant) {
@@ -247,7 +255,7 @@ export function computeSynastry(
   const crossAspects = computeCrossAspects(chartA.western, chartB.western, {
     timeKnownA,
     timeKnownB,
-  });
+  }).slice(0, 16);
   const overallScore = scoreFromAspects(crossAspects);
   const highlights = crossAspects.slice(0, 5).map((a) => a.label);
   if (highlights.length === 0) {
@@ -258,7 +266,7 @@ export function computeSynastry(
     version: SYNASTRY_VERSION,
     overallScore,
     highlights,
-    crossAspects: crossAspects.slice(0, 16),
+    crossAspects,
     dimensions: computeSynastryDimensions(crossAspects),
     composite: computeCompositeChart(chartA.western, chartB.western),
     chartA: {
@@ -310,9 +318,9 @@ export function sanitizeSynastryForClient(
       aspect: hit.aspect,
       orb: Math.max(0, Math.min(20, hit.orb)),
       label: typeof hit.label === "string" ? hit.label.slice(0, 160) : id,
-      strength: typeof hit.strength === "number" ? Math.max(0, Math.min(1, hit.strength)) : 0,
+      strength: typeof hit.strength === "number" && Number.isFinite(hit.strength) ? Math.max(0, Math.min(1, hit.strength)) : 0,
     }];
-  }).slice(0, 16);
+  }).sort(compareAspects).slice(0, 16);
   const dimensions = computeSynastryDimensions(crossAspects);
 
   return {

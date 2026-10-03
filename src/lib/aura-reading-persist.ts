@@ -164,7 +164,10 @@ export async function findAuraReadingEntry(
       // return snapshot A's report against snapshot B.
       if (snapshotId && ctxSnapshot && ctxSnapshot !== snapshotId) return false;
       if (snapshotId && ctxSnapshot === snapshotId) return true;
-      return Boolean(idempotencyKey && ctx.idempotencyKey === idempotencyKey);
+      return Boolean(snapshotId && !ctxSnapshot && idempotencyKey &&
+        ctx.idempotencyKey === idempotencyKey &&
+        (idempotencyKey === `aura-reading:${snapshotId}` ||
+         idempotencyKey.startsWith(`aura-reading:${snapshotId}:`)));
     }) ?? null
   );
 }

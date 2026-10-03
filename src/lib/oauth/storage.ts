@@ -1,4 +1,4 @@
-import { query, queryClient, type PoolClient } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { sanitizeRegistrationAttribution } from "@/lib/registration-attribution";
 import { createOAuthOpaqueCode, hashOAuthOpaqueCode, isOAuthOpaqueCode } from "./state-cookie";
 import type {
@@ -209,23 +209,42 @@ export async function consumePendingOAuthRegistration(
   return row ? mapPendingRow(row) : null;
 }
 
-export async function createOAuthHandoff(accountId: string): Promise<string> {
+export async function createOAuthHandoff(accountId: string, expectedTokenVersion?: number): Promise<string> {
   const code = createOAuthOpaqueCode();
-  await query(
-    `INSERT INTO oauth_handoffs (code_hash, account_id, expires_at)
-     VALUES ($1, $2, NOW() + ($3 * INTERVAL '1 minute'))`,
-    [hashOAuthOpaqueCode(code), accountId, HANDOFF_TTL_MINUTES]
-  );
+  await withTransaction(async (client) => {
+    const { rows } = await client.query<{ token_version: number }>(
+      `SELECT token_version FROM user_accounts WHERE id = $1 AND erasure_requested_at IS NULL FOR UPDATE`, [accountId]
+    );
+    const account = rows[0];
+    if (!account || (expectedTokenVersion !== undefined && expectedTokenVersion !== account.token_version)) {
+      throw new Error("handoff_session_revoked");
+    }
+    await client.query(
+      `INSERT INTO oauth_handoffs (code_hash, account_id, token_version, expires_at)
+       VALUES ($1, $2, $3, NOW() + ($4 * INTERVAL '1 minute'))`,
+      [hashOAuthOpaqueCode(code), accountId, account.token_version, HANDOFF_TTL_MINUTES]
+    );
+  });
   return code;
 }
 
-export async function consumeOAuthHandoff(code: string): Promise<string | null> {
+export async function consumeOAuthHandoff(code: string): Promise<{ accountId: string; tokenVersion: number } | null> {
   if (!isOAuthOpaqueCode(code)) return null;
-  const { rows } = await query<{ account_id: string }>(
-    `DELETE FROM oauth_handoffs
-     WHERE code_hash = $1 AND expires_at > NOW()
-     RETURNING account_id`,
-    [hashOAuthOpaqueCode(code)]
-  );
-  return rows[0]?.account_id ?? null;
+  return withTransaction(async (client) => {
+    const hash = hashOAuthOpaqueCode(code);
+    const pending = await client.query<{ account_id: string }>(
+      `SELECT account_id FROM oauth_handoffs WHERE code_hash = $1 AND expires_at > NOW()`, [hash]
+    );
+    if (!pending.rows[0]) return null;
+    const accountId = pending.rows[0].account_id;
+    const active = await client.query<{ token_version: number }>(
+      `SELECT token_version FROM user_accounts WHERE id = $1 AND erasure_requested_at IS NULL FOR UPDATE`, [accountId]
+    );
+    if (!active.rows[0]) return null;
+    const consumed = await client.query<{ token_version: number }>(
+      `DELETE FROM oauth_handoffs WHERE code_hash = $1 AND expires_at > NOW()
+       AND token_version = $2 RETURNING token_version`, [hash, active.rows[0].token_version]
+    );
+    return consumed.rows[0] ? { accountId, tokenVersion: consumed.rows[0].token_version } : null;
+  });
 }

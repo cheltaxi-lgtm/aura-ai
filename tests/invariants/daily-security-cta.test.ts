@@ -220,7 +220,7 @@ describe.skipIf(!hasTestDb)("daily security + atomic entitlement (db)", () => {
     expect(after[0]?.character_key).toBe("veronika");
     expect(after[0]?.spread_type).toBe("daily");
     expect(after[0]?.spread_id).toBe("triplet");
-    expect(after[0]?.cards).toEqual(cards.map((c) => c.name));
+    expect(after[0]?.cards).toEqual(["Шут", "Маг (перев.)", "Жрица"]);
   });
 
   it("invalid session id does not break daily history save", async () => {

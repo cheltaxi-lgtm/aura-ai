@@ -61,6 +61,7 @@ export default function RitualGenerating({
   const [isGenerating, setIsGenerating] = useState(false);
   const [refunded, setRefunded] = useState(false);
   const attemptRef = useRef(0);
+  const generationRef = useRef<AbortController | null>(null);
   const onReadyRef = useRef(onReady);
   const onFailedRef = useRef(onFailed);
 
@@ -137,20 +138,25 @@ export default function RitualGenerating({
   const triggerGeneration = useCallback(
     async (isRetry: boolean): Promise<boolean> => {
       attemptRef.current += 1;
+      const attempt = attemptRef.current;
+      generationRef.current?.abort();
       setIsGenerating(true);
       if (!isRetry) setError(null);
 
       const controller = new AbortController();
+      generationRef.current = controller;
       const timer = window.setTimeout(() => controller.abort(), GENERATE_TIMEOUT_MS);
 
       try {
         const { postWithAsyncJob } = await import("@/lib/client/wait-for-async-job");
+        if (controller.signal.aborted) return false;
         const { status, data } = await postWithAsyncJob({
           url: `/api/ritual/${ritualId}/regenerate`,
           body: {},
           storageKey: `aura:ritual-active-job:${ritualId}`,
           signal: controller.signal,
         });
+        if (controller.signal.aborted || attempt !== attemptRef.current) return false;
         return handleGenerationResult(
           data as {
             status?: string;
@@ -164,7 +170,7 @@ export default function RitualGenerating({
         return false;
       } finally {
         window.clearTimeout(timer);
-        setIsGenerating(false);
+        if (!controller.signal.aborted && attempt === attemptRef.current) setIsGenerating(false);
       }
     },
     [ritualId, handleGenerationResult]
@@ -202,11 +208,13 @@ export default function RitualGenerating({
         /* fall through to regenerate */
       }
 
+      if (cancelled) return;
       const firstDone = await triggerGeneration(false);
       if (cancelled || firstDone) return;
 
       while (!cancelled) {
         const status = await pollStatus();
+        if (cancelled) return;
         if (status === "completed") {
           onReadyRef.current();
           return;
@@ -233,6 +241,8 @@ export default function RitualGenerating({
 
     return () => {
       cancelled = true;
+      generationRef.current?.abort();
+      attemptRef.current += 1;
     };
   }, [ritualId, triggerGeneration, pollStatus, handleGenerationResult]);
 

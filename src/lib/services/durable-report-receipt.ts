@@ -30,12 +30,12 @@ export async function completeReportWorkerSave(client: PoolClient, userId: strin
   result: Record<string, unknown>): Promise<void> {
   if (!worker) return;
   const done = await queryClient<{ kind: string }>(client, `UPDATE async_jobs SET status='completed',billing_state='completed',
-    input=CASE WHEN kind='pro_premium_report' AND input->>'caseType'='hd' THEN input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'refinement' ELSE input END,
+    input=CASE WHEN kind='pro_premium_report' THEN input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'frozenPractitionerContext'-'refinement' ELSE input END,
     result=$2::jsonb,error_message=NULL,error_code=NULL,completed_at=NOW(),updated_at=NOW(),worker_id=NULL,locked_at=NULL
     WHERE id=$1 AND user_id=$3 AND status='running' AND worker_id=$4 AND attempt_count=$5 RETURNING kind`,
     [worker.jobId,JSON.stringify(result),userId,worker.attempt.workerId,worker.attempt.attemptCount]);
   if (done.rowCount !== 1) throw new Error("stale_async_job_attempt");
-  await recordJourneyEvent(userId, "first_result", "first", { product: done.rows[0].kind }, client);
+  if (done.rows[0].kind !== "image_generate") await recordJourneyEvent(userId, "first_result", "first", { product: done.rows[0].kind }, client);
 }
 
 /** Lock delivery rows before profile/report locks to preserve the common lock order. */
@@ -111,7 +111,30 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
   }
   const matrix = await queryClient<{ id: string }>(client,
     "SELECT id FROM numerology_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1", [userId, transactionId]);
-  if (!matrix.rows[0]) return null;
+  if (!matrix.rows[0]) {
+    // Ordinary readings and scene art are durable products too. Only an owned
+    // server-written artifact with this exact spend proves successful delivery.
+    const artifact = (await queryClient<{ id: string; context_data: Record<string, unknown>; created_at: Date; is_paid: boolean }>(client,
+      `SELECT h.id,h.context_data,h.created_at,h.is_paid FROM history h
+       JOIN rune_transactions t ON t.id=$2 AND t.user_id=h.user_id AND t.type='spend' AND t.amount<0
+       WHERE h.user_id=$1 AND h.context_data->>'transactionId'=$2::text
+         AND ((t.action_type='READING' AND h.context_data->>'type'='reading' AND h.context_data->>'source'='ai'
+           AND length(h.context_data->>'readingResourceKey')>0 AND length(trim(h.context_data->>'reading'))>0)
+          OR (t.action_type IN ('DESTINY_CARD','FINAL_REPORT','SCENE_ILLUSTRATION','TAROT_ATMOSPHERE')
+           AND h.context_data->>'type'='scene_image' AND length(h.context_data->>'sceneImageResourceKey')>0
+           AND length(h.context_data->'sceneArt'->>(h.context_data->>'scene'))>0))
+       ORDER BY h.created_at DESC LIMIT 1`, [userId,transactionId])).rows[0];
+    if (!artifact) return null;
+    const ctx = artifact.context_data;
+    const delivery = ctx.receiptDelivery && typeof ctx.receiptDelivery === "object" && !Array.isArray(ctx.receiptDelivery)
+      ? ctx.receiptDelivery as Record<string, unknown> : {};
+    if (ctx.type === "reading") return { ...delivery, reading: ctx.reading, historyId: artifact.id,
+      isPaid: artifact.is_paid, spreadId: ctx.spreadId, createdAt: artifact.created_at };
+    const scene = String(ctx.scene);
+    const { sceneLabel } = await import("@/lib/image-prompts");
+    return { ...delivery, imageUrl: (ctx.sceneArt as Record<string, unknown>)[scene], scene,
+      sceneLabel: sceneLabel(scene as Parameters<typeof sceneLabel>[0]), historyId: artifact.id };
+  }
   const { getUserMatrixReportById } = await import("@/lib/services/numerology-report-service");
   const { matrixReportDisplayMetadata } = await import("@/lib/numerology/matrix-report-display");
   const saved = await getUserMatrixReportById(userId, matrix.rows[0].id, client);

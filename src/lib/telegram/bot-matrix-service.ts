@@ -30,6 +30,7 @@ import { getNumerologTool } from "@/lib/numerology/tools";
 import {
   BillingService,
   InsufficientFundsError,
+  BillingIdempotencyConflictError,
 } from "@/lib/services/billing-service";
 import { generateNumerologSessionReading } from "@/lib/services/numerology-service";
 import {
@@ -154,7 +155,7 @@ function diagramForSavedReport(
 
 type GateFail = {
   ok: false;
-  error: "needs_link" | "needs_onboarding" | "internal" | "insufficient_runes" | "not_found" | "operation_required" | "operation_failed" | "not_available";
+  error: "needs_link" | "needs_onboarding" | "internal" | "insufficient_runes" | "not_found" | "operation_required" | "operation_failed" | "not_available" | "payment_key_conflict";
   message: string;
   linkUrl?: string;
   runeBalance?: number;
@@ -572,10 +573,12 @@ export async function botMatrixRun(
         actionType: chargeAction,
         description: `${subject?.kind === "child" ? "Детская" : "Полная"} матрица — разбор Эвелины`,
         idempotencyKey: `tg-matrix:${subject?.id ?? isoBirth}:${operationId}`,
+        operationIdentity: `tg-matrix:${subject?.id ?? isoBirth}:${operationId}`,
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
     } catch (err) {
+      if (err instanceof BillingIdempotencyConflictError) return { ok: false, error: "payment_key_conflict", message: "Предыдущая оплата требует подтверждения. Откройте сохранённый результат в кабинете; новое списание не выполнено." };
       if (err instanceof InsufficientFundsError) {
         return {
           ok: false,

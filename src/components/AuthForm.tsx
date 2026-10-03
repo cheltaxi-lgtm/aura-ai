@@ -90,6 +90,9 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const [oauthError, setOauthError] = useState<string | null>(null);
   const [showPassword, setShowPassword] = useState(false);
   const [guestConversion, setGuestConversion] = useState(false);
+  // SSR controls must not accept input before their controlled React handlers
+  // attach; otherwise a slow client load erases the entered data and consent.
+  const [hydrated, setHydrated] = useState(false);
   const emailIntentTrackedRef = useRef(false);
   const emailSectionRef = useRef<HTMLDivElement>(null);
 
@@ -106,6 +109,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
 
   useEffect(() => {
     if (typeof window === "undefined") return;
+    setHydrated(true);
     const params = new URLSearchParams(window.location.search);
     const raw = params.get("returnTo") ?? params.get("next") ?? readPostAuthReturnTo();
     const fallback = isExpert ? "/expert" : "/";
@@ -201,6 +205,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
   const isExpertRegister = mode === "register" && role === "expert";
   const requiresLegalConsent = role === "user";
   const canSubmit =
+    hydrated &&
     featuresLoaded &&
     !loading &&
     (!requiresLegalConsent || (acceptedTerms && ageConfirmed)) &&
@@ -505,6 +510,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
         }
       >
         <OAuthConsentFields
+          disabled={!hydrated}
           acceptedTerms={acceptedTerms}
           ageConfirmed={ageConfirmed}
           marketingConsent={marketingConsent}
@@ -541,7 +547,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
       : "auth-form glass-panel mx-auto max-w-lg space-y-5 p-8";
 
   return (
-    <form onSubmit={handleSubmit} className={formShellClass}>
+    <form onSubmit={handleSubmit} className={formShellClass} aria-busy={!hydrated}>
       {isUserRegister ? (
         <>
           <p className="text-sm text-white/65">
@@ -556,7 +562,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             acceptedTerms={acceptedTerms}
             ageConfirmed={ageConfirmed}
             marketingConsent={marketingConsent}
-            disabled={loading}
+            disabled={loading || !hydrated}
             consentScrollTargetId="oauth-consent-block"
             showConsentHint={false}
             showEmailDivider
@@ -575,7 +581,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             acceptedTerms={acceptedTerms}
             ageConfirmed={ageConfirmed}
             marketingConsent={marketingConsent}
-            disabled={loading}
+            disabled={loading || !hydrated}
             consentScrollTargetId="oauth-consent-block"
             emailDividerLabel="или по email"
           />
@@ -586,6 +592,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           <div>
             <label htmlFor={`${role}-${mode}-name`} className={labelClass}>Имя *</label>
             <input
+              disabled={!hydrated}
               id={`${role}-${mode}-name`}
               type="text"
               required
@@ -601,6 +608,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               <div>
                 <label className={labelClass}>Адрес страницы</label>
                 <input
+                  disabled={!hydrated}
                   type="text"
                   value={slug}
                   onChange={(e) => setSlug(e.target.value)}
@@ -611,6 +619,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               <div>
                 <label className={labelClass}>Специализация</label>
                 <input
+                  disabled={!hydrated}
                   type="text"
                   value={title}
                   onChange={(e) => setTitle(e.target.value)}
@@ -628,6 +637,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
           <div>
             <label htmlFor={`${role}-${mode}-name`} className={labelClass}>Имя *</label>
             <input
+              disabled={!hydrated}
               id={`${role}-${mode}-name`}
               type="text"
               required
@@ -648,6 +658,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
               Email *
             </label>
             <input
+              disabled={!hydrated}
               id={`${role}-${mode}-email`}
               type="email"
               required
@@ -674,6 +685,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             </div>
             <div className="auth-salon-password-wrap">
               <input
+                disabled={!hydrated}
                 id={`${role}-${mode}-password`}
                 type={showPassword ? "text" : "password"}
                 required
@@ -719,6 +731,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             <div>
               <label className={labelClass}>Дата рождения</label>
               <input
+                disabled={!hydrated}
                 type="date"
                 aria-label="Дата рождения"
                 value={optionalBirthDate}
@@ -729,6 +742,7 @@ export default function AuthForm({ mode, role }: AuthFormProps) {
             <div>
               <label className={labelClass}>Пол</label>
               <select
+                disabled={!hydrated}
                 value={optionalGender}
                 aria-label="Пол"
                 onChange={(e) => setOptionalGender(e.target.value as "male" | "female")}

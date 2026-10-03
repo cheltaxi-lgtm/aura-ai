@@ -1,8 +1,6 @@
 import type { RitualType } from "@/lib/ritual-config";
 
-function getJulianDate(date: Date): number {
-  return date.getTime() / 86400000 + 2440587.5;
-}
+import { Body, Ecliptic, GeoVector, MoonPhase } from "astronomy-engine";
 
 export function getMoonPhase(date: Date = new Date()): {
   phase: string;
@@ -11,8 +9,8 @@ export function getMoonPhase(date: Date = new Date()): {
   favorable: RitualType[];
   description: string;
 } {
-  const jd = getJulianDate(date);
-  const phase = ((jd - 2451549.5) / 29.53058867) % 1;
+  // Apparent geocentric tropical positions, also used by the natal engine.
+  const phase = MoonPhase(date) / 360;
 
   let phaseKey: "new" | "waxing" | "full" | "waning";
   let phaseName: string;
@@ -45,8 +43,8 @@ export function getMoonPhase(date: Date = new Date()): {
     "Водолее",
     "Рыбах",
   ];
-  const signIndex = Math.floor(((jd - 2451549.5) / 2.36) % 12);
-  const sign = signs[Math.abs(signIndex) % 12];
+  const longitude = Ecliptic(GeoVector(Body.Moon, date, true)).elon;
+  const sign = signs[Math.floor(((longitude % 360 + 360) % 360) / 30)];
 
   const favorable: RitualType[] =
     phaseKey === "waxing"

@@ -19,13 +19,9 @@ export function masterDisplay(key: string) {
   return c ? { name: c.name, emoji: c.emoji } : { name: key, emoji: "🔮" };
 }
 
-export function resolveZodiacSign(zodiac: string | null, birthDate: string | null): ZodiacSign {
+export function resolveZodiacSign(zodiac: string | null, birthDate: string | null): ZodiacSign | null {
   if (birthDate) {
-    try {
-      return getZodiacFromDate(birthDate);
-    } catch {
-      /* fall through */
-    }
+    return getZodiacFromDate(birthDate);
   }
   if (zodiac) {
     const found = ZODIAC_SIGNS.find(
@@ -33,7 +29,7 @@ export function resolveZodiacSign(zodiac: string | null, birthDate: string | nul
     );
     if (found) return found;
   }
-  return ZODIAC_SIGNS[0];
+  return null;
 }
 
 export function formatCabinetDate(iso: string): string {

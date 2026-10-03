@@ -96,6 +96,8 @@ set +a
 node scripts/migrate.mjs
 
 sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh 2>/dev/null || true
+sed -i 's/\r$//' hosting/postgres-ingress-guard.sh hosting/install-postgres-ingress-guard.sh hosting/zovus-postgres-ingress.service
+bash hosting/install-postgres-ingress-guard.sh
 bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
 cp hosting/aura-ai.service /etc/systemd/system/aura-ai.service
 cp hosting/aura-ai-async-jobs.service /etc/systemd/system/aura-ai-async-jobs.service

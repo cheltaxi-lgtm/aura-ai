@@ -1,5 +1,8 @@
-﻿import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse } from "next/server";
 import { requireUserAuth } from "@/lib/require-auth";
+import { createHash } from "node:crypto";
+import { sceneImageResourceIdentity } from "@/lib/scene-image-identity";
+import { withReadingLock } from "@/lib/reading-lock";
 import { enforceImageGenRateLimit } from "@/lib/api-guards";
 import { generateSceneImage, isImageGenConfigured } from "@/lib/image-gen";
 import type { ImageGenerateRequest, ImageSceneType } from "@/lib/image-prompts";
@@ -8,25 +11,33 @@ import { zodiacSignArtUrl } from "@/utils/zodiac";
 import { getSetting } from "@/lib/settings";
 import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accounts";
 import { spreadCardsKey } from "@/lib/spreads";
-import { persistSceneArtForSpread, findExistingSceneArtUrl } from "@/lib/users";
+import { findExistingSceneArtUrl } from "@/lib/users";
+import { saveHistoryProductReceipt } from "@/lib/services/history-product-receipt";
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
 import { normalizeSceneImageUrl } from "@/lib/scene-image-store";
-import { getRuneSettings } from "@/lib/rune-settings";
+import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  BillingIdempotencyConflictError,
+  billingIdempotencyConflictResponse,
+  buildFallbackChargeIdempotencyKey,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { isRuneBillingActive } from "@/lib/rune-service";
 import type { RuneActionType } from "@/lib/rune-costs";
 import {
   getAsyncJobWorkerUserId,
+  getReportWorkerJobFromRequest,
   isAsyncJobWorkerConfigured,
 } from "@/lib/async-job-worker-auth";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
+  chargeRuneActionForWorkerJob,
+  refundWorkerJobCharge,
 } from "@/lib/async-job-lifecycle";
 
 export const maxDuration = 120;
@@ -85,6 +96,12 @@ export async function POST(request: NextRequest) {
   let rawBody: Record<string, unknown> = {};
   try {
     rawBody = await request.json();
+    if (!rawBody || typeof rawBody !== "object" || Array.isArray(rawBody)) throw new Error("invalid_body");
+    for (const field of ["scene", "characterKey", "userName", "zodiac", "spreadId", "userQuestionText", "aiResponseText"]) {
+      if (rawBody[field] !== undefined && typeof rawBody[field] !== "string") throw new Error("invalid_field");
+    }
+    if (rawBody.cards !== undefined && (!Array.isArray(rawBody.cards) || rawBody.cards.length > 32 ||
+        rawBody.cards.some(card => typeof card !== "string" || card.length > 300))) throw new Error("invalid_cards");
     body = rawBody as unknown as ImageGenerateRequest;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
@@ -124,6 +141,9 @@ export async function POST(request: NextRequest) {
       static: true,
     });
   }
+  if (!profileUserId) {
+    return NextResponse.json({ error: "Profile required", code: "profile_required" }, { status: 409 });
+  }
 
   if (!visual.scenes[scene]) {
     return NextResponse.json({ error: "Scene disabled in admin settings", code: "scene_off" }, { status: 403 });
@@ -141,7 +161,7 @@ export async function POST(request: NextRequest) {
   const useRuneBilling = isRuneBillingActive(profileUserId, unlimited, runeSettings);
   const runeAction = SCENE_RUNE_ACTION[scene as ImageSceneType];
 
-  if (scene === "final_report" && !body.isPaid && !useRuneBilling) {
+  if (scene === "final_report" && !unlimited && !useRuneBilling) {
     return NextResponse.json(
       { error: "Final report requires paid access", code: "payment_required" },
       { status: 402 }
@@ -164,6 +184,9 @@ export async function POST(request: NextRequest) {
     });
   }
 
+  const resourceIdentity = sceneImageResourceIdentity(body, visual.stylePrefix);
+  return withReadingLock(`image:${profileUserId ?? accountId}:${resourceIdentity}`, async () => {
+  let artifactSaved = false;
   let billingCharge: BillingChargeResult | null = null;
   let runeBalance: number | undefined;
 
@@ -173,9 +196,13 @@ export async function POST(request: NextRequest) {
       body.spreadId,
       "new"
     );
+    if (profileUserId && workerUserId) {
+      const recovered = await recoverSavedWorkerReport(profileUserId, getReportWorkerJobFromRequest(request));
+      if (recovered) return NextResponse.json({ ...recovered, reused: true });
+    }
 
-    if (profileUserId && scene !== "scene_illustration") {
-      const existingUrl = await findExistingSceneArtUrl(profileUserId, scene, cardsKey);
+    if (profileUserId) {
+      const existingUrl = await findExistingSceneArtUrl(profileUserId, scene, cardsKey, { resourceIdentity });
       if (existingUrl) {
         const payload = {
           imageUrl: existingUrl,
@@ -188,11 +215,19 @@ export async function POST(request: NextRequest) {
       }
     }
 
-    if (profileUserId && useRuneBilling && runeAction) {
+    if (profileUserId && (useRuneBilling || workerUserId) && runeAction) {
       try {
-        const charge = await BillingService.chargeRuneAction({
+        const charge = workerUserId ? await chargeRuneActionForWorkerJob({
+          request, userId: profileUserId, action: runeAction, operationIdentity: resourceIdentity,
+          legacyPurchase: { idempotencyKey: `image:${createHash("sha256").update(resourceIdentity).digest("hex").slice(0, 40)}`, operationIdentity: resourceIdentity },
+        }) : await BillingService.chargeRuneAction({
           userId: profileUserId,
           action: runeAction,
+          idempotencyKey: `image:${createHash("sha256").update(resourceIdentity).digest("hex").slice(0, 40)}`,
+          operationIdentity: resourceIdentity,
+          legacyIdempotencyKeys: [buildFallbackChargeIdempotencyKey({
+            userId: profileUserId, actionType: runeAction, cost: runeCostFromSettings(runeSettings, runeAction),
+          })],
         });
         billingCharge = charge;
         runeBalance = charge.newBalance;
@@ -200,6 +235,7 @@ export async function POST(request: NextRequest) {
         if (err instanceof InsufficientFundsError) {
           return insufficientFundsResponse(err);
         }
+        if (err instanceof BillingIdempotencyConflictError) return billingIdempotencyConflictResponse();
         throw err;
       }
     }
@@ -207,9 +243,9 @@ export async function POST(request: NextRequest) {
     const result = await generateSceneImage({ ...body, scene });
     if (!result) {
       let actuallyRefunded = false;
-      if (profileUserId && billingCharge) {
+      if (profileUserId && billingCharge && !artifactSaved) {
         try {
-          const refund = await BillingService.rollbackChargeEx({
+          const refund = await refundWorkerJobCharge(request, {
             userId: profileUserId,
             cost: billingCharge.spentRunes,
             wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -230,20 +266,27 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Image generation failed", code: "generation_failed" }, { status: 502 });
     }
 
-    if (profileUserId && scene !== "scene_illustration") {
-      try {
-        const storableUrl = await normalizeSceneImageUrl(result.imageUrl);
-        const patched = await persistSceneArtForSpread(profileUserId, scene, storableUrl, {
-          cardsKey,
-          characterId: body.characterKey ? String(body.characterKey) : undefined,
-        });
-        void patched;
-        result.imageUrl = storableUrl;
-      } catch (err) {
-        console.warn("Scene art history save failed:", err);
-      }
+    if (profileUserId) {
+      const storableUrl = await normalizeSceneImageUrl(result.imageUrl);
+      const payload = { imageUrl: storableUrl, scene: result.scene, sceneLabel: sceneLabel(result.scene),
+        model: result.model, aspectRatio: result.aspectRatio, quality: result.quality, runeBalance };
+      await saveHistoryProductReceipt({ request, transactionId: billingCharge?.transactionId, result: payload, history: {
+        userId: profileUserId,
+        characterName: body.characterKey ? String(body.characterKey) : "scene-image",
+        contextData: {
+          type: "scene_image", sceneImageResourceKey: resourceIdentity,
+          sceneArt: { [scene]: storableUrl }, scene,
+          tarotCards: body.cards?.map(name => ({ name })) ?? [],
+          characterKey: body.characterKey, userName: body.userName, zodiac: body.zodiac,
+          spreadId: body.spreadId, question: body.userQuestionText,
+          sourceAnswer: body.aiResponseText,
+          transactionId: billingCharge?.transactionId ?? null,
+        },
+        isPaid: Boolean(billingCharge) || unlimited,
+      } });
+      artifactSaved = true;
+      result.imageUrl = storableUrl;
     }
-
     const payload = {
       imageUrl: result.imageUrl,
       scene: result.scene,
@@ -260,9 +303,9 @@ export async function POST(request: NextRequest) {
     const { reportError } = await import("@/lib/error-report");
     reportError(error, { route: "image/generate", scene });
     let actuallyRefunded = false;
-    if (profileUserId && billingCharge) {
+    if (profileUserId && billingCharge && !artifactSaved) {
       try {
-        const refund = await BillingService.rollbackChargeEx({
+        const refund = await refundWorkerJobCharge(request, {
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -281,4 +324,5 @@ export async function POST(request: NextRequest) {
     });
     return NextResponse.json({ error: "Image generation error" }, { status: 500 });
   }
+  });
 }

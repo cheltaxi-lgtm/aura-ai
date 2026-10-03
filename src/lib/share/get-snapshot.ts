@@ -1,4 +1,5 @@
-import { query } from "@/lib/db";
+import { query, type PoolClient } from "@/lib/db";
+import { withActiveProfile } from "@/lib/active-profile";
 import { enrichShareExcerpt } from "./resolve-excerpt";
 import { stripLegacyPrivateFields, toPublicPayload } from "./public-payload";
 import type { ShareKind, ShareSnapshot, ShareSnapshotPayload, ShareSourceMeta } from "./types";
@@ -74,14 +75,6 @@ async function maybeRehydrateLegacySnapshot(snapshot: ShareSnapshot): Promise<Sh
     legacySnapshot: snapshot.payload.legacySnapshot,
   });
 
-  await query(
-    `UPDATE share_snapshots
-     SET payload = $2,
-         source_meta = COALESCE(source_meta, '{}'::jsonb) || '{"rehydrated":true}'::jsonb
-     WHERE token = $1`,
-    [snapshot.token, JSON.stringify(payload)]
-  );
-
   return { ...snapshot, payload, sourceMeta: { ...meta, rehydrated: true } };
 }
 
@@ -93,7 +86,8 @@ export async function getShareSnapshotByToken(
   try {
     ({ rows } = await query<ShareRow>(
       `SELECT id, token, user_id, kind, payload, source_meta, view_count, expires_at, created_at
-       FROM share_snapshots WHERE token = $1`,
+       FROM share_snapshots WHERE token = $1
+         AND (user_id IS NULL OR EXISTS (SELECT 1 FROM users WHERE id = share_snapshots.user_id AND erasure_requested_at IS NULL))`,
       [token]
     ));
   } catch (err) {
@@ -101,24 +95,31 @@ export async function getShareSnapshotByToken(
     if (code !== "42703") throw err;
     ({ rows } = await query<ShareRow>(
       `SELECT id, token, user_id, kind, payload, view_count, expires_at, created_at
-       FROM share_snapshots WHERE token = $1`,
+       FROM share_snapshots WHERE token = $1
+         AND (user_id IS NULL OR EXISTS (SELECT 1 FROM users WHERE id = share_snapshots.user_id AND erasure_requested_at IS NULL))`,
       [token]
     ));
   }
   const row = rows[0];
   if (!row || isExpired(row.expires_at)) return null;
 
-  if (incrementView) {
-    await query(`UPDATE share_snapshots SET view_count = view_count + 1 WHERE token = $1`, [token]);
-    row.view_count += 1;
-  }
-
-  let snapshot = mapRow(row);
-  if (snapshot.payload.legacySnapshot || (snapshot.payload.excerpt?.length ?? 0) <= 1100) {
-    snapshot = await maybeRehydrateLegacySnapshot(snapshot);
-  }
-
-  return snapshot;
+  const original = mapRow(row);
+  const snapshot = original.payload.legacySnapshot || (original.payload.excerpt?.length ?? 0) <= 1100
+    ? await maybeRehydrateLegacySnapshot(original) : original;
+  const read = async (client?: PoolClient) => {
+    const run = (sql: string, params: unknown[]) => client ? client.query(sql, params) : query(sql, params);
+    if (incrementView) {
+      await run(`UPDATE share_snapshots SET view_count = view_count + 1 WHERE token = $1`, [token]);
+      snapshot.viewCount += 1;
+    }
+    if (snapshot !== original) {
+      await run(`UPDATE share_snapshots SET payload = $2,
+        source_meta = COALESCE(source_meta, '{}'::jsonb) || '{"rehydrated":true}'::jsonb
+        WHERE token = $1`, [snapshot.token, JSON.stringify(snapshot.payload)]);
+    }
+    return snapshot;
+  };
+  return row.user_id ? withActiveProfile(row.user_id, read) : read();
 }
 
 export async function getShareSnapshotPublic(token: string): Promise<ShareSnapshot | null> {

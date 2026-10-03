@@ -3,7 +3,7 @@ import { ensureDb } from "@/lib/db";
 import {
   deleteJointReadingForUser,
   getJointReadingByToken,
-  resolveJointParticipantRole,
+  resolveJointReadParticipantRole,
 } from "@/lib/joint-reading-service";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { clientIp, enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
 
   const authed = await requireProfileUserId();
   const viewerId = authed?.profileUserId ?? null;
-  const participantRole = viewerId ? resolveJointParticipantRole(row, viewerId) : null;
+  const participantRole = viewerId ? resolveJointReadParticipantRole(row, viewerId) : null;
 
   let combinedJobId: string | null = null;
   let combinedPending = false;
@@ -68,6 +68,7 @@ export async function GET(request: NextRequest, { params }: RouteParams) {
       viewerId &&
       viewerId !== row.initiator_user_id &&
       !row.partner_reading &&
+      !row.combined_reading && !row.synastry_data &&
       (!row.partner_user_id || row.partner_user_id === viewerId)
   );
 

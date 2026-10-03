@@ -323,7 +323,8 @@ async function buildNatalSnapshot(
 async function generateNatal(
   payload: Record<string, unknown>,
   clientAlias: string,
-  focusQuestion?: string | null
+  focusQuestion?: string | null,
+  runtime?:ProHdRuntime
 ): Promise<{ blocks: ProReportBlock[]; snapshot: ProChartSnapshot }> {
   const { snapshot, record } = await buildNatalSnapshot(payload);
   const evidence = buildNatalEvidence(record, { tradition: "western" });
@@ -362,6 +363,7 @@ ${evidenceIds.join("\n")}`;
     reportType: "interpretation",
     evidenceIdsHint: evidenceIds,
     clientName: clientAlias,
+    beforeRequest:runtime?.beforeRequest,deadlineAt:runtime?.deadlineAt,
   });
   if (!generated.ok) {
     throw Object.assign(new Error("natal_generation_failed"), {
@@ -380,7 +382,8 @@ ${evidenceIds.join("\n")}`;
 async function generateMatrix(
   payload: Record<string, unknown>,
   clientAlias: string,
-  focusQuestion?: string | null
+  focusQuestion?: string | null,
+  runtime?:ProHdRuntime
 ): Promise<{ blocks: ProReportBlock[]; snapshot: ProChartSnapshot }> {
   const birthDate = String(payload.birthDate || "").slice(0, 10);
   if (!/^\d{4}-\d{2}-\d{2}$/.test(birthDate)) {
@@ -416,12 +419,14 @@ async function generateMatrix(
     .join("\n");
   const result = await generateFullMatrixSectionedReading({
     birthDate,
+    matrix:facts.matrix as DestinyMatrixResult,
     name: clientAlias,
     toolId: "destiny_matrix",
     subjectKind: "self",
     subjectName: clientAlias,
     useLlm: true,
     contextFacts: contextFacts || null,
+    beforeRequest:runtime?.beforeRequest,deadlineAt:runtime?.deadlineAt,
   });
   const blocks = matrixDocumentToProBlocks(result.document, {
     clientAlias,
@@ -597,9 +602,9 @@ export async function generateProPremiumReport(input: {
     aiTelemetry?: ProHdTelemetry;
   };
   if (input.type === "natal") {
-    result = await generateNatal(input.payload, input.clientAlias, focus);
+    result = await generateNatal(input.payload, input.clientAlias, focus,input);
   } else if (input.type === "matrix") {
-    result = await generateMatrix(input.payload, input.clientAlias, focus);
+    result = await generateMatrix(input.payload, input.clientAlias, focus,input);
   } else {
     result = await generateHd(input.payload, input.clientAlias, focus, input.onProgress, input);
   }

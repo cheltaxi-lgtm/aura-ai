@@ -9,22 +9,25 @@ import { parseCardOrientation } from "@/lib/card-orientation";
 
 export function resolveSpreadSymbol(
   system: DeckSystem,
-  card: { id?: number; name: string; meaning?: string }
+  card: { id?: number; name: string; meaning?: string; reversed?: boolean }
 ): SpreadSymbol {
-  const baseName = parseCardOrientation(card.name).name;
+  const parsed = parseCardOrientation(card.name);
+  const baseName = parsed.name;
+  const reversed = typeof card.reversed === "boolean" ? card.reversed : parsed.reversed;
   const byName = findSymbolByName(system, baseName);
-  if (byName) return byName;
+  if (byName) return { ...byName, reversed };
 
   const def = getDeckDefinition(system);
   if (typeof card.id === "number") {
     const byId = def.symbols.find((s) => s.id === card.id);
-    if (byId) return byId;
+    if (byId) return { ...byId, reversed };
   }
 
   return {
     id: card.id ?? -1,
     name: baseName,
     meaning: card.meaning ?? "",
+    reversed,
   };
 }
 

@@ -4,6 +4,7 @@ test("a saved bodygraph is visible on the hub and reopens the exact chart", asyn
   await page.route("**/api/auth/me", (route) => route.fulfill({ json: {
     authenticated: true,
     needsProfile: false,
+    user: { sub: "33333333-3333-4333-8333-333333333333", role: "user", profileUserId: "44444444-4444-4444-8444-444444444444", name: "Проверка", ageConfirmed: true },
     user: { sub: "test-user", role: "user", name: "Гость", ageConfirmed: true },
   } }));
   await page.route("**/api/human-design/mine", (route) => route.fulfill({ json: {

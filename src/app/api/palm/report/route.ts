@@ -10,6 +10,8 @@ import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accoun
 import {
   BillingService,
   InsufficientFundsError,
+  BillingIdempotencyConflictError,
+  billingIdempotencyConflictResponse,
   insufficientFundsResponse,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
@@ -234,6 +236,7 @@ async function handlePost(request: NextRequest) {
             ? "Гадание по ладони (первый разбор)"
             : undefined,
           idempotencyKey,
+          operationIdentity: `palm-snapshot:${snapshotId}`,
         });
         runeBalance = charge.newBalance;
         await trackWorkerJobCharged(request, charge.transactionId);
@@ -281,6 +284,7 @@ async function handlePost(request: NextRequest) {
                 ? "Гадание по ладони (первый разбор)"
                 : undefined,
               idempotencyKey: `${palmSpendKeyForSnapshot(snapshotId)}:${randomUUID()}`,
+              operationIdentity: `palm-snapshot:${snapshotId}`,
             });
             if (retryCharge.deduplicated) {
               throw new Error("palm_retry_charge_conflict");
@@ -295,6 +299,7 @@ async function handlePost(request: NextRequest) {
           spentRunes = charge.spentRunes;
         }
       } catch (err) {
+        if (err instanceof BillingIdempotencyConflictError) return billingIdempotencyConflictResponse();
         if (err instanceof InsufficientFundsError) {
           return insufficientFundsResponse(err);
         }

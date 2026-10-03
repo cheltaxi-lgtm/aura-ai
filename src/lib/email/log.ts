@@ -3,6 +3,38 @@ import { ACCOUNT_DELIVERABLE_EMAIL_SQL } from "@/lib/reminder-contacts";
 
 export type EmailLogStatus = "sent" | "failed" | "skipped";
 
+export const OWNERLESS_EMAIL_LOG_RETENTION_DAYS = 30;
+export const EMAIL_LOG_RETENTION_BATCH_LIMIT = 1000;
+
+/** Legacy/unmatched recipients have no reliable erasure owner; bound their PII lifetime. */
+export async function pruneOwnerlessEmailLogs(limit = EMAIL_LOG_RETENTION_BATCH_LIMIT): Promise<number> {
+  const batchLimit = Number.isFinite(limit)
+    ? Math.max(1, Math.min(EMAIL_LOG_RETENTION_BATCH_LIMIT, Math.floor(limit)))
+    : EMAIL_LOG_RETENTION_BATCH_LIMIT;
+  const result = await query(`WITH expired AS MATERIALIZED (
+      SELECT id FROM email_log
+      WHERE cardinality(owner_account_ids) = 0
+        AND created_at < NOW() - ($1 * INTERVAL '1 day')
+      ORDER BY created_at, id LIMIT $2 FOR UPDATE SKIP LOCKED
+    )
+    DELETE FROM email_log e USING expired
+    WHERE e.id = expired.id
+      AND cardinality(e.owner_account_ids) = 0
+      AND e.created_at < NOW() - ($1 * INTERVAL '1 day')`, [OWNERLESS_EMAIL_LOG_RETENTION_DAYS, batchLimit]);
+  return result.rowCount ?? 0;
+}
+
+/** Resolve before awaiting the transport: contact addresses may change while it sends. */
+export async function captureEmailOwners(recipient: string, accountId?: string): Promise<string[]> {
+  const { rows } = await query<{ id: string }>(`SELECT a.id FROM user_accounts a
+    WHERE a.id = $2::uuid OR lower(btrim(a.email)) = lower(btrim($1))
+      OR lower(btrim(a.contact_email)) = lower(btrim($1))
+      OR EXISTS (SELECT 1 FROM user_oauth_identities oi WHERE oi.user_account_id = a.id
+        AND lower(btrim(oi.provider_email)) = lower(btrim($1))) ORDER BY a.id`, [recipient, accountId ?? null]);
+  // Retain the explicit id even if erasure won the race before this lookup.
+  return [...new Set([...rows.map(row => row.id), ...(accountId ? [accountId] : [])])].sort();
+}
+
 /** Account coverage and SMTP acceptance for the daily reading, without recipient data. */
 export async function getDailyReminderDeliveryStatus() {
   const [coverage, days] = await Promise.all([
@@ -62,11 +94,12 @@ export async function logEmailAttempt(params: {
   status: EmailLogStatus;
   errorMessage?: string;
   meta?: Record<string, unknown>;
+  ownerAccountIds?: string[];
 }): Promise<void> {
   try {
     await query(
-      `INSERT INTO email_log (recipient, subject, template, provider, status, error_message, meta)
-       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb)`,
+      `INSERT INTO email_log (recipient, subject, template, provider, status, error_message, meta, owner_account_ids)
+       VALUES ($1, $2, $3, $4, $5, $6, $7::jsonb, $8::uuid[])`,
       [
         params.recipient.slice(0, 320),
         params.subject.slice(0, 500),
@@ -75,6 +108,7 @@ export async function logEmailAttempt(params: {
         params.status,
         params.errorMessage?.slice(0, 2000) ?? null,
         JSON.stringify(params.meta ?? {}),
+        params.ownerAccountIds ?? [],
       ]
     );
   } catch (err) {

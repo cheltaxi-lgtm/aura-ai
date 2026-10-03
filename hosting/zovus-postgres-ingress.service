@@ -1,0 +1,16 @@
+[Unit]
+Description=Keep Zovus PostgreSQL accessible only on local interfaces
+Wants=network-online.target
+After=network-online.target
+PartOf=docker.service
+Before=docker.service aura-ai.service aura-ai-async-jobs.service zovus-telegram-bot.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/zovus-postgres-ingress
+ExecReload=/usr/local/sbin/zovus-postgres-ingress
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target
+RequiredBy=docker.service

@@ -6,6 +6,7 @@ import {
   formatZodiacLabel,
   genderLabel,
   getZodiacFromDate,
+  normalizeBirthDate,
   zodiacSignArtUrl,
 } from "@/utils/zodiac";
 import {
@@ -356,7 +357,9 @@ export function profileAstroToPayload(
   astroMeta: AstroMeta;
 } | null {
   if (!name.trim() || !values.birthDate) return null;
-  const birthMs = Date.parse(values.birthDate);
+  const normalizedBirthDate = normalizeBirthDate(values.birthDate);
+  if (!normalizedBirthDate) return null;
+  const birthMs = Date.parse(normalizedBirthDate);
   const now = Date.now();
   if (Number.isNaN(birthMs) || birthMs > now) return null;
   const minBirth = new Date();
@@ -364,12 +367,12 @@ export function profileAstroToPayload(
   if (birthMs < minBirth.getTime()) return null;
   const zodiac = getZodiacFromDate(values.birthDate);
   const astroMeta = buildAstroMeta(values.birthDate) ?? undefined;
-  if (!astroMeta) return null;
+  if (!astroMeta || !zodiac) return null;
 
   return {
     name: name.trim(),
     gender: values.gender,
-    birthDate: values.birthDate,
+    birthDate: normalizedBirthDate,
     zodiac: formatZodiacLabel(zodiac),
     birthTime: values.birthTimeUnknown ? undefined : values.birthTime || undefined,
     birthCity: values.birthCity.trim() || undefined,

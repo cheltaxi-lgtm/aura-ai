@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { query, withTransaction } from "@/lib/db";
-import { deleteUserAccountInTransaction } from "@/lib/user-deletion";
+import { deleteUserAccountInTransaction, purgeAccountEmailLogsInTransaction } from "@/lib/user-deletion";
 import { callBotAdmin } from "@/lib/telegram/bot-admin-client";
 
 export type ErasureStage = "pending" | "bot_purged" | "site_deleted" | "completed";
@@ -56,8 +56,8 @@ export async function requestAccountErasure(
     }
     const operationId = randomUUID();
     await client.query(
-      `INSERT INTO account_erasure_jobs (id, account_id, profile_user_id, telegram_user_ids)
-       VALUES ($1, $2, $3, $4::bigint[])`, [operationId, accountId, account.profile_user_id, ids]
+      `INSERT INTO account_erasure_jobs (id, account_id, profile_user_id, telegram_user_ids, email_hashes)
+       VALUES ($1, $2, $3, $4::bigint[], account_erasure_email_hashes($2))`, [operationId, accountId, account.profile_user_id, ids]
     );
     if (options?.adminActorId) {
       await client.query(
@@ -143,6 +143,7 @@ async function runErasure(job: AccountErasureJob): Promise<void> {
       if (job.profile_user_id) {
         await deleteUserAccountInTransaction(client, job.account_id, job.profile_user_id);
       } else {
+        await purgeAccountEmailLogsInTransaction(client, job.account_id);
         await client.query(`DELETE FROM user_accounts WHERE id = $1`, [job.account_id]);
       }
       await client.query(

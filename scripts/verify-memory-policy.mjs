@@ -482,7 +482,8 @@ assert(
 assert(
   "HD interpretation uses shared memory context",
   read("src/lib/human-design/personalization-lens.ts").includes("buildMemoryContext") &&
-    read("src/app/api/human-design/report/route.ts").includes("appendHdPersonalizationLens")
+    read("src/lib/services/hd-purchase-route.ts").includes("appendHdPersonalizationLens") &&
+    read("src/app/api/human-design/report/route.ts").includes("handleHdPurchase")
 );
 assert(
   "adaptive memory budget is used by the pack serializer",

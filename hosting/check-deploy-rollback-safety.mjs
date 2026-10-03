@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseEnv } from 'node:util';
 import { DatabaseSync } from 'node:sqlite';
+import {PRO_ROLLBACK_COUNTS,readProGenerationRollbackCounts,supportsProGenerationRollback} from './pro-generation-rollback.mjs';
 
 const COUNTS = ['erasureJobs', 'inbox', 'paidOperations', 'tombstones', 'activeUpdates', 'reminderSends'];
 
@@ -12,6 +13,8 @@ export function classifyRollbackSafety(evidence) {
   if (!evidence || evidence.error || COUNTS.some(key => !Number.isSafeInteger(evidence[key]) || evidence[key] < 0)) {
     return { safe: false, reason: 'rollback_state_unverified' };
   }
+  if (PRO_ROLLBACK_COUNTS.some(key=>!Number.isSafeInteger(evidence[key])||evidence[key]<0))return {safe:false,reason:'rollback_state_unverified'};
+  if (PRO_ROLLBACK_COUNTS.some(key=>evidence[key]>0)&&evidence.supportsProGeneration!==true)return {safe:false,reason:'legacy_ignores_pro_generation_protocol'};
   if (!Number.isSafeInteger(evidence.memorySuppressions) || evidence.memorySuppressions < 0) return { safe: false, reason: 'rollback_state_unverified' };
   if (!Number.isSafeInteger(evidence.activeHdAdminRewrites) || evidence.activeHdAdminRewrites < 0) return { safe: false, reason: 'rollback_state_unverified' };
   if (evidence.memorySuppressions > 0 && evidence.supportsMemorySuppression !== true) return { safe: false, reason: 'legacy_ignores_forgotten_memory' };
@@ -45,16 +48,18 @@ export function readBotRollbackCounts(databasePath) {
   } finally { db.close(); }
 }
 
-async function readErasureCount(databaseUrl) {
+async function readErasureCount(databaseUrl,proDatabaseUrl,options={}) {
   if (!databaseUrl) throw new Error('database_not_configured');
   // Imported from the new release after npm ci. Missing dependencies fail closed.
   const { default: pg } = await import('pg');
-  const client = new pg.Client({ connectionString: databaseUrl, connectionTimeoutMillis: 5000,
+  const client = new pg.Client({ ...options, connectionString: databaseUrl, connectionTimeoutMillis: 5000,
     statement_timeout: 5000, query_timeout: 6000, application_name: 'deploy-rollback-safety' });
-  client.on('error', () => undefined);
+  const pro=new pg.Client({...options,connectionString:proDatabaseUrl||databaseUrl,connectionTimeoutMillis:5000,statement_timeout:5000,query_timeout:6000,application_name:'deploy-pro-rollback-safety'});
+  client.on('error', () => undefined);pro.on('error',()=>undefined);
   try {
     await client.connect();
     await client.query('BEGIN READ ONLY');
+    await pro.connect();await pro.query('BEGIN READ ONLY');
     const result = await client.query("SELECT COUNT(*)::text AS n FROM account_erasure_jobs WHERE stage <> 'completed'");
     const table = await client.query("SELECT to_regclass('public.user_memory_source_suppressions') IS NOT NULL AS present");
     const memory = table.rows[0].present
@@ -62,8 +67,8 @@ async function readErasureCount(databaseUrl) {
     const rewriteColumn = await client.query("SELECT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_schema='public' AND table_name='hd_reports' AND column_name='admin_rewrite_started_at') AS present");
     const rewrites = rewriteColumn.rows[0].present
       ? await client.query("SELECT COUNT(*)::text AS n FROM hd_reports WHERE admin_rewrite_started_at IS NOT NULL") : { rows: [{ n: '0' }] };
-    return { erasureJobs: Number(result.rows[0].n), memorySuppressions: Number(memory.rows[0].n), activeHdAdminRewrites: Number(rewrites.rows[0].n) };
-  } finally { await client.end(); }
+    return { ...await readProGenerationRollbackCounts(client,pro), erasureJobs: Number(result.rows[0].n), memorySuppressions: Number(memory.rows[0].n), activeHdAdminRewrites: Number(rewrites.rows[0].n) };
+  } finally { await Promise.allSettled([client.end(),pro.end()]); }
 }
 
 export async function inspectRollbackSafety(appDir, previousDir, pgCount = readErasureCount) {
@@ -78,7 +83,8 @@ export async function inspectRollbackSafety(appDir, previousDir, pgCount = readE
     const dbPath = path.resolve(dataDir, botEnv.BOT_DB_NAME?.trim() || 'bot.sqlite');
     const previousStartup = fs.readFileSync(path.join(previousDir, 'telegram-bot', 'src', 'index.ts'), 'utf8');
     const evidence = {
-      ...await pgCount(siteEnv.DATABASE_URL),
+      ...await pgCount(siteEnv.DATABASE_URL,siteEnv.PRO_DATABASE_URL||siteEnv.DATABASE_URL,{ssl:siteEnv.DATABASE_SSL==='require'?{rejectUnauthorized:siteEnv.DATABASE_SSL_REJECT_UNAUTHORIZED!=='false'}:undefined}),
+      supportsProGeneration:supportsProGenerationRollback(appDir,previousDir),
       supportsMemorySuppression: ['src/lib/user-memory.ts', 'src/lib/session-memory.ts', 'src/lib/memory/user-facts.ts', 'src/lib/memory/extraction-jobs.ts'].every(file => {
         const target = path.join(previousDir, file);
         return fs.existsSync(target) && /user_memory_source_suppressions|isMemorySourceSuppressed/.test(fs.readFileSync(target, 'utf8'));
@@ -97,7 +103,7 @@ export async function inspectRollbackSafety(appDir, previousDir, pgCount = readE
       ...readBotRollbackCounts(dbPath),
       legacyDropsPending: /drop_pending_updates\s*:\s*true\b/.test(previousStartup),
     };
-    return { ...classifyRollbackSafety(evidence), counts: { ...Object.fromEntries(COUNTS.map(key => [key, evidence[key]])), activeHdAdminRewrites: evidence.activeHdAdminRewrites } };
+    return { ...classifyRollbackSafety(evidence), counts: { ...Object.fromEntries(COUNTS.map(key => [key, evidence[key]])), activeHdAdminRewrites: evidence.activeHdAdminRewrites,...Object.fromEntries(PRO_ROLLBACK_COUNTS.map(key=>[key,evidence[key]])) } };
   } catch {
     return classifyRollbackSafety({ error: true });
   }

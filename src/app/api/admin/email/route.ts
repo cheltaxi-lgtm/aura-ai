@@ -56,6 +56,13 @@ const CRON_JOBS = [
     endpoint: "/api/cron/guest-resume-expire",
     description: "Помечает expired только unclaimed issued-чеки старше 24ч.",
   },
+  {
+    id: "email-log-retention",
+    label: "Срок хранения почтового журнала",
+    schedule: "Ежечасно в :25 UTC",
+    endpoint: "/api/cron/email-log-retention",
+    description: "Удаляет до 1000 записей старше 30 дней, если они не связаны с аккаунтом.",
+  },
 ];
 
 function parsePurgeParams(body: Record<string, unknown>) {

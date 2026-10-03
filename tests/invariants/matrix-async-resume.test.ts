@@ -12,4 +12,12 @@ describe("Matrix async resume identity", () => {
     expect(asyncJobMatchesContext(job, { kind: "reading", context })).toBe(false);
     expect(asyncJobMatchesContext({ ...job, context: undefined }, { context })).toBe(false);
   });
+  it("resumes either daily product without accepting another product or a missing kind", () => {
+    const expected = { kind: "daily_reading,daily_extended" };
+    expect(asyncJobMatchesContext({ status: "completed", kind: "daily_reading" }, expected)).toBe(true);
+    expect(asyncJobMatchesContext({ status: "running", kind: "daily_extended" }, expected)).toBe(true);
+    expect(asyncJobMatchesContext({ status: "completed", kind: "reading" }, expected)).toBe(false);
+    expect(asyncJobMatchesContext({ status: "completed" }, expected)).toBe(false);
+    expect(asyncJobMatchesContext({ ...job, kind: "daily_reading" }, { ...expected, context: { ...context, sessionId: "session-B" } })).toBe(false);
+  });
 });

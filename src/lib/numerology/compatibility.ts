@@ -34,7 +34,7 @@ function matchScore(a: NumerologyResult, b: NumerologyResult): number {
   if (a.number <= 0 || b.number <= 0) return 50;
   if (a.number === b.number) return 95;
   const compA = COMPLEMENTARY[a.number] ?? [];
-  if (compA.includes(b.number)) return 82;
+  if (compA.includes(b.number) || (COMPLEMENTARY[b.number] ?? []).includes(a.number)) return 82;
   const diff = Math.abs(a.number - b.number);
   if (diff === 1) return 72;
   if (diff === 2) return 65;

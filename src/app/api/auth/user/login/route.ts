@@ -66,21 +66,23 @@ export async function POST(request: NextRequest) {
       acceptedTerms: true,
     });
 
-    await setAuthCookie(
+    const applied = await setAuthCookie(
       {
         sub: user.id,
         role: "user",
         email: user.email,
         name: user.name,
+        tv: user.token_version,
       },
       request
     );
+    if (!applied) return NextResponse.json({ error: LOGIN_FAILURE_MESSAGE }, { status: 401 });
 
     // App WebView often lags applying Set-Cookie from fetch — handoff re-sets it.
     let handoff: string | undefined;
     if (isAppShellRequest(request)) {
       try {
-        handoff = await createOAuthHandoff(user.id);
+        handoff = await createOAuthHandoff(user.id, user.token_version);
       } catch (err) {
         console.warn("Login handoff create failed:", err);
       }

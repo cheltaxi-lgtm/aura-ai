@@ -1,5 +1,7 @@
 import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 import { BillingService } from "@/lib/services/billing-service";
+import { queryClient, withTransaction } from "@/lib/db";
+import { withReadingLock } from "@/lib/reading-lock";
 import {
   buildRitualAnswersMessage,
   captureRitualMemory,
@@ -8,7 +10,6 @@ import { buildMemoryContext } from "@/lib/memory/build-memory-context";
 import {
   attemptRitualGeneration,
   getRitualById,
-  markRitualGenerationFailed,
   ritualToClient,
   type RitualRow,
 } from "@/lib/ritual-service";
@@ -27,20 +28,34 @@ export type RitualGenerationOutcome =
     };
 
 /** Refund only real paid spends; skip free/unlimited and pass txn id for idempotency. */
-async function rollbackPaidRitual(ritual: RitualRow): Promise<void> {
-  if (ritual.payment_status !== "paid") return;
-  if (ritual.rune_cost <= 0) return;
-  try {
-    await BillingService.rollbackCharge({
-      userId: ritual.user_id,
-      cost: ritual.rune_cost,
-      wasFreeQuestion: false,
-      actionType: "ritual",
-      transactionId: ritual.transaction_id ?? undefined,
-    });
-  } catch (err) {
-    console.error("Ritual rune rollback failed:", err);
-  }
+export async function failRitualGeneration(ritual: RitualRow, refundRequested = true): Promise<boolean> {
+  return withTransaction(async (client) => {
+    await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR UPDATE", [ritual.user_id]);
+    const claim = await queryClient(client, `SELECT id FROM rituals WHERE id=$1 AND user_id=$2
+      AND status='generating' AND transaction_id IS NOT DISTINCT FROM $3::uuid FOR UPDATE`,
+      [ritual.id, ritual.user_id, ritual.transaction_id]);
+    if (!claim.rowCount) return false;
+    let refunded = false;
+    if (refundRequested && ritual.payment_status === "paid" && ritual.transaction_id) {
+      const spend = await queryClient<{ amount: number }>(client, `SELECT amount FROM rune_transactions
+        WHERE id=$1 AND user_id=$2 AND type='spend' AND action_type='ritual' AND amount<0`,
+        [ritual.transaction_id, ritual.user_id]);
+      if (!spend.rows[0]) throw new Error("ritual_payment_receipt_missing");
+      const rollback = await BillingService.rollbackChargeEx({
+        userId: ritual.user_id,
+        cost: -spend.rows[0].amount,
+        wasFreeQuestion: false,
+        actionType: "ritual",
+        transactionId: ritual.transaction_id,
+        client,
+      });
+      refunded = rollback.refunded;
+    }
+    await queryClient(client, `UPDATE rituals SET status='payment', payment_status='pending', updated_at=NOW()
+      WHERE id=$1 AND user_id=$2 AND status='generating' AND transaction_id IS NOT DISTINCT FROM $3::uuid`,
+      [ritual.id, ritual.user_id, ritual.transaction_id]);
+    return refunded;
+  });
 }
 
 export async function runRitualGenerationForUser(params: {
@@ -48,6 +63,12 @@ export async function runRitualGenerationForUser(params: {
   userId: string;
   rollbackOnFailure?: boolean;
   captureGeneration?: string | null;
+}): Promise<RitualGenerationOutcome> {
+  return withReadingLock(`ritual-generation:${params.userId}:${params.ritualId}`, () => runRitualGenerationLocked(params));
+}
+
+async function runRitualGenerationLocked(params: {
+  ritualId: string; userId: string; rollbackOnFailure?: boolean; captureGeneration?: string | null;
 }): Promise<RitualGenerationOutcome> {
   const ritual = await getRitualById(params.ritualId);
   if (!ritual || ritual.user_id !== params.userId) {
@@ -124,10 +145,7 @@ export async function runRitualGenerationForUser(params: {
 
     const shouldRefund =
       params.rollbackOnFailure !== false && ritual.payment_status === "paid";
-    await markRitualGenerationFailed(params.ritualId);
-    if (shouldRefund) {
-      await rollbackPaidRitual(ritual);
-    }
+    const refunded = await failRitualGeneration(ritual, shouldRefund);
     const failed = await getRitualById(params.ritualId);
     console.error("Ritual generation failed for", params.ritualId);
     return {
@@ -135,15 +153,12 @@ export async function runRitualGenerationForUser(params: {
       status: "failed",
       error: "generation_failed",
       ritual: failed,
-      refunded: shouldRefund,
+      refunded,
     };
   } catch (err) {
     const shouldRefund =
       params.rollbackOnFailure !== false && ritual.payment_status === "paid";
-    await markRitualGenerationFailed(params.ritualId);
-    if (shouldRefund) {
-      await rollbackPaidRitual(ritual);
-    }
+    const refunded = await failRitualGeneration(ritual, shouldRefund);
     console.error("Ritual generation error:", err);
     const failed = await getRitualById(params.ritualId);
     return {
@@ -151,7 +166,7 @@ export async function runRitualGenerationForUser(params: {
       status: "failed",
       error: "generation_error",
       ritual: failed,
-      refunded: shouldRefund,
+      refunded,
     };
   }
 }

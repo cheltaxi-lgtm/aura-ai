@@ -1,4 +1,5 @@
 import { proQuery } from "../db";
+import { withActiveProfile } from "@/lib/active-profile";
 import {
   DEFAULT_LANDING_COPY,
   DEFAULT_LANDING_SECTIONS,
@@ -280,6 +281,7 @@ export async function getPublishedLandingBySlug(
   const { rows } = await proQuery<{
     account_id: string | number;
     brand_slug: string;
+    user_id: string;
     display_name: string | null;
     bio: string | null;
     specializations: string[] | null;
@@ -299,6 +301,7 @@ export async function getPublishedLandingBySlug(
     `SELECT
        l.account_id,
        a.brand_slug,
+       a.user_id,
        a.display_name,
        a.bio,
        a.specializations,
@@ -316,6 +319,7 @@ export async function getPublishedLandingBySlug(
        l.intake_url
      FROM pro.landings l
      JOIN pro.accounts a ON a.id = l.account_id
+     JOIN pro.intake_forms f ON f.id = l.intake_form_id AND f.account_id = a.id AND f.active = TRUE
      LEFT JOIN pro.brand b ON b.account_id = a.id
      WHERE lower(a.brand_slug) = $1
        AND a.status = 'active'
@@ -329,32 +333,34 @@ export async function getPublishedLandingBySlug(
   if (!r?.intake_url) return null;
   const intakeUrl = resolveProCapabilityUrl(r.intake_url);
   if (!intakeUrl) return null;
-  await reencryptIntakeUrlIfPlaintext(r.account_id, r.intake_url);
+  return withActiveProfile(r.user_id, async () => {
+    await reencryptIntakeUrlIfPlaintext(r.account_id, r.intake_url);
 
-  const sections = normalizeLandingSections(r.sections);
-  const promoLimit = r.promo_limit == null ? null : Number(r.promo_limit);
-  const promoUsed = Number(r.promo_used) || 0;
-  const promoRemaining =
-    promoLimit == null ? null : Math.max(0, promoLimit - promoUsed);
+    const sections = normalizeLandingSections(r.sections);
+    const promoLimit = r.promo_limit == null ? null : Number(r.promo_limit);
+    const promoUsed = Number(r.promo_used) || 0;
+    const promoRemaining =
+      promoLimit == null ? null : Math.max(0, promoLimit - promoUsed);
 
-  return {
-    slug: r.brand_slug,
-    displayName: (r.display_name || "Практик").trim(),
-    bio: r.bio,
-    specializations: Array.isArray(r.specializations) ? r.specializations : [],
-    accentColor: r.accent_color,
-    logoUrl: r.logo_url,
-    contactPublic: r.contact_public,
-    headline: (r.headline || DEFAULT_LANDING_COPY.headline).trim(),
-    subheadline: (r.subheadline || DEFAULT_LANDING_COPY.subheadline).trim(),
-    promoBadge: r.promo_badge,
-    priceRub: r.price_rub == null ? null : Number(r.price_rub),
-    promoLimit,
-    promoUsed,
-    promoRemaining,
-    sections,
-    contactNote: r.contact_note,
-    intakeUrl,
-    ctaLabel: sections.cta || DEFAULT_LANDING_SECTIONS.cta,
-  };
+    return {
+      slug: r.brand_slug,
+      displayName: (r.display_name || "Практик").trim(),
+      bio: r.bio,
+      specializations: Array.isArray(r.specializations) ? r.specializations : [],
+      accentColor: r.accent_color,
+      logoUrl: r.logo_url,
+      contactPublic: r.contact_public,
+      headline: (r.headline || DEFAULT_LANDING_COPY.headline).trim(),
+      subheadline: (r.subheadline || DEFAULT_LANDING_COPY.subheadline).trim(),
+      promoBadge: r.promo_badge,
+      priceRub: r.price_rub == null ? null : Number(r.price_rub),
+      promoLimit,
+      promoUsed,
+      promoRemaining,
+      sections,
+      contactNote: r.contact_note,
+      intakeUrl,
+      ctaLabel: sections.cta || DEFAULT_LANDING_SECTIONS.cta,
+    };
+  });
 }

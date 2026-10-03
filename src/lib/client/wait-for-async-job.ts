@@ -357,7 +357,9 @@ export function asyncJobMatchesContext(job: AsyncJobPollResult, expected: {
   kind?: string;
   context?: { sessionId: string | null; characterId: string | null; matrixSubjectId: string | null };
 }): boolean {
-  if (expected.kind && job.kind !== expected.kind) return false;
+  // The active-jobs endpoint accepts a comma-separated list of product kinds.
+  // Apply the same allow-list when checking a saved job or its server fallback.
+  if (expected.kind && !expected.kind.split(",").map(kind => kind.trim()).filter(Boolean).includes(job.kind ?? "")) return false;
   if (!expected.context) return true;
   return Boolean(job.context && Object.entries(expected.context).every(([key, value]) =>
     (job.context?.[key as keyof typeof job.context] ?? null) === value));

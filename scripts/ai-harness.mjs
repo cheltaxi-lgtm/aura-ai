@@ -121,15 +121,9 @@ function resolvePlan(scopeArg, level, files, { audit = false } = {}) {
   const seen = new Set();
   for (const s of scopes) {
     const spec = SCOPES[s];
-    const list = [
-      ...(spec[level] || spec.fast),
-      ...(level === "production" ? spec.production : []),
-    ];
-    if (level === "production" && spec.full) {
-      for (const id of spec.full) {
-        if (!list.includes(id)) list.unshift(id);
-      }
-    }
+    const list = level === "production"
+      ? [...(spec.full || spec.fast), ...(spec.production || [])]
+      : [...(spec[level] || spec.fast)];
     for (const id of list) {
       if (seen.has(id)) continue;
       seen.add(id);
@@ -165,14 +159,15 @@ function expandCmd(check) {
   return null;
 }
 
-function runSpawn({ bin, args, cwd }) {
+function runSpawn({ bin, args, cwd }, env = {}) {
   const r = spawnSync(bin, args, {
     cwd,
     encoding: "utf8",
     shell: process.platform === "win32",
-    env: { ...process.env, TZ: "UTC" },
+    maxBuffer: 32 * 1024 * 1024,
+    env: { ...process.env, ...env, TZ: "UTC" },
   });
-  const stdout = `${r.stdout || ""}${r.stderr || ""}`;
+  const stdout = `${r.stdout || ""}${r.stderr || ""}${r.error ? `\nSpawn error: ${r.error.message}` : ""}`;
   const status = typeof r.status === "number" ? r.status : 1;
   return { status, stdout };
 }
@@ -232,9 +227,11 @@ async function prodHealth() {
     return { status: "partial", stdout: `prod health URL not allowlisted: ${url}` };
   }
   try {
-    const code = await fetchStatus(url);
-    if (code !== 200) return { status: 1, stdout: `health ${url} → ${code}` };
-    return { status: 0, stdout: `health ${url} → 200` };
+    const res = await fetch(url, { redirect: "error", signal: AbortSignal.timeout(15000) });
+    if (res.status !== 200) return { status: 1, stdout: `health ${url} → ${res.status}` };
+    const body = await res.json();
+    if (body?.ok !== true || body?.status !== "ok") return { status: 1, stdout: `health ${url} → invalid healthy payload` };
+    return { status: 0, stdout: `health ${url} → 200, ok=true, status=ok` };
   } catch (err) {
     return { status: "partial", stdout: `cannot reach ${url}: ${err.message}` };
   }
@@ -267,11 +264,36 @@ async function prodSmoke(scopes) {
 
 function classifySkip(stdout) {
   const text = String(stdout || "");
-  if (/Executable doesn't exist|playwright.*browser/i.test(text)) {
+  if (/Executable doesn't exist at|Please run the following command to download new browsers/i.test(text)) {
     return "Playwright browsers not installed (`npx playwright install chromium`)";
   }
-  if (/ECONNREFUSED|ENOTFOUND|ETIMEDOUT|network/i.test(text) && /zovus\.ru|prod-health|prod-smoke/.test(text)) {
-    return text.slice(0, 300);
+  return null;
+}
+
+export function missingPrerequisite(check, env = process.env) {
+  for (const name of check.requiredEnv || []) {
+    if (!env[name]) return `Required ${name} is unset; this coverage cannot be silently omitted.`;
+  }
+  for (const [name, expected] of Object.entries(check.requiredEnvValues || {})) {
+    if (env[name] !== expected) return `${name} must be ${expected}; this coverage cannot be silently omitted.`;
+  }
+  for (const [name, forbidden] of Object.entries(check.forbiddenEnvValues || {})) {
+    if (env[name] === forbidden) return `${name}=${forbidden} disables required coverage.`;
+  }
+  for (const name of check.localUrls || []) {
+    try {
+      const url = new URL(env[name]);
+      if (!["http:", "https:"].includes(url.protocol) || !["localhost", "127.0.0.1", "[::1]"].includes(url.hostname)) {
+        return `${name} must target an isolated local fixture.`;
+      }
+    } catch { return `${name} is not a valid local fixture URL.`; }
+  }
+  if (check.testDatabase) {
+    try {
+      const url = new URL(env.TEST_DATABASE_URL);
+      if (!["postgres:", "postgresql:"].includes(url.protocol) || !/test/i.test(url.pathname)) return "A dedicated TEST_DATABASE_URL is required.";
+      if (env.DATABASE_URL !== env.TEST_DATABASE_URL) return "DATABASE_URL must match the dedicated TEST_DATABASE_URL for this mutating verification.";
+    } catch { return "A dedicated TEST_DATABASE_URL is required."; }
   }
   return null;
 }
@@ -300,23 +322,28 @@ function headSha() {
 async function runCheck(id, scopes) {
   const check = CHECKS[id];
   if (!check) return { id, status: "FAIL", reason: `unknown check ${id}` };
+  const missing = missingPrerequisite(check);
+  if (missing) return { id, title: check.title, status: "PARTIAL", durationMs: 0, reason: missing };
   const started = Date.now();
   let result;
   if (check.builtin) result = await runBuiltin(check.builtin, scopes);
-  else result = runSpawn(expandCmd(check));
+  else result = runSpawn(expandCmd(check), check.env);
   const durationMs = Date.now() - started;
-  if (result.status === "partial") {
-    return { id, title: check.title, status: "PARTIAL", durationMs, reason: result.stdout };
+  const logPath = path.join("test-artifacts", "harness", `${started}-${id}.log`);
+  fs.mkdirSync(path.dirname(path.join(ROOT, logPath)), { recursive: true });
+  fs.writeFileSync(path.join(ROOT, logPath), String(result.stdout || ""));
+  if (result.status === "partial" || result.status === 2) {
+    return { id, title: check.title, status: "PARTIAL", durationMs, logPath, reason: result.stdout };
   }
   if (result.status === 0) {
-    return { id, title: check.title, status: "PASS", durationMs };
+    return { id, title: check.title, status: "PASS", durationMs, logPath };
   }
   const skip = classifySkip(result.stdout);
   if (skip) {
-    return { id, title: check.title, status: "PARTIAL", durationMs, reason: skip };
+    return { id, title: check.title, status: "PARTIAL", durationMs, logPath, reason: skip };
   }
   const tail = String(result.stdout || "").trim().split(/\r?\n/).slice(-12).join("\n");
-  return { id, title: check.title, status: "FAIL", durationMs, reason: tail || `exit ${result.status}` };
+  return { id, title: check.title, status: "FAIL", durationMs, logPath, reason: tail || `exit ${result.status}` };
 }
 
 function verdictOf(rows, productionRequired, notRequired = false) {

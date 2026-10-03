@@ -10,7 +10,7 @@ import { clientIp, enforceRegisterRateLimit } from "@/lib/api-guards";
 import { enforceRecaptchaScope } from "@/lib/recaptcha-guard";
 import { grantStarterRunesIfNeeded } from "@/lib/rune-service";
 import { buildAstroMeta } from "@/lib/astro-profile";
-import { getZodiacFromDate, formatZodiacLabel } from "@/utils/zodiac";
+import { getZodiacFromDate, formatZodiacLabel, normalizeBirthDate } from "@/utils/zodiac";
 import {
   linkSessionToUser,
   serializeUserProfile,
@@ -139,8 +139,8 @@ export async function POST(request: NextRequest) {
 
       profilePayload = {
         gender: stubGender,
-        birthDate: String(birthDate),
-        zodiac: zodiac || formatZodiacLabel(sign),
+        birthDate: normalizeBirthDate(String(birthDate))!,
+        zodiac: formatZodiacLabel(sign),
         birthTime,
         birthCity,
         lifeFocus,

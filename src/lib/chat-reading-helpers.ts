@@ -241,7 +241,7 @@ export function resolveTarotCardsForOutgoingChat(input: {
   activeProfile: StoredProfile | null;
   masters?: ShowcaseMaster[];
   sessionOnly?: boolean;
-}): { name: string; meaning: string }[] | undefined {
+}): { name: string; meaning: string; id?: number; reversed?: boolean }[] | undefined {
   const {
     characterId,
     sessionSpreadMeta,
@@ -252,6 +252,12 @@ export function resolveTarotCardsForOutgoingChat(input: {
     masters,
     sessionOnly = false,
   } = input;
+
+  if (sessionSpreadMeta?.spreadType === "daily" && sessionSpreadMeta.cardNames?.length === 3) {
+    return buildSessionSpreadCards(characterId, sessionSpreadMeta.cardNames).spreadCards.map(c => ({
+      id: c.id, name: c.name, meaning: c.meaning ?? "", reversed: c.reversed === true,
+    }));
+  }
 
   if (sessionSpreadMeta?.spreadType === "photo" && sessionSpreadMeta.cardNames?.length) {
     const built = buildSessionSpreadCards(characterId, sessionSpreadMeta.cardNames);
@@ -399,6 +405,7 @@ export function readingPayloadForMaster(
       tarotCards: sliced.map((c) => ({
         name: c.name,
         meaning: c.meaning ?? "",
+        ...(spreadType === "daily" ? { id: c.id, reversed: c.reversed === true } : {}),
       })),
       deckSystem: (base.deckSystem ?? resolveMasterSpread(profile, masterId, mastersList).system) as
         | DeckSystem

@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { createHash } from "node:crypto";
+import { normalizeChargeIdempotencyKey } from "@/lib/charge-idempotency-key";
+export { normalizeChargeIdempotencyKey } from "@/lib/charge-idempotency-key";
 import { isFirstExperienceEnabled } from "@/lib/first-experience-policy";
 import { recordJourneyEvent } from "@/lib/spread-metrics-store";
 
@@ -83,6 +86,8 @@ export type ChargeForSessionParams = {
   exempt?: boolean;
   /** Chat: reserve session slot and apply free-question tier. */
   sessionId?: string;
+  /** Photo purchase is bound to its server content key; session is an output receipt. */
+  sessionIsResult?: boolean;
   freeQuestionLimit?: number;
   hasFullAccess?: boolean;
   reserveFreeSlot?: boolean;
@@ -93,6 +98,10 @@ export type ChargeForSessionParams = {
    * from legacy Capacitor clients still collapses (see CHARGE_IDEM_WINDOW_SEC).
    */
   idempotencyKey?: string;
+  /** Trusted server operation/content identity; price must not participate. */
+  operationIdentity?: string;
+  /** Old unbound keys: fail safely when a held payment cannot be tied to this input. */
+  legacyIdempotencyKeys?: string[];
   /** Refuse the transaction when the payable amount exceeds explicit user confirmation. */
   maxCost?: number;
 };
@@ -103,24 +112,6 @@ export type ChargeForSessionParams = {
  * pass distinct keys (or wait for the next bucket).
  */
 export const CHARGE_IDEM_WINDOW_SEC = 30;
-
-const IDEM_KEY_MAX = 128;
-const IDEM_KEY_RE = /^[A-Za-z0-9_.:\-]+$/;
-
-/** Validate / normalize a caller key. Invalid → null (treated as absent) + warning. */
-export function normalizeChargeIdempotencyKey(raw: unknown): string | null {
-  if (typeof raw !== "string") return null;
-  const trimmed = raw.trim();
-  if (!trimmed) return null;
-  if (trimmed.length > IDEM_KEY_MAX || !IDEM_KEY_RE.test(trimmed)) {
-    console.warn("[billing] invalid idempotencyKey ignored", {
-      length: trimmed.length,
-      preview: trimmed.slice(0, 24),
-    });
-    return null;
-  }
-  return trimmed;
-}
 
 /** Deterministic fallback key from stable charge traits + time bucket (not a random nonce). */
 export function buildFallbackChargeIdempotencyKey(input: {
@@ -181,14 +172,16 @@ export type RollbackChargeParams = {
 
 async function lockUserRow(
   client: PoolClient,
-  userId: string
+  userId: string,
+  requireActive = false
 ): Promise<number> {
-  const { rows } = await queryClient<{ rune_balance: number }>(
+  const { rows } = await queryClient<{ rune_balance: number; erasure_requested_at?: Date | null }>(
     client,
-    `SELECT rune_balance FROM users WHERE id = $1 FOR UPDATE`,
+    `SELECT rune_balance, erasure_requested_at FROM users WHERE id = $1 FOR UPDATE`,
     [userId]
   );
   if (!rows[0]) throw new Error("user_not_found");
+  if (requireActive && rows[0].erasure_requested_at) throw new Error("billing_profile_inactive");
   return rows[0].rune_balance;
 }
 
@@ -197,35 +190,138 @@ async function logFreeQuestionSpend(
   userId: string,
   balanceAfter: number,
   actionType: string,
-  idempotencyKey: string | null
+  idempotencyKey: string | null,
+  sessionId: string,
+  operationIdentity: string | null
 ): Promise<string> {
   const {rows} = await queryClient<{id:string}>(
     client,
     `INSERT INTO rune_transactions
-       (user_id, type, amount, balance_after, description, action_type, idempotency_key)
-     VALUES ($1, 'spend', 0, $2, $3, $4, $5) RETURNING id`,
-    [userId, balanceAfter, "Списан бесплатный вопрос", actionType, idempotencyKey]
+       (user_id, type, amount, balance_after, description, action_type, idempotency_key, result_session_id, operation_identity)
+     VALUES ($1, 'spend', 0, $2, $3, $4, $5, $6, $7) RETURNING id`,
+    [userId, balanceAfter, "Списан бесплатный вопрос", actionType, idempotencyKey, sessionId, operationIdentity]
   );
   return rows[0].id;
+}
+
+type PriorSpend = {
+  id: string;
+  amount: number;
+  balance_after: number;
+  action_type: string | null;
+  result_session_id: string | null;
+  refunded: boolean;
+  idempotency_key: string;
+  operation_identity: string | null;
+};
+
+function operationFingerprint(params: ChargeForSessionParams): string | null {
+  return params.operationIdentity ? createHash("sha256").update(params.operationIdentity).digest("hex") : null;
 }
 
 async function findSpendByIdempotencyKey(
   client: PoolClient,
   userId: string,
   idempotencyKey: string
-): Promise<{ id: string; amount: number; balance_after: number } | null> {
-  const { rows } = await queryClient<{
-    id: string;
-    amount: number;
-    balance_after: number;
-  }>(
+): Promise<PriorSpend | null> {
+  const { rows } = await queryClient<PriorSpend>(
     client,
-    `SELECT id, amount, balance_after FROM rune_transactions
-     WHERE user_id = $1 AND idempotency_key = $2 AND type = 'spend'
+    `SELECT t.id, t.amount, t.balance_after, t.action_type, t.result_session_id, t.idempotency_key, t.operation_identity,
+       EXISTS (SELECT 1 FROM rune_transactions rf WHERE rf.type='refund' AND rf.refund_of_transaction_id=t.id) AS refunded
+     FROM rune_transactions t
+     WHERE t.user_id = $1 AND t.idempotency_key = $2 AND t.type = 'spend'
      LIMIT 1`,
     [userId, idempotencyKey]
   );
   return rows[0] ?? null;
+}
+
+/** A legacy client key has a held receipt but no evidence of this session. */
+export class BillingIdempotencyConflictError extends Error {
+  readonly code = "BILLING_IDEMPOTENCY_CONFLICT";
+  constructor() {
+    super("The payment key belongs to an ambiguous previous purchase");
+    this.name = "BillingIdempotencyConflictError";
+  }
+}
+
+export function billingIdempotencyConflictResponse(): NextResponse {
+  return NextResponse.json({ error: "payment_key_conflict", code: "payment_key_conflict",
+    message: "Для этого запроса уже есть оплата, но повторный результат не подтверждён. Откройте сохранённый результат. Новое списание не выполнено." }, { status: 409 });
+}
+
+function isHeldSpendForCharge(prior: PriorSpend, params: ChargeForSessionParams): boolean {
+  if (prior.refunded || prior.action_type !== params.actionType || prior.amount > 0) return false;
+  if ((prior.operation_identity ?? null) !== operationFingerprint(params)) return false;
+  if (params.sessionId && !params.sessionIsResult && prior.result_session_id !== params.sessionId) {
+    // Older server-derived chat/fallback keys already bind the session. An
+    // ambiguous client key with no saved session cannot authorize another one.
+    const legacyBound = prior.result_session_id === null &&
+      (prior.idempotency_key.startsWith(`chat:${params.sessionId}:`) ||
+       prior.idempotency_key.startsWith(`auto:${params.userId}:${params.actionType}:${params.sessionId}:`));
+    if (!legacyBound) return false;
+  }
+  if (prior.amount === 0) {
+    return params.actionType === "QUESTION" && params.reserveFreeSlot === true &&
+      Boolean(params.sessionId);
+  }
+  // The already-purchased operation retains its original price, including
+  // first-reading discounts and admin price changes. No new debit is made.
+  return true;
+}
+
+/** Keep old keys/receipts intact; collisions and refunded attempts never grant a purchase. */
+async function resolveHeldCharge(
+  client: PoolClient,
+  params: ChargeForSessionParams,
+  originalKey: string
+): Promise<{ key: string; prior: PriorSpend | null }> {
+  const original = await findSpendByIdempotencyKey(client, params.userId, originalKey);
+  if (!original) {
+    for (const raw of (params.legacyIdempotencyKeys ?? []).slice(0, 4)) {
+      const key = normalizeChargeIdempotencyKey(raw);
+      if (!key || key === originalKey) continue;
+      const legacy = await findSpendByIdempotencyKey(client, params.userId, key);
+      if (legacy && !legacy.refunded && legacy.action_type === params.actionType && legacy.amount < 0) {
+        if (params.operationIdentity && isHeldSpendForCharge(legacy, params)) return { key, prior: legacy };
+        throw new BillingIdempotencyConflictError();
+      }
+    }
+    return { key: originalKey, prior: null };
+  }
+  if (isHeldSpendForCharge(original, params)) return { key: originalKey, prior: original };
+  if (!original.refunded && original.amount < 0 && original.action_type === params.actionType &&
+      ((params.operationIdentity && !original.operation_identity) || (!params.operationIdentity && original.operation_identity))) {
+    throw new BillingIdempotencyConflictError();
+  }
+  if (!original.refunded && original.amount < 0 && original.action_type === params.actionType &&
+      params.sessionId && !params.sessionIsResult && original.result_session_id === null) {
+    throw new BillingIdempotencyConflictError();
+  }
+
+  const identity = createHash("sha256")
+    .update(JSON.stringify([originalKey, params.actionType, params.sessionIsResult ? null : params.sessionId ?? null, operationFingerprint(params)]))
+    .digest("hex");
+  // Keep the server resource prefix: daily Aura/Palm held-spend ownership
+  // checks and old retry helpers deliberately use that prefix.
+  const prefix = `${originalKey}:billing-retry:${identity.slice(0, 24)}:`;
+  const { rows } = await queryClient<PriorSpend>(client,
+    `SELECT t.id, t.amount, t.balance_after, t.action_type, t.result_session_id, t.idempotency_key, t.operation_identity,
+       EXISTS (SELECT 1 FROM rune_transactions rf WHERE rf.type='refund' AND rf.refund_of_transaction_id=t.id) AS refunded
+     FROM rune_transactions t
+     WHERE t.user_id=$1 AND t.type='spend' AND LEFT(t.idempotency_key,LENGTH($2))=$2
+       AND SUBSTRING(t.idempotency_key FROM LENGTH($2)+1) ~ '^[0-9]{1,10}$'
+     ORDER BY SUBSTRING(t.idempotency_key FROM LENGTH($2)+1)::bigint DESC LIMIT 1`,
+    [params.userId, prefix]);
+  const latest = rows[0] ?? null;
+  if (latest && isHeldSpendForCharge(latest, params)) return { key: latest.idempotency_key, prior: latest };
+  if (latest && !latest.refunded && latest.amount < 0 && latest.action_type === params.actionType &&
+      ((params.operationIdentity && !latest.operation_identity) || (!params.operationIdentity && latest.operation_identity))) {
+    throw new BillingIdempotencyConflictError();
+  }
+  const attempt = latest ? Number(latest.idempotency_key.slice(prefix.length)) + 1 : 1;
+  if (!Number.isSafeInteger(attempt) || attempt > 9_999_999_999) throw new Error("billing_retry_limit");
+  return { key: `${prefix}${attempt}`, prior: null };
 }
 
 /**
@@ -239,18 +335,20 @@ async function logRuneSpend(
   balanceAfter: number,
   description: string,
   actionType: string,
-  idempotencyKey: string | null
+  idempotencyKey: string | null,
+  sessionId?: string,
+  operationIdentity: string | null = null
 ): Promise<{ transactionId?: string; conflict: boolean }> {
   if (idempotencyKey) {
     const { rows } = await queryClient<{ id: string }>(
       client,
       `INSERT INTO rune_transactions
-         (user_id, type, amount, balance_after, description, action_type, idempotency_key)
-       VALUES ($1, 'spend', $2, $3, $4, $5, $6)
+         (user_id, type, amount, balance_after, description, action_type, idempotency_key, result_session_id, operation_identity)
+       VALUES ($1, 'spend', $2, $3, $4, $5, $6, $7, $8)
        ON CONFLICT (user_id, idempotency_key) WHERE idempotency_key IS NOT NULL
        DO NOTHING
        RETURNING id`,
-      [userId, -amount, balanceAfter, description, actionType, idempotencyKey]
+      [userId, -amount, balanceAfter, description, actionType, idempotencyKey, sessionId ?? null, operationIdentity]
     );
     if (!rows[0]) return { conflict: true };
     return { transactionId: rows[0].id, conflict: false };
@@ -259,10 +357,10 @@ async function logRuneSpend(
   const { rows } = await queryClient<{ id: string }>(
     client,
     `INSERT INTO rune_transactions
-       (user_id, type, amount, balance_after, description, action_type)
-     VALUES ($1, 'spend', $2, $3, $4, $5)
+       (user_id, type, amount, balance_after, description, action_type, result_session_id, operation_identity)
+     VALUES ($1, 'spend', $2, $3, $4, $5, $6, $7)
      RETURNING id`,
-    [userId, -amount, balanceAfter, description, actionType]
+    [userId, -amount, balanceAfter, description, actionType, sessionId ?? null, operationIdentity]
   );
   return { transactionId: rows[0]?.id, conflict: false };
 }
@@ -270,10 +368,14 @@ async function logRuneSpend(
 async function reserveQuestionIndex(
   client: PoolClient,
   sessionId: string,
+  userId: string,
   freeLimit: number,
-  hasFullAccess: boolean
+  hasFullAccess: boolean,
+  cost: number,
+  maxCost?: number
 ): Promise<{ questionIndex: number; freeQuestionsRemaining: number }> {
-  await queryClient(client, `SELECT id FROM sessions WHERE id = $1 FOR UPDATE`, [sessionId]);
+  const owned = await queryClient(client, `SELECT id FROM sessions WHERE id = $1 AND user_id=$2 FOR UPDATE`, [sessionId, userId]);
+  if (!owned.rowCount) throw new Error("billing_session_not_found");
 
   const { rows: capRows } = await queryClient<{ free_questions_used: number }>(
     client,
@@ -283,6 +385,9 @@ async function reserveQuestionIndex(
   if (isSessionChatQuestionCapReached(capRows[0]?.free_questions_used)) {
     throw new SessionQuestionLimitError();
   }
+
+  const free = !hasFullAccess && (capRows[0]?.free_questions_used ?? 0) < freeLimit;
+  if (!free && maxCost !== undefined && cost > maxCost) throw new ConfirmedCostExceededError(maxCost, cost);
 
   let used: number;
   if (hasFullAccess) {
@@ -325,8 +430,14 @@ async function executeChargeForSession(
     reserveFreeSlot = false,
   } = params;
 
-  const idempotencyKey = resolveEffectiveChargeIdempotencyKey(params);
-  const balance = await lockUserRow(client, userId);
+  if (!Number.isSafeInteger(cost) || cost < 0) throw new Error("invalid_billing_cost");
+  if (params.operationIdentity !== undefined && (typeof params.operationIdentity !== "string" ||
+      !params.operationIdentity || params.operationIdentity.length > 1024)) throw new Error("invalid_billing_operation_identity");
+  if (params.maxCost !== undefined && (!Number.isFinite(params.maxCost) || params.maxCost < 0)) {
+    throw new Error("invalid_confirmed_billing_cost");
+  }
+  let idempotencyKey = resolveEffectiveChargeIdempotencyKey(params);
+  const balance = await lockUserRow(client, userId, true);
 
   if (exempt) {
     return {
@@ -341,7 +452,9 @@ async function executeChargeForSession(
 
   // Fast path under user lock: prior successful spend with this key → no second debit.
   if (idempotencyKey) {
-    const prior = await findSpendByIdempotencyKey(client, userId, idempotencyKey);
+    const resolved = await resolveHeldCharge(client, params, idempotencyKey);
+    idempotencyKey = resolved.key;
+    const prior = resolved.prior;
     if (prior) {
       return {
         spentRunes: 0,
@@ -364,15 +477,18 @@ async function executeChargeForSession(
     const reserved = await reserveQuestionIndex(
       client,
       sessionId,
+      userId,
       freeQuestionLimit,
-      hasFullAccess
+      hasFullAccess,
+      cost,
+      params.maxCost
     );
     questionIndex = reserved.questionIndex;
     freeQuestionsRemaining = reserved.freeQuestionsRemaining;
     slotReserved = true;
 
     if (!hasFullAccess && questionIndex < freeQuestionLimit) {
-      const transactionId=await logFreeQuestionSpend(client, userId, balance, actionType,idempotencyKey);
+      const transactionId=await logFreeQuestionSpend(client, userId, balance, actionType,idempotencyKey,sessionId,operationFingerprint(params));
       return {
         spentRunes: 0,
         wasFreeQuestion: true,
@@ -447,7 +563,9 @@ async function executeChargeForSession(
     newBalance,
     label,
     actionType,
-    idempotencyKey
+    idempotencyKey,
+    sessionId,
+    operationFingerprint(params)
   );
 
   if (logged.conflict) {
@@ -467,6 +585,7 @@ async function executeChargeForSession(
       );
     }
     const prior = await findSpendByIdempotencyKey(client, userId, idempotencyKey!);
+    if (!prior || !isHeldSpendForCharge(prior, params)) throw new Error("billing_idempotency_conflict");
     const restoredBalance = await lockUserRow(client, userId);
     return {
       spentRunes: 0,
@@ -587,6 +706,8 @@ export async function chargeRuneAction(params: {
   reserveFreeSlot?: boolean;
   client?: PoolClient;
   idempotencyKey?: string;
+  operationIdentity?: string;
+  legacyIdempotencyKeys?: string[];
   maxCost?: number;
 }): Promise<BillingChargeResult> {
   const settings = await getRuneSettings(params.client);
@@ -602,6 +723,8 @@ export async function chargeRuneAction(params: {
     reserveFreeSlot: params.reserveFreeSlot,
     client: params.client,
     idempotencyKey: params.idempotencyKey,
+    operationIdentity: params.operationIdentity,
+    legacyIdempotencyKeys: params.legacyIdempotencyKeys,
     maxCost: params.maxCost,
   });
 }
@@ -656,6 +779,7 @@ export interface ChatBillingHandle extends ChatBillingState {
 }
 
 export type ChargeChatBillingParams = {
+  operationIdentity?: string;
   dbOk: boolean;
   profileUserId: string | null;
   session: SessionRow | null;
@@ -665,6 +789,7 @@ export type ChargeChatBillingParams = {
   imageBase64?: string;
   /** Stable caller event id for retry-safe bot/native chat turns. */
   idempotencyKey?: string;
+  legacyIdempotencyKeys?: string[];
   /** Maximum rune amount explicitly confirmed by the caller. */
   maxCost?: number;
 };
@@ -731,6 +856,7 @@ export async function chargeChatBilling(
 
   if (
     session &&
+    !useRuneBilling &&
     actionType === "QUESTION" &&
     isSessionChatQuestionCapReached(session.free_questions_used)
   ) {
@@ -766,6 +892,8 @@ export async function chargeChatBilling(
           normalizeChargeIdempotencyKey(idempotencyKey) ??
           `chat:${session.id}:${actionType}:${session.free_questions_used}`,
         maxCost: params.maxCost,
+        legacyIdempotencyKeys: params.legacyIdempotencyKeys,
+        operationIdentity: params.operationIdentity,
       });
 
       questionIndex = charge.questionIndex ?? questionIndex;
@@ -803,6 +931,9 @@ export async function chargeChatBilling(
             { status: 409 }
           ),
         };
+      }
+      if (billingErr instanceof BillingIdempotencyConflictError) {
+        return { ok: false, response: billingIdempotencyConflictResponse() };
       }
       throw billingErr;
     }

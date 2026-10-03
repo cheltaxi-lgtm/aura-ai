@@ -25,7 +25,13 @@ const FAIL_OPEN: PlatformFeatureFlags = {
   palmReadingEnabled: false,
 };
 
-let cached: { flags: PlatformFeatureFlags; expiresAt: number } | null = null;
+export type PlatformFeatureState = {
+  available: boolean;
+  flags: PlatformFeatureFlags;
+};
+
+let cached: { flags: PlatformFeatureFlags; expiresAt: number; url: string } | null = null;
+let inFlight: { url: string; promise: Promise<PlatformFeatureState> } | null = null;
 const CACHE_TTL_MS = 15_000;
 
 function resolveFeaturesUrl(): string {
@@ -49,29 +55,46 @@ function parseFlags(data: Record<string, unknown> | null): PlatformFeatureFlags 
   };
 }
 
-export async function fetchPlatformFeatureFlags(
+export async function fetchPlatformFeatureState(
   featuresUrl?: string
-): Promise<PlatformFeatureFlags> {
+): Promise<PlatformFeatureState> {
+  const url = featuresUrl || resolveFeaturesUrl();
   const now = Date.now();
-  if (cached && cached.expiresAt > now) {
-    return cached.flags;
+  if (cached && cached.url === url && cached.expiresAt > now) {
+    return { available: true, flags: cached.flags };
   }
+  if (inFlight?.url === url) return inFlight.promise;
+  const pending = (async (): Promise<PlatformFeatureState> => {
+    try {
+      const response = await fetch(url, {
+        cache: "no-store",
+        signal: AbortSignal.timeout(4_000),
+      });
+      if (!response.ok) throw new Error("feature_status_unavailable");
+      const data: unknown = await response.json();
+      if (!data || typeof data !== "object" || Array.isArray(data)
+        || !Object.keys(FAIL_OPEN).every(key => typeof (data as Record<string, unknown>)[key] === "boolean")) {
+        throw new Error("feature_status_invalid");
+      }
+      const flags = parseFlags(data as Record<string, unknown>);
+      cached = { flags, url, expiresAt: Date.now() + CACHE_TTL_MS };
+      return { available: true, flags };
+    } catch {
+      // A timeout is not an operator turning a product off. Do not cache it as
+      // a disabled feature: middleware returns a retryable 503 instead of 404.
+      return { available: false, flags: FAIL_OPEN };
+    }
+  })();
+  inFlight = { url, promise: pending };
   try {
-    const response = await fetch(featuresUrl || resolveFeaturesUrl(), {
-      cache: "no-store",
-      signal: AbortSignal.timeout(4_000),
-    });
-    const data = (await response.json().catch(() => null)) as Record<
-      string,
-      unknown
-    > | null;
-    const flags = parseFlags(data);
-    cached = { flags, expiresAt: now + CACHE_TTL_MS };
-    return flags;
-  } catch {
-    cached = { flags: FAIL_OPEN, expiresAt: now + CACHE_TTL_MS };
-    return FAIL_OPEN;
+    return await pending;
+  } finally {
+    if (inFlight?.promise === pending) inFlight = null;
   }
+}
+
+export async function fetchPlatformFeatureFlags(featuresUrl?: string): Promise<PlatformFeatureFlags> {
+  return (await fetchPlatformFeatureState(featuresUrl)).flags;
 }
 
 /** @deprecated Prefer fetchPlatformFeatureFlags — kept for narrow call sites. */

@@ -480,6 +480,10 @@ export default function AdminEmailPage() {
 
           <section className="rounded-2xl border border-white/10 bg-white/[0.03] p-5">
             <h2 className="mb-3 text-sm font-semibold text-white">Журнал отправок</h2>
+            <p className="mb-3 text-xs text-gray-400">
+              Записи, связанные с аккаунтом, удаляются вместе с его данными. Записи без связи с
+              аккаунтом автоматически очищаются после 30 дней: до 1000 записей каждый час.
+            </p>
             <div className="mb-4 flex flex-wrap items-end gap-3 text-sm">
               <label className="text-xs text-gray-500">
                 Статус

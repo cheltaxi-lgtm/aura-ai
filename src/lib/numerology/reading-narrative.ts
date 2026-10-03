@@ -1,3 +1,4 @@
+import { calendarParts, PRODUCT_TIME_ZONE } from "@/lib/product-calendar";
 import type { FullNumerologyProfile } from "./profile";
 import { fullProfile } from "./profile";
 import type { PythagorasSquareResult } from "./pythagoras-square";
@@ -48,12 +49,12 @@ export function formatMatrixLineEntry(line: { label: string; summary: string }):
 const CELL_NAMES: Record<number, string> = {
   1: "воля и характер",
   2: "энергия",
-  3: "здоровье",
-  4: "логика",
-  5: "труд",
-  6: "удача",
-  7: "долг",
-  8: "талант",
+  3: "интерес",
+  4: "здоровье",
+  5: "логика",
+  6: "труд",
+  7: "удача",
+  8: "долг",
   9: "память и мудрость",
 };
 
@@ -128,7 +129,7 @@ function buildProfileIntro(name: string, profile: FullNumerologyProfile | null):
     "",
     `**Число жизненного пути:** ${lp.number}${masterNote} — ${lp.title}. ${lp.meaning.split(".").slice(0, 2).join(".")}.`,
     py.number > 0
-      ? `**Личный год ${new Date().getFullYear()}:** ${py.number} — ${py.title}. ${py.meaning.split(".")[0]?.trim()}.`
+      ? `**Личный год ${calendarParts().year}:** ${py.number} — ${py.title}. ${py.meaning.split(".")[0]?.trim()}.`
       : "",
   ]
     .filter(Boolean)
@@ -141,12 +142,12 @@ const INTERP_BY_DIGIT: Record<
 > = {
   1: "character",
   2: "energy",
-  3: "health",
-  4: "logic",
-  5: "labor",
-  6: "luck",
-  7: "duty",
-  8: "talent",
+  3: "interest",
+  4: "health",
+  5: "logic",
+  6: "labor",
+  7: "luck",
+  8: "duty",
   9: "memory",
 };
 
@@ -213,10 +214,10 @@ function buildFinalization(
     `**Урок:** ${lessonText}. Пустые ячейки — не «плохо», а место, где нужна осознанная дисциплина, а не надежда на «само пройдёт».`,
   ];
 
-  if (empty.includes(3)) {
+  if (empty.includes(4)) {
     lines.push(
       "",
-      "**Главный вывод по здоровью и ресурсу:** пустая тройка при сильной воле (единица) — классический сценарий «тяну на характере». Беречь режим важнее, чем доказывать силу."
+      "**О символике здоровья:** отсутствие четвёрки не говорит о здоровье или запасе сил. Это тема метода для размышления о заботе о себе."
     );
   }
 
@@ -270,7 +271,7 @@ export function buildPythagorasNarrativeReading(input: {
     "",
     buildProfileIntro(name, profile),
     "",
-    "## Ядро: характер, энергия, здоровье",
+    "## Ядро: характер, энергия, интерес",
     "",
     narrateCell(1, square),
     "",
@@ -279,10 +280,10 @@ export function buildPythagorasNarrativeReading(input: {
     narrateCell(3, square),
     "",
     i.health.count === 0
-      ? "Сочетание **сильной единицы** и **пустой тройки** — частый маркер: внешне выдерживаешь, внутренний ресурс восстановления не безлимитный. Это ключ к пониманию усталости и хронических симптомов."
+      ? "В этой системе четвёрка связана с символической темой здоровья. Её отсутствие не объясняет усталость или симптомы."
       : "",
     "",
-    "## Разум, труд, удача",
+    "## Забота о себе, логика, труд",
     "",
     narrateCell(4, square),
     "",
@@ -290,7 +291,7 @@ export function buildPythagorasNarrativeReading(input: {
     "",
     narrateCell(6, square),
     "",
-    "## Глубина: долг, талант, память",
+    "## Глубина: удача, долг, память",
     "",
     narrateCell(7, square),
     "",
@@ -320,19 +321,19 @@ export function buildHealthNarrativeFinal(
   const lines = [
     "## Итог по здоровью",
     "",
-    `${name}, резюме **только по ячейкам 1–3**:`,
+    `${name}, резюме **только по ячейкам 1, 2 и 4**:`,
     "",
-    `— **Восстановление (3):** ${cellLabel(3, i.health.count)} — ${i.health.summary}`,
+    `— **Восстановление (4):** ${cellLabel(4, i.health.count)} — ${i.health.summary}`,
     `— **Энергия (2):** ${cellLabel(2, i.energy.count)} — ${i.energy.summary}`,
     `— **Напор (1):** ${cellLabel(1, i.character.count)} — ${i.character.summary}`,
   ];
 
   if (options?.symptom) {
-    lines.push("", `Твоё уточнение «${options.symptom}» укладывается в связку **пустой/слабой тройки + нагрузки на единицу** — не в выдуманные «период 4 / совет 5».`);
+    lines.push("", `Твоё уточнение «${options.symptom}» нельзя объяснить цифрами. Симптомы и лечение стоит обсудить с врачом.`);
   }
 
   if (options?.chronic) {
-    lines.push("", "**Хронический срок** усиливает урок: не «сколько месяцев лечить», а **сменить режим** — сон, стресс, ритм нагрузки.");
+    lines.push("", "**Длительность симптомов** не определяется квадратом Пифагора; для её оценки нужна медицинская консультация.");
   }
 
   if (profile?.personalYear.number) {
@@ -415,7 +416,7 @@ export function buildForecastNarrativeReading(input: {
   birthDate: string;
   startYear?: number;
 }): string {
-  const { name, birthDate, startYear = new Date().getFullYear() } = input;
+  const { name, birthDate, startYear = calendarParts().year } = input;
   if (!parseBirthDate(birthDate)) {
     return `${name}, для прогноза на 9 лет нужна дата рождения — назови её, посчитаю без догадок.`;
   }
@@ -465,15 +466,15 @@ export function buildPersonalCycleNarrativeReading(input: {
   }
 
   const now = new Date();
-  const py = personalYear(birthDate, now.getFullYear());
+  const py = personalYear(birthDate, calendarParts(now).year);
   const pm = personalMonth(birthDate, now);
   const pd = personalDay(birthDate, now);
 
   return [
     `${name}, твой **личный цикл** сейчас — по реальному расчёту:`,
     "",
-    `**Личный год ${now.getFullYear()}:** ${py.number} — ${py.title}. ${py.meaning.split(".").slice(0, 2).join(".")}.`,
-    `**Личный месяц (${now.getMonth() + 1}/${now.getFullYear()}):** ${pm.number} — ${pm.title}.`,
+    `**Личный год ${calendarParts(now).year}:** ${py.number} — ${py.title}. ${py.meaning.split(".").slice(0, 2).join(".")}.`,
+    `**Личный месяц (${calendarParts(now).month}/${calendarParts(now).year}):** ${pm.number} — ${pm.title}.`,
     `**Личный день сегодня:** ${pd.number} — ${pd.title}.`,
     "",
     "Год задаёт стратегию, месяц — тактику, день — оттенок настроения. Не путай их с «судьбой на всю жизнь».",
@@ -481,11 +482,11 @@ export function buildPersonalCycleNarrativeReading(input: {
 }
 
 function formatShortDate(date: Date): string {
-  return date.toLocaleDateString("ru-RU", { day: "numeric", month: "long" });
+  return date.toLocaleDateString("ru-RU", { timeZone: PRODUCT_TIME_ZONE, day: "numeric", month: "long" });
 }
 
 function formatWeekday(date: Date): string {
-  return date.toLocaleDateString("ru-RU", { weekday: "short", day: "numeric", month: "short" });
+  return date.toLocaleDateString("ru-RU", { timeZone: PRODUCT_TIME_ZONE, weekday: "short", day: "numeric", month: "short" });
 }
 
 /** Три цифры на сегодня: день · месяц · год. */
@@ -501,14 +502,14 @@ export function buildPersonalDaySpreadReading(input: {
   const now = new Date();
   const pd = personalDay(birthDate, now);
   const pm = personalMonth(birthDate, now);
-  const py = personalYear(birthDate, now.getFullYear());
+  const py = personalYear(birthDate, calendarParts(now).year);
 
   return [
     `${name}, **расклад по цифрам на сегодня** (${formatShortDate(now)}):`,
     "",
     `**1 · Личный день · ${pd.number}** — ${pd.title}. ${pd.meaning.split(".").slice(0, 2).join(".")}.`,
     `**2 · Личный месяц · ${pm.number}** — ${pm.title}. Фон решений на ближайшие недели.`,
-    `**3 · Личный год · ${py.number}** — ${py.title}. Стратегия ${now.getFullYear()} года.`,
+    `**3 · Личный год · ${py.number}** — ${py.title}. Стратегия ${calendarParts(now).year} года.`,
     "",
     "Сегодня опирайся на число дня — оно главное. Месяц и год не спорят с ним, а задают рамку.",
   ].join("\n");
@@ -529,12 +530,12 @@ export function buildPersonalWeekSpreadReading(input: {
   const pm = personalMonth(birthDate, now);
   const anchors = [0, 3, 6].map((offset) => {
     const d = new Date(now);
-    d.setDate(d.getDate() + offset);
+    d.setUTCDate(d.getUTCDate() + offset);
     return { date: d, pd: personalDay(birthDate, d) };
   });
   const weekDays = Array.from({ length: 7 }, (_, i) => {
     const d = new Date(now);
-    d.setDate(d.getDate() + i);
+    d.setUTCDate(d.getUTCDate() + i);
     return { date: d, pd: personalDay(birthDate, d) };
   });
 
@@ -570,15 +571,15 @@ export function buildPersonalMonthSpreadReading(input: {
   const now = new Date();
   const pm = personalMonth(birthDate, now);
   const pw = personalWeek(birthDate, now);
-  const py = personalYear(birthDate, now.getFullYear());
-  const monthLabel = now.toLocaleDateString("ru-RU", { month: "long", year: "numeric" });
+  const py = personalYear(birthDate, calendarParts(now).year);
+  const monthLabel = now.toLocaleDateString("ru-RU", { timeZone: PRODUCT_TIME_ZONE, month: "long", year: "numeric" });
 
   return [
     `${name}, **расклад по цифрам на ${monthLabel}**:`,
     "",
     `**1 · Личный месяц · ${pm.number}** — ${pm.title}. ${pm.meaning.split(".").slice(0, 2).join(".")}.`,
     `**2 · Текущая неделя · ${pw.number}** — ${pw.title}. Как войти в ритм месяца прямо сейчас.`,
-    `**3 · Личный год · ${py.number}** — ${py.title}. Направление всего ${now.getFullYear()} года.`,
+    `**3 · Личный год · ${py.number}** — ${py.title}. Направление всего ${calendarParts(now).year} года.`,
     "",
     "Месяц — тактика, год — стратегия. Не путай краткий цикл с судьбой на всю жизнь.",
   ].join("\n");
@@ -619,7 +620,7 @@ export function buildLifePathNarrativeReading(input: {
 
   if (py.number > 0) {
     paragraphs.push(
-      `Сейчас, в ${now.getFullYear()} году, у тебя личный год ${py.number} — ${py.title.toLowerCase()}. ${py.meaning.split(".").slice(0, 1).join(".")}. Это фон сезона, не приговор — путь остаётся твоей базой.`
+      `Сейчас, в ${calendarParts(now).year} году, у тебя личный год ${py.number} — ${py.title.toLowerCase()}. ${py.meaning.split(".").slice(0, 1).join(".")}. Это фон сезона, не приговор — путь остаётся твоей базой.`
     );
   }
 

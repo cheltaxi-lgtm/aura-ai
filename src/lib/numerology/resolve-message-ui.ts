@@ -13,6 +13,13 @@ function isSpreadReadingMessage(content?: string): boolean {
   return (content?.trim().length ?? 0) >= MIN_SPREAD_READING_CHARS;
 }
 
+/** Historical text is immutable. Missing UI is an explicitly labelled current
+ * calculation, never presented as the original report's numerical snapshot. */
+function reconstructSquare(birthDate: string): PythagorasSquareResult | null {
+  const square = pythagorasSquare(birthDate);
+  return square ? { ...square, reconstructedFromCurrentProfile: true } : null;
+}
+
 /** Resolve Pythagoras grid — attached UI, session tool, or explicit user ask. */
 export function resolvePythagorasSquareForMessage(
   messages: Message[],
@@ -32,7 +39,7 @@ export function resolvePythagorasSquareForMessage(
       (m) => m.role === "assistant" && isSpreadReadingMessage(m.content)
     );
     if (messageIndex === firstReadingIdx) {
-      return pythagorasSquare(birthDate);
+      return reconstructSquare(birthDate);
     }
   }
 
@@ -55,7 +62,7 @@ export function resolvePythagorasSquareForMessage(
     return null;
   }
 
-  return pythagorasSquare(birthDate);
+  return reconstructSquare(birthDate);
 }
 
 /** Re-attach numerology UI when server history omits client-only fields. */
@@ -84,7 +91,7 @@ export function enrichNumerologMessagesOnRestore(
   if (!toolId) return messages;
 
   if (toolId === "pythagoras") {
-    const square = pythagorasSquare(input.birthDate);
+    const square = reconstructSquare(input.birthDate);
     if (!square) return messages;
     return messages.map((m, i) =>
       i === firstReadingIdx && m.role === "assistant" && !m.numerologyUi?.pythagorasSquare

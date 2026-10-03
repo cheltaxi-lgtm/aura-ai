@@ -15,10 +15,6 @@ import { resolveSpreadDeckSystem } from "@/lib/decks";
 
 export type { SpreadSeedParts };
 
-export const NUMEROLOG_TABLE_SIZE = 12;
-/** @deprecated Guest triplet uses the full deck — kept for call-site compatibility. */
-export const GUEST_TRIPLET_TABLE_SIZE = 78;
-
 /** Full master deck — every symbol lies face-down on the table. */
 export function resolveTableSize(system: DeckSystem, _guestTriplet = false): number {
   void _guestTriplet;
@@ -61,7 +57,9 @@ export function parsePickedIndices(
   if (!raw?.trim()) {
     throw new Error("missing picks");
   }
-  const parts = raw.split(",").map((s) => Number.parseInt(s.trim(), 10));
+  const tokens = raw.split(",").map(s => s.trim());
+  if (tokens.some(token => !/^(0|[1-9]\d*)$/.test(token))) throw new Error("invalid index");
+  const parts = tokens.map(Number);
   if (parts.length !== cardCount) {
     throw new Error("wrong pick count");
   }
@@ -82,7 +80,12 @@ export function resolvePickedSpread(
   tableDeck: SpreadSymbol[],
   pickedIndices: number[]
 ): SpreadSymbol[] {
-  return pickedIndices.map((i) => tableDeck[i]!);
+  const seen = new Set<number>();
+  return pickedIndices.map((i) => {
+    if (!Number.isInteger(i) || i < 0 || i >= tableDeck.length || seen.has(i)) throw new Error("invalid index");
+    seen.add(i);
+    return tableDeck[i]!;
+  });
 }
 
 function multisetsEqual(a: string[], b: string[]): boolean {
@@ -163,7 +166,7 @@ export function drawSeededSessionSpread(options: {
   );
   if (options.drawIndex !== undefined) {
     const idx = options.drawIndex;
-    if (idx < 0 || idx >= all.length) {
+    if (!Number.isInteger(idx) || idx < 0 || idx >= all.length) {
       throw new Error("drawIndex out of range");
     }
     return { cards: [all[idx]], drawIndex: idx };

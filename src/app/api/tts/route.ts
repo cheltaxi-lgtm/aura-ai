@@ -10,6 +10,8 @@ import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  BillingIdempotencyConflictError,
+  billingIdempotencyConflictResponse,
   readRequestChargeIdempotencyKey,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
@@ -18,6 +20,8 @@ import { isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { voiceTtsRuneCost } from "@/lib/rune-costs";
 import { reportError } from "@/lib/error-report";
+import { withReadingLock } from "@/lib/reading-lock";
+import { withActiveProfile } from "@/lib/active-profile";
 import {
   getTtsResultCache,
   setTtsResultCache,
@@ -29,6 +33,16 @@ export const maxDuration = 300;
 
 /** Hard cap — keeps provider spend bounded even with rune billing. */
 const MAX_REQUEST_CHARS = 4000;
+const inFlight = new Map<string, ReturnType<typeof synthesizeSpeech>>();
+
+async function synthesizeOnce(key: string, text: string, characterId: string) {
+  const prior = inFlight.get(key);
+  if (prior) return prior;
+  const pending = synthesizeSpeech(text, characterId);
+  inFlight.set(key, pending);
+  try { return await pending; }
+  finally { if (inFlight.get(key) === pending) inFlight.delete(key); }
+}
 
 function ttsResponseFromCached(
   cached: CachedTtsResult,
@@ -100,12 +114,16 @@ export async function POST(request: NextRequest) {
 
   let text = "";
   let characterId = "veronika";
-  let bodyForIdem: { idempotencyKey?: unknown; requestId?: unknown } | null = null;
+  let legacyKey: string | undefined;
 
   try {
     const body = await request.json();
-    bodyForIdem = body && typeof body === "object" ? body : null;
-    text = String(body.text ?? "").trim();
+    if (!body || typeof body !== "object" || Array.isArray(body) || typeof body.text !== "string" ||
+        (body.characterId !== undefined && typeof body.characterId !== "string")) {
+      return NextResponse.json({ error: "Некорректный текст для озвучки" }, { status: 400 });
+    }
+    text = body.text.trim();
+    legacyKey = readRequestChargeIdempotencyKey(request, body);
     characterId = await resolveApiCharacterId(body.characterId ?? characterId);
   } catch {
     return NextResponse.json({ error: "Не удалось обработать запрос" }, { status: 400 });
@@ -134,6 +152,7 @@ export async function POST(request: NextRequest) {
   }
 
   const profileUserId = await getProfileUserIdForAccount(auth.sub);
+  if (!profileUserId) return NextResponse.json({ error: "Требуется активный профиль", code: "profile_required" }, { status: 409 });
   const unlimited = await resolveUnlimitedAccess({
     accountId: auth.sub,
     profileUserId,
@@ -144,12 +163,17 @@ export async function POST(request: NextRequest) {
   const unit = runeCostFromSettings(runeSettings, "VOICE_TTS");
   const cost = voiceTtsRuneCost(text.length, unit);
   const textDigest = createHash("sha256").update(text, "utf8").digest("hex").slice(0, 24);
-  const chargeIdemKey =
-    readRequestChargeIdempotencyKey(request, bodyForIdem) ??
-    `tts:${characterId}:${textDigest}:${cost}`;
+  // Audio and its payment always bind to the normalized provider input.
+  // A caller key cannot substitute a different text or voice into a purchase.
+  const chargeIdemKey = `tts:${characterId}:${textDigest}`;
   const cacheKey = ttsResultCacheKey(profileUserId ?? auth.sub, chargeIdemKey);
 
+  // Keep charge, provider outcome and any refund in one purchase sequence.
+  // A retry cannot synthesize while a failed earlier attempt is being refunded.
+  return withReadingLock(`tts:${cacheKey}`, async () => {
   let billingCharge: BillingChargeResult | null = null;
+  const inactiveResponse = () => NextResponse.json({ error: "Профиль недоступен", code: "profile_inactive" }, { status: 409 });
+  if (!(await withActiveProfile(profileUserId, async () => true))) return inactiveResponse();
 
   if (useRuneBilling && profileUserId) {
     try {
@@ -158,17 +182,33 @@ export async function POST(request: NextRequest) {
         cost,
         actionType: "VOICE_TTS",
         idempotencyKey: chargeIdemKey,
+        operationIdentity: chargeIdemKey,
+        legacyIdempotencyKeys: [`tts:${characterId}:${textDigest}:${cost}`, ...(legacyKey ? [legacyKey] : [])],
       });
     } catch (err) {
       if (err instanceof InsufficientFundsError) {
         return insufficientFundsResponse(err);
       }
+      if (err instanceof BillingIdempotencyConflictError) return billingIdempotencyConflictResponse();
+      if (err instanceof Error && ["billing_profile_inactive", "user_not_found"].includes(err.message)) return inactiveResponse();
       throw err;
     }
   }
 
   // Same-process hit: serve memory cache (incl. after charge dedupe).
-  const preexisting = getTtsResultCache(cacheKey);
+  // Admission is bounded by the active-profile lock; never await network work
+  // while holding that lock. Erasure accepted before admission denies synthesis.
+  const admitted = await withActiveProfile(profileUserId, async () => {
+    const cached = getTtsResultCache(cacheKey);
+    return { cached, pending: cached ? undefined : synthesizeOnce(cacheKey, text, characterId)
+      .then(value => ({ value }), error => ({ error })) };
+  });
+  if (!admitted) {
+    if (billingCharge?.spentRunes) await BillingService.rollbackCharge({ userId: profileUserId, cost: billingCharge.spentRunes,
+      wasFreeQuestion: false, actionType: "VOICE_TTS", transactionId: billingCharge.transactionId }).catch(() => undefined);
+    return inactiveResponse();
+  }
+  const preexisting = admitted.cached;
   if (preexisting) {
     return ttsResponseFromCached(preexisting, {
       spentRunes: billingCharge?.spentRunes,
@@ -179,7 +219,9 @@ export async function POST(request: NextRequest) {
   // Dedupe + empty process cache (other instance / reload): re-synthesize without
   // charging again — audio is not persisted in DB; provider cost ≪ rune price.
   try {
-    const result = await synthesizeSpeech(text, characterId);
+    const outcome = await admitted.pending!;
+    if ("error" in outcome) throw outcome.error;
+    const result = outcome.value;
     if (!result) {
       if (billingCharge?.spentRunes) {
         await BillingService.rollbackCharge({
@@ -215,12 +257,19 @@ export async function POST(request: NextRequest) {
       model: result.model,
       parts: result.parts?.map((part) => Buffer.from(part)),
     };
-    setTtsResultCache(cacheKey, cached);
-
-    return ttsResponseFromCached(cached, {
+    const delivery = await withActiveProfile(profileUserId, async () => {
+      setTtsResultCache(cacheKey, cached);
+      return ttsResponseFromCached(cached, {
       spentRunes: billingCharge?.spentRunes,
       deduplicated: billingCharge?.deduplicated,
+      });
     });
+    if (!delivery) {
+      if (billingCharge?.spentRunes) await BillingService.rollbackCharge({ userId: profileUserId, cost: billingCharge.spentRunes,
+        wasFreeQuestion: false, actionType: "VOICE_TTS", transactionId: billingCharge.transactionId }).catch(() => undefined);
+      return inactiveResponse();
+    }
+    return delivery;
   } catch (error) {
     console.error("TTS error:", error);
     reportError(error, { route: "tts", characterId, chars: text.length });
@@ -254,4 +303,5 @@ export async function POST(request: NextRequest) {
       { status: 500 }
     );
   }
+  });
 }

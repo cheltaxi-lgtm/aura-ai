@@ -6,7 +6,7 @@ export default defineConfig({
   oxc: { jsx: { runtime: "automatic" } },
   test: {
     environment: "node",
-    include: ["tests/invariants/**/*.{test,spec}.ts"],
+    include: ["tests/invariants/**/*.{test,spec}.ts", "src/lib/seo/*.test.ts"],
     setupFiles: ["tests/invariants/db/setup-env.ts"],
     reporters: ["default", "json"],
     outputFile: {

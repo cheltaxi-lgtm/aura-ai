@@ -91,6 +91,7 @@ export async function requestContactEmailVerification(input: {
   const url = `${getSiteUrl()}/auth/user/verify-contact-email#token=${encodeURIComponent(token)}`;
   const sent = await sendEmail({
     to: input.email,
+    ownerAccountId: input.accountId,
     subject: "Zovus — подтвердите адрес для уведомлений",
     text: `Подтвердите контактный адрес в аккаунте Zovus: ${url}\nСсылка действует 24 часа. Если вы не добавляли этот адрес, проигнорируйте письмо.`,
     html: `<p>Подтвердите контактный адрес в аккаунте Zovus.</p><p><a href="${url}">Подтвердить адрес</a></p><p>Ссылка действует 24 часа. Если вы не добавляли этот адрес, проигнорируйте письмо.</p>`,

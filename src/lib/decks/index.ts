@@ -158,6 +158,7 @@ export function findSymbolByName(system: DeckSystem, name: string): SpreadSymbol
   );
 }
 
+/** Legacy display cache key; authoritative daily identity uses spreadIdentityKey. */
 export function spreadKey(cards: { name: string }[] | undefined): string {
   return (cards ?? []).map((c) => c.name).join("|");
 }

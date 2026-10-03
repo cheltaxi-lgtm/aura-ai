@@ -9,6 +9,7 @@ export interface UserAccount {
   email: string;
   name: string;
   password_hash: string | null;
+  token_version: number;
 }
 
 export interface ExpertAccount {
@@ -25,7 +26,7 @@ export interface ExpertAccount {
 
 export async function findUserByEmail(email: string) {
   const { rows } = await query<UserAccount>(
-    "SELECT id, email, name, password_hash FROM user_accounts WHERE email = $1",
+    "SELECT id, email, name, password_hash, token_version FROM user_accounts WHERE email = $1 AND erasure_requested_at IS NULL",
     [email.toLowerCase()]
   );
   return rows[0] ?? null;
@@ -39,7 +40,7 @@ export async function findUserById(id: string) {
     profile_user_id: string | null;
     is_unlimited: boolean;
   }>(
-    "SELECT id, email, name, profile_user_id, is_unlimited FROM user_accounts WHERE id = $1",
+    "SELECT id, email, name, profile_user_id, is_unlimited FROM user_accounts WHERE id = $1 AND erasure_requested_at IS NULL",
     [id]
   );
   return rows[0] ?? null;
@@ -139,7 +140,7 @@ export async function setAccountDailyCardsReminder(
 ): Promise<boolean> {
   const { rows } = await query<{ daily_cards_reminder: boolean }>(
     `UPDATE user_accounts SET daily_cards_reminder = $2
-     WHERE id = $1
+     WHERE id = $1 AND erasure_requested_at IS NULL
      RETURNING daily_cards_reminder`,
     [accountId, enabled]
   );
@@ -158,7 +159,7 @@ export async function setAccountMarketingConsent(
          WHEN $2 AND NOT marketing_consent THEN NOW()
          ELSE marketing_consent_at
        END
-     WHERE id = $1
+     WHERE id = $1 AND erasure_requested_at IS NULL
      RETURNING marketing_consent`,
     [accountId, enabled]
   );
@@ -333,7 +334,7 @@ export async function saveRegistrationAttributionIfEmpty(
 export async function findExpertByEmail(email: string) {
   const { rows } = await query<ExpertAccount>(
     `SELECT id, email, name, slug, title, style_notes, emoji, split_percent, password_hash
-     FROM expert_accounts WHERE email = $1`,
+     FROM expert_accounts WHERE email = $1 AND is_active = TRUE`,
     [email.toLowerCase()]
   );
   return rows[0] ?? null;
@@ -342,7 +343,7 @@ export async function findExpertByEmail(email: string) {
 export async function findExpertById(id: string) {
   const { rows } = await query<Omit<ExpertAccount, "password_hash">>(
     `SELECT id, email, name, slug, title, style_notes, emoji, split_percent
-     FROM expert_accounts WHERE id = $1`,
+     FROM expert_accounts WHERE id = $1 AND is_active = TRUE`,
     [id]
   );
   return rows[0] ?? null;
@@ -424,7 +425,7 @@ export async function clearMasterChatData(
   };
 }
 
-export async function getUserReadingHistory(profileUserId: string) {
+export async function getUserReadingHistory(profileUserId: string, resourceIdentity?: string) {
   const { rows } = await query<{
     id: string;
     character_name: string;
@@ -435,9 +436,10 @@ export async function getUserReadingHistory(profileUserId: string) {
     `SELECT id, character_name, context_data, is_paid, created_at
      FROM history
      WHERE user_id = $1
+     ${resourceIdentity ? "AND context_data->>'intentionResourceKey'=$2" : ""}
      ORDER BY created_at DESC
      LIMIT 50`,
-    [profileUserId]
+    resourceIdentity ? [profileUserId, resourceIdentity] : [profileUserId]
   );
   return rows;
 }
@@ -456,6 +458,8 @@ export function findCachedIntentionSpread(
      * Same cards + same question must not surface a previous consultation.
      */
     requireSessionId?: boolean;
+    /** Exact accepted purchase intent; legacy name-only rows cannot prove it. */
+    resourceIdentity?: string;
   }
 ): {
   reading: string;
@@ -476,6 +480,7 @@ export function findCachedIntentionSpread(
   const entry = history.find((r) => {
     if (r.character_name !== characterId) return false;
     const ctx = r.context_data;
+    if (options?.resourceIdentity && ctx?.intentionResourceKey !== options.resourceIdentity) return false;
     if (ctx?.type !== "intention_spread" || ctx.intention !== intention) return false;
     if (spreadId && ctx.spreadId && ctx.spreadId !== spreadId) return false;
     if (sessionId) {

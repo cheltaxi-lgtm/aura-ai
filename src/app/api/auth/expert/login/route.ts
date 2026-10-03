@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setAuthCookie(
+    const applied = await setAuthCookie(
       {
         sub: expert.id,
         role: "expert",
@@ -43,6 +43,7 @@ export async function POST(request: NextRequest) {
       },
       request
     );
+    if (!applied) return NextResponse.json({ error: LOGIN_FAILURE_MESSAGE }, { status: 401 });
 
     return NextResponse.json({
       ok: true,

@@ -459,6 +459,7 @@ async function main() {
     `\nSummary: ${rows.filter((r) => r.status === "PASS").length} PASS, ${fails.length} FAIL, ${rows.filter((r) => r.status === "WAITING").length} WAITING`
   );
   if (fails.length) process.exit(1);
+  if (rows.some((row) => row.status === "WAITING" || row.status === "SKIP")) process.exit(2);
 }
 
 main().catch((e) => {

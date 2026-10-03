@@ -40,6 +40,7 @@ export type GenerateValidatedNatalReportParams = {
   clientName?: string;
   /** Server budget shared by all repairs, continuations and section calls. */
   deadlineAt?: number;
+  beforeRequest?:()=>Promise<void>;
 };
 
 export type GenerateValidatedNatalReportResult =
@@ -286,6 +287,7 @@ async function requestNatalReportJson(
     let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
     const call = completeChatDetailed({
       messages: thread,
+      beforeRequest:params?.beforeRequest,deadlineAt:params?.deadlineAt,
       ...opts,
       modelOverride: model,
       temperature,

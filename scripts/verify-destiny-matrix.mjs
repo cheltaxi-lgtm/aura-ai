@@ -197,7 +197,7 @@ const FIXTURES = [
     },
   },
   {
-    // Classic public example 15.08.1985 — canonical subtract-22 chain:
+    // Frozen matrix-v3 example 15.08.1985 — legacy subtract-22 chain:
     // A=15 B=8 C=1985→23→1 G=15+8+1=24→2 comfort=15+8+1+2=26→4
     date: "1985-08-15",
     asOfYear: 2026,

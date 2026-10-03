@@ -1,3 +1,5 @@
+import { parseBirthDate } from "@/lib/numerology/constants";
+
 export interface ZodiacSign {
   name: string;
   emoji: string;
@@ -19,21 +21,28 @@ export const ZODIAC_SIGNS: ZodiacSign[] = [
   { name: "Стрелец", emoji: "♐", element: "fire" },
 ];
 
+/** Normalize accepted civil-date formats before storing them in a DATE column. */
+export function normalizeBirthDate(input: string): string | null {
+  const parsed = parseBirthDate(input);
+  return parsed
+    ? `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`
+    : null;
+}
+
 /** Границы знаков: [месяц, день] — начало каждого знака (кроме Козерога) */
 const CUSP_DATES: [number, number][] = [
   [1, 20], [2, 19], [3, 21], [4, 20], [5, 21], [6, 21],
   [7, 23], [8, 23], [9, 23], [10, 23], [11, 22], [12, 22],
 ];
 
-function parseBirthDate(input: string | Date): { month: number; day: number } | null {
-  const d = typeof input === "string" ? new Date(input) : input;
-  if (Number.isNaN(d.getTime())) return null;
-  return { month: d.getUTCMonth() + 1, day: d.getUTCDate() };
-}
-
-export function getZodiacFromDate(birthDate: string | Date): ZodiacSign {
-  const parsed = parseBirthDate(birthDate);
-  if (!parsed) return ZODIAC_SIGNS[0];
+export function getZodiacFromDate(birthDate: string | Date): ZodiacSign | null {
+  // Birthdays are civil dates. Date.parse treats dd/MM as MM/dd and normalizes
+  // impossible dates; use the same strict parser as the calculation engines.
+  const value = birthDate instanceof Date
+    ? (Number.isNaN(birthDate.getTime()) ? "" : birthDate.toISOString().slice(0, 10))
+    : birthDate;
+  const parsed = parseBirthDate(value);
+  if (!parsed) return null;
 
   const { month, day } = parsed;
 

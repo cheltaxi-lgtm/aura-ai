@@ -1,6 +1,7 @@
 import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { query } from "@/lib/db";
+import { normalizeChargeIdempotencyKey } from "@/lib/charge-idempotency-key";
 import { AURA_DAY_TIMEZONE } from "@/lib/services/aura-guest-service";
 
 const AURA_TODAY_SQL = `(created_at AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date = (NOW() AT TIME ZONE '${AURA_DAY_TIMEZONE}')::date`;
@@ -137,4 +138,11 @@ export function auraSpendBelongsToSnapshot(
     const key = s.idempotencyKey ?? "";
     return key === exact || key.startsWith(prefix);
   });
+}
+
+/** A caller key can identify an attempt, but never replace the snapshot. */
+export function bindAuraChargeIdempotencyKey(snapshotId: string, clientKey?: string): string {
+  const key = normalizeChargeIdempotencyKey(clientKey);
+  if (key && auraSpendBelongsToSnapshot([{ idempotencyKey: key }], snapshotId)) return key;
+  return `aura-reading:${snapshotId}`;
 }

@@ -9,7 +9,7 @@ import {
   MAINTENANCE_PAGE_PATH,
 } from "@/lib/maintenance-mode";
 import { fetchUserTokenVersionStatus } from "@/lib/token-version-gate";
-import { fetchPlatformFeatureFlags } from "@/lib/platform-feature-gate";
+import { fetchPlatformFeatureState } from "@/lib/platform-feature-gate";
 import { isAuthenticatedNatalWorkerRequest } from "@/lib/async-job-worker-auth-shared";
 import { LEGACY_CYRILLIC_REDIRECTS } from "@/lib/seo/legacy-cyrillic-redirects";
 import { resolveBotHomeQueryRedirect } from "@/lib/seo/bot-query-redirect";
@@ -93,6 +93,8 @@ const PUBLIC_API_EXACT = new Set([
   "/api/ritual/recover-stuck",
   // Landing reviews: approved GET + pending POST (handler: captcha, honeypot, IP RL).
   "/api/reviews",
+  // Signed unsubscribe capability is verified by the handler, without login.
+  "/api/notifications/unsubscribe",
 ]);
 
 const PUBLIC_API_PREFIXES = [
@@ -416,7 +418,14 @@ export async function middleware(request: NextRequest) {
       pathname.startsWith("/chiromantiya") ||
       pathname.startsWith("/ladon");
     if (needsFeatureGate) {
-      const flags = await fetchPlatformFeatureFlags();
+      const featureState = await fetchPlatformFeatureState();
+      if (!featureState.available) {
+        return withNoStore(new NextResponse(
+          "<!doctype html><title>Сервис временно недоступен</title><h1>Страница временно недоступна</h1><p>Повторите попытку через несколько секунд.</p>",
+          { status: 503, headers: { "Content-Type": "text/html; charset=utf-8", "Retry-After": "5" } }
+        ));
+      }
+      const { flags } = featureState;
       const gatedOff =
         (pathname.startsWith("/dizayn-cheloveka") && !flags.humanDesignEnabled) ||
         (pathname.startsWith("/natalnaya-karta") && !flags.natalChartEnabled) ||

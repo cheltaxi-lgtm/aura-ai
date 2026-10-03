@@ -269,6 +269,8 @@ if [ -f "$APP_DIR/.env.local" ]; then
   echo "Build env PRO_MODULE_ENABLED=${PRO_MODULE_ENABLED:-unset}"
 fi
 npm run build
+sed -i 's/\r$//' hosting/postgres-ingress-guard.sh hosting/install-postgres-ingress-guard.sh hosting/zovus-postgres-ingress.service
+bash hosting/install-postgres-ingress-guard.sh
 bash proxmox-setup/install-crons.sh
 
 # Async worker needs .env.async-jobs regenerated for the new tree. Without it,

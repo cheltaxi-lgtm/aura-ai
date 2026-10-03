@@ -1,3 +1,4 @@
+import { calendarParts } from "@/lib/product-calendar";
 import { formatAgePeriodRange, formatMatrixAge } from "./matrix-labels";
 import {
   destinyNumber,
@@ -271,12 +272,12 @@ function parseMonthYearFromMessage(message: string): { month?: number; year?: nu
   if (yearMatch) year = parseInt(yearMatch[1], 10);
 
   if (/следующ(ий|ем)\s+месяц/i.test(lower)) {
-    const d = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    month = d.getMonth() + 1;
-    year = d.getFullYear();
+    const d = new Date(Date.UTC(calendarParts(now).year, calendarParts(now).month, 1));
+    month = d.getUTCMonth() + 1;
+    year = d.getUTCFullYear();
   } else if (/эт(от|ом)\s+месяц/i.test(lower)) {
-    month = now.getMonth() + 1;
-    year = now.getFullYear();
+    month = calendarParts(now).month;
+    year = calendarParts(now).year;
   }
 
   return { month, year };
@@ -382,7 +383,7 @@ function buildTopicBlock(
       }
       if (profile.personalYear.number > 0) {
         lines.push(
-          `Личный год ${now.getFullYear()}: ${profile.personalYear.number} — ${profile.personalYear.title}. ${profile.personalYear.meaning.split(".").slice(0, 2).join(".")}.`
+          `Личный год ${calendarParts(now).year}: ${profile.personalYear.number} — ${profile.personalYear.title}. ${profile.personalYear.meaning.split(".").slice(0, 2).join(".")}.`
         );
       }
       return { text: lines.join("\n") };
@@ -400,8 +401,8 @@ function buildTopicBlock(
       return {
         text: [
           "РАСЧЁТ ЛИЧНОГО ЦИКЛА (реальный):",
-          `Личный год ${now.getFullYear()}: ${py.number} — ${py.title}. ${py.meaning}`,
-          `Личный месяц (${now.getMonth() + 1}/${now.getFullYear()}): ${pm.number} — ${pm.title}.`,
+          `Личный год ${calendarParts(now).year}: ${py.number} — ${py.title}. ${py.meaning}`,
+          `Личный месяц (${calendarParts(now).month}/${calendarParts(now).year}): ${pm.number} — ${pm.title}.`,
           `Личный день сегодня: ${pd.number} — ${pd.title}.`,
         ].join("\n"),
       };
@@ -579,7 +580,7 @@ function buildTopicBlock(
       if (!parseBirthDate(birthDate)) {
         return { text: "ПРОГНОЗ 9 ЛЕТ: нужна дата рождения." };
       }
-      const startYear = now.getFullYear();
+      const startYear = calendarParts(now).year;
       const forecast = personalYearForecast(birthDate, startYear, 9);
       const compact = forecast
         .map((y) => `${y.year}: ${y.number} (${y.theme})`)
@@ -594,8 +595,8 @@ function buildTopicBlock(
         return { text: "БЛАГОПРИЯТНЫЕ ДАТЫ: нужна дата рождения." };
       }
       const { month, year } = parseMonthYearFromMessage(message);
-      const refMonth = month ?? now.getMonth() + 1;
-      const refYear = year ?? now.getFullYear();
+      const refMonth = month ?? calendarParts(now).month;
+      const refYear = year ?? calendarParts(now).year;
       const fav = favorableDates(birthDate, refMonth, refYear);
       if (!fav) return { text: "БЛАГОПРИЯТНЫЕ ДАТЫ: не удалось рассчитать." };
       return {

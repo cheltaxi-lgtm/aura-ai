@@ -1,5 +1,6 @@
 import { randomBytes } from "crypto";
-import { query } from "@/lib/db";
+import { query, type PoolClient } from "@/lib/db";
+import { withActiveProfile } from "@/lib/active-profile";
 import { enrichShareExcerpt } from "./resolve-excerpt";
 import { extractShareSourceMeta, toPublicPayload } from "./public-payload";
 import { getShareSettings } from "./settings";
@@ -24,37 +25,51 @@ export async function createShareSnapshot(
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + settings.expiryDays);
 
-  for (let attempt = 0; attempt < 5; attempt++) {
-    const token = generateShareToken();
-    try {
+  const insert = async (client?: PoolClient): Promise<CreateShareResult | null> => {
+    const run = (sql: string, params: unknown[]) => client ? client.query(sql, params) : query(sql, params);
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const token = generateShareToken();
       try {
-        await query(
-          `INSERT INTO share_snapshots (token, user_id, kind, payload, source_meta, expires_at)
+        try {
+          // A savepoint keeps the owner lock usable on legacy schema or token collisions.
+          if (client) await client.query("SAVEPOINT share_insert");
+          await run(
+            `INSERT INTO share_snapshots (token, user_id, kind, payload, source_meta, expires_at)
            VALUES ($1, $2, $3, $4, $5, $6)`,
-          [
-            token,
-            userId ?? null,
-            payload.kind,
-            JSON.stringify(payload),
-            JSON.stringify(sourceMeta),
-            expiresAt.toISOString(),
-          ]
-        );
+            [
+              token,
+              userId ?? null,
+              payload.kind,
+              JSON.stringify(payload),
+              JSON.stringify(sourceMeta),
+              expiresAt.toISOString(),
+            ]
+          );
+        } catch (err) {
+          const code = (err as { code?: string })?.code;
+          if (client) await client.query("ROLLBACK TO SAVEPOINT share_insert");
+          if (code !== "42703") throw err;
+          await run(
+            `INSERT INTO share_snapshots (token, user_id, kind, payload, expires_at)
+           VALUES ($1, $2, $3, $4, $5)`,
+            [token, userId ?? null, payload.kind, JSON.stringify(payload), expiresAt.toISOString()]
+          );
+        }
+        if (client) await client.query("RELEASE SAVEPOINT share_insert");
+        return { token, url: buildSharePageUrl(token), payload };
       } catch (err) {
         const code = (err as { code?: string })?.code;
-        if (code !== "42703") throw err;
-        await query(
-          `INSERT INTO share_snapshots (token, user_id, kind, payload, expires_at)
-           VALUES ($1, $2, $3, $4, $5)`,
-          [token, userId ?? null, payload.kind, JSON.stringify(payload), expiresAt.toISOString()]
-        );
+        if (code === "23505") {
+          if (client) {
+            await client.query("ROLLBACK TO SAVEPOINT share_insert");
+            await client.query("RELEASE SAVEPOINT share_insert");
+          }
+          continue;
+        }
+        throw err;
       }
-      return { token, url: buildSharePageUrl(token), payload };
-    } catch (err) {
-      const code = (err as { code?: string })?.code;
-      if (code === "23505") continue;
-      throw err;
     }
-  }
-  return null;
+    return null;
+  };
+  return userId ? withActiveProfile(userId, insert) : insert();
 }

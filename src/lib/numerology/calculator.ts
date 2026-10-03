@@ -1,3 +1,4 @@
+import { calendarParts } from "@/lib/product-calendar";
 import {
   buildNumerologyResult,
   EMPTY_NUMEROLOGY_RESULT,
@@ -116,7 +117,7 @@ export function personalYear(
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return { ...EMPTY_NUMEROLOGY_RESULT };
 
-  const y = year ?? new Date().getFullYear();
+  const y = year ?? calendarParts().year;
   const raw = parsed.day + parsed.month + y;
   return sumFromRaw(raw, true);
 }
@@ -126,9 +127,9 @@ export function personalMonth(
   date?: Date
 ): NumerologyResult {
   const ref = date ?? new Date();
-  const py = personalYear(birthDate, ref.getFullYear());
+  const py = personalYear(birthDate, calendarParts(ref).year);
   if (py.number <= 0) return { ...EMPTY_NUMEROLOGY_RESULT };
-  return sumFromRaw(py.number + ref.getMonth() + 1, true);
+  return sumFromRaw(py.number + calendarParts(ref).month, true);
 }
 
 export function personalDay(
@@ -138,7 +139,7 @@ export function personalDay(
   const ref = date ?? new Date();
   const pm = personalMonth(birthDate, ref);
   if (pm.number <= 0) return { ...EMPTY_NUMEROLOGY_RESULT };
-  return sumFromRaw(pm.number + ref.getDate(), true);
+  return sumFromRaw(pm.number + calendarParts(ref).day, true);
 }
 
 /** Личная неделя: личный месяц + номер недели внутри месяца (1–5). */
@@ -149,7 +150,7 @@ export function personalWeek(
   const ref = date ?? new Date();
   const pm = personalMonth(birthDate, ref);
   if (pm.number <= 0) return { ...EMPTY_NUMEROLOGY_RESULT };
-  const weekInMonth = Math.ceil(ref.getDate() / 7);
+  const weekInMonth = Math.ceil(calendarParts(ref).day / 7);
   return sumFromRaw(pm.number + weekInMonth, true);
 }
 

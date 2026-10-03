@@ -27,6 +27,7 @@ vi.mock("@/lib/rune-service", () => ({ isRuneBillingActive: () => true }));
 vi.mock("@/lib/services/billing-service", () => ({
   BillingService: { chargeForSession: m.charge, rollbackChargeEx: m.refund },
   InsufficientFundsError: class extends Error {},
+  BillingIdempotencyConflictError: class extends Error {},
 }));
 vi.mock("@/lib/photo-reading-billing", () => ({ resolvePhotoReadingPricing: async () => ({ effectiveCost: 30, firstPhotoDiscount: false }) }));
 vi.mock("@/lib/photo-reading-idempotency", () => ({

@@ -30,10 +30,11 @@ export async function adminLogin(email: string, password: string): Promise<AuthP
 }
 
 export async function setAdminSession(payload: AuthPayload, request?: CookieRequestContext) {
-  await setAuthCookie(payload, request);
+  if (!(await setAuthCookie(payload, request))) return false;
   try {
     await logAdminAction(payload.sub, "login", "admin", payload.sub);
   } catch (error) {
     console.warn("Admin audit log skipped:", error);
   }
+  return true;
 }

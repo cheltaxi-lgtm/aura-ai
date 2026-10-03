@@ -49,8 +49,6 @@ interface ReadingRecapProps {
 
 function zodiacFromBirthDate(birthDate?: string) {
   if (!birthDate?.trim()) return null;
-  const d = new Date(birthDate);
-  if (Number.isNaN(d.getTime())) return null;
   return getZodiacFromDate(birthDate);
 }
 

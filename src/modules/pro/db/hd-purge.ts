@@ -14,7 +14,7 @@ export async function purgeProHdCase(accountId: string | number, caseId: string 
   for (let retry = 0; retry < 8; retry++) {
     try { return await withTransaction(async main => {
       const params = [userId,String(accountId),String(caseId)];
-      const filter = "user_id=$1 AND kind='pro_premium_report' AND input->>'caseType'='hd' AND input->>'accountId'=$2 AND input->>'caseId'=$3";
+      const filter = "user_id=$1 AND kind='pro_premium_report' AND input->>'accountId'=$2 AND input->>'caseId'=$3";
       const jobs = (await queryClient(main, `SELECT * FROM async_jobs WHERE ${filter} ORDER BY id FOR UPDATE`, params)).rows;
       await queryClient(main,"SELECT pg_advisory_xact_lock(hashtextextended('pro-hd:'||$1::text,0))",[userId]);
       const current = (await queryClient(main, `SELECT id FROM async_jobs WHERE ${filter}`,params)).rows;
@@ -32,11 +32,11 @@ export async function purgeProHdCase(accountId: string | number, caseId: string 
           refunded = true;
         }
         await queryClient(main,`UPDATE async_jobs SET status=$2,billing_state=$3,
-          input=input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'refinement',
+          input=input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'frozenPractitionerContext'-'refinement',
           result=$4::jsonb,error_code=CASE WHEN $2='failed' THEN 'source_deleted' ELSE NULL END,
           error_message=CASE WHEN $2='failed' THEN 'Кейс удалён, генерация отменена.' ELSE NULL END,
           worker_id=NULL,locked_at=NULL,completed_at=COALESCE(completed_at,now()),updated_at=now() WHERE id=$1`,
-          [job.id,delivered?"completed":"failed",refunded?"refunded":delivered?"completed":"unbilled",JSON.stringify({deleted:true,caseId:String(caseId),caseType:"hd"})]);
+          [job.id,delivered?"completed":"failed",refunded?"refunded":delivered?"completed":"unbilled",JSON.stringify({deleted:true,caseId:String(caseId),caseType:job.input.caseType})]);
       }
       await proQuery("DELETE FROM pro.audit_log WHERE account_id=$1 AND target=$2 AND action='case.refine_block'",[accountId,String(caseId)]);
       const result = await proQuery("DELETE FROM pro.cases WHERE id=$1 AND account_id=$2",[caseId,accountId]);

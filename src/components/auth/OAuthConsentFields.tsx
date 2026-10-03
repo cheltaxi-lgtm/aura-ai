@@ -1,6 +1,7 @@
 "use client";
 
 type OAuthConsentFieldsProps = {
+  disabled?: boolean;
   acceptedTerms: boolean;
   ageConfirmed: boolean;
   marketingConsent: boolean;
@@ -17,6 +18,7 @@ type OAuthConsentFieldsProps = {
 };
 
 export default function OAuthConsentFields({
+  disabled = false,
   acceptedTerms,
   ageConfirmed,
   marketingConsent,
@@ -34,6 +36,7 @@ export default function OAuthConsentFields({
     <div className={`auth-salon-consent ${className}`.trim()}>
       <label htmlFor={termsId}>
         <input
+          disabled={disabled}
           id={termsId}
           type="checkbox"
           checked={acceptedTerms}
@@ -64,6 +67,7 @@ export default function OAuthConsentFields({
       ) : (
         <label htmlFor={ageId}>
           <input
+            disabled={disabled}
             id={ageId}
             type="checkbox"
             checked={ageConfirmed}
@@ -76,6 +80,7 @@ export default function OAuthConsentFields({
       {showMarketing ? (
         <label>
           <input
+            disabled={disabled}
             type="checkbox"
             checked={marketingConsent}
             onChange={(e) => onMarketingConsentChange(e.target.checked)}

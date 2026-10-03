@@ -203,7 +203,9 @@ export async function upsertBotOfferProfile(
   );
   const gender =
     resolveClientGender(input.gender, name) || input.gender;
-  const zodiac = getZodiacFromDate(birthDate).name;
+  const sign = getZodiacFromDate(birthDate);
+  if (!sign) throw new Error("INVALID_BIRTH_DATE");
+  const zodiac = sign.name;
   const astroMeta = buildAstroMeta(birthDate) || undefined;
 
   const profileUserId = await withTransaction(async (client) => {

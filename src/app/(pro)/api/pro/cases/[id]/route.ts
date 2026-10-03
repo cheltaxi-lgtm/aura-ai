@@ -14,8 +14,6 @@ import { getClient, updateClient } from "@/modules/pro/db/clients";
 import { clientBirthPatchFromPayload } from "@/modules/pro/adapters/client-birth";
 import { writeAudit } from "@/modules/pro/db/accounts";
 import {
-  aiAdapter,
-  billingAdapter,
   hdAdapter,
   matrixAdapter,
   natalAdapter,
@@ -32,14 +30,8 @@ import type { ProCaseType, ProReportBlock } from "@/modules/pro/domain/types";
 import { proQuery } from "@/modules/pro/db";
 import { isProAiEnabled } from "@/modules/pro/config";
 import { isAsyncJobWorkerConfigured } from "@/lib/async-job-worker-auth";
-import { acceptedReportExtras, enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
+import { acceptedReportExtras } from "@/lib/async-job-enqueue";
 import { enqueueProHdGeneration } from "@/modules/pro/db/hd-generation";
-import { generateProPremiumReport } from "@/modules/pro/ai/generate-premium";
-import { refineProReportBlock } from "@/modules/pro/ai/refine-block";
-import {
-  estimateProRefineCostRub,
-  estimateProReportCostRub,
-} from "@/modules/pro/ai/cost";
 
 export const maxDuration = 600;
 
@@ -128,8 +120,14 @@ export async function PATCH(req: Request, ctx: Ctx) {
     const payload = (body.payload as Record<string, unknown>) || {};
     const c = await getCase(prac.ctx.account.id, id);
     if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if(c.status==="generating")return NextResponse.json({error:"generation_in_progress",message:"Дождитесь завершения отчёта, затем измените данные."},{status:409});
     const finalPayload = await prepareBirthPayload(c.type, payload);
-    const updated = await setCaseInput(prac.ctx.account.id, id, finalPayload);
+    let updated;
+    try { updated = await setCaseInput(prac.ctx.account.id, id, finalPayload); }
+    catch(error) {
+      if(error instanceof Error&&error.message==="generation_in_progress")return NextResponse.json({error:"generation_in_progress",message:"Дождитесь завершения отчёта, затем измените данные."},{status:409});
+      throw error;
+    }
     // Persist birth on client card so next case prefills.
     try {
       await updateClient(
@@ -217,331 +215,37 @@ export async function PATCH(req: Request, ctx: Ctx) {
     return NextResponse.json({ ok: true, purged: true });
   }
 
-  if (action === "generate") {
+  if (action === "generate" || action === "refine_block") {
     const c = await getCase(prac.ctx.account.id, id);
     if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
+    if (c.status === "archived") return NextResponse.json({error:"case_archived"},{status:409});
+    if (!isProAiEnabled() || !isAsyncJobWorkerConfigured()) return NextResponse.json({error:"generation_unavailable",message:"Генерация временно недоступна. Попробуйте позже."},{status:503});
     const input = await getCaseInput(id);
     const client = await getClient(prac.ctx.account.id, c.client_id);
+    if (!client) return NextResponse.json({error:"client_not_found"},{status:404});
     let payload = { ...(input?.payload || {}) };
-    const isBirth = c.type === "natal" || c.type === "matrix" || c.type === "hd";
-
-    if (c.type === "hd") {
-      if (!isProAiEnabled() || !isAsyncJobWorkerConfigured()) return NextResponse.json({error:"generation_unavailable",message:"Генерация временно недоступна. Попробуйте позже."},{status:503});
-      if (!client) return NextResponse.json({error:"client_not_found"},{status:404});
-      payload = await prepareBirthPayload("hd",payload);
+    let refinement:{versionId:string;blockIndex:number;instruction:string}|undefined;
+    if(action==="generate"&&c.type==="manual_spread"&&(!Array.isArray(payload.cards)||!payload.cards.length||payload.cards.some(card=>typeof card==="string"?!card.trim():!card||typeof card!=="object"||typeof (card as {name?:unknown}).name!=="string"||!(card as {name:string}).name.trim())))return NextResponse.json({error:"cards_required",message:"Сохраните карты расклада"},{status:400});
+    if(action === "refine_block") {
+      const instruction=typeof body.instruction==="string"?body.instruction.trim().slice(0,500):"";
+      const blockIndex=typeof body.blockIndex==="number"&&Number.isInteger(body.blockIndex)?body.blockIndex:-1;
+      if(!instruction||blockIndex<0)return NextResponse.json({error:"refine_params_required",message:"Укажите секцию и инструкцию"},{status:400});
+      const versions=await listVersions(id);
+      const latest=typeof body.versionId==="string"?versions.find(version=>String(version.id)===body.versionId):versions.at(-1);
+      if(!latest?.blocks[blockIndex])return NextResponse.json({error:"block_not_found",message:"Секция не найдена — обновите страницу"},{status:404});
+      refinement={versionId:latest.id,blockIndex,instruction};
+    } else if(c.type === "natal" || c.type === "matrix" || c.type === "hd") {
+      // Compute from saved birth fields, never trust stale derived facts.
+      payload=await prepareBirthPayload(c.type,payload);
       if (!(payload.chartFacts as {ok?:boolean}|undefined)?.ok) return NextResponse.json({error:"birth_data_required",message:"Сохраните данные рождения"},{status:400});
-      try {
-        const queued=await enqueueProHdGeneration({userId:prac.ctx.profileUserId,accountId:prac.ctx.account.id,caseId:id,expectedPayload:input?.payload??{},payload});
-        return NextResponse.json({ok:true,async:true,status:"generating",jobId:queued.jobId,pollUrl:`/api/jobs/${queued.jobId}`,charge:queued.charge,deduped:queued.deduped,...acceptedReportExtras("pro_premium_report",{caseId:id,caseType:"hd"})},{status:202});
-      } catch(error) {
-        if(error instanceof InsufficientFundsError)return insufficientFundsResponse(error);
-        const status=error instanceof ProTrialExceededError?402:(error as {status?:number}).status??500;
-        return NextResponse.json({error:error instanceof Error?error.message:"generation_failed"},{status});
-      }
     }
-
-    if (isBirth) {
-      const facts = payload.chartFacts as { ok?: boolean } | undefined;
-      if (!facts?.ok) {
-        payload = await prepareBirthPayload(c.type, payload);
-        await setCaseInput(prac.ctx.account.id, id, payload);
-      }
-      if (!(payload.chartFacts as { ok?: boolean } | undefined)?.ok) {
-        return NextResponse.json(
-          { error: "birth_data_required", message: "Сохраните данные рождения" },
-          { status: 400 }
-        );
-      }
-    }
-
-    const idem =
-      typeof body.idempotencyKey === "string" && body.idempotencyKey
-        ? body.idempotencyKey
-        : `pro-gen-${id}-${Date.now()}`;
-    let charge;
     try {
-      charge = await billingAdapter.charge({
-        accountId: prac.ctx.account.id,
-        userId: prac.ctx.profileUserId,
-        action: "generate_draft",
-        caseId: id,
-        idempotencyKey: idem,
-      });
-    } catch (e) {
-      if (e instanceof InsufficientFundsError) return insufficientFundsResponse(e);
-      if (e instanceof ProTrialExceededError) {
-        return NextResponse.json(
-          {
-            error: "pro_trial_exceeded",
-            reason: e.reason,
-            message:
-              e.reason === "expired"
-                ? "Пробный период завершён. Перейдите на тариф Pro, чтобы продолжить."
-                : "Руны пробного периода исчерпаны. Перейдите на тариф Pro, чтобы продолжить.",
-          },
-          { status: 402 }
-        );
-      }
-      throw e;
-    }
-
-    // Birth practices + AI + worker → async consumer-quality generate
-    if (isBirth && isProAiEnabled() && isAsyncJobWorkerConfigured()) {
-      try {
-        await updateCaseStatus(prac.ctx.account.id, id, "generating");
-        const enqueued = await enqueuePaidAsyncJob({
-          userId: prac.ctx.profileUserId,
-          kind: "pro_premium_report",
-          bypassDeliveryGate: true,
-          dedupeKey: `pro-premium:${prac.ctx.account.id}:${id}:${idem}`,
-          payload: {
-            accountId: prac.ctx.account.id,
-            caseId: id,
-            caseType: c.type,
-            idempotencyKey: idem,
-            chargeIdempotencyKey: idem,
-            chargeTransactionId: charge.ledgerTxnRef,
-            chargeRunes: charge.runes,
-            chargeShadow: charge.shadow,
-          },
-        });
-        if (enqueued.status !== 202) {
-          await billingAdapter.refund({
-            userId: prac.ctx.profileUserId,
-            idempotencyKey: idem,
-            transactionId: charge.ledgerTxnRef,
-            spentRunes: charge.runes,
-            shadow: charge.shadow,
-          });
-          await updateCaseStatus(prac.ctx.account.id, id, "failed");
-          return enqueued;
-        }
-        const json = await enqueued.json();
-        await setCaseInput(prac.ctx.account.id, id, {
-          ...payload,
-          premiumJobId: json.jobId,
-        });
-        return NextResponse.json({
-          ok: true,
-          async: true,
-          jobId: json.jobId,
-          pollUrl: json.pollUrl || `/api/jobs/${json.jobId}`,
-          charge,
-          status: "generating",
-          // Background-delivery envelope passthrough (present when enabled).
-          ...(typeof json.kind === "string" ? { kind: json.kind } : {}),
-          ...(typeof json.waitPolicy === "string" ? { waitPolicy: json.waitPolicy } : {}),
-          ...(json.etaRangeSec ? { etaRangeSec: json.etaRangeSec } : {}),
-          ...(typeof json.productTitle === "string" ? { productTitle: json.productTitle } : {}),
-          ...(typeof json.destination === "string" ? { destination: json.destination } : {}),
-        });
-      } catch (e) {
-        await billingAdapter.refund({
-          userId: prac.ctx.profileUserId,
-          idempotencyKey: idem,
-          transactionId: charge.ledgerTxnRef,
-          spentRunes: charge.runes,
-          shadow: charge.shadow,
-        });
-        await updateCaseStatus(prac.ctx.account.id, id, "failed");
-        throw e;
-      }
-    }
-
-    // Sync path: stub / manual_spread / no worker
-    try {
-      if (isBirth && isProAiEnabled()) {
-        const generated = await generateProPremiumReport({
-          type: c.type,
-          payload,
-          clientAlias: client?.alias || "клиент",
-          question: c.question,
-        });
-        await setCaseInput(prac.ctx.account.id, id, {
-          ...payload,
-          chartSnapshot: generated.snapshot,
-        });
-        const version = await addVersion(prac.ctx.account.id, id, {
-          source: "ai",
-          blocks: generated.blocks,
-          uncertaintyMarks: generated.uncertaintyMarks,
-          authorUserId: null,
-          status: "draft",
-          aiCostRunes: charge.runes,
-          aiCostRub: await estimateProReportCostRub(generated.blocks).catch(() => 0),
-        });
-        return NextResponse.json({
-          ok: true,
-          version,
-          charge,
-          stub: false,
-          outcome: "ok",
-          async: false,
-        });
-      }
-
-      const draft = await aiAdapter.generateDraft({
-        accountId: prac.ctx.account.id,
-        caseId: id,
-        type: c.type,
-        question: c.question,
-        practitionerContext: c.practitioner_context,
-        clientAlias: client?.alias || "клиент",
-        payload,
-      });
-      const version = await addVersion(prac.ctx.account.id, id, {
-        source: "ai",
-        blocks: draft.blocks,
-        uncertaintyMarks: draft.uncertaintyMarks,
-        authorUserId: null,
-        status: "draft",
-        aiCostRunes: charge.runes,
-        aiCostRub: await estimateProReportCostRub(draft.blocks).catch(() => 0),
-      });
-      return NextResponse.json({
-        ok: true,
-        version,
-        charge,
-        stub: draft.stub,
-        outcome: draft.outcome,
-        async: false,
-      });
-    } catch (e) {
-      await billingAdapter.refund({
-        userId: prac.ctx.profileUserId,
-        idempotencyKey: idem,
-        transactionId: charge.ledgerTxnRef,
-        spentRunes: charge.runes,
-        shadow: charge.shadow,
-      });
-      throw e;
-    }
-  }
-
-  // Rewrite ONE block of the latest version with a practitioner instruction.
-  // Charged as refine_block; result lands as a new AI version (human-gate
-  // still applies on deliver).
-  if (action === "refine_block") {
-    const instruction = String(body.instruction || "").trim();
-    const blockIndex =
-      typeof body.blockIndex === "number" && Number.isInteger(body.blockIndex)
-        ? body.blockIndex
-        : -1;
-    if (!instruction || blockIndex < 0) {
-      return NextResponse.json(
-        { error: "refine_params_required", message: "Укажите секцию и инструкцию" },
-        { status: 400 }
-      );
-    }
-    const c = await getCase(prac.ctx.account.id, id);
-    if (!c) return NextResponse.json({ error: "not_found" }, { status: 404 });
-    if (c.status === "archived" || c.status === "generating") {
-      return NextResponse.json({ error: c.status === "archived" ? "case_archived" : "generation_in_progress" }, { status: 409 });
-    }
-    if (!isProAiEnabled()) {
-      return NextResponse.json({ error: "pro_ai_disabled" }, { status: 503 });
-    }
-    const versions = await listVersions(id);
-    const latest = [...versions]
-      .reverse()
-      .find((v) => v.source === "ai" || v.source === "human");
-    const block = latest?.blocks?.[blockIndex];
-    if (!latest || !block) {
-      return NextResponse.json(
-        { error: "block_not_found", message: "Секция не найдена — обновите страницу" },
-        { status: 404 }
-      );
-    }
-    const client = await getClient(prac.ctx.account.id, c.client_id);
-
-    if(c.type==="hd") {
-      if(!client)return NextResponse.json({error:"client_not_found"},{status:404});
-      if(!isAsyncJobWorkerConfigured())return NextResponse.json({error:"generation_unavailable"},{status:503});
-      const input=await getCaseInput(id);
-      try {
-        const queued=await enqueueProHdGeneration({userId:prac.ctx.profileUserId,accountId:prac.ctx.account.id,caseId:id,expectedPayload:input?.payload??{},payload:input?.payload??{},refinement:{versionId:latest.id,blockIndex,instruction:instruction.slice(0,500)}});
-        return NextResponse.json({ok:true,async:true,status:"generating",jobId:queued.jobId,pollUrl:`/api/jobs/${queued.jobId}`,charge:queued.charge,...acceptedReportExtras("pro_premium_report",{caseId:id,caseType:"hd"})},{status:202});
-      }catch(error){
-        if(error instanceof InsufficientFundsError)return insufficientFundsResponse(error);
-        return NextResponse.json({error:error instanceof Error?error.message:"generation_failed"},{status:error instanceof ProTrialExceededError?402:(error as {status?:number}).status??500});
-      }
-    }
-
-    const idem = `pro-refine-${id}-${latest.id}-${blockIndex}-${Date.now()}`;
-    let charge;
-    try {
-      charge = await billingAdapter.charge({
-        accountId: prac.ctx.account.id,
-        userId: prac.ctx.profileUserId,
-        action: "refine_block",
-        caseId: id,
-        idempotencyKey: idem,
-      });
-    } catch (e) {
-      if (e instanceof InsufficientFundsError) return insufficientFundsResponse(e);
-      if (e instanceof ProTrialExceededError) {
-        return NextResponse.json(
-          {
-            error: "pro_trial_exceeded",
-            reason: e.reason,
-            message:
-              e.reason === "expired"
-                ? "Пробный период завершён. Перейдите на тариф Pro, чтобы продолжить."
-                : "Руны пробного периода исчерпаны. Перейдите на тариф Pro, чтобы продолжить.",
-          },
-          { status: 402 }
-        );
-      }
-      throw e;
-    }
-
-    try {
-      const refined = await refineProReportBlock({
-        block,
-        instruction,
-        clientAlias: client?.alias || "клиент",
-        question: c.question,
-      });
-      if (!refined) {
-        throw Object.assign(new Error("refine_failed"), { status: 502 });
-      }
-      const blocks = latest.blocks.map((b, i) => (i === blockIndex ? refined : b));
-      const version = await addVersion(prac.ctx.account.id, id, {
-        source: "ai",
-        blocks,
-        authorUserId: prac.ctx.profileUserId,
-        status: "edited",
-        aiCostRub: await estimateProRefineCostRub(refined).catch(() => 0),
-      });
-      await writeAudit({
-        accountId: prac.ctx.account.id,
-        actor: "user",
-        actorUserId: prac.ctx.profileUserId,
-        action: "case.refine_block",
-        target: String(id),
-        meta: { blockIndex, versionId: version.id, instruction: instruction.slice(0, 200) },
-      });
-      return NextResponse.json({ ok: true, version, block: refined, blockIndex });
-    } catch (e) {
-      await billingAdapter.refund({
-        userId: prac.ctx.profileUserId,
-        idempotencyKey: idem,
-        transactionId: charge.ledgerTxnRef,
-        spentRunes: charge.runes,
-        shadow: charge.shadow,
-      });
-      const status = (e as { status?: number }).status || 500;
-      const code = e instanceof Error ? e.message : "error";
-      return NextResponse.json(
-        {
-          error: code,
-          message:
-            code === "refine_failed"
-              ? "Модель не смогла переписать секцию — руны возвращены. Попробуйте переформулировать."
-              : "Ошибка переписывания — руны возвращены.",
-        },
-        { status }
-      );
+      const queued=await enqueueProHdGeneration({userId:prac.ctx.profileUserId,accountId:prac.ctx.account.id,caseId:id,expectedPayload:input?.payload??{},payload,refinement,idempotencyKey:typeof body.idempotencyKey==="string"?body.idempotencyKey:undefined});
+      return NextResponse.json({ok:true,async:true,status:"generating",jobId:queued.jobId,pollUrl:"/api/jobs/"+queued.jobId,charge:queued.charge,deduped:queued.deduped,...acceptedReportExtras("pro_premium_report",{caseId:id,caseType:c.type})},{status:202});
+    } catch(error) {
+      if(error instanceof InsufficientFundsError)return insufficientFundsResponse(error);
+      const status=error instanceof ProTrialExceededError?402:(error as {status?:number}).status??500;
+      return NextResponse.json({error:error instanceof Error?error.message:"generation_failed"},{status});
     }
   }
 

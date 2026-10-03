@@ -143,7 +143,8 @@ export async function getFreeQuestionLimit(): Promise<number> {
 
 export async function getSession(id: string): Promise<SessionRow | null> {
   const { rows } = await query<SessionRow & { cards?: unknown }>(
-    `SELECT ${SESSION_SELECT_FIELDS} FROM sessions WHERE id = $1`,
+    `SELECT ${SESSION_SELECT_FIELDS} FROM sessions WHERE id = $1
+       AND (user_id IS NULL OR EXISTS (SELECT 1 FROM users WHERE id = sessions.user_id AND erasure_requested_at IS NULL))`,
     [id]
   );
   const row = rows[0];

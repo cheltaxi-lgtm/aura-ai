@@ -3,12 +3,14 @@ import path from 'node:path';
 import { parseEnv } from 'node:util';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import {assertProGenerationRollbackCompatible,supportsProGenerationRollback} from './pro-generation-rollback.mjs';
 
 // All writers must be stopped. Additive columns remain; never discard frozen
 // purchases or downgrade the calculator underneath an accepted report.
 export async function assertHdRollbackCompatible(main, pro, compatible = {}) {
   await main.query('BEGIN READ ONLY');
   try {
+    await assertProGenerationRollbackCompatible(main,pro,compatible.proGeneration===true);
     if (!compatible.receipts) {
       for (const table of ['hd_reports', 'hd_composite_reports']) {
         const columns = await main.query("SELECT column_name FROM information_schema.columns WHERE table_schema='public' AND table_name=$1 AND column_name IN ('generation_context','semantic_identity')", [table]);
@@ -39,7 +41,7 @@ export async function assertHdRollbackCompatible(main, pro, compatible = {}) {
   } catch (error) { await main.query('ROLLBACK'); throw error; }
 }
 
-export function previousHdCompatibility(previousDir) {
+export function previousHdCompatibility(previousDir,currentDir=path.resolve(path.dirname(fileURLToPath(import.meta.url)),'..')) {
   const has = (file, markers) => {
     const target = path.join(previousDir, file);
     if (!fs.existsSync(target)) return false;
@@ -47,6 +49,7 @@ export function previousHdCompatibility(previousDir) {
     return markers.every(marker => source.includes(marker));
   };
   return {
+    proGeneration:supportsProGenerationRollback(currentDir,previousDir),
     receipts: has('src/lib/services/hd-generation-service.ts', ['generation_revision', 'generation_context', 'assertHdGenerationCurrent'])
       && has('src/lib/services/hd-purchase-route.ts', ['acquireHdGeneration', 'saveHdGeneration'])
       && has('src/lib/async-jobs.ts', ['generation_revision']),
@@ -69,7 +72,7 @@ async function main(appDir, previousDir) {
   const client = new pg.Client({ ...options, connectionString: env.DATABASE_URL });
   const pro = new pg.Client({ ...options, connectionString: env.PRO_DATABASE_URL || env.DATABASE_URL });
   client.on('error', () => undefined); pro.on('error', () => undefined);
-  try { await client.connect(); await pro.connect(); await assertHdRollbackCompatible(client, pro, previousHdCompatibility(previousDir)); }
+  try { await client.connect(); await pro.connect(); await assertHdRollbackCompatible(client, pro, previousHdCompatibility(previousDir,appDir)); }
   finally { await Promise.allSettled([client.end(), pro.end()]); }
 }
 if (process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {

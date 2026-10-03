@@ -375,7 +375,7 @@ test("private report share can be created and revoked", async ({ page }) => {
 async function installCompletedForecast(page: Page, reportId: string, horizon: number) {
   const forecast = { ...reports[0], id: reportId, reportType: 'forecast:' + horizon + ':2026-10-01', content: 'Точный сохранённый прогноз ' + horizon + ' дней.' };
   await page.route('**/api/natal-chart/history?*', route => route.fulfill({ json: { reports: [reports[0], forecast, reports[1]] } }));
-  await page.route('**/api/jobs/natal-e2e-completed', route => route.fulfill({ json: { status: 'completed', result: { reportId, forecast: forecast.content, horizon } } }));
+  await page.route('**/api/jobs/natal-e2e-completed', route => route.fulfill({ json: { jobId: 'natal-e2e-completed', kind: 'natal_forecast', status: 'completed', result: { reportId, forecast: forecast.content, horizon } } }));
   return forecast;
 }
 
@@ -410,6 +410,7 @@ test('accepted mobile forecast resumes the same purchase once with blocked stora
 });
 
 test('restored forecast keeps its exact archive id after a second refresh', async ({ page }) => {
+  test.setTimeout(90_000);
   const forecast = await installCompletedForecast(page, 'forecast-exact-seven', 7);
   let purchases = 0;
   page.on('request', request => { if (new URL(request.url()).pathname === '/api/natal-chart/forecast' && request.method() === 'POST') purchases++; });

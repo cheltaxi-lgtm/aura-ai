@@ -22,11 +22,16 @@ export function buildPhotoSpreadKey(
   const cards = spread.cards
     .map((c) => `${c.name}:${c.reversed ? "1" : "0"}:${c.position ?? ""}`)
     .join("|");
-  const q = question.trim().slice(0, 200);
+  const q = question.trim().slice(0, 500);
   return createHash("sha256")
     .update(`${characterId}:${cards}:${q}`)
     .digest("hex")
     .slice(0, 32);
+}
+
+/** Detection only: a truncated legacy digest cannot prove a long question. */
+export function buildLegacyPhotoSpreadKey(characterId: string, spread: RedrawSpread, question: string): string {
+  return buildPhotoSpreadKey(characterId, spread, question.trim().slice(0, 200));
 }
 
 function rowMatchesKey(
@@ -34,8 +39,10 @@ function rowMatchesKey(
   spreadKey: string,
   idempotencyKey?: string
 ): boolean {
-  if (idempotencyKey && ctx.idempotencyKey === idempotencyKey) return true;
-  return typeof ctx.photoSpreadKey === "string" && ctx.photoSpreadKey === spreadKey;
+  if (typeof ctx.photoSpreadKey === "string") return ctx.photoSpreadKey === spreadKey;
+  // Legacy rows without a digest are reusable only with a digest-bound key.
+  return Boolean(idempotencyKey && ctx.idempotencyKey === idempotencyKey &&
+    (idempotencyKey === `photo-reading:${spreadKey}` || idempotencyKey === `tg-photo:${spreadKey}`));
 }
 
 export async function findPhotoReadingEntry(

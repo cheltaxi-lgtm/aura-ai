@@ -1,5 +1,6 @@
+import { calendarParts } from "@/lib/product-calendar";
 import { personalYear, type NumerologyResult } from "./calculator";
-import { buildNumerologyResult } from "./constants";
+import { buildNumerologyResult, parseBirthDate } from "./constants";
 
 export interface PersonalYearForecastEntry {
   year: number;
@@ -64,7 +65,8 @@ export function personalYearForecast(
   fromYear?: number,
   years = 9
 ): PersonalYearForecastEntry[] {
-  const start = fromYear ?? new Date().getFullYear();
+  if (!parseBirthDate(birthDate)) return [];
+  const start = fromYear ?? calendarParts().year;
   const out: PersonalYearForecastEntry[] = [];
 
   for (let i = 0; i < years; i++) {

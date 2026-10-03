@@ -26,8 +26,7 @@ function normalizeBirthDate(raw: string): string {
   if (
     probe.getUTCFullYear() !== year ||
     probe.getUTCMonth() !== month - 1 ||
-    probe.getUTCDate() !== day ||
-    probe.getTime() > Date.now()
+    probe.getUTCDate() !== day
   ) {
     throw new Error("INVALID_BIRTH_DATE");
   }
@@ -98,6 +97,10 @@ export async function computeNatalChartRecord(
   if (place) {
     const timeStr = birthTimeLabel(effectiveHour);
     const utcOffset = resolveBirthUtcOffsetHours(birthDate, timeStr, place.timezone, input.birthTimeOccurrence);
+    const birthInstant = Date.parse(`${birthDate}T00:00:00Z`) + (effectiveHour - utcOffset) * 3_600_000;
+    if (effectiveTimeKnown ? birthInstant > Date.now() : birthDate > localDateStringInTimezone(place.timezone)) {
+      throw new Error("INVALID_BIRTH_DATE");
+    }
     // Planet positions use one canonical, independently verified ephemeris.
     // Legacy configuration names no longer select a less accurate planet engine.
     western = await computeWesternChart({ birthDate, localHourDecimal: effectiveHour,
@@ -126,6 +129,7 @@ export async function computeNatalChartRecord(
       );
     }
   } else {
+    if (birthDate > localDateStringInTimezone("Europe/Moscow")) throw new Error("INVALID_BIRTH_DATE");
     warnings.push("Полная карта недоступна без места рождения.");
   }
 

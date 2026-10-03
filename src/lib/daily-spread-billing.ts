@@ -13,7 +13,7 @@ export async function resolveDailyFreeReading(input: {
   intention?: string | null;
   customQuestion?: string | null;
   tarotCards: { id?: number; name: string; reversed?: boolean }[];
-}): Promise<{ cards: { id: number; name: string; meaning: string; reversed: boolean }[] } | null> {
+}): Promise<{ sourceId: string; cards: { id: number; name: string; meaning: string; reversed: boolean }[] } | null> {
   if (input.spreadType !== "daily" || input.intention?.trim() || input.customQuestion?.trim()) {
     return null;
   }
@@ -46,6 +46,7 @@ export async function resolveDailyFreeReading(input: {
 
   // Older clients omit orientation. Always rebuild identity and meaning from the server artifact.
   return {
+    sourceId: artifact.id,
     cards: validated.cards.map((card) => ({
       id: card.id,
       name: card.name,

@@ -5,7 +5,7 @@ async function authenticateSyntheticAdmin(page: Page, baseURL: string) {
   test.skip(!/^(127\.0\.0\.1|localhost)$/.test(new URL(baseURL).hostname), "Synthetic admin cookie is local-only");
   const token = await new SignJWT({ role: "admin" })
     .setProtectedHeader({ alg: "HS256" })
-    .setSubject("synthetic-admin")
+    .setSubject("55555555-5555-4555-8555-555555555555")
     .setExpirationTime("1h")
     .sign(new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-in-production"));
   await page.context().addCookies([{ name: "aura_auth", value: token, url: baseURL }]);

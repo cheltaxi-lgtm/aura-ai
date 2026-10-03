@@ -2,7 +2,8 @@ import { query } from "@/lib/db";
 import { TRIPLET_COOLDOWN_MS } from "@/lib/triplet-limit";
 import { checkTripletCooldown } from "@/lib/triplet-limit-server";
 import { buildHomeRecapKey } from "@/lib/home-recap-key";
-import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
+import { DEFAULT_DECK_SYSTEM, DECK_REGISTRY, findSymbolByName, resolveMasterDeckSystem } from "@/lib/decks";
+import { parseCardOrientation } from "@/lib/card-orientation";
 import type { DeckSystem } from "@/lib/decks/types";
 import {
   dailyCardsKey,
@@ -42,7 +43,7 @@ function withinDailyWindow(iso: string | null | undefined, anchorIso: string | n
 }
 
 function deckFromContext(raw: unknown): DeckSystem {
-  if (typeof raw === "string" && raw.trim()) return raw.trim() as DeckSystem;
+  if (typeof raw === "string" && Object.hasOwn(DECK_REGISTRY, raw.trim())) return raw.trim() as DeckSystem;
   return DEFAULT_DECK_SYSTEM;
 }
 
@@ -76,22 +77,28 @@ export async function resolveCurrentDailyCards(
   for (const row of historyRes.rows) {
     const ctx = row.context_data ?? {};
     if (!isExplicitDailyTriplet(ctx)) continue;
-    const cards = normalizeDailyTripletCards(ctx.tarotCards);
+    const cards = normalizeDailyTripletCards(ctx.tarotCards, { allowLegacyMissingOrientation: true });
     if (!cards || cards.length < 3) continue;
     const at = row.created_at?.toISOString?.() ?? null;
     if (!anchor || !withinDailyWindow(at, anchor)) continue;
+    const deck = deckFromContext(ctx.deckSystem);
+    const resolvedCards = cards.map(card => {
+      const symbol = findSymbolByName(deck, card.name);
+      return symbol ? { ...card, id: symbol.id, name: symbol.name } : null;
+    });
+    if (resolvedCards.some(card => !card)) continue;
     history = row;
-    historyCards = cards;
+    historyCards = resolvedCards as DailyTripletCard[];
     break;
   }
 
   if (history && historyCards) {
-    const cardsKey = dailyCardsKey(historyCards);
     const masterId =
       typeof history.context_data?.masterId === "string" && history.context_data.masterId.trim()
         ? history.context_data.masterId.trim()
         : "veronika";
     const deckSystem = deckFromContext(history.context_data?.deckSystem);
+    const cardsKey = dailyCardsKey(historyCards, deckSystem);
     const createdAt = history.created_at.toISOString();
 
     // Match session ONLY by same cardsKey + spread_type=daily + created_at window.
@@ -115,11 +122,16 @@ export async function resolveCurrentDailyCards(
     let sessionId: string | null = null;
     for (const row of sessionRes.rows) {
       if (row.character_key?.trim() !== masterId) continue;
+      if (resolveMasterDeckSystem(masterId) !== deckSystem) continue;
       const names = parseSessionDailyCardNames(row.cards);
-      if (names.length < 3) continue;
-      const sessionKey = dailyCardsKey(
-        names.map((name, position) => ({ id: position, name, position, reversed: false }))
-      );
+      if (names.length !== 3) continue;
+      const sessionCards = names.map((raw, position) => {
+        const { name, reversed } = parseCardOrientation(raw);
+        const symbol = findSymbolByName(deckSystem, name);
+        return symbol ? { id: symbol.id, name: symbol.name, position, reversed } : null;
+      });
+      if (sessionCards.some(card => !card)) continue;
+      const sessionKey = dailyCardsKey(sessionCards as DailyTripletCard[], deckSystem);
       if (sessionKey !== cardsKey) continue;
       const sessionAt = row.created_at?.toISOString?.() ?? null;
       if (!withinDailyWindow(sessionAt, anchor)) continue;

@@ -1,3 +1,4 @@
+import { calendarParts, calendarInstant, calendarDateString } from "@/lib/product-calendar";
 import { personalDay, type NumerologyResult } from "./calculator";
 import { parseBirthDate } from "./constants";
 
@@ -16,9 +17,11 @@ export function favorableDates(
   const parsed = parseBirthDate(birthDate);
   if (!parsed) return null;
 
-  const refYear = year ?? new Date().getFullYear();
-  const refMonth = month ?? new Date().getMonth() + 1;
-  const daysInMonth = new Date(refYear, refMonth, 0).getDate();
+  const now = calendarParts();
+  const refYear = year ?? now.year;
+  const refMonth = month ?? now.month;
+  if (!Number.isInteger(refMonth) || refMonth < 1 || refMonth > 12 || !Number.isInteger(refYear)) return null;
+  const daysInMonth = new Date(Date.UTC(refYear, refMonth, 0)).getUTCDate();
 
   const favorable: number[] = [];
   const neutral: number[] = [];
@@ -36,7 +39,7 @@ export function favorableDates(
   })();
 
   for (let day = 1; day <= daysInMonth; day++) {
-    const pd: NumerologyResult = personalDay(birthDate, new Date(refYear, refMonth - 1, day));
+    const pd: NumerologyResult = personalDay(birthDate, calendarInstant(calendarDateString(refYear, refMonth, day), 12)!);
     const n = pd.number;
     if (n <= 0) {
       neutral.push(day);

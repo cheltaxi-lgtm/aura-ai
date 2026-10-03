@@ -50,7 +50,7 @@ describe.runIf(hasTestDb)('HD deployment preserves durable identities across rol
     await main.query("INSERT INTO hd_reports VALUES('{}','purchase'); INSERT INTO hd_charts VALUES('hd-v2-fixture'); INSERT INTO async_jobs VALUES('pro_premium_report','running',jsonb_build_object('caseType','hd'))");
     await pro.query("INSERT INTO pro.hd_delivery_receipts VALUES('receipt')");
     const compatibility = previousHdCompatibility(process.cwd());
-    expect(compatibility).toEqual({ receipts:true, engine:true, proReceipts:true });
+    expect(compatibility).toEqual({ receipts:true, engine:true, proReceipts:true,proGeneration:true });
     await assertHdRollbackCompatible(main, pro, compatibility);
   });
 });

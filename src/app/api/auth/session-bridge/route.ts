@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const token = await createOAuthHandoff(auth.sub);
+    const token = await createOAuthHandoff(auth.sub, auth.tv ?? 0);
     return NextResponse.json({ ok: true, token }, { headers: BRIDGE_HEADERS });
   } catch (error) {
     console.error("session-bridge mint failed:", error);
@@ -110,8 +110,8 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
-    const accountId = await consumeOAuthHandoff(token);
-    if (!accountId) {
+    const handoff = await consumeOAuthHandoff(token);
+    if (!handoff) {
       // Duplicate document hit (prefetch / double 302) after a successful first
       // consume: cookie from finishOAuthLogin or the first bridge is enough.
       const already = await redirectIfAlreadyAuthenticated(destination);
@@ -119,22 +119,24 @@ export async function GET(request: NextRequest) {
       return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
-    const account = await findUserById(accountId);
+    const account = await findUserById(handoff.accountId);
     if (!account) {
       return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     }
 
     const response = NextResponse.redirect(destination, { headers: BRIDGE_HEADERS });
-    await applyAuthCookie(
+    const applied = await applyAuthCookie(
       response,
       {
         sub: account.id,
         role: "user",
         email: account.email,
         name: account.name,
+        tv: handoff.tokenVersion,
       },
       request
     );
+    if (!applied) return NextResponse.redirect(loginUrl, { headers: BRIDGE_HEADERS });
     return response;
   } catch (error) {
     console.error("session-bridge redirect failed:", error);

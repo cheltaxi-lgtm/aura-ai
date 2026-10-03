@@ -57,8 +57,19 @@ export default function SupportChat({
 
   useEffect(() => {
     if (!onPoll) return;
-    const timer = setInterval(() => void onPoll(), pollingMs);
-    return () => clearInterval(timer);
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout>;
+    const poll = async () => {
+      try {
+        await onPoll();
+      } catch {
+        // Keep the visible conversation and retry after connectivity recovers.
+      } finally {
+        if (!cancelled) timer = setTimeout(() => void poll(), pollingMs);
+      }
+    };
+    timer = setTimeout(() => void poll(), pollingMs);
+    return () => { cancelled = true; clearTimeout(timer); };
   }, [onPoll, pollingMs]);
 
   const handleSend = async () => {

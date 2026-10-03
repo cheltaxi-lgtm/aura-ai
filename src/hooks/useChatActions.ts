@@ -50,6 +50,7 @@ import { generateId } from "@/lib/id";
 import { attachRecaptchaToken } from "@/lib/client-recaptcha";
 import { fetchPlatformFeatures } from "@/lib/usePlatformFeatures";
 import { spreadKey, resolveMasterDeckSystem } from "@/lib/decks";
+import { spreadIdentityKey } from "@/lib/spread-identity";
 import type { DeckSystem } from "@/lib/decks/types";
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { DeckCardInput } from "@/lib/deck-card-utils";
@@ -588,7 +589,10 @@ export function useChatActions(options: UseChatActionsOptions) {
             cards: cardsForMaster,
             profile: activeProfile,
           }) ?? sessionSpreadMetaRef.current?.spreadType;
-        const loadAttemptKey = `${characterId}:${effectiveSpreadType ?? "new"}:${cardsKey}`;
+        const attemptCardsKey = effectiveSpreadType === "daily"
+          ? `${targetConsultationId ?? targetArchiveId ?? ""}:${spreadIdentityKey(masterCtx.system, cardsForMaster.map(card => ({ id: card.id, reversed: card.reversed === true })))}`
+          : cardsKey;
+        const loadAttemptKey = `${characterId}:${effectiveSpreadType ?? "new"}:${attemptCardsKey}`;
         if (!loadOptions?.force) {
           if (loadReadingInFlightKeyRef.current === loadAttemptKey) return;
           if (loadReadingAttemptKeyRef.current === loadAttemptKey) return;
@@ -612,6 +616,7 @@ export function useChatActions(options: UseChatActionsOptions) {
         // Full Matrix reuse is server-side (numerology_report_history) only.
         // Client savedReadings cache kept serving stale watery reports after DB purge.
         const skipClientReadingCache =
+          effectiveSpreadType === "daily" ||
           metaNumerologToolId === "destiny_matrix" ||
           metaNumerologToolId === "child_matrix" ||
           metaNumerologToolId === "matrix_year_forecast";
@@ -823,6 +828,7 @@ export function useChatActions(options: UseChatActionsOptions) {
               characterId,
               sessionId:
                 loadOptions?.sessionId ??
+                (effectiveSpreadType === "daily" ? targetConsultationId ?? targetArchiveId : undefined) ??
                 (session?.offline ? undefined : session?.sessionId),
               intention: sessionIntention ?? undefined,
               forceRegenerate: loadOptions?.force ?? false,
@@ -1738,6 +1744,10 @@ export function useChatActions(options: UseChatActionsOptions) {
 
   useEffect(() => {
     if (!selectedCharacter || !allSpreadFlipped || sessionOnlyChat) return;
+    // Daily entry and history restore already load the bound artifact. A flip
+    // effect can run between the history response and the messages render and
+    // otherwise start a second reading while reopening an existing session.
+    if (sessionSpreadMetaRef.current?.spreadType === "daily") return;
     if (
       hasActivePeriodSpread(sessionSpreadMetaRef.current) ||
       chatSessionSpread?.periodScope
@@ -1814,6 +1824,9 @@ export function useChatActions(options: UseChatActionsOptions) {
     });
     const spreadId = meta?.spreadId ?? DEFAULT_SPREAD_ID;
     const spreadType = meta?.spreadType ?? "new";
+    // A names-only saved reading cannot prove this daily artifact's orientation
+    // or date. Its bound session and /api/reading provide authoritative reuse.
+    if (spreadType === "daily") return;
     if (
       !hasCompleteSpread(
         cardsForMaster.map((c) => c.name),

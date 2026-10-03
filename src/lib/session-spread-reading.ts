@@ -148,6 +148,8 @@ async function findSpreadReadingMetaForSession(
 
   for (const row of rows) {
     const ctx = row.context_data;
+    // A matching deck draw does not establish ownership of this consultation.
+    if (ctx.sessionId !== session.id) continue;
     const reading = pickStoredReading(ctx);
     if (!reading) continue;
 
@@ -216,6 +218,8 @@ export async function findStoredSpreadReadingWithMeta(
 
   for (const row of rows) {
     const ctx = row.context_data;
+    // A matching deck draw does not establish ownership of this consultation.
+    if (ctx.sessionId !== session.id) continue;
     const reading = pickStoredReading(ctx);
     if (!reading) continue;
 

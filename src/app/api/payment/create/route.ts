@@ -36,6 +36,7 @@ export async function POST(request: NextRequest) {
     }
 
     const profileUserId = await getProfileUserIdForAccount(auth.sub);
+    if (!profileUserId) return NextResponse.json({ error: "needs_profile" }, { status: 403 });
     const resolved = await resolveSessionForUser(sessionId, profileUserId);
     if (resolved.error) return resolved.error;
     const session = resolved.session;

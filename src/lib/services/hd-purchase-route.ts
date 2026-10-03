@@ -107,7 +107,7 @@ export async function handleHdPurchase(request: NextRequest, kind: HdGenerationG
           gender:aboutOther ? subject.gender : null,extraSystem:lens || null,maxSectionRetries:2,deadlineAt,beforeRequest,onProgress:makeWorkerProgressReporter(request)});
         text = generated.text; defective = generated.needsRegeneration; findings = generated.quality.findings;
         model = generated.modelId; meta = {costRub:generated.costRub,usage:generated.usage,calls:generated.llmCalls};
-      } else text = await completeHdFullReport({systemPrompt:buildHdReportSystemPrompt(clientName,"personal",{aboutOther}),
+      } else text = await completeHdFullReport({systemPrompt:[buildHdReportSystemPrompt(clientName,"personal",{aboutOther}),lens].filter(Boolean).join("\n\n"),
         evidence:formatHdEvidence(subject.chart,{placeLabel:subject.placeName}),chart:subject.chart,clientName,aboutOther,deadlineAt,beforeRequest});
     } else {
       const [a,b] = frozen;

@@ -1,5 +1,7 @@
 "use client";
 
+import { spreadIdentityKey } from "@/lib/spread-identity";
+
 import {
   useState,
   useEffect,
@@ -180,7 +182,7 @@ import {
   resolvePostOnboardingDestination,
   resolveRegistrationReturnTo,
 } from "@/lib/post-auth-return";
-import { restoredTripletSpreadType } from "@/lib/daily-spread-client";
+import { dailySessionCardNames, restoredTripletSpreadType } from "@/lib/daily-spread-client";
 import type { CurrentDailyCardsResult } from "@/lib/current-daily-cards";
 import { shouldEmitDailyCardsStarted } from "@/lib/daily-cards-ui";
 import { resolveDailyMasterKey } from "@/lib/daily-master-policy";
@@ -425,13 +427,15 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
   const [tripletCooldownReady, setTripletCooldownReady] = useState(false);
   const [currentDailyReading, setCurrentDailyReading] =
     useState<CurrentDailyCardsResult | null>(null);
-  const restoredOwnedTripletType = useCallback((input: { daily: CurrentDailyCardsResult | null; masterId: string; cardNames: string[] }): "daily" | "intro" | "new" => {
+  const restoredOwnedTripletType = useCallback((input: { daily: CurrentDailyCardsResult | null; masterId: string; deckSystem: DeckSystem; cards: readonly Pick<SpreadSymbol, "id" | "reversed">[] }): "daily" | "intro" | "new" => {
     const intro = savedReadings.some((row) => {
       if (row.characterName !== "triplet") return false;
-      const ctx = row.contextData as { type?: string; masterId?: string; tarotCards?: { name?: string }[] } | undefined;
+      const ctx = row.contextData as { type?: string; masterId?: string; deckSystem?: DeckSystem; tarotCards?: SpreadSymbol[] } | undefined;
       return ctx?.type === "intro_triplet" && ctx.masterId === input.masterId &&
-        ctx.tarotCards?.length === input.cardNames.length &&
-        ctx.tarotCards.every((card, index) => card.name === input.cardNames[index]);
+        (ctx.deckSystem ?? resolveMasterDeckSystem(ctx.masterId)) === input.deckSystem &&
+        ctx.tarotCards?.length === input.cards.length &&
+        spreadIdentityKey(input.deckSystem, ctx.tarotCards.map(card => ({ id: card.id, reversed: card.reversed === true }))) ===
+          spreadIdentityKey(input.deckSystem, input.cards.map(card => ({ id: card.id, reversed: card.reversed === true })));
     });
     // Identical card names may recur in a daily draw. An explicitly restored intro
     // session keeps its own meaning; the home recap otherwise follows today's draw.
@@ -623,7 +627,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       const cardsKey = tarotCardsKey(cards.map((c) => ({ name: c.name })));
       const key = buildHomeRecapKey({ source, cardsKey });
       // Also match daily artifact key if this is the current daily.
-      if (currentDailyReading?.exists && cardsKey === currentDailyReading.cardsKey) {
+      if (currentDailyReading?.exists && spreadIdentityKey(currentDailyReading.deckSystem, cards.map(c => ({ id: c.id, reversed: c.reversed === true }))) === currentDailyReading.cardsKey) {
         if (isHomeRecapHidden(currentDailyReading.recapKey, homeRecapHiddenKey)) return [];
       }
       if (isHomeRecapHidden(key, homeRecapHiddenKey)) return [];
@@ -1166,7 +1170,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       }
 
       if (sessionSpreadMetaRef.current?.spreadType === "daily") {
-        return !masterHasReadingForSpread(savedReadings, masterId, cardsKey);
+        // Only the bound session/API can reuse a daily report. Legacy browser
+        // reading caches key by names and omit orientation and artifact date.
+        return true;
       }
       if (sessionSpreadMetaRef.current?.spreadType === "intro") {
         return !findSavedSpreadReading(savedReadings, masterId, cardsKey, "intro");
@@ -2135,8 +2141,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         };
         persistProfile(updated);
         applyTripletMaster(masterToBind);
-        const cardNames = existingCards.map((c) => c.name);
-        if (restoredOwnedTripletType({ daily: currentDailyReading, masterId: masterToBind, cardNames }) === "new") {
+        const cardNames = dailySessionCardNames(existingCards);
+        if (restoredOwnedTripletType({ daily: currentDailyReading, masterId: masterToBind, deckSystem: updated.deckSystem ?? tripletSystem, cards: existingCards }) === "new") {
           trackProfileCompleted(resolveRegistrationSource("onboarding"));
           clearShareRegistrationAttribution();
           await finishProfileOnboarding("masters");
@@ -2145,7 +2151,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           setShowSessionFlow(true);
           return;
         }
-        sessionSpreadMetaRef.current = { spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId: masterToBind, cardNames }), cardNames };
+        sessionSpreadMetaRef.current = { spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId: masterToBind, deckSystem: updated.deckSystem ?? tripletSystem, cards: existingCards }), cardNames };
         setSessionIntention(null);
         persistSessionIntention(masterToBind, null);
         setIntentionSpread(null);
@@ -2224,17 +2230,17 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
           const activeProfile = getActiveProfile();
           const dailyCards =
             (activeProfile?.tarotCards?.length ?? 0) >= 3
-              ? activeProfile!.tarotCards!.map((c) => c.name)
-              : displayTarotCards.map((c) => c.name);
+              ? activeProfile!.tarotCards!
+              : displayTarotCards;
           if (dailyCards.length >= 3) {
-            if (restoredOwnedTripletType({ daily: currentDailyReading, masterId, cardNames: dailyCards }) === "new") {
+            if (restoredOwnedTripletType({ daily: currentDailyReading, masterId, deckSystem: activeProfile?.deckSystem ?? displayDeckSystem, cards: dailyCards }) === "new") {
               setSessionFlowPreselectedMaster(masterId);
               setSessionFlowInitialTopic(null);
               setShowSessionFlow(true);
               setStep("masters");
               return;
             }
-            sessionSpreadMetaRef.current = { spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, cardNames: dailyCards }), cardNames: dailyCards };
+            sessionSpreadMetaRef.current = { spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, deckSystem: activeProfile?.deckSystem ?? displayDeckSystem, cards: dailyCards }), cardNames: dailySessionCardNames(dailyCards) };
           }
         }
       }
@@ -2670,7 +2676,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         const msgs: Message[] =
           restored !== null && restored.messages.length > 0
             ? restored.messages
-            : restored?.sessionId
+            : restored?.sessionId || sessionSpreadMetaRef.current?.spreadType === "daily"
               ? []
               : cached;
 
@@ -2684,7 +2690,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         const skipReading =
           opts?.skipReading ||
           chatHasSpreadReading(msgs) ||
-          !shouldAutoLoadSpreadReading(masterId, spreadKeyForRestore || spreadCardsKey);
+          (sessionSpreadMetaRef.current?.spreadType !== "daily" &&
+            !shouldAutoLoadSpreadReading(masterId, spreadKeyForRestore || spreadCardsKey));
         if (!skipReading) {
           await loadReadingRef.current(masterId);
         }
@@ -2703,6 +2710,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       setStep,
       getActiveProfile,
       displayTarotCards,
+      displayDeckSystem,
       session?.offline,
       session?.sessionId,
       spawnSession,
@@ -2904,7 +2912,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         );
         if (masterToBind) {
           persistProfile({ ...updated, tripletMasterId: masterToBind });
-          const cardNames = cards.map((c) => c.name);
+          const cardNames = dailySessionCardNames(cards);
           sessionSpreadMetaRef.current = { spreadType: isIntroTriplet ? "intro" : "daily", spreadId: "triplet", cardNames };
           setSessionIntention(null);
           persistSessionIntention(masterToBind, null);
@@ -2951,8 +2959,9 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       const isSameSpread =
         !newTripletDraft &&
         existingSpread.length >= 3 &&
-        restoredOwnedTripletType({ daily: currentDailyReading, masterId: tripletMasterId || base.tripletMasterId || GUEST_TRIPLET_MASTER_ID, cardNames: cards.map((c) => c.name) }) === "daily" &&
-        spreadKey(existingSpread) === spreadKey(cards);
+        restoredOwnedTripletType({ daily: currentDailyReading, masterId: tripletMasterId || base.tripletMasterId || GUEST_TRIPLET_MASTER_ID, deckSystem: tripletSystem, cards }) === "daily" &&
+        spreadIdentityKey(tripletSystem, existingSpread.map(c => ({ id: c.id, reversed: c.reversed === true }))) ===
+        spreadIdentityKey(tripletSystem, cards.map(c => ({ id: c.id, reversed: c.reversed === true })));
 
       if (isSameSpread) {
         const updated: StoredProfile = {
@@ -3122,7 +3131,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
 
   const resolveDisplayedHomeRecapKey = useCallback((): string | null => {
     if (currentDailyReading?.exists) {
-      const cardsKey = tarotCardsKey(displayTarotCards.map((c) => ({ name: c.name })));
+      const cardsKey = spreadIdentityKey(currentDailyReading.deckSystem, displayTarotCards.map(c => ({ id: c.id, reversed: c.reversed === true })));
       if (cardsKey && cardsKey === currentDailyReading.cardsKey) {
         return currentDailyReading.recapKey;
       }
@@ -3212,83 +3221,58 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
     setLastMasterId,
   ]);
 
+  const openingCurrentDailyRef = useRef(false);
   const openCurrentDailyCards = useCallback(async () => {
-    const daily = (await syncProfileFromServer())?.currentDailyReading;
-    if (!daily || !daily.exists) {
-      setTripletNotice("Сегодняшние карты дня не найдены. Попробуйте открыть новый расклад позже.");
-      return;
-    }
-
-    const masterId = daily.masterId || GUEST_TRIPLET_MASTER_ID;
-    const exactCards = daily.cards?.length
-      ? daily.cards
-      : daily.cardNames.map((name, position) => ({
-          id: position,
-          name,
-          position,
-          reversed: false,
-        }));
-    const cardNames = exactCards.map((c) => c.name);
-    const system = (daily.deckSystem as DeckSystem | undefined) || tripletSystem;
-    const spreadSymbols = reconcileSpreadDeck(system, exactCards).cards.map((c, i) => ({
-      ...c,
-      reversed: Boolean(exactCards[i]?.reversed),
-    }));
-    // Keep exact artifact on home/profile while opening chat.
-    setProfile((prev) => {
-      if (!prev) return prev;
-      const next = {
-        ...prev,
-        tarotCards: spreadSymbols,
-        deckSystem: system,
-        deckSpreads: { ...prev.deckSpreads, [system]: spreadSymbols },
-        tripletMasterId: masterId,
-      };
-      localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
-      return next;
-    });
-
-    const deps = chat();
-    if (daily.sessionId && deps) {
-      deps.setConsultationSessionId(daily.sessionId);
-      if (deps.consultationSessionIdRef) {
-        deps.consultationSessionIdRef.current = daily.sessionId;
+    if (openingCurrentDailyRef.current) return;
+    openingCurrentDailyRef.current = true;
+    try {
+      const daily = (await syncProfileFromServer())?.currentDailyReading;
+      if (!daily?.exists || daily.cards.length !== 3) {
+        setTripletNotice("Сегодняшние карты дня не найдены. Попробуйте открыть новый расклад позже.");
+        return;
       }
-      deps.archiveSessionIdRef.current = daily.sessionId;
-      await deps.restoreChatForCharacter(masterId, {
-        archiveSessionId: daily.sessionId,
-        sessionId: daily.sessionId,
+      const masterId = daily.masterId;
+      const system = daily.deckSystem;
+      const cardNames = dailySessionCardNames(daily.cards);
+      const spreadSymbols = reconcileSpreadDeck(system, daily.cards).cards;
+      setProfile((prev) => {
+        if (!prev) return prev;
+        const next = { ...prev, tarotCards: spreadSymbols, deckSystem: system,
+          deckSpreads: { ...prev.deckSpreads, [system]: spreadSymbols }, tripletMasterId: masterId };
+        localStorage.setItem(PROFILE_KEY, JSON.stringify(next));
+        return next;
       });
-      deps.setSelectedCharacter(masterId);
-      setStep("chat");
-      return;
+      sessionSpreadMetaRef.current = { spreadType: "daily", spreadId: "triplet", cardNames };
+      setSessionIntention(null);
+      persistSessionIntention(masterId, null);
+      setIntentionSpread(null);
+      persistIntentionSpreadState(masterId, null);
+      setChatSessionSpread({ masterId, system, cards: spreadSymbols });
+      pendingChatOptsRef.current = { masterId, skipReading: false };
+      const deps = chat();
+      if (!deps) return;
+      if (daily.sessionId) {
+        deps.setConsultationSessionId(daily.sessionId);
+        deps.consultationSessionIdRef.current = daily.sessionId;
+        deps.archiveSessionIdRef.current = daily.sessionId;
+      } else {
+        // A new chat receives the exact saved orientations; the next profile
+        // lookup can bind it to this artifact instead of creating another chat.
+        const chatSessionId = await beginNewSpreadSession(masterId);
+        if (!chatSessionId) {
+          setTripletNotice("Не удалось открыть сеанс. Проверьте соединение и попробуйте снова.");
+          return;
+        }
+        await bindSessionToMasterRef.current(masterId, chatSessionId);
+        await deps.persistSessionMetaToServer(chatSessionId, {
+          characterKey: masterId, intention: null, spreadType: "daily", spreadId: "triplet", cards: cardNames,
+        });
+      }
+      await beginChatAfterIntention(masterId, null, "existing");
+    } finally {
+      openingCurrentDailyRef.current = false;
     }
-
-    // No matching session — bind a new chat to THESE exact cards (no redraw).
-    sessionSpreadMetaRef.current = { spreadType: "daily", cardNames };
-    setSessionIntention(null);
-    persistSessionIntention(masterId, null);
-    pendingChatOptsRef.current = { masterId, skipReading: false };
-    const chatSessionId = await beginNewSpreadSession(masterId);
-    await bindSessionToMasterRef.current(masterId, chatSessionId);
-    if (chatSessionId) {
-      await deps?.persistSessionMetaToServer(chatSessionId, {
-        characterKey: masterId,
-        intention: null,
-        spreadType: "daily",
-        cards: cardNames,
-      });
-    }
-    await beginChatAfterIntention(masterId, null, "existing");
-  }, [
-    syncProfileFromServer,
-    chat,
-    beginNewSpreadSession,
-    beginChatAfterIntention,
-    setStep,
-    tripletSystem,
-    setProfile,
-  ]);
+  }, [syncProfileFromServer, chat, beginNewSpreadSession, beginChatAfterIntention, setProfile]);
 
   const handleNewReading = async () => {
     const deps = chat();
@@ -3863,7 +3847,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             sessionSpreadMetaRef.current = {
               spreadType,
               spreadId,
-              cardNames: spreadCards.map((c) => c.name),
+              cardNames: dailySessionCardNames(spreadCards),
               numerologToolId,
               numerologToolParams,
             };
@@ -4264,6 +4248,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
             : activeProfile?.tarotCards?.length
               ? activeProfile.tarotCards!
               : masterSpread;
+      if (restoredTripletSpreadType({ daily: currentDailyReading, masterId, deckSystem: system, cards: spreadCards }) === "daily") {
+        await openCurrentDailyCards();
+        return;
+      }
       const cardsKey = spreadKey(spreadCards);
       const cachedTripletChat = cardsKey ? loadChatCache(masterId, cardsKey) : null;
       const tripletReadingDone =
@@ -4273,8 +4261,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       if (tripletReadingDone) {
         sessionListBackMasterRef.current = masterId;
         sessionSpreadMetaRef.current = {
-          spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, cardNames: spreadCards.map((c) => c.name) }),
-          cardNames: spreadCards.map((c) => c.name),
+          spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, deckSystem: system, cards: spreadCards }),
+          cardNames: dailySessionCardNames(spreadCards),
         };
         setIntentionSpread(null);
         persistIntentionSpreadState(masterId, null);
@@ -4318,7 +4306,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         return;
       }
 
-      if (restoredOwnedTripletType({ daily: currentDailyReading, masterId, cardNames: spreadCards.map((c) => c.name) }) === "new") {
+      if (restoredOwnedTripletType({ daily: currentDailyReading, masterId, deckSystem: system, cards: spreadCards }) === "new") {
         setSessionFlowPreselectedMaster(masterId);
         setSessionFlowInitialTopic(null);
         setShowSessionFlow(true);
@@ -4329,8 +4317,8 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
       await openChatWithSessionParamsRef.current({
         characterKey: masterId,
         intention: null,
-        spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, cardNames: spreadCards.map((c) => c.name) }),
-        cards: spreadCards.map((c) => c.name),
+        spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, deckSystem: system, cards: spreadCards }),
+        cards: dailySessionCardNames(spreadCards),
       });
       return;
     }
@@ -4508,6 +4496,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
                 ? activeProfile.tarotCards!
                 : masterSpread;
         const spreadSystem = masterSpread.length >= 3 ? system : displayDeckSystem;
+        if (restoredTripletSpreadType({ daily: currentDailyReading, masterId, deckSystem: spreadSystem, cards: spreadCards }) === "daily") {
+          await openCurrentDailyCards();
+          return;
+        }
 
         if (profile && (profile.deckSystem !== spreadSystem || profile.tarotCards !== spreadCards)) {
           persistProfile({
@@ -4550,10 +4542,10 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         }
 
         clearPendingMasterResume();
-        const cardNames = spreadCards.map((c) => c.name);
+        const cardNames = dailySessionCardNames(spreadCards);
         sessionListBackMasterRef.current = masterId;
         if (deps) deps.setSessionListMaster(null);
-        if (restoredOwnedTripletType({ daily: currentDailyReading, masterId, cardNames }) === "new") {
+        if (restoredOwnedTripletType({ daily: currentDailyReading, masterId, deckSystem: spreadSystem, cards: spreadCards }) === "new") {
           setSessionFlowPreselectedMaster(masterId);
           setSessionFlowInitialTopic(null);
           setShowSessionFlow(true);
@@ -4563,7 +4555,7 @@ export function useOnboardingFlow(options: UseOnboardingFlowOptions) {
         await openChatWithSessionParams({
           characterKey: masterId,
           intention: null,
-          spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, cardNames }),
+          spreadType: restoredOwnedTripletType({ daily: currentDailyReading, masterId, deckSystem: spreadSystem, cards: spreadCards }),
           cards: cardNames,
         });
         return;

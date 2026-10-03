@@ -459,7 +459,7 @@ export async function claimGuestNatalChart(opts: {
     {
       const birthDate = String(guest.birth_date).slice(0, 10);
       const birthTime = guest.time_known ? guest.birth_time : null;
-      const zodiac = getZodiacFromDate(birthDate).name || user.zodiac || "";
+      const zodiac = getZodiacFromDate(birthDate)?.name || user.zodiac || "";
       const nextMeta = {
         ...buildAstroMeta(birthDate),
         stubProfile: false,

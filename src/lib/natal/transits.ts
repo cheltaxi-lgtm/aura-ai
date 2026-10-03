@@ -1,3 +1,4 @@
+import { calendarInstant } from "@/lib/product-calendar";
 import { ASPECT_NAMES, SIGN_RU } from "./presentation";
 import { angularSeparation, signFromLongitude } from "./math";
 import { listFacts } from "@/lib/memory/user-facts";
@@ -173,7 +174,12 @@ export async function computeDeepTransits(
   for (let d = 0; d <= horizon; d++) {
     const dateStr =
       d === 0 ? todayStr : addDaysInTimezone(place.timezone, todayStr, d);
-    const nextDateStr = addDaysInTimezone(place.timezone, dateStr, 1);
+    if (!calendarInstant(dateStr, 0, place.timezone)) continue;
+    let nextDateStr = addDaysInTimezone(place.timezone, dateStr, 1);
+    // Dateline changes can skip an entire civil date (Samoa 2011-12-30).
+    while (!calendarInstant(nextDateStr, 0, place.timezone)) {
+      nextDateStr = addDaysInTimezone(place.timezone, nextDateStr, 1);
+    }
     const [startOfDaySky, endOfDaySky] = await Promise.all([
       skyFor(dateStr, 0),
       skyFor(nextDateStr, 0),

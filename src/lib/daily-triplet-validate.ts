@@ -118,7 +118,7 @@ export function validateDailyTripletInput(input: {
       id: symbol.id,
       name: symbol.name,
       position: i,
-      reversed: Boolean(raw.reversed),
+      reversed: raw.reversed,
     });
   }
 
@@ -127,6 +127,6 @@ export function validateDailyTripletInput(input: {
     masterId: master.id,
     deckSystem,
     cards,
-    cardsKey: dailyCardsKey(cards),
+    cardsKey: dailyCardsKey(cards, deckSystem),
   };
 }

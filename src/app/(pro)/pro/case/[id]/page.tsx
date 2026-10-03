@@ -49,11 +49,13 @@ type PlaceHit = {
 };
 
 const BIRTH_TYPES = new Set(["natal", "matrix", "hd"]);
+const TYPE_LABELS:Record<string,string>={manual_spread:"Расклад",natal:"Натальная карта",matrix:"Матрица судьбы",hd:"Дизайн человека"};
+const STATUS_LABELS:Record<string,string>={new:"Новый",input_ready:"Данные сохранены",generating:"Готовим отчёт",draft:"Черновик готов",edited:"Отчёт принят",delivered:"Выдан клиенту",archived:"В архиве",failed:"Не удалось завершить"};
 
 export default function ProCasePage() {
   const params = useParams<{ id: string }>();
   const [data, setData] = useState<any>(null);
-  const [cards, setCards] = useState("Шут, Маг, Жрица");
+  const [cards, setCards] = useState("");
   const [blocks, setBlocks] = useState<Block[]>([]);
   const [msg, setMsg] = useState<string | null>(null);
   const [deliverUrl, setDeliverUrl] = useState<string | null>(null);
@@ -128,6 +130,7 @@ export default function ProCasePage() {
         );
       }
       const p = json.input?.payload || {};
+      if(json.case?.type==="manual_spread")setCards(Array.isArray(p.cards)?p.cards.map((card:unknown)=>typeof card==="string"?card:card&&typeof card==="object"&&"name" in card?String(card.name):"").filter(Boolean).join(", "):"");
       const cl = json.client || {};
       // Prefer valid YYYY-MM-DD; ignore legacy "Thu Jul 07" payload bugs.
       const birthDateVal =
@@ -282,6 +285,7 @@ export default function ProCasePage() {
   async function patch(action: string, body: Record<string, unknown> = {}) {
     setMsg(null);
     setBusy(true);
+    try {
     const res = await fetch(`/api/pro/cases/${params.id}`, {
       method: "PATCH",
       credentials: "include",
@@ -336,6 +340,10 @@ export default function ProCasePage() {
       setMsg("Сохранено");
     }
     return json;
+    } catch(error) {
+      setMsg(error instanceof Error?error.message:"Не удалось сохранить изменения. Попробуйте ещё раз.");
+      return {ok:false,error:"request_failed"};
+    } finally { setBusy(false); }
   }
 
   async function deliver() {
@@ -473,7 +481,7 @@ export default function ProCasePage() {
   const chartOk = Boolean(data.input?.payload?.chartFacts?.ok);
 
   return (
-    <ProShell title={`Практика · ${c.type}`}>
+    <ProShell title={`Практика · ${TYPE_LABELS[c.type]??"Практика"}`}>
       {acceptedReport ? (
         <div className="fixed inset-0 z-[70] flex items-center justify-center overflow-y-auto bg-black/70 p-4 backdrop-blur-sm">
           <ReportAcceptedScreen
@@ -483,7 +491,7 @@ export default function ProCasePage() {
         </div>
       ) : null}
       <p className="text-sm text-gray-400">
-        Статус: {c.status} · клиент: {data.client?.alias}
+        Статус: {STATUS_LABELS[c.status]??"Обновляется"} · клиент: {data.client?.alias}
       </p>
       {c.question ? (
         <p className="mt-2 text-sm text-[#ede6da]">Фокус: {c.question}</p>
@@ -885,7 +893,7 @@ export default function ProCasePage() {
           setRefiningIdx(idx);
           void (async () => {
             try {
-              const json = await patch("refine_block", { blockIndex: idx, instruction });
+              const json = await patch("refine_block", { blockIndex: idx, instruction, versionId:String(data?.versions?.at(-1)?.id??""), idempotencyKey:crypto.randomUUID() });
               if (json?.ok) setMsg(json.async ? "Секция переписывается…" : "Секция переписана — проверьте и примите отчёт");
             } finally {
               setRefiningIdx(null);

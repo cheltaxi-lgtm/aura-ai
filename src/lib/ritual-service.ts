@@ -1,5 +1,5 @@
 import { captureMemoryGeneration, withUserMemoryLock } from "@/lib/memory/write-guard";
-import { query } from "@/lib/db";
+import { query, queryClient, type PoolClient } from "@/lib/db";
 import { completeChat } from "@/lib/llm";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
@@ -135,8 +135,9 @@ export async function createRitual(params: {
   return mapRitualRow(rows[0]);
 }
 
-export async function getRitualById(id: string): Promise<RitualRow | null> {
-  const { rows } = await query<Record<string, unknown>>(
+export async function getRitualById(id: string, client?: PoolClient): Promise<RitualRow | null> {
+  const run = client ? <T extends import("pg").QueryResultRow>(sql: string, values: unknown[]) => queryClient<T>(client, sql, values) : query;
+  const { rows } = await run<Record<string, unknown>>(
     "SELECT * FROM rituals WHERE id = $1",
     [id]
   );
@@ -269,11 +270,12 @@ export async function saveRitualCards(
 
 export async function markRitualPaidAndGenerating(
   id: string,
-  opts?: { paymentStatus?: "paid" | "free"; transactionId?: string | null }
+  opts?: { paymentStatus?: "paid" | "free"; transactionId?: string | null; client?: PoolClient }
 ): Promise<RitualRow | null> {
   const paymentStatus = opts?.paymentStatus ?? "paid";
   // Atomic claim: only transition from payment → generating (prevents double-pay races).
-  const { rows } = await query<Record<string, unknown>>(
+  const run = opts?.client ? <T extends import("pg").QueryResultRow>(sql: string, values: unknown[]) => queryClient<T>(opts.client!, sql, values) : query;
+  const { rows } = await run<Record<string, unknown>>(
     `UPDATE rituals
      SET payment_status = $2, transaction_id = $3, status = 'generating', updated_at = NOW()
      WHERE id = $1 AND status = 'payment'
@@ -329,7 +331,8 @@ export async function attemptRitualGeneration(
 
 export async function saveGeneratedRitual(
   id: string,
-  content: RitualGeneratedContent
+  content: RitualGeneratedContent,
+  source?: Pick<RitualRow, "user_id" | "transaction_id">
 ): Promise<RitualRow | null> {
   const remindAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
   const { rows } = await query<Record<string, unknown>>(
@@ -347,6 +350,7 @@ export async function saveGeneratedRitual(
        remind_at = $11,
        updated_at = NOW()
      WHERE id = $1 AND status = 'generating'
+       ${source ? "AND user_id=$12 AND transaction_id IS NOT DISTINCT FROM $13::uuid" : ""}
      RETURNING *`,
     [
       id,
@@ -360,6 +364,7 @@ export async function saveGeneratedRitual(
       JSON.stringify(content.ritual_forbids),
       JSON.stringify(content.ritual_signs),
       remindAt,
+      ...(source ? [source.user_id, source.transaction_id] : []),
     ]
   );
   return rows[0] ? mapRitualRow(rows[0]) : null;
@@ -601,7 +606,7 @@ export async function generateRitualContent(
 
   if (!parsed) return null;
 
-  return saveGeneratedRitual(ritual.id, parsed);
+  return saveGeneratedRitual(ritual.id, parsed, ritual);
 }
 
 export function getQuestionsForRitual(ritualType: RitualType): string[] {

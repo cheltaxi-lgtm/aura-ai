@@ -214,6 +214,8 @@ async function handlePost(request: NextRequest) {
       extendedCharge = await BillingService.chargeRuneAction({
         userId,
         action: "DAILY_EXTENDED",
+        idempotencyKey: `daily-extended:${localDate}`,
+        operationIdentity: `daily-extended:${localDate}`,
       });
     } catch (err) {
       if (err instanceof InsufficientFundsError) {

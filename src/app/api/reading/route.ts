@@ -4,6 +4,8 @@ import { matrixYearForecast } from "@/lib/numerology/matrix-year-forecast";
 import { matrixCompatibility } from "@/lib/numerology/matrix-compatibility";
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { NextRequest, NextResponse } from "next/server";
+import { createHash } from "node:crypto";
+import { readingPromptAstroMetadata, spreadReadingResourceKey } from "@/lib/reading-resource-identity";
 import { ensureDb, query, withTransaction } from "@/lib/db";
 import { hasPaidAccess, unlockSingleSession, getSessionMessagesForLlm } from "@/lib/session";
 import { buildCharacterPrompt, buildHumanReadingPrompt, generateReading } from "@/lib/chat-prompts";
@@ -18,7 +20,10 @@ import {
   getAsyncJobAttemptFromRequest,
   getAsyncJobWorkerUserId,
   isAsyncJobWorkerConfigured,
+  getReportWorkerJobFromRequest,
 } from "@/lib/async-job-worker-auth";
+import { saveHistoryProductReceipt } from "@/lib/services/history-product-receipt";
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
@@ -39,11 +44,14 @@ import { getSetting } from "@/lib/settings";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import { isRuneBillingActive } from "@/lib/rune-service";
-import { getRuneSettings } from "@/lib/rune-settings";
+import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  buildFallbackChargeIdempotencyKey,
+  BillingIdempotencyConflictError,
+  billingIdempotencyConflictResponse,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { buildNatalPromptContext } from "@/lib/prompts/natal-context";
@@ -637,6 +645,10 @@ async function handlePost(request: NextRequest) {
       accountId: authed.auth.sub,
       profileUserId: authed.profileUserId,
     });
+    if (!isNumerologMaster(characterId) && getAsyncJobIdFromRequest(request)) {
+      const recovered = await recoverSavedWorkerReport(authed.profileUserId, getReportWorkerJobFromRequest(request));
+      if (recovered) return NextResponse.json({ ...recovered, reused: true });
+    }
 
     if (await ensureDb()) {
       if (sessionId) {
@@ -868,6 +880,20 @@ async function handlePost(request: NextRequest) {
             matrixSubjectId: resolvedMatrixSubject?.id,
           })
         : tarotCardsKey(tarotCards));
+    const readingResourceKey = !isNumerologMaster(characterId) && !introReading && !guestResume
+      ? spreadReadingResourceKey({
+          characterId, sessionId: sessionId ?? null, tarotCards,
+          deckSystem: resolveMasterDeckSystem(characterId), spreadId, positionLabels,
+          intention: readingIntention, customQuestion, readingScope, spreadType,
+          dailySourceId: dailyReading?.sourceId ?? null,
+          profile: { userName, gender, zodiac, birthDate, birthTime, birthCity, lifeFocus, mainQuestion, astroMeta: readingPromptAstroMetadata(astroMeta) },
+          natalChartBlock,
+          // Explicit regeneration is another purchase; a worker retry retains its job identity.
+          regeneration: forceRegenerate ? (getAsyncJobIdFromRequest(request) ??
+            request.headers.get("Idempotency-Key") ?? rawBody.idempotencyKey ?? rawBody.requestId ??
+            Math.floor(Date.now() / 30_000)) : null,
+        })
+      : cardsKey;
     // Full Matrix buy-once lives in numerology_report_history only.
     // History cache reused the old watery report even after report rows were deleted.
     const skipHistoryCacheForMatrix =
@@ -916,13 +942,13 @@ async function handlePost(request: NextRequest) {
 
     const lockKey = isGuestResumeFree && guestResume
       ? `guest-resume:${guestResume.fingerprint}`
-      : cardsKey;
+      : readingResourceKey;
 
-    if (await ensureDb() && cardsKey && !forceRegenerate && !skipHistoryCacheForMatrix) {
+    if (await ensureDb() && cardsKey && (!forceRegenerate || readingResourceKey.startsWith("spread-resource:")) && !skipHistoryCacheForMatrix) {
       const existing = await findSpreadReadingEntry(
         authed.profileUserId,
         characterId,
-        cardsKey
+        readingResourceKey
       );
       if (existing && isAiCacheReusable(existing.context_data)) {
         return respondWithExistingSpreadReading({
@@ -948,11 +974,11 @@ async function handlePost(request: NextRequest) {
     }
 
     const runLockedGeneration = async () => {
-      if (await ensureDb() && cardsKey && !forceRegenerate && !skipHistoryCacheForMatrix) {
+      if (await ensureDb() && cardsKey && (!forceRegenerate || readingResourceKey.startsWith("spread-resource:")) && !skipHistoryCacheForMatrix) {
         const existing = await findSpreadReadingEntry(
           authed.profileUserId,
           characterId,
-          cardsKey
+          readingResourceKey
         );
         if (existing && isAiCacheReusable(existing.context_data)) {
           return { kind: "existing" as const, existing };
@@ -1601,11 +1627,19 @@ async function handlePost(request: NextRequest) {
         isRuneBillingActive(authed.profileUserId, unlimited, runeSettings);
       let runeBalance: number | undefined;
 
-      if (useRuneBilling) {
+      if (useRuneBilling || (!isDailySpread && !isIntroSpread && !isGuestResumeFree && getAsyncJobIdFromRequest(request))) {
         try {
-          const charge = await BillingService.chargeRuneAction({
+          const charge = getAsyncJobIdFromRequest(request) ? await chargeRuneActionForWorkerJob({
+            request, userId: authed.profileUserId, action: "READING", operationIdentity: readingResourceKey,
+            legacyPurchase: { idempotencyKey: `reading:${createHash("sha256").update(readingResourceKey).digest("hex").slice(0, 40)}`, operationIdentity: readingResourceKey },
+          }) : await BillingService.chargeRuneAction({
             userId: authed.profileUserId,
             action: "READING",
+            idempotencyKey: `reading:${createHash("sha256").update(readingResourceKey).digest("hex").slice(0, 40)}`,
+            operationIdentity: readingResourceKey,
+            legacyIdempotencyKeys: [buildFallbackChargeIdempotencyKey({
+              userId: authed.profileUserId, actionType: "READING", cost: runeCostFromSettings(runeSettings, "READING"),
+            })],
           });
           billingCharge = charge;
           runeBalance = charge.newBalance;
@@ -1746,6 +1780,10 @@ async function handlePost(request: NextRequest) {
             reading,
             tarotCards,
             deckSystem,
+            readingResourceKey,
+            transactionId: billingCharge?.transactionId ?? null,
+            spreadId,
+            readingScope,
             userName,
             zodiac,
             gender,
@@ -1774,9 +1812,14 @@ async function handlePost(request: NextRequest) {
               await recordIntroReadingConsumed(authed.profileUserId, client);
               return saved;
             })
-          : await createHistoryEntry(historyInput);
+          : await saveHistoryProductReceipt({ request, history: historyInput, transactionId: billingCharge?.transactionId,
+              result: { reading, isPaid, runeBalance, spreadId: storedSpreadId, createdAt: new Date().toISOString() } });
         historyId = entry.id;
 
+        // Delivery metadata can fail after the purchased result is durable.
+        // Keep that result paid and let the same request reopen its history.
+        billingCharge = null;
+        spentRunes = 0;
         if (isGuestResumeFree && sessionId && historyId) {
           await setGuestResumeReadingId(sessionId, authed.profileUserId, historyId);
         }
@@ -1910,6 +1953,7 @@ async function handlePost(request: NextRequest) {
     return NextResponse.json(successPayload);
   } catch (error) {
     console.error("Reading error:", error);
+    if (error instanceof BillingIdempotencyConflictError) return billingIdempotencyConflictResponse();
     if (typeof deliveredMatrixMetadata.reportId === "string") {
       const saved = await getUserMatrixReportById(authed.profileUserId, deliveredMatrixMetadata.reportId).catch(() => null);
       if (saved) {

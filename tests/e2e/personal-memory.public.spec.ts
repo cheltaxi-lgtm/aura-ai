@@ -1,13 +1,12 @@
 import { expect, test } from "@playwright/test";
 import { loadEnvConfig } from "@next/env";
 import { SignJWT } from "jose";
-import { randomUUID } from "node:crypto";
 
 for (const width of [390, 1280]) {
   test(`memory works visibly: source, search, correction, failure and deletion (${width})`, async ({ page, baseURL }, testInfo) => {
     test.skip(!baseURL || !["127.0.0.1", "localhost"].includes(new URL(baseURL).hostname), "Synthetic identity is local-only");
     loadEnvConfig(process.cwd(), true);
-    const token = await new SignJWT({ role: "user", tv: 0 }).setSubject(randomUUID())
+    const token = await new SignJWT({ role: "user", tv: 0 }).setSubject("33333333-3333-4333-8333-333333333333")
       .setProtectedHeader({ alg: "HS256" }).setIssuedAt().setExpirationTime("5m")
       .sign(new TextEncoder().encode(process.env.AUTH_SECRET || "dev-secret-change-in-production"));
     await page.context().addCookies([{ name: "aura_auth", value: token, url: baseURL!, httpOnly: true, sameSite: "Lax" }]);

@@ -54,7 +54,8 @@ const testFromFiles =
   readEnvFile(".env.test.local").TEST_DATABASE_URL ||
   readEnvFile(".env.test").TEST_DATABASE_URL ||
   "";
-const testUrl = (process.env.TEST_DATABASE_URL || testFromFiles || "").trim();
+const pureOnly = process.env.INVARIANTS_PURE_ONLY === "1";
+const testUrl = pureOnly ? "" : (process.env.TEST_DATABASE_URL || testFromFiles || "").trim();
 if (testUrl) process.env.TEST_DATABASE_URL = testUrl;
 
 // Load remaining keys without clobbering TEST_DATABASE_URL / redirected DATABASE_URL.
@@ -62,6 +63,15 @@ applyEnvFile(".env");
 applyEnvFile(".env.local");
 applyEnvFile(".env.test");
 applyEnvFile(".env.test.local");
+
+if (pureOnly) {
+  // Independent pure reviews must never pick up the shared PostgreSQL fixture
+  // implicitly. Any accidentally unguarded DB call also fails on loopback.
+  delete process.env.TEST_DATABASE_URL;
+  delete process.env.TEST_PRO_DATABASE_URL;
+  process.env.DATABASE_URL = "postgresql://blocked:blocked@127.0.0.1:9/blocked_test";
+  process.env.PRO_DATABASE_URL = process.env.DATABASE_URL;
+}
 
 if (testUrl) {
   const lower = testUrl.toLowerCase();

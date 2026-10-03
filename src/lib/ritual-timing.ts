@@ -1,3 +1,4 @@
+import { calendarParts, calendarInstant, calendarDateString, PRODUCT_TIME_ZONE } from "@/lib/product-calendar";
 import type { RitualType } from "@/lib/ritual-config";
 import { getMoonPhase } from "@/lib/moon";
 
@@ -42,20 +43,21 @@ const TYPE_PLANET_HINT: Record<RitualType, string> = {
   career: "Юпитер и Меркурий открывают путь к успеху",
 };
 
-export function formatRitualCalendarDate(date: Date): string {
+export function formatRitualCalendarDate(date: Date, timeZone = PRODUCT_TIME_ZONE): string {
   const dayMonthYear = date.toLocaleDateString("ru-RU", {
+    timeZone,
     day: "numeric",
     month: "long",
     year: "numeric",
   });
-  const weekday = date.toLocaleDateString("ru-RU", { weekday: "long" });
+  const weekday = date.toLocaleDateString("ru-RU", { weekday: "long", timeZone });
   return `${dayMonthYear}, ${weekday}`;
 }
 
-export function formatRitualTimeLabel(date: Date): string {
-  const h = date.getHours().toString().padStart(2, "0");
-  const m = date.getMinutes().toString().padStart(2, "0");
-  return `${formatRitualCalendarDate(date)}, ${h}:${m}`;
+export function formatRitualTimeLabel(date: Date, timeZone = PRODUCT_TIME_ZONE): string {
+  const h = calendarParts(date, timeZone).hour.toString().padStart(2, "0");
+  const m = calendarParts(date, timeZone).minute.toString().padStart(2, "0");
+  return `${formatRitualCalendarDate(date, timeZone)}, ${h}:${m}`;
 }
 
 export interface RitualSchedule {
@@ -66,45 +68,41 @@ export interface RitualSchedule {
   factors: string[];
 }
 
-function startOfLocalDay(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(12, 0, 0, 0);
-  return d;
-}
-
 /**
  * Picks the nearest calendar moment when moon phase favours this ritual type
  * and planetary weekday matches tradition.
  */
 export function computeRitualSchedule(
   ritualType: RitualType,
-  fromDate: Date = new Date()
+  fromDate: Date = new Date(),
+  timeZone = PRODUCT_TIME_ZONE
 ): RitualSchedule {
-  const from = startOfLocalDay(fromDate);
+  const from = calendarParts(fromDate, timeZone);
   let best: { day: Date; score: number; moon: ReturnType<typeof getMoonPhase> } | null =
     null;
 
   for (let offset = 0; offset <= 28; offset++) {
-    const day = new Date(from);
-    day.setDate(day.getDate() + offset);
+    const civilDate = calendarDateString(from.year, from.month, from.day + offset);
+    const day = calendarInstant(civilDate, TYPE_HOUR[ritualType], timeZone);
+    if (!day || day.getTime() < fromDate.getTime()) continue;
     const moon = getMoonPhase(day);
 
     if (!moon.favorable.includes(ritualType)) continue;
 
     let score = 200 - offset;
-    if (TYPE_WEEKDAY[ritualType].includes(day.getDay())) score += 30;
+    if (TYPE_WEEKDAY[ritualType].includes(new Date(`${civilDate}T12:00:00Z`).getUTCDay())) score += 30;
 
     if (!best || score > best.score) {
       best = { day, score, moon };
     }
   }
 
-  const pickedDay = best?.day ?? from;
-  const moon = best?.moon ?? getMoonPhase(pickedDay);
-  const at = new Date(pickedDay);
-  at.setHours(TYPE_HOUR[ritualType], 0, 0, 0);
-
-  const planet = PLANET_BY_DOW[at.getDay()];
+  // All ritual types have a favorable phase within one lunar month.
+  if (!best) throw new Error("NO_FUTURE_RITUAL_TIME");
+  const at = best.day;
+  const moon = best.moon;
+  const parts = calendarParts(at, timeZone);
+  const planet = PLANET_BY_DOW[new Date(Date.UTC(parts.year, parts.month - 1, parts.day)).getUTCDay()];
   const factors = [
     `${moon.phase} в ${moon.sign}`,
     `${planet}: ${TYPE_PLANET_HINT[ritualType]}`,
@@ -112,7 +110,7 @@ export function computeRitualSchedule(
 
   return {
     at,
-    label: formatRitualTimeLabel(at),
+    label: formatRitualTimeLabel(at, timeZone),
     moonPhase: moon.phase,
     moonSign: moon.sign,
     factors,

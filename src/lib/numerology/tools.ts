@@ -1,3 +1,4 @@
+import { calendarParts } from "@/lib/product-calendar";
 import { parseBirthDate } from "./constants";
 import type { NumerologyTopic } from "./topic-handlers";
 import { PRICING } from "@/lib/config/pricing";
@@ -321,7 +322,7 @@ export function numerologToolPositions(
   opts?: { fromYear?: number }
 ): string[] {
   if (toolId === "forecast_9y") {
-    const start = opts?.fromYear ?? new Date().getFullYear();
+    const start = opts?.fromYear ?? calendarParts().year;
     return Array.from({ length: 9 }, (_, i) => String(start + i));
   }
   return getNumerologTool(toolId).positions;
@@ -567,7 +568,7 @@ export function buildNumerologSpreadCards(
   }
 ): { spreadCards: SpreadSymbol[]; system: DeckSystem } {
   const drawCount = numerologToolDrawCount(toolId);
-  const fromYear = new Date().getFullYear();
+  const fromYear = calendarParts().year;
   let previewCards = options?.previewCards;
 
   if (toolId === "forecast_9y" && options?.birthDate && parseBirthDate(options.birthDate)) {

@@ -10,6 +10,8 @@ import { filterPractitionerOutput } from "../safety";
 import { polishProReportPlainText, polishProReportTitle } from "./report-plain";
 
 export async function refineProReportBlock(params: {
+  beforeRequest?:()=>Promise<void>;
+  deadlineAt?:number;
   block: ProReportBlock;
   instruction: string;
   clientAlias: string;
@@ -42,6 +44,7 @@ ${params.block.body}
 
   const text = await completeChat({
     messages,
+    beforeRequest:params.beforeRequest,deadlineAt:params.deadlineAt,
     maxTokens: 3000,
     isPaid: true,
     priority: "report",

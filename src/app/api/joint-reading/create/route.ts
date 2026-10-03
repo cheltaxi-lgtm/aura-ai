@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from "next/server";
 import { ensureDb } from "@/lib/db";
+import { createHash } from "node:crypto";
 import {
   profileAuthFailureResponse,
   resolveProfileUserContext,
 } from "@/lib/require-auth";
 import {
   getAsyncJobWorkerUserId,
+  getAsyncJobIdFromRequest,
   isAsyncJobWorkerConfigured,
 } from "@/lib/async-job-worker-auth";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
@@ -23,6 +25,7 @@ import {
   ConfirmedCostExceededError,
   InsufficientFundsError,
   insufficientFundsResponse,
+  CHARGE_IDEM_WINDOW_SEC,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
@@ -119,6 +122,9 @@ export async function POST(request: NextRequest) {
     resolvedPartnerName ?? "",
     forceNew ? "force" : "reuse",
   ].join("|");
+  const operation = getAsyncJobIdFromRequest(request) ?? idempotencyKey ??
+    String(Math.floor(Date.now() / (CHARGE_IDEM_WINDOW_SEC * 1000)));
+  const purchaseKey = `joint-create:${createHash("sha256").update(JSON.stringify([partnerKey, operation])).digest("hex").slice(0, 40)}`;
 
   if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
     return enqueuePaidAsyncJob({
@@ -170,6 +176,8 @@ export async function POST(request: NextRequest) {
         action: "JOINT_READING",
         hasFullAccess: false,
         maxCost: confirmedCost,
+        idempotencyKey: purchaseKey,
+        operationIdentity: purchaseKey,
       });
       await trackWorkerJobCharged(request, charge.transactionId);
     }
@@ -183,8 +191,17 @@ export async function POST(request: NextRequest) {
     throw err;
   }
 
+  let inviteSaved = false;
   try {
+    // A paid purchase uses its ledger UUID. Exempt purchases use a deterministic
+    // UUID v5 scoped to this owner and accepted operation, without a ledger row.
+    const digest = createHash("sha1")
+      .update(Buffer.from("6ba7b8109dad11d180b400c04fd430c8", "hex"))
+      .update(JSON.stringify([authed.profileUserId, purchaseKey])).digest("hex").slice(0, 32);
+    const exemptId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-${
+      ((parseInt(digest[16], 16) & 3) | 8).toString(16)}${digest.slice(17, 20)}-${digest.slice(20)}`;
     const invite = await createJointReadingInvite({
+      id: charge?.transactionId ?? exemptId,
       initiatorUserId: authed.profileUserId,
       initiatorName: resolvedInitiatorName,
       partnerName: resolvedPartnerName,
@@ -193,6 +210,7 @@ export async function POST(request: NextRequest) {
       reuseExisting: false,
       runeCharged: Boolean(charge),
     });
+    inviteSaved = true;
 
     const payload = {
       token: invite.token,
@@ -207,7 +225,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(payload);
   } catch (err) {
     let actuallyRefunded=false;
-    if (charge) {
+    if (charge && !inviteSaved) {
       const rollback=await BillingService.rollbackChargeEx({
         userId: authed.profileUserId,
         cost: charge.spentRunes,

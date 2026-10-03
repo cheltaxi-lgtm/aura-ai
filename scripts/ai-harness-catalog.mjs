@@ -113,9 +113,30 @@ export const CHECKS = {
     title: "ads-unit",
     cmd: ["npx", "tsx", "src/modules/ads/__tests__/ads-unit.ts"],
   },
+  "ads-guards": { title: "ads-guards", cmd: ["npx", "tsx", "src/modules/ads/__tests__/ads-guards-unit.ts"] },
+  "telegram-auth": { title: "telegram-auth", cmd: ["npx", "tsx", "src/lib/telegram/__tests__/verify.test.ts"] },
+  "seo-source-unit": { title: "seo-source-unit", vitest: ["src/lib/seo/indexability.test.ts", "src/lib/seo/bot-query-redirect.test.ts"] },
+  "memory-quality": { title: "memory-quality", npm: "verify:memory-quality" },
+  "deck-images": { title: "deck-images", npm: "verify:deck-images" },
+  "module-a": { title: "module-a", npm: "verify:module-a" },
+  "android-release": { title: "android-release", npm: "verify:android-release" },
+  "schema-diff": { title: "schema-diff", npm: "schema:diff", testDatabase: true, expensive: true },
+  "pro-verify": { title: "pro-verify", npm: "verify:pro", testDatabase: true },
+  "e2e-all": {
+    title: "e2e-all",
+    cmd: ["npx", "playwright", "test"],
+    requiredEnv: ["NATAL_E2E_BASE_URL", "NATAL_E2E_STORAGE_STATE"],
+    requiredEnvValues: { FIRST_EXPERIENCE_E2E_LOCAL: "1", GUEST_CONVERSION_E2E_LIVE: "1" },
+    localUrls: ["NATAL_E2E_BASE_URL"],
+    expensive: true,
+  },
 
   "telegram-typecheck": { title: "telegram-typecheck", cmd: ["npm", "run", "typecheck"], cwd: "telegram-bot" },
-  "telegram-test": { title: "telegram-test", cmd: ["npm", "test"], cwd: "telegram-bot" },
+  "telegram-test": {
+    title: "telegram-test", cmd: ["npm", "test"], cwd: "telegram-bot",
+    // Pure bot fixtures must never inherit a live token or site endpoint.
+    env: { TELEGRAM_BOT_TOKEN: "000000:harness-fake-token", SITE_INTERNAL_BASE_URL: "http://127.0.0.1:9", ZOVUS_SITE_URL: "http://127.0.0.1:9" },
+  },
   "telegram-unit": {
     title: "telegram-unit",
     // Billing fixtures truncate shared tables; separate files must not race.
@@ -133,11 +154,14 @@ export const CHECKS = {
     ],
   },
 
-  "invariants-all": { title: "invariants", npm: "test:invariants", expensive: true },
+  "invariants-all": {
+    title: "invariants", npm: "test:invariants", testDatabase: true, expensive: true,
+    requiredEnv: ["TEST_PRO_DATABASE_URL"], forbiddenEnvValues: { INVARIANTS_PURE_ONLY: "1" },
+  },
   "product-suite": { title: "product-suite", npm: "test", expensive: true },
   oauth: { title: "oauth", npm: "verify:oauth" },
   "account-deleted": { title: "account-deleted", npm: "verify:account-deleted" },
-  recaptcha: { title: "recaptcha", npm: "test:recaptcha" },
+  recaptcha: { title: "recaptcha", npm: "test:recaptcha", requiredEnv: ["RECAPTCHA_TEST_BASE_URL"], localUrls: ["RECAPTCHA_TEST_BASE_URL"] },
   "app-shell": { title: "app-shell", npm: "verify:app-shell" },
   "ai-delivery": { title: "ai-delivery", npm: "verify:ai-delivery" },
 
@@ -280,7 +304,7 @@ export const SCOPES = {
     ],
     reviews: ["code", "calc", "visual", "security", "production"],
     fast: [...CORE_FAST, "guardrails"],
-    full: [...CORE_FULL, "product-suite", "invariants-all", "telegram-test", "oauth", "account-deleted", "build"],
+    full: [...CORE_FULL, "product-suite", "invariants-all", "seo-source-unit", "telegram-typecheck", "telegram-test", "telegram-auth", "ads-unit", "ads-guards", "memory-quality", "deck-images", "photo-aliases", "app-shell", "module-a", "android-release", "schema-diff", "pro-verify", "oauth", "account-deleted", "recaptcha", "e2e-all", "build"],
     production: ["prod-health", "prod-smoke"],
   },
 };

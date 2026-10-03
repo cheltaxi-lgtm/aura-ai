@@ -134,7 +134,11 @@ export async function verifyTokenWithVersion(token: string): Promise<AuthPayload
     const tv = await getAccountTokenVersion(payload.sub);
     if (tv === null) return null;
     if ((Number(payload.tv ?? 0) || 0) !== tv) return null;
-  }
+  } else if (payload.role === "admin" || payload.role === "expert") {
+    const table = payload.role === "admin" ? "admin_accounts" : "expert_accounts";
+    const active = await query(`SELECT id FROM ${table} WHERE id = $1 AND is_active = TRUE LIMIT 1`, [payload.sub]);
+    if (!active.rows[0]) return null;
+  } else return null;
   return payload;
 }
 
@@ -149,15 +153,20 @@ export function authCookieOptions(request?: CookieRequestContext) {
 }
 
 async function withTokenVersion(payload: AuthPayload): Promise<AuthPayload | null> {
-  if (payload.role !== "user") return payload;
+  if (payload.role !== "user") {
+    if (payload.role !== "admin" && payload.role !== "expert") return null;
+    const table = payload.role === "admin" ? "admin_accounts" : "expert_accounts";
+    return (await query(`SELECT id FROM ${table} WHERE id = $1 AND is_active = TRUE LIMIT 1`, [payload.sub])).rows[0] ? payload : null;
+  }
   const tv = await getAccountTokenVersion(payload.sub);
   if (tv === null) return null;
+  if (payload.tv !== undefined && payload.tv !== tv) return null;
   return { ...payload, tv };
 }
 
 export async function setAuthCookie(payload: AuthPayload, request?: CookieRequestContext) {
   const enriched = await withTokenVersion(payload);
-  if (!enriched) return;
+  if (!enriched) return false;
   const token = await signToken(enriched);
   const jar = await cookies();
   jar.set(COOKIE, token, authCookieOptions(request));
@@ -165,6 +174,7 @@ export async function setAuthCookie(payload: AuthPayload, request?: CookieReques
     const { touchAccountLastLogin } = await import("@/lib/accounts");
     await touchAccountLastLogin(enriched.sub);
   }
+  return true;
 }
 
 /** Attach aura_auth on a redirect/JSON response (needed for WebView document navigations). */
@@ -174,13 +184,14 @@ export async function applyAuthCookie(
   request?: CookieRequestContext
 ) {
   const enriched = await withTokenVersion(payload);
-  if (!enriched) return;
+  if (!enriched) return false;
   const token = await signToken(enriched);
   response.cookies.set(COOKIE, token, authCookieOptions(request));
   if (enriched.role === "user") {
     const { touchAccountLastLogin } = await import("@/lib/accounts");
     await touchAccountLastLogin(enriched.sub);
   }
+  return true;
 }
 
 /**
@@ -207,16 +218,7 @@ export async function getAuth(): Promise<AuthPayload | null> {
   const jar = await cookies();
   const token = jar.get(COOKIE)?.value;
   if (!token) return null;
-  const payload = await verifyToken(token);
-  if (!payload) return null;
-
-  if (payload.role === "user") {
-    const tv = await getAccountTokenVersion(payload.sub);
-    if (tv === null) return null;
-    if ((Number(payload.tv ?? 0) || 0) !== tv) return null;
-  }
-
-  return payload;
+  return verifyTokenWithVersion(token);
 }
 
 export function normalizeAuthEmail(email: string): string {

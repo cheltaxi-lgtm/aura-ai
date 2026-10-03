@@ -4,6 +4,7 @@ const m = vi.hoisted(() => ({
   charge: vi.fn(), refund: vi.fn(), prior: vi.fn(), generate: vi.fn(), save: vi.fn(),
   find: vi.fn(), fromContext: vi.fn(), failed: vi.fn(), events: [] as string[],
   lockKeys: [] as string[], lockTail: Promise.resolve(), persisted: false,
+  actualHash: false,
 }));
 vi.mock("@/lib/db", () => ({ ensureDb: async () => true }));
 vi.mock("@/lib/settings", () => ({ isPhotoReadingEnabled: async () => true }));
@@ -28,8 +29,11 @@ vi.mock("@/lib/services/billing-service", () => ({
   InsufficientFundsError: class extends Error {}, insufficientFundsResponse: vi.fn(),
 }));
 vi.mock("@/lib/photo-reading-billing", () => ({ resolvePhotoReadingPricing: async () => ({ effectiveCost: 30, firstPhotoDiscount: false }) }));
-vi.mock("@/lib/photo-reading-idempotency", () => ({
-  buildPhotoSpreadKey: () => "spread-key", findPhotoReadingEntry: m.find,
+vi.mock("@/lib/photo-reading-idempotency", async original => {
+  const actual = await original<typeof import("@/lib/photo-reading-idempotency")>();
+  return { ...actual,
+  buildPhotoSpreadKey: (...args: Parameters<typeof import("@/lib/photo-reading-idempotency").buildPhotoSpreadKey>) => m.actualHash
+    ? actual.buildPhotoSpreadKey(...args) : "spread-key", findPhotoReadingEntry: m.find,
   getPhotoChargeReuseState: m.prior,
   withPhotoReadingLock: async (_user: string, key: string, fn: () => Promise<unknown>) => {
     m.lockKeys.push(key);
@@ -39,7 +43,7 @@ vi.mock("@/lib/photo-reading-idempotency", () => ({
     await previous;
     try { return await fn(); } finally { m.events.push("unlock"); release(); }
   },
-}));
+}; });
 vi.mock("@/lib/photo-reading-persist", () => ({ persistPhotoReadingResult: m.save, photoReadingJsonFromContext: m.fromContext }));
 vi.mock("@/lib/async-job-worker-auth", () => ({ getAsyncJobWorkerUserId: () => null, isAsyncJobWorkerConfigured: () => false }));
 vi.mock("@/lib/async-job-enqueue", () => ({ enqueuePaidAsyncJob: vi.fn() }));
@@ -59,9 +63,9 @@ vi.mock("@/lib/photo-reading-stream", () => ({
 }));
 import { POST } from "@/app/api/photo-reading/stream/route";
 
-function request(async = true, idempotencyKey = "photo-key") {
+function request(async = true, idempotencyKey = "photo-key", question = "test") {
   return new NextRequest("http://localhost/api/photo-reading/stream", { method: "POST", body: JSON.stringify({
-    async, question: "test", idempotencyKey, confirmedSpread: { cards: [{ name: "Солнце" }], deckType: "tarot", spreadType: "single" },
+    async, question, idempotencyKey, confirmedSpread: { cards: [{ name: "Солнце" }], deckType: "tarot", spreadType: "single" },
   }) });
 }
 
@@ -72,6 +76,7 @@ describe("photo delivery and refund regressions", () => {
     m.lockKeys.length = 0;
     m.lockTail = Promise.resolve();
     m.persisted = false;
+    m.actualHash = false;
     m.charge.mockReset().mockResolvedValue({ spentRunes: 30, newBalance: 270, wasFreeQuestion: false, transactionId: "charge-1" });
     m.refund.mockReset().mockResolvedValue({ balance: 300, refunded: true });
     m.generate.mockReset().mockResolvedValue({ reply: "saved reading", llmFailed: false });
@@ -83,6 +88,16 @@ describe("photo delivery and refund regressions", () => {
     const response = await POST(request());
     expect(response.headers.get("content-type")).toContain("application/json");
     expect(await response.json()).toMatchObject({ analysis: "saved reading", saved: true, historyId: "history" });
+  });
+  it("question suffix after 200 characters has its own cache and payment identity", async () => {
+    m.actualHash = true; const prefix = "Описание жизненной ситуации ".repeat(10).slice(0, 200);
+    expect((await POST(request(true, "same-key", `${prefix} Первый вопрос о работе.`))).status).toBe(200);
+    const firstCacheKey = m.find.mock.calls.at(-1)![1];
+    expect((await POST(request(true, "same-key", `${prefix} Другой вопрос об отношениях.`))).status).toBe(200);
+    const first = m.charge.mock.calls[0][0], second = m.charge.mock.calls[1][0];
+    expect(first.idempotencyKey).not.toBe(second.idempotencyKey); expect(first.operationIdentity).not.toBe(second.operationIdentity);
+    expect(first.legacyIdempotencyKeys).toEqual(second.legacyIdempotencyKeys);
+    expect(firstCacheKey).not.toBe(m.find.mock.calls.at(-1)![1]);
   });
   it.each([true, false])("reports only the confirmed refund outcome: %s", async (refunded) => {
     m.generate.mockResolvedValue({ reply: "", llmFailed: true });

@@ -1,7 +1,9 @@
 import { captureMemoryGenerationForRequest } from "@/lib/memory/request-capture";
 import { ensureOwnedMatrixSnapshot } from "@/lib/services/matrix-snapshot-persist";
 import { NextRequest, NextResponse } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
+import { readingPromptAstroMetadata, semanticResourceFingerprint } from "@/lib/reading-resource-identity";
+import { withReadingLock } from "@/lib/reading-lock";
 import { ensureDb } from "@/lib/db";
 import {
   profileAuthFailureResponse,
@@ -33,6 +35,9 @@ import {
   InsufficientFundsError,
   insufficientFundsResponse,
   readRequestChargeIdempotencyKey,
+  BillingIdempotencyConflictError,
+  billingIdempotencyConflictResponse,
+  CHARGE_IDEM_WINDOW_SEC,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
@@ -740,14 +745,32 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: "Could not resolve cards" }, { status: 500 });
   }
 
-  if (intention !== "custom" && (await ensureDb())) {
-    const history = await getUserReadingHistory(authed.profileUserId);
+  const clientKey = readRequestChargeIdempotencyKey(request, rawBody);
+  const noSessionAttempt = getAsyncJobIdFromRequest(request) ?? (clientKey
+    ? createHash("sha256").update(clientKey).digest("hex").slice(0, 16)
+    : Math.floor(Date.now() / (CHARGE_IDEM_WINDOW_SEC * 1000)));
+  const identity = semanticResourceFingerprint({
+    characterId, sessionId: sessionId ?? null, intention, spreadId, customQuestion,
+    cards: drawn.map(card => [card.name, card.reversed ?? false, card.meaning]),
+    system, positionLabels, jointToken: jointToken ?? null,
+    profile: { userName, gender, zodiac, birthDate, birthTime, birthCity, lifeFocus, mainQuestion,
+      astroMeta: readingPromptAstroMetadata(astroMeta) },
+    attempt: !sessionId && !jointToken ? noSessionAttempt : null,
+  }).slice(0, 32);
+  const purchaseKey = jointToken
+    ? `joint-personal:${jointToken}:${identity}`
+    : sessionId ? `intention-spread:${sessionId}:${identity}` : `intention-spread:${identity}`;
+  const resourceIdentity = `intention-resource:${identity}`;
+  return withReadingLock(`intention:${authed.profileUserId}:${resourceIdentity}`, async () => {
+  if (await ensureDb()) {
+    const history = await getUserReadingHistory(authed.profileUserId, resourceIdentity);
     const cached = findCachedIntentionSpread(
       history,
       characterId,
       intention,
       drawn.map((c) => ({ name: c.name })),
-      spreadId
+      spreadId,
+      { sessionId, requireSessionId: Boolean(sessionId), resourceIdentity }
     );
     if (cached?.reading && isAiCacheReusable(cached)) {
       const cardNames = drawn.map((c) => c.name);
@@ -840,10 +863,10 @@ export async function POST(request: NextRequest) {
         cost: spreadCost,
         actionType: "INTENTION_SPREAD",
         sessionId,
-        idempotencyKey: jointToken
-          ? `joint-personal:${jointToken}:${getAsyncJobIdFromRequest(request) ?? randomUUID()}`
-          : readRequestChargeIdempotencyKey(request, rawBody) ??
-            (sessionId ? `intention-spread:${sessionId}:${spreadId}` : undefined),
+        idempotencyKey: purchaseKey,
+        operationIdentity: resourceIdentity,
+        legacyIdempotencyKeys: jointToken ? [] : [clientKey, sessionId ? `intention-spread:${sessionId}:${spreadId}` : undefined]
+          .filter((key): key is string => Boolean(key)),
       });
       billingCharge = charge;
       runeBalance = charge.newBalance;
@@ -851,20 +874,21 @@ export async function POST(request: NextRequest) {
       if (err instanceof InsufficientFundsError) {
         return insufficientFundsResponse(err);
       }
+      if (err instanceof BillingIdempotencyConflictError) return billingIdempotencyConflictResponse();
       throw err;
     }
   }
 
   // Charge dedupe: never re-run LLM — return cached reading or a pending resume payload.
   if (billingCharge?.deduplicated) {
-    const history = await getUserReadingHistory(authed.profileUserId);
+    const history = await getUserReadingHistory(authed.profileUserId, resourceIdentity);
     const cached = findCachedIntentionSpread(
       history,
       characterId,
       intention,
       drawn.map((c) => ({ name: c.name })),
       spreadId,
-      { sessionId, requireSessionId: intention === "custom" || Boolean(sessionId) }
+      { sessionId, requireSessionId: Boolean(sessionId), resourceIdentity }
     );
     if (cached?.reading && isAiCacheReusable(cached)) {
       const cleaned = sanitizeReadingForClient(
@@ -1295,6 +1319,8 @@ export async function POST(request: NextRequest) {
         isPaid: true,
         contextData: {
           type: "intention_spread",
+          intentionResourceKey: resourceIdentity,
+          transactionId: billingCharge?.transactionId ?? null,
           intention,
           spreadId,
           customQuestion: intention === "custom" ? customQuestion : undefined,
@@ -1344,4 +1370,5 @@ export async function POST(request: NextRequest) {
   };
   await trackWorkerJobCompleted(request, successPayload);
   return NextResponse.json(successPayload);
+  });
 }

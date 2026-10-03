@@ -155,6 +155,8 @@ export const FULL_DECK: TarotCard[] = [...MAJOR_ARCANA, ...MINOR_ARCANA];
 
 export const TRIPLET_POSITIONS = ["Прошлое", "Настоящее", "Будущее"] as const;
 
+/** Legacy display/history key. New daily identity uses spreadIdentityKey, with
+ * the validated deck, ids and orientations; do not use this for entitlement. */
 export function tarotCardsKey(cards: { name: string }[] | undefined): string {
   return (cards ?? []).map((c) => c.name).join("|");
 }

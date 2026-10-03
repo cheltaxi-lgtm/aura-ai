@@ -1,4 +1,6 @@
-import { tarotCardsKey } from "@/lib/tarot";
+import { spreadIdentityKey } from "@/lib/spread-identity";
+import type { DeckSystem } from "@/lib/decks/types";
+import { formatReversedCardName, parseCardOrientation } from "@/lib/card-orientation";
 
 /** Exact daily card identity — never reconstruct with reversed:false by default. */
 export type DailyTripletCard = {
@@ -8,7 +10,10 @@ export type DailyTripletCard = {
   reversed: boolean;
 };
 
-export function normalizeDailyTripletCards(raw: unknown): DailyTripletCard[] | null {
+export function normalizeDailyTripletCards(
+  raw: unknown,
+  options?: { allowLegacyMissingOrientation?: boolean }
+): DailyTripletCard[] | null {
   if (!Array.isArray(raw) || raw.length !== 3) return null;
   const cards: DailyTripletCard[] = [];
   for (let i = 0; i < 3; i++) {
@@ -17,6 +22,9 @@ export function normalizeDailyTripletCards(raw: unknown): DailyTripletCard[] | n
     const obj = item as Record<string, unknown>;
     const name = typeof obj.name === "string" ? obj.name.trim() : "";
     if (!name) return null;
+    if (obj.id !== undefined && !(typeof obj.id === "number" && Number.isSafeInteger(obj.id) && obj.id >= 0) &&
+        !(typeof obj.id === "string" && /^\d+$/.test(obj.id.trim()) && Number.isSafeInteger(Number(obj.id)))) return null;
+    if (obj.position !== undefined && !(typeof obj.position === "number" && Number.isInteger(obj.position) && obj.position >= 0 && obj.position < 3)) return null;
     const id =
       typeof obj.id === "number" && Number.isFinite(obj.id)
         ? Math.trunc(obj.id)
@@ -27,15 +35,16 @@ export function normalizeDailyTripletCards(raw: unknown): DailyTripletCard[] | n
       typeof obj.position === "number" && Number.isFinite(obj.position)
         ? Math.trunc(obj.position)
         : i;
-    const reversed = Boolean(obj.reversed);
+    if (typeof obj.reversed !== "boolean" && !(options?.allowLegacyMissingOrientation && obj.reversed === undefined)) return null;
+    const reversed = obj.reversed === true;
     cards.push({ id, name, position, reversed });
   }
   cards.sort((a, b) => a.position - b.position);
   return cards;
 }
 
-export function dailyCardsKey(cards: DailyTripletCard[]): string {
-  return tarotCardsKey(cards.map((c) => ({ name: c.name })));
+export function dailyCardsKey(cards: DailyTripletCard[], deckSystem: DeckSystem = "tarot-veronika"): string {
+  return spreadIdentityKey(deckSystem, cards);
 }
 
 export function parseSessionDailyCardNames(raw: unknown): string[] {
@@ -45,7 +54,9 @@ export function parseSessionDailyCardNames(raw: unknown): string[] {
       .map((c) => {
         if (typeof c === "string" && c.trim()) return c.trim();
         if (c && typeof c === "object" && typeof (c as { name?: unknown }).name === "string") {
-          return String((c as { name: string }).name).trim();
+          const card = c as { name: string; reversed?: unknown };
+          const parsed = parseCardOrientation(card.name);
+          return formatReversedCardName(parsed.name, typeof card.reversed === "boolean" ? card.reversed : parsed.reversed);
         }
         return "";
       })

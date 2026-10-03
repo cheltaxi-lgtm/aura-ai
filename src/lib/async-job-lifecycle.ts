@@ -1,5 +1,5 @@
 import type { NextRequest } from "next/server";
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { resolveUnlimitedAccess } from "@/lib/accounts";
 import {
@@ -29,6 +29,7 @@ import { getRuneSettings } from "@/lib/rune-settings";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import {
   BillingService,
+  BillingIdempotencyConflictError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 
@@ -185,20 +186,25 @@ async function billingChargeFromExistingTransaction(
   userId: string,
   transactionId: string,
   fallbackAction: RuneActionType,
-  client?: PoolClient
+  client?: PoolClient,
+  operationIdentities?: string[]
 ): Promise<BillingChargeResult | null> {
   const execute = client
     ? <T extends import("pg").QueryResultRow>(text: string, params?: unknown[]) => queryClient<T>(client, text, params)
     : query;
-  const { rows } = await execute<{ amount: number; action_type: string | null }>(
-    `SELECT ABS(amount) AS amount, action_type
-     FROM rune_transactions
-     WHERE id = $1 AND user_id = $2 AND amount < 0
+  const { rows } = await execute<{ amount: number; action_type: string | null; operation_identity: string | null; refunded: boolean }>(
+    `SELECT ABS(t.amount) AS amount, t.action_type, t.operation_identity,
+       EXISTS(SELECT 1 FROM rune_transactions rf WHERE rf.type='refund' AND rf.refund_of_transaction_id=t.id) AS refunded
+     FROM rune_transactions t
+     WHERE t.id = $1 AND t.user_id = $2 AND t.type='spend' AND t.amount < 0
      LIMIT 1`,
     [transactionId, userId]
   );
   const ledger = rows[0];
-  if (!ledger) return null;
+  if (!ledger || ledger.refunded) return null;
+  if (ledger.action_type !== fallbackAction) throw new BillingIdempotencyConflictError();
+  if (ledger.operation_identity && operationIdentities && !operationIdentities.some(identity =>
+    createHash("sha256").update(identity).digest("hex") === ledger.operation_identity)) throw new BillingIdempotencyConflictError();
   const newBalance = await getRuneBalance(userId, client);
   return {
     spentRunes: ledger.amount,
@@ -263,31 +269,15 @@ export async function chargeRuneActionForWorkerJob(input: {
   request: NextRequest;
   userId: string;
   action: RuneActionType;
+  operationIdentity?: string;
+  legacyPurchase?: { idempotencyKey: string; operationIdentity: string };
 }): Promise<BillingChargeResult> {
   const jobId = getAsyncJobIdFromRequest(input.request);
   const attempt = getAsyncJobAttemptFromRequest(input.request);
-  if (jobId) {
-    const job = await getAsyncJobById(jobId);
-    if (!job || job.user_id !== input.userId || !attempt || !asyncJobAttemptMatches(job, attempt)) throw new Error("stale_async_job_attempt");
-    if (
-      job &&
-      job.user_id === input.userId &&
-      attempt && asyncJobAttemptMatches(job, attempt) &&
-      job.billing_state === "charged" &&
-      job.charge_transaction_id
-    ) {
-      const reused = await billingChargeFromExistingTransaction(
-        input.userId,
-        job.charge_transaction_id,
-        input.action
-      );
-      if (reused) return reused;
-    }
-  }
-
   const unlimited = await resolveUnlimitedAccess({ profileUserId: input.userId });
   const runeSettings = await getRuneSettings();
-  if (!isRuneBillingActive(input.userId, unlimited, runeSettings)) {
+  const billingActive = isRuneBillingActive(input.userId, unlimited, runeSettings);
+  if (!jobId && !billingActive) {
     const balance = await getRuneBalance(input.userId);
     return {
       spentRunes: 0,
@@ -302,13 +292,38 @@ export async function chargeRuneActionForWorkerJob(input: {
     return withTransaction(async client => {
       const { rows } = await queryClient<AsyncJobRow>(client, `SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE`, [jobId]);
       const job = rows[0];
-      if (!job || job.user_id !== input.userId || !attempt || !asyncJobAttemptMatches(job, attempt) || !["unbilled", "charged"].includes(job.billing_state)) throw new Error("stale_async_job_attempt");
+      if (!job || job.user_id !== input.userId || !attempt || !asyncJobAttemptMatches(job, attempt) || !["unbilled", "charged", "refunded"].includes(job.billing_state)) throw new Error("stale_async_job_attempt");
+      const purchaseKey = `async:${jobId}:${input.action}`;
+      const operationIdentity = input.operationIdentity ? `${purchaseKey}:${input.operationIdentity}` : purchaseKey;
       if (job.charge_transaction_id) {
-        const reused = await billingChargeFromExistingTransaction(input.userId, job.charge_transaction_id, input.action, client);
+        // A previously bound legacy job receipt proves this frozen operation;
+        // newly bound content may never be substituted under the same job.
+        const reused = await billingChargeFromExistingTransaction(input.userId, job.charge_transaction_id, input.action, client,
+          [operationIdentity, purchaseKey, ...(input.legacyPurchase ? [input.legacyPurchase.operationIdentity] : [])]);
         if (reused) return reused;
       }
+      if (input.legacyPurchase) {
+        const legacy = input.legacyPurchase;
+        // The old plain worker charged content but did not bind its job. Adopt
+        // only an exact held server content receipt, under the same receipt lock.
+        const candidate = (await queryClient<{ id: string }>(client, `SELECT t.id FROM rune_transactions t
+          WHERE t.user_id=$1 AND t.type='spend' AND t.amount<0 AND t.action_type=$2 AND t.operation_identity=$3
+            AND (t.idempotency_key=$4 OR LEFT(t.idempotency_key,LENGTH($4)+15)=$4||':billing-retry:')
+            AND NOT EXISTS(SELECT 1 FROM rune_transactions rf WHERE rf.type='refund' AND rf.refund_of_transaction_id=t.id)
+          ORDER BY t.created_at DESC LIMIT 1`, [input.userId,input.action,createHash("sha256").update(legacy.operationIdentity).digest("hex"),legacy.idempotencyKey])).rows[0];
+        if (candidate) {
+          const { lockPaidReportReceipt } = await import("@/lib/services/durable-report-receipt");
+          await lockPaidReportReceipt(client, candidate.id);
+          const claimed = (await queryClient(client, "SELECT id FROM async_jobs WHERE charge_transaction_id=$1 AND id<>$2 LIMIT 1", [candidate.id,jobId])).rows.length > 0;
+          const held = claimed ? null : await billingChargeFromExistingTransaction(input.userId,candidate.id,input.action,client,[legacy.operationIdentity]);
+          if (held) { await markAsyncJobCharged(jobId,candidate.id,attempt,client); return held; }
+        }
+      }
+      if (!billingActive) return { spentRunes: 0, wasFreeQuestion: false,
+        newBalance: await getRuneBalance(input.userId, client), actionType: input.action, slotReserved: false };
       const charged = await BillingService.chargeRuneAction({ userId: input.userId,
-        action: input.action, idempotencyKey: `async:${jobId}:${input.action}`, client });
+        action: input.action, idempotencyKey: purchaseKey, operationIdentity,
+        legacyIdempotencyKeys: input.legacyPurchase ? [input.legacyPurchase.idempotencyKey] : undefined, client });
       if (charged.transactionId) await markAsyncJobCharged(jobId, charged.transactionId, attempt, client);
       return charged;
     });
@@ -332,22 +347,8 @@ export async function chargeRuneActionForWorkerJobById(input: {
   userId: string;
   action: RuneActionType;
 }): Promise<BillingChargeResult> {
-  const job = await getAsyncJobById(input.jobId);
-  if (
-    job &&
-    job.user_id === input.userId &&
-    job.status === "running" &&
-    job.billing_state === "charged" &&
-    job.charge_transaction_id
-  ) {
-    const reused = await billingChargeFromExistingTransaction(
-      input.userId,
-      job.charge_transaction_id,
-      input.action
-    );
-    if (reused) return reused;
-  }
-
+  const source = await getAsyncJobById(input.jobId);
+  if (!source || source.user_id !== input.userId || source.status !== "running") throw new Error("stale_async_job_attempt");
   const unlimited = await resolveUnlimitedAccess({ profileUserId: input.userId });
   const runeSettings = await getRuneSettings();
   if (!isRuneBillingActive(input.userId, unlimited, runeSettings)) {
@@ -361,12 +362,20 @@ export async function chargeRuneActionForWorkerJobById(input: {
     };
   }
 
-  const charge = await BillingService.chargeRuneAction({
-    userId: input.userId,
-    action: input.action,
+  return withTransaction(async client => {
+    const { rows } = await queryClient<AsyncJobRow>(client, "SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE", [input.jobId]);
+    const job = rows[0];
+    if (!job || job.user_id !== input.userId || job.status !== "running" ||
+        !["unbilled", "charged", "refunded"].includes(job.billing_state)) throw new Error("stale_async_job_attempt");
+    if (job.charge_transaction_id) {
+      const held = await billingChargeFromExistingTransaction(input.userId, job.charge_transaction_id, input.action, client);
+      if (held) return held;
+    }
+    const charge = await BillingService.chargeRuneAction({
+      userId: input.userId, action: input.action,
+      idempotencyKey: `async:${input.jobId}:${input.action}`, operationIdentity: `async:${input.jobId}:${input.action}`, client,
+    });
+    if (charge.transactionId) await markAsyncJobCharged(input.jobId, charge.transactionId, undefined, client);
+    return charge;
   });
-  if (charge.transactionId) {
-    await markAsyncJobCharged(input.jobId, charge.transactionId);
-  }
-  return charge;
 }

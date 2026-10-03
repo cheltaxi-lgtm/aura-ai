@@ -87,8 +87,8 @@ const drift = {
   focusKey: [y2026.focusKey, y2027.focusKey],
 };
 
-// 5. Reduction must stay the canonical subtract-22 and never fall back to
-// digit-sum folding, which caps at 18 and makes arcana 19–22 unreachable.
+// 5. Current v4/v5 methodology uses digit-sum folding above 22.
+// Values 19–22 are retained; the frozen v3 subtract-22 method is separate.
 function subtract22(n) {
   let v = Math.abs(Math.trunc(n));
   while (v > 22) v -= 22;
@@ -111,7 +111,7 @@ const subtractRegression = [23, 31, 41, 42].every(
 );
 if (subtractRegression) note("REDUCE_IS_SUBTRACT22", "live reducer must not be matrix-v3 subtract-22");
 
-// 6. High arcana must be reachable through reduction (they were not under folding).
+// 6. Values 19–22 are retained and must remain reachable.
 const reachable = new Set();
 for (let n = 1; n <= 500; n++) reachable.add(reduceToArcanaNumber(n));
 for (const n of [19, 20, 21, 22]) {
@@ -155,7 +155,7 @@ console.log("dates checked:", dates, "| out-of-range points:", outOfRange);
 console.log("focus histogram:", Object.fromEntries(focusHistogram));
 console.log("age belt clamp:", Object.fromEntries(ageClamp));
 console.log("year drift 2026->2027:", drift);
-console.log("reduction: canonical subtract-22 | high arcana reachable: 19,20,21,22");
+console.log("reduction: canonical digit-sum above 22 | high arcana reachable: 19,20,21,22");
 console.log("arcanaForNumber(0):", arcanaForNumber(0), "arcanaForNumber(23):", arcanaForNumber(23));
 if (problems.length) {
   console.error("FAIL verify-destiny-matrix-invariants:", problems.length, "problems");

@@ -8,6 +8,8 @@ import {
 import type { SpreadSymbol } from "@/lib/decks/types";
 import type { SessionIntention } from "@/lib/intention";
 import { createSeededRng, type SpreadRng } from "@/lib/spread-seed";
+import { parseCardOrientation } from "@/lib/card-orientation";
+import { resolveSpreadSymbol } from "@/lib/symbol-visuals";
 
 export type DrawIntention = SessionIntention | "life_death";
 
@@ -257,7 +259,7 @@ export function resolveSpreadSymbols(
   const resolved: SpreadSymbol[] = [];
   for (const name of names) {
     const sym = findSymbolByName(system, name);
-    if (sym) resolved.push(sym);
+    if (sym) resolved.push({ ...sym, reversed: parseCardOrientation(name).reversed });
   }
   return resolved;
 }
@@ -267,7 +269,7 @@ export function buildSessionSpreadCards(
   characterKey: string,
   cardNames: string[],
   options?: {
-    previewCards?: { name: string; meaning?: string }[];
+    previewCards?: { name: string; meaning?: string; reversed?: boolean }[];
     deckSystem?: DeckSystem;
     cardCount?: number;
     positionLabels?: string[];
@@ -287,12 +289,13 @@ export function buildSessionSpreadCards(
     const spreadCards: SpreadSymbol[] = preview.map((c, i) => {
       const deckSym = findSymbolByName(system, c.name);
       if (deckSym) {
-        return { ...deckSym, meaning: c.meaning ?? deckSym.meaning };
+        return { ...resolveSpreadSymbol(system, c), meaning: c.meaning ?? deckSym.meaning };
       }
       return {
         id: i,
         name: c.name,
         meaning: c.meaning ?? positions[i] ?? `Позиция ${i + 1}`,
+        reversed: c.reversed ?? parseCardOrientation(c.name).reversed,
       };
     });
     return { spreadCards, system };
@@ -301,7 +304,7 @@ export function buildSessionSpreadCards(
   const spreadCards: SpreadSymbol[] = names.map((name, i) => {
     const sym = findSymbolByName(system, name);
     return (
-      sym ?? {
+      sym ? { ...sym, reversed: parseCardOrientation(name).reversed } : {
         id: i,
         name,
         meaning: positions[i] ?? name,

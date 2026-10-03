@@ -21,15 +21,22 @@ export async function getActivePublicReportShare(
   }>(
     `SELECT public_payload, expires_at FROM private_report_shares shares
      WHERE token = $1 AND revoked_at IS NULL AND expires_at > NOW()
+       AND EXISTS (SELECT 1 FROM users owner WHERE owner.id = shares.owner_user_id AND owner.erasure_requested_at IS NULL)
        AND (
          (report_kind = 'natal' AND EXISTS (
            SELECT 1 FROM natal_report_history r WHERE r.id = shares.report_id AND r.user_id = shares.owner_user_id
          )) OR (report_kind = 'relationship' AND EXISTS (
            SELECT 1 FROM joint_readings r WHERE r.id = shares.report_id AND r.status = 'completed'
              AND (r.initiator_user_id = shares.owner_user_id OR r.partner_user_id = shares.owner_user_id)
+             AND EXISTS (SELECT 1 FROM users u WHERE u.id = r.initiator_user_id AND u.erasure_requested_at IS NULL)
+             AND r.partner_user_id IS NOT NULL
+             AND EXISTS (SELECT 1 FROM users u WHERE u.id = r.partner_user_id AND u.erasure_requested_at IS NULL)
          )) OR (report_kind = 'compatibility' AND EXISTS (
            SELECT 1 FROM natal_compatibility_reports r WHERE r.id = shares.report_id AND r.status = 'completed'
              AND (r.owner_user_id = shares.owner_user_id OR r.participant_user_id = shares.owner_user_id)
+             AND EXISTS (SELECT 1 FROM users u WHERE u.id = r.owner_user_id AND u.erasure_requested_at IS NULL)
+             AND (r.participant_user_id IS NOT NULL OR r.participant_identity_id IS NULL)
+             AND (r.participant_user_id IS NULL OR EXISTS (SELECT 1 FROM users u WHERE u.id = r.participant_user_id AND u.erasure_requested_at IS NULL))
          ))
        ) LIMIT 1`,
     [token]

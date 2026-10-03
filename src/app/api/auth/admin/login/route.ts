@@ -42,7 +42,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: "Неверный email или пароль" }, { status: 401 });
     }
 
-    await setAdminSession(payload, request);
+    if (!(await setAdminSession(payload, request))) return NextResponse.json({ error: "Неверный email или пароль" }, { status: 401 });
     return NextResponse.json({ ok: true, admin: { email: payload.email, name: payload.name } });
   } catch (error) {
     console.error("Admin login error:", error);

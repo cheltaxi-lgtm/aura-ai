@@ -571,6 +571,8 @@ echo ">>> Activating natal async worker..."
 # readings hang in the UI (card pick appears "broken").
 set +e
 sed -i 's/\r$//' hosting/ensure-async-jobs-user.sh hosting/sync-async-jobs-env.sh hosting/aura-ai.service hosting/aura-ai-async-jobs.service 2>/dev/null || true
+sed -i 's/\r$//' hosting/postgres-ingress-guard.sh hosting/install-postgres-ingress-guard.sh hosting/zovus-postgres-ingress.service
+sudo bash hosting/install-postgres-ingress-guard.sh
 sudo bash hosting/ensure-async-jobs-user.sh /opt/aura-ai
 _WORKER_ENSURE=$?
 # Belt-and-suspenders: ensure calls sync, but if it failed earlier the EnvironmentFile

@@ -275,7 +275,7 @@ export async function claimGuestMatrixPairPending(opts: {
     }
 
     if (!hasBirth || !matches) {
-      const zodiac = getZodiacFromDate(dateA).name || user.zodiac || "";
+      const zodiac = getZodiacFromDate(dateA)?.name || user.zodiac || "";
       const nextMeta = {
         ...buildAstroMeta(dateA),
         stubProfile: false,

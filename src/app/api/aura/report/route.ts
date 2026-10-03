@@ -11,6 +11,8 @@ import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  BillingIdempotencyConflictError,
+  billingIdempotencyConflictResponse,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import { isRuneBillingActive } from "@/lib/rune-service";
@@ -35,6 +37,7 @@ import {
 } from "@/lib/services/aura-guest-service";
 import {
   auraSpendBelongsToSnapshot,
+  bindAuraChargeIdempotencyKey,
   getAuraChargeReuseState,
   listTodaysUnrefundedAuraSpends,
   resolveAuraReadingPricing,
@@ -107,6 +110,7 @@ async function handlePost(request: NextRequest) {
 
   let snapshotId = "";
   let idempotencyKey: string | undefined;
+  let legacyKey: string | undefined;
   let asyncRequested = false;
   let rawBody: Record<string, unknown> = {};
 
@@ -128,6 +132,8 @@ async function handlePost(request: NextRequest) {
       { status: 400 }
     );
   }
+  legacyKey = idempotencyKey;
+  idempotencyKey = bindAuraChargeIdempotencyKey(snapshotId, idempotencyKey);
 
   const profileUserId = workerUserId
     ? workerUserId
@@ -298,6 +304,8 @@ async function handlePost(request: NextRequest) {
           ? "Аура по фото (первый разбор)"
           : undefined,
         idempotencyKey: idempotencyKey || `aura-reading:${snapshotId}`,
+        operationIdentity: `aura-snapshot:${snapshotId}`,
+        legacyIdempotencyKeys: legacyKey ? [legacyKey] : [],
       });
       runeBalance = charge.newBalance;
       await trackWorkerJobCharged(request, charge.transactionId);
@@ -349,6 +357,7 @@ async function handlePost(request: NextRequest) {
               ? "Аура по фото (первый разбор)"
               : undefined,
             idempotencyKey: `aura-reading:${snapshotId}:${randomUUID()}`,
+            operationIdentity: `aura-snapshot:${snapshotId}`,
           });
           if (retryCharge.deduplicated) {
             // Fresh per-attempt key cannot collide — defensive only.
@@ -367,6 +376,7 @@ async function handlePost(request: NextRequest) {
       if (err instanceof InsufficientFundsError) {
         return insufficientFundsResponse(err);
       }
+      if (err instanceof BillingIdempotencyConflictError) return billingIdempotencyConflictResponse();
       throw err;
     }
   }

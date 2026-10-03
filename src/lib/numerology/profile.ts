@@ -1,3 +1,5 @@
+import { calendarParts } from "@/lib/product-calendar";
+import { parseBirthDate } from "./constants";
 import {
   birthdayNumber,
   destinyNumber,
@@ -48,10 +50,11 @@ export interface FullNumerologyProfile {
 export function fullProfile(
   birthDate: string,
   fullName: string,
-  system: NumerologySystem = "pythagorean"
+  system: NumerologySystem = "pythagorean",
+  now: Date = new Date()
 ): FullNumerologyProfile {
-  const hasValidBirthDate = Boolean(birthDate?.trim());
-  const hasValidName = Boolean(fullName?.trim());
+  const hasValidBirthDate = Boolean(parseBirthDate(birthDate));
+  const hasValidName = destinyNumber(fullName, system).number > 0;
 
   const lp = lifePathNumber(birthDate);
   const dest = destinyNumber(fullName, system);
@@ -59,14 +62,14 @@ export function fullProfile(
   const pers = personalityNumber(fullName, system);
   const bday = birthdayNumber(birthDate);
   const mat = maturityNumber(lp, dest);
-  const py = personalYear(birthDate);
-  const pm = personalMonth(birthDate);
-  const pd = personalDay(birthDate);
+  const py = personalYear(birthDate, calendarParts(now).year);
+  const pm = personalMonth(birthDate, now);
+  const pd = personalDay(birthDate, now);
   const debts = hasValidBirthDate || hasValidName ? karmicDebts(birthDate, fullName) : [];
   const lessons = hasValidName ? karmicLessons(fullName, system) : [];
   const square = hasValidBirthDate ? pythagorasSquare(birthDate) : null;
-  const forecast = hasValidBirthDate ? personalYearForecast(birthDate) : [];
-  const favDates = hasValidBirthDate ? favorableDates(birthDate) : null;
+  const forecast = hasValidBirthDate ? personalYearForecast(birthDate, calendarParts(now).year) : [];
+  const favDates = hasValidBirthDate ? favorableDates(birthDate, calendarParts(now).month, calendarParts(now).year) : null;
 
   return {
     system,

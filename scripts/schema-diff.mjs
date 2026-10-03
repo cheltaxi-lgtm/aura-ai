@@ -74,47 +74,47 @@ function quoteIdent(ident) {
 /** Structural dump excluding migration ledger rows (table may exist only on migrate side). */
 async function dumpSchema(client) {
   const tables = await client.query(`
-    SELECT table_name
+    SELECT table_schema||'.'||table_name AS table_name
     FROM information_schema.tables
-    WHERE table_schema = 'public' AND table_type = 'BASE TABLE'
+    WHERE table_schema IN ('public','pro') AND table_type = 'BASE TABLE'
       AND table_name <> 'schema_migrations'
     ORDER BY table_name
   `);
 
   const columns = await client.query(`
-    SELECT table_name, column_name, data_type, udt_name,
+    SELECT table_schema||'.'||table_name AS table_name, column_name, data_type, udt_name,
            is_nullable, column_default, character_maximum_length,
            numeric_precision, numeric_scale
     FROM information_schema.columns
-    WHERE table_schema = 'public' AND table_name <> 'schema_migrations'
+    WHERE table_schema IN ('public','pro') AND table_name <> 'schema_migrations'
     ORDER BY table_name, ordinal_position
   `);
 
   const indexes = await client.query(`
-    SELECT tablename, indexname, indexdef
+    SELECT schemaname||'.'||tablename AS tablename, indexname, indexdef
     FROM pg_indexes
-    WHERE schemaname = 'public' AND tablename <> 'schema_migrations'
+    WHERE schemaname IN ('public','pro') AND tablename <> 'schema_migrations'
     ORDER BY tablename, indexname
   `);
 
   const constraints = await client.query(`
-    SELECT c.conname, c.contype, rel.relname AS table_name,
+    SELECT c.conname, c.contype, n.nspname||'.'||rel.relname AS table_name,
            pg_get_constraintdef(c.oid) AS def
     FROM pg_constraint c
     JOIN pg_class rel ON rel.oid = c.conrelid
     JOIN pg_namespace n ON n.oid = rel.relnamespace
-    WHERE n.nspname = 'public' AND rel.relname <> 'schema_migrations'
+    WHERE n.nspname IN ('public','pro') AND rel.relname <> 'schema_migrations'
     ORDER BY rel.relname, c.conname
   `);
 
   const enums = await client.query(`
-    SELECT t.typname AS enum_name,
+    SELECT n.nspname||'.'||t.typname AS enum_name,
            string_agg(e.enumlabel, ',' ORDER BY e.enumsortorder) AS labels
     FROM pg_type t
     JOIN pg_enum e ON e.enumtypid = t.oid
     JOIN pg_namespace n ON n.oid = t.typnamespace
-    WHERE n.nspname = 'public'
-    GROUP BY t.typname
+    WHERE n.nspname IN ('public','pro')
+    GROUP BY n.nspname,t.typname
     ORDER BY t.typname
   `);
 

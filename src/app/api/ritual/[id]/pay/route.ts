@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from "next/server";
 import { AGE_REQUIRED_ERROR, isUserAgeEligible } from "@/lib/age-gate";
-import { ensureDb } from "@/lib/db";
+import { ensureDb, queryClient, withTransaction } from "@/lib/db";
 import { requireProfileUserId } from "@/lib/require-auth";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { resolveUnlimitedAccess } from "@/lib/accounts";
@@ -8,6 +8,8 @@ import {
   BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
+  BillingIdempotencyConflictError,
+  billingIdempotencyConflictResponse,
   readRequestChargeIdempotencyKey,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
@@ -45,6 +47,9 @@ export async function POST(request: NextRequest, context: RouteContext) {
   if (rateLimited) return rateLimited;
 
   const { id } = await context.params;
+  if (!/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(id)) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
   const ritual = await getRitualById(id);
 
   if (!ritual || ritual.user_id !== authed.profileUserId) {
@@ -63,9 +68,6 @@ export async function POST(request: NextRequest, context: RouteContext) {
     return NextResponse.json({ error: "Invalid status" }, { status: 400 });
   }
 
-  const clientIdem = readRequestChargeIdempotencyKey(request);
-
-  const cost = ritual.rune_cost;
   const unlimited = await resolveUnlimitedAccess({
     accountId: authed.auth.sub,
     profileUserId: authed.profileUserId,
@@ -76,59 +78,50 @@ export async function POST(request: NextRequest, context: RouteContext) {
     unlimited,
     runeSettings
   );
+  const legacyKey = readRequestChargeIdempotencyKey(request);
 
-  let billingCharge: BillingChargeResult | null = null;
-
-  if (useBilling && cost > 0) {
-    const label = RITUAL_TYPES[ritual.ritual_type].label;
-    try {
-      billingCharge = await BillingService.chargeForSession({
-        userId: authed.profileUserId,
-        cost,
-        actionType: "ritual",
-        description: `Обряд: ${label}`,
-        // Stable per ritual; client Idempotency-Key wins when present.
-        idempotencyKey: clientIdem ?? `ritual-pay:${id}`,
-      });
-    } catch (err) {
-      if (err instanceof InsufficientFundsError) {
-        return insufficientFundsResponse(err);
+  try {
+    return await withTransaction(async (client) => {
+      // Same lock order as billing and account erasure. The debit and claimed
+      // ritual are committed together, including competing pay/retry requests.
+      await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR UPDATE", [authed.profileUserId]);
+      await queryClient(client, "SELECT id FROM rituals WHERE id=$1 AND user_id=$2 FOR UPDATE", [id, authed.profileUserId]);
+      const current = await getRitualById(id, client);
+      if (!current || current.user_id !== authed.profileUserId) return NextResponse.json({ error: "Not found" }, { status: 404 });
+      if (isRitualPayAlreadyClaimed(current.status)) {
+        const balance = await getRuneBalance(authed.profileUserId, client);
+        return NextResponse.json(ritualPayAlreadyDonePayload(current, balance, ritualToClient(current)));
       }
-      throw err;
-    }
-  }
-
-  const generating = await markRitualPaidAndGenerating(id, {
-    paymentStatus: billingCharge ? "paid" : "free",
-    transactionId: billingCharge?.transactionId ?? null,
-  });
-  if (!generating) {
-    // Race / dedupe: another pay already claimed — resume, do not refund a no-op (spentRunes=0).
-    const latest = await getRitualById(id);
-    if (latest && isRitualPayAlreadyClaimed(latest.status)) {
-      const balance = await getRuneBalance(authed.profileUserId);
-      return NextResponse.json(
-        ritualPayAlreadyDonePayload(latest, balance, ritualToClient(latest))
-      );
-    }
-    if (billingCharge && billingCharge.spentRunes > 0 && !billingCharge.deduplicated) {
-      await BillingService.rollbackCharge({
-        userId: authed.profileUserId,
-        cost: billingCharge.spentRunes,
-        wasFreeQuestion: false,
-        actionType: "ritual",
-        transactionId: billingCharge.transactionId,
+      if (current.status !== "payment") return NextResponse.json({ error: "Invalid status" }, { status: 400 });
+      let billingCharge: BillingChargeResult | null = null;
+      if (useBilling && current.rune_cost > 0) {
+        const label = RITUAL_TYPES[current.ritual_type].label;
+        billingCharge = await BillingService.chargeForSession({
+          userId: authed.profileUserId,
+          cost: current.rune_cost,
+          actionType: "ritual",
+          description: `Обряд: ${label}`,
+          // The server ritual UUID always identifies the purchase.
+          idempotencyKey: `ritual-pay:${current.id}`,
+          operationIdentity: `ritual-pay:${current.id}`,
+          legacyIdempotencyKeys: legacyKey ? [legacyKey] : [],
+          client,
+        });
+      }
+      const generating = await markRitualPaidAndGenerating(id, {
+        paymentStatus: billingCharge ? "paid" : "free",
+        transactionId: billingCharge?.transactionId ?? null,
+        client,
       });
-    }
-    return NextResponse.json({ error: "Already paid or invalid status" }, { status: 409 });
+      if (!generating) throw new Error("ritual_payment_claim_lost");
+      const balance = await getRuneBalance(authed.profileUserId, client);
+      return NextResponse.json({
+        ok: true, status: "generating", ritual: ritualToClient(generating), balance,
+      });
+    });
+  } catch (err) {
+    if (err instanceof InsufficientFundsError) return insufficientFundsResponse(err);
+    if (err instanceof BillingIdempotencyConflictError) return billingIdempotencyConflictResponse();
+    throw err;
   }
-
-  const balance = await getRuneBalance(authed.profileUserId);
-
-  return NextResponse.json({
-    ok: true,
-    status: "generating",
-    ritual: ritualToClient(generating),
-    balance,
-  });
 }

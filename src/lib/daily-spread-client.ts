@@ -1,6 +1,9 @@
 import { TRIPLET_COOLDOWN_MS } from "@/lib/triplet-limit";
 import type { CurrentDailyCardsResult } from "@/lib/current-daily-cards";
 import type { SpreadSymbol } from "@/lib/decks/types";
+import type { DeckSystem } from "@/lib/decks/types";
+import { spreadIdentityKey } from "@/lib/spread-identity";
+import { formatReversedCardName } from "@/lib/card-orientation";
 import type { StoredProfile } from "@/types/stored-profile";
 
 export function inferDailySpreadType(input: {
@@ -30,15 +33,22 @@ export function isDailySpreadReading(spreadType?: string | null): boolean {
 export function restoredTripletSpreadType(input: {
   daily: CurrentDailyCardsResult | null;
   masterId: string;
-  cardNames: string[];
+  deckSystem: DeckSystem;
+  cards: readonly Pick<SpreadSymbol, "id" | "reversed">[];
 }): "daily" | "new" {
   const daily = input.daily;
   if (!daily?.exists) return "new";
   const age = Date.now() - new Date(daily.createdAt).getTime();
   if (!Number.isFinite(age) || age < 0 || age >= TRIPLET_COOLDOWN_MS) return "new";
-  return daily?.exists && daily.historyId && daily.masterId === input.masterId &&
-    input.cardNames.length === 3 && daily.cardNames.length === 3 &&
-    input.cardNames.every((name, i) => name === daily.cardNames[i])
+  return daily.historyId && daily.masterId === input.masterId &&
+    input.deckSystem === daily.deckSystem && input.cards.length === 3 &&
+    spreadIdentityKey(input.deckSystem, input.cards.map(card => ({ id: card.id, reversed: card.reversed === true }))) ===
+      spreadIdentityKey(daily.deckSystem, daily.cards)
     ? "daily"
     : "new";
+}
+
+/** sessions.cards is a legacy string array; preserve orientation in its supported notation. */
+export function dailySessionCardNames(cards: readonly Pick<SpreadSymbol, "name" | "reversed">[]): string[] {
+  return cards.map(card => formatReversedCardName(card.name, card.reversed === true));
 }

@@ -18,6 +18,7 @@ import {
 import { validateDailyTripletInput } from "@/lib/daily-triplet-validate";
 import { buildHomeRecapKey } from "@/lib/home-recap-key";
 import type { DeckSystem } from "@/lib/decks/types";
+import { formatReversedCardName } from "@/lib/card-orientation";
 
 export type SavedDailyArtifact = {
   exists: true;
@@ -65,7 +66,7 @@ function toArtifact(input: {
   cards: DailyTripletCard[];
   createdAt: string;
 }): SavedDailyArtifact {
-  const cardsKey = dailyCardsKey(input.cards);
+  const cardsKey = dailyCardsKey(input.cards, input.deckSystem);
   return {
     exists: true,
     historyId: input.historyId,
@@ -133,9 +134,10 @@ export async function saveAuthenticatedDailyTriplet(
         });
         return again.ok ? again.cards : null;
       })();
-      const existingKey = existingCards ? dailyCardsKey(existingCards) : "";
+      const existingKey = existingCards ? dailyCardsKey(existingCards, deckSystem) : "";
       const ageMs = Date.now() - new Date(latest.created_at).getTime();
-      if (existingCards && existingKey === cardsKey && ageMs < 60_000) {
+      if (existingCards && existingKey === cardsKey && ageMs >= 0 && ageMs < 60_000 &&
+          latest.context_data?.masterId === masterId && latest.context_data?.deckSystem === deckSystem) {
         return {
           ok: true as const,
           reused: true,
@@ -176,6 +178,7 @@ export async function saveAuthenticatedDailyTriplet(
           type: "daily_triplet",
           spreadType: "daily",
           tarotCards: cards,
+          cardsIdentityVersion: 2,
           deckSystem,
           masterId,
           ...(teaser ? { teaser } : {}),
@@ -204,7 +207,7 @@ export async function saveAuthenticatedDailyTriplet(
             intention: null,
             spreadType: "daily",
             spreadId: "triplet",
-            cards: cards.map((c) => c.name),
+            cards: cards.map((c) => formatReversedCardName(c.name, c.reversed)),
           },
           client
         );

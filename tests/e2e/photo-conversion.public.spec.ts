@@ -233,6 +233,7 @@ test("a new saved photo result stays visible and opens the exact history record"
 });
 
 test("a realistic phone photo survives the complete email registration route", async ({ page }) => {
+  test.setTimeout(90_000);
   await fixture(page);
   await page.setViewportSize({ width: 390, height: 844 });
   await page.goto("/photo-rasklad");
@@ -257,6 +258,7 @@ test("a realistic phone photo survives the complete email registration route", a
 
   await expect(page.getByLabel("Email *")).toBeVisible();
   await page.getByLabel(/Я согласен/).check();
+  await expect(page.getByLabel(/Я согласен/)).toBeChecked();
   await page.getByLabel("Имя *").fill("Проверка");
   await page.getByLabel("Email *").fill("photo@example.test");
   await page.getByLabel("Пароль *").fill("Photo-test-2026");
@@ -266,6 +268,46 @@ test("a realistic phone photo survives the complete email registration route", a
   await expect(dialog.getByText("Карты уже распознаны — проверьте расклад и откройте полную расшифровку.")).toBeVisible();
   await expect(dialog.getByRole("button", { name: /Получить полный разбор/ })).toBeVisible();
   expect(await page.evaluate((key) => sessionStorage.getItem(key), PHOTO_AUTH_DRAFT_KEY)).not.toBeNull();
+});
+
+test("registration waits for client handlers before accepting typed data", async ({ page }) => {
+  test.setTimeout(90_000);
+  await fixture(page);
+  let release!: () => void;
+  let requested = false;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const errors: string[] = [];
+  page.on("pageerror", error => errors.push(error.message));
+  await page.route("**/_next/static/chunks/app/auth/user/register/page*.js*", async route => {
+    requested = true;
+    await gate;
+    await route.continue();
+  });
+  await page.goto("/auth/user/register?returnTo=%2F%3Fphoto%3D1", { waitUntil: "commit" });
+  await expect.poll(() => requested).toBe(true);
+  const name = page.getByLabel("Имя *");
+  const email = page.getByLabel("Email *");
+  const password = page.getByLabel("Пароль *");
+  const consent = page.getByLabel(/Я согласен/);
+  try {
+    await expect(name).toBeDisabled();
+    await expect(email).toBeDisabled();
+    await expect(password).toBeDisabled();
+    await expect(consent).toBeDisabled();
+  } finally {
+    release();
+  }
+  await expect(name).toBeEnabled({ timeout: 30_000 });
+  await name.fill("Проверка");
+  await email.fill("hydration@example.test");
+  await password.fill("Hydration-test-2026");
+  await consent.check();
+  await expect(page.getByRole("button", { name: "Создать аккаунт и открыть разбор" })).toBeEnabled();
+  await expect(name).toHaveValue("Проверка");
+  await expect(email).toHaveValue("hydration@example.test");
+  await expect(password).toHaveValue("Hydration-test-2026");
+  await expect(consent).toBeChecked();
+  expect(errors).toEqual([]);
 });
 
 test("the guest gets immediate feedback while the photo workspace is loading", async ({ page }) => {

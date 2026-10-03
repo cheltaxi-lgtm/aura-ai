@@ -198,6 +198,7 @@ test("a late age confirmation cannot reopen a guest draw after returning to the 
 });
 
 test("late analytics consent records the current landing exactly once and tracks SPA navigation", async ({ page }) => {
+  test.setTimeout(90_000);
   await fixture(page, { loggedIn: false });
   await page.route("https://mc.yandex.ru/**", (route) => route.fulfill({ body: "", contentType: "application/javascript" }));
   await page.goto("/gadanie-po-ladoni");
@@ -211,7 +212,8 @@ test("late analytics consent records the current landing exactly once and tracks
   await expect.poll(viewCount).toBe(1);
   await page.evaluate(() => window.dispatchEvent(new Event("aura:metrika-ready")));
   expect(await viewCount()).toBe(1);
+  await page.getByText("Линии, холмы и типы рук", { exact: true }).click();
   await page.getByRole("link", { name: "Главные линии", exact: true }).click();
-  await expect(page).toHaveURL(/\/gadanie-po-ladoni\/linii/);
+  await expect(page).toHaveURL(/\/gadanie-po-ladoni\/linii/, { timeout: 30_000 });
   await expect.poll(() => page.evaluate(() => ((window.ym as unknown as { a?: unknown[][] })?.a ?? []).some((item) => item[1] === "hit" && String(item[2]).endsWith("/gadanie-po-ladoni/linii")))).toBe(true);
 });

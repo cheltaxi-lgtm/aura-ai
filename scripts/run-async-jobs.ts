@@ -292,7 +292,7 @@ async function runJobViaHttp(job: AsyncJobRow): Promise<void> {
     });
     const data = (await response.json().catch(() => ({}))) as Record<string, unknown>;
     if (!response.ok) {
-      if (data.code === "CLAIM_BUSY" && (job.kind === "hd_report" || job.kind === "hd_composite_report" || job.kind === "pro_premium_report" && job.input.caseType === "hd")) return;
+      if (data.code === "CLAIM_BUSY" && (job.kind === "hd_report" || job.kind === "hd_composite_report" || job.kind === "pro_premium_report")) return;
       const latest = await getAsyncJobById(job.id);
     if (latest && latest.attempt_count !== job.attempt_count) return;
       if (
@@ -503,10 +503,10 @@ async function runJobInProcess(job: AsyncJobRow): Promise<void> {
     }
     recordReportProviderFailure("other");
     const outcomeCode = outcome.code || "generation_failed";
-    if (outcomeCode === "CLAIM_BUSY" && (job.kind === "hd_report" || job.kind === "hd_composite_report" || job.kind === "pro_premium_report" && job.input.caseType === "hd")) {
+    if (outcomeCode === "CLAIM_BUSY" && (job.kind === "hd_report" || job.kind === "hd_composite_report" || job.kind === "pro_premium_report")) {
       // Duplicate dispatch of the current attempt leaves the original call
       // running. Its heartbeat/save owns completion; the watchdog owns crashes.
-      console.info(`[async-jobs] HD attempt already generating job=${job.id}`);
+      console.info(`[async-jobs] Report attempt already generating job=${job.id}`);
       return;
     }
     if (isReportJobRetryEnabled() && isRetryableReportErrorCode(outcomeCode)) {

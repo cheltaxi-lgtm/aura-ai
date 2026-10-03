@@ -37,6 +37,7 @@ import { MAX_PHOTO_CARDS } from "@/lib/photo-reading-constants";
 import { resolvePhotoReadingPricing } from "@/lib/photo-reading-billing";
 import {
   buildPhotoSpreadKey,
+  buildLegacyPhotoSpreadKey,
   findPhotoReadingEntry,
   getPhotoChargeReuseState,
   withPhotoReadingLock,
@@ -158,6 +159,7 @@ export async function POST(request: NextRequest) {
   // after a reload gives the browser a different request idempotency key.
   const lockKey = photoSpreadKey;
   const billingIdempotencyKey = `photo-reading:${photoSpreadKey}`;
+  const legacyPhotoKey = question.trim().length > 200 ? `photo-reading:${buildLegacyPhotoSpreadKey(characterId, confirmedSpread, question)}` : undefined;
 
   const profileUserId = workerUserId
     ? workerUserId
@@ -265,7 +267,10 @@ export async function POST(request: NextRequest) {
             ? "Фото-расклад"
             : undefined,
           sessionId,
+          sessionIsResult: true,
           idempotencyKey: billingIdempotencyKey,
+          operationIdentity: `photo:${photoSpreadKey}`,
+          legacyIdempotencyKeys: legacyPhotoKey ? [legacyPhotoKey] : [],
         });
         billingCharge = charge;
         runeBalance = charge.newBalance;
@@ -302,7 +307,9 @@ export async function POST(request: NextRequest) {
               cost: pricing.effectiveCost,
               actionType: "VISION_ANALYSIS",
               sessionId,
+              sessionIsResult: true,
               idempotencyKey: `${prior.retryPrefix}${randomUUID()}`,
+              operationIdentity: `photo:${photoSpreadKey}`,
             });
             if (billingCharge.deduplicated) throw new Error("photo_retry_charge_conflict");
           }

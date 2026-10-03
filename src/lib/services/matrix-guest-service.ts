@@ -392,7 +392,7 @@ export async function claimGuestMatrixPending(opts: {
     }
 
     if (!hasBirth || !matches) {
-      const zodiac = getZodiacFromDate(guestBirth).name || user.zodiac || "";
+      const zodiac = getZodiacFromDate(guestBirth)?.name || user.zodiac || "";
       // Date-only write. Never erase Natal/HD time/place/astro_meta.
       await queryClient(
         client,

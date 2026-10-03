@@ -42,6 +42,7 @@ function spreadReadingMatchesRow(
   ctx: Record<string, unknown>
 ): boolean {
   if (typeof ctx.reading !== "string") return false;
+  if (cardsKey.startsWith("spread-resource:")) return ctx.readingResourceKey === cardsKey;
   if (cardsKey.startsWith("numerolog:")) {
     const storedKey = storedNumerologReadingKey(characterId, ctx);
     return storedKey === cardsKey;
@@ -78,9 +79,10 @@ export async function findSpreadReadingEntry(
      WHERE user_id = $1
        AND character_name = $2
        AND context_data->>'type' = 'reading'
+       ${cardsKey.startsWith("spread-resource:") ? "AND context_data->>'readingResourceKey' = $3" : ""}
      ORDER BY created_at DESC
      LIMIT 30`,
-    [userId, characterId]
+    cardsKey.startsWith("spread-resource:") ? [userId, characterId, cardsKey] : [userId, characterId]
   );
 
   return (

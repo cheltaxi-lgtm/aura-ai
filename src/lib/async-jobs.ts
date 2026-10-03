@@ -626,12 +626,12 @@ export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<bool
     const { rows } = await queryClient<AsyncJobRow>(client, 'SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE', [jobId]);
     const job = rows[0];
     if (!job || !['failed','needs_regeneration'].includes(job.status)) return false;
-    if(job.kind==='pro_premium_report'&&job.input.caseType==='hd') {
+    if(job.kind==='pro_premium_report') {
       const { getProHdReceipt }=await import('@/modules/pro/db/hd-generation');
       const receipt=await getProHdReceipt(job.user_id,{jobId:job.id});
       if(receipt){
         await queryClient(client,`UPDATE async_jobs SET status='completed',billing_state='completed',result=$2::jsonb,
-          input=input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'refinement',error_message=NULL,error_code=NULL,
+          input=input-'frozenPayload'-'frozenQuestion'-'frozenAlias'-'frozenPractitionerContext'-'refinement',error_message=NULL,error_code=NULL,
           worker_id=NULL,locked_at=NULL,completed_at=NOW(),updated_at=NOW() WHERE id=$1`,[jobId,JSON.stringify(receipt)]);
         const active=(await queryClient(client,"SELECT id FROM users WHERE id=$1 AND erasure_requested_at IS NULL",[job.user_id])).rows.length>0;
         if(active)await recordJourneyEvent(job.user_id,'first_result','first',{product:job.kind},client);
@@ -693,21 +693,21 @@ export async function markAsyncJobCharged(
   client?: PoolClient
 ): Promise<void> {
   const execute = client ? queryClient.bind(null, client) : query;
-  await execute(
-    `UPDATE async_jobs
-     SET billing_state = CASE
-           WHEN billing_state IN ('refunded', 'completed') THEN billing_state
-           ELSE 'charged'
-         END,
-         charge_transaction_id = COALESCE(charge_transaction_id, $2),
-         updated_at = NOW()
-     WHERE id = $1
-       AND status IN ('pending', 'running')
-       AND ($3::int IS NULL OR (attempt_count = $3 AND worker_id = $4))`,
+  const result = await execute(
+    `UPDATE async_jobs j
+     SET billing_state = 'charged', charge_transaction_id = $2, updated_at = NOW()
+     WHERE j.id = $1 AND j.status IN ('pending', 'running')
+       AND j.billing_state <> 'completed'
+       AND ($3::int IS NULL OR (j.attempt_count = $3 AND j.worker_id = $4))
+       AND EXISTS (SELECT 1 FROM rune_transactions paid WHERE paid.id=$2 AND paid.user_id=j.user_id
+         AND paid.type='spend' AND paid.amount<0
+         AND NOT EXISTS(SELECT 1 FROM rune_transactions rf WHERE rf.type='refund' AND rf.refund_of_transaction_id=paid.id))
+       AND (j.charge_transaction_id IS NULL OR j.charge_transaction_id=$2 OR
+         EXISTS(SELECT 1 FROM rune_transactions rf WHERE rf.type='refund' AND rf.refund_of_transaction_id=j.charge_transaction_id))`,
     [jobId, chargeTransactionId, attempt?.attemptCount ?? null, attempt?.workerId ?? null]
   );
+  if (!result.rowCount) throw new Error("stale_or_conflicting_async_job_charge");
 }
-
 export async function markAsyncJobRefunded(jobId: string, attempt?: AsyncJobAttempt, client?: PoolClient): Promise<void> {
   const execute = client ? queryClient.bind(null, client) : query;
   await execute(
@@ -1017,7 +1017,7 @@ export async function reapNeedsRegenerationAsyncJobs(input: {
     if (rowCount !== 1) continue;
     failed += 1;
     const latest = await getAsyncJobById(row.id);
-    if (latest && (latest.billing_state === "charged" && latest.charge_transaction_id || latest.kind === "pro_premium_report" && latest.input.caseType === "hd")) {
+    if (latest && (latest.billing_state === "charged" && latest.charge_transaction_id || latest.kind === "pro_premium_report")) {
       try {
         await refundChargedAsyncJobIfNeeded(row.id);
       } catch (error) {
@@ -1057,7 +1057,7 @@ export async function failAsyncJobAndRefundIfCharged(
 
   let refunded = false;
   const latest = await getAsyncJobById(jobId);
-  if (latest && (latest.billing_state === "charged" && latest.charge_transaction_id || latest.kind === "pro_premium_report" && latest.input.caseType === "hd")) {
+  if (latest && (latest.billing_state === "charged" && latest.charge_transaction_id || latest.kind === "pro_premium_report")) {
     try {
       refunded = await refundChargedAsyncJobIfNeeded(jobId);
     } catch (error) {

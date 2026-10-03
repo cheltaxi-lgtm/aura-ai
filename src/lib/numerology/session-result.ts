@@ -1,3 +1,4 @@
+import { calendarParts } from "@/lib/product-calendar";
 import type { PythagorasSquareResult } from "./pythagoras-square";
 import { pythagorasSquare } from "./pythagoras-square";
 import { destinyMatrix, type DestinyMatrixResult } from "./destiny-matrix";
@@ -43,7 +44,7 @@ function enrichPositions(
   birthDate?: string | null
 ): NumerologSessionPosition[] {
   const tool = getNumerologTool(toolId);
-  const fromYear = new Date().getFullYear();
+  const fromYear = calendarParts().year;
   const labels = numerologToolPositions(toolId, { fromYear });
 
   if (toolId === "forecast_9y" && birthDate && parseBirthDate(birthDate)) {

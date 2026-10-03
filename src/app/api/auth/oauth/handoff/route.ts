@@ -25,14 +25,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const accountId = await consumeOAuthHandoff(token);
-    if (!accountId) {
+    const handoff = await consumeOAuthHandoff(token);
+    if (!handoff) {
       return NextResponse.json(
         { error: "invalid_token" },
         { status: 401, headers: OAUTH_NO_STORE_HEADERS }
       );
     }
-    const account = await findUserById(accountId);
+    const account = await findUserById(handoff.accountId);
     if (!account) {
       return NextResponse.json(
         { error: "invalid_token" },
@@ -40,15 +40,17 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await setAuthCookie(
+    const applied = await setAuthCookie(
       {
         sub: account.id,
         role: "user",
         email: account.email,
         name: account.name,
+        tv: handoff.tokenVersion,
       },
       request
     );
+    if (!applied) return NextResponse.json({ error: "invalid_token" }, { status: 401, headers: OAUTH_NO_STORE_HEADERS });
 
     return NextResponse.json({ ok: true }, { headers: OAUTH_NO_STORE_HEADERS });
   } catch (error) {

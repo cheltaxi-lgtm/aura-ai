@@ -65,7 +65,13 @@ function errorMessageFromBody(data: unknown, fallback: string): string {
   return typeof error === "string" && error.trim() ? error : fallback;
 }
 
-export default function RitualFlow({
+export default function RitualFlow(props: Props) {
+  // Every opening has its own request lifetime, including A → close → A.
+  if (!props.isOpen) return null;
+  return <RitualFlowSession key={`${props.initialRitualId ?? "new"}:${props.initialRitualType ?? ""}:${props.characterKey ?? ""}`} {...props} />;
+}
+
+function RitualFlowSession({
   isOpen,
   characterKey,
   userName,
@@ -90,6 +96,12 @@ export default function RitualFlow({
   const [flowError, setFlowError] = useState<string | null>(null);
   const [resolvedCharacterKey, setResolvedCharacterKey] = useState<RitualMasterKey | null>(null);
   const openTrackedRef = useRef(false);
+  const lifetimeRef = useRef(new AbortController());
+  useEffect(() => {
+    const lifetime = new AbortController();
+    lifetimeRef.current = lifetime;
+    return () => lifetime.abort();
+  }, []);
   const { openPaywall } = usePaywall();
 
   /** Resolved master for the active ritual (may rematch if preferred master cannot run the type). */
@@ -106,9 +118,11 @@ export default function RitualFlow({
   }, []);
 
   const loadRitual = useCallback(async (id: string) => {
-    const res = await fetch(`/api/ritual/${id}`);
+    const signal = lifetimeRef.current.signal;
+    const res = await fetch(`/api/ritual/${id}`, { signal });
     if (!res.ok) return null;
     const data = await res.json();
+    if (signal.aborted) return null;
     return data.ritual as RitualClientData;
   }, []);
 
@@ -135,7 +149,15 @@ export default function RitualFlow({
 
     if (initialRitualId) {
       void (async () => {
-        const r = await loadRitual(initialRitualId);
+        const signal = lifetimeRef.current.signal;
+        let r: RitualClientData | null;
+        try {
+          r = await loadRitual(initialRitualId);
+        } catch {
+          if (!signal.aborted) setFlowError("Не удалось загрузить обряд. Попробуйте ещё раз.");
+          return;
+        }
+        if (signal.aborted) return;
         if (!r) {
           setFlowError("Не удалось загрузить обряд. Попробуйте ещё раз.");
           return;
@@ -163,6 +185,7 @@ export default function RitualFlow({
 
   const handleStartType = async (type: RitualType) => {
     if (starting) return;
+    const signal = lifetimeRef.current.signal;
     setFlowError(null);
     setStarting(true);
     trackRitualStep("type_selected", { ritualType: type });
@@ -175,6 +198,7 @@ export default function RitualFlow({
           : resolveRitualMasterForType(type, preferred);
       setResolvedCharacterKey(master);
       const res = await fetch("/api/ritual/create", {
+        signal,
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ characterKey: master, ritualType: type }),
@@ -185,6 +209,7 @@ export default function RitualFlow({
       } catch {
         /* empty body */
       }
+      if (signal.aborted) return;
       if (res.status === 401) {
         redirectToRegister(type);
         return;
@@ -203,8 +228,10 @@ export default function RitualFlow({
       setRitualType(type);
       setCost(payload.cost);
       setStep("questions");
+    } catch {
+      if (!signal.aborted) setFlowError("Не удалось начать обряд. Проверьте соединение и попробуйте ещё раз.");
     } finally {
-      setStarting(false);
+      if (!signal.aborted) setStarting(false);
     }
   };
 
@@ -218,13 +245,17 @@ export default function RitualFlow({
     drawnCards: Array<{ name: string; position: string }>
   ) => {
     if (!ritualId) return;
+    const signal = lifetimeRef.current.signal;
     setFlowError(null);
     setCards(drawnCards);
+    try {
     const res = await fetch(`/api/ritual/${ritualId}/cards`, {
+      signal,
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ cards: drawnCards }),
     });
+    if (signal.aborted) return;
     if (!res.ok) {
       trackRitualStep("pay_fail", {
         ritualType: ritualType ?? "unknown",
@@ -235,27 +266,33 @@ export default function RitualFlow({
       return;
     }
     const data = await res.json();
+    if (signal.aborted) return;
     if (data.balance != null) {
       setLocalBalance(data.balance);
       onBalanceChange?.(data.balance);
     }
     trackRitualStep("spread_done", ritualType ? { ritualType } : undefined);
     setStep("payment");
+    } catch {
+      if (!signal.aborted) setFlowError("Не удалось сохранить расклад. Проверьте соединение и попробуйте ещё раз.");
+    }
   };
 
   const handlePay = useCallback(async () => {
-    if (!ritualId) return;
+    if (!ritualId || paying) return;
+    const signal = lifetimeRef.current.signal;
     setPaying(true);
     setFlowError(null);
     trackRitualStep("pay_start", ritualType ? { ritualType, cost } : { cost });
     try {
-      const res = await fetch(`/api/ritual/${ritualId}/pay`, { method: "POST" });
+      const res = await fetch(`/api/ritual/${ritualId}/pay`, { method: "POST", signal });
       let data: unknown = null;
       try {
         data = await res.json();
       } catch {
         /* empty */
       }
+      if (signal.aborted) return;
       if (res.status === 401) {
         redirectToRegister(ritualType);
         return;
@@ -291,16 +328,21 @@ export default function RitualFlow({
       }
       trackRitualStep("pay_ok", ritualType ? { ritualType, cost } : { cost });
       setStep("generating");
+    } catch {
+      if (!signal.aborted) setFlowError("Не удалось проверить оплату. Откройте обряд снова, чтобы узнать её результат.");
     } finally {
-      setPaying(false);
+      if (!signal.aborted) setPaying(false);
     }
-  }, [ritualId, ritualType, localBalance, cost, openPaywall, onBalanceChange, redirectToRegister]);
+  }, [ritualId, ritualType, localBalance, cost, paying, openPaywall, onBalanceChange, redirectToRegister]);
 
   const handleGenerated = useCallback(
     async (payload?: RitualReadyPayload | null) => {
       if (!ritualId) return;
+      const signal = lifetimeRef.current.signal;
       const achievement = payload?.achievement;
-      let r = await loadRitual(ritualId);
+      let r: RitualClientData | null = null;
+      try { r = await loadRitual(ritualId); } catch { /* use completed response when available */ }
+      if (signal.aborted) return;
       if (!r && payload?.ritual && typeof payload.ritual === "object") {
         r = payload.ritual as unknown as RitualClientData;
       }
@@ -324,6 +366,8 @@ export default function RitualFlow({
 
   const handleGenerationFailed = useCallback(
     async (opts?: { refunded?: boolean }) => {
+      const signal = lifetimeRef.current.signal;
+      if (signal.aborted) return;
       trackRitualStep(
         "generate_fail",
         ritualType
@@ -332,9 +376,10 @@ export default function RitualFlow({
       );
       if (opts?.refunded && ritualId) {
         try {
-          const res = await fetch("/api/runes/balance", { credentials: "include" });
+          const res = await fetch("/api/runes/balance", { credentials: "include", signal });
           if (res.ok) {
             const data = await res.json();
+            if (signal.aborted) return;
             if (typeof data.balance === "number") {
               setLocalBalance(data.balance);
               onBalanceChange?.(data.balance);
@@ -344,6 +389,7 @@ export default function RitualFlow({
           /* ignore */
         }
       }
+      if (signal.aborted) return;
       setFlowError(
         opts?.refunded
           ? "Не удалось собрать обряд. Руны возвращены — можно попробовать ещё раз."

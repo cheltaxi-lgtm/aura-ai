@@ -1,4 +1,4 @@
-import { parseBirthDate, reduceToSingle, sumDigits } from "./constants";
+import { parseBirthDate, sumDigits } from "./constants";
 
 export interface PythagorasCellInterpretation {
   count: number;
@@ -11,17 +11,25 @@ export interface PythagorasLineInterpretation {
   summary: string;
 }
 
+export const PYTHAGORAS_METHOD_VERSION = "alexandrov-four-working-numbers-v2" as const;
+
 export interface PythagorasSquareResult {
+  /** Absent only on persisted legacy results; never rewrite their digits. */
+  methodVersion?: typeof PYTHAGORAS_METHOD_VERSION;
+  workingNumbers?: [number, number, number, number];
+  /** A missing historical UI snapshot may be rebuilt, but must be labelled as such. */
+  reconstructedFromCurrentProfile?: boolean;
+  birthDate?: string;
   cells: Record<1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9, number>;
   interpretation: {
     character: PythagorasCellInterpretation;
     energy: PythagorasCellInterpretation;
+    interest: PythagorasCellInterpretation;
     health: PythagorasCellInterpretation;
     logic: PythagorasCellInterpretation;
     labor: PythagorasCellInterpretation;
     luck: PythagorasCellInterpretation;
     duty: PythagorasCellInterpretation;
-    talent: PythagorasCellInterpretation;
     memory: PythagorasCellInterpretation;
   };
   lines: {
@@ -50,54 +58,12 @@ const CELL_TEXT: Record<number, (count: number) => string> = {
         : c >= 2
           ? "Хороший запас сил, активность и выносливость."
           : "",
-  3: (c) =>
-    c === 0
-      ? "Слабое здоровье/самочувствие — берегите ресурс."
-      : c === 1
-        ? "Средний уровень, важны привычки и профилактика."
-        : c >= 2
-          ? "Крепкая конституция, быстрое восстановление."
-          : "",
-  4: (c) =>
-    c === 0
-      ? "Логика развивается через практику и обучение."
-      : c === 1
-        ? "Практичный ум, системное мышление."
-        : c >= 2
-          ? "Сильная аналитика, точные решения."
-          : "",
-  5: (c) =>
-    c === 0
-      ? "Труд даётся через дисциплину, избегайте хаоса."
-      : c === 1
-        ? "Работоспособность есть при ясной цели."
-        : c >= 2
-          ? "Высокая трудоспособность, мастерство через практику."
-          : "",
-  6: (c) =>
-    c === 0
-      ? "Удача приходит через терпение и подготовку."
-      : c === 1
-        ? "Умеренная удача, важны благоприятные решения."
-        : c >= 2
-          ? "Сильная интуиция на возможности, везение в делах."
-          : "",
-  7: (c) =>
-    c === 0
-      ? "Долг и ответственность — зона роста."
-      : c === 1
-        ? "Чувство долга присутствует, важна честность."
-        : c >= 2
-          ? "Сильная ответственность, надёжность для окружения."
-          : "",
-  8: (c) =>
-    c === 0
-      ? "Талант проявится через практику и наставника."
-      : c === 1
-        ? "Есть дар, нужна регулярная реализация."
-        : c >= 2
-          ? "Яркий талант, творческая или профессиональная одарённость."
-          : "",
+  3: (c) => c === 0 ? "Интересы раскрываются через знакомство с разными занятиями." : c === 1 ? "Есть любознательность и интерес к новому." : "Выраженный интерес к знаниям и исследованию.",
+  4: (c) => c === 0 ? "В символике метода это тема заботы о себе; количество цифр не оценивает здоровье." : "В символике метода это телесный ресурс; цифры не заменяют медицинскую оценку.",
+  5: (c) => c === 0 ? "Логика развивается через практику и обучение." : c === 1 ? "Практичный ум, системное мышление." : "Выраженная склонность к анализу.",
+  6: (c) => c === 0 ? "Труд опирается на дисциплину и ясный план." : c === 1 ? "Работоспособность проявляется при ясной цели." : "Мастерство раскрывается через регулярную практику.",
+  7: (c) => c === 0 ? "Возможности легче замечать благодаря подготовке." : c === 1 ? "В символике метода — внимание к благоприятным возможностям." : "Тема возможностей выражена; результат зависит и от действий.",
+  8: (c) => c === 0 ? "Ответственность развивается через договорённости." : c === 1 ? "Чувство долга и надёжность." : "Выраженное внимание к долгу и ответственности.",
   9: (c) =>
     c === 0
       ? "Память и глубина — через записи и повторение."
@@ -143,21 +109,16 @@ export function pythagorasSquare(birthDate: string): PythagorasSquareResult | nu
     if (d >= 1 && d <= 9) cells[d as 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9]++;
   }
 
-  const firstWork = [...dateDigits].reduce((s, d) => s + parseInt(d, 10), 0);
-  addDigitsToCells(cells, firstWork);
-
-  let secondWork: number;
-  if (parsed.day >= 10) {
-    secondWork = firstWork - 2 * Math.floor(parsed.day / 10);
-  } else {
-    secondWork = firstWork - 2 * parsed.day;
-  }
-  if (secondWork > 0) addDigitsToCells(cells, secondWork);
-
-  const reducedSecond = reduceToSingle(secondWork, false);
-  if (reducedSecond > 0 && reducedSecond !== secondWork) {
-    addDigitsToCells(cells, reducedSecond);
-  }
+  // Declared four-number method for the full supported 1900–2100 range:
+  // no post-2000 +19 variant; zeros add no cell, minus signs add no digit.
+  // Each working number contributes once, even if it repeats or is single-digit.
+  const firstWork = sumDigits(Number(dateDigits));
+  const secondWork = sumDigits(firstWork);
+  const firstDayDigit = Number(String(parsed.day)[0]);
+  const thirdWork = firstWork - 2 * firstDayDigit;
+  const fourthWork = sumDigits(thirdWork);
+  const workingNumbers: [number, number, number, number] = [firstWork, secondWork, thirdWork, fourthWork];
+  for (const number of workingNumbers) addDigitsToCells(cells, number);
 
   const cellInterp = (n: 1 | 2 | 3 | 4 | 5 | 6 | 7 | 8 | 9): PythagorasCellInterpretation => ({
     count: cells[n],
@@ -191,16 +152,19 @@ export function pythagorasSquare(birthDate: string): PythagorasSquareResult | nu
   });
 
   return {
+    methodVersion: PYTHAGORAS_METHOD_VERSION,
+    workingNumbers,
+    birthDate: `${parsed.year}-${String(parsed.month).padStart(2, "0")}-${String(parsed.day).padStart(2, "0")}`,
     cells,
     interpretation: {
       character: cellInterp(1),
       energy: cellInterp(2),
-      health: cellInterp(3),
-      logic: cellInterp(4),
-      labor: cellInterp(5),
-      luck: cellInterp(6),
-      duty: cellInterp(7),
-      talent: cellInterp(8),
+      interest: cellInterp(3),
+      health: cellInterp(4),
+      logic: cellInterp(5),
+      labor: cellInterp(6),
+      luck: cellInterp(7),
+      duty: cellInterp(8),
       memory: cellInterp(9),
     },
     lines: { rows, cols, diagonals },

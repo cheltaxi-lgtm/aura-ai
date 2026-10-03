@@ -2,7 +2,7 @@
 
 import { type BirthData, type ChartPlanet } from "celestine";
 import { computeNatalSky } from "../astronomy-sky";
-import { birthTimeLabel, resolveBirthUtcOffsetHours } from "../time";
+import { calendarInstant } from "@/lib/product-calendar";
 import type { NatalPlace } from "../types";
 
 export type SkyBody = {
@@ -58,12 +58,13 @@ export function toCelestineBirthDataAtLocalTime(
   place: NatalPlace,
   localHourDecimal: number
 ): BirthData {
-  const timeLabel = birthTimeLabel(localHourDecimal);
-  const utcOffset = resolveBirthUtcOffsetHours(birthDate, timeLabel, place.timezone);
+  const instant = calendarInstant(birthDate, localHourDecimal, place.timezone);
+  if (!instant) throw new Error("NONEXISTENT_CALENDAR_DATE");
+  // Calendar sampling has a gap/fold policy; birth-time validation stays strict.
   return toCelestineBirthData({
-    birthDate,
-    localHourDecimal,
-    utcOffsetHours: utcOffset,
+    birthDate: instant.toISOString().slice(0, 10),
+    localHourDecimal: instant.getUTCHours() + instant.getUTCMinutes() / 60 + instant.getUTCSeconds() / 3600,
+    utcOffsetHours: 0,
     latitude: place.latitude,
     longitude: place.longitude,
   });

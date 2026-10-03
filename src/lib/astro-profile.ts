@@ -1,3 +1,4 @@
+import { calendarParts } from "@/lib/product-calendar";
 import type { ZodiacSign } from "@/utils/zodiac";
 import { getZodiacFromDate } from "@/utils/zodiac";
 import { parseBirthDate, reduceToSingle } from "@/lib/numerology/constants";
@@ -55,39 +56,37 @@ const CHINESE_ZODIAC = [
 ];
 
 export function getBirthYear(birthDate: string): number | null {
-  const d = new Date(birthDate);
-  if (Number.isNaN(d.getTime())) return null;
-  return d.getUTCFullYear();
+  return parseBirthDate(birthDate)?.year ?? null;
 }
 
-export function getAge(birthDate: string): number | null {
-  const year = getBirthYear(birthDate);
-  if (!year) return null;
-  const now = new Date();
-  let age = now.getFullYear() - year;
-  const month = now.getMonth();
-  const day = now.getDate();
-  const birth = new Date(birthDate);
-  if (month < birth.getUTCMonth() || (month === birth.getUTCMonth() && day < birth.getUTCDate())) {
-    age -= 1;
-  }
-  return age;
+export function getAge(birthDate: string, refDate = new Date()): number | null {
+  const birth = parseBirthDate(birthDate);
+  if (!birth) return null;
+  const now = calendarParts(refDate);
+  let age = now.year - birth.year;
+  if (now.month < birth.month || (now.month === birth.month && now.day < birth.day)) age--;
+  return age < 0 ? null : age;
 }
 
+/** Chinese civil lunar year: the animal changes at lunar New Year, not Jan 1. */
 export function getChineseZodiac(birthDate: string): string {
-  const year = getBirthYear(birthDate);
-  if (!year) return CHINESE_ZODIAC[0];
-  const index = ((year - 4) % 12 + 12) % 12;
-  return CHINESE_ZODIAC[index];
+  const birth = parseBirthDate(birthDate);
+  if (!birth) return "";
+  const parts = new Intl.DateTimeFormat("en-u-ca-chinese", {
+    year: "numeric", timeZone: "UTC",
+  }).formatToParts(new Date(Date.UTC(birth.year, birth.month - 1, birth.day, 12)));
+  const year = Number(parts.find(part => String(part.type) === "relatedYear")?.value);
+  if (!Number.isInteger(year)) throw new Error("CHINESE_CALENDAR_UNAVAILABLE");
+  return CHINESE_ZODIAC[((year - 4) % 12 + 12) % 12];
 }
 
 export function getLifePathNumber(birthDate: string): number {
   const parsed = parseBirthDate(birthDate);
-  if (!parsed) return 1;
+  if (!parsed) return 0;
   const digits = `${parsed.day}${parsed.month}${parsed.year}`.replace(/\D/g, "");
   const raw = [...digits].reduce((s, d) => s + parseInt(d, 10), 0);
   const reduced = reduceToSingle(raw, true);
-  return reduced || 1;
+  return reduced;
 }
 
 export function buildAstroMeta(birthDate: string): AstroMeta | null {
@@ -95,6 +94,7 @@ export function buildAstroMeta(birthDate: string): AstroMeta | null {
   const age = getAge(birthDate);
   if (birthYear == null || age == null) return null;
   const zodiac = getZodiacFromDate(birthDate);
+  if (!zodiac) return null;
   return {
     birthYear,
     age,

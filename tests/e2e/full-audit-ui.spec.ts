@@ -1,6 +1,76 @@
 import { expect, test, type Page } from "@playwright/test";
 import { calculateHdChart } from "../../src/lib/human-design/calculate";
 
+test("support ignores a late ticket after selecting another and handles an offline create", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await installAuthenticatedMocks(page, baseURL!);
+  const tickets = ["Альфа", "Бета"].map((subject, i) => ({id:`ticket-${i}`,subject,category:"general",status:"open",unread_by_user:false,last_message_at:"2026-10-03T00:00:00Z"}));
+  let release!: () => void;
+  let requested = false;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let settleLate!: () => void;
+  const lateSettled = new Promise<void>(resolve => { settleLate = resolve; });
+  await page.route("**/api/support/tickets", (route) => route.request().method() === "POST"
+    ? route.abort("failed") : route.fulfill({json:{tickets,labels:{categories:{},statuses:{}}}}));
+  await page.route("**/api/support/tickets/*", async (route) => {
+    const first = route.request().url().endsWith("ticket-0");
+    if (first) { requested = true; await gate; }
+    await route.fulfill({json:{ticket:tickets[first ? 0 : 1],messages:[{id:first ? "a" : "b",sender_type:"user",content:first ? "Старое обращение" : "Текущее обращение",created_at:"2026-10-03T00:00:00Z"}]}}).catch(() => {});
+    if (first) settleLate();
+  });
+  await page.goto("/cabinet/support");
+  await page.getByRole("button", {name:/Альфа/}).click();
+  await expect.poll(() => requested).toBe(true);
+  await page.getByRole("button", {name:"← Все обращения"}).click();
+  await page.getByRole("button", {name:/Бета/}).click();
+  await expect(page.getByRole("heading", {name:"Бета",exact:true})).toBeVisible();
+  release();
+  await lateSettled;
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(page.getByText("Текущее обращение", {exact:true})).toBeVisible();
+  await expect(page.getByText("Старое обращение", {exact:true})).toHaveCount(0);
+  await page.getByRole("button", {name:"← Все обращения"}).click();
+  await page.getByRole("button", {name:"Новое обращение",exact:true}).click();
+  await page.getByPlaceholder("Кратко опишите проблему").fill("Нет связи");
+  await page.getByPlaceholder("Опишите ситуацию подробнее…").fill("Проверка восстановления соединения");
+  await page.getByRole("button", {name:"Отправить",exact:true}).click();
+  await expect(page.getByText("Не удалось создать обращение. Проверьте соединение и попробуйте ещё раз.", {exact:true})).toBeVisible();
+  await expect(page.getByRole("button", {name:"Отправить",exact:true})).toBeEnabled();
+});
+
+test("ritual ignores a late load after closing A and opening B", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await installAuthenticatedMocks(page, baseURL!);
+  const rituals = ["Альфа-карта", "Бета-карта"].map((name, index) => ({
+    id:ids[index],characterKey:"ragnar",ritualType:"protection",status:"payment",cards:[{name,position:"Опора"}],runeCost:50,
+    moonPhase:"Растущая",moonSign:"Рак",ritualTime:null,ritualPlace:null,ritualItems:[],ritualSteps:[],ritualWords:null,
+    ritualWordOfPower:null,ritualForbids:[],ritualSigns:[],createdAt:"2026-10-03T00:00:00Z",
+  }));
+  let release!: () => void;
+  let requested = false;
+  const gate = new Promise<void>((resolve) => { release = resolve; });
+  let settleLate!: () => void;
+  const lateSettled = new Promise<void>(resolve => { settleLate = resolve; });
+  await page.route("**/api/ritual/list", (route) => route.fulfill({json:{rituals}}));
+  await page.route(`**/api/ritual/${ids[0]}`, async (route) => {
+    requested = true; await gate;
+    await route.fulfill({json:{ritual:rituals[0]}}).catch(() => {});
+    settleLate();
+  });
+  await page.route(`**/api/ritual/${ids[1]}`, (route) => route.fulfill({json:{ritual:rituals[1]}}));
+  await page.goto("/cabinet?tab=rituals");
+  await page.getByRole("button", {name:"Продолжить обряд →",exact:true}).nth(0).click();
+  await expect.poll(() => requested).toBe(true);
+  await page.getByRole("dialog").locator('button[aria-label="Закрыть"]').first().click({position:{x:10,y:10}});
+  await page.getByRole("button", {name:"Продолжить обряд →",exact:true}).nth(1).click();
+  await expect(page.getByRole("dialog")).toContainText("Бета-карта");
+  release();
+  await lateSettled;
+  await page.evaluate(() => new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
+  await expect(page.getByRole("dialog")).not.toContainText("Альфа-карта");
+  await expect(page.getByRole("dialog")).toContainText("Бета-карта");
+});
+
 const ids = [
   "11111111-1111-4111-8111-111111111111",
   "22222222-2222-4222-8222-222222222222",

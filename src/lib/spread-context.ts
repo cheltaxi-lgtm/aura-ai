@@ -47,7 +47,7 @@ export function inferDeckSystemFromCardNames(
 
 export function reconcileSpreadDeck(
   system: DeckSystem,
-  cards: { name: string; meaning?: string; id?: number }[]
+  cards: { name: string; meaning?: string; id?: number; reversed?: boolean }[]
 ): { system: DeckSystem; cards: SpreadSymbol[] } {
   const allMatch = cards.length > 0 && cards.every((c) => findSymbolByName(system, c.name));
   const effectiveSystem = allMatch ? system : inferDeckSystemFromCardNames(cards, system);

@@ -1,5 +1,5 @@
 import { deliverEmail } from "@/lib/email/transport";
-import { logEmailAttempt } from "@/lib/email/log";
+import { captureEmailOwners, logEmailAttempt } from "@/lib/email/log";
 import {
   getAdminNotifyEmail,
   getSiteUrl,
@@ -43,9 +43,10 @@ import {
 } from "@/lib/email/templates";
 
 export async function sendEmail(
-  params: SendEmailParams & { template?: string; replyTo?: string }
+  params: SendEmailParams & { template?: string; replyTo?: string; ownerAccountId?: string }
 ): Promise<boolean> {
   const template = params.template ?? "generic";
+  const ownerAccountIds = await captureEmailOwners(params.to, params.ownerAccountId);
   const result = await deliverEmail({
     to: params.to,
     subject: params.subject,
@@ -62,6 +63,7 @@ export async function sendEmail(
     provider: result.provider === "none" ? null : result.provider,
     status: result.ok ? "sent" : result.error === "not_configured" ? "skipped" : "failed",
     errorMessage: result.error,
+    ownerAccountIds,
   });
 
   return result.ok;
@@ -117,6 +119,8 @@ export async function sendAdminNotification(params: {
   const to = getAdminNotifyEmail();
   if (!to) return false;
 
+  const ownerAccountIds = await captureEmailOwners(to);
+
   const result = await deliverEmail({
     to,
     subject: params.subject,
@@ -133,6 +137,7 @@ export async function sendAdminNotification(params: {
     status: result.ok ? "sent" : result.error === "not_configured" ? "skipped" : "failed",
     errorMessage: result.error,
     meta: { kind: "admin_notify" },
+    ownerAccountIds,
   });
 
   return result.ok;

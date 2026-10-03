@@ -23,6 +23,7 @@ import {
 import {
   BillingService,
   InsufficientFundsError,
+  BillingIdempotencyConflictError,
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
@@ -205,6 +206,7 @@ export type BotSpreadResult =
         | "needs_onboarding"
         | "insufficient_runes"
         | "generation_failed"
+        | "payment_key_conflict"
         | "site_only"
         | "not_found"
         | "internal";
@@ -274,11 +276,13 @@ export async function botRunVeronikaSpread(input: {
         cost: readingCost,
         actionType: "READING",
         idempotencyKey,
+        operationIdentity: idempotencyKey,
         description: "Telegram: расклад Вероники",
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
     } catch (err) {
+      if (err instanceof BillingIdempotencyConflictError) return { ok: false, error: "payment_key_conflict", message: "Предыдущая оплата требует подтверждения. Откройте сохранённый результат в кабинете; новое списание не выполнено." };
       if (err instanceof InsufficientFundsError) {
         return {
           ok: false,
@@ -606,11 +610,13 @@ export async function botRunCatalogIntent(input: {
         cost: spreadCost,
         actionType: "INTENTION_SPREAD",
         idempotencyKey,
+        operationIdentity: idempotencyKey,
         description: "Telegram: каталог раскладов",
       });
       runeBalance = billingCharge.newBalance;
       charged = billingCharge.spentRunes;
     } catch (err) {
+      if (err instanceof BillingIdempotencyConflictError) return { ok: false, error: "payment_key_conflict", message: "Предыдущая оплата требует подтверждения. Откройте сохранённый результат в кабинете; новое списание не выполнено." };
       if (err instanceof InsufficientFundsError) {
         return {
           ok: false,

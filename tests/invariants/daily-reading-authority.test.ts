@@ -13,7 +13,7 @@ describe("daily reading request boundary", () => {
   it("does not infer daily from ordinary profile cards or a different master", () => {
     const cards = SAMPLE_SYMBOLS.map(card => ({ ...card, meaning: "" }));
     expect(inferDailySpreadType({ cards, profile: { name: "Fixture", gender: "female", birthDate: "", zodiac: "", tarotCards: cards } })).toBeUndefined();
-    expect(restoredTripletSpreadType({ daily: { exists: false }, masterId: "veronika", cardNames: cards.map(c => c.name) })).toBe("new");
+    expect(restoredTripletSpreadType({ daily: { exists: false }, masterId: "veronika", deckSystem: "tarot-veronika", cards })).toBe("new");
   });
   it("validates before async enqueue, prompting or billing and does not continue on save network failure", () => {
     const route = readFileSync("src/app/api/reading/route.ts", "utf8");
@@ -41,9 +41,9 @@ describe.skipIf(!hasTestDb)("daily reading authority in isolated PostgreSQL", ()
   }
   it("accepts an owned current artifact and rebuilds orientation and meaning for older clients", async () => {
     const { request, saved } = await fixture();
-    expect(restoredTripletSpreadType({ daily: saved.daily, masterId: "veronika", cardNames: saved.daily.cardNames })).toBe("daily");
-    expect(restoredTripletSpreadType({ daily: saved.daily, masterId: "ragnar", cardNames: saved.daily.cardNames })).toBe("new");
-    expect(restoredTripletSpreadType({ daily: { ...saved.daily, createdAt: new Date(Date.now() - 86400000).toISOString() }, masterId: "veronika", cardNames: saved.daily.cardNames })).toBe("new");
+    expect(restoredTripletSpreadType({ daily: saved.daily, masterId: "veronika", deckSystem: saved.daily.deckSystem, cards: saved.daily.cards })).toBe("daily");
+    expect(restoredTripletSpreadType({ daily: saved.daily, masterId: "ragnar", deckSystem: saved.daily.deckSystem, cards: saved.daily.cards })).toBe("new");
+    expect(restoredTripletSpreadType({ daily: { ...saved.daily, createdAt: new Date(Date.now() - 86400000).toISOString() }, masterId: "veronika", deckSystem: saved.daily.deckSystem, cards: saved.daily.cards })).toBe("new");
     const result = await resolveDailyFreeReading({ ...request, tarotCards: SAMPLE_SYMBOLS.map(({ name }) => ({ name })) });
     expect(result?.cards[1]).toMatchObject({ id: 1, name: "Маг", reversed: true });
     expect(result?.cards.every(card => card.meaning.length > 0)).toBe(true);

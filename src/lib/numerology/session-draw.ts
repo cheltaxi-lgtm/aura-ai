@@ -1,3 +1,4 @@
+import { calendarParts } from "@/lib/product-calendar";
 import { resolveMasterDeckSystem } from "@/lib/decks";
 import type { DeckSystem, SpreadSymbol } from "@/lib/decks/types";
 import { resolveSpreadSymbols } from "@/lib/intention-draw";
@@ -58,7 +59,7 @@ export function resolveNumerologSpreadCardNames(
     }
     case "forecast_9y": {
       if (!parsedBirth) return null;
-      const startYear = new Date().getFullYear();
+      const startYear = calendarParts().year;
       return personalYearForecast(birthDate!, startYear, 9)
         .map((entry) => String(entry.number))
         .slice(0, 9);
@@ -111,8 +112,8 @@ export function resolveNumerologSpreadCardNames(
     case "favorable_dates": {
       if (!parsedBirth) return null;
       const now = new Date();
-      const refYear = now.getFullYear();
-      const refMonth = now.getMonth() + 1;
+      const refYear = calendarParts(now).year;
+      const refMonth = calendarParts(now).month;
       const fav = favorableDates(birthDate!, refMonth, refYear);
       if (!fav) return null;
       const best = fav.favorable[0] ?? fav.neutral[0];
@@ -128,7 +129,7 @@ export function resolveNumerologSpreadCardNames(
 }
 
 function forecastSpreadSymbols(birthDate: string, tool: { drawCount: number }): SpreadSymbol[] {
-  const startYear = new Date().getFullYear();
+  const startYear = calendarParts().year;
   const forecast = personalYearForecast(birthDate, startYear, 9);
   return forecast.slice(0, tool.drawCount).map((entry, i) => ({
     id: i,

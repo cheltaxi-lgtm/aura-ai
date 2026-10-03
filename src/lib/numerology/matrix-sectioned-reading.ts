@@ -334,10 +334,13 @@ async function matrixModelChain(): Promise<string[]> {
   return filtered.length ? filtered : models;
 }
 
+type MatrixGenerationRuntime = {beforeRequest?:()=>Promise<void>;deadlineAt?:number};
+
 async function llmOnce(
   messages: ChatMessage[],
   maxTokens: number,
-  label?: string
+  label?: string,
+  runtime?:MatrixGenerationRuntime
 ): Promise<string | null> {
   const models = await matrixModelChain();
   if (!models.length) {
@@ -346,6 +349,7 @@ async function llmOnce(
   }
 
   for (const model of models) {
+    await runtime?.beforeRequest?.();
     const budget =
       isReasoningHeavyModel(model) && maxTokens < 2000
         ? Math.max(maxTokens * 3, 2500)
@@ -354,6 +358,7 @@ async function llmOnce(
     const run = async (tokens: number) =>
       completeChatDetailed({
         messages,
+        beforeRequest:runtime?.beforeRequest,deadlineAt:runtime?.deadlineAt,
         maxTokens: tokens,
         temperature: 0.45,
         isPaid: true,
@@ -536,7 +541,8 @@ async function generateMatrixZoneLlm(
   audience: MatrixAudience,
   matrix: DestinyMatrixResult,
   contextFacts?: string | null,
-  avoidBlocks?: string
+  avoidBlocks?: string,
+  runtime?:MatrixGenerationRuntime
 ): Promise<string | null> {
   const readerName = clampMatrixPromptName(audience.readerName);
   const gender = audience.readerGender;
@@ -596,7 +602,7 @@ async function generateMatrixZoneLlm(
         { role: "user", content: user },
       ],
       1200,
-      zone.id
+      zone.id,runtime
     );
     return raw ? normalizeZoneBlock(raw, zone) : null;
   }
@@ -653,7 +659,7 @@ async function generateMatrixZoneLlm(
       { role: "user", content: user },
     ],
     ZONE_MAX_TOKENS_FAST,
-    zone.id
+    zone.id,runtime
   );
   if (!raw) return null;
   const normalized = normalizeZoneBlock(
@@ -739,6 +745,8 @@ export function forceFillMissingSections(
 export async function generateFullMatrixSectionedReading(input: {
   birthDate: string;
   name: string;
+  beforeRequest?:()=>Promise<void>;
+  deadlineAt?:number;
   toolId?: "destiny_matrix" | "child_matrix";
   gender?: string | null;
   /** Whose matrix this is. Default self — address `name` on «ты». */
@@ -822,8 +830,9 @@ export async function generateFullMatrixSectionedReading(input: {
   const intro = renderEngineIntro(audience, matrix);
 
   const runZoneLlm = async (zone: MatrixZoneInstance): Promise<string | null> => {
+    await input.beforeRequest?.();
     try {
-      return await generateMatrixZoneLlm(zone, audience, matrix, contextFacts);
+      return await generateMatrixZoneLlm(zone, audience, matrix, contextFacts,undefined,input);
     } catch (err) {
       console.warn(
         `[matrix-sectioned] zone throw label=${zone.label}`,
@@ -916,7 +925,7 @@ export async function generateFullMatrixSectionedReading(input: {
       if (!repeated.length) continue;
       let revised: string | null = null;
       try {
-        revised = await generateMatrixZoneLlm(item.zone, audience, matrix, contextFacts, repeated.map((b) => b.block).join("\n\n").slice(0, 5000));
+        revised = await generateMatrixZoneLlm(item.zone, audience, matrix, contextFacts, repeated.map((b) => b.block).join("\n\n").slice(0, 5000),input);
       } catch { /* dictionary fallback is counted below */ }
       if (revised && !neighbours.some((b) => matrixZoneTextsRepeat(revised!, b.block))) {
         zoneBlocks[i] = { ...item, block: revised };

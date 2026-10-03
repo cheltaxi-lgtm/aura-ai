@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import Link from "next/link";
 import { ArrowLeft, Loader2, Plus, MessageCircle } from "lucide-react";
 import SupportChat, { SupportStatusBadge } from "@/components/support/SupportChat";
@@ -45,22 +45,54 @@ export default function SupportPage() {
   const [newMessage, setNewMessage] = useState("");
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const selectionRef = useRef<string | null>(null);
+  const requestRef = useRef(0);
+  const mountedRef = useRef(true);
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => { mountedRef.current = false; requestRef.current += 1; };
+  }, []);
+  const selectTicket = (id: string | null) => {
+    selectionRef.current = id;
+    requestRef.current += 1;
+    setSelectedId(id);
+    setActiveTicket(null);
+    setMessages([]);
+    setLoadError(null);
+  };
 
   const loadTickets = useCallback(async () => {
+    try {
     const res = await fetch("/api/support/tickets", { credentials: "include" });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error("load failed");
     const data = await res.json();
+    if (!mountedRef.current) return;
     setTickets(data.tickets ?? []);
     if (data.labels) setLabels(data.labels);
+    } catch {
+      if (mountedRef.current) setLoadError("Не удалось обновить обращения. Проверьте соединение и повторите попытку.");
+    }
   }, []);
 
   const loadTicket = useCallback(async (id: string) => {
+    const request = ++requestRef.current;
+    try {
     const res = await fetch(`/api/support/tickets/${id}`, { credentials: "include" });
-    if (!res.ok) return;
+    if (!res.ok) throw new Error("load failed");
     const data = await res.json();
+    if (!mountedRef.current || selectionRef.current !== id || request !== requestRef.current) return [];
     setActiveTicket(data.ticket);
     setMessages(data.messages ?? []);
+    setLoadError(null);
     void loadTickets();
+    return data.messages ?? [];
+    } catch {
+      if (mountedRef.current && selectionRef.current === id && request === requestRef.current) {
+        setLoadError("Не удалось загрузить обращение. Проверьте соединение и повторите попытку.");
+      }
+      return [];
+    }
   }, [loadTickets]);
 
   useEffect(() => {
@@ -72,6 +104,7 @@ export default function SupportPage() {
   }, [selectedId, loadTicket]);
 
   const handleCreate = async () => {
+    if (creating) return;
     if (!newSubject.trim() || !newMessage.trim()) {
       setCreateError("Заполните тему и сообщение");
       return;
@@ -111,7 +144,9 @@ export default function SupportPage() {
       setNewMessage("");
       setNewCategory("general");
       await loadTickets();
-      setSelectedId(data.ticket.id);
+      if (mountedRef.current) selectTicket(data.ticket.id);
+    } catch {
+      if (mountedRef.current) setCreateError("Не удалось создать обращение. Проверьте соединение и попробуйте ещё раз.");
     } finally {
       setCreating(false);
     }
@@ -119,6 +154,7 @@ export default function SupportPage() {
 
   const handleSend = async (content: string) => {
     if (!selectedId) return;
+    const id = selectedId;
     const features = await fetchPlatformFeatures();
     const payload: Record<string, unknown> = { content };
     const captchaErr = await attachRecaptchaToken(payload, "support", features);
@@ -135,30 +171,34 @@ export default function SupportPage() {
       if (data.error === "ticket_closed") throw new Error("Обращение закрыто");
       throw new Error("Не удалось отправить");
     }
-    setMessages((prev) => [...prev, data.message]);
+    if (!mountedRef.current || selectionRef.current !== id) return;
+    requestRef.current += 1;
+    setMessages((prev) => prev.some((message) => message.id === data.message.id) ? prev : [...prev, data.message]);
     void loadTickets();
   };
 
   const pollMessages = useCallback(async () => {
-    if (!selectedId) return messages;
-    const res = await fetch(`/api/support/tickets/${selectedId}`, { credentials: "include" });
-    if (!res.ok) return messages;
-    const data = await res.json();
-    setMessages(data.messages ?? []);
-    setActiveTicket(data.ticket);
-    return data.messages ?? [];
-  }, [selectedId, messages]);
+    if (!selectedId) return [];
+    return await loadTicket(selectedId) ?? [];
+  }, [selectedId, loadTicket]);
 
   const handleClose = async () => {
     if (!selectedId || !confirm("Закрыть обращение?")) return;
-    await fetch(`/api/support/tickets/${selectedId}`, {
+    const id = selectedId;
+    try {
+    const res = await fetch(`/api/support/tickets/${id}`, {
       method: "PATCH",
       credentials: "include",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ action: "close" }),
     });
-    await loadTicket(selectedId);
+    if (!res.ok) throw new Error("close failed");
+    if (!mountedRef.current || selectionRef.current !== id) return;
+    await loadTicket(id);
     void loadTickets();
+    } catch {
+      if (mountedRef.current && selectionRef.current === id) setLoadError("Не удалось закрыть обращение. Попробуйте ещё раз.");
+    }
   };
 
   const isClosed =
@@ -182,7 +222,9 @@ export default function SupportPage() {
           </div>
         </div>
 
-        {loading ? (
+        {loadError && <div role="alert" className="mb-4 text-sm text-red-300">{loadError} <button type="button" className="underline" onClick={() => void (selectedId ? loadTicket(selectedId) : loadTickets())}>Повторить</button></div>}
+        {selectedId && !activeTicket && <button type="button" className="mb-4 text-sm text-gray-400" onClick={() => selectTicket(null)}>← Все обращения</button>}
+        {loading || (selectedId && !activeTicket && !loadError) ? (
           <div className="flex justify-center py-20">
             <Loader2 className="h-8 w-8 animate-spin text-aura-champagne" />
           </div>
@@ -193,9 +235,7 @@ export default function SupportPage() {
                 <button
                   type="button"
                   onClick={() => {
-                    setSelectedId(null);
-                    setActiveTicket(null);
-                    setMessages([]);
+                    selectTicket(null);
                   }}
                   className="mb-2 text-xs text-gray-500 hover:text-white"
                 >
@@ -222,6 +262,7 @@ export default function SupportPage() {
 
             <div className="h-[min(60vh,520px)]">
               <SupportChat
+                key={selectedId}
                 messages={messages}
                 onSend={handleSend}
                 disabled={isClosed}
@@ -314,7 +355,7 @@ export default function SupportPage() {
                   <li key={t.id}>
                     <button
                       type="button"
-                      onClick={() => setSelectedId(t.id)}
+                      onClick={() => selectTicket(t.id)}
                       className="flex w-full items-start gap-3 rounded-2xl border border-white/10 bg-white/[0.03] p-4 text-left transition-colors hover:border-white/20 hover:bg-white/[0.05]"
                     >
                       <div className="mt-0.5 flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-white/5">

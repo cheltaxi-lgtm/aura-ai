@@ -1,3 +1,4 @@
+import { dailyCardsKey } from "@/lib/daily-triplet-cards";
 import { describe, expect, it } from "vitest";
 import { claimGuestResumeSession } from "@/lib/guest-triplet-receipt-db";
 import { resolveCurrentDailyCards } from "@/lib/current-daily-cards";
@@ -60,7 +61,7 @@ describe.skipIf(!hasTestDb)("daily routing + home recap (db)", () => {
     if (!daily.exists) return;
     expect(daily.historyId).toBe(history.id);
     expect(daily.cardNames).toEqual(cards.map((c) => c.name));
-    expect(daily.cardsKey).toBe(tarotCardsKey(cards));
+    expect(daily.cardsKey).toBe(dailyCardsKey(daily.cards, daily.deckSystem));
   });
 
   it("TEST6: dedicated daily anchor without artifact → cooldown denied, exists false", async () => {

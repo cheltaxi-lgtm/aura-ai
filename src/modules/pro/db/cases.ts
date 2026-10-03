@@ -139,10 +139,10 @@ export async function setCaseInput(
     await client.query("BEGIN");
     const c=(await client.query<ProCaseRow>("SELECT * FROM pro.cases WHERE id=$1 AND account_id=$2 FOR UPDATE",[caseId,accountId])).rows[0];
     if(!c){await client.query("COMMIT");return null;}
+    if(c.status==="generating")throw Object.assign(new Error("generation_in_progress"),{status:409});
     await client.query("INSERT INTO pro.case_inputs(case_id,payload,source) VALUES($1,$2::jsonb,$3) ON CONFLICT(case_id) DO UPDATE SET payload=EXCLUDED.payload,source=EXCLUDED.source",[caseId,JSON.stringify(payload),source]);
     const {rows}=await client.query<ProCaseRow>(`UPDATE pro.cases SET status=CASE
       WHEN status IN ('delivered','archived') THEN status
-      WHEN status='generating' AND type<>'hd' THEN status
       ELSE 'input_ready' END,updated_at=now() WHERE id=$1 AND account_id=$2 RETURNING *`,[caseId,accountId]);
     await client.query("COMMIT");
     return rows[0]??null;
@@ -244,14 +244,6 @@ export async function hardDeleteCase(
   accountId: string | number,
   caseId: string | number
 ): Promise<boolean> {
-  const c=(await proQuery("SELECT type FROM pro.cases WHERE id=$1 AND account_id=$2",[caseId,accountId])).rows[0];
-  if(!c||c.type==="hd") {
-    const { purgeProHdCase }=await import("./hd-purge");
-    return purgeProHdCase(accountId,caseId);
-  }
-  const { rowCount } = await proQuery(
-    `DELETE FROM pro.cases WHERE id = $1 AND account_id = $2`,
-    [caseId, accountId]
-  );
-  return rowCount === 1;
+  const { purgeProHdCase }=await import("./hd-purge");
+  return purgeProHdCase(accountId,caseId);
 }

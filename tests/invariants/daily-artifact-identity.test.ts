@@ -1,3 +1,4 @@
+import { formatReversedCardName } from "@/lib/card-orientation";
 import { describe, expect, it } from "vitest";
 import {
   dailyCardsKey,
@@ -140,7 +141,7 @@ describe.skipIf(!hasTestDb)("daily artifact identity (db)", () => {
        RETURNING id`,
       [
         user.id,
-        JSON.stringify(historyCards.map((c) => c.name)),
+        JSON.stringify(historyCards.map((c) => formatReversedCardName(c.name, c.reversed))),
         histRows[0]!.created_at,
       ]
     );
@@ -191,6 +192,42 @@ describe.skipIf(!hasTestDb)("daily artifact identity (db)", () => {
     expect(daily.historyId).toBe(history.id);
     expect(daily.cardNames).toEqual(newCards.map((c) => c.name));
     expect(daily.sessionId).toBeNull();
+  });
+
+  it("a retry reuses only the same deck, master and all orientations", async () => {
+    const user = await createTestUser();
+    const cards = SAMPLE_SYMBOLS.map((s, position) => ({ ...s, position, reversed: s.reversed === true }));
+    const input = { userId: user.id, cards, masterId: "veronika", deckSystem: "tarot-veronika" };
+    const first = await saveAuthenticatedDailyTriplet(input);
+    expect(first.ok).toBe(true);
+    const retry = await saveAuthenticatedDailyTriplet(input);
+    expect(retry.ok && retry.reused).toBe(true);
+    if (first.ok && retry.ok) expect(retry.daily.historyId).toBe(first.daily.historyId);
+    const reversed = await saveAuthenticatedDailyTriplet({ ...input, cards: cards.map((c, i) => i === 0 ? { ...c, reversed: !c.reversed } : c) });
+    expect(reversed.ok).toBe(false);
+    if (!reversed.ok) expect(reversed.code).toBe("COOLDOWN");
+    const foreignDeck = await saveAuthenticatedDailyTriplet({ ...input, masterId: "gadalka_marina", deckSystem: "tarot-marina" });
+    expect(foreignDeck.ok).toBe(false);
+    if (!foreignDeck.ok) expect(foreignDeck.code).toBe("INVALID_MASTER");
+    // A retired master can still exist in history. Matching names must not turn
+    // that foreign deck into a retry of the active Veronika daily artifact.
+    if (!first.ok) throw new Error("fixture was not saved");
+    await query(`UPDATE history SET context_data = context_data || $2::jsonb WHERE id = $1`,
+      [first.daily.historyId, JSON.stringify({ masterId: "gadalka_marina", deckSystem: "tarot-marina" })]);
+    const historicalForeignDeck = await saveAuthenticatedDailyTriplet(input);
+    expect(historicalForeignDeck.ok).toBe(false);
+    if (!historicalForeignDeck.ok) expect(historicalForeignDeck.code).toBe("COOLDOWN");
+  });
+
+  it("does not bind a session with the same names but different orientations", async () => {
+    const user = await createTestUser();
+    const cards = SAMPLE_SYMBOLS.map((s, position) => ({ ...s, position, reversed: position === 1 }));
+    const saved = await saveAuthenticatedDailyTriplet({ userId: user.id, cards });
+    expect(saved.ok).toBe(true);
+    await query(`INSERT INTO sessions (user_id, character_key, spread_type, cards, status)
+      VALUES ($1, 'veronika', 'daily', $2::jsonb, 'active')`, [user.id, JSON.stringify(cards.map(c => c.name))]);
+    const daily = await resolveCurrentDailyCards(user.id);
+    expect(daily.exists && daily.sessionId).toBeNull();
   });
 
   it("TEST12: guest intro claim is not current daily", async () => {

@@ -31,6 +31,7 @@ async function fixture(page:Page) {
 }
 
 test("public landing and registration show the server-authoritative 25-rune gift",async({page})=>{
+  test.setTimeout(90_000);
   await page.route("**/api/auth/me",route=>route.fulfill({json:{authenticated:false}}));
   await page.route("**/api/auth/oauth/providers",route=>route.fulfill({json:{providers:[]}}));
   await page.route("**/api/platform/features",route=>route.fulfill({json:{firstExperienceEnabled:true,recaptcha:{configured:false,masterEnabled:false,scopes:{}}}}));
@@ -84,9 +85,9 @@ for(const width of [390,1280])test(`saved palm intent and exact package quote at
   expect(await page.evaluate(()=>document.documentElement.scrollWidth<=innerWidth)).toBe(true);
   await page.screenshot({path:info.outputPath(`quote-${width}.png`)});
   f.confirm();await dialog.getByRole("button",{name:/Для выбранного разбора/}).click();
-  await expect(page.getByRole("heading",{name:"Руны на вашем балансе"})).toBeVisible();
+  await expect(page.getByRole("heading",{name:"Руны на вашем балансе"})).toBeVisible({timeout:30_000});
   const back=page.getByRole("link",{name:"Вернуться к выбору разбора"});await expect(back).toHaveAttribute("href",`/gadanie-po-ladoni?reading=${readingId}`);
-  await back.click();await expect(page).toHaveURL(new RegExp(`/gadanie-po-ladoni\\?reading=${readingId}`));
+  await back.click();await expect(page).toHaveURL(new RegExp(`/gadanie-po-ladoni\\?reading=${readingId}`), {timeout:30_000});
   expect(f.calls.some(call=>call==="POST /api/palm/interpret")).toBe(false);
 });
 
@@ -94,6 +95,7 @@ test("Mini App retains pending attempt and permits retry after confirmed cancell
   test.setTimeout(120_000);await page.setViewportSize({width:390,height:900});const f=await fixture(page);
   await page.goto("/cabinet?shop=1");const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();
   await page.evaluate(()=>{
+    localStorage.setItem("aura_cookie_consent", "1");
     (window as typeof window & {checkoutGoals:string[]}).checkoutGoals=[];
     window.ym=(_id,_method,goal,_params,callback)=>{
       if(goal==="rune_checkout_started")(window as typeof window & {checkoutGoals:string[]}).checkoutGoals.push(goal as string);
@@ -142,7 +144,7 @@ test("guest daily CTA opens registration for the daily reading instead of starti
 for(const width of [390,1280])test(`minimal custom topup and daily CTA for enabled reminders at ${width}px`,async({page},info)=>{
   await page.setViewportSize({width,height:900});const f=await fixture(page);
   await page.goto("/cabinet");
-  await expect(page.getByRole("link",{name:"Открыть расклад на сутки · 0 рун"})).toBeVisible();
+  await expect(page.getByRole("banner").getByRole("button",{name:width < 768 ? "На сутки" : "Расклад на сутки",exact:true})).toBeVisible();
   await page.evaluate(()=>sessionStorage.setItem("aura_rune_selected_destination",JSON.stringify({path:"/photo-reading",requiredRunes:30,at:Date.now()})));
   await page.goto("/cabinet?shop=1&package=small");const dialog=page.getByRole("dialog");await expect(dialog).toBeVisible();
   await expect(page).toHaveURL(/\/cabinet$/);

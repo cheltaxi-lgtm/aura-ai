@@ -1,6 +1,7 @@
 import { DEFAULT_RUNE_COSTS } from "@/lib/rune-costs";
 import { getRuneSettings, runeCostFromSettings } from "@/lib/rune-settings";
 import { query } from "@/lib/db";
+import { normalizeChargeIdempotencyKey } from "@/lib/charge-idempotency-key";
 import { PALM_DAY_TIMEZONE } from "@/lib/services/palm-guest-service";
 
 const PALM_TODAY_SQL = `(created_at AT TIME ZONE '${PALM_DAY_TIMEZONE}')::date = (NOW() AT TIME ZONE '${PALM_DAY_TIMEZONE}')::date`;
@@ -139,8 +140,9 @@ export function bindPalmChargeIdempotencyKey(
   snapshotId: string,
   clientKey?: string | null
 ): string {
-  if (palmSpendKeyBelongsToSnapshot(clientKey, snapshotId)) {
-    return clientKey!.trim();
+  const key = normalizeChargeIdempotencyKey(clientKey);
+  if (palmSpendKeyBelongsToSnapshot(key, snapshotId)) {
+    return key!;
   }
   return palmSpendKeyForSnapshot(snapshotId);
 }

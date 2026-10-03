@@ -19,10 +19,15 @@ export default function PythagorasSquareGrid({ square, className = "" }: Pythago
       <p className="mb-2 text-[10px] uppercase tracking-widest text-aura-gold/70">
         Квадрат Пифагора
       </p>
+      <p className="mb-2 text-[10px] text-aura-muted">
+        {square.reconstructedFromCurrentProfile
+          ? `Новый расчёт по текущему профилю (${square.birthDate}). Исходный текст сохранён.`
+          : square.methodVersion ? "Метод четырёх рабочих чисел" : "Сохранённый расчёт прежней версии"}
+      </p>
       <div className="grid grid-cols-3 gap-1.5">
         {GRID.flat().map((n) => {
           const count = square.cells[n];
-          const display = count > 0 ? String(n).repeat(Math.min(count, 4)) : "—";
+          const display = count > 0 ? String(n).repeat(count) : "—";
           return (
             <div
               key={n}

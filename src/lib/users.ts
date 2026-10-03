@@ -1,4 +1,4 @@
-﻿import { query, queryClient, withTransaction } from "./db";
+import { query, queryClient, withTransaction } from "./db";
 import { deleteUserChatForCharacter } from "./accounts";
 import type { PoolClient } from "./db";
 import { grantStarterRunesIfNeeded } from "./rune-service";
@@ -742,8 +742,22 @@ export async function persistSceneArtForSpread(
 export async function findExistingSceneArtUrl(
   userId: string,
   scene: string,
-  cardsKey?: string
+  cardsKey?: string,
+  opts: { resourceIdentity?: string } = {}
 ): Promise<string | null> {
+  // A charge replay may outlive the latest 80 rows. Query the durable artifact
+  // directly rather than guessing intent from card names in another reading.
+  if (opts.resourceIdentity) {
+    const { rows } = await query<{ context_data: Record<string, unknown> }>(
+      `SELECT context_data FROM history WHERE user_id=$1
+       AND context_data->>'type'='scene_image'
+       AND context_data->>'sceneImageResourceKey'=$2 ORDER BY created_at DESC LIMIT 1`,
+      [userId, opts.resourceIdentity]
+    );
+    const art = rows[0]?.context_data?.sceneArt as Record<string, string> | undefined;
+    const url = art?.[scene];
+    return url && canPersistSceneUrl(url) ? url : null;
+  }
   const { rows } = await query<{
     character_name: string;
     context_data: Record<string, unknown>;

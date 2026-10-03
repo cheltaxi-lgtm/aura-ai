@@ -31,7 +31,7 @@ import { resolveTripletDisplaySpread } from "@/lib/spread-context";
 import { DEFAULT_DECK_SYSTEM } from "@/lib/decks";
 import { DEFAULT_SPREAD_ID, hasCompleteSpread } from "@/lib/spreads";
 import { astroMetaFromBirthDate } from "@/lib/registration-consent";
-import { formatZodiacLabel, getZodiacFromDate } from "@/utils/zodiac";
+import { formatZodiacLabel, getZodiacFromDate, normalizeBirthDate } from "@/utils/zodiac";
 import { scheduleNatalChartCompute } from "@/lib/services/natal-chart-service";
 import type { LifeFocus, AstroMeta } from "@/lib/astro-profile";
 import {
@@ -256,7 +256,7 @@ export async function PATCH(request: NextRequest) {
     const payload = {
       name: resolvedName,
       gender: resolvedGender,
-      birthDate: effectiveBirthDate,
+      birthDate: normalizeBirthDate(effectiveBirthDate)!,
       zodiac: formatZodiacLabel(sign),
       birthTime: birthTime ?? profile?.birth_time ?? undefined,
       birthCity: birthCity ?? profile?.birth_city ?? undefined,

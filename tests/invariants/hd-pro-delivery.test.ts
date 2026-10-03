@@ -17,7 +17,7 @@ describe.runIf(hasTestDb)('HD Pro durable delivery boundaries',()=>{
   beforeAll(async()=>{
     // The public snapshot predates the optional Pro schema. Bootstrap it from
     // its actual canonical migrations, with no synthetic migration ledger.
-    for(const file of ['102_migrate_pro_schema.sql','103_migrate_pro_delivery_billing.sql','113_migrate_pro_case_type_hd.sql','121_migrate_pro_thread_msg_idem.sql','123_migrate_pro_case_cost_rub.sql','168_pro_hd_delivery_receipts.sql'])await proQueryBootstrap(readFileSync(`scripts/migrations/${file}`,'utf8'));
+    for(const file of ['102_migrate_pro_schema.sql','103_migrate_pro_delivery_billing.sql','113_migrate_pro_case_type_hd.sql','121_migrate_pro_thread_msg_idem.sql','123_migrate_pro_case_cost_rub.sql','168_pro_hd_delivery_receipts.sql','171_pro_generation_receipts.sql'])await proQueryBootstrap(readFileSync(`scripts/migrations/${file}`,'utf8'));
   });
   async function proQueryBootstrap(sql:string){const {getProPool}=await import('@/modules/pro/db');await getProPool().query(sql);}
   beforeEach(async()=>{await proQuery('TRUNCATE pro.accounts RESTART IDENTITY CASCADE');vi.stubEnv('PRO_BILLING_MODE','live');vi.stubEnv('PRO_TRIAL_ENFORCE','false');});
@@ -52,7 +52,7 @@ describe.runIf(hasTestDb)('HD Pro durable delivery boundaries',()=>{
   });
   it.each(['edit','archive','deleteClient','humanVersion'])('rejects late save after %s and refunds the held purchase once',async(mode)=>{
     const f=await fixture(),queued=await queue(f),source=await claim(f,queued.jobId);
-    if(mode==='edit')await setCaseInput(f.accountId,f.caseId,{...f.payload,birthDate:'2001-01-01'});
+    if(mode==='edit')await proQuery('UPDATE pro.case_inputs SET payload=$2::jsonb WHERE case_id=$1',[f.caseId,JSON.stringify({...f.payload,birthDate:'2001-01-01'})]);
     if(mode==='archive')await proQuery("UPDATE pro.cases SET status='archived' WHERE id=$1",[f.caseId]);
     if(mode==='deleteClient')await proQuery("UPDATE pro.clients SET deleted_at=now() WHERE id=$1",[f.clientId]);
     if(mode==='humanVersion')await addVersion(f.accountId,f.caseId,{source:'human',blocks:generated.blocks,status:'edited'});

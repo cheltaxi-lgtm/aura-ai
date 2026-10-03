@@ -4,6 +4,7 @@ import { motion } from "framer-motion";
 import RuneIcon from "@/components/RuneIcon";
 import { formatCabinetDisplayName, resolveZodiacSign } from "@/lib/cabinet-utils";
 import type { CabinetProfile } from "@/lib/cabinet-data";
+import { normalizeBirthDate } from "@/utils/zodiac";
 
 interface Props {
   profile: CabinetProfile;
@@ -15,11 +16,13 @@ interface Props {
 export default function CabinetProfileHeader({ profile, onTopUp, balancePulse, showRuneTopUp = true }: Props) {
   const sign = resolveZodiacSign(profile.zodiac, profile.birthDate);
   const displayName = formatCabinetDisplayName(profile.name);
-  const birthLabel = profile.birthDate
-    ? new Date(profile.birthDate).toLocaleDateString("ru-RU", {
+  const birthDate = profile.birthDate ? normalizeBirthDate(profile.birthDate) : null;
+  const birthLabel = birthDate
+    ? new Date(`${birthDate}T12:00:00Z`).toLocaleDateString("ru-RU", {
         day: "numeric",
         month: "long",
         year: "numeric",
+        timeZone: "UTC",
       })
     : null;
 
@@ -29,13 +32,13 @@ export default function CabinetProfileHeader({ profile, onTopUp, balancePulse, s
       <div className="relative flex flex-col gap-6 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-5">
           <div className="cabinet-profile-header__avatar" aria-hidden>
-            {sign.emoji}
+            {sign?.emoji ?? "✦"}
           </div>
           <div>
             <h1 className="cabinet-profile-header__name">{displayName}</h1>
-            <p className="cabinet-profile-header__zodiac">
+            {sign ? <p className="cabinet-profile-header__zodiac">
               {sign.name} {sign.emoji}
-            </p>
+            </p> : null}
             {birthLabel ? (
               <p className="cabinet-profile-header__birth">Родился: {birthLabel}</p>
             ) : null}

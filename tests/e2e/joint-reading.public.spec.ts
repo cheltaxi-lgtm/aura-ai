@@ -110,7 +110,8 @@ test("theme, depth and price explanation fit a mobile screen", async ({ page }) 
   await invite.getByRole("button", { name: /Быстрый/ }).click();
   await expect(invite.locator(".joint-invite__pricing")).toContainText("≈ 20 ᚢ");
   await invite.getByRole("button", { name: /Максимальный/ }).click();
-  await expect(invite.locator(".joint-invite__pricing")).toContainText("≈ 60 ᚢ");
+  // The paid route caps a personal intention spread at 50 runes.
+  await expect(invite.locator(".joint-invite__pricing")).toContainText("≈ 50 ᚢ");
   await expect.poll(() => page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   if (process.env.JOINT_VISUAL_REVIEW === "1") await page.screenshot({ path: "output/joint-landing-mobile.png", fullPage: true });
 });

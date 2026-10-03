@@ -429,6 +429,7 @@ CREATE TABLE IF NOT EXISTS oauth_handoffs (
   id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   code_hash BYTEA NOT NULL UNIQUE,
   account_id UUID NOT NULL REFERENCES user_accounts(id) ON DELETE CASCADE,
+  token_version INTEGER NOT NULL,
   created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMPTZ NOT NULL
 );
@@ -538,6 +539,7 @@ CREATE TABLE IF NOT EXISTS rune_transactions (
   action_type     TEXT,
   payment_id      TEXT,
   idempotency_key TEXT,
+  operation_identity TEXT,
   -- Soft link to sessions.id (bot product dedupe resume; no FK).
   result_session_id UUID,
   refund_of_transaction_id UUID REFERENCES rune_transactions(id) ON DELETE SET NULL,
@@ -2525,4 +2527,642 @@ CREATE TABLE IF NOT EXISTS pro.hd_delivery_receipts (
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 CREATE INDEX IF NOT EXISTS pro_hd_receipts_user_charge_idx ON pro.hd_delivery_receipts(user_id,charge_transaction_id);
+END $$;
+
+-- Snapshot sync: 169_migrate_oauth_handoff_version.sql
+-- Outstanding unversioned login capabilities cannot survive credential revoke.
+-- Deployment invalidates these short-lived tokens; fresh login mints a versioned one.
+-- Restore migration 051 tables omitted by the canonical bootstrap snapshot.
+CREATE TABLE IF NOT EXISTS email_log (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  recipient TEXT NOT NULL,
+  subject TEXT NOT NULL,
+  template TEXT NOT NULL,
+  provider TEXT,
+  status TEXT NOT NULL CHECK (status IN ('sent', 'failed', 'skipped')),
+  error_message TEXT,
+  meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_email_log_created ON email_log (created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_email_log_template ON email_log (template, created_at DESC);
+CREATE TABLE IF NOT EXISTS password_reset_tokens (
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+  user_account_id UUID NOT NULL REFERENCES user_accounts(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL UNIQUE,
+  expires_at TIMESTAMPTZ NOT NULL,
+  used_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS idx_password_reset_account ON password_reset_tokens (user_account_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_password_reset_expires ON password_reset_tokens (expires_at) WHERE used_at IS NULL;
+DROP TRIGGER IF EXISTS erasure_ref_user_account_id ON password_reset_tokens;
+CREATE TRIGGER erasure_ref_user_account_id BEFORE INSERT OR UPDATE OF user_account_id ON password_reset_tokens
+  FOR EACH ROW EXECUTE FUNCTION enforce_erasure_reference_fence('user_accounts', 'user_account_id');
+
+ALTER TABLE oauth_handoffs ADD COLUMN IF NOT EXISTS token_version INTEGER;
+DELETE FROM oauth_handoffs WHERE token_version IS NULL;
+ALTER TABLE oauth_handoffs ALTER COLUMN token_version SET NOT NULL;
+
+-- The general reference fence skips updates whose owner does not change.
+-- Session metadata still creates personal data, so lock/recheck on every write.
+CREATE OR REPLACE FUNCTION enforce_active_session_owner() RETURNS trigger AS $$
+DECLARE requested TIMESTAMPTZ;
+BEGIN
+  IF NEW.user_id IS NULL THEN RETURN NEW; END IF;
+  SELECT erasure_requested_at INTO requested FROM users WHERE id = NEW.user_id FOR SHARE;
+  IF requested IS NOT NULL THEN
+    RAISE EXCEPTION 'account_erasure_pending' USING ERRCODE = '55000';
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS active_session_owner_fence ON sessions;
+CREATE TRIGGER active_session_owner_fence BEFORE UPDATE ON sessions
+  FOR EACH ROW EXECUTE FUNCTION enforce_active_session_owner();
+
+-- Keep only the recipient fingerprint during the existing 30-day erasure
+-- outbox retention. A delayed provider response must not recreate email PII.
+CREATE OR REPLACE FUNCTION account_erasure_email_hashes(account UUID) RETURNS TEXT[] AS $$
+  SELECT COALESCE(array_agg(DISTINCT encode(digest(lower(btrim(address)), 'sha256'), 'hex')), '{}')
+  FROM (
+    SELECT email AS address FROM user_accounts WHERE id = account
+    UNION SELECT contact_email FROM user_accounts WHERE id = account
+    UNION SELECT provider_email FROM user_oauth_identities WHERE user_account_id = account
+  ) addresses WHERE address IS NOT NULL AND btrim(address) <> '';
+$$ LANGUAGE SQL STABLE;
+ALTER TABLE account_erasure_jobs ADD COLUMN IF NOT EXISTS email_hashes TEXT[];
+UPDATE account_erasure_jobs j SET email_hashes = account_erasure_email_hashes(j.account_id)
+  WHERE j.email_hashes IS NULL AND EXISTS (SELECT 1 FROM user_accounts a WHERE a.id = j.account_id);
+CREATE INDEX IF NOT EXISTS account_erasure_email_hashes_idx ON account_erasure_jobs USING GIN(email_hashes);
+CREATE OR REPLACE FUNCTION fence_erased_email_log() RETURNS trigger AS $$
+DECLARE fingerprint TEXT; account RECORD;
+BEGIN
+  fingerprint := encode(digest(lower(btrim(NEW.recipient)), 'sha256'), 'hex');
+  FOR account IN SELECT a.erasure_requested_at FROM user_accounts a
+    WHERE lower(btrim(a.email)) = lower(btrim(NEW.recipient))
+      OR lower(btrim(a.contact_email)) = lower(btrim(NEW.recipient))
+      OR EXISTS (SELECT 1 FROM user_oauth_identities oi WHERE oi.user_account_id = a.id
+        AND lower(btrim(oi.provider_email)) = lower(btrim(NEW.recipient)))
+    ORDER BY a.id FOR SHARE OF a
+  LOOP
+    IF account.erasure_requested_at IS NOT NULL THEN RETURN NULL; END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM account_erasure_jobs WHERE email_hashes @> ARRAY[fingerprint]) THEN
+    RETURN NULL;
+  END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS erased_email_log_fence ON email_log;
+CREATE TRIGGER erased_email_log_fence BEFORE INSERT OR UPDATE OF recipient ON email_log
+  FOR EACH ROW EXECUTE FUNCTION fence_erased_email_log();
+DELETE FROM email_log WHERE encode(digest(lower(btrim(recipient)), 'sha256'), 'hex')
+  IN (SELECT unnest(email_hashes) FROM account_erasure_jobs);
+-- Capture ownership before delivery so an address change cannot orphan personal logs.
+ALTER TABLE email_log ADD COLUMN IF NOT EXISTS owner_account_ids UUID[] NOT NULL DEFAULT '{}';
+CREATE INDEX IF NOT EXISTS email_log_owner_accounts_idx ON email_log USING GIN(owner_account_ids);
+
+UPDATE email_log e SET owner_account_ids = ARRAY(
+  SELECT DISTINCT a.id FROM user_accounts a
+  WHERE lower(btrim(a.email)) = lower(btrim(e.recipient))
+    OR lower(btrim(a.contact_email)) = lower(btrim(e.recipient))
+    OR EXISTS (SELECT 1 FROM user_oauth_identities oi WHERE oi.user_account_id = a.id
+      AND lower(btrim(oi.provider_email)) = lower(btrim(e.recipient)))
+) WHERE cardinality(owner_account_ids) = 0;
+
+CREATE OR REPLACE FUNCTION fence_erased_email_log() RETURNS trigger AS $$
+DECLARE fingerprint TEXT; account RECORD; captured_id UUID;
+BEGIN
+  fingerprint := encode(digest(lower(btrim(NEW.recipient)), 'sha256'), 'hex');
+  -- Resolve direct SQL writers too. Multiple accounts can share a contact address.
+  NEW.owner_account_ids := ARRAY(
+    SELECT DISTINCT id FROM (
+      SELECT unnest(NEW.owner_account_ids) AS id
+      UNION SELECT a.id FROM user_accounts a
+        WHERE lower(btrim(a.email)) = lower(btrim(NEW.recipient))
+          OR lower(btrim(a.contact_email)) = lower(btrim(NEW.recipient))
+          OR EXISTS (SELECT 1 FROM user_oauth_identities oi WHERE oi.user_account_id = a.id
+            AND lower(btrim(oi.provider_email)) = lower(btrim(NEW.recipient)))
+    ) owners ORDER BY id
+  );
+  FOREACH captured_id IN ARRAY NEW.owner_account_ids LOOP
+    SELECT a.erasure_requested_at INTO account FROM user_accounts a WHERE a.id = captured_id FOR SHARE;
+    -- A captured owner that disappeared during delivery must not be recreated as an anonymous log.
+    IF NOT FOUND OR account.erasure_requested_at IS NOT NULL THEN RETURN NULL; END IF;
+  END LOOP;
+  IF EXISTS (SELECT 1 FROM account_erasure_jobs WHERE email_hashes @> ARRAY[fingerprint]) THEN RETURN NULL; END IF;
+  RETURN NEW;
+END; $$ LANGUAGE plpgsql;
+DROP TRIGGER IF EXISTS erased_email_log_fence ON email_log;
+CREATE TRIGGER erased_email_log_fence BEFORE INSERT OR UPDATE ON email_log
+  FOR EACH ROW EXECUTE FUNCTION fence_erased_email_log();
+DELETE FROM email_log e WHERE EXISTS (
+  SELECT 1 FROM account_erasure_jobs j WHERE e.owner_account_ids @> ARRAY[j.account_id]
+);
+
+
+-- Migration 171: generalized Pro generation receipts.
+-- Shared durable generation receipt for every active Pro practice.
+DO $$ BEGIN
+IF to_regclass('pro.hd_delivery_receipts') IS NULL THEN RETURN; END IF;
+ALTER TABLE pro.hd_delivery_receipts ADD COLUMN IF NOT EXISTS case_type TEXT NOT NULL DEFAULT 'hd';
+END $$;
+
+-- Pro canonical bootstrap through migration 116 (active and optional schema).
+
+-- 102_migrate_pro_schema.sql
+-- Zovus Pro (practitioner CRM) — isolated schema.
+-- Rollback: DROP SCHEMA pro CASCADE;
+-- No FK into public.*; user_id / author_user_id are UUID without public references.
+
+CREATE SCHEMA IF NOT EXISTS pro;
+
+CREATE TABLE IF NOT EXISTS pro.accounts (
+  id BIGSERIAL PRIMARY KEY,
+  user_id UUID NOT NULL,
+  status TEXT NOT NULL DEFAULT 'pending'
+    CHECK (status IN ('pending', 'active', 'suspended', 'closed')),
+  tier TEXT NOT NULL DEFAULT 'free_trial'
+    CHECK (tier IN ('free_trial', 'pro')),
+  display_name TEXT,
+  brand_slug TEXT,
+  specializations TEXT[] NOT NULL DEFAULT '{}',
+  bio TEXT,
+  timezone TEXT NOT NULL DEFAULT 'Europe/Moscow',
+  onboarding_state JSONB NOT NULL DEFAULT '{}'::jsonb,
+  limits JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ,
+  UNIQUE (user_id),
+  UNIQUE (brand_slug)
+);
+
+CREATE TABLE IF NOT EXISTS pro.brand (
+  account_id BIGINT PRIMARY KEY REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  logo_url TEXT,
+  accent_color TEXT,
+  signature TEXT,
+  contact_public TEXT,
+  extra_disclaimer TEXT,
+  report_theme TEXT,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS pro.clients (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  alias TEXT NOT NULL,
+  full_name TEXT,
+  email TEXT,
+  phone TEXT,
+  birth_date DATE,
+  birth_time TIME,
+  birth_place TEXT,
+  birth_lat DOUBLE PRECISION,
+  birth_lon DOUBLE PRECISION,
+  birth_tz TEXT,
+  gender TEXT,
+  tags TEXT[] NOT NULL DEFAULT '{}',
+  notes TEXT,
+  consent_state TEXT NOT NULL DEFAULT 'unknown'
+    CHECK (consent_state IN ('unknown', 'confirmed', 'revoked')),
+  source TEXT NOT NULL DEFAULT 'manual'
+    CHECK (source IN ('manual', 'intake', 'import')),
+  last_case_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  deleted_at TIMESTAMPTZ
+);
+
+CREATE INDEX IF NOT EXISTS pro_clients_account_deleted_idx
+  ON pro.clients (account_id, deleted_at);
+CREATE INDEX IF NOT EXISTS pro_clients_account_last_case_idx
+  ON pro.clients (account_id, last_case_at DESC NULLS LAST);
+
+CREATE TABLE IF NOT EXISTS pro.client_consents (
+  id BIGSERIAL PRIMARY KEY,
+  client_id BIGINT NOT NULL REFERENCES pro.clients(id) ON DELETE CASCADE,
+  kind TEXT NOT NULL
+    CHECK (kind IN ('pdn', 'recording', 'followup', 'marketing')),
+  granted BOOLEAN NOT NULL DEFAULT FALSE,
+  doc_version TEXT,
+  method TEXT
+    CHECK (method IS NULL OR method IN ('intake_form', 'practitioner_confirm')),
+  ip_hash TEXT,
+  granted_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pro_client_consents_client_idx
+  ON pro.client_consents (client_id);
+
+CREATE TABLE IF NOT EXISTS pro.layouts (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  positions JSONB NOT NULL DEFAULT '[]'::jsonb,
+  deck_type TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pro_layouts_account_idx
+  ON pro.layouts (account_id);
+
+CREATE TABLE IF NOT EXISTS pro.cases (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  client_id BIGINT NOT NULL REFERENCES pro.clients(id) ON DELETE CASCADE,
+  type TEXT NOT NULL
+    CHECK (type IN (
+      'manual_spread', 'photo_spread', 'custom_layout',
+      'natal', 'forecast', 'synastry', 'matrix',
+      'numerology', 'runes', 'lenormand'
+    )),
+  status TEXT NOT NULL DEFAULT 'new'
+    CHECK (status IN (
+      'new', 'input_ready', 'generating', 'draft', 'edited',
+      'delivered', 'archived', 'failed'
+    )),
+  question TEXT,
+  practitioner_context TEXT,
+  layout_id BIGINT REFERENCES pro.layouts(id) ON DELETE SET NULL,
+  ai_cost_runes INT NOT NULL DEFAULT 0,
+  delivered_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pro_cases_account_status_idx
+  ON pro.cases (account_id, status);
+CREATE INDEX IF NOT EXISTS pro_cases_client_idx
+  ON pro.cases (client_id);
+
+CREATE TABLE IF NOT EXISTS pro.case_inputs (
+  case_id BIGINT PRIMARY KEY REFERENCES pro.cases(id) ON DELETE CASCADE,
+  payload JSONB NOT NULL DEFAULT '{}'::jsonb,
+  source TEXT NOT NULL DEFAULT 'manual'
+    CHECK (source IN ('manual', 'vision', 'transcript', 'voice')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS pro.case_versions (
+  id BIGSERIAL PRIMARY KEY,
+  case_id BIGINT NOT NULL REFERENCES pro.cases(id) ON DELETE CASCADE,
+  version INT NOT NULL,
+  source TEXT NOT NULL CHECK (source IN ('ai', 'human')),
+  blocks JSONB NOT NULL DEFAULT '[]'::jsonb,
+  uncertainty_marks JSONB NOT NULL DEFAULT '[]'::jsonb,
+  author_user_id UUID,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (case_id, version)
+);
+
+CREATE INDEX IF NOT EXISTS pro_case_versions_case_idx
+  ON pro.case_versions (case_id, version DESC);
+
+
+-- 103_migrate_pro_delivery_billing.sql
+-- Zovus Pro S1/S2: delivery, intake, dialog, usage, audit, assistant runs.
+-- Rollback: drop listed tables (schema pro remains).
+-- No FK into public.*.
+
+CREATE TABLE IF NOT EXISTS pro.deliveries (
+  id BIGSERIAL PRIMARY KEY,
+  case_id BIGINT NOT NULL REFERENCES pro.cases(id) ON DELETE CASCADE,
+  token_hash TEXT NOT NULL,
+  token_prefix TEXT NOT NULL,
+  ttl_expires_at TIMESTAMPTZ,
+  revoked_at TIMESTAMPTZ,
+  view_count INT NOT NULL DEFAULT 0,
+  first_viewed_at TIMESTAMPTZ,
+  last_viewed_at TIMESTAMPTZ,
+  audio_url TEXT,
+  pdf_url TEXT,
+  dialog_mode TEXT NOT NULL DEFAULT 'b'
+    CHECK (dialog_mode IN ('a', 'b', 'c')),
+  dialog_quota INT NOT NULL DEFAULT 5,
+  dialog_window_days INT NOT NULL DEFAULT 14,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (token_hash)
+);
+
+CREATE INDEX IF NOT EXISTS pro_deliveries_case_idx ON pro.deliveries (case_id);
+CREATE INDEX IF NOT EXISTS pro_deliveries_prefix_idx ON pro.deliveries (token_prefix);
+
+CREATE TABLE IF NOT EXISTS pro.intake_forms (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  name TEXT NOT NULL DEFAULT 'Бриф',
+  schema JSONB NOT NULL DEFAULT '{}'::jsonb,
+  active BOOLEAN NOT NULL DEFAULT TRUE,
+  token_hash TEXT NOT NULL,
+  token_prefix TEXT NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (token_hash)
+);
+
+CREATE INDEX IF NOT EXISTS pro_intake_forms_account_idx ON pro.intake_forms (account_id);
+
+CREATE TABLE IF NOT EXISTS pro.intake_responses (
+  id BIGSERIAL PRIMARY KEY,
+  form_id BIGINT NOT NULL REFERENCES pro.intake_forms(id) ON DELETE CASCADE,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  client_id BIGINT REFERENCES pro.clients(id) ON DELETE SET NULL,
+  case_id BIGINT REFERENCES pro.cases(id) ON DELETE SET NULL,
+  answers JSONB NOT NULL DEFAULT '{}'::jsonb,
+  consent_snapshot JSONB NOT NULL DEFAULT '{}'::jsonb,
+  ip_hash TEXT,
+  submitted_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS pro.client_threads (
+  id BIGSERIAL PRIMARY KEY,
+  delivery_id BIGINT NOT NULL REFERENCES pro.deliveries(id) ON DELETE CASCADE,
+  case_id BIGINT NOT NULL REFERENCES pro.cases(id) ON DELETE CASCADE,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  client_id BIGINT NOT NULL REFERENCES pro.clients(id) ON DELETE CASCADE,
+  status TEXT NOT NULL DEFAULT 'open'
+    CHECK (status IN ('open', 'closed', 'escalated')),
+  questions_used INT NOT NULL DEFAULT 0,
+  closed_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pro_client_threads_account_status_idx
+  ON pro.client_threads (account_id, status);
+
+CREATE TABLE IF NOT EXISTS pro.thread_messages (
+  id BIGSERIAL PRIMARY KEY,
+  thread_id BIGINT NOT NULL REFERENCES pro.client_threads(id) ON DELETE CASCADE,
+  author TEXT NOT NULL
+    CHECK (author IN ('client', 'ai_draft', 'practitioner', 'ai_direct', 'system')),
+  body TEXT NOT NULL,
+  moderation_state TEXT NOT NULL DEFAULT 'pending'
+    CHECK (moderation_state IN ('pending', 'approved', 'rejected', 'auto')),
+  safety_flags TEXT[] NOT NULL DEFAULT '{}',
+  ai_cost_runes INT NOT NULL DEFAULT 0,
+  sent_at TIMESTAMPTZ,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pro_thread_messages_thread_idx
+  ON pro.thread_messages (thread_id, created_at);
+
+CREATE TABLE IF NOT EXISTS pro.usage_log (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  action TEXT NOT NULL,
+  case_id BIGINT REFERENCES pro.cases(id) ON DELETE SET NULL,
+  runes INT NOT NULL DEFAULT 0,
+  idempotency_key TEXT NOT NULL,
+  ledger_txn_ref TEXT,
+  shadow BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  UNIQUE (idempotency_key)
+);
+
+CREATE INDEX IF NOT EXISTS pro_usage_log_account_idx
+  ON pro.usage_log (account_id, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS pro.audit_log (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT REFERENCES pro.accounts(id) ON DELETE SET NULL,
+  actor TEXT NOT NULL CHECK (actor IN ('user', 'admin', 'system')),
+  actor_user_id UUID,
+  action TEXT NOT NULL,
+  target TEXT,
+  meta JSONB NOT NULL DEFAULT '{}'::jsonb,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pro_audit_log_created_idx
+  ON pro.audit_log (created_at DESC);
+
+CREATE TABLE IF NOT EXISTS pro.assistant_runs (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  mode TEXT NOT NULL
+    CHECK (mode IN ('prep', 'table', 'draft', 'style', 'business', 'client_dialog')),
+  case_id BIGINT REFERENCES pro.cases(id) ON DELETE SET NULL,
+  input_ref TEXT,
+  model TEXT,
+  tokens_in INT NOT NULL DEFAULT 0,
+  tokens_out INT NOT NULL DEFAULT 0,
+  cost_runes INT NOT NULL DEFAULT 0,
+  latency_ms INT,
+  outcome TEXT NOT NULL DEFAULT 'ok'
+    CHECK (outcome IN ('ok', 'filtered', 'failed')),
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS pro.style_profiles (
+  id BIGSERIAL PRIMARY KEY,
+  account_id BIGINT NOT NULL UNIQUE REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  tone JSONB NOT NULL DEFAULT '{}'::jsonb,
+  address_form TEXT NOT NULL DEFAULT 'vy'
+    CHECK (address_form IN ('ty', 'vy', 'neutral')),
+  length_pref TEXT,
+  stop_words TEXT[] NOT NULL DEFAULT '{}',
+  must_include TEXT[] NOT NULL DEFAULT '{}',
+  structure_template JSONB NOT NULL DEFAULT '{}'::jsonb,
+  calibration_score NUMERIC(6, 4),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+
+-- 112_migrate_pro_landing.sql
+
+-- Practitioner public mini-landing (Avito → /p/{brand_slug}).
+-- Isolated in pro.*; no FK into public.*.
+
+CREATE TABLE IF NOT EXISTS pro.landings (
+  account_id BIGINT PRIMARY KEY REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  published BOOLEAN NOT NULL DEFAULT FALSE,
+  headline TEXT,
+  subheadline TEXT,
+  promo_badge TEXT,
+  price_rub INTEGER
+    CHECK (price_rub IS NULL OR (price_rub >= 0 AND price_rub <= 1000000)),
+  promo_limit INTEGER
+    CHECK (promo_limit IS NULL OR (promo_limit >= 0 AND promo_limit <= 100000)),
+  promo_used INTEGER NOT NULL DEFAULT 0
+    CHECK (promo_used >= 0 AND promo_used <= 100000),
+  sections JSONB NOT NULL DEFAULT '{}'::jsonb,
+  contact_note TEXT,
+  intake_form_id BIGINT REFERENCES pro.intake_forms(id) ON DELETE SET NULL,
+  -- Raw intake capability path (/pro/f/zf_…) — only recoverable at mint time.
+  intake_url TEXT,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS pro_landings_published_idx
+  ON pro.landings (published)
+  WHERE published = TRUE;
+
+COMMENT ON TABLE pro.landings IS
+  'Public mini-landing content per Pro account; CTA binds to intake_url';
+
+-- 113_migrate_pro_case_type_hd.sql
+-- Allow Human Design as a Pro case type (premium report funnel).
+
+ALTER TABLE pro.cases DROP CONSTRAINT IF EXISTS cases_type_check;
+
+ALTER TABLE pro.cases
+  ADD CONSTRAINT cases_type_check CHECK (type IN (
+    'manual_spread', 'photo_spread', 'custom_layout',
+    'natal', 'forecast', 'synastry', 'matrix',
+    'numerology', 'runes', 'lenormand', 'hd'
+  ));
+
+-- Pro canonical schema after current idempotent migrations.
+
+-- 119_migrate_pro_avito.sql
+-- Zovus Pro: Avito Messenger inbox (surface /pro/avito).
+-- Lives in the isolated pro schema; no FK into public.* (pro db guard).
+-- Ids are Avito-side strings (chat_id / message id) — natural idempotency keys
+-- for webhook redeliveries (INSERT ... ON CONFLICT DO NOTHING).
+-- Rollback: DROP TABLE pro.avito_messages; DROP TABLE pro.avito_chats;
+
+-- Cleanup of the never-deployed public-schema placement (no-op on prod).
+
+
+-- On a fresh DB the pro schema arrives via 102_migrate_pro_schema.sql; the
+-- schema-diff bootstrap only marks it applied, so create defensively.
+CREATE SCHEMA IF NOT EXISTS pro;
+
+CREATE TABLE IF NOT EXISTS pro.avito_chats (
+  id                     TEXT PRIMARY KEY,
+  avito_user_id          BIGINT,
+  client_avito_user_id   BIGINT,
+  client_name            TEXT,
+  item_id                BIGINT,
+  item_title             TEXT,
+  last_message_at        TIMESTAMPTZ,
+  last_message_preview   TEXT,
+  last_message_direction TEXT CHECK (last_message_direction IN ('in', 'out')),
+  unread_by_practitioner BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at             TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+  updated_at             TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pro_avito_chats_last_message
+  ON pro.avito_chats (last_message_at DESC NULLS LAST);
+
+CREATE INDEX IF NOT EXISTS idx_pro_avito_chats_unread
+  ON pro.avito_chats (unread_by_practitioner)
+  WHERE unread_by_practitioner = TRUE;
+
+CREATE TABLE IF NOT EXISTS pro.avito_messages (
+  id               TEXT PRIMARY KEY,
+  chat_id          TEXT NOT NULL REFERENCES pro.avito_chats(id) ON DELETE CASCADE,
+  direction        TEXT NOT NULL CHECK (direction IN ('in', 'out')),
+  type             TEXT NOT NULL DEFAULT 'text',
+  text             TEXT,
+  author_id        BIGINT,
+  avito_created_at TIMESTAMPTZ,
+  raw              JSONB,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+CREATE INDEX IF NOT EXISTS idx_pro_avito_messages_chat
+  ON pro.avito_messages (chat_id, avito_created_at NULLS LAST, created_at);
+
+
+-- 120_migrate_pro_avito_tenancy.sql
+-- Zovus Pro: Avito tenancy — bind chats to a pro account (single-operator scope).
+-- AVITO_PRO_OWNER_USER_ID selects the owning account at runtime; rows stay NULL
+-- until backfilled by sync/webhook, and NULL is treated as "owner's" when scoped.
+-- Rollback: ALTER TABLE pro.avito_chats DROP COLUMN IF EXISTS account_id;
+DO $$
+BEGIN
+  IF to_regclass('pro.avito_chats') IS NULL OR to_regclass('pro.accounts') IS NULL THEN
+    RAISE NOTICE 'pro schema missing — skip avito tenancy';
+    RETURN;
+  END IF;
+
+  ALTER TABLE pro.avito_chats
+    ADD COLUMN IF NOT EXISTS account_id BIGINT
+    REFERENCES pro.accounts(id) ON DELETE SET NULL;
+
+  EXECUTE 'CREATE INDEX IF NOT EXISTS idx_pro_avito_chats_account ON pro.avito_chats (account_id)';
+END $$;
+
+-- 121_migrate_pro_thread_msg_idem.sql
+-- Zovus Pro: idempotent client questions on delivery dialogs.
+-- client_msg_id is generated by the /r/[token] page per composed question;
+-- retries reuse it, so double-submit cannot consume quota or charge twice.
+-- Rollback: DROP INDEX IF EXISTS pro.pro_thread_messages_client_msg_uniq;
+--           ALTER TABLE pro.thread_messages DROP COLUMN IF EXISTS client_msg_id;
+DO $$
+BEGIN
+  IF to_regclass('pro.thread_messages') IS NULL THEN
+    RAISE NOTICE 'pro.thread_messages missing — skip client_msg_id';
+    RETURN;
+  END IF;
+
+  ALTER TABLE pro.thread_messages
+    ADD COLUMN IF NOT EXISTS client_msg_id TEXT;
+
+  EXECUTE 'CREATE UNIQUE INDEX IF NOT EXISTS pro_thread_messages_client_msg_uniq
+    ON pro.thread_messages (thread_id, client_msg_id)
+    WHERE client_msg_id IS NOT NULL';
+END $$;
+
+-- 122_migrate_pro_thread_msg_feedback.sql
+-- Zovus Pro: practitioner feedback on rejected AI dialog drafts.
+-- Rollback: ALTER TABLE pro.thread_messages DROP COLUMN IF EXISTS feedback;
+DO $$
+BEGIN
+  IF to_regclass('pro.thread_messages') IS NULL THEN
+    RAISE NOTICE 'pro.thread_messages missing — skip feedback';
+    RETURN;
+  END IF;
+
+  ALTER TABLE pro.thread_messages
+    ADD COLUMN IF NOT EXISTS feedback TEXT;
+END $$;
+
+-- 123_migrate_pro_case_cost_rub.sql
+-- Zovus Pro: estimated AI spend (RUB) accumulated per case.
+-- Estimate = text volume x live OpenRouter catalog price; telemetry for the
+-- practitioner billing page, not an invoice.
+-- Rollback: ALTER TABLE pro.cases DROP COLUMN IF EXISTS ai_cost_rub;
+DO $$
+BEGIN
+  IF to_regclass('pro.cases') IS NULL THEN
+    RAISE NOTICE 'pro.cases missing — skip ai_cost_rub';
+    RETURN;
+  END IF;
+
+  ALTER TABLE pro.cases
+    ADD COLUMN IF NOT EXISTS ai_cost_rub NUMERIC(10,2) NOT NULL DEFAULT 0;
+END $$;
+
+-- 168_pro_hd_delivery_receipts.sql
+-- Run on the Pro database as well when PRO_DATABASE_URL is separate.
+DO $$ BEGIN
+IF to_regclass('pro.cases') IS NULL THEN RETURN; END IF;
+ALTER TABLE pro.cases ALTER COLUMN ai_cost_rub DROP NOT NULL;
+CREATE TABLE IF NOT EXISTS pro.hd_delivery_receipts (
+  job_id UUID PRIMARY KEY,
+  account_id BIGINT NOT NULL REFERENCES pro.accounts(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL,
+  case_id BIGINT REFERENCES pro.cases(id) ON DELETE SET NULL,
+  version_id BIGINT REFERENCES pro.case_versions(id) ON DELETE SET NULL,
+  charge_transaction_id UUID UNIQUE,
+  block_count INTEGER NOT NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS pro_hd_receipts_user_charge_idx ON pro.hd_delivery_receipts(user_id,charge_transaction_id);
+END $$;
+
+
+-- 171_pro_generation_receipts.sql
+-- Shared durable generation receipt for every active Pro practice.
+DO $$ BEGIN
+IF to_regclass('pro.hd_delivery_receipts') IS NULL THEN RETURN; END IF;
+ALTER TABLE pro.hd_delivery_receipts ADD COLUMN IF NOT EXISTS case_type TEXT NOT NULL DEFAULT 'hd';
 END $$;

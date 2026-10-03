@@ -172,8 +172,25 @@ export function resolveJointParticipantRole(
 ): "initiator" | "partner" | null {
   if (userId === row.initiator_user_id) return "initiator";
   if (row.partner_user_id && userId === row.partner_user_id) return "partner";
-  if (!row.partner_user_id && userId !== row.initiator_user_id) return "partner";
+  if (!row.partner_user_id && !row.partner_reading && !row.combined_reading && !row.synastry_data && userId !== row.initiator_user_id) return "partner";
   return null;
+}
+
+/** Invitation admission is broader than private result access. */
+export function resolveJointReadParticipantRole(row: JointReadingRow, userId: string): "initiator" | "partner" | null {
+  if (userId === row.initiator_user_id) return "initiator";
+  return row.partner_user_id === userId ? "partner" : null;
+}
+
+async function jointMutation(text: string, params: unknown[], userIds: (string | null)[]) {
+  return withTransaction(async (client) => {
+    const ids = [...new Set(userIds.filter((id): id is string => Boolean(id)))].sort();
+    const active = await client.query(
+      `SELECT id FROM users WHERE id = ANY($1::uuid[]) AND erasure_requested_at IS NULL ORDER BY id FOR SHARE`, [ids]
+    );
+    if (active.rowCount !== ids.length) throw new Error("account_erasure_pending");
+    return client.query(text, params);
+  });
 }
 
 /** A stale invitation must be rejected before a personal spread is billed. */
@@ -196,7 +213,19 @@ export async function createJointReadingInvite(params: {
   intentSlug?: string;
   reuseExisting?: boolean;
   runeCharged?: boolean;
+  /** Server receipt identity makes replay return the same invite. */
+  id?: string;
 }): Promise<JointReadingRow> {
+  const ownedByReceipt = async () => {
+    if (!params.id) return null;
+    const existing = await query<{ token: string }>("SELECT token FROM joint_readings WHERE id=$1 AND initiator_user_id=$2", [params.id, params.initiatorUserId]);
+    if (!existing.rows[0]) return null;
+    const row = await getJointReadingByToken(existing.rows[0].token);
+    if (!row) throw new Error("joint_receipt_source_unavailable");
+    return row;
+  };
+  const existingReceipt = await ownedByReceipt();
+  if (existingReceipt) return existingReceipt;
   const captureGeneration = await captureMemoryGeneration(params.initiatorUserId);
   if (params.reuseExisting !== false) {
     const reconciled = await reconcileActiveJointInviteForCreation({
@@ -232,8 +261,9 @@ export async function createJointReadingInvite(params: {
     try {
       const res = await query(
         `INSERT INTO joint_readings
-           (token, initiator_user_id, initiator_name, partner_name, spread_id, intent_slug, expires_at, rune_charged)
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+           (token, initiator_user_id, initiator_name, partner_name, spread_id, intent_slug, expires_at, rune_charged, id)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::uuid,gen_random_uuid()))
+         ON CONFLICT(id) DO NOTHING
          RETURNING *`,
         [
           token,
@@ -244,17 +274,32 @@ export async function createJointReadingInvite(params: {
           params.intentSlug ?? "sovmestimost-pary",
           expiresAt.toISOString(),
           params.runeCharged ?? false,
+          params.id ?? null,
         ]
       );
+      if (!res.rows[0]) {
+        const reused = await ownedByReceipt();
+        if (reused) return reused;
+        throw new Error("joint_receipt_owner_conflict");
+      }
       const created = mapRow(res.rows[0] as Record<string, unknown>);
-      await captureJointInviteMemory({
-      captureGeneration,
-        userId: created.initiator_user_id,
-        jointId: created.id,
-        initiatorName: created.initiator_name,
-        partnerName: created.partner_name,
-        intentSlug: created.intent_slug,
-      });
+      try {
+        await captureJointInviteMemory({
+          captureGeneration,
+          userId: created.initiator_user_id,
+          jointId: created.id,
+          initiatorName: created.initiator_name,
+          partnerName: created.partner_name,
+          intentSlug: created.intent_slug,
+        });
+      } catch (error) {
+        // The durable owned invitation is the purchased result. A secondary
+        // memory failure must not refund it; erased sources still fail closed.
+        const available = await getJointReadingByToken(created.token);
+        if (!available) throw error;
+        console.warn("Joint invite saved; secondary memory capture failed:", error);
+        return available;
+      }
       return created;
     } catch (err) {
       const code = (err as { code?: string })?.code;
@@ -266,7 +311,11 @@ export async function createJointReadingInvite(params: {
 }
 
 export async function getJointReadingByToken(token: string): Promise<JointReadingRow | null> {
-  const res = await query(`SELECT * FROM joint_readings WHERE token = $1 LIMIT 1`, [token]);
+  const res = await query(`SELECT * FROM joint_readings j WHERE token = $1
+    AND EXISTS (SELECT 1 FROM users u WHERE u.id = j.initiator_user_id AND u.erasure_requested_at IS NULL)
+    AND (j.partner_user_id IS NULL OR EXISTS (SELECT 1 FROM users u WHERE u.id = j.partner_user_id AND u.erasure_requested_at IS NULL))
+    AND (j.partner_user_id IS NOT NULL OR (j.partner_reading IS NULL AND j.combined_reading IS NULL AND j.synastry_data IS NULL))
+    LIMIT 1`, [token]);
   if (!res.rows[0]) return null;
   const row = mapRow(res.rows[0] as Record<string, unknown>);
   if (row.status !== "expired" && new Date(row.expires_at) < new Date()) {
@@ -420,8 +469,11 @@ export async function listRecentJointReadingsForAdmin(
 
 export async function listJointReadingsForUser(userId: string, limit = 20, offset = 0): Promise<JointReadingRow[]> {
   const res = await query(
-    `SELECT * FROM joint_readings
-     WHERE initiator_user_id = $1 OR partner_user_id = $1
+    `SELECT * FROM joint_readings j
+     WHERE (initiator_user_id = $1 OR partner_user_id = $1)
+       AND EXISTS (SELECT 1 FROM users u WHERE u.id = j.initiator_user_id AND u.erasure_requested_at IS NULL)
+       AND (j.partner_user_id IS NULL OR EXISTS (SELECT 1 FROM users u WHERE u.id = j.partner_user_id AND u.erasure_requested_at IS NULL))
+       AND (j.partner_user_id IS NOT NULL OR (j.partner_reading IS NULL AND j.combined_reading IS NULL AND j.synastry_data IS NULL))
      ORDER BY created_at DESC, id DESC
      LIMIT $2 OFFSET $3`,
     [userId, limit, offset]
@@ -473,6 +525,9 @@ export async function deleteJointReadingForUser(
 }
 
 export async function ensureCombinedReading(row: JointReadingRow): Promise<JointReadingRow> {
+  const current = await getJointReadingByToken(row.token);
+  if (!current || !current.partner_user_id) throw new Error("joint_participant_unavailable");
+  row = current;
   if (row.combined_reading) return row;
   if (!row.initiator_reading?.trim() || !row.partner_reading?.trim()) return row;
 
@@ -480,13 +535,13 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
   // Atomically claim the generation slot first so we never call the LLM twice
   // (wasted cost) or clobber a result that already finished.
   const claimToken = randomUUID();
-  const claim = await query(
+  const claim = await jointMutation(
     `UPDATE joint_readings
      SET combined_claim_token = $2, combined_claim_at = NOW()
      WHERE token = $1
        AND combined_reading IS NULL
        AND (combined_claim_token IS NULL OR combined_claim_at < NOW() - INTERVAL '10 minutes')`,
-    [row.token, claimToken]
+    [row.token, claimToken], [row.initiator_user_id, row.partner_user_id]
   );
   if (!claim.rowCount) {
     return (await getJointReadingByToken(row.token)) ?? row;
@@ -500,17 +555,17 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
     if (!combined?.trim()) {
       throw new Error("joint_combined_empty");
     }
-    await query(
+    const saved = await jointMutation(
       `UPDATE joint_readings
        SET combined_reading = $2, synastry_data = $3::jsonb,
            completed_at = COALESCE(completed_at, NOW()), status = 'completed',
            combined_claim_token = NULL, combined_claim_at = NULL
        WHERE token = $1 AND combined_claim_token = $4`,
-      [row.token, combined, synastry ? JSON.stringify(synastry) : null, claimToken]
+      [row.token, combined, synastry ? JSON.stringify(synastry) : null, claimToken], [row.initiator_user_id, row.partner_user_id]
     );
-    const completed =
-      (await getJointReadingByToken(row.token)) ??
-      ({ ...row, combined_reading: combined, status: "completed" } as JointReadingRow);
+    if (!saved.rowCount) throw new Error("joint_generation_claim_lost");
+    const completed = await getJointReadingByToken(row.token);
+    if (!completed) throw new Error("joint_participant_unavailable");
     if (completed.combined_reading?.trim()) {
       await captureJointCombinedMemory({
         captureGeneration, partnerCaptureGeneration,
@@ -537,10 +592,12 @@ export async function ensureCombinedReading(row: JointReadingRow): Promise<Joint
 
 /** Atomically reserves the one completion-notification fanout for this reading. */
 export async function claimJointCompletionNotification(token: string): Promise<boolean> {
-  const result = await query(
+  const row = await getJointReadingByToken(token);
+  if (!row) return false;
+  const result = await jointMutation(
     `UPDATE joint_readings SET completion_notified_at = NOW()
      WHERE token = $1 AND combined_reading IS NOT NULL AND completion_notified_at IS NULL`,
-    [token]
+    [token], [row.initiator_user_id, row.partner_user_id]
   );
   return result.rowCount === 1;
 }
@@ -583,7 +640,7 @@ export async function submitJointReadingSide(params: {
   }
 
   if (isInitiator) {
-    const initiatorUpdate = await query(
+    const initiatorUpdate = await jointMutation(
       `UPDATE joint_readings SET
          initiator_reading = $2,
          initiator_cards = $3,
@@ -599,7 +656,7 @@ export async function submitJointReadingSide(params: {
         params.sessionId ?? null,
         params.characterKey,
         params.userId,
-      ]
+      ], [existing.initiator_user_id, existing.partner_user_id, params.userId]
     );
     if (!initiatorUpdate.rowCount) {
       // Lost a race against a concurrent submit from the same account — the
@@ -610,7 +667,7 @@ export async function submitJointReadingSide(params: {
       return { ok: false, error: "Приглашение истекло до сохранения расклада.", row: latest ?? existing };
     }
   } else {
-    const partnerUpdate = await query(
+    const partnerUpdate = await jointMutation(
       `UPDATE joint_readings SET
          partner_user_id = COALESCE(partner_user_id, $2),
          partner_name = CASE
@@ -633,7 +690,7 @@ export async function submitJointReadingSide(params: {
         params.sessionId ?? null,
         params.characterKey,
         params.profileName?.trim() ?? null,
-      ]
+      ], [existing.initiator_user_id, existing.partner_user_id, params.userId]
     );
     if (!partnerUpdate.rowCount) {
       // Someone else won the race for the partner slot between our check above

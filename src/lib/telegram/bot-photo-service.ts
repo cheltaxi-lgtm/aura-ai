@@ -24,6 +24,7 @@ import { resolvePhotoReadingPricing } from "@/lib/photo-reading-billing";
 import { MAX_PHOTO_CARDS, parseRecognitionConfidence } from "@/lib/photo-reading-constants";
 import {
   buildPhotoSpreadKey,
+  buildLegacyPhotoSpreadKey,
   findPhotoReadingEntry,
   getPhotoChargeReuseState,
   withPhotoReadingLock,
@@ -57,6 +58,7 @@ import { hasPaidAccess } from "@/lib/session";
 import {
   BillingService,
   InsufficientFundsError,
+  BillingIdempotencyConflictError,
 } from "@/lib/services/billing-service";
 import { resolveBotUser } from "@/lib/telegram/bot-resolve";
 import { getUserById, serializeUserProfile } from "@/lib/users";
@@ -381,7 +383,7 @@ export async function botPhotoInterpret(input: {
   const photoSpreadKey = buildPhotoSpreadKey(characterId, confirmedSpread, question);
   // Use the same normalized identity for the lock and the ledger. A missing
   // client key still needs to survive retries after a newly created session.
-  const lockKey = input.idempotencyKey?.trim().slice(0, 80) || photoSpreadKey;
+  const lockKey = photoSpreadKey;
   const profile = serializeUserProfile(gate.user);
   const unlimited = await resolveUnlimitedAccess({ accountId, profileUserId });
   const runeSettings = await getRuneSettings();
@@ -442,8 +444,14 @@ export async function botPhotoInterpret(input: {
             ? "Фото-расклад"
             : "Фото-расклад",
           sessionId: resolvedSessionId,
-          // Prefer client/flow key — never a freshly minted session id.
+          sessionIsResult: true,
+          // The confirmed spread, question and character identify the purchase.
           idempotencyKey: `tg-photo:${lockKey}`,
+          operationIdentity: `tg-photo:${lockKey}`,
+          legacyIdempotencyKeys: [
+            ...(question.trim().length > 200 ? [`tg-photo:${buildLegacyPhotoSpreadKey(characterId, confirmedSpread, question)}`] : []),
+            ...(input.idempotencyKey ? [`tg-photo:${input.idempotencyKey.trim().slice(0, 80)}`] : []),
+          ],
         });
         runeBalance = billingCharge.newBalance;
         spentRunes = billingCharge.spentRunes;
@@ -491,7 +499,9 @@ export async function botPhotoInterpret(input: {
               cost: pricing.effectiveCost,
               actionType: "VISION_ANALYSIS",
               sessionId: resolvedSessionId,
+              sessionIsResult: true,
               idempotencyKey: `${prior.retryPrefix}${randomUUID()}`,
+              operationIdentity: `tg-photo:${lockKey}`,
             });
             if (billingCharge.deduplicated) throw new Error("photo_retry_charge_conflict");
             chargedRunes = billingCharge.spentRunes;
@@ -500,6 +510,10 @@ export async function botPhotoInterpret(input: {
           runeBalance = billingCharge.newBalance;
         }
       } catch (err) {
+        if (err instanceof BillingIdempotencyConflictError) {
+          return { ok: false as const, error: "payment_key_conflict" as const,
+            message: "Для этого запроса уже есть оплата. Откройте сохранённый расклад в кабинете; новое списание не выполнено." };
+        }
         if (err instanceof InsufficientFundsError) {
           return {
             ok: false as const,

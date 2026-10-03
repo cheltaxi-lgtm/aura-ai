@@ -20,6 +20,8 @@ export type DraftGenerateInput = {
   clientAlias: string;
   payload: Record<string, unknown>;
   addressForm?: string;
+  beforeRequest?:()=>Promise<void>;
+  deadlineAt?:number;
 };
 
 function stubBlocks(input: DraftGenerateInput): ProReportBlock[] {
@@ -152,6 +154,7 @@ async function generatePremiumBatches(
     };
 
     const result = await generateValidatedAiText({
+      chatOptions:{beforeRequest:input.beforeRequest,deadlineAt:input.deadlineAt},
       messages: [
         { role: "system", content: system },
         { role: "user", content: JSON.stringify(userPayload) },
@@ -312,6 +315,7 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
   const system = `Ты помощник практикующего эзотерика в Zovus Pro.
 Пиши на русском, обращение ТОЛЬКО на «Вы» и по имени клиента (не «ты», не третье лицо).
 Если есть вопрос клиента — первый блок id="focus-answer", title="Ответ на ваш запрос", sectionKind="focus": 2–3 абзаца синтеза (не одна строка вопроса).
+Для каждой карты верни отдельный блок с position_ref: строковый порядковый номер карты в переданном массиве ("1", "2", …). Не пропускай и не объединяй позиции.
 Для каждой карты/позиции: механика → как проявляется → бытовой пример → поле "practice" (одно действие на 3–7 дней).
 Не повторяй формулировку запроса в начале каждого блока.
 Верни JSON: {"blocks":[{"id":"b1","title":"...","body":"...","practice":"...","sectionKind":"zone","ai_confidence":0.0}],"uncertainty":[{"blockId":"b1","note":"..."}]}.
@@ -327,6 +331,7 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
 
   try {
     const result = await generateValidatedAiText({
+      chatOptions:{beforeRequest:input.beforeRequest,deadlineAt:input.deadlineAt},
       messages: [
         { role: "system", content: system },
         { role: "user", content: JSON.stringify(userPayload) },
@@ -341,6 +346,7 @@ export async function generateCaseDraft(input: DraftGenerateInput): Promise<{
         if (!parsed) {
           return { ok: false as const, code: "invalid_structure" as const, detail: "no_blocks" };
         }
+        if(input.type==="manual_spread"&&!proManualDraftCoversCards(parsed.blocks,input.payload.cards))return {ok:false as const,code:"invalid_structure" as const,detail:"missing_or_empty_card_positions"};
         return { ok: true as const };
       },
     });
@@ -412,4 +418,11 @@ async function logRun(
   } catch {
     /* ignore */
   }
+}
+
+/** Each requested card needs its own substantive report position. */
+export function proManualDraftCoversCards(blocks:ProReportBlock[],cards:unknown):boolean {
+  if(!Array.isArray(cards)||!cards.length)return false;
+  const positions=new Set(blocks.filter(block=>typeof block.body==="string"&&block.body.trim().length>=120).map(block=>String(block.position_ref??"")));
+  return cards.every((_,i)=>positions.has(String(i+1)));
 }

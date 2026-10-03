@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { semanticResourceFingerprint } from "@/lib/reading-resource-identity";
 
 import { checkAchievements } from "@/lib/achievements";
 import {
@@ -403,6 +404,18 @@ export class ChatOrchestrator {
         runeSettings: orch.runeSettings,
         freeLimit: orch.freeLimit,
         imageBase64: orch.imageBase64,
+        // The accepted turn, rather than a counter shared by two simultaneous
+        // different questions, owns its payment and free-question reservation.
+        idempotencyKey: orch.session ? `chat:${orch.session.id}:${semanticResourceFingerprint({
+          characterId: orch.characterId, messages: parsed.messages, image: orch.imageBase64,
+          tarotCards: orch.tarotCards, intention: orch.intention, customQuestion: orch.customQuestion,
+          spreadId: orch.spreadId, scope: orch.periodSpreadScope,
+        }).slice(0, 40)}` : undefined,
+        operationIdentity: semanticResourceFingerprint({
+          sessionId: orch.session?.id, characterId: orch.characterId, messages: parsed.messages,
+          image: orch.imageBase64, tarotCards: orch.tarotCards, intention: orch.intention,
+          customQuestion: orch.customQuestion, spreadId: orch.spreadId, scope: orch.periodSpreadScope,
+        }),
       },
     };
   }

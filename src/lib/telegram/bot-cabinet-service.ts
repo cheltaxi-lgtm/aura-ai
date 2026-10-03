@@ -46,6 +46,7 @@ import {
   parseChatRequest,
 } from "@/lib/services/chat-orchestrator";
 import { query } from "@/lib/db";
+import { createHash } from "node:crypto";
 
 function masterDisplayName(key: string | null | undefined): string | null {
   if (!key?.trim()) return null;
@@ -477,9 +478,11 @@ export async function botChatFollowUp(input: {
     const billing = await chargeChatBilling({
       ...prep.billingParams,
       idempotencyKey: input.clientEventId
-        ? `bot-chat:${input.telegramUserId}:${input.clientEventId}`
+        ? `bot-chat:${input.telegramUserId}:${createHash("sha256")
+          .update(JSON.stringify([input.sessionId, input.clientEventId, canonicalMessage])).digest("hex").slice(0, 32)}`
         : undefined,
       maxCost: input.expectedCost,
+      legacyIdempotencyKeys: input.clientEventId ? [`bot-chat:${input.telegramUserId}:${input.clientEventId}`] : [],
     });
     if (!billing.ok) {
       const body = await billing.response.json().catch(() => ({}));

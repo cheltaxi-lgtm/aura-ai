@@ -43,12 +43,15 @@ export async function assertSessionReadAccess(
   return assertOrphanSessionClaim(session.id, readSessionClaimFromRequest(request));
 }
 
-export async function linkSessionToProfile(sessionId: string, profileUserId: string): Promise<void> {
-  await query(
+export async function linkSessionToProfile(sessionId: string, profileUserId: string): Promise<boolean> {
+  const result = await query(
     `UPDATE sessions SET user_id = $2, updated_at = NOW()
-     WHERE id = $1 AND (user_id IS NULL OR user_id = $2)`,
+     WHERE id = $1 AND (user_id IS NULL OR user_id = $2)
+       AND EXISTS (SELECT 1 FROM users WHERE id = $2 AND erasure_requested_at IS NULL)
+     RETURNING id`,
     [sessionId, profileUserId]
   );
+  return result.rowCount === 1;
 }
 
 export interface ResolveSessionOptions {
@@ -91,6 +94,12 @@ export async function resolveSessionForUser(
     };
   }
 
+  if (!profileUserId) {
+    if (session.user_id) return { session: null, error: NextResponse.json({ error: "auth_required" }, { status: 401 }) };
+    const blocked = await assertOrphanSessionClaim(sessionId, await resolveSessionClaim(opts));
+    return blocked ? { session: null, error: blocked } : { session, error: null };
+  }
+
   if (profileUserId) {
     if (session.user_id && session.user_id !== profileUserId) {
       return {
@@ -107,9 +116,12 @@ export async function resolveSessionForUser(
         return { session: null, error: blocked };
       }
 
-      await linkSessionToProfile(sessionId, profileUserId);
+      const won = await linkSessionToProfile(sessionId, profileUserId);
       const linked = await getSession(sessionId);
-      return { session: linked ?? session, error: null };
+      if (!won || !linked || linked.user_id !== profileUserId) {
+        return { session: null, error: NextResponse.json({ error: "session_forbidden" }, { status: 403 }) };
+      }
+      return { session: linked, error: null };
     }
   }
 

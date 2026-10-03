@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from "crypto";
-import { query } from "@/lib/db";
+import { query, withTransaction } from "@/lib/db";
 import { findUserByEmail } from "@/lib/accounts";
-import { bumpAccountTokenVersion, hashPassword } from "@/lib/auth";
+import { hashPassword } from "@/lib/auth";
 import {
   passwordResetEmailHtml,
   passwordChangedEmailHtml,
@@ -23,17 +23,26 @@ export async function requestPasswordReset(email: string): Promise<{ ok: true }>
   const tokenHash = hashToken(rawToken);
   const expiresAt = new Date(Date.now() + TOKEN_TTL_MS);
 
-  await query(
-    `UPDATE password_reset_tokens SET used_at = NOW()
+  const created = await withTransaction(async (client) => {
+    const active = await client.query(
+      `SELECT id FROM user_accounts WHERE id = $1 AND erasure_requested_at IS NULL FOR UPDATE`,
+      [user.id]
+    );
+    if (!active.rows[0]) return false;
+    await client.query(
+      `UPDATE password_reset_tokens SET used_at = NOW()
      WHERE user_account_id = $1 AND used_at IS NULL`,
-    [user.id]
-  );
+      [user.id]
+    );
 
-  await query(
-    `INSERT INTO password_reset_tokens (user_account_id, token_hash, expires_at)
+    await client.query(
+      `INSERT INTO password_reset_tokens (user_account_id, token_hash, expires_at)
      VALUES ($1, $2, $3)`,
-    [user.id, tokenHash, expiresAt.toISOString()]
-  );
+      [user.id, tokenHash, expiresAt.toISOString()]
+    );
+    return true;
+  });
+  if (!created) return { ok: true };
 
   const resetUrl = `${getSiteUrl()}/auth/user/reset-password?token=${encodeURIComponent(rawToken)}`;
   void sendEmail({
@@ -68,19 +77,33 @@ export async function completePasswordReset(
     return { ok: false, error: "expired" };
   }
 
+  // Hash outside the transaction; revalidate after locking the account. The
+  // account lock also orders reset issuance, handoff mint/consume and erasure.
   const passwordHash = await hashPassword(newPassword);
-  await query(`UPDATE user_accounts SET password_hash = $2 WHERE id = $1`, [
-    row.user_account_id,
-    passwordHash,
-  ]);
-  await bumpAccountTokenVersion(row.user_account_id);
-  await query(`UPDATE password_reset_tokens SET used_at = NOW() WHERE id = $1`, [row.id]);
-
-  const accountRes = await query<{ email: string; name: string }>(
-    `SELECT email, name FROM user_accounts WHERE id = $1 LIMIT 1`,
-    [row.user_account_id]
-  );
-  const account = accountRes.rows[0];
+  const result = await withTransaction(async (client) => {
+    const active = await client.query<{ email: string; name: string }>(
+      `SELECT email, name FROM user_accounts WHERE id = $1 AND erasure_requested_at IS NULL FOR UPDATE`,
+      [row.user_account_id]
+    );
+    if (!active.rows[0]) return { ok: false as const, error: "invalid_token" };
+    const consumed = await client.query(
+      `UPDATE password_reset_tokens SET used_at = NOW()
+       WHERE id = $1 AND user_account_id = $2 AND used_at IS NULL AND expires_at > NOW()
+       RETURNING id`, [row.id, row.user_account_id]
+    );
+    if (!consumed.rows[0]) return { ok: false as const, error: "invalid_token" };
+    await client.query(
+      `UPDATE user_accounts SET password_hash = $2, token_version = token_version + 1 WHERE id = $1`,
+      [row.user_account_id, passwordHash]
+    );
+    await client.query(`UPDATE password_reset_tokens SET used_at = NOW() WHERE user_account_id = $1 AND used_at IS NULL`, [row.user_account_id]);
+    await client.query(`DELETE FROM oauth_handoffs WHERE account_id = $1`, [row.user_account_id]);
+    return { ok: true as const, account: active.rows[0] };
+  });
+  if (!result.ok) return result;
+  const { invalidateTokenVersionCache } = await import("@/lib/token-version-gate");
+  invalidateTokenVersionCache(row.user_account_id);
+  const account = result.account;
   if (account && isDeliverableUserEmail(account.email)) {
     void sendEmail({
       to: account.email,

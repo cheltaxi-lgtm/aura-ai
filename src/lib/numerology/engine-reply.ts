@@ -1,3 +1,4 @@
+import { calendarParts } from "@/lib/product-calendar";
 import { parseBirthDate } from "./constants";
 import { fullProfile } from "./profile";
 import { pythagorasSquare, type PythagorasSquareResult } from "./pythagoras-square";
@@ -529,7 +530,7 @@ function formatSphereHealth(
   const cellBlock = [
     "## Что в твоей матрице",
     "",
-    `**Ячейка 3 (здоровье и восстановление):** ${cellLabel(3, i.health.count)} — ${i.health.summary}`,
+    `**Ячейка 4 (здоровье и восстановление):** ${cellLabel(4, i.health.count)} — ${i.health.summary}`,
     `**Ячейка 2 (жизненная энергия):** ${cellLabel(2, i.energy.count)} — ${i.energy.summary}`,
     `**Ячейка 1 (воля, напор):** ${cellLabel(1, i.character.count)} — ${i.character.summary}`,
     stability ? formatMatrixLineEntry(stability) : "",
@@ -541,73 +542,35 @@ function formatSphereHealth(
   const explainBlock = [
     "Коротко по матрице",
     "",
-    i.health.count === 0
-      ? "Пустая **тройка** — главный маркер: телу сложнее накапливать запас сил. Это не диагноз, а «слабое место» матрицы — его берегут режимом, а не рывками."
-      : `Тройка не пустая (${cellLabel(3, i.health.count)}) — база восстановления есть, но её нужно поддерживать.`,
-    i.character.count >= 2
-      ? "Сильная **единица** (воля) — ты можешь терпеть и «давить», даже когда тело уже сигналит. Отсюда риск игнорировать симптомы годами."
-      : "Единица умеренная — воля есть, но без жёсткого «пробьюсь любой ценой».",
-    i.energy.count <= 1
-      ? "Энергия (двойка) не избыточная — перегруз быстрее бьёт по самочувствию."
-      : "Энергии (двойка) достаточно — но без тройки её легко «сжечь».",
+    "Четвёрка в этом методе называется ячейкой здоровья, двойка — энергии, единица — характера. Это символические названия, а не оценка состояния организма.",
+    "Количество цифр не позволяет определить запас сил, причины симптомов или наличие заболевания.",
   ].join("\n");
 
-  let symptomBlock = "";
-  if (options?.symptom?.includes("серд") || options?.symptom?.includes("тахикард")) {
-    symptomBlock = [
-      "## Про сердце и тахикардию (нумерологически)",
-      "",
-      "Я **не ставлю диагноз** — к врачу/cardiolog это отдельно. По матрице картина такая:",
-      "",
-      "— Пустая тройка + сильная воля = тело годами работает «на характере», а не на запасе.",
-      "— Тахикардия часто усиливается, когда **нет восстановления** (тройка) и **много напряжения** (единица, стресс).",
-      "— Это не «число 4 в периоде» — смотри только ячейки 1, 2, 3 выше.",
-    ].join("\n");
-  } else if (options?.symptom) {
-    symptomBlock = [
-      `## Про ${options.symptom}`,
-      "",
-      "Связка та же: смотрим ячейки 1–3, а не числа расклада. Симптом — повод беречь ресурс, а не «терпеть сильнее».",
-    ].join("\n");
-  }
-
-  let chronicBlock = "";
-  if (options?.chronic) {
-    chronicBlock = [
-      "## Долгий срок («много лет»)",
-      "",
-      "Хроническое — это как раз сценарий **пустой тройки + сильной единицы**: годами терпишь, не меняя ритм. Нумерология здесь не про «5 месяцев лечения», а про **смену режима**: сон, нагрузка, стресс, регулярность.",
-    ].join("\n");
-  }
+  const symptomBlock = options?.symptom
+    ? ["## Про самочувствие", "", "При симптомах опирайся на медицинскую оценку. По квадрату Пифагора нельзя объяснить тахикардию, боль, давление или выбрать лечение."].join("\n")
+    : "";
+  const chronicBlock = options?.chronic
+    ? "## Долгий срок\n\nДлительность симптомов не связана с количеством цифр. Обсуди повторяющиеся жалобы с врачом."
+    : "";
 
   const cycleBlock =
     py && pm
       ? [
           "## Личный цикл (реальный расчёт)",
           "",
-          `**Личный год ${now.getFullYear()}:** ${py.number} — ${py.title}. ${py.meaning.split(".")[0]?.trim() ?? py.meaning}.`,
+          `**Личный год ${calendarParts(now).year}:** ${py.number} — ${py.title}. ${py.meaning.split(".")[0]?.trim() ?? py.meaning}.`,
           `**Личный месяц:** ${pm.number} — ${pm.title}.`,
           "Цикл — фон, не замена врачу. Он показывает, где легче вводить новые привычки.",
         ].join("\n")
       : "";
 
-  const actionBlock = options?.simplify
-    ? [
-        "## Что делать",
-        "",
-        "— Не геройствовать на пустой тройке: сон, паузы, меньше «дожима».",
-        "— Следить за стрессом — он бьёт по двойке и по сердцу.",
-        "— Напиши, что именно беспокоит (сердце, сон, давление) — разберём точечно.",
-      ].join("\n")
-    : [
-        "## Практика (не медицина)",
-        "",
-        "— Режим сна и отдыха — при пустой тройке это не слабость, а опора.",
-        "— Убрать постоянный «дожим» — сильная единица любит терпеть; тело этого не прощает годами.",
-        "— Мягкая регулярность вместо рывков: прогулки, дыхание, меньше перегруза.",
-        "",
-        "Если нужно — разберём **финансы** или **личный год** тем же методом, без выдуманных цифр.",
-      ].join("\n");
+  const actionBlock = [
+    "## Практика для размышления",
+    "",
+    "— Отметь, что помогает тебе отдыхать и сохранять удобный ритм.",
+    "— Наблюдай за самочувствием без попыток объяснить его цифрами.",
+    "— Решения о здоровье и лечении принимай вместе с врачом.",
+  ].join("\n");
 
   return [
     intro,
@@ -637,11 +600,11 @@ function formatSphereFinance(name: string, square: PythagorasSquareResult, simpl
     return [
       `${name}, про деньги по квадрату.`,
       "",
-      `Труд (5): ${cellLabel(5, i.labor.count)} — ${i.labor.summary}`,
-      `Удача (6): ${cellLabel(6, i.luck.count)} — ${i.luck.summary}`,
+      `Труд (6): ${cellLabel(6, i.labor.count)} — ${i.labor.summary}`,
+      `Удача (7): ${cellLabel(7, i.luck.count)} — ${i.luck.summary}`,
       material ? `${material.label}: ${material.summary}` : "",
       "",
-      "Суть: деньги приходят через дисциплину и систему, а не через хаос. Пустая пятёрка — нужен план, а не импульс.",
+      "Суть: деньги приходят через дисциплину и систему, а не через хаос. Пустая шестёрка — нужен план, а не импульс.",
     ]
       .filter(Boolean)
       .join("\n");
@@ -650,15 +613,15 @@ function formatSphereFinance(name: string, square: PythagorasSquareResult, simpl
   return [
     `${name}, разберём финансы по квадрату Пифагора.`,
     "",
-    `Труд и деньги (5): ${cellLabel(5, i.labor.count)} — ${i.labor.summary}`,
-    `Удача (6): ${cellLabel(6, i.luck.count)} — ${i.luck.summary}`,
-    `Логика (4): ${cellLabel(4, i.logic.count)} — ${i.logic.summary}`,
+    `Труд и деньги (6): ${cellLabel(6, i.labor.count)} — ${i.labor.summary}`,
+    `Удача (7): ${cellLabel(7, i.luck.count)} — ${i.luck.summary}`,
+    `Логика (5): ${cellLabel(5, i.logic.count)} — ${i.logic.summary}`,
     material ? `${material.label}: ${material.summary}` : "",
     "",
     "Материальная линия — про стабильный доход через навык и терпение, а не про «удачу одним днём».",
     i.labor.count === 0
-      ? "Пустая пятёрка: финансовый рост через структуру — расписание, навык, один фокус."
-      : "Пятёрка не пустая — зарабатываешь через дело, но важно не распыляться.",
+      ? "Пустая шестёрка: финансовый рост через структуру — расписание, навык, один фокус."
+      : "Шестёрка не пустая — зарабатываешь через дело, но важно не распыляться.",
   ]
     .filter(Boolean)
     .join("\n");
@@ -673,7 +636,7 @@ function formatSphereRelations(name: string, square: PythagorasSquareResult, sim
       `${name}, про отношения по квадрату.`,
       "",
       `Энергия (2): ${cellLabel(2, i.energy.count)} — ${i.energy.summary}`,
-      `Удача (6): ${cellLabel(6, i.luck.count)} — ${i.luck.summary}`,
+      `Удача (7): ${cellLabel(7, i.luck.count)} — ${i.luck.summary}`,
       familyLine ? `${familyLine.label}: ${familyLine.summary}` : "",
       "",
       "Суть: качество связи зависит от твоего ресурса — если энергия на нуле, отношения тоже напрягаются.",
@@ -687,7 +650,7 @@ function formatSphereRelations(name: string, square: PythagorasSquareResult, sim
     "",
     `Энергия для близости (2): ${cellLabel(2, i.energy.count)} — ${i.energy.summary}`,
     `Характер (1): ${cellLabel(1, i.character.count)} — ${i.character.summary}`,
-    `Удача в союзе (6): ${cellLabel(6, i.luck.count)} — ${i.luck.summary}`,
+    `Удача в союзе (7): ${cellLabel(7, i.luck.count)} — ${i.luck.summary}`,
     familyLine ? `${familyLine.label}: ${familyLine.summary}` : "",
     "",
     "В отношениях видно, хватает ли тебе сил на близость и где включается контроль.",

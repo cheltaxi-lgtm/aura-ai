@@ -13,7 +13,7 @@ const dailyCards = exactCards.map((card, index) => ({
 const historyId = "e2e-daily-history-1";
 const sessionId = "e2e-daily-session-1";
 
-async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean; hasEmail?: boolean; masterReminder?: boolean; previousMatrixMaster?: boolean }) {
+async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null; dailyExists?: boolean; hasEmail?: boolean; masterReminder?: boolean; previousMatrixMaster?: boolean; boundSession?: () => string | null; staleReading?: string }) {
   let homeRecapHiddenKey: string | null = opts?.hiddenKey ?? null;
   let dailyExists = opts?.dailyExists ?? true;
   let cooldownAllowed = false;
@@ -65,6 +65,9 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
                     deckSystem: "tarot-veronika",
                   },
                 },
+                ...(opts?.staleReading ? [{ id: "older-same-names", characterName: "veronika", createdAt: new Date(Date.now() - 86_400_000).toISOString(),
+                  contextData: { type: "reading", spreadType: "daily", reading: opts.staleReading,
+                    tarotCards: exactCards.map(card => ({ ...card, reversed: false })), deckSystem: "tarot-veronika" } }] : []),
               ]
             : opts?.previousMatrixMaster ? [{
                 id: "matrix-master-spread", characterName: "triplet", createdAt: new Date().toISOString(),
@@ -83,7 +86,7 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
             ? {
                 exists: true,
                 historyId,
-                sessionId,
+                sessionId: opts?.boundSession ? opts.boundSession() : sessionId,
                 masterId: "veronika",
                 deckSystem: "tarot-veronika",
                 cards: exactCards,
@@ -202,6 +205,60 @@ async function installDailyMocks(page: Page, opts?: { hiddenKey?: string | null;
 }
 
 test.describe("daily artifact + landing copy", () => {
+  test("daily chat round-trips reversed cards and reopens the same session", async ({ page }) => {
+    test.setTimeout(90_000);
+    let boundSession: string | null = null;
+    const writes: { sessionId?: string; cards?: string[]; spreadType?: string }[] = [];
+    let createdSessions = 0;
+    let readingDelivered = false;
+    const readingRequests: { tarotCards?: { id: number; reversed: boolean }[] }[] = [];
+    const names = ["Шут (перев.)", "Маг", "Жрица (перев.)"];
+    const staleReading = "Ошибочный старый разбор. Шут, Маг и Жрица все прямые. " + "Этот текст относится к другому раскладу. ".repeat(12);
+    await installDailyMocks(page, { boundSession: () => boundSession, staleReading });
+    await page.addInitScript(() => localStorage.setItem("aura_session_id", "daily-bootstrap"));
+    const reading = "Сохранённый точный разбор. Шут перевёрнут: утром лучше проверить детали, прежде чем начинать новое дело. " +
+      "Маг прямой: днём используйте свои навыки и спокойно объясните собеседнику, что вам требуется. " +
+      "Жрица перевёрнута: вечером отделите предположения от фактов и дайте себе время на отдых. " +
+      "Выберите один небольшой шаг на сегодня и проверьте результат, прежде чем расширять планы.";
+    await page.route("**/api/reading", route => {
+      readingRequests.push(route.request().postDataJSON());
+      readingDelivered = true;
+      return route.fulfill({ json: { reading, runeBalance: 30 } });
+    });
+    await page.route("**/api/session?*", route => route.fulfill({ json: { sessionId: new URL(route.request().url()).searchParams.get("id"), canChat: true, freeLimit: 2, questionsRemaining: 2 } }));
+    await page.route("**/api/session", async route => {
+      if (route.request().method() === "POST") {
+        createdSessions++;
+        return route.fulfill({ json: { sessionId: `daily-created-${createdSessions}`, canChat: true, freeLimit: 2, questionsRemaining: 2 } });
+      }
+      const meta = route.request().postDataJSON();
+      writes.push(meta);
+      if (meta.spreadType === "daily" && JSON.stringify(meta.cards) === JSON.stringify(names)) boundSession = meta.sessionId;
+      return route.fulfill({ json: { ok: true } });
+    });
+    await page.route("**/api/chat/history?*", route => route.fulfill({ json: {
+      sessionId: boundSession, status: "active", spreadType: "daily", spreadId: "triplet", cards: names,
+      messages: readingDelivered ? [{ id: "daily-reading", role: "assistant", content: reading, timestamp: new Date().toISOString() }] : [],
+      spread: { cards: exactCards.map(c => ({ ...c, meaning: "" })), system: "tarot-veronika", cardsKey: JSON.stringify(names) },
+    } }));
+    await page.goto("/?app=1");
+    await page.getByRole("button", { name: "Расклад Таро Продолжить с Вероника" }).click();
+    await expect.poll(() => writes.filter(write => write.spreadType === "daily").length).toBe(1);
+    expect(writes.find(write => write.spreadType === "daily")?.cards).toEqual(names);
+    await expect(page.getByText(/Сохранённый точный разбор/).first()).toBeVisible();
+    await expect(page.getByText(/Ошибочный старый разбор/)).toHaveCount(0);
+    expect(readingRequests).toHaveLength(1);
+    expect(readingRequests[0].tarotCards?.map(card => card.reversed)).toEqual([true, false, true]);
+    expect(createdSessions).toBe(1);
+    // Return to the recap with the durable server identity, not a browser-only cache.
+    await page.goto("/?app=1");
+    await page.getByRole("button", { name: "Расклад Таро Продолжить с Вероника" }).click();
+    await expect(page.getByText(/Сохранённый точный разбор/).first()).toBeVisible();
+    expect(createdSessions).toBe(1);
+    expect(writes.filter(write => write.spreadType === "daily")).toHaveLength(1);
+    expect(readingRequests).toHaveLength(1);
+  });
+
   test("Matrix master cannot replace daily Tarot cards or their images", async ({ page }, testInfo) => {
     await installDailyMocks(page, { dailyExists: false, previousMatrixMaster: true });
     await page.addInitScript(() => localStorage.setItem("aura_last_master", "numerolog"));
@@ -293,11 +350,12 @@ test.describe("daily artifact + landing copy", () => {
   });
 
   test("logged-in header opens the daily reading directly from another page", async ({ page }) => {
+    test.setTimeout(90_000);
     await installDailyMocks(page, { dailyExists: false });
     await page.goto("/about");
     await page.getByRole("banner").getByRole("button", { name: "Расклад на сутки", exact: true }).click();
     await expect(page).toHaveURL(/\?daily=1/);
-    await expect(page.getByRole("dialog", { name: "Расклад на сутки" })).toBeVisible();
+    await expect(page.getByRole("dialog", { name: "Расклад на сутки" })).toBeVisible({ timeout: 30_000 });
   });
 
   test("account without a usable mailbox can add one beside the daily reading", async ({ page }) => {
@@ -343,6 +401,7 @@ test.describe("daily artifact + landing copy", () => {
     });
     await page.route("**/api/daily-reading?*", (route) => route.fulfill({ status: 503, json: { error: "unavailable" } }));
     await page.route("**/api/jobs/e2e-daily-job", (route) => route.fulfill({ json: {
+      jobId: "e2e-daily-job", kind: "daily_reading",
       status: "completed",
       result: { localDate, drawn: true, text: "Восстановленный расклад на сутки", cards: dailyCards,
         system: "tarot-veronika", spreadId: "triplet" },

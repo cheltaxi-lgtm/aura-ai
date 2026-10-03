@@ -9,7 +9,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { CHECKS, SCOPES, STATE_PATH } from "./ai-harness-catalog.mjs";
 import { completedAllowed, evaluateStopGate, isWorkSession } from "./ai-harness-gate.mjs";
-import { parsePorcelain, resolvePlan, validateCatalog, verdictOf } from "./ai-harness.mjs";
+import { missingPrerequisite, parsePorcelain, resolvePlan, validateCatalog, verdictOf } from "./ai-harness.mjs";
 import { requiredReviewIds, workspaceFingerprint } from "./ai-harness-fingerprint.mjs";
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
@@ -88,6 +88,18 @@ check("explicit product audit retains all product reviewers", SCOPES.matrix.revi
 const fullAudit = resolvePlan("full", "full", [], { audit: true });
 check("local full audit excludes production review", !fullAudit.productionRequired && !fullAudit.requiredReviews.includes("production"));
 const prodAudit = resolvePlan("full", "production", [], { audit: true });
+check("production keeps local verification order", prodAudit.checkIds.slice(0, SCOPES.full.full.length).join() === SCOPES.full.full.join());
+for (const id of ["e2e-all", "telegram-typecheck", "ads-guards", "pro-verify", "schema-diff", "seo-source-unit", "android-release"]) {
+  check(`full audit covers ${id}`, fullAudit.checkIds.includes(id));
+}
+check("missing authenticated browser coverage is explicit", Boolean(missingPrerequisite(CHECKS["e2e-all"], {})));
+const fullBrowserEnv = { NATAL_E2E_BASE_URL:"http://127.0.0.1:3417", NATAL_E2E_STORAGE_STATE:"fixture.json", FIRST_EXPERIENCE_E2E_LOCAL:"1", GUEST_CONVERSION_E2E_LIVE:"1" };
+check("full browser fixture is accepted", !missingPrerequisite(CHECKS["e2e-all"], fullBrowserEnv));
+check("disabled opt-in tests cannot pass full coverage", Boolean(missingPrerequisite(CHECKS["e2e-all"], {...fullBrowserEnv, GUEST_CONVERSION_E2E_LIVE:"0"})));
+check("full invariants require their PostgreSQL suites", Boolean(missingPrerequisite(CHECKS["invariants-all"], {})));
+check("a pure-only run cannot count as full invariants", Boolean(missingPrerequisite(CHECKS["invariants-all"], {TEST_PRO_DATABASE_URL:"postgres://localhost/pro_test", TEST_DATABASE_URL:"postgres://localhost/main_test", DATABASE_URL:"postgres://localhost/main_test", INVARIANTS_PURE_ONLY:"1"})));
+check("fixture verifiers reject production targets", Boolean(missingPrerequisite(CHECKS.recaptcha, { RECAPTCHA_TEST_BASE_URL: "https://zovus.ru" })));
+check("mutating verifiers reject a different primary DB", Boolean(missingPrerequisite(CHECKS["pro-verify"], {TEST_DATABASE_URL:"postgres://localhost/aura_test", DATABASE_URL:"postgres://localhost/aura"})));
 check("production audit includes production review", prodAudit.productionRequired && prodAudit.requiredReviews.includes("production"));
 for (const level of ["fast", "full"]) {
   const infraPlan = resolvePlan("auto", level, ["hosting/Caddyfile"]);
