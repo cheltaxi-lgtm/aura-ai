@@ -86,6 +86,14 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
         spreadId:invite.spread_id,expiresAt:invite.expires_at,reused:true,configUpdated:false };
     }
   }
+  if (spend?.action_type === "ritual") {
+    const receipt = (await queryClient<{id:string}>(client,"SELECT id FROM rituals WHERE user_id=$1 AND transaction_id=$2 AND status IN ('completed','reviewed')",[userId,transactionId])).rows[0];
+    if (receipt) {
+      const {getRitualById,ritualToClient} = await import("@/lib/ritual-service");
+      const ritual = await getRitualById(receipt.id,client);
+      if (ritual) return {ok:true,status:"completed",ritual:ritualToClient(ritual)};
+    }
+  }
   const natal = await queryClient<{ id: string; content: string; structured_data: unknown; evidence_refs: unknown; tradition: string; report_type: string }>(client,
     "SELECT id, content, structured_data, evidence_refs, tradition, report_type FROM natal_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1", [userId, transactionId]);
   const report = natal.rows[0];
@@ -138,12 +146,21 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
           OR (t.action_type='PALM_READING' AND h.context_data->>'type'='palm_reading'
            AND length(h.context_data->>'palmSnapshotId')>0 AND length(trim(h.context_data->>'report'))>0)
           OR (t.action_type='VISION_ANALYSIS' AND h.context_data->>'type'='photo_reading'
-           AND length(h.context_data->>'photoSpreadKey')>0 AND length(trim(h.context_data->>'analysis'))>0))
+           AND length(h.context_data->>'photoSpreadKey')>0 AND length(trim(h.context_data->>'analysis'))>0)
+          OR (t.action_type='INTENTION_SPREAD' AND h.context_data->>'type'='intention_spread'
+           AND length(h.context_data->>'intentionResourceKey')>0 AND length(trim(h.context_data->>'reading'))>0)
+          OR (t.action_type='DAILY_EXTENDED' AND h.context_data->>'type'='daily_reading'
+           AND h.context_data->>'spreadId'='daily-extended' AND length(h.context_data->>'readingDate')>0
+           AND length(trim(h.context_data->>'reading'))>0))
        ORDER BY h.created_at DESC LIMIT 1`, [userId,transactionId])).rows[0];
     if (!artifact) return null;
     const ctx = artifact.context_data;
     const delivery = ctx.receiptDelivery && typeof ctx.receiptDelivery === "object" && !Array.isArray(ctx.receiptDelivery)
       ? ctx.receiptDelivery as Record<string, unknown> : {};
+    if (ctx.type === "intention_spread") return { ...delivery,reading:ctx.reading,historyId:artifact.id,isPaid:true,
+      spreadId:ctx.spreadId,intention:ctx.intention,sessionId:ctx.sessionId };
+    if (ctx.type === "daily_reading") return { ...delivery,text:ctx.reading,localDate:ctx.readingDate,
+      cards:ctx.tarotCards,system:ctx.deckSystem,spreadId:ctx.spreadId,drawn:true,locked:false,purged:false };
     if (ctx.type === "reading") return { ...delivery, reading: ctx.reading, historyId: artifact.id,
       isPaid: artifact.is_paid, spreadId: ctx.spreadId, createdAt: artifact.created_at };
     if (ctx.type === "aura_reading" || ctx.type === "palm_reading") return { ...delivery,report:ctx.report,snapshot:ctx.snapshot,

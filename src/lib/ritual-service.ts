@@ -1,5 +1,8 @@
 import { captureMemoryGeneration, withUserMemoryLock } from "@/lib/memory/write-guard";
-import { query, queryClient, type PoolClient } from "@/lib/db";
+import { query, queryClient, withTransaction, type PoolClient } from "@/lib/db";
+import type { NextRequest } from "next/server";
+import { getAsyncJobIdFromRequest,getReportWorkerJobFromRequest } from "@/lib/async-job-worker-auth";
+import { lockReportWorkerSave,paidReportCanSave,completeReportWorkerSave } from "@/lib/services/durable-report-receipt";
 import { completeChat } from "@/lib/llm";
 import { normalizePersonDisplayNameOr } from "@/lib/normalize-person-name";
 import {
@@ -313,13 +316,14 @@ export async function listStuckGeneratingRituals(
 export async function attemptRitualGeneration(
   ritualId: string,
   userProfile: { name: string; zodiac: string; gender?: string | null },
-  memoryContext?: MemoryContext
+  memoryContext?: MemoryContext,
+  request?: NextRequest
 ): Promise<RitualRow | null> {
   const ritual = await getRitualById(ritualId);
   if (!ritual) return null;
   if (ritual.status === "completed" || ritual.status === "reviewed") return ritual;
   if (ritual.status !== "generating") return null;
-  const generated = await generateRitualContent(ritual, userProfile, memoryContext);
+  const generated = await generateRitualContent(ritual, userProfile, memoryContext, request);
   if (generated) return generated;
   // Concurrent generator may have completed first — treat as success if done.
   const latest = await getRitualById(ritualId);
@@ -332,10 +336,20 @@ export async function attemptRitualGeneration(
 export async function saveGeneratedRitual(
   id: string,
   content: RitualGeneratedContent,
-  source?: Pick<RitualRow, "user_id" | "transaction_id">
+  source?: Pick<RitualRow, "user_id" | "transaction_id">,
+  request?: NextRequest
 ): Promise<RitualRow | null> {
   const remindAt = new Date(Date.now() + 7 * 24 * 60 * 60 * 1000);
-  const { rows } = await query<Record<string, unknown>>(
+  const worker = request ? getReportWorkerJobFromRequest(request) : undefined;
+  if (request?.signal.aborted || (request && getAsyncJobIdFromRequest(request) && !worker)) throw new Error("stale_async_job_attempt");
+  return withTransaction(async client => {
+    if (source) {
+      if (!(await lockReportWorkerSave(client,source.user_id,worker,source.transaction_id ?? undefined))) throw new Error("stale_async_job_attempt");
+      if (!(await paidReportCanSave(client,source.transaction_id))) throw new Error("ritual_receipt_refunded");
+      const profile = await queryClient(client,"SELECT id FROM users WHERE id=$1 AND erasure_requested_at IS NULL FOR UPDATE",[source.user_id]);
+      if (!profile.rowCount) throw new Error("account_erasure_pending");
+    } else if (worker) throw new Error("ritual_save_owner_required");
+    const { rows } = await queryClient<Record<string, unknown>>(client,
     `UPDATE rituals SET
        status = 'completed',
        ritual_time = $2,
@@ -367,7 +381,10 @@ export async function saveGeneratedRitual(
       ...(source ? [source.user_id, source.transaction_id] : []),
     ]
   );
-  return rows[0] ? mapRitualRow(rows[0]) : null;
+    const saved = rows[0] ? mapRitualRow(rows[0]) : null;
+    if (saved && source) await completeReportWorkerSave(client,source.user_id,worker,{ok:true,status:"completed",ritual:ritualToClient(saved)});
+    return saved;
+  });
 }
 
 export interface UserRitualAchievementStats {
@@ -530,7 +547,8 @@ export async function submitRitualReview(
 export async function generateRitualContent(
   ritual: RitualRow,
   userProfile: { name: string; zodiac: string; gender?: string | null },
-  memoryContext?: MemoryContext
+  memoryContext?: MemoryContext,
+  request?: NextRequest
 ): Promise<RitualRow | null> {
   const referenceDate = ritual.created_at ?? new Date();
   const schedule = computeRitualSchedule(ritual.ritual_type, referenceDate);
@@ -606,7 +624,7 @@ export async function generateRitualContent(
 
   if (!parsed) return null;
 
-  return saveGeneratedRitual(ritual.id, parsed, ritual);
+  return saveGeneratedRitual(ritual.id, parsed, ritual, request);
 }
 
 export function getQuestionsForRitual(ritualType: RitualType): string[] {

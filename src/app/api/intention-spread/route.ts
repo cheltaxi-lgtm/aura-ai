@@ -14,13 +14,18 @@ import {
   getAsyncJobWorkerUserId,
   getAsyncJobIdFromRequest,
   isAsyncJobWorkerConfigured,
+  getReportWorkerJobFromRequest,
 } from "@/lib/async-job-worker-auth";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
+  chargeForCurrentWorkerJob,
+  refundWorkerJobCharge,
 } from "@/lib/async-job-lifecycle";
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
+import { saveHistoryProductReceipt } from "@/lib/services/history-product-receipt";
 import {
   buildAiProvenance,
   fingerprintAiInput,
@@ -31,7 +36,6 @@ import { getSetting } from "@/lib/settings";
 import { getRuneBalance, isRuneBillingActive } from "@/lib/rune-service";
 import { getRuneSettings } from "@/lib/rune-settings";
 import {
-  BillingService,
   InsufficientFundsError,
   insufficientFundsResponse,
   readRequestChargeIdempotencyKey,
@@ -42,7 +46,7 @@ import {
 } from "@/lib/services/billing-service";
 import { enforcePaidRouteRateLimit } from "@/lib/api-guards";
 import { insufficientRunesResponse } from "@/lib/insufficient-runes";
-import { getUserById, createHistoryEntry } from "@/lib/users";
+import { getUserById } from "@/lib/users";
 import { resolveApiCharacterId, sanitizeTextField, sanitizeReadingForClient } from "@/lib/chat-sanitize";
 import {
   resolveMasterDeckSystem,
@@ -106,7 +110,7 @@ import {
   type SpreadId,
 } from "@/lib/spreads";
 import { resolveSpreadCost } from "@/lib/spreads/spread-pricing";
-import { attachSpreadToJointReading, getJointReadingByToken, jointSideAvailability } from "@/lib/joint-reading-service";
+import { attachSpreadToJointReading, finalizeJointReadingSide, getJointReadingByToken, jointSideAvailability } from "@/lib/joint-reading-service";
 import { buildJointPersonalPrompt, jointPersonalQualityIssue } from "@/lib/joint-reading-quality";
 import { getSpreadIntentBySlug } from "@/lib/spread-intents";
 import type { SessionTopicId } from "@/lib/session-topics";
@@ -657,6 +661,11 @@ export async function POST(request: NextRequest) {
     };
   }
 
+  if (workerUserId) {
+    const recovered = await recoverSavedWorkerReport(authed.profileUserId, getReportWorkerJobFromRequest(request));
+    if (recovered) return NextResponse.json({ ...recovered, reused: true });
+  }
+
   if (jointToken) {
     // Also runs inside the worker. Re-read after authentication: the browser may
     // have queued this job before the other participant occupied the slot.
@@ -858,7 +867,7 @@ export async function POST(request: NextRequest) {
         }
       }
       const spreadCost = resolveSpreadCost(spreadId, runeSettings);
-      const charge = await BillingService.chargeForSession({
+      const charge = await chargeForCurrentWorkerJob({ request, params: {
         userId: authed.profileUserId,
         cost: spreadCost,
         actionType: "INTENTION_SPREAD",
@@ -867,7 +876,7 @@ export async function POST(request: NextRequest) {
         operationIdentity: resourceIdentity,
         legacyIdempotencyKeys: jointToken ? [] : [clientKey, sessionId ? `intention-spread:${sessionId}:${spreadId}` : undefined]
           .filter((key): key is string => Boolean(key)),
-      });
+      }});
       billingCharge = charge;
       runeBalance = charge.newBalance;
     } catch (err) {
@@ -924,8 +933,8 @@ export async function POST(request: NextRequest) {
       runeBalance,
       message: "Расклад уже выполняется — откройте сессию.",
     };
-    await trackWorkerJobCompleted(request, pendingPayload);
-    return NextResponse.json(pendingPayload);
+    // A retry owns its held receipt and must finish the missing artifact.
+    if (!workerUserId) return NextResponse.json(pendingPayload);
   }
 
   if (intention === "life_death") {
@@ -1123,7 +1132,7 @@ export async function POST(request: NextRequest) {
     let refunded = false;
     if (billingCharge) {
       try {
-        const rollback = await BillingService.rollbackChargeEx({
+        const rollback = await refundWorkerJobCharge(request, {
           userId: authed.profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -1158,7 +1167,7 @@ export async function POST(request: NextRequest) {
     let refunded = !billingCharge;
     if (billingCharge) {
       try {
-        const rollback = await BillingService.rollbackChargeEx({
+        const rollback = await refundWorkerJobCharge(request, {
           userId: authed.profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -1178,166 +1187,72 @@ export async function POST(request: NextRequest) {
     }, { status: 502 });
   }
 
-  // Attach the joint side atomically before writing any text to chat/history.
-  // A losing parallel request is refunded without yielding an extra reading.
-  let reservedSessionId: string | null = null;
-  if (jointToken) {
-    try {
-      reservedSessionId = await persistToOwnedSession(sessionId, authed.profileUserId, async () => {});
-    } catch (sessionErr) {
-      console.warn("Joint reading session reservation failed:", sessionErr);
-    }
-  }
-  const storedSessionId = reservedSessionId ?? sessionId;
+  // Reserve an owned address; publish the paid history and joint side together
+  // before secondary chat writes can expose the result.
+  let finalSessionId: string | null | undefined = sessionId;
   let jointSaved = false;
   let jointError: string | undefined;
-  if (jointToken && reading.trim()) {
-    try {
-      const jointResult = await attachSpreadToJointReading({
-        jointToken,
-        userId: authed.profileUserId,
-        profileName: userName,
-        spreadId,
-        reading: reading.trim(),
-        cards: drawn.map((c, i) => ({ name: c.name, position: positionLabels[i] ?? c.name })),
-        sessionId: storedSessionId ?? undefined,
-        characterKey: characterId,
-      });
-      jointSaved = jointResult.ok && !jointResult.alreadySaved;
-      if (!jointSaved) jointError = jointResult.ok ? "Личный расклад уже сохранён." : jointResult.error;
-    } catch (attachError) {
-      console.error("Joint reading attach raised:", attachError);
-      // The UPDATE may already have committed before a secondary step failed.
-      // Confirm ownership and exact saved text before deciding on a refund.
-      let latest: Awaited<ReturnType<typeof getJointReadingByToken>>;
-      try {
-        latest = await getJointReadingByToken(jointToken);
-      } catch (lookupError) {
-        console.error("Joint reading attach outcome could not be verified:", lookupError);
-        await trackWorkerJobFailed(request, "Не удалось подтвердить сохранение совместного расклада. Проверьте страницу приглашения или обратитесь в поддержку перед повторной оплатой.", { refunded: false, errorCode: "joint_attach_unknown" });
-        return NextResponse.json({
-          error: "Не удалось подтвердить сохранение расклада. Проверьте страницу совместного расклада или обратитесь в поддержку.",
-          code: "joint_attach_unknown", refunded: false,
-        }, { status: 503 });
-      }
-      const ownText = latest?.initiator_user_id === authed.profileUserId
-        ? latest.initiator_reading
-        : latest?.partner_user_id === authed.profileUserId ? latest.partner_reading : null;
-      jointSaved = ownText === reading.trim();
-      if (!jointSaved) jointError = "Не удалось сохранить личную часть совместного расклада.";
-    }
-    if (!jointSaved) {
-      let refunded = !billingCharge;
-      if (billingCharge) {
-        try {
-          const rollback = await BillingService.rollbackChargeEx({
-            userId: authed.profileUserId,
-            cost: billingCharge.spentRunes,
-            wasFreeQuestion: billingCharge.wasFreeQuestion,
-            actionType: "INTENTION_SPREAD",
-            transactionId: billingCharge.transactionId,
-          });
-          refunded = rollback.refunded;
-          runeBalance = rollback.balance;
-        } catch (refundErr) {
-          console.error("Joint reading refund failed:", refundErr);
-        }
-      }
-      await trackWorkerJobFailed(request, jointError ?? "Joint reading attach failed", { refunded, errorCode: "joint_unavailable" });
-      return NextResponse.json({
-        error: refunded ? jointError : "Не удалось привязать расклад. Обратитесь в поддержку для проверки списания.",
-        code: "joint_unavailable", refunded,
-      }, { status: 409 });
-    }
-  }
-
-  let ownedSessionId: string | null = null;
   try {
-    ownedSessionId = await persistToOwnedSession(
-      storedSessionId,
-      authed.profileUserId,
-      async (resolvedSessionId) => {
-      if (reading.trim()) {
-        await ensureSpreadReadingInChatMessages({
-          captureGeneration,
-          sessionId: resolvedSessionId,
-          profileUserId: authed.profileUserId,
-          characterId,
-          reading: reading.trim(),
-          tarotCards: drawn.map((c) => ({ name: c.name })),
-          intention,
-          spreadType: "new",
-          spreadId,
-          customQuestion: intention === "custom" ? customQuestion : undefined,
-        });
-      } else {
-        await updateSessionChatMeta(resolvedSessionId, {
-          characterKey: characterId,
-          intention,
-          spreadType: "new",
-          spreadId,
-          cards: drawn.map((c) => c.name),
-        });
-        await ensureSessionMemoryStub({
-          userId: authed.profileUserId,
-          sessionId: resolvedSessionId,
-          characterKey: characterId,
-          topicSummary: topicLabel(intention),
-          keyCards: drawn.map((c) => c.name),
-          prediction: "Сеанс в процессе",
-        });
-      }
-      }
-    );
-  } catch (sessionErr) {
-    // The paid joint side was already committed. Keep the deliverable available
-    // through the joint page even if the secondary chat copy fails.
-    console.warn("Intention spread chat save failed:", sessionErr);
-  }
-  const finalSessionId = ownedSessionId ?? storedSessionId;
-
-  if (await ensureDb()) {
-    try {
-      const aiSettings = await getSetting("ai");
-      const provenance =
-        readingProvenance ??
-        buildAiProvenance({
-          model: String(aiSettings.paidModel || aiSettings.model || "unknown"),
-          attempts: 1,
-          finishReason: "stop",
-          inputFingerprint: fingerprintAiInput([
-            characterId,
-            intention,
-            spreadId,
-            drawn.map((c) => c.name),
-          ]),
-          content: reading,
-        });
-      await createHistoryEntry({
-        userId: authed.profileUserId,
-        characterName: characterId,
-        isPaid: true,
-        contextData: {
-          type: "intention_spread",
-          intentionResourceKey: resourceIdentity,
-          transactionId: billingCharge?.transactionId ?? null,
-          intention,
-          spreadId,
-          customQuestion: intention === "custom" ? customQuestion : undefined,
-          reading,
-          tarotCards,
-          deckSystem: system,
-          system,
-          sessionId: finalSessionId,
-          source: "ai",
-          provenance,
-        },
-      });
-    } catch (histErr) {
-      console.warn("Intention spread history save failed:", histErr);
+    finalSessionId = await persistToOwnedSession(sessionId, authed.profileUserId, async () => {});
+    const aiSettings = await getSetting("ai");
+    const provenance = readingProvenance ?? buildAiProvenance({
+      model: String(aiSettings.paidModel || aiSettings.model || "unknown"), attempts: 1, finishReason: "stop",
+      inputFingerprint: fingerprintAiInput([characterId,intention,spreadId,drawn.map(c => c.name)]), content: reading,
+    });
+    await saveHistoryProductReceipt({ request, transactionId: billingCharge?.transactionId,
+      history: { userId: authed.profileUserId, characterName: characterId, isPaid: true, contextData: {
+        type: "intention_spread", intentionResourceKey: resourceIdentity, intention, spreadId,
+        customQuestion: intention === "custom" ? customQuestion : undefined, reading, tarotCards,
+        deckSystem: system, system, sessionId: finalSessionId, source: "ai", provenance,
+      } },
+      result: { reading, cards: drawn, system, intention, spreadId, sessionId: finalSessionId, runeBalance,
+        isPaid: true, jointSaved: Boolean(jointToken) },
+      beforeSave: jointToken ? async client => {
+        const attached = await attachSpreadToJointReading({ jointToken, userId: authed.profileUserId,
+          profileName: userName, spreadId, reading: reading.trim(),
+          cards: drawn.map((c,i) => ({name:c.name,position:positionLabels[i] ?? c.name})),
+          sessionId: finalSessionId ?? undefined, characterKey: characterId }, client);
+        if (!attached.ok || attached.alreadySaved) throw new Error("joint_unavailable");
+        jointSaved = true;
+      } : undefined,
+    });
+  } catch (saveError) {
+    console.error("Intention spread durable save failed:", saveError);
+    const recovered = await recoverSavedWorkerReport(authed.profileUserId, getReportWorkerJobFromRequest(request));
+    if (recovered) return NextResponse.json({ ...recovered, reused: true });
+    let refunded = false;
+    if (billingCharge) {
+      const rollback = await refundWorkerJobCharge(request, {userId:authed.profileUserId,
+        cost:billingCharge.spentRunes,wasFreeQuestion:billingCharge.wasFreeQuestion,
+        actionType:"INTENTION_SPREAD",transactionId:billingCharge.transactionId});
+      refunded = rollback.refunded;
     }
+    const code = saveError instanceof Error && saveError.message === "joint_unavailable" ? "joint_unavailable" : "storage_failed";
+    await trackWorkerJobFailed(request,"Intention spread durable save failed",{refunded,errorCode:code});
+    return NextResponse.json({error:refunded ? "Не удалось сохранить расклад. Руны возвращены. Попробуйте ещё раз." : "Не удалось сохранить расклад. Проверьте сессию или обратитесь в поддержку.",code,refunded}, {status:code === "joint_unavailable" ? 409 : 503});
   }
-
+  try {
+    await persistToOwnedSession(finalSessionId ?? undefined,authed.profileUserId,async resolvedSessionId => {
+      await ensureSpreadReadingInChatMessages({captureGeneration,sessionId:resolvedSessionId,
+        profileUserId:authed.profileUserId,characterId,reading:reading.trim(),tarotCards:drawn.map(c => ({name:c.name})),
+        intention,spreadType:"new",spreadId,customQuestion:intention === "custom" ? customQuestion : undefined});
+    });
+  } catch (secondaryError) {
+    console.warn("Intention spread saved; secondary chat step failed:",secondaryError);
+  }
+  try {
+    if (jointToken) {
+      const invite = await getJointReadingByToken(jointToken);
+      if (invite) {
+        await finalizeJointReadingSide({token:jointToken,userId:authed.profileUserId,
+          role:invite.initiator_user_id === authed.profileUserId ? "initiator" : "partner",reading:reading.trim(),
+          cards:drawn.map((c,i) => ({name:c.name,position:positionLabels[i] ?? c.name})),
+          sessionId:finalSessionId ?? undefined,characterKey:characterId,profileName:userName},captureGeneration);
+      }
+    }
+  } catch (secondaryError) {
+    console.warn("Intention spread saved; secondary synthesis step failed:",secondaryError);
+  }
   logSpreadMetric("spread_completed", {
     spreadId, intention, characterId, cardCount,
     cost: billingCharge?.spentRunes, source: "intention_spread",

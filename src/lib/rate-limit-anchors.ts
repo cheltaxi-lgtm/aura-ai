@@ -190,9 +190,11 @@ export async function clearDailyReadingAnchors(userId: string): Promise<boolean>
 export async function recordDailyReadingAnchor(
   userId: string,
   readingDate: string,
-  spreadId: string
+  spreadId: string,
+  client?: PoolClient
 ): Promise<void> {
-  await query(
+  const run = client ? client.query.bind(client) : query;
+  await run(
     `UPDATE users
      SET astro_meta = COALESCE(astro_meta, '{}'::jsonb)
        || jsonb_build_object(

@@ -96,6 +96,12 @@ async function chargeCurrentWorkerPurchase(input: {
     }
     const charge = await input.charge(client);
     if (charge.transactionId) await markAsyncJobCharged(jobId,charge.transactionId,attempt,client);
+    if (charge.deduplicated && charge.transactionId) {
+      const held = await billingChargeFromExistingTransaction(input.userId,charge.transactionId,input.action,client,
+        input.operationIdentity ? [input.operationIdentity] : undefined);
+      if (!held) throw new Error("paid_worker_receipt_missing");
+      return held;
+    }
     return charge;
   });
 }
@@ -114,6 +120,24 @@ export async function chargeRuneActionForCurrentWorkerJob(input: {
 }): Promise<BillingChargeResult> {
   return chargeCurrentWorkerPurchase({ request:input.request,userId:input.params.userId,action:input.params.action,
     operationIdentity:input.params.operationIdentity,charge:client=>BillingService.chargeRuneAction({...input.params,client}) });
+}
+
+/** Adopt an already purchased owned artifact, without taking another payment. */
+export async function adoptPaidReceiptForCurrentWorkerJob(request: NextRequest, userId: string, transactionId: string, action: string): Promise<void> {
+  const jobId = getAsyncJobIdFromRequest(request);
+  if (!jobId) return;
+  const attempt = getAsyncJobAttemptFromRequest(request);
+  if (!attempt || request.signal.aborted) throw new Error("stale_async_job_attempt");
+  await withTransaction(async client => {
+    const job = (await queryClient<AsyncJobRow>(client,"SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE",[jobId])).rows[0];
+    if (!job || job.user_id !== userId || !asyncJobAttemptMatches(job,attempt) ||
+      !["unbilled","charged"].includes(job.billing_state) || (job.charge_transaction_id && job.charge_transaction_id !== transactionId)) throw new Error("stale_async_job_attempt");
+    const {paidReportCanSave} = await import("@/lib/services/durable-report-receipt");
+    if (!(await paidReportCanSave(client,transactionId))) throw new Error("paid_artifact_refunded");
+    const held = await queryClient(client,"SELECT id FROM rune_transactions WHERE id=$1 AND user_id=$2 AND type='spend' AND action_type=$3 AND amount<0",[transactionId,userId,action]);
+    if (!held.rowCount) throw new Error("paid_artifact_receipt_owner_conflict");
+    await markAsyncJobCharged(jobId,transactionId,attempt,client);
+  });
 }
 
 /** After rollbackCharge on a worker-driven paid route. */

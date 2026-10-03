@@ -1,6 +1,11 @@
 import { captureMemoryGeneration } from "@/lib/memory/write-guard";
 import { BillingService } from "@/lib/services/billing-service";
 import { queryClient, withTransaction } from "@/lib/db";
+import type { NextRequest } from "next/server";
+import {getAsyncJobIdFromRequest,getAsyncJobAttemptFromRequest,getReportWorkerJobFromRequest} from "@/lib/async-job-worker-auth";
+import {lockReportWorkerSave,paidReportCanSave} from "@/lib/services/durable-report-receipt";
+import {markAsyncJobRefunded} from "@/lib/async-jobs";
+import {adoptPaidReceiptForCurrentWorkerJob} from "@/lib/async-job-lifecycle";
 import { withReadingLock } from "@/lib/reading-lock";
 import {
   buildRitualAnswersMessage,
@@ -28,8 +33,12 @@ export type RitualGenerationOutcome =
     };
 
 /** Refund only real paid spends; skip free/unlimited and pass txn id for idempotency. */
-export async function failRitualGeneration(ritual: RitualRow, refundRequested = true): Promise<boolean> {
+export async function failRitualGeneration(ritual: RitualRow, refundRequested = true, request?: NextRequest): Promise<boolean> {
   return withTransaction(async (client) => {
+    const worker = request ? getReportWorkerJobFromRequest(request) : undefined;
+    if (request && getAsyncJobIdFromRequest(request) && !worker) return false;
+    if (!(await lockReportWorkerSave(client,ritual.user_id,worker,ritual.transaction_id ?? undefined))) return false;
+    if (!(await paidReportCanSave(client,ritual.transaction_id))) return false;
     await queryClient(client, "SELECT id FROM users WHERE id=$1 FOR UPDATE", [ritual.user_id]);
     const claim = await queryClient(client, `SELECT id FROM rituals WHERE id=$1 AND user_id=$2
       AND status='generating' AND transaction_id IS NOT DISTINCT FROM $3::uuid FOR UPDATE`,
@@ -50,6 +59,7 @@ export async function failRitualGeneration(ritual: RitualRow, refundRequested = 
         client,
       });
       refunded = rollback.refunded;
+      if (refunded && request && worker) await markAsyncJobRefunded(worker.jobId,getAsyncJobAttemptFromRequest(request)!,client);
     }
     await queryClient(client, `UPDATE rituals SET status='payment', payment_status='pending', updated_at=NOW()
       WHERE id=$1 AND user_id=$2 AND status='generating' AND transaction_id IS NOT DISTINCT FROM $3::uuid`,
@@ -63,12 +73,13 @@ export async function runRitualGenerationForUser(params: {
   userId: string;
   rollbackOnFailure?: boolean;
   captureGeneration?: string | null;
+  request?: NextRequest;
 }): Promise<RitualGenerationOutcome> {
   return withReadingLock(`ritual-generation:${params.userId}:${params.ritualId}`, () => runRitualGenerationLocked(params));
 }
 
 async function runRitualGenerationLocked(params: {
-  ritualId: string; userId: string; rollbackOnFailure?: boolean; captureGeneration?: string | null;
+  ritualId: string; userId: string; rollbackOnFailure?: boolean; captureGeneration?: string | null; request?: NextRequest;
 }): Promise<RitualGenerationOutcome> {
   const ritual = await getRitualById(params.ritualId);
   if (!ritual || ritual.user_id !== params.userId) {
@@ -89,6 +100,9 @@ async function runRitualGenerationLocked(params: {
     ritual.payment_status === "paid" || ritual.payment_status === "free";
   if (ritual.status !== "generating" || !paidOrFree) {
     return { ok: false, status: "failed", error: "invalid_status", ritual };
+  }
+  if (params.request && ritual.payment_status === "paid" && ritual.transaction_id) {
+    await adoptPaidReceiptForCurrentWorkerJob(params.request,params.userId,ritual.transaction_id,"ritual");
   }
 
   const captureGeneration = params.captureGeneration !== undefined ? params.captureGeneration : await captureMemoryGeneration(params.userId, ritual.created_at);
@@ -122,7 +136,8 @@ async function runRitualGenerationLocked(params: {
     const result = await attemptRitualGeneration(
       params.ritualId,
       userProfile,
-      memoryContext
+      memoryContext,
+      params.request
     );
     if (result) {
       await captureRitualMemory({
@@ -139,13 +154,13 @@ async function runRitualGenerationLocked(params: {
         ]
           .filter(Boolean)
           .join("\n"),
-      });
+      }).catch(error => console.warn("Ritual saved; secondary memory capture failed:",error));
       return { ok: true, status: "completed", ritual: result, freshlyCompleted: true };
     }
 
     const shouldRefund =
       params.rollbackOnFailure !== false && ritual.payment_status === "paid";
-    const refunded = await failRitualGeneration(ritual, shouldRefund);
+    const refunded = await failRitualGeneration(ritual, shouldRefund, params.request);
     const failed = await getRitualById(params.ritualId);
     console.error("Ritual generation failed for", params.ritualId);
     return {
@@ -158,7 +173,7 @@ async function runRitualGenerationLocked(params: {
   } catch (err) {
     const shouldRefund =
       params.rollbackOnFailure !== false && ritual.payment_status === "paid";
-    const refunded = await failRitualGeneration(ritual, shouldRefund);
+    const refunded = await failRitualGeneration(ritual, shouldRefund, params.request);
     console.error("Ritual generation error:", err);
     const failed = await getRitualById(params.ritualId);
     return {

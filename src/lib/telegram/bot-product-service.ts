@@ -804,6 +804,8 @@ export async function botRunCatalogIntent(input: {
       isPaid: charged > 0,
       contextData: {
         type: "intention_spread",
+        transactionId: billingCharge?.transactionId ?? null,
+        intentionResourceKey: idempotencyKey,
         intention: "custom",
         spreadId,
         customQuestion: question,
@@ -833,7 +835,7 @@ export async function botRunCatalogIntent(input: {
       spreadType: "new",
       spreadId,
       customQuestion: question,
-    });
+    }).catch(error => console.warn("[bot-product] catalog reading saved; secondary chat write failed",error));
 
     return {
       ok: true,

@@ -182,15 +182,16 @@ export function resolveJointReadParticipantRole(row: JointReadingRow, userId: st
   return row.partner_user_id === userId ? "partner" : null;
 }
 
-async function jointMutation(text: string, params: unknown[], userIds: (string | null)[]) {
-  return withTransaction(async (client) => {
+async function jointMutation(text: string, params: unknown[], userIds: (string | null)[], receiptClient?: import("@/lib/db").PoolClient) {
+  const mutate = async (client: import("@/lib/db").PoolClient) => {
     const ids = [...new Set(userIds.filter((id): id is string => Boolean(id)))].sort();
     const active = await client.query(
       `SELECT id FROM users WHERE id = ANY($1::uuid[]) AND erasure_requested_at IS NULL ORDER BY id FOR SHARE`, [ids]
     );
     if (active.rowCount !== ids.length) throw new Error("account_erasure_pending");
     return client.query(text, params);
-  });
+  };
+  return receiptClient ? mutate(receiptClient) : withTransaction(mutate);
 }
 
 /** A stale invitation must be rejected before a personal spread is billed. */
@@ -617,9 +618,9 @@ export async function submitJointReadingSide(params: {
   sessionId?: string;
   characterKey: string;
   profileName?: string | null;
-}): Promise<JointSubmitResult> {
-  const captureGeneration = await captureMemoryGeneration(params.userId);
-  const existing = await getJointReadingByToken(params.token);
+}, client?: import("@/lib/db").PoolClient): Promise<JointSubmitResult> {
+  const captureGeneration = client ? null : await captureMemoryGeneration(params.userId);
+  const existing = await getJointReadingByToken(params.token, client);
   if (!existing || existing.status === "expired") {
     return { ok: false, error: "Приглашение не найдено или истекло." };
   }
@@ -662,13 +663,13 @@ export async function submitJointReadingSide(params: {
         params.sessionId ?? null,
         params.characterKey,
         params.userId,
-      ], [existing.initiator_user_id, existing.partner_user_id, params.userId]
+      ], [existing.initiator_user_id, existing.partner_user_id, params.userId], client
     );
     if (!initiatorUpdate.rowCount) {
       // Lost a race against a concurrent submit from the same account — the
       // reading was already saved a moment ago, so report success without
       // pretending we just wrote this attempt's data.
-      const latest = await getJointReadingByToken(params.token);
+      const latest = await getJointReadingByToken(params.token, client);
       if (latest?.initiator_reading?.trim()) return { ok: true, row: latest, alreadySaved: true };
       return { ok: false, error: "Приглашение истекло до сохранения расклада.", row: latest ?? existing };
     }
@@ -696,12 +697,12 @@ export async function submitJointReadingSide(params: {
         params.sessionId ?? null,
         params.characterKey,
         params.profileName?.trim() ?? null,
-      ], [existing.initiator_user_id, existing.partner_user_id, params.userId]
+      ], [existing.initiator_user_id, existing.partner_user_id, params.userId], client
     );
     if (!partnerUpdate.rowCount) {
       // Someone else won the race for the partner slot between our check above
       // and this write — don't report false success with their data.
-      const latest = await getJointReadingByToken(params.token);
+      const latest = await getJointReadingByToken(params.token, client);
       return {
         ok: false,
         error: "Слот партнёра уже занят — кто-то другой сохранил расклад раньше вас.",
@@ -709,22 +710,26 @@ export async function submitJointReadingSide(params: {
       };
     }
 
-    if (existing.initiator_reading === null) {
-      try {
-        await notifyJointReadingEvent({
-          userId: existing.initiator_user_id,
-          type: "joint_reading_partner_done",
-          token: params.token,
-        });
-      } catch (notificationError) {
-        console.warn("Joint reading partner notification failed:", notificationError);
-      }
-    }
   }
 
-  let updated = await getJointReadingByToken(params.token);
+  let updated = await getJointReadingByToken(params.token, client);
   if (!updated) return { ok: false, error: "Не удалось сохранить расклад." };
+  if (client) return { ok: true, row: updated };
 
+  return finalizeJointReadingSide(params,captureGeneration);
+}
+
+/** Run delivery fanout after the side/paid receipt has committed. */
+export async function finalizeJointReadingSide(params: Parameters<typeof submitJointReadingSide>[0], captureGeneration?: string | null): Promise<JointSubmitResult> {
+  let updated = await getJointReadingByToken(params.token);
+  const isInitiator = params.role === "initiator";
+  if (!updated || (isInitiator ? updated.initiator_user_id !== params.userId || updated.initiator_reading !== params.reading
+    : updated.partner_user_id !== params.userId || updated.partner_reading !== params.reading)) throw new Error("joint_side_delivery_owner_conflict");
+  if (captureGeneration === undefined) captureGeneration = await captureMemoryGeneration(params.userId);
+  if (!isInitiator && !updated.initiator_reading) {
+    try { await notifyJointReadingEvent({userId:updated.initiator_user_id,type:"joint_reading_partner_done",token:params.token}); }
+    catch(error) { console.warn("Joint reading partner notification failed:",error); }
+  }
   // Capture names when a side submits (invite may have been created without them).
   if (updated.initiator_name?.trim() || updated.partner_name?.trim()) {
     try {
@@ -794,8 +799,8 @@ export async function attachSpreadToJointReading(params: {
   cards: { name: string; position?: string }[];
   sessionId?: string;
   characterKey: string;
-}): Promise<JointSubmitResult> {
-  const joint = await getJointReadingByToken(params.jointToken);
+}, client?: import("@/lib/db").PoolClient): Promise<JointSubmitResult> {
+  const joint = await getJointReadingByToken(params.jointToken, client);
   if (!joint || joint.status === "expired") {
     return { ok: false, error: "Совместное приглашение не найдено или истекло." };
   }
@@ -822,7 +827,7 @@ export async function attachSpreadToJointReading(params: {
     sessionId: params.sessionId,
     characterKey: params.characterKey,
     profileName: params.profileName,
-  });
+  }, client);
 }
 
 /** Relationship-flavoured framing for the LLM synthesis prompt, based on the invite's theme. */

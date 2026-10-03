@@ -1,5 +1,8 @@
 import { query, queryClient, withTransaction } from "@/lib/db";
 import type { PoolClient, QueryResultRow } from "pg";
+import type { NextRequest } from "next/server";
+import { getReportWorkerJobFromRequest, getAsyncJobIdFromRequest } from "@/lib/async-job-worker-auth";
+import { lockReportWorkerSave, paidReportCanSave, completeReportWorkerSave } from "@/lib/services/durable-report-receipt";
 import { resolveDailyMasterKey } from "@/lib/daily-master-policy";
 import { createHistoryEntry, getUserById, profileGenderForPersonalization } from "@/lib/users";
 import { type ChatMessage } from "@/lib/llm";
@@ -524,6 +527,8 @@ export async function getOrCreateDailyReading(params: {
   birthDate: string;
   localDate?: string | null;
   spreadId?: SpreadId | string | null;
+  request?: NextRequest;
+  transactionId?: string | null;
 }): Promise<DailyReadingResult> {
   const charKey = resolveDailyMasterKey(params.characterKey);
   const requestedSpreadId = normalizeSpreadId(params.spreadId);
@@ -552,7 +557,29 @@ export async function getOrCreateDailyReading(params: {
   const generated = await generateDailyReadingArtifact({ ...params, characterKey: charKey, localDate: today, spreadId: drawSpreadId });
   const { text: reading, cards, system } = generated;
 
-  await query(
+  const worker = params.request ? getReportWorkerJobFromRequest(params.request) : undefined;
+  if (params.request?.signal.aborted || (params.request && getAsyncJobIdFromRequest(params.request) && !worker)) throw new Error("stale_async_job_attempt");
+  const delivery = { localDate:today,text:reading,cards,system,drawn:true,spreadId:drawSpreadId,locked:false,purged:false };
+  let delivered = generated;
+  await withTransaction(async client => {
+    if (!(await lockReportWorkerSave(client,params.userId,worker,params.transactionId ?? undefined))) throw new Error("stale_async_job_attempt");
+    if (!(await paidReportCanSave(client,params.transactionId))) throw new Error("daily_receipt_refunded");
+    if (params.transactionId) {
+      const spend = await queryClient(client,"SELECT id FROM rune_transactions WHERE id=$1 AND user_id=$2 AND type='spend' AND action_type='DAILY_EXTENDED' AND amount<0",[params.transactionId,params.userId]);
+      if (!spend.rowCount || drawSpreadId !== "daily-extended") throw new Error("daily_receipt_owner_or_action_conflict");
+    }
+    const profile = await queryClient(client,"SELECT id FROM users WHERE id=$1 AND erasure_requested_at IS NULL FOR UPDATE",[params.userId]);
+    if (!profile.rowCount) throw new Error("account_erasure_pending");
+    // A slower free request cannot replace a paid upgrade that committed first.
+    const prior = (await queryClient<{reading_text:string;cards:DailyReadingCard[];deck_system:DeckSystem;spread_id:SpreadId}>(client,
+      "SELECT reading_text,cards,deck_system,spread_id FROM daily_readings WHERE user_id=$1 AND reading_date=$2::date FOR UPDATE",[params.userId,today])).rows[0];
+    if (prior?.reading_text.trim() && Array.isArray(prior.cards) && prior.cards.length > 0 &&
+      (prior.spread_id === drawSpreadId || prior.spread_id === "daily-extended")) {
+      delivered = {text:prior.reading_text,cards:prior.cards,system:prior.deck_system,spreadId:prior.spread_id,cached:true};
+      await completeReportWorkerSave(client,params.userId,worker,{...delivery,text:prior.reading_text,cards:prior.cards,system:prior.deck_system,spreadId:prior.spread_id});
+      return;
+    }
+    await queryClient(client,
     `INSERT INTO daily_readings (user_id, character_key, reading_text, cards, deck_system, reading_date, spread_id)
      VALUES ($1, $2, $3, $4::jsonb, $5, $6::date, $7)
      ON CONFLICT (user_id, reading_date) DO UPDATE SET
@@ -562,12 +589,15 @@ export async function getOrCreateDailyReading(params: {
        deck_system = EXCLUDED.deck_system,
        spread_id = EXCLUDED.spread_id`,
     [params.userId, charKey, reading, JSON.stringify(cards), system, today, drawSpreadId]
-  );
+    );
 
-  await syncDailyReadingHistory({ userId: params.userId, characterKey: charKey,
-    readingDate: today, reading, cards, system: system!, spreadId: drawSpreadId });
-  await recordDailyReadingAnchor(params.userId, today, drawSpreadId);
-  return generated;
+    await syncDailyReadingHistory({ userId: params.userId, characterKey: charKey,
+      readingDate: today, reading, cards, system: system!, spreadId: drawSpreadId,
+      transactionId:params.transactionId,receiptDelivery:delivery },client);
+    await recordDailyReadingAnchor(params.userId,today,drawSpreadId,client);
+    await completeReportWorkerSave(client,params.userId,worker,delivery);
+  });
+  return delivered;
 }
 
 /** Generate from the daily master policy without writing or consuming entitlement. */
@@ -627,6 +657,8 @@ async function syncDailyReadingHistory(params: {
   cards: DailyReadingCard[];
   system: DeckSystem;
   spreadId: SpreadId;
+  transactionId?: string | null;
+  receiptDelivery?: Record<string,unknown>;
 }, client?: PoolClient): Promise<void> {
   const runQuery = <T extends QueryResultRow = QueryResultRow>(sql: string, values?: unknown[]) =>
     client ? queryClient<T>(client, sql, values) : query<T>(sql, values);
@@ -651,6 +683,7 @@ async function syncDailyReadingHistory(params: {
         reversed: c.reversed,
       })),
       source: "ai",
+      ...(params.transactionId ? {transactionId:params.transactionId,receiptDelivery:params.receiptDelivery} : {}),
       provenance: {
         source: "ai",
         generatedAt: new Date().toISOString(),
@@ -663,12 +696,13 @@ async function syncDailyReadingHistory(params: {
       const prior = entry.context_data;
       if (prior.reading === params.reading && prior.characterKey === params.characterKey &&
           prior.deckSystem === params.system && prior.spreadId === params.spreadId &&
-          JSON.stringify(prior.tarotCards) === JSON.stringify(contextData.tarotCards)) continue;
-      await runQuery(`UPDATE history SET context_data=context_data || $3::jsonb
-        WHERE id=$1 AND user_id=$2`, [entry.id, params.userId, JSON.stringify(contextData)]);
+          JSON.stringify(prior.tarotCards) === JSON.stringify(contextData.tarotCards) &&
+          (!params.transactionId || prior.transactionId === params.transactionId)) continue;
+      await runQuery(`UPDATE history SET context_data=context_data || $3::jsonb,is_paid=is_paid OR $4
+        WHERE id=$1 AND user_id=$2`, [entry.id, params.userId, JSON.stringify(contextData),Boolean(params.transactionId)]);
     }
     return;
   }
   await createHistoryEntry({ userId: params.userId, characterName: "daily_energy",
-    isPaid: false, contextData }, client);
+    isPaid: Boolean(params.transactionId), contextData }, client);
 }

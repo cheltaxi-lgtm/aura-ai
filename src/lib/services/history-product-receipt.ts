@@ -1,6 +1,6 @@
 import type { NextRequest } from "next/server";
 import { getAsyncJobIdFromRequest, getReportWorkerJobFromRequest } from "@/lib/async-job-worker-auth";
-import { queryClient, withTransaction } from "@/lib/db";
+import { queryClient, withTransaction, type PoolClient } from "@/lib/db";
 import { createHistoryEntry } from "@/lib/users";
 import { completeReportWorkerSave, lockReportWorkerSave, paidReportCanSave } from "./durable-report-receipt";
 
@@ -10,6 +10,7 @@ export async function saveHistoryProductReceipt(input: {
   history: Parameters<typeof createHistoryEntry>[0];
   transactionId?: string | null;
   result: Record<string, unknown>;
+  beforeSave?: (client: PoolClient) => Promise<void>;
 }): Promise<{ id: string }> {
   const worker = getReportWorkerJobFromRequest(input.request);
   if (getAsyncJobIdFromRequest(input.request) && !worker) throw new Error("stale_async_job_attempt");
@@ -25,9 +26,11 @@ export async function saveHistoryProductReceipt(input: {
         : input.history.contextData.type === "aura_reading" ? spend?.action_type === "AURA_READING"
         : input.history.contextData.type === "palm_reading" ? spend?.action_type === "PALM_READING"
         : input.history.contextData.type === "photo_reading" ? spend?.action_type === "VISION_ANALYSIS"
+        : input.history.contextData.type === "intention_spread" ? spend?.action_type === "INTENTION_SPREAD"
         : input.history.contextData.type === "scene_image" && ["DESTINY_CARD", "FINAL_REPORT", "SCENE_ILLUSTRATION", "TAROT_ATMOSPHERE"].includes(spend?.action_type ?? "");
       if (!validAction) throw new Error("paid_history_receipt_owner_or_action_conflict");
     }
+    await input.beforeSave?.(client);
     const entry = await createHistoryEntry({ ...input.history, contextData: {
       ...input.history.contextData, transactionId: input.transactionId ?? null, receiptDelivery: input.result,
     } }, client);

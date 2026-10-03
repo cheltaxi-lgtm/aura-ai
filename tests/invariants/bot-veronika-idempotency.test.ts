@@ -4,6 +4,12 @@ import { createHash } from "node:crypto";
 // Session-memory writes lifetime counters in the background. Await the real
 // writes before the next fixture TRUNCATE, which otherwise deadlocks with them.
 const lifetimeWrites = vi.hoisted(() => new Set<Promise<void>>());
+const chatWrite = vi.hoisted(() => ({fail:false}));
+vi.mock("@/lib/spread-reading-persist",async original=>{
+  const actual=await original<typeof import("@/lib/spread-reading-persist")>();
+  return {...actual,ensureSpreadReadingInChatMessages:(...args:Parameters<typeof actual.ensureSpreadReadingInChatMessages>)=>
+    chatWrite.fail ? Promise.reject(new Error("synthetic secondary chat failure")) : actual.ensureSpreadReadingInChatMessages(...args)};
+});
 vi.mock("@/lib/user-lifetime-stats", async () => {
   const actual = await vi.importActual<typeof import("@/lib/user-lifetime-stats")>("@/lib/user-lifetime-stats");
   return { ...actual, recordLifetimeSessionActivity: (...args: Parameters<typeof actual.recordLifetimeSessionActivity>) => {
@@ -23,7 +29,7 @@ import {
   buildFallbackChargeIdempotencyKey,
 } from "@/lib/services/billing-service";
 import { linkTelegramToAccount } from "@/lib/telegram/accounts";
-import { botRunVeronikaSpread } from "@/lib/telegram/bot-product-service";
+import { botRunVeronikaSpread,botRunCatalogIntent } from "@/lib/telegram/bot-product-service";
 import { query } from "@/lib/db";
 import { hasTestDb, installDbLifecycle } from "./db/setup";
 import {
@@ -133,9 +139,22 @@ describe.skipIf(!hasTestDb)("botRunVeronikaSpread idempotency (db)", () => {
   installDbLifecycle();
 
   afterEach(async () => {
+    chatWrite.fail=false;
     try { await Promise.all(lifetimeWrites); }
     finally { lifetimeWrites.clear(); }
     vi.mocked(generateReading).mockClear();
+  });
+
+  it("catalog keeps its paid saved result when a secondary chat write fails",async()=>{
+    const user=await createTestUser({runeBalance:100});const tgId=7999999;
+    await linkTelegramUser(user.id,tgId);chatWrite.fail=true;
+    const result=await botRunCatalogIntent({telegramUserId:tgId,intentSlug:"pozvonit-li-on",clientEventId:"catalog-secondary-fail"});
+    expect(result.ok).toBe(true);if(!result.ok)return;
+    expect(result.reading?.length).toBeGreaterThan(100);
+    expect(await countSpendTransactions(user.id)).toBe(1);
+    expect(Number((await query("SELECT count(*)::int n FROM rune_transactions WHERE user_id=$1 AND type='refund'",[user.id])).rows[0].n)).toBe(0);
+    const saved=(await query("SELECT context_data FROM history WHERE user_id=$1 AND context_data->>'type'='intention_spread'",[user.id])).rows[0];
+    expect(saved.context_data.transactionId).toBeTruthy();expect(saved.context_data.reading).toBe(result.reading);
   });
 
   it("same telegram event: one spend, one session, LLM once", async () => {

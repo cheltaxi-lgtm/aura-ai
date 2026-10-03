@@ -6,12 +6,16 @@ import { getProfileUserIdForAccount, resolveUnlimitedAccess } from "@/lib/accoun
 import {
   getAsyncJobWorkerUserId,
   isAsyncJobWorkerConfigured,
+  getReportWorkerJobFromRequest,
 } from "@/lib/async-job-worker-auth";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
+  chargeRuneActionForCurrentWorkerJob,
+  refundWorkerJobCharge,
 } from "@/lib/async-job-lifecycle";
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
 import { getUserById } from "@/lib/users";
 import {
   DailyReadingGenerationError,
@@ -125,6 +129,10 @@ async function handlePost(request: NextRequest) {
   await ensureSpreadCatalogSettingsLoaded();
 
   const body = await request.json().catch(() => ({}));
+  if (workerUserId) {
+    const recovered = await recoverSavedWorkerReport(userId,getReportWorkerJobFromRequest(request));
+    if (recovered) return NextResponse.json({...recovered,reused:true});
+  }
   const rawBody = (body && typeof body === "object" ? body : {}) as Record<string, unknown>;
   const asyncRequested = rawBody.async === true;
   const requested = typeof body.characterKey === "string" ? body.characterKey : "veronika";
@@ -211,12 +219,12 @@ async function handlePost(request: NextRequest) {
 
   if (needsExtendedCharge) {
     try {
-      extendedCharge = await BillingService.chargeRuneAction({
+      extendedCharge = await chargeRuneActionForCurrentWorkerJob({ request, params: {
         userId,
         action: "DAILY_EXTENDED",
         idempotencyKey: `daily-extended:${localDate}`,
         operationIdentity: `daily-extended:${localDate}`,
-      });
+      }});
     } catch (err) {
       if (err instanceof InsufficientFundsError) {
         return insufficientFundsResponse(err);
@@ -234,6 +242,8 @@ async function handlePost(request: NextRequest) {
       birthDate: user.birth_date ?? "",
       localDate,
       spreadId,
+      request,
+      transactionId:extendedCharge?.transactionId,
     });
 
     const payload = {
@@ -249,47 +259,41 @@ async function handlePost(request: NextRequest) {
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (err) {
+    let refunded = false;
+    if (extendedCharge?.transactionId) {
+      const rollback = await refundWorkerJobCharge(request,{userId,cost:extendedCharge.spentRunes,
+        wasFreeQuestion:extendedCharge.wasFreeQuestion,actionType:"DAILY_EXTENDED",transactionId:extendedCharge.transactionId});
+      refunded = rollback.refunded;
+    }
     if (err instanceof DailyReadingLockedError) {
+      await trackWorkerJobFailed(request,"Daily reading locked",{refunded,errorCode:"daily_reading_locked"});
       return NextResponse.json(
         {
           error: "daily_reading_locked",
           message: "Расклад на сегодня уже был — новый будет доступен завтра.",
           spreadId: err.spreadId,
           locked: true,
+          refunded,
         },
         { status: 403 }
       );
     }
     if (err instanceof DailyReadingGenerationError) {
-      let refunded = false;
-      if (extendedCharge && extendedCharge.spentRunes > 0) {
-        try {
-          await BillingService.rollbackCharge({
-            userId,
-            cost: extendedCharge.spentRunes,
-            wasFreeQuestion: extendedCharge.wasFreeQuestion,
-            actionType: "DAILY_EXTENDED",
-            transactionId: extendedCharge.transactionId,
-          });
-          refunded = true;
-        } catch (refundErr) {
-          console.error("Daily extended refund failed:", refundErr);
-        }
-      }
       await trackWorkerJobFailed(request, "Daily reading generation failed", {
         refunded,
         errorCode: "generation_failed",
       });
       return NextResponse.json(
         {
-          error: "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз.",
+          error: refunded ? "Не удалось получить трактовку. Руны возвращены. Попробуйте ещё раз." : "Не удалось получить трактовку. Попробуйте ещё раз.",
           code: "generation_failed",
           refunded,
         },
         { status: 502 }
       );
     }
-    throw err;
+    await trackWorkerJobFailed(request,"Daily reading save failed",{refunded,errorCode:"storage_failed"});
+    return NextResponse.json({error:refunded ? "Не удалось сохранить расклад. Руны возвращены." : "Не удалось сохранить расклад. Попробуйте ещё раз.",code:"storage_failed",refunded},{status:503});
   }
 }
 

@@ -663,6 +663,9 @@ export async function refundChargedAsyncJobIfNeeded(jobId: string): Promise<bool
     const rollback=await BillingService.rollbackChargeEx({ userId:job.user_id,cost:ledger.rows[0].amount,
       wasFreeQuestion:false,transactionId:job.charge_transaction_id,actionType:ledger.rows[0].action_type??undefined,client });
     if (rollback.refunded) {
+      if (job.kind === "ritual_generation") {
+        await queryClient(client,"UPDATE rituals SET status='payment',payment_status='pending',updated_at=now() WHERE user_id=$1 AND transaction_id=$2 AND status='generating'",[job.user_id,job.charge_transaction_id]);
+      }
       if (job.kind === "hd_report" || job.kind === "hd_composite_report") {
         const table = job.kind === "hd_report" ? "hd_reports" : "hd_composite_reports";
         await queryClient(client, `UPDATE ${table} SET status='error',error='generation_failed',transaction_id=NULL,

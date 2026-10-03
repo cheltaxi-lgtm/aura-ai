@@ -221,9 +221,10 @@ export default function RitualGenerating({
           return;
         }
         if (status === "failed") {
-          setRefunded(true);
+          // Payment status alone does not prove a ledger refund.
+          setRefunded(false);
           setError(
-            "Не удалось составить обряд. Руны возвращены — попробуйте ещё раз."
+            "Не удалось составить обряд. Откройте обряд снова, чтобы проверить оплату и повторить попытку."
           );
           return;
         }

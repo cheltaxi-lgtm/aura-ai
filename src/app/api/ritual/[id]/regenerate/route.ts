@@ -79,6 +79,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
     ritualId: id,
     userId: authed.profileUserId,
     rollbackOnFailure: true,
+    request,
   });
 
   const balance = await getRuneBalance(authed.profileUserId);
@@ -121,7 +122,7 @@ export async function POST(request: NextRequest, context: RouteContext) {
   }
 
   await trackWorkerJobFailed(request, "Ritual generation failed", {
-    refunded: true,
+    refunded: Boolean(outcome.refunded),
     errorCode: "generation_failed",
   });
   return NextResponse.json({ ...body, balance }, { status: 502 });
