@@ -1,6 +1,8 @@
 import { ensureDb, query } from "@/lib/db";
 import { withReadingLock } from "@/lib/reading-lock";
 import { createHistoryEntry } from "@/lib/users";
+import type { NextRequest } from "next/server";
+import { saveHistoryProductReceipt } from "@/lib/services/history-product-receipt";
 import { alignAuraSnapshotColors, type AuraSnapshot } from "@/lib/aura-constants";
 import { AURA_DAY_TIMEZONE } from "@/lib/services/aura-guest-service";
 import { isAuraOtherSubjectsEnabled } from "@/lib/settings";
@@ -94,6 +96,9 @@ export async function findTodaysPaidAuraReport(
 }
 
 export async function persistAuraReadingResult(params: {
+  request?: NextRequest;
+  transactionId?: string | null;
+  result?: Record<string, unknown>;
   profileUserId: string;
   reportBody: string;
   snapshot: AuraSnapshot;
@@ -110,7 +115,7 @@ export async function persistAuraReadingResult(params: {
   if (!(await ensureDb())) return undefined;
 
   const snapshot = alignAuraSnapshotColors(params.snapshot);
-  const entry = await createHistoryEntry({
+  const history = {
     userId: params.profileUserId,
     characterName: "numerolog",
     contextData: {
@@ -131,7 +136,10 @@ export async function persistAuraReadingResult(params: {
       subjectName: params.subjectName ?? undefined,
     },
     isPaid: params.isPaid || params.spentRunes > 0,
-  });
+  };
+  const entry = params.request ? await saveHistoryProductReceipt({ request:params.request,history,
+    transactionId:params.transactionId,result:params.result ?? {report:params.reportBody,snapshot,snapshotId:params.snapshotId,saved:true} })
+    : await createHistoryEntry(history);
   return entry?.id;
 }
 

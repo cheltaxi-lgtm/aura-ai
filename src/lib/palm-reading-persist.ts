@@ -1,6 +1,8 @@
 import { ensureDb, query } from "@/lib/db";
 import { withReadingLock } from "@/lib/reading-lock";
 import { createHistoryEntry } from "@/lib/users";
+import type { NextRequest } from "next/server";
+import { saveHistoryProductReceipt } from "@/lib/services/history-product-receipt";
 import { alignPalmSnapshot, type PalmHand, type PalmSnapshot } from "@/lib/palm-constants";
 import { PALM_DAY_TIMEZONE } from "@/lib/services/palm-guest-service";
 import { palmSpendKeyBelongsToSnapshot } from "@/lib/palm-reading-billing";
@@ -67,6 +69,9 @@ export async function findTodaysPaidPalmReport(
 }
 
 export async function persistPalmReadingResult(params: {
+  request?: NextRequest;
+  transactionId?: string | null;
+  result?: Record<string, unknown>;
   profileUserId: string;
   reportBody: string;
   snapshot: PalmSnapshot;
@@ -80,7 +85,7 @@ export async function persistPalmReadingResult(params: {
   if (!(await ensureDb())) return undefined;
 
   const snapshot = alignPalmSnapshot(params.snapshot);
-  const entry = await createHistoryEntry({
+  const history = {
     userId: params.profileUserId,
     characterName: "numerolog",
     contextData: {
@@ -97,7 +102,10 @@ export async function persistPalmReadingResult(params: {
       firstPalmDiscount: params.firstPalmDiscount,
     },
     isPaid: params.isPaid || params.spentRunes > 0,
-  });
+  };
+  const entry = params.request ? await saveHistoryProductReceipt({ request:params.request,history,
+    transactionId:params.transactionId,result:params.result ?? {report:params.reportBody,snapshot,snapshotId:params.snapshotId,saved:true} })
+    : await createHistoryEntry(history);
   return entry?.id;
 }
 

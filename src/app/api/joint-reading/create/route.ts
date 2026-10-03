@@ -12,7 +12,8 @@ import {
 } from "@/lib/async-job-worker-auth";
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
-  trackWorkerJobCharged,
+  chargeRuneActionForCurrentWorkerJob,
+  refundWorkerJobCharge,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
   trackWorkerJobRefunded,
@@ -29,10 +30,12 @@ import {
   type BillingChargeResult,
 } from "@/lib/services/billing-service";
 import {
-  createJointReadingInvite,
   buildJointReadingUrl,
   reconcileActiveJointInviteForCreation,
 } from "@/lib/joint-reading-service";
+import { createJointReadingInviteReceipt } from "@/lib/services/joint-reading-receipt";
+import { recoverSavedWorkerReport } from "@/lib/services/durable-report-receipt";
+import { getReportWorkerJobFromRequest } from "@/lib/async-job-worker-auth";
 import { getUserById } from "@/lib/users";
 import { normalizeStoredDisplayName } from "@/lib/normalize-person-name";
 import type { SpreadId } from "@/lib/spreads";
@@ -125,6 +128,10 @@ export async function POST(request: NextRequest) {
   const operation = getAsyncJobIdFromRequest(request) ?? idempotencyKey ??
     String(Math.floor(Date.now() / (CHARGE_IDEM_WINDOW_SEC * 1000)));
   const purchaseKey = `joint-create:${createHash("sha256").update(JSON.stringify([partnerKey, operation])).digest("hex").slice(0, 40)}`;
+  if (workerUserId) {
+    const recovered = await recoverSavedWorkerReport(authed.profileUserId,getReportWorkerJobFromRequest(request));
+    if (recovered) return NextResponse.json({...recovered,reused:true});
+  }
 
   if (asyncRequested && isAsyncJobWorkerConfigured() && !workerUserId) {
     return enqueuePaidAsyncJob({
@@ -171,15 +178,14 @@ export async function POST(request: NextRequest) {
   let charge: BillingChargeResult | null = null;
   try {
     if (!hasAccess) {
-      charge = await BillingService.chargeRuneAction({
+      charge = await chargeRuneActionForCurrentWorkerJob({ request, params: {
         userId: authed.profileUserId,
         action: "JOINT_READING",
         hasFullAccess: false,
         maxCost: confirmedCost,
         idempotencyKey: purchaseKey,
         operationIdentity: purchaseKey,
-      });
-      await trackWorkerJobCharged(request, charge.transactionId);
+      } });
     }
   } catch (err) {
     if (err instanceof ConfirmedCostExceededError) {
@@ -200,7 +206,7 @@ export async function POST(request: NextRequest) {
       .update(JSON.stringify([authed.profileUserId, purchaseKey])).digest("hex").slice(0, 32);
     const exemptId = `${digest.slice(0, 8)}-${digest.slice(8, 12)}-5${digest.slice(13, 16)}-${
       ((parseInt(digest[16], 16) & 3) | 8).toString(16)}${digest.slice(17, 20)}-${digest.slice(20)}`;
-    const invite = await createJointReadingInvite({
+    const payload = await createJointReadingInviteReceipt({ request,transactionId:charge?.transactionId,params: {
       id: charge?.transactionId ?? exemptId,
       initiatorUserId: authed.profileUserId,
       initiatorName: resolvedInitiatorName,
@@ -209,24 +215,15 @@ export async function POST(request: NextRequest) {
       intentSlug,
       reuseExisting: false,
       runeCharged: Boolean(charge),
-    });
+    } });
     inviteSaved = true;
 
-    const payload = {
-      token: invite.token,
-      url: buildJointReadingUrl(invite.token),
-      intentSlug: invite.intent_slug,
-      spreadId: invite.spread_id,
-      expiresAt: invite.expires_at,
-      reused: false,
-      configUpdated: false,
-    };
     await trackWorkerJobCompleted(request, payload);
     return NextResponse.json(payload);
   } catch (err) {
     let actuallyRefunded=false;
     if (charge && !inviteSaved) {
-      const rollback=await BillingService.rollbackChargeEx({
+      const rollback=await refundWorkerJobCharge(request, {
         userId: authed.profileUserId,
         cost: charge.spentRunes,
         wasFreeQuestion: charge.wasFreeQuestion,

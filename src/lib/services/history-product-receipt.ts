@@ -22,6 +22,9 @@ export async function saveHistoryProductReceipt(input: {
         "SELECT action_type FROM rune_transactions WHERE id=$1 AND user_id=$2 AND type='spend' AND amount<0",
         [input.transactionId, input.history.userId])).rows[0];
       const validAction = input.history.contextData.type === "reading" ? spend?.action_type === "READING"
+        : input.history.contextData.type === "aura_reading" ? spend?.action_type === "AURA_READING"
+        : input.history.contextData.type === "palm_reading" ? spend?.action_type === "PALM_READING"
+        : input.history.contextData.type === "photo_reading" ? spend?.action_type === "VISION_ANALYSIS"
         : input.history.contextData.type === "scene_image" && ["DESTINY_CARD", "FINAL_REPORT", "SCENE_ILLUSTRATION", "TAROT_ATMOSPHERE"].includes(spend?.action_type ?? "");
       if (!validAction) throw new Error("paid_history_receipt_owner_or_action_conflict");
     }

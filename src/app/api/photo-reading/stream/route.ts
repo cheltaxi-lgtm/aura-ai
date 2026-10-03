@@ -53,7 +53,8 @@ import {
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
-  trackWorkerJobCharged,
+  chargeForCurrentWorkerJob,
+  refundWorkerJobCharge,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
@@ -259,7 +260,7 @@ export async function POST(request: NextRequest) {
       try {
         const pricing = await resolvePhotoReadingPricing(profileUserId);
         firstPhotoDiscount = pricing.firstPhotoDiscount;
-        const charge = await BillingService.chargeForSession({
+        const charge = await chargeForCurrentWorkerJob({ request, params: {
           userId: profileUserId,
           cost: pricing.effectiveCost,
           actionType: "VISION_ANALYSIS",
@@ -271,11 +272,10 @@ export async function POST(request: NextRequest) {
           idempotencyKey: billingIdempotencyKey,
           operationIdentity: `photo:${photoSpreadKey}`,
           legacyIdempotencyKeys: legacyPhotoKey ? [legacyPhotoKey] : [],
-        });
+        } });
         billingCharge = charge;
         runeBalance = charge.newBalance;
         spentRunes = charge.spentRunes;
-        await trackWorkerJobCharged(request, charge.transactionId);
 
         // Dedupe under lock: never re-run vision — return cached analysis or pending resume.
         if (charge.deduplicated) {
@@ -302,7 +302,7 @@ export async function POST(request: NextRequest) {
             // using the existing spend rather than returning a permanent pending state.
             billingCharge = { ...charge, transactionId: prior.transactionId, spentRunes: prior.amount };
           } else {
-            billingCharge = await BillingService.chargeForSession({
+            billingCharge = await chargeForCurrentWorkerJob({ request, params: {
               userId: profileUserId,
               cost: pricing.effectiveCost,
               actionType: "VISION_ANALYSIS",
@@ -310,12 +310,11 @@ export async function POST(request: NextRequest) {
               sessionIsResult: true,
               idempotencyKey: `${prior.retryPrefix}${randomUUID()}`,
               operationIdentity: `photo:${photoSpreadKey}`,
-            });
+            } });
             if (billingCharge.deduplicated) throw new Error("photo_retry_charge_conflict");
           }
           spentRunes = billingCharge.spentRunes;
           runeBalance = billingCharge.newBalance;
-          await trackWorkerJobCharged(request, billingCharge.transactionId);
         }
       } catch (err) {
         if (err instanceof InsufficientFundsError) {
@@ -391,7 +390,7 @@ export async function POST(request: NextRequest) {
     const refundCurrentCharge = async (): Promise<boolean> => {
       if (!profileUserId || !billingCharge) return false;
       try {
-        const rollback = await BillingService.rollbackChargeEx({
+        const rollback = await refundWorkerJobCharge(request, {
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -432,6 +431,10 @@ export async function POST(request: NextRequest) {
         }
         try {
           historyId = await persistPhotoReadingResult({
+          request,transactionId:billingCharge?.transactionId,
+          result:{analysis:reply,detectedCards,deckType:confirmedSpread!.deckType,spreadType:confirmedSpread!.spreadType,
+            deckSystem:confirmedSpread!.system,redrawSpread:confirmedSpread,tarotCards,characterId,isPaid:isPaid || spentRunes>0,
+            saved:true,sessionId:resolvedSessionId,runeBalance,firstPhotoDiscount,streamed:false},
           captureGeneration,
           profileUserId,
           characterId,
@@ -521,6 +524,10 @@ export async function POST(request: NextRequest) {
         if (profileUserId && !llmFailed) {
           try {
             historyId = await persistPhotoReadingResult({
+            request,transactionId:billingCharge?.transactionId,
+            result:{analysis:reply,detectedCards,deckType:confirmedSpread!.deckType,spreadType:confirmedSpread!.spreadType,
+              deckSystem:confirmedSpread!.system,redrawSpread:confirmedSpread,tarotCards,characterId,isPaid:isPaid || spentRunes>0,
+              saved:true,sessionId:resolvedSessionId,runeBalance,firstPhotoDiscount,streamed:true},
             captureGeneration,
             profileUserId,
             characterId,

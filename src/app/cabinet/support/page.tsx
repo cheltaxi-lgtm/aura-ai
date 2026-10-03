@@ -46,6 +46,7 @@ export default function SupportPage() {
   const [creating, setCreating] = useState(false);
   const [createError, setCreateError] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [ticketsError, setTicketsError] = useState<string | null>(null);
   const selectionRef = useRef<string | null>(null);
   const requestRef = useRef(0);
   const mountedRef = useRef(true);
@@ -69,9 +70,10 @@ export default function SupportPage() {
     const data = await res.json();
     if (!mountedRef.current) return;
     setTickets(data.tickets ?? []);
+    setTicketsError(null);
     if (data.labels) setLabels(data.labels);
     } catch {
-      if (mountedRef.current) setLoadError("Не удалось обновить обращения. Проверьте соединение и повторите попытку.");
+      if (mountedRef.current) setTicketsError("Не удалось обновить обращения. Проверьте соединение и повторите попытку.");
     }
   }, []);
 
@@ -205,7 +207,7 @@ export default function SupportPage() {
     activeTicket?.status === "closed" || activeTicket?.status === "resolved";
 
   return (
-    <div className="min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-8 pt-6 text-white ym-hide-content ym-disable-keys">
+    <div className="support-page min-h-screen bg-[radial-gradient(ellipse_at_top,_rgba(88,28,135,0.18)_0%,_transparent_55%),#000] pb-8 pt-6 text-white ym-hide-content ym-disable-keys">
       <div className="mx-auto max-w-3xl px-4">
         <div className="mb-6 flex items-center gap-3">
           <Link
@@ -222,7 +224,8 @@ export default function SupportPage() {
           </div>
         </div>
 
-        {loadError && <div role="alert" className="mb-4 text-sm text-red-300">{loadError} <button type="button" className="underline" onClick={() => void (selectedId ? loadTicket(selectedId) : loadTickets())}>Повторить</button></div>}
+        {ticketsError && <div role="alert" className="mb-4 text-sm text-red-300">{ticketsError} <button type="button" className="underline" onClick={() => void loadTickets()}>Повторить</button></div>}
+        {loadError && <div role="alert" className="mb-4 text-sm text-red-300">{loadError} <button type="button" className="underline" onClick={() => selectedId && void loadTicket(selectedId)}>Повторить</button></div>}
         {selectedId && !activeTicket && <button type="button" className="mb-4 text-sm text-gray-400" onClick={() => selectTicket(null)}>← Все обращения</button>}
         {loading || (selectedId && !activeTicket && !loadError) ? (
           <div className="flex justify-center py-20">

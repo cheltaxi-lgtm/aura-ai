@@ -33,7 +33,7 @@ describe("aura-reading-retry", () => {
 
   it("refund on failure is linked to the original charge", () => {
     const route = read("src/app/api/aura/report/route.ts");
-    expect(route).toContain("rollbackChargeEx");
+    expect(route).toContain("refundWorkerJobCharge(request");
     expect(route).toMatch(/transactionId:\s*billingCharge\.transactionId/);
   });
 

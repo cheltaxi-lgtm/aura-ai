@@ -1,6 +1,8 @@
 import { ensureDb } from "@/lib/db";
 import { buildPhotoReadingUserMessage } from "@/lib/photo-chat";
 import { createHistoryEntry } from "@/lib/users";
+import type { NextRequest } from "next/server";
+import { saveHistoryProductReceipt } from "@/lib/services/history-product-receipt";
 import { saveMessage, updateSessionChatMeta } from "@/lib/session";
 import { ensureSessionMemoryStub } from "@/lib/session-memory";
 import { limitSpreadKeyCards } from "@/lib/spreads";
@@ -11,6 +13,9 @@ import {
 } from "@/lib/photo-spread-redraw";
 
 export async function persistPhotoReadingResult(params: {
+  request?: NextRequest;
+  transactionId?: string | null;
+  result?: Record<string, unknown>;
   captureGeneration?: string | null;
   profileUserId: string;
   characterId: string;
@@ -30,11 +35,12 @@ export async function persistPhotoReadingResult(params: {
   let historyId: string | undefined;
 
   if (await ensureDb()) {
-    const entry = await createHistoryEntry({
+    const history = {
       userId: params.profileUserId,
       characterName: params.characterId,
       contextData: {
         type: "photo_reading",
+        characterId: params.characterId,
         analysis: params.analysisBody,
         // Dual-write: cabinet/history readers historically expect `interpretation`.
         interpretation: params.analysisBody,
@@ -52,7 +58,10 @@ export async function persistPhotoReadingResult(params: {
         firstPhotoDiscount: params.firstPhotoDiscount,
       },
       isPaid: params.isPaid || params.spentRunes > 0,
-    });
+    };
+    const entry = params.request ? await saveHistoryProductReceipt({ request:params.request,history,
+      transactionId:params.transactionId,result:params.result ?? photoReadingJsonFromContext(history.contextData,{}) })
+      : await createHistoryEntry(history);
     historyId = entry?.id;
   }
 

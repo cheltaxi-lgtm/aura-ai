@@ -76,6 +76,16 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
     const receipt=await getProHdReceipt(userId,{transactionId});
     if(receipt)return receipt;
   }
+  if (spend?.action_type === "JOINT_READING") {
+    const receipt = (await queryClient<{token:string}>(client,
+      "SELECT token FROM joint_readings WHERE id=$1 AND initiator_user_id=$2 AND rune_charged=TRUE",[transactionId,userId])).rows[0];
+    if (receipt) {
+      const { getJointReadingByToken,buildJointReadingUrl } = await import("@/lib/joint-reading-service");
+      const invite = await getJointReadingByToken(receipt.token,client);
+      if (invite) return { token:invite.token,url:buildJointReadingUrl(invite.token),intentSlug:invite.intent_slug,
+        spreadId:invite.spread_id,expiresAt:invite.expires_at,reused:true,configUpdated:false };
+    }
+  }
   const natal = await queryClient<{ id: string; content: string; structured_data: unknown; evidence_refs: unknown; tradition: string; report_type: string }>(client,
     "SELECT id, content, structured_data, evidence_refs, tradition, report_type FROM natal_report_history WHERE user_id=$1 AND charge_transaction_id=$2 LIMIT 1", [userId, transactionId]);
   const report = natal.rows[0];
@@ -122,7 +132,13 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
            AND length(h.context_data->>'readingResourceKey')>0 AND length(trim(h.context_data->>'reading'))>0)
           OR (t.action_type IN ('DESTINY_CARD','FINAL_REPORT','SCENE_ILLUSTRATION','TAROT_ATMOSPHERE')
            AND h.context_data->>'type'='scene_image' AND length(h.context_data->>'sceneImageResourceKey')>0
-           AND length(h.context_data->'sceneArt'->>(h.context_data->>'scene'))>0))
+           AND length(h.context_data->'sceneArt'->>(h.context_data->>'scene'))>0)
+          OR (t.action_type='AURA_READING' AND h.context_data->>'type'='aura_reading'
+           AND length(h.context_data->>'auraSnapshotId')>0 AND length(trim(h.context_data->>'report'))>0)
+          OR (t.action_type='PALM_READING' AND h.context_data->>'type'='palm_reading'
+           AND length(h.context_data->>'palmSnapshotId')>0 AND length(trim(h.context_data->>'report'))>0)
+          OR (t.action_type='VISION_ANALYSIS' AND h.context_data->>'type'='photo_reading'
+           AND length(h.context_data->>'photoSpreadKey')>0 AND length(trim(h.context_data->>'analysis'))>0))
        ORDER BY h.created_at DESC LIMIT 1`, [userId,transactionId])).rows[0];
     if (!artifact) return null;
     const ctx = artifact.context_data;
@@ -130,6 +146,12 @@ export async function durableReportResult(client: PoolClient, userId: string, tr
       ? ctx.receiptDelivery as Record<string, unknown> : {};
     if (ctx.type === "reading") return { ...delivery, reading: ctx.reading, historyId: artifact.id,
       isPaid: artifact.is_paid, spreadId: ctx.spreadId, createdAt: artifact.created_at };
+    if (ctx.type === "aura_reading" || ctx.type === "palm_reading") return { ...delivery,report:ctx.report,snapshot:ctx.snapshot,
+      snapshotId:ctx.type === "aura_reading" ? ctx.auraSnapshotId : ctx.palmSnapshotId,historyId:artifact.id,saved:true };
+    if (ctx.type === "photo_reading") {
+      const { photoReadingJsonFromContext } = await import("@/lib/photo-reading-persist");
+      return {...photoReadingJsonFromContext(ctx,{historyId:artifact.id}),...delivery,analysis:ctx.analysis,historyId:artifact.id,saved:true};
+    }
     const scene = String(ctx.scene);
     const { sceneLabel } = await import("@/lib/image-prompts");
     return { ...delivery, imageUrl: (ctx.sceneArt as Record<string, unknown>)[scene], scene,

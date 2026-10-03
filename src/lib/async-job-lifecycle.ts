@@ -69,6 +69,53 @@ export async function trackWorkerJobCharged(
   if (attempt) await markAsyncJobCharged(jobId, transactionId, attempt);
 }
 
+/** Preserve the caller's trusted content key and custom price, while checking
+ * the lease before any debit and binding its receipt in that same transaction. */
+async function chargeCurrentWorkerPurchase(input: {
+  request: NextRequest;
+  userId: string;
+  action: RuneActionType;
+  operationIdentity?: string;
+  charge: (client?: PoolClient) => Promise<BillingChargeResult>;
+}): Promise<BillingChargeResult> {
+  const jobId = getAsyncJobIdFromRequest(input.request);
+  if (!jobId) return input.charge();
+  const attempt = getAsyncJobAttemptFromRequest(input.request);
+  if (!attempt || input.request.signal.aborted) throw new Error("stale_async_job_attempt");
+  return withTransaction(async client => {
+    const job = (await queryClient<AsyncJobRow>(client, "SELECT * FROM async_jobs WHERE id=$1 FOR UPDATE", [jobId])).rows[0];
+    if (!job || job.user_id !== input.userId || !asyncJobAttemptMatches(job,attempt) ||
+        !["unbilled","charged","refunded"].includes(job.billing_state)) throw new Error("stale_async_job_attempt");
+    if (job.charge_transaction_id) {
+      const held = await billingChargeFromExistingTransaction(input.userId,job.charge_transaction_id,input.action,client,
+        input.operationIdentity ? [input.operationIdentity] : undefined);
+      if (held) {
+        if (job.billing_state !== "charged") await markAsyncJobCharged(jobId,held.transactionId!,attempt,client);
+        return held;
+      }
+    }
+    const charge = await input.charge(client);
+    if (charge.transactionId) await markAsyncJobCharged(jobId,charge.transactionId,attempt,client);
+    return charge;
+  });
+}
+
+export async function chargeForCurrentWorkerJob(input: {
+  request: NextRequest;
+  params: Omit<Parameters<typeof BillingService.chargeForSession>[0], "client">;
+}): Promise<BillingChargeResult> {
+  return chargeCurrentWorkerPurchase({ request:input.request,userId:input.params.userId,action:input.params.actionType as RuneActionType,
+    operationIdentity:input.params.operationIdentity,charge:client=>BillingService.chargeForSession({...input.params,client}) });
+}
+
+export async function chargeRuneActionForCurrentWorkerJob(input: {
+  request: NextRequest;
+  params: Omit<Parameters<typeof BillingService.chargeRuneAction>[0], "client">;
+}): Promise<BillingChargeResult> {
+  return chargeCurrentWorkerPurchase({ request:input.request,userId:input.params.userId,action:input.params.action,
+    operationIdentity:input.params.operationIdentity,charge:client=>BillingService.chargeRuneAction({...input.params,client}) });
+}
+
 /** After rollbackCharge on a worker-driven paid route. */
 export async function trackWorkerJobRefunded(request: NextRequest): Promise<void> {
   const jobId = getAsyncJobIdFromRequest(request);

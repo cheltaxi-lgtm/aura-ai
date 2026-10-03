@@ -106,7 +106,7 @@ export default function NumerologSessionReveal({
         >
           <PythagorasSquareGrid square={result.pythagorasSquare} className="mt-4" />
           <p className="mt-3 text-center text-xs leading-relaxed text-white/45">
-            Каждая ячейка — количество соответствующих цифр в дате рождения. Эвелина расшифрует матрицу в
+            Каждая ячейка — количество соответствующих цифр в дате рождения и четырёх рабочих числах. Эвелина расшифрует матрицу в
             сеансе.
           </p>
         </motion.div>

@@ -49,6 +49,8 @@ vi.mock("@/lib/async-job-worker-auth", () => ({ getAsyncJobWorkerUserId: () => n
 vi.mock("@/lib/async-job-enqueue", () => ({ enqueuePaidAsyncJob: vi.fn() }));
 vi.mock("@/lib/async-job-lifecycle", () => ({
   beginWorkerJobSave: async () => true, trackWorkerJobCharged: async () => {}, trackWorkerJobCompleted: async () => {}, trackWorkerJobFailed: m.failed,
+  chargeForCurrentWorkerJob: ({ params }: { params: unknown }) => m.charge(params),
+  refundWorkerJobCharge: (_request: unknown, params: unknown) => m.refund(params),
 }));
 vi.mock("@/lib/photo-reading-stream", () => ({
   createPhotoInterpretationJson: m.generate,
@@ -127,6 +129,8 @@ describe("photo delivery and refund regressions", () => {
     const response = await POST(request(false));
     expect(await response.text()).toContain('"saved":true');
     expect(m.events).toEqual(["save", "unlock"]);
+    expect(m.save).toHaveBeenCalledWith(expect.objectContaining({ request: expect.any(NextRequest),
+      transactionId: "charge-1", result: expect.objectContaining({ analysis: "saved legacy reading", streamed: true }) }));
   });
   it.each([true, false])("refunds exactly once if saving after a charge fails (JSON: %s)", async (json) => {
     m.save.mockRejectedValue(new Error("history unavailable"));

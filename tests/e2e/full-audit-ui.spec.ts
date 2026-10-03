@@ -1,6 +1,27 @@
 import { expect, test, type Page } from "@playwright/test";
 import { calculateHdChart } from "../../src/lib/human-design/calculate";
 
+test("support list retry removes the recovered network error", async ({ page, baseURL }) => {
+  test.setTimeout(90_000);
+  await installAuthenticatedMocks(page, baseURL!);
+  let offline = true;
+  await page.route("**/api/support/tickets", route => offline
+    ? route.abort("failed")
+    : route.fulfill({ json: { tickets: [{ id: "restored-ticket", subject: "Восстановленное обращение", category: "general", status: "open", unread_by_user: false, last_message_at: "2026-10-03T00:00:00Z" }] } }));
+  await page.goto("/cabinet/support");
+  await expect.poll(() => page.evaluate(() => {
+    const header = document.querySelector("header")?.getBoundingClientRect();
+    const title = document.querySelector("h1")?.getBoundingClientRect();
+    return Boolean(header && title && title.top >= header.bottom);
+  })).toBe(true);
+  const listError = page.getByRole("alert").filter({ hasText: "Не удалось обновить обращения" });
+  await expect(listError).toBeVisible();
+  offline = false;
+  await page.getByRole("button", { name: "Повторить", exact: true }).click();
+  await expect(page.getByRole("button", { name: /Восстановленное обращение/ })).toBeVisible();
+  await expect(listError).toHaveCount(0);
+});
+
 test("support ignores a late ticket after selecting another and handles an offline create", async ({ page, baseURL }) => {
   test.setTimeout(90_000);
   await installAuthenticatedMocks(page, baseURL!);

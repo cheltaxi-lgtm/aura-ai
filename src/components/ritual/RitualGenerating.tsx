@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence, useReducedMotion } from "framer-motion";
 import { getCharacterById } from "@/lib/characters";
 
 const RAGNAR_RUNES = ["ᚠ", "ᚢ", "ᚦ", "ᚨ", "ᚱ", "ᚲ", "ᚷ", "ᚹ"];
@@ -56,6 +56,7 @@ export default function RitualGenerating({
   onReady,
   onFailed,
 }: Props) {
+  const reducedMotion = useReducedMotion();
   const [phaseIndex, setPhaseIndex] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
@@ -310,14 +311,14 @@ export default function RitualGenerating({
           <motion.span
             key={i}
             className="absolute text-2xl"
-            initial={{ opacity: 0, scale: 0.5 }}
+            initial={reducedMotion ? false : { opacity: 0, scale: 0.5 }}
             animate={{
-              opacity: [0, 1, 0],
-              scale: [0.5, 1.2, 0.5],
+              opacity: reducedMotion ? 1 : [0, 1, 0],
+              scale: reducedMotion ? 1 : [0.5, 1.2, 0.5],
               x: Math.cos((i / symbols.length) * Math.PI * 2) * 40,
               y: Math.sin((i / symbols.length) * Math.PI * 2) * 40,
             }}
-            transition={{
+            transition={reducedMotion ? { duration: 0 } : {
               duration: 2,
               repeat: Infinity,
               delay: i * 0.25,
@@ -327,8 +328,8 @@ export default function RitualGenerating({
           </motion.span>
         ))}
         <motion.div
-          animate={{ rotate: 360 }}
-          transition={{ duration: 8, repeat: Infinity, ease: "linear" }}
+          animate={{ rotate: reducedMotion ? 0 : 360 }}
+          transition={reducedMotion ? { duration: 0 } : { duration: 8, repeat: Infinity, ease: "linear" }}
           className="h-16 w-16 rounded-full border-2 border-amber-400/30 border-t-amber-400"
         />
       </div>
@@ -336,9 +337,10 @@ export default function RitualGenerating({
       <AnimatePresence mode="wait">
         <motion.p
           key={showRetryLabel ? "retry" : phase.key}
-          initial={{ opacity: 0, y: 8 }}
+          initial={reducedMotion ? false : { opacity: 0, y: 8 }}
           animate={{ opacity: 1, y: 0 }}
-          exit={{ opacity: 0, y: -8 }}
+          exit={reducedMotion ? { opacity: 1, y: 0 } : { opacity: 0, y: -8 }}
+          transition={reducedMotion ? { duration: 0 } : undefined}
           className="text-center text-sm text-amber-200/80"
         >
           {showRetryLabel

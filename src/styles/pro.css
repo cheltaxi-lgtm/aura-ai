@@ -18,6 +18,14 @@
   border-bottom: 1px solid color-mix(in srgb, var(--pro-accent) 25%, transparent);
 }
 
+body.has-site-header .pro-shell {
+  padding-top: calc(var(--app-header-h, 65px) + 2rem);
+}
+
+body.has-site-header .pro-shell--gate {
+  padding-top: var(--app-header-h, 65px);
+}
+
 .pro-shell__eyebrow {
   font-family: var(--font-display), Georgia, serif;
   font-size: 0.7rem;

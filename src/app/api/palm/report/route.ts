@@ -26,7 +26,8 @@ import {
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
-  trackWorkerJobCharged,
+  chargeForCurrentWorkerJob,
+  refundWorkerJobCharge,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
@@ -228,7 +229,7 @@ async function handlePost(request: NextRequest) {
       try {
         const pricing = await resolvePalmReadingPricing(profileUserId);
         firstPalmDiscount = pricing.firstPalmDiscount;
-        const charge = await BillingService.chargeForSession({
+        const charge = await chargeForCurrentWorkerJob({ request, params: {
           userId: profileUserId,
           cost: pricing.effectiveCost,
           actionType: "PALM_READING",
@@ -237,9 +238,8 @@ async function handlePost(request: NextRequest) {
             : undefined,
           idempotencyKey,
           operationIdentity: `palm-snapshot:${snapshotId}`,
-        });
+        } });
         runeBalance = charge.newBalance;
-        await trackWorkerJobCharged(request, charge.transactionId);
 
         if (charge.deduplicated) {
           const existingAfterCharge = await findPalmReadingEntry(
@@ -276,7 +276,7 @@ async function handlePost(request: NextRequest) {
             };
             spentRunes = priorState.amount;
           } else {
-            const retryCharge = await BillingService.chargeForSession({
+            const retryCharge = await chargeForCurrentWorkerJob({ request, params: {
               userId: profileUserId,
               cost: pricing.effectiveCost,
               actionType: "PALM_READING",
@@ -285,14 +285,13 @@ async function handlePost(request: NextRequest) {
                 : undefined,
               idempotencyKey: `${palmSpendKeyForSnapshot(snapshotId)}:${randomUUID()}`,
               operationIdentity: `palm-snapshot:${snapshotId}`,
-            });
+            } });
             if (retryCharge.deduplicated) {
               throw new Error("palm_retry_charge_conflict");
             }
             billingCharge = retryCharge;
             runeBalance = retryCharge.newBalance;
             spentRunes = retryCharge.spentRunes;
-            await trackWorkerJobCharged(request, retryCharge.transactionId);
           }
         } else {
           billingCharge = charge;
@@ -311,7 +310,7 @@ async function handlePost(request: NextRequest) {
       let refunded = false;
       if (billingCharge) {
         try {
-          const rollback = await BillingService.rollbackChargeEx({
+          const rollback = await refundWorkerJobCharge(request, {
             userId: profileUserId,
             cost: billingCharge.spentRunes,
             wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -372,6 +371,8 @@ async function handlePost(request: NextRequest) {
     }
 
     const historyId = await persistPalmReadingResult({
+      request,transactionId:billingCharge?.transactionId,
+      result:{...palmReportPayload({report,snapshot,snapshotId,runeBalance,firstPalmDiscount}),saved:true},
       profileUserId,
       reportBody: report,
       snapshot,

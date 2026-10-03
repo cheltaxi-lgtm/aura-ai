@@ -13,6 +13,11 @@ for(const action of ['generate','refine','resume'] as const)test('Pro manual rep
   });
   await page.goto('/pro/case/fixture');
   await expect(page.getByRole('heading',{name:'Практика · Расклад',exact:true})).toBeVisible();
+  await expect.poll(async()=>page.evaluate(()=>{
+    const header=document.querySelector('.app-top-header')?.getBoundingClientRect();
+    const title=document.querySelector('.pro-shell__title')?.getBoundingClientRect();
+    return !!header&&!!title&&title.top>=header.bottom;
+  })).toBe(true);
   await expect(page.getByRole('textbox',{name:'Карты через запятую',exact:true})).toHaveValue('Маг');
   if(action==='generate')await page.getByRole('button',{name:'Сгенерировать премиум-отчёт',exact:true}).click();
   if(action==='refine'){

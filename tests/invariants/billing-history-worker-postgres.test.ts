@@ -12,7 +12,9 @@ import { query } from "@/lib/db";
 import { createHistoryEntry } from "@/lib/users";
 import { POST as image } from "@/app/api/image/generate/route";
 import { createAsyncJob, claimAsyncJobs, getAsyncJobById, markAsyncJobCharged, failAsyncJobAndRefundIfCharged, reapWatchdogRunningAsyncJobs, type AsyncJobRow } from "@/lib/async-jobs";
-import { chargeRuneActionForWorkerJob, refundWorkerJobCharge } from "@/lib/async-job-lifecycle";
+import { chargeRuneActionForWorkerJob, chargeForCurrentWorkerJob, refundWorkerJobCharge } from "@/lib/async-job-lifecycle";
+import { createJointReadingInviteReceipt } from "@/lib/services/joint-reading-receipt";
+import { createJointReadingInvite } from "@/lib/joint-reading-service";
 import { saveHistoryProductReceipt } from "@/lib/services/history-product-receipt";
 import { sceneImageResourceIdentity } from "@/lib/scene-image-identity";
 import { chargeForSession, BillingIdempotencyConflictError } from "@/lib/services/billing-service";
@@ -45,6 +47,56 @@ describe.skipIf(!hasTestDb)("reading/image owned job payment and durable artifac
     m.generate.mockResolvedValue({ imageUrl: "https://zovus.ru/api/scene-image/synthetic", scene: "destiny_card", model: "synthetic", aspectRatio: "1:1", quality: "standard" });
   });
   afterEach(() => vi.unstubAllEnvs());
+
+  it.each(["AURA_READING", "PALM_READING", "VISION_ANALYSIS", "JOINT_READING"] as const)("%s custom charge and binding are atomic, replay preserves the discount and stale attempts cannot debit", async action => {
+    const user = await createTestUser({ runeBalance: 100 }), job = await jobFor(user.id);
+    const args = { request: request(job), params: { userId: user.id, cost: 7, actionType: action,
+      idempotencyKey: `synthetic-custom:${job.id}`, operationIdentity: `synthetic-resource:${job.id}` } };
+    const first = await chargeForCurrentWorkerJob(args), retry = await chargeForCurrentWorkerJob(args);
+    expect(retry).toMatchObject({ transactionId: first.transactionId, spentRunes: 7 });
+    expect((await getAsyncJobById(job.id))!).toMatchObject({ billing_state: "charged", charge_transaction_id: first.transactionId });
+    expect(await getUserBalance(user.id)).toBe(93); expect(await countSpendTransactions(user.id)).toBe(1);
+    const stale = await jobFor(user.id);
+    await query("UPDATE async_jobs SET status='failed',worker_id=NULL WHERE id=$1", [stale.id]);
+    await expect(chargeForCurrentWorkerJob({ request: request(stale), params: { ...args.params, idempotencyKey: `stale:${stale.id}` } })).rejects.toThrow("stale_async_job_attempt");
+    expect(await getUserBalance(user.id)).toBe(93); expect(await countSpendTransactions(user.id)).toBe(1);
+  });
+
+  it("joint invitation and completed worker delivery commit together and resist a failure refund", async () => {
+    const user = await createTestUser({ runeBalance: 100 }), job = await jobFor(user.id);
+    const held = await chargeForCurrentWorkerJob({ request: request(job), params: { userId: user.id, cost: 7,
+      actionType: "JOINT_READING", idempotencyKey: `joint:${job.id}`, operationIdentity: `joint:${job.id}` } });
+    const payload = await createJointReadingInviteReceipt({ request: request(job), transactionId: held.transactionId,
+      params: { id: held.transactionId!, initiatorUserId: user.id, partnerName: "Синтетический партнёр", reuseExisting: false, runeCharged: true } });
+    expect(typeof payload.token).toBe("string");
+    expect((await getAsyncJobById(job.id))!).toMatchObject({ status: "completed", billing_state: "completed", result: { token: payload.token } });
+    expect(await refundWorkerJobCharge(request(job), { userId: user.id, cost: 7, wasFreeQuestion: false, transactionId: held.transactionId })).toMatchObject({ refunded: false });
+    expect(await getUserBalance(user.id)).toBe(93);
+  });
+
+  it("watchdog recovers a joint invitation saved before old worker completion", async () => {
+    const user = await createTestUser({ runeBalance: 100 }), job = await jobFor(user.id);
+    const held = await chargeForCurrentWorkerJob({ request: request(job), params: { userId: user.id, cost: 7,
+      actionType: "JOINT_READING", idempotencyKey: `joint-old:${job.id}`, operationIdentity: `joint-old:${job.id}` } });
+    const invite = await createJointReadingInvite({ id: held.transactionId!, initiatorUserId: user.id, reuseExisting: false, runeCharged: true });
+    await query("UPDATE async_jobs SET started_at=now()-interval '20 minutes',locked_at=now()-interval '20 minutes' WHERE id=$1", [job.id]);
+    await reapWatchdogRunningAsyncJobs({ maxRunningMs: 300000, maxAttempts: 1, kinds: [job.kind] });
+    expect((await getAsyncJobById(job.id))!).toMatchObject({ status: "completed", billing_state: "completed", result: { token: invite.token } });
+    expect(await getUserBalance(user.id)).toBe(93);
+    expect(Number((await query("SELECT count(*)::int n FROM rune_transactions WHERE user_id=$1 AND type='refund'", [user.id])).rows[0].n)).toBe(0);
+  });
+
+  it("another Aura artifact cannot prove delivery for a different charged receipt", async () => {
+    const user = await createTestUser({ runeBalance: 100 }), job = await jobFor(user.id);
+    await chargeForCurrentWorkerJob({ request: request(job), params: { userId: user.id, cost: 7,
+      actionType: "AURA_READING", idempotencyKey: `aura-missing:${job.id}`, operationIdentity: `aura-missing:${job.id}` } });
+    await createHistoryEntry({ userId: user.id, characterName: "numerolog", isPaid: true,
+      contextData: { type: "aura_reading", auraSnapshotId: "unrelated-snapshot", report: "Другой сохранённый отчёт", transactionId: randomUUID() } });
+    await query("UPDATE async_jobs SET started_at=now()-interval '20 minutes',locked_at=now()-interval '20 minutes' WHERE id=$1", [job.id]);
+    await reapWatchdogRunningAsyncJobs({ maxRunningMs: 300000, maxAttempts: 1, kinds: [job.kind] });
+    expect((await getAsyncJobById(job.id))!).toMatchObject({ status: "failed", billing_state: "refunded" });
+    expect(await getUserBalance(user.id)).toBe(100);
+  });
 
   it("actual image worker commits one charge, artifact and completed delivery together", async () => {
     const user = await createTestUser({ runeBalance: 100 }), job = await jobFor(user.id, "image_generate");

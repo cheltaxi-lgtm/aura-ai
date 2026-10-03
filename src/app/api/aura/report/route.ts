@@ -26,7 +26,8 @@ import {
 import { enqueuePaidAsyncJob } from "@/lib/async-job-enqueue";
 import {
   beginWorkerJobSave,
-  trackWorkerJobCharged,
+  chargeForCurrentWorkerJob,
+  refundWorkerJobCharge,
   trackWorkerJobCompleted,
   trackWorkerJobFailed,
 } from "@/lib/async-job-lifecycle";
@@ -296,7 +297,7 @@ async function handlePost(request: NextRequest) {
     try {
       const pricing = await resolveAuraReadingPricing(profileUserId);
       firstAuraDiscount = pricing.firstAuraDiscount;
-      const charge = await BillingService.chargeForSession({
+      const charge = await chargeForCurrentWorkerJob({ request, params: {
         userId: profileUserId,
         cost: pricing.effectiveCost,
         actionType: "AURA_READING",
@@ -306,9 +307,8 @@ async function handlePost(request: NextRequest) {
         idempotencyKey: idempotencyKey || `aura-reading:${snapshotId}`,
         operationIdentity: `aura-snapshot:${snapshotId}`,
         legacyIdempotencyKeys: legacyKey ? [legacyKey] : [],
-      });
+      } });
       runeBalance = charge.newBalance;
-      await trackWorkerJobCharged(request, charge.transactionId);
 
       if (charge.deduplicated) {
         const existingAfterCharge = await findAuraReadingEntry(
@@ -349,7 +349,7 @@ async function handlePost(request: NextRequest) {
           };
           spentRunes = priorState.amount;
         } else {
-          const retryCharge = await BillingService.chargeForSession({
+          const retryCharge = await chargeForCurrentWorkerJob({ request, params: {
             userId: profileUserId,
             cost: pricing.effectiveCost,
             actionType: "AURA_READING",
@@ -358,7 +358,7 @@ async function handlePost(request: NextRequest) {
               : undefined,
             idempotencyKey: `aura-reading:${snapshotId}:${randomUUID()}`,
             operationIdentity: `aura-snapshot:${snapshotId}`,
-          });
+          } });
           if (retryCharge.deduplicated) {
             // Fresh per-attempt key cannot collide — defensive only.
             throw new Error("aura_retry_charge_conflict");
@@ -366,7 +366,6 @@ async function handlePost(request: NextRequest) {
           billingCharge = retryCharge;
           runeBalance = retryCharge.newBalance;
           spentRunes = retryCharge.spentRunes;
-          await trackWorkerJobCharged(request, retryCharge.transactionId);
         }
       } else {
         billingCharge = charge;
@@ -385,7 +384,7 @@ async function handlePost(request: NextRequest) {
     let refunded = false;
     if (billingCharge) {
       try {
-        const rollback = await BillingService.rollbackChargeEx({
+        const rollback = await refundWorkerJobCharge(request, {
           userId: profileUserId,
           cost: billingCharge.spentRunes,
           wasFreeQuestion: billingCharge.wasFreeQuestion,
@@ -447,6 +446,8 @@ async function handlePost(request: NextRequest) {
   }
 
   const historyId = await persistAuraReadingResult({
+    request,transactionId:billingCharge?.transactionId,
+    result:{...auraReportPayload({report,snapshot,snapshotId,runeBalance,firstAuraDiscount}),saved:true},
     profileUserId,
     reportBody: report,
     snapshot,

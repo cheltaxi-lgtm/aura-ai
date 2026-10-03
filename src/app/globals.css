@@ -2,6 +2,10 @@
 @tailwind components;
 @tailwind utilities;
 
+body.has-site-header .support-page {
+  padding-top: calc(var(--app-header-h, 65px) + 1.5rem);
+}
+
 /* ── Premium scrollbars (site-wide: web, SEO, cabinet, app shell) ──
    Unlayered + defined before use so html/body viewport and every overflow
    panel share one thin brass thumb. */

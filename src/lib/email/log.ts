@@ -11,6 +11,7 @@ export async function pruneOwnerlessEmailLogs(limit = EMAIL_LOG_RETENTION_BATCH_
   const batchLimit = Number.isFinite(limit)
     ? Math.max(1, Math.min(EMAIL_LOG_RETENTION_BATCH_LIMIT, Math.floor(limit)))
     : EMAIL_LOG_RETENTION_BATCH_LIMIT;
+  // Materialize once: a locking LIMIT subquery re-evaluated by DELETE can exceed the cap.
   const result = await query(`WITH expired AS MATERIALIZED (
       SELECT id FROM email_log
       WHERE cardinality(owner_account_ids) = 0

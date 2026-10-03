@@ -215,18 +215,19 @@ export async function createJointReadingInvite(params: {
   runeCharged?: boolean;
   /** Server receipt identity makes replay return the same invite. */
   id?: string;
-}): Promise<JointReadingRow> {
+}, client?: import("@/lib/db").PoolClient): Promise<JointReadingRow> {
+  const run = client ? <T extends import("pg").QueryResultRow>(text: string, values?: unknown[]) => client.query<T>(text, values) : query;
   const ownedByReceipt = async () => {
     if (!params.id) return null;
-    const existing = await query<{ token: string }>("SELECT token FROM joint_readings WHERE id=$1 AND initiator_user_id=$2", [params.id, params.initiatorUserId]);
+    const existing = await run<{ token: string }>("SELECT token FROM joint_readings WHERE id=$1 AND initiator_user_id=$2", [params.id, params.initiatorUserId]);
     if (!existing.rows[0]) return null;
-    const row = await getJointReadingByToken(existing.rows[0].token);
+    const row = await getJointReadingByToken(existing.rows[0].token, client);
     if (!row) throw new Error("joint_receipt_source_unavailable");
     return row;
   };
   const existingReceipt = await ownedByReceipt();
   if (existingReceipt) return existingReceipt;
-  const captureGeneration = await captureMemoryGeneration(params.initiatorUserId);
+  const captureGeneration = client ? null : await captureMemoryGeneration(params.initiatorUserId);
   if (params.reuseExisting !== false) {
     const reconciled = await reconcileActiveJointInviteForCreation({
       userId: params.initiatorUserId,
@@ -259,11 +260,11 @@ export async function createJointReadingInvite(params: {
   for (let attempt = 0; attempt < 5; attempt++) {
     const token = generateToken();
     try {
-      const res = await query(
+      const res = await run(
         `INSERT INTO joint_readings
            (token, initiator_user_id, initiator_name, partner_name, spread_id, intent_slug, expires_at, rune_charged, id)
          VALUES ($1, $2, $3, $4, $5, $6, $7, $8, COALESCE($9::uuid,gen_random_uuid()))
-         ON CONFLICT(id) DO NOTHING
+         ON CONFLICT DO NOTHING
          RETURNING *`,
         [
           token,
@@ -280,9 +281,13 @@ export async function createJointReadingInvite(params: {
       if (!res.rows[0]) {
         const reused = await ownedByReceipt();
         if (reused) return reused;
+        if (!params.id || !(await run("SELECT id FROM joint_readings WHERE id=$1", [params.id])).rows.length) continue;
         throw new Error("joint_receipt_owner_conflict");
       }
       const created = mapRow(res.rows[0] as Record<string, unknown>);
+      // Receipt callers commit invitation + worker delivery before any memory
+      // writer runs on another connection and waits on this uncommitted row.
+      if (client) return created;
       try {
         await captureJointInviteMemory({
           captureGeneration,
@@ -310,8 +315,9 @@ export async function createJointReadingInvite(params: {
   throw new Error("Failed to generate joint reading token");
 }
 
-export async function getJointReadingByToken(token: string): Promise<JointReadingRow | null> {
-  const res = await query(`SELECT * FROM joint_readings j WHERE token = $1
+export async function getJointReadingByToken(token: string, client?: import("@/lib/db").PoolClient): Promise<JointReadingRow | null> {
+  const run = client ? client.query.bind(client) : query;
+  const res = await run(`SELECT * FROM joint_readings j WHERE token = $1
     AND EXISTS (SELECT 1 FROM users u WHERE u.id = j.initiator_user_id AND u.erasure_requested_at IS NULL)
     AND (j.partner_user_id IS NULL OR EXISTS (SELECT 1 FROM users u WHERE u.id = j.partner_user_id AND u.erasure_requested_at IS NULL))
     AND (j.partner_user_id IS NOT NULL OR (j.partner_reading IS NULL AND j.combined_reading IS NULL AND j.synastry_data IS NULL))
@@ -319,7 +325,7 @@ export async function getJointReadingByToken(token: string): Promise<JointReadin
   if (!res.rows[0]) return null;
   const row = mapRow(res.rows[0] as Record<string, unknown>);
   if (row.status !== "expired" && new Date(row.expires_at) < new Date()) {
-    await query(`UPDATE joint_readings SET status = 'expired' WHERE id = $1`, [row.id]);
+    await run(`UPDATE joint_readings SET status = 'expired' WHERE id = $1`, [row.id]);
     return { ...row, status: "expired" };
   }
   return row;
