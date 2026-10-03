@@ -109,6 +109,44 @@ describe.skipIf(!hasTestDb)("durable account erasure (real PostgreSQL)", () => {
     expect((await link(next.accountId)).ok).toBe(true);
   });
 
+  it("erases an account with persisted chat while preserving other owners and write fences", async () => {
+    const other = await createAccount(false);
+    const session = (await query(`INSERT INTO sessions (user_id) VALUES ($1) RETURNING id`, [profileId])).rows[0].id;
+    const otherSession = (await query(`INSERT INTO sessions (user_id) VALUES ($1) RETURNING id`, [other.profileId])).rows[0].id;
+    await query(`INSERT INTO chat_messages (session_id, character_id, role, content) VALUES
+      ($1, 'tarolog', 'user', 'Owned question'), ($1, 'tarolog', 'assistant', 'Completed reading'),
+      ($2, 'tarolog', 'assistant', 'Other owner reading')`, [session, otherSession]);
+    expect((await query(`SELECT message_count FROM sessions WHERE id = $1`, [session])).rows[0].message_count).toBe(2);
+    await requestAccountErasure(accountId);
+    await expect(query(`UPDATE sessions SET awaiting_context = TRUE WHERE id = $1`, [session])).rejects.toThrow("account_erasure_pending");
+    await expect(query(`INSERT INTO chat_messages (session_id, character_id, role, content) VALUES ($1, 'tarolog', 'assistant', 'Late reading')`, [session])).rejects.toThrow("account_erasure_pending");
+    expect(await processDueAccountErasures(1)).toEqual({ completed: 1, failed: 0 });
+    expect((await job()).stage).toBe("completed");
+    expect((await query(`SELECT id FROM user_accounts WHERE id = $1`, [accountId])).rowCount).toBe(0);
+    expect((await query(`SELECT id FROM users WHERE id = $1`, [profileId])).rowCount).toBe(0);
+    expect((await query(`SELECT id FROM sessions WHERE id = $1`, [session])).rowCount).toBe(0);
+    expect((await query(`SELECT id FROM chat_messages WHERE session_id = $1 OR owner_user_id = $2`, [session, profileId])).rowCount).toBe(0);
+    expect((await query(`SELECT message_count FROM sessions WHERE id = $1`, [otherSession])).rows[0].message_count).toBe(1);
+    expect((await query(`SELECT content FROM chat_messages WHERE session_id = $1`, [otherSession])).rows[0].content).toBe("Other owner reading");
+  });
+
+  it("continues counting inserts and deletes for active and guest sessions", async () => {
+    const owned = (await query(`INSERT INTO sessions (user_id) VALUES ($1) RETURNING id`, [profileId])).rows[0].id;
+    const guest = (await query(`INSERT INTO sessions DEFAULT VALUES RETURNING id`)).rows[0].id;
+    try {
+      for (const sid of [owned, guest]) {
+        await query(`INSERT INTO chat_messages (session_id, character_id, role, content) VALUES ($1, 'tarolog', 'user', 'One'), ($1, 'tarolog', 'assistant', 'Two')`, [sid]);
+        expect((await query(`SELECT message_count FROM sessions WHERE id = $1`, [sid])).rows[0].message_count).toBe(2);
+        await query(`DELETE FROM chat_messages WHERE session_id = $1 AND role = 'user'`, [sid]);
+        expect((await query(`SELECT message_count FROM sessions WHERE id = $1`, [sid])).rows[0].message_count).toBe(1);
+        await query(`DELETE FROM chat_messages WHERE session_id = $1`, [sid]);
+        expect((await query(`SELECT message_count FROM sessions WHERE id = $1`, [sid])).rows[0].message_count).toBe(0);
+      }
+    } finally {
+      await query(`DELETE FROM sessions WHERE id = $1`, [guest]);
+    }
+  });
+
   it("serializes a concurrent identity link before taking the durable snapshot", async () => {
     await query(`DELETE FROM user_telegram_identities WHERE user_account_id = $1`, [accountId]);
     const client = await getPool().connect();
