@@ -53,6 +53,12 @@ const ALLOWED_IMPORTERS = new Set([
   // Platform surfaces that only read isProModuleEnabled()
   "src/app/api/platform/features/route.ts",
   "src/app/sitemap.ts",
+  // Platform adapters for ingress, saved charts, durable delivery and erasure.
+  "src/app/api/avito/webhook/route.ts",
+  "src/components/reports/ReportCharts.tsx",
+  "src/lib/async-jobs.ts",
+  "src/lib/services/durable-report-receipt.ts",
+  "src/lib/user-deletion.ts",
 ]);
 
 function walkTsFiles(dir: string, out: string[] = []): string[] {
